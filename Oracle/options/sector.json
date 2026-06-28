@@ -1,0 +1,20 @@
+{
+  "description": "Ring Sector (r0>0) — exercises Sector.buildPath: outer arc, inner arc reversed, joining lines, close (zrender/src/graphic/shape/Sector). The workhorse of pie/sunburst geometry.",
+  "option": {
+    "graphic": [
+      {
+        "type": "sector",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 60,
+          "r0": 20,
+          "startAngle": 0,
+          "endAngle": 1.5707963267948966,
+          "clockwise": true
+        },
+        "style": { "fill": "#abc", "stroke": "#333", "lineWidth": 1 }
+      }
+    ]
+  }
+}

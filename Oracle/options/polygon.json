@@ -1,0 +1,14 @@
+{
+  "description": "Polygon (closed) — exercises Polygon.buildPath / helper.poly: moveTo first point, lineTo the rest, close (zrender/src/graphic/shape/Polygon + helper/poly).",
+  "option": {
+    "graphic": [
+      {
+        "type": "polygon",
+        "shape": {
+          "points": [[20, 20], [90, 35], [70, 110], [25, 95], [10, 55]]
+        },
+        "style": { "fill": "#27ae60", "stroke": "#145a32", "lineWidth": 1 }
+      }
+    ]
+  }
+}

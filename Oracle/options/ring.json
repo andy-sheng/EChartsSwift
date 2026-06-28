@@ -1,0 +1,12 @@
+{
+  "description": "Ring — exercises Ring.buildPath: a full outer arc and a full inner arc reversed (zrender/src/graphic/shape/Ring).",
+  "option": {
+    "graphic": [
+      {
+        "type": "ring",
+        "shape": { "cx": 100, "cy": 75, "r": 50, "r0": 20 },
+        "style": { "fill": "#e67e22", "stroke": "#7e3f10", "lineWidth": 1 }
+      }
+    ]
+  }
+}

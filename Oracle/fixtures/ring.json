@@ -1,0 +1,128 @@
+{
+  "name": "ring",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Ring — exercises Ring.buildPath: a full outer arc and a full inner arc reversed (zrender/src/graphic/shape/Ring).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "ring",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 50,
+          "r0": 20
+        },
+        "style": {
+          "fill": "#e67e22",
+          "stroke": "#7e3f10",
+          "lineWidth": 1
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "ring",
+      "shape": {
+        "cx": 100,
+        "cy": 75,
+        "r": 50,
+        "r0": 20
+      },
+      "style": {
+        "fill": "#e67e22",
+        "stroke": "#7e3f10",
+        "lineWidth": 1,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        150,
+        75,
+        5,
+        100,
+        75,
+        50,
+        50,
+        0,
+        6.283185,
+        0,
+        1,
+        1,
+        120,
+        75,
+        5,
+        100,
+        75,
+        20,
+        20,
+        0,
+        -6.283185,
+        0,
+        0
+      ],
+      "pathDataOps": [
+        "M",
+        "A",
+        "M",
+        "A"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          150,
+          75
+        ],
+        [
+          "arc",
+          100,
+          75,
+          50,
+          0,
+          6.283185,
+          false
+        ],
+        [
+          "moveTo",
+          120,
+          75
+        ],
+        [
+          "arc",
+          100,
+          75,
+          20,
+          0,
+          -6.283185,
+          true
+        ]
+      ],
+      "rebuiltD": "M 150 75 ARC 100 75 50 0 6.283185 0 M 120 75 ARC 100 75 20 0 -6.283185 1"
+    }
+  ],
+  "svgPaths": [
+    "M150 75A50 50 0 1 1 149.8 70A50 50 0 0 1 150 75M120 75A20 20 0 1 0 119.9 77A20 20 0 0 0 120 75"
+  ]
+}

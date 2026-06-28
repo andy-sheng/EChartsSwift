@@ -1,0 +1,15 @@
+# Pinned upstream sources for the iOS-Chart Swift port.
+#
+# The Swift translation under Sources/ mirrors these EXACT commits. Every
+# `// Ported from <path> — keep in sync with upstream` header refers to the
+# file at the pinned SHA below. The Oracle/ golden fixtures were generated
+# from echarts at this version.
+#
+# Reconstruct the reference checkouts (and the echarts dist) with:
+#     scripts/sync-upstream.sh
+# Verify the working checkouts still match this lock:
+#     scripts/sync-upstream.sh --check
+#
+# Format (whitespace-separated): <name> <git-url> <commit-sha> <version>
+echarts https://github.com/apache/echarts.git 20ecdf4cae568f31d350a1c547516d08cdcab9b0 6.1.0
+zrender https://github.com/ecomfe/zrender.git 349111033fba0fa08cee745b72dd2ea66dc6fcaa 6.1.0

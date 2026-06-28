@@ -1,0 +1,12 @@
+{
+  "description": "Circle — exercises Circle.buildPath, which emits a single full-turn arc (zrender/src/graphic/shape/Circle).",
+  "option": {
+    "graphic": [
+      {
+        "type": "circle",
+        "shape": { "cx": 100, "cy": 75, "r": 40 },
+        "style": { "fill": "#3498db" }
+      }
+    ]
+  }
+}

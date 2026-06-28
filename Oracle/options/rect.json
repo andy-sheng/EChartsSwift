@@ -1,0 +1,12 @@
+{
+  "description": "Rounded Rect with per-corner radii [tl,tr,br,bl] — exercises Rect.buildPath corner-arc math (zrender/src/graphic/shape/Rect + helper/roundRect).",
+  "option": {
+    "graphic": [
+      {
+        "type": "rect",
+        "shape": { "x": 10, "y": 10, "width": 80, "height": 50, "r": [8, 4, 2, 6] },
+        "style": { "fill": "#eee", "stroke": "#000", "lineWidth": 2 }
+      }
+    ]
+  }
+}

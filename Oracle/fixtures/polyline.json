@@ -1,0 +1,154 @@
+{
+  "name": "polyline",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Polyline (open) — exercises Polyline.buildPath / helper.poly: moveTo first point, lineTo the rest, no close, smooth=0 (zrender/src/graphic/shape/Polyline + helper/poly).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "polyline",
+        "shape": {
+          "points": [
+            [
+              10,
+              130
+            ],
+            [
+              50,
+              30
+            ],
+            [
+              90,
+              100
+            ],
+            [
+              130,
+              25
+            ],
+            [
+              180,
+              120
+            ]
+          ]
+        },
+        "style": {
+          "stroke": "#c0392b",
+          "fill": "none",
+          "lineWidth": 2
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "polyline",
+      "shape": {
+        "points": [
+          [
+            10,
+            130
+          ],
+          [
+            50,
+            30
+          ],
+          [
+            90,
+            100
+          ],
+          [
+            130,
+            25
+          ],
+          [
+            180,
+            120
+          ]
+        ],
+        "percent": 1,
+        "smooth": 0,
+        "smoothConstraint": null
+      },
+      "style": {
+        "fill": "none",
+        "stroke": "#c0392b",
+        "lineWidth": 2,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        10,
+        130,
+        2,
+        50,
+        30,
+        2,
+        90,
+        100,
+        2,
+        130,
+        25,
+        2,
+        180,
+        120
+      ],
+      "pathDataOps": [
+        "M",
+        "L",
+        "L",
+        "L",
+        "L"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          10,
+          130
+        ],
+        [
+          "lineTo",
+          50,
+          30
+        ],
+        [
+          "lineTo",
+          90,
+          100
+        ],
+        [
+          "lineTo",
+          130,
+          25
+        ],
+        [
+          "lineTo",
+          180,
+          120
+        ]
+      ],
+      "rebuiltD": "M 10 130 L 50 30 L 90 100 L 130 25 L 180 120"
+    }
+  ],
+  "svgPaths": []
+}

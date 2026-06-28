@@ -1,0 +1,12 @@
+{
+  "description": "Ellipse — exercises Ellipse.buildPath: four cubic bezier arcs from the left endpoint, closed (zrender/src/graphic/shape/Ellipse).",
+  "option": {
+    "graphic": [
+      {
+        "type": "ellipse",
+        "shape": { "cx": 100, "cy": 75, "rx": 60, "ry": 40 },
+        "style": { "fill": "#9b59b6" }
+      }
+    ]
+  }
+}

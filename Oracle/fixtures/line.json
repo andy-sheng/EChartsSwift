@@ -1,0 +1,89 @@
+{
+  "name": "line",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Line — exercises Line.buildPath: moveTo start, lineTo end (zrender/src/graphic/shape/Line). subPixelOptimize defaults off; percent defaults 1.",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "line",
+        "shape": {
+          "x1": 10,
+          "y1": 20,
+          "x2": 180,
+          "y2": 130
+        },
+        "style": {
+          "stroke": "#16a085",
+          "lineWidth": 2
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "line",
+      "shape": {
+        "x1": 10,
+        "y1": 20,
+        "x2": 180,
+        "y2": 130,
+        "percent": 1
+      },
+      "style": {
+        "stroke": "#16a085",
+        "lineWidth": 2,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        10,
+        20,
+        2,
+        180,
+        130
+      ],
+      "pathDataOps": [
+        "M",
+        "L"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          10,
+          20
+        ],
+        [
+          "lineTo",
+          180,
+          130
+        ]
+      ],
+      "rebuiltD": "M 10 20 L 180 130"
+    }
+  ],
+  "svgPaths": [
+    "M10 20L180 130"
+  ]
+}

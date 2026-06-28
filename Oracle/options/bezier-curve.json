@@ -1,0 +1,21 @@
+{
+  "description": "Cubic BezierCurve (both control points present) — exercises BezierCurve.buildPath bezierCurveTo path (zrender/src/graphic/shape/BezierCurve). With only cpx1/cpy1 it falls back to a quadratic; here both are given to hit the cubic branch.",
+  "option": {
+    "graphic": [
+      {
+        "type": "bezierCurve",
+        "shape": {
+          "x1": 10,
+          "y1": 120,
+          "cpx1": 30,
+          "cpy1": 90,
+          "cpx2": 60,
+          "cpy2": 140,
+          "x2": 90,
+          "y2": 120
+        },
+        "style": { "stroke": "#2c3e50", "fill": "none", "lineWidth": 2 }
+      }
+    ]
+  }
+}

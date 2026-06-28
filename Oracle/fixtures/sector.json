@@ -1,0 +1,140 @@
+{
+  "name": "sector",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Ring Sector (r0>0) — exercises Sector.buildPath: outer arc, inner arc reversed, joining lines, close (zrender/src/graphic/shape/Sector). The workhorse of pie/sunburst geometry.",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "sector",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 60,
+          "r0": 20,
+          "startAngle": 0,
+          "endAngle": 1.570796,
+          "clockwise": true
+        },
+        "style": {
+          "fill": "#abc",
+          "stroke": "#333",
+          "lineWidth": 1
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "sector",
+      "shape": {
+        "cx": 100,
+        "cy": 75,
+        "r0": 20,
+        "r": 60,
+        "startAngle": 0,
+        "endAngle": 1.570796,
+        "clockwise": true,
+        "cornerRadius": 0
+      },
+      "style": {
+        "fill": "#abc",
+        "stroke": "#333",
+        "lineWidth": 1,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        160,
+        75,
+        5,
+        100,
+        75,
+        60,
+        60,
+        0,
+        1.570796,
+        0,
+        1,
+        2,
+        100,
+        95,
+        5,
+        100,
+        75,
+        20,
+        20,
+        1.570796,
+        -1.570796,
+        0,
+        0,
+        6
+      ],
+      "pathDataOps": [
+        "M",
+        "A",
+        "L",
+        "A",
+        "Z"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          160,
+          75
+        ],
+        [
+          "arc",
+          100,
+          75,
+          60,
+          0,
+          1.570796,
+          false
+        ],
+        [
+          "lineTo",
+          100,
+          95
+        ],
+        [
+          "arc",
+          100,
+          75,
+          20,
+          1.570796,
+          0,
+          true
+        ],
+        [
+          "closePath"
+        ]
+      ],
+      "rebuiltD": "M 160 75 ARC 100 75 60 0 1.570796 0 L 100 95 ARC 100 75 20 1.570796 0 1 Z"
+    }
+  ],
+  "svgPaths": [
+    "M160 75A60 60 0 0 1 100 135L100 95A20 20 0 0 0 120 75Z"
+  ]
+}

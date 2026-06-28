@@ -1,0 +1,19 @@
+{
+  "description": "Open Arc (stroke only, 270deg) — exercises Arc.buildPath, a single non-closed arc (zrender/src/graphic/shape/Arc).",
+  "option": {
+    "graphic": [
+      {
+        "type": "arc",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 40,
+          "startAngle": 0,
+          "endAngle": 4.71238898038469,
+          "clockwise": true
+        },
+        "style": { "stroke": "#e74c3c", "fill": "none", "lineWidth": 3 }
+      }
+    ]
+  }
+}

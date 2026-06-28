@@ -1,0 +1,93 @@
+{
+  "name": "circle",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Circle — exercises Circle.buildPath, which emits a single full-turn arc (zrender/src/graphic/shape/Circle).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "circle",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 40
+        },
+        "style": {
+          "fill": "#3498db"
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "circle",
+      "shape": {
+        "cx": 100,
+        "cy": 75,
+        "r": 40
+      },
+      "style": {
+        "fill": "#3498db",
+        "lineWidth": 1,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        140,
+        75,
+        5,
+        100,
+        75,
+        40,
+        40,
+        0,
+        6.283185,
+        0,
+        1
+      ],
+      "pathDataOps": [
+        "M",
+        "A"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          140,
+          75
+        ],
+        [
+          "arc",
+          100,
+          75,
+          40,
+          0,
+          6.283185,
+          false
+        ]
+      ],
+      "rebuiltD": "M 140 75 ARC 100 75 40 0 6.283185 0"
+    }
+  ],
+  "svgPaths": []
+}

@@ -1,0 +1,158 @@
+{
+  "name": "polygon",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Polygon (closed) — exercises Polygon.buildPath / helper.poly: moveTo first point, lineTo the rest, close (zrender/src/graphic/shape/Polygon + helper/poly).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "polygon",
+        "shape": {
+          "points": [
+            [
+              20,
+              20
+            ],
+            [
+              90,
+              35
+            ],
+            [
+              70,
+              110
+            ],
+            [
+              25,
+              95
+            ],
+            [
+              10,
+              55
+            ]
+          ]
+        },
+        "style": {
+          "fill": "#27ae60",
+          "stroke": "#145a32",
+          "lineWidth": 1
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "polygon",
+      "shape": {
+        "points": [
+          [
+            20,
+            20
+          ],
+          [
+            90,
+            35
+          ],
+          [
+            70,
+            110
+          ],
+          [
+            25,
+            95
+          ],
+          [
+            10,
+            55
+          ]
+        ],
+        "smooth": 0,
+        "smoothConstraint": null
+      },
+      "style": {
+        "fill": "#27ae60",
+        "stroke": "#145a32",
+        "lineWidth": 1,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        20,
+        20,
+        2,
+        90,
+        35,
+        2,
+        70,
+        110,
+        2,
+        25,
+        95,
+        2,
+        10,
+        55,
+        6
+      ],
+      "pathDataOps": [
+        "M",
+        "L",
+        "L",
+        "L",
+        "L",
+        "Z"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          20,
+          20
+        ],
+        [
+          "lineTo",
+          90,
+          35
+        ],
+        [
+          "lineTo",
+          70,
+          110
+        ],
+        [
+          "lineTo",
+          25,
+          95
+        ],
+        [
+          "lineTo",
+          10,
+          55
+        ],
+        [
+          "closePath"
+        ]
+      ],
+      "rebuiltD": "M 20 20 L 90 35 L 70 110 L 25 95 L 10 55 Z"
+    }
+  ],
+  "svgPaths": []
+}

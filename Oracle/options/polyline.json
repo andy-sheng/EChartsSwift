@@ -1,0 +1,14 @@
+{
+  "description": "Polyline (open) — exercises Polyline.buildPath / helper.poly: moveTo first point, lineTo the rest, no close, smooth=0 (zrender/src/graphic/shape/Polyline + helper/poly).",
+  "option": {
+    "graphic": [
+      {
+        "type": "polyline",
+        "shape": {
+          "points": [[10, 130], [50, 30], [90, 100], [130, 25], [180, 120]]
+        },
+        "style": { "stroke": "#c0392b", "fill": "none", "lineWidth": 2 }
+      }
+    ]
+  }
+}

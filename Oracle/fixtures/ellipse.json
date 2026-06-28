@@ -1,0 +1,151 @@
+{
+  "name": "ellipse",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Ellipse — exercises Ellipse.buildPath: four cubic bezier arcs from the left endpoint, closed (zrender/src/graphic/shape/Ellipse).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "ellipse",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "rx": 60,
+          "ry": 40
+        },
+        "style": {
+          "fill": "#9b59b6"
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "ellipse",
+      "shape": {
+        "cx": 100,
+        "cy": 75,
+        "rx": 60,
+        "ry": 40
+      },
+      "style": {
+        "fill": "#9b59b6",
+        "lineWidth": 1,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        40,
+        75,
+        3,
+        40,
+        52.908608,
+        66.862912,
+        35,
+        100,
+        35,
+        3,
+        133.137088,
+        35,
+        160,
+        52.908608,
+        160,
+        75,
+        3,
+        160,
+        97.091392,
+        133.137088,
+        115,
+        100,
+        115,
+        3,
+        66.862912,
+        115,
+        40,
+        97.091392,
+        40,
+        75,
+        6
+      ],
+      "pathDataOps": [
+        "M",
+        "C",
+        "C",
+        "C",
+        "C",
+        "Z"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          40,
+          75
+        ],
+        [
+          "bezierCurveTo",
+          40,
+          52.908608,
+          66.862912,
+          35,
+          100,
+          35
+        ],
+        [
+          "bezierCurveTo",
+          133.137088,
+          35,
+          160,
+          52.908608,
+          160,
+          75
+        ],
+        [
+          "bezierCurveTo",
+          160,
+          97.091392,
+          133.137088,
+          115,
+          100,
+          115
+        ],
+        [
+          "bezierCurveTo",
+          66.862912,
+          115,
+          40,
+          97.091392,
+          40,
+          75
+        ],
+        [
+          "closePath"
+        ]
+      ],
+      "rebuiltD": "M 40 75 C 40 52.908608 66.862912 35 100 35 C 133.137088 35 160 52.908608 160 75 C 160 97.091392 133.137088 115 100 115 C 66.862912 115 40 97.091392 40 75 Z"
+    }
+  ],
+  "svgPaths": [
+    "M40 75C40 52.9 66.9 35 100 35C133.1 35 160 52.9 160 75C160 97.1 133.1 115 100 115C66.9 115 40 97.1 40 75Z"
+  ]
+}

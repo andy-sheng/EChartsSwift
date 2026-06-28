@@ -1,0 +1,107 @@
+{
+  "name": "bezier-curve",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Cubic BezierCurve (both control points present) — exercises BezierCurve.buildPath bezierCurveTo path (zrender/src/graphic/shape/BezierCurve). With only cpx1/cpy1 it falls back to a quadratic; here both are given to hit the cubic branch.",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "bezierCurve",
+        "shape": {
+          "x1": 10,
+          "y1": 120,
+          "cpx1": 30,
+          "cpy1": 90,
+          "cpx2": 60,
+          "cpy2": 140,
+          "x2": 90,
+          "y2": 120
+        },
+        "style": {
+          "stroke": "#2c3e50",
+          "fill": "none",
+          "lineWidth": 2
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "bezier-curve",
+      "shape": {
+        "x1": 10,
+        "y1": 120,
+        "x2": 90,
+        "y2": 120,
+        "cpx1": 30,
+        "cpy1": 90,
+        "percent": 1,
+        "cpx2": 60,
+        "cpy2": 140
+      },
+      "style": {
+        "fill": "none",
+        "stroke": "#2c3e50",
+        "lineWidth": 2,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        10,
+        120,
+        3,
+        30,
+        90,
+        60,
+        140,
+        90,
+        120
+      ],
+      "pathDataOps": [
+        "M",
+        "C"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          10,
+          120
+        ],
+        [
+          "bezierCurveTo",
+          30,
+          90,
+          60,
+          140,
+          90,
+          120
+        ]
+      ],
+      "rebuiltD": "M 10 120 C 30 90 60 140 90 120"
+    }
+  ],
+  "svgPaths": [
+    "M10 120C30 90 60 140 90 120"
+  ]
+}

@@ -1,0 +1,510 @@
+// Ported from zrender/src/core/util.ts — keep in sync with upstream
+//
+// SCOPE NOTE (per port guidance): `util.ts` is a large general-purpose helper module.
+// Only the numeric/array helpers actually consumed by the geometry layer
+// (vector/matrix/bbox/curve and the Path* family) are translated faithfully here —
+// `each`/`map`/`reduce`/`filter`/`find`/`indexOf`, `retrieve`/`retrieve2`/`retrieve3`,
+// `defaults`, `normalizeCssArray`, `eqNaN`, `guid`, `assert`, `noop`, and the
+// `RADIAN_TO_DEGREE` / `EPSILON` constants.
+//
+// The JS object-merge / runtime duck-typing / DOM / polyfill helpers do NOT map onto
+// Swift's static type system and are intentionally left as `// PORT-TODO` stubs below,
+// in their original upstream position, so the file still diffs line-for-line against
+// `util.ts`. See the consolidated PORT-TODO list at the bottom.
+
+import Foundation
+
+// upstream import aliases the module as `zrUtil`; call sites read `util.each(...)` etc.
+public enum util {
+
+    // 用于处理merge时无法遍历Date等对象的问题
+    // PORT-TODO: BUILTIN_OBJECT — JS runtime type tag table for merge/clone; no Swift analogue.
+
+    // PORT-TODO: TYPED_ARRAY — JS `[object Float32Array]` tag table; not needed by geometry.
+
+    // PORT-TODO: objToString / arrayProto / nativeForEach / nativeFilter / nativeSlice /
+    //            nativeMap / ctorFunction / protoFunction / protoKey — JS prototype plumbing.
+
+    private static var idStart: Double = 0x0907
+
+    private static let MAX_SAFE_INTEGER: Double = pow(2, 53) - 1
+
+    /**
+     * Generate unique id
+     */
+    public static func guid() -> Double {
+        if idStart >= MAX_SAFE_INTEGER {
+            idStart = 0
+        }
+        let v = idStart
+        idStart += 1
+        return v
+    }
+
+    public static func logError(_ args: Any...) {
+        // PORT-TODO: upstream forwards to console.error; geometry never calls this.
+        // print(args)
+    }
+
+    /**
+     * Those data types can be cloned:
+     *     Plain object, Array, TypedArray, number, string, null, undefined.
+     * Those data types will be assigned using the original data:
+     *     BUILTIN_OBJECT
+     * Instance of user defined class will be cloned to a plain object, without
+     * properties in prototype.
+     * Other data types is not supported (not sure what will happen).
+     *
+     * Caution: do not support clone Date, for performance consideration.
+     * (There might be a large number of date in `series.data`).
+     * So date should not be modified in and out of echarts.
+     *
+     * NOTE (port): Swift value types (struct / enum / Array / Dictionary of value
+     * types) already deep-copy on assignment (copy-on-write), so the generic path
+     * here is the identity. We additionally walk `[String: Any]` / `[Any]` bags so
+     * heterogeneous option/style dictionaries clone recursively, matching upstream's
+     * `[object Array]` / plain-object branches. Reference-typed (class) graphs are
+     * NOT deep-cloned — mirroring "instance of user defined class" being out of the
+     * faithful set we can reproduce statically.
+     */
+    public static func clone<T>(_ source: T) -> T {
+        // if (source == null || typeof source !== 'object') return source;
+        if let dict = source as? [String: Any] {
+            var result: [String: Any] = [:]
+            for key in dict.keys {
+                // Check if key is __proto__ to avoid prototype pollution — N/A in Swift.
+                let cloned: Any = clone(dict[key]!)
+                result[key] = cloned
+            }
+            // safe: T is [String: Any] in this branch
+            return result as! T
+        }
+        else if let arr = source as? [Any] {
+            var result: [Any] = []
+            for i in 0..<arr.count {
+                result.append(clone(arr[i]))
+            }
+            // safe: T is [Any] (or a covariant element array) in this branch
+            return result as! T
+        }
+        // PORT-TODO: TYPED_ARRAY branch (ContiguousArray<Float/Double/…>) — value
+        //            semantics already copy on assignment, so the passthrough below
+        //            reproduces it; BUILTIN_OBJECT / isDom / isPrimitive guards have
+        //            no Swift analogue and collapse into this passthrough.
+        return source
+    }
+
+    /**
+     * Recursive object-literal merge (JS `for ... in`). Faithful structural port over
+     * `[String: Any]` bags. When both `target[key]` and `source[key]` are nested
+     * dictionaries they are merged recursively; otherwise the value is overwritten
+     * (when `overwrite` is set or the key is absent in `target`).
+     */
+    @discardableResult
+    public static func merge(
+        _ target: inout [String: Any],
+        _ source: [String: Any],
+        _ overwrite: Bool = false
+    ) -> [String: Any] {
+        // We should escapse that source is string and enter for ... in ...
+        // (Statically guaranteed here: both are dictionaries.)
+        for key in source.keys {
+            // Check if key is __proto__ to avoid prototype pollution — N/A in Swift.
+            let targetProp = target[key]
+            let sourceProp = source[key]
+
+            // isObject(sourceProp) && isObject(targetProp) && !isArray(...) && !isDom(...)
+            // && !isBuiltInObject(...) && !isPrimitive(...): nested plain objects only.
+            if let sp = sourceProp as? [String: Any], var tp = targetProp as? [String: Any] {
+                // 如果需要递归覆盖，就递归调用merge
+                target[key] = merge(&tp, sp, overwrite)
+            }
+            else if overwrite || target[key] == nil {
+                // 否则只处理overwrite为true，或者在目标对象中没有此属性的情况
+                // NOTE，在 target[key] 不存在的时候也是直接覆盖
+                let cloned: Any = clone(sourceProp!)
+                target[key] = cloned
+            }
+        }
+        return target
+    }
+
+    /**
+     * @param targetAndSources The first item is target, and the rests are source.
+     * @param overwrite
+     * @return Merged result
+     */
+    @discardableResult
+    public static func mergeAll(_ targetAndSources: [[String: Any]], _ overwrite: Bool = false) -> [String: Any] {
+        var result = targetAndSources[0]
+        for i in 1..<targetAndSources.count {
+            result = merge(&result, targetAndSources[i], overwrite)
+        }
+        return result
+    }
+
+    /**
+     * Object.assign over dictionaries — copy every key of `source` onto `target`.
+     */
+    @discardableResult
+    public static func extend<T>(_ target: inout [String: T], _ source: [String: T]) -> [String: T] {
+        // Object.assign(target, source)
+        for key in source.keys {
+            // Check if key is __proto__ to avoid prototype pollution — N/A in Swift.
+            target[key] = source[key]
+        }
+        return target
+    }
+
+    // PORT-TODO: assignProps(tar, src, props) — copies a key subset between option bags.
+    //            Use Swift `extend` over a filtered key list at call sites.
+
+    /**
+     * defaults — fill missing keys of `target` from `source`.
+     * Swift-idiomatic dictionary form (the only shape geometry needs).
+     */
+    @discardableResult
+    public static func defaults<T>(
+        _ target: inout [String: T],
+        _ source: [String: T],
+        _ overlay: Bool = false
+    ) -> [String: T] {
+        let keysArr = keys(source)
+        for i in 0..<keysArr.count {
+            let key = keysArr[i]
+            // (overlay ? source[key] != null : target[key] == null)
+            if overlay ? (source[key] != nil) : (target[key] == nil) {
+                target[key] = source[key]
+            }
+        }
+        return target
+    }
+
+    /// Get all object keys. (Swift dictionary form.)
+    public static func keys<T>(_ obj: [String: T]) -> [String] {
+        return Array(obj.keys)
+    }
+
+    // PORT-TODO: createCanvas = platformApi.createCanvas — renderer seam (§9), not ported.
+
+    /**
+     * 查询数组中元素的index
+     */
+    public static func indexOf<T: Equatable>(_ array: [T]?, _ value: T) -> Double {
+        if let array = array {
+            for i in 0..<array.count {
+                if array[i] == value {
+                    return Double(i)
+                }
+            }
+        }
+        return -1
+    }
+
+    // PORT-TODO: inherits(clazz, baseClazz) — prototype-chain mixin; use `class Sub: Super`
+    //            (CONVENTIONS §2) at the Swift class definitions instead.
+
+    // PORT-TODO: mixin(target, source, override) — prototype property copy; model with
+    //            protocol + protocol-extension per CONVENTIONS §2.
+
+    /**
+     * Consider typed array.
+     * @param data
+     */
+    public static func isArrayLike(_ data: Any?) -> Bool {
+        // PORT-TODO: upstream is JS `.length` duck typing; here we approximate with the
+        //            concrete array shapes the port produces. Non-string sequences with a
+        //            count qualify; `String` is explicitly excluded (matches upstream).
+        guard let data = data else {
+            return false
+        }
+        if data is String {
+            return false
+        }
+        return data is [Any]
+    }
+
+    /**
+     * 数组或对象遍历 (array form — the shape the geometry layer uses)
+     */
+    public static func each<T>(_ arr: [T]?, _ cb: (T, Int) -> Void) {
+        guard let arr = arr else { return }
+        for i in 0..<arr.count {
+            // FIXME: should the elided item be travelled? like `[33,,55]`.
+            cb(arr[i], i)
+        }
+    }
+
+    /**
+     * Array mapping.
+     * @return Must be an array.
+     */
+    public static func map<T, R>(_ arr: [T]?, _ cb: (T, Int) -> R) -> [R] {
+        // Take the same behavior with lodash when !arr.
+        guard let arr = arr else { return [] }
+        var result: [R] = []
+        for i in 0..<arr.count {
+            // FIXME: should the elided item be travelled, like `[33,,55]`.
+            result.append(cb(arr[i], i))
+        }
+        return result
+    }
+
+    public static func reduce<T, S>(_ arr: [T]?, _ cb: (S, T, Int) -> S, _ memo: S) -> S {
+        guard let arr = arr else { return memo }
+        var memo = memo
+        for i in 0..<arr.count {
+            memo = cb(memo, arr[i], i)
+        }
+        return memo
+    }
+
+    /**
+     * Array filtering.
+     * @return Must be an array.
+     */
+    public static func filter<T>(_ arr: [T]?, _ cb: (T, Int) -> Bool) -> [T] {
+        // Take the same behavior with lodash when !arr.
+        guard let arr = arr else { return [] }
+        var result: [T] = []
+        for i in 0..<arr.count {
+            // FIXME: should the elided items be travelled? like `[33,,55]`.
+            if cb(arr[i], i) {
+                result.append(arr[i])
+            }
+        }
+        return result
+    }
+
+    /**
+     * 数组项查找
+     */
+    public static func find<T>(_ arr: [T]?, _ cb: (T, Int) -> Bool) -> T? {
+        guard let arr = arr else { return nil }
+        for i in 0..<arr.count {
+            if cb(arr[i], i) {
+                return arr[i]
+            }
+        }
+        return nil
+    }
+
+    // PORT-TODO: bind / curry — JS Function.prototype.bind partial application; use Swift
+    //            closures directly at call sites.
+
+    public static func isArray(_ value: Any?) -> Bool {
+        guard let value = value else {
+            return false
+        }
+        // Array.isArray(value) — Swift dynamic cast covers covariant element arrays
+        // ([Double], [String], …) as well as [Any].
+        return value is [Any]
+    }
+
+    public static func isFunction(_ value: Any?) -> Bool {
+        // typeof value === 'function'
+        // PORT-TODO: Swift cannot reliably runtime-detect an arbitrary closure type
+        //            (closures carry no introspectable metadata and have heterogeneous
+        //            signatures). Callers should resolve "is this callable" statically.
+        //            Returned conservatively as false; revisit if a consumer needs it.
+        _ = value
+        return false
+    }
+
+    public static func isString(_ value: Any?) -> Bool {
+        // Faster than `objToString.call` several times in chromium and webkit.
+        // And `new String()` is rarely used.
+        return value is String
+    }
+
+    public static func isStringSafe(_ value: Any?) -> Bool {
+        return value is String
+    }
+
+    public static func isNumber(_ value: Any?) -> Bool {
+        // Faster than `objToString.call` several times in chromium and webkit.
+        // And `new Number()` is rarely used.
+        // (All `number` map to `Double` per CONVENTIONS §1.)
+        return value is Double
+    }
+
+    // Usage: `isObject(xxx)`
+    public static func isObject(_ value: Any?) -> Bool {
+        // type === 'function' || (!!value && type === 'object')
+        guard let value = value else {
+            return false
+        }
+        // JS: arrays and dictionaries are `typeof === 'object'`; class instances too.
+        if value is [Any] || value is [String: Any] {
+            return true
+        }
+        if isFunction(value) {
+            return true
+        }
+        // PORT-TODO: upstream `typeof === 'object'` also matches user class instances /
+        //            option bags. We approximate with reference (class) types here.
+        return Mirror(reflecting: value).displayStyle == .class
+    }
+
+    public static func isBuiltInObject(_ value: Any?) -> Bool {
+        // !!BUILTIN_OBJECT[objToString.call(value)]
+        // PORT-TODO: BUILTIN_OBJECT tag table (Function/RegExp/Date/Error/CanvasGradient/
+        //            CanvasPattern/Image/Canvas) has no faithful Swift analogue; none of
+        //            these participate in the ported geometry/style bags, so `false`.
+        _ = value
+        return false
+    }
+
+    public static func isTypedArray(_ value: Any?) -> Bool {
+        // !!TYPED_ARRAY[objToString.call(value)]
+        guard let value = value else {
+            return false
+        }
+        return value is ContiguousArray<Float>
+            || value is ContiguousArray<Double>
+            || value is ContiguousArray<Int8>
+            || value is ContiguousArray<UInt8>
+            || value is ContiguousArray<Int16>
+            || value is ContiguousArray<UInt16>
+            || value is ContiguousArray<Int32>
+            || value is ContiguousArray<UInt32>
+    }
+
+    public static func isDom(_ value: Any?) -> Bool {
+        // typeof value === 'object' && typeof value.nodeType === 'number'
+        //     && typeof value.ownerDocument === 'object'
+        // PORT-TODO: DOM / HTMLElement detection — renderer/DOM seam (CONVENTIONS §9),
+        //            no HTMLElement in the native port; always false.
+        _ = value
+        return false
+    }
+
+    public static func isGradientObject(_ value: Any?) -> Bool {
+        // (value as GradientObject).colorStops != null
+        // PORT-TODO: depends on graphic/Gradient (not yet ported). Returns false until
+        //            GradientObject lands; flag every consumer (Element animate path).
+        _ = value
+        return false
+    }
+
+    public static func isImagePatternObject(_ value: Any?) -> Bool {
+        // (value as ImagePatternObject).image != null
+        // PORT-TODO: depends on graphic/Pattern (not yet ported). Returns false for now.
+        _ = value
+        return false
+    }
+
+    public static func isRegExp(_ value: Any?) -> Bool {
+        // objToString.call(value) === '[object RegExp]'
+        return value is NSRegularExpression
+    }
+
+    /**
+     * Whether is exactly NaN. Notice isNaN('a') returns true.
+     */
+    public static func eqNaN(_ value: Double) -> Bool {
+        /* eslint-disable-next-line no-self-compare */
+        return value != value
+    }
+
+    /**
+     * If value1 is not null, then return value1, otherwise judget rest of values.
+     * Low performance.
+     * @return Final value
+     */
+    public static func retrieve<T>(_ args: T?...) -> T? {
+        for i in 0..<args.count {
+            if args[i] != nil {
+                return args[i]
+            }
+        }
+        return nil
+    }
+
+    public static func retrieve2<T>(_ value0: T?, _ value1: T?) -> T? {
+        return value0 != nil
+            ? value0
+            : value1
+    }
+
+    public static func retrieve3<T>(_ value0: T?, _ value1: T?, _ value2: T?) -> T? {
+        return value0 != nil
+            ? value0
+            : value1 != nil
+            ? value1
+            : value2
+    }
+
+    // PORT-TODO: slice(arr, ...args) — JS Array.prototype.slice forwarding; use Swift
+    //            subranges (`arr[i..<j]`) at call sites.
+
+    /**
+     * Normalize css liked array configuration
+     * e.g.
+     *  3 => [3, 3, 3, 3]
+     *  [4, 2] => [4, 2, 4, 2]
+     *  [4, 3, 2] => [4, 3, 2, 3]
+     */
+    public static func normalizeCssArray(_ val: Double) -> [Double] {
+        return [val, val, val, val]
+    }
+
+    public static func normalizeCssArray(_ val: [Double]) -> [Double] {
+        let len = val.count
+        if len == 2 {
+            // vertical | horizontal
+            return [val[0], val[1], val[0], val[1]]
+        }
+        else if len == 3 {
+            // top | horizontal | bottom
+            return [val[0], val[1], val[2], val[1]]
+        }
+        return val
+    }
+
+    public static func assert(_ condition: Bool, _ message: String? = nil) {
+        if !condition {
+            // upstream: throw new Error(message)
+            preconditionFailure(message ?? "")
+        }
+    }
+
+    // PORT-TODO: trim(str) — String trimming; use Swift
+    //            `str.trimmingCharacters(in: .whitespacesAndNewlines)` at call sites.
+
+    // PORT-TODO: setAsPrimitive / isPrimitive — JS hidden-key tagging for clone/merge.
+
+    // PORT-TODO: MapPolyfill / maybeNativeMap / HashMap / createHashMap — JS Map shim;
+    //            use Swift `Dictionary` directly where geometry needs key/value storage.
+
+    // PORT-TODO: concatArray(a, b) — typed-array concat preserving constructor; use Swift
+    //            `a + b` for `[T]` / `ContiguousArray`.
+
+    public static func createObject<T>(_ proto: [String: T] = [:], _ properties: [String: T]? = nil) -> [String: T] {
+        // Performance of Object.create
+        // https://jsperf.com/style-strategy-proto-or-others
+        //
+        // PORT-TODO: upstream `Object.create(proto)` builds a new object with a LIVE
+        //            prototype link, so missing keys resolve up the chain and later
+        //            mutations of `proto` are visible. Swift has no prototype chain, so
+        //            we materialize (flatten) the proto's keys into the new object and
+        //            overlay `properties`. Reads still resolve identically; writes shadow
+        //            instead of being trapped, and `keys()` now enumerates inherited keys.
+        var obj = proto
+        if let properties = properties {
+            extend(&obj, properties)
+        }
+        return obj
+    }
+
+    // PORT-TODO: disableUserSelect(dom) — DOM style mutation; renderer/DOM seam, not ported.
+
+    // PORT-TODO: hasOwn(own, prop) — JS hasOwnProperty; use `dict[prop] != nil`.
+
+    public static func noop() {}
+
+    public static let RADIAN_TO_DEGREE: Double = 180 / Double.pi
+
+    // Number.EPSILON (=== 2^-52) maps to Swift's Double.ulpOfOne.
+    public static let EPSILON: Double = Double.ulpOfOne
+}

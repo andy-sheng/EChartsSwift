@@ -1,0 +1,12 @@
+{
+  "description": "Line — exercises Line.buildPath: moveTo start, lineTo end (zrender/src/graphic/shape/Line). subPixelOptimize defaults off; percent defaults 1.",
+  "option": {
+    "graphic": [
+      {
+        "type": "line",
+        "shape": { "x1": 10, "y1": 20, "x2": 180, "y2": 130 },
+        "style": { "stroke": "#16a085", "lineWidth": 2 }
+      }
+    ]
+  }
+}

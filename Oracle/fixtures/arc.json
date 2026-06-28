@@ -1,0 +1,104 @@
+{
+  "name": "arc",
+  "generator": "Oracle/dump-displaylist.js",
+  "echartsVersion": "6.1.0",
+  "precision": 6,
+  "canvas": {
+    "width": 200,
+    "height": 150,
+    "renderer": "svg",
+    "ssr": true
+  },
+  "description": "Open Arc (stroke only, 270deg) — exercises Arc.buildPath, a single non-closed arc (zrender/src/graphic/shape/Arc).",
+  "option": {
+    "animation": false,
+    "graphic": [
+      {
+        "type": "arc",
+        "shape": {
+          "cx": 100,
+          "cy": 75,
+          "r": 40,
+          "startAngle": 0,
+          "endAngle": 4.712389,
+          "clockwise": true
+        },
+        "style": {
+          "stroke": "#e74c3c",
+          "fill": "none",
+          "lineWidth": 3
+        }
+      }
+    ]
+  },
+  "elements": [
+    {
+      "type": "arc",
+      "shape": {
+        "cx": 100,
+        "cy": 75,
+        "r": 40,
+        "startAngle": 0,
+        "endAngle": 4.712389,
+        "clockwise": true
+      },
+      "style": {
+        "fill": "none",
+        "stroke": "#e74c3c",
+        "lineWidth": 3,
+        "opacity": 1,
+        "fillOpacity": 1,
+        "strokeOpacity": 1,
+        "lineDashOffset": 0,
+        "lineCap": "butt",
+        "miterLimit": 10,
+        "shadowBlur": 0,
+        "shadowColor": "#000",
+        "shadowOffsetX": 0,
+        "shadowOffsetY": 0
+      },
+      "transform": null,
+      "z": 0,
+      "zlevel": 0,
+      "z2": 0,
+      "pathData": [
+        1,
+        140,
+        75,
+        5,
+        100,
+        75,
+        40,
+        40,
+        0,
+        4.712389,
+        0,
+        1
+      ],
+      "pathDataOps": [
+        "M",
+        "A"
+      ],
+      "pathCommands": [
+        [
+          "moveTo",
+          140,
+          75
+        ],
+        [
+          "arc",
+          100,
+          75,
+          40,
+          0,
+          4.712389,
+          false
+        ]
+      ],
+      "rebuiltD": "M 140 75 ARC 100 75 40 0 4.712389 0"
+    }
+  ],
+  "svgPaths": [
+    "M140 75A40 40 0 1 1 100 35"
+  ]
+}

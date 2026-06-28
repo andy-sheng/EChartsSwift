@@ -1,0 +1,13 @@
+{
+  "description": "All foundation shapes in one option — verifies display-list ordering (getDisplayList(true) sorts by zlevel, then z, then z2/insertion) as well as the per-shape math. Explicit z2 values pin the paint order.",
+  "option": {
+    "graphic": [
+      { "type": "rect", "z2": 1, "shape": { "x": 5, "y": 5, "width": 60, "height": 40, "r": [6, 0, 6, 0] }, "style": { "fill": "#eee", "stroke": "#000", "lineWidth": 1 } },
+      { "type": "circle", "z2": 2, "shape": { "cx": 120, "cy": 30, "r": 24 }, "style": { "fill": "#3498db" } },
+      { "type": "sector", "z2": 3, "shape": { "cx": 60, "cy": 110, "r": 35, "r0": 12, "startAngle": 0, "endAngle": 2.0943951023931953, "clockwise": true }, "style": { "fill": "#abc" } },
+      { "type": "polygon", "z2": 4, "shape": { "points": [[120, 80], [160, 95], [140, 130]] }, "style": { "fill": "#27ae60" } },
+      { "type": "bezierCurve", "z2": 5, "shape": { "x1": 5, "y1": 60, "cpx1": 30, "cpy1": 40, "cpx2": 50, "cpy2": 80, "x2": 80, "y2": 60 }, "style": { "stroke": "#2c3e50", "fill": "none", "lineWidth": 2 } },
+      { "type": "arc", "z2": 6, "shape": { "cx": 165, "cy": 40, "r": 18, "startAngle": 0, "endAngle": 3.141592653589793, "clockwise": true }, "style": { "stroke": "#e74c3c", "fill": "none", "lineWidth": 2 } }
+    ]
+  }
+}

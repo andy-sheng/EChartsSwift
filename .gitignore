@@ -1,0 +1,17 @@
+# Upstream reference checkouts — large, reconstructed from upstream/upstream.lock
+# via scripts/sync-upstream.sh. The lock file + README ARE tracked; the checkouts are not.
+# (To vendor them instead — e.g. for offline builds — delete these lines.)
+/upstream/echarts/
+/upstream/zrender/
+# Defensive: never commit echarts prebuilt dist or any stray nested checkout under upstream/.
+upstream/**/dist/
+upstream/upstream/
+
+# SwiftPM
+/.build/
+.swiftpm/
+
+# macOS / Xcode
+.DS_Store
+*.xcodeproj
+*.xcworkspace
