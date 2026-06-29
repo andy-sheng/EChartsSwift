@@ -698,9 +698,16 @@ public final class PathProxy {
                     let delta = data[i]; i += 1
                     let endAngle = delta + startAngle
                     // TODO Arc 旋转
-                    // PORT-TODO: faithfully replicated — upstream advances `i` by 1 here (psi
-                    // only) and does NOT read the anticlockwise flag slot, so it consumes one
-                    // fewer buffer slot than getBoundingRect/rebuildPath. Do not "fix".
+                    // psi slot.
+                    i += 1
+                    // PORT FIX (diverges from upstream): an arc occupies 8 data slots
+                    // (cx,cy,rx,ry,startAngle,delta,psi,anticlockwise — see `arc()`/`addData`), and
+                    // getBoundingRect/rebuildPath both consume all 8. Upstream `_calculateLength`
+                    // advances `i` by only 7 (it never reads the anticlockwise slot); in JS the
+                    // resulting 1-slot misalignment reads `undefined` (NaN) and limps to the end, but
+                    // in Swift the strict-bounds `data[i]` overruns and crashes (e.g. a Circle/Sector
+                    // with `strokePercent < 1`, which is the only caller of `_calculateLength`).
+                    // Consume the anticlockwise slot too so the traversal stays aligned.
                     i += 1
                     if isFirst {
                         // 直接使用 arc 命令

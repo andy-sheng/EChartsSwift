@@ -114,9 +114,13 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     }
 
     // 5. Geometry: replay the Path's PathProxy into the renderer's CGPath rebuilder.
+    // strokePercent: zrender rebuilds the path to its leading fraction (canvas/graphic.ts:225,
+    // `path.rebuildPath(ctx, strokePart ? strokePercent : 1)`); fill and stroke both follow the
+    // trimmed geometry ("Not support separate fill and stroke"). Mirror that here.
     r.beginPath()
     let pathProxy = p.getUpdatedPathProxy(false)
-    pathProxy.rebuildPath(r.pathRebuilder, 1)
+    let strokePercent = style.strokePercent ?? 1
+    pathProxy.rebuildPath(r.pathRebuilder, strokePercent < 1 ? strokePercent : 1)
 
     // 6. Paint, honoring strokeFirst (SVG paint-order).
     if paint.strokeFirst {
@@ -349,7 +353,12 @@ public final class CALayerPainter: Painter {
     private func makeShapeLayer(_ p: Path, style: PathStyleProps) -> CAShapeLayer? {
         let rb = CGPathRebuilder()
         let pp = p.getUpdatedPathProxy(false)
-        pp.rebuildPath(rb, 1)
+        // strokePercent: zrender rebuilds the path to its leading fraction (canvas/graphic.ts:225,
+        // `path.rebuildPath(ctx, strokePart ? strokePercent : 1)`); fill and stroke both follow the
+        // trimmed geometry ("Not support separate fill and stroke"). Mirror that here — geometry
+        // trimming also renders correctly through CALayer.render(in:) (unlike CAShapeLayer.strokeEnd).
+        let strokePercent = style.strokePercent ?? 1
+        pp.rebuildPath(rb, strokePercent < 1 ? strokePercent : 1)
 
         var cgPath: CGPath = rb.path
         if let world = p.getComputedTransform() {
