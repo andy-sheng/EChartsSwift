@@ -228,7 +228,7 @@ public enum ElementDraggable: Equatable {
 //   primary props (TRANSFORMABLE_PROPS + `ignore`). PORT-TODO: subclasses (Displayable/Path) would
 //   override `animationGet`/`animationSet` to expose the value-type `style`/`shape` bags — those are
 //   structs (no shared identity), so nested-bag animation stays deferred for now.
-public class Element: Transformable, AnimationTarget {
+open class Element: Transformable, AnimationTarget {
 
     public var id: Double = util.guid()
     /// Element type

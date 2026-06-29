@@ -151,7 +151,7 @@ public struct BeforeBrushParam {
 //   — declaration-merging of the animation + states surface. Element already provides getState /
 //   ensureState / states / stateProxy (with ElementState); not redeclared (PORT-TODO Phase 2/3).
 
-public class Displayable: Element {
+open class Displayable: Element {
 
     /// Whether the displayable object is visible. when it is true, the displayable object
     /// is not drawn, but the mouse event can still trigger the object.

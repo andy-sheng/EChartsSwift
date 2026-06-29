@@ -345,7 +345,12 @@ let pathCopyParams: [String] = TRANSFORMABLE_PROPS + [
 //   subclassed by every shape (Rect/Circle/...), so it CANNOT be `final`; it is a `public class`
 //   over the (also non-final) `Displayable` base. In-module shape subclasses override `buildPath` /
 //   `getDefaultShape` / `getDefaultStyle` (public overridable within the module).
-public class Path: Displayable {
+//
+// OPEN: upstream `Path` is the public subclassing seam (`zrender.Path.extend` / `class X extends Path`
+//   in user code — e.g. test/pin.html). To keep that faithful for out-of-module consumers (a custom
+//   shape that supplies its own `buildPath`), the class and its four designed override points
+//   (`init` / `buildPath` / `getDefaultShape` / `getDefaultStyle`) are `open`.
+open class Path: Displayable {
 
     // upstream: path: PathProxy — created lazily by `createPathProxy` (undefined until then).
     public var path: PathProxy!
@@ -478,13 +483,13 @@ public class Path: Displayable {
     }
 
     // upstream: protected getDefaultStyle(): Props['style'] { return null }
-    public func getDefaultStyle() -> PathStyleProps? {
+    open func getDefaultStyle() -> PathStyleProps? {
         return nil
     }
 
     // Needs to override
     // upstream: protected getDefaultShape() { return {} }
-    public func getDefaultShape() -> PathShape {
+    open func getDefaultShape() -> PathShape {
         return EmptyPathShape()
     }
 
@@ -538,7 +543,7 @@ public class Path: Displayable {
     // upstream: buildPath(ctx: PathProxy | CanvasRenderingContext2D, shapeCfg, inBatch?) {}
     //   The renderer seam (CONVENTIONS §9): subclasses emit into the `PathProxy` (the
     //   CanvasRenderingContext2D branch is handled by the native backend). Base is a no-op.
-    public func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {}
+    open func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {}
 
     public func pathUpdated() {
         self.__dirty = Double(Int(self.__dirty) & ~Int(SHAPE_CHANGED_BIT))
@@ -760,6 +765,28 @@ public class Path: Displayable {
             return
         }
         super.animationSet(key, value)
+    }
+
+    // upstream: animate(key, loop) { let target = key ? this[key] : this; ... }
+    // Element's base `animate` targets `self` for every key (it can't reach the value-type sub-bags);
+    // a Path's `shape` / `style` ARE animatable sub-bags, so route the Animator at the reference
+    // accessor that bridges them (the same accessors `animateTo` recurses into). This makes the manual
+    // `el.animate('shape')` / `el.animate('style')` form work exactly like upstream (e.g. a looping
+    // `animate('style', true).when(t, {strokePercent: 1})`), writing back into `path.shape`/`pathStyle`.
+    @discardableResult
+    public override func animate(_ key: String? = nil, _ loop: Bool? = nil, _ allowDiscreteAnimation: Bool? = nil) -> Animator<Any> {
+        let target: Any
+        if key == "shape" {
+            target = self._shapeAnimationAccessor
+        } else if key == "style" {
+            target = self._pathStyleAnimationAccessor
+        } else {
+            return super.animate(key, loop, allowDiscreteAnimation)
+        }
+        let animator = Animator<Any>(target, loop ?? false, allowDiscreteAnimation)
+        animator.targetName = key
+        self.addAnimator(animator, key ?? "")
+        return animator
     }
 
     // Overwrite attrKV

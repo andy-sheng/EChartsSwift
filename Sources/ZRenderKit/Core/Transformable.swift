@@ -24,8 +24,11 @@ private var originTransform = matrix.create()        // upstream: const originTr
 // const abs = Math.abs;  → use Swift.abs at call sites.
 
 // NOTE (CONVENTIONS §2): upstream `class Transformable` is the base that `Element extends`.
-// It therefore CANNOT be `final` (it must be subclassable); we use a plain `public class`.
-public class Transformable {
+// It therefore CANNOT be `final` (it must be subclassable).
+// OPEN: base of the `Transformable → Element → Displayable → Path` chain. `Path` is the public
+//   subclassing seam (see Path.swift) and Swift requires every superclass of an `open` class to be
+//   `open`, so the whole chain is `open` (faithful: upstream these are all subclassable).
+open class Transformable {
 
     // upstream: parent: Transformable
     // weak to avoid the parent<->child retain cycle (parent owns children, child references parent).
