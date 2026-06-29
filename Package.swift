@@ -39,6 +39,17 @@ let package = Package(
             name: "ZRenderKitTests",
             dependencies: ["ZRenderKit", "NativePainter"],
             path: "Tests/ZRenderKitTests"
+        ),
+        // macOS demo gallery — the native equivalent of opening zrender's test/*.html in a
+        // browser. A *consumer* of the public API only (no @testable); it renders the migrated
+        // demo scenes via NativePainter. Does NOT modify the framework. Run on macOS:
+        //   swift run DemoGallery               # GUI: sidebar of demos + live ZRenderView
+        //   swift run DemoGallery --list        # list demo names
+        //   swift run DemoGallery --render-all <dir>   # headless render every demo to PNG
+        .executableTarget(
+            name: "DemoGallery",
+            dependencies: ["ZRenderKit", "NativePainter"],
+            path: "Sources/DemoGallery"
         )
     ]
 )
