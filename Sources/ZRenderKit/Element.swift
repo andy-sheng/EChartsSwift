@@ -134,6 +134,20 @@ public struct ElementEvent {
     public var cancelBubble: Bool = false
     public var offsetX: Double = 0
     public var offsetY: Double = 0
+    // PORT-TODO: `event` is the underlying ZRRawEvent (browser DOM event), modeled as Any? at
+    //   the native event seam (CONVENTIONS §9). Draggable forwards it to dispatchToElement.
+    public var event: Any?
+    // The remaining `Handler.makeEventPacket` fields (gesture / wheel / button). Optional so an
+    //   ElementEvent built outside the dispatch path (e.g. `drift`) leaves them nil.
+    public var gestureEvent: String?
+    public var pinchX: Double?
+    public var pinchY: Double?
+    public var pinchScale: Double?
+    public var wheelDelta: Double?
+    public var zrByTouch: Bool?
+    public var which: Double?
+    // upstream: `stop: stopEvent` — a bound method that preventDefaults the underlying DOM event.
+    public var stop: (() -> Void)?
     public init() {}
 }
 
@@ -320,9 +334,16 @@ public class Element: Transformable, AnimationTarget {
     public var calculateTextPosition: ElementCalculateTextPosition?
 
     // upstream: mixin(Element, Eventful) — Eventful is applied as a MIXIN (not a superclass).
-    // PORT-TODO: full Eventful mixin. Element composes an Eventful and forwards the core bind
-    //   surface (`on`/`off`); `trigger`/`triggerWithContext` (variadic) and the EvtDef generic
-    //   are deferred to the native event seam (CONVENTIONS §9).
+    //   Eventful is a `final class` (CONVENTIONS §2), so it cannot be a Swift superclass of
+    //   Element (whose super is Transformable). It is composed here and its full public event
+    //   surface (`on`/`off`/`trigger`/`triggerWithContext`) is forwarded below, so `Element`
+    //   behaves as `extends Eventful` for the Handler dispatch path
+    //   (`el.trigger(eventName, eventPacket)`).
+    // PORT-TODO: retain cycle — once a listener is bound, the inner Eventful stores `ctx = self`
+    //   (the Element, to keep the handler's `this` faithful), and Element strongly holds
+    //   `_eventful`, forming a cycle. Upstream relies on JS GC; here it is broken when callers
+    //   `off()` (which drops the handler list). Listener closures should still capture
+    //   `[weak self]` where a real cycle exists (CONVENTIONS §8).
     private let _eventful = Eventful()
 
     public init(_ props: ElementProps? = nil) {
@@ -1061,11 +1082,33 @@ public class Element: Transformable, AnimationTarget {
     //   PORT-TODO: the legacy `position`/`scale`/`origin` array accessors (createLegacyProperty /
     //   enhanceArray) are deprecated DOM-defineProperty shims; not ported.
 
-    // ---- Eventful mixin forwarding (PORT-TODO: see `_eventful` above) ----
+    // ---- Eventful mixin forwarding (upstream `mixin(Element, Eventful)`; see `_eventful` above) ----
+    //
+    // Forwards Eventful's public event surface to the composed `_eventful`. The handler `ctx`
+    // defaults to the Element (`context ?? self`), matching upstream where the mixed-in Eventful's
+    // `this` IS the Element (`ctx: context || this`) — NOT the inner object. This is what makes the
+    // Handler dispatch path real: `el.trigger(eventName, eventPacket)` now reaches bound listeners.
+    //
+    // NOTE: upstream Eventful exposes `isSilent(eventName)`, but Element defines its own no-arg
+    //   `isSilent()` (the ancestor-silent cascade, above), which fully shadows the mixed-in one in
+    //   upstream too — so the `eventName` overload is intentionally NOT forwarded. Upstream Eventful
+    //   has no `one` method; nothing to forward there.
 
     @discardableResult
     public func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject? = nil) -> Self {
-        self._eventful.on(event, handler, context)
+        self._eventful.on(event, handler, context ?? self)
+        return self
+    }
+
+    /// Bind a handler with a query (used on event filter). upstream: `on(event, query, handler, context)`.
+    @discardableResult
+    public func on(
+        _ event: String,
+        _ query: EventQuery?,
+        _ handler: @escaping EventCallback,
+        _ context: AnyObject? = nil
+    ) -> Self {
+        self._eventful.on(event, query, handler, context ?? self)
         return self
     }
 
@@ -1074,12 +1117,55 @@ public class Element: Transformable, AnimationTarget {
         self._eventful.off(eventType, handler)
         return self
     }
+
+    /// Dispatch a event. Forwards to the composed Eventful.
+    @discardableResult
+    public func trigger(_ eventType: String, _ args: Any?...) -> Self {
+        // Swift variadics cannot be splatted into Eventful's variadic `trigger`, so dispatch on
+        // arg count (mirroring Eventful's own backbone-style 0/1/2 switch).
+        switch args.count {
+        case 0:
+            self._eventful.trigger(eventType)
+        case 1:
+            self._eventful.trigger(eventType, args[0])
+        case 2:
+            self._eventful.trigger(eventType, args[0], args[1])
+        default:
+            // PORT-TODO: >2 trigger args can't be splatted into the inner variadic. zrender's
+            //   element events only ever carry a single eventPacket (Handler.dispatchToElement),
+            //   so this branch is not reached; if a >2-arg element trigger is ever needed, add an
+            //   array entry point on Eventful. Forwarding the first three for safety.
+            self._eventful.trigger(eventType, args[0], args[1], args[2])
+        }
+        return self
+    }
+
+    /// Dispatch a event with context, which is specified at the last parameter.
+    @discardableResult
+    public func triggerWithContext(_ type: String, _ args: Any?...) -> Self {
+        // Same variadic-splat limitation as `trigger`; forward by arg count. The inner
+        // triggerWithContext preserves the "last arg is ctx" semantics for the counts forwarded.
+        switch args.count {
+        case 0:
+            self._eventful.triggerWithContext(type)
+        case 1:
+            self._eventful.triggerWithContext(type, args[0])
+        case 2:
+            self._eventful.triggerWithContext(type, args[0], args[1])
+        default:
+            // PORT-TODO: see `trigger` — variadic splat limitation. Not exercised by zrender's
+            //   element dispatch path. Forwarding the first three for safety.
+            self._eventful.triggerWithContext(type, args[0], args[1], args[2])
+        }
+        return self
+    }
 }
 
 // upstream: mixin(Element, Eventful); mixin(Element, Transformable);
 //   Transformable is faithfully the `super` of Element (CONVENTIONS §2); Eventful is composed
-//   and forwarded (see `_eventful` / `on` / `off`). PORT-TODO: complete the Eventful mixin
-//   (trigger / triggerWithContext / isSilent(eventName)) at the native event seam.
+//   (`_eventful`) and its full public surface — on / off / trigger / triggerWithContext — is
+//   forwarded above, so Element behaves as `extends Eventful`. (`isSilent(eventName)` is shadowed
+//   by Element's own no-arg `isSilent()`, matching upstream; `one` does not exist upstream.)
 
 // ---- module-level helpers ----
 

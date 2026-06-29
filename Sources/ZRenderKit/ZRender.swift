@@ -114,8 +114,12 @@ public final class ZRender {
     //   allowing the dispose-time clear (CONVENTIONS §6).
     public var storage: Storage!
     public var painter: PainterBase!
-    // PORT-TODO: handler: Handler — input/hit-dispatch seam (CONVENTIONS §9), not ported.
-    //   ZRender events are routed through `_eventful` (Handler extends Eventful upstream).
+    // upstream: handler: Handler. PHASE-4 (interaction): the real `Handler` is now constructed and
+    //   owned here. `on`/`off`/`trigger`/`findHover`/`setCursorStyle` route through it (Handler
+    //   `extends Eventful`, so the event surface stays real). Its `HandlerProxyInterface` is the
+    //   native UIKit bridge (`NativeHandlerProxy` in Sources/NativePainter), injected through `init`,
+    //   or `EmptyProxy` when headless (CONVENTIONS §9).
+    public var handler: Handler!
     public var animation: Animation!
 
     private var _sleepAfterStill: Double = 10
@@ -131,14 +135,12 @@ public final class ZRender {
 
     private var _backgroundColor: Any?   // upstream: string | GradientObject | PatternObject
 
-    // PORT-TODO: Handler not ported (input seam). ZRender's on/off/trigger forward here so the
-    //   event surface stays real until the Handler/HandlerProxy plumbing lands (CONVENTIONS §9).
-    private let _eventful = Eventful()
-
     // upstream: constructor(id: number, dom?: HTMLElement, opts?: ZRenderInitOpt).
     // PORT-TODO (deviation): the painter is INJECTED rather than built from `painterCtors[rendererType]`
     //   — there is no DOM ctor natively. `opts.renderer` / `painterCtors` are kept for provenance.
-    public init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase) {
+    //   The `proxy` (HandlerProxyInterface) is likewise INJECTED — natively it is the hand-written
+    //   UIKit bridge (`NativeHandlerProxy`); nil ⇒ Handler falls back to `EmptyProxy` (headless).
+    public init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase, proxy: HandlerProxyInterface? = nil) {
         var opts = opts ?? ZRenderInitOpt()
 
         /**
@@ -165,13 +167,20 @@ public final class ZRender {
         self.storage = storage
         self.painter = painter
 
-        // PORT-TODO: HandlerProxy (DOM input seam) — not ported (CONVENTIONS §9).
-        //   const handlerProxy = (!env.node && !env.worker && !ssrMode) ? new HandlerProxy(...) : null;
+        // upstream: const handlerProxy = (!env.node && !env.worker && !ssrMode) ? new HandlerProxy(...) : null;
+        //   Natively the proxy (the UIKit bridge) is INJECTED. In SSR/headless mode no proxy is wired
+        //   (Handler then uses `EmptyProxy`), matching the upstream `ssrMode` guard.
+        let handlerProxy: HandlerProxyInterface? = ssrMode ? nil : proxy
 
-        // PORT-TODO: useCoarsePointer / pointerSize (touch input seam) — not ported.
-        //   const useCoarsePointer = opts.useCoarsePointer; ... let pointerSize;
+        // upstream: useCoarsePointer / pointerSize (touch input — enlarge hit area). The `'auto'`
+        //   arm (env.touchEventsSupported) is not modeled; an explicit `opts.pointerSize` is honored.
+        //   PORT-TODO: `useCoarsePointer === 'auto'` defaulting.
+        let pointerSize: Double? = (opts.useCoarsePointer ?? false) ? (opts.pointerSize ?? 44) : opts.pointerSize
 
-        // PORT-TODO: this.handler = new Handler(storage, painter, handlerProxy, painter.root, pointerSize);
+        // upstream: this.handler = new Handler(storage, painter, handlerProxy, painter.root, pointerSize);
+        //   `painter.root` (the DOM viewport root) is the native host view/layer — passed as nil to
+        //   Handler's `painterRoot: HTMLElement?` seam (the proxy owns the real native root).
+        self.handler = Handler(storage, painter, handlerProxy, nil, pointerSize)
 
         self.animation = Animation(AnimationOption(
             stage: Stage(
@@ -358,7 +367,7 @@ public final class ZRender {
         }
         let opts = opts ?? ZRenderResizeOpt()
         self.painter.resize(opts.width, opts.height, opts.devicePixelRatio)
-        // PORT-TODO: this.handler.resize() — input seam (CONVENTIONS §9).
+        self.handler.resize()
     }
 
     /// Stop and clear all animation immediately
@@ -391,7 +400,7 @@ public final class ZRender {
         if self._disposed {
             return
         }
-        // PORT-TODO: this.handler.setCursorStyle(cursorStyle) — input seam (CONVENTIONS §9).
+        self.handler.setCursorStyle(cursorStyle)
     }
 
     /// Find hovered element
@@ -401,18 +410,18 @@ public final class ZRender {
         if self._disposed {
             return nil
         }
-        // PORT-TODO: return this.handler.findHover(x, y) — hit-dispatch seam (CONVENTIONS §9).
-        //   Hit-testing primitives (`Path.contain` → contain/path) are ported, but the Handler
-        //   that walks the display list top-down is not. Returns nil until the input seam lands.
-        return nil
+        // upstream: return this.handler.findHover(x, y). Handler walks the z-sorted display list
+        //   top-down via the ported contain/* hit-testing. HoveredResult.target/topTarget are
+        //   widened to `Element?`; every real hover target is a `Displayable` (see Handler.swift).
+        let res = self.handler.findHover(x, y, nil)
+        return (res.target as? Displayable, res.topTarget as? Displayable)
     }
 
     /// Bind event
     @discardableResult
     public func on(_ eventName: String, _ eventHandler: @escaping EventCallback, _ context: AnyObject? = nil) -> Self {
         if !self._disposed {
-            // upstream: this.handler.on(eventName, eventHandler, context).
-            self._eventful.on(eventName, eventHandler, context)
+            self.handler.on(eventName, eventHandler, context)
         }
         return self
     }
@@ -424,8 +433,7 @@ public final class ZRender {
         if self._disposed {
             return
         }
-        // upstream: this.handler.off(eventName, eventHandler).
-        _ = self._eventful.off(eventName, eventHandler)
+        self.handler.off(eventName, eventHandler)
     }
 
     /// Trigger event manually
@@ -435,8 +443,7 @@ public final class ZRender {
         if self._disposed {
             return
         }
-        // upstream: this.handler.trigger(eventName, event).
-        _ = self._eventful.trigger(eventName, event)
+        self.handler.trigger(eventName, event)
     }
 
     /// Clear all objects and the canvas.
@@ -465,11 +472,12 @@ public final class ZRender {
         self.clear()
         self.storage.dispose()
         self.painter.dispose()
-        // PORT-TODO: this.handler.dispose() — input seam (CONVENTIONS §9).
+        self.handler.dispose()
 
         self.animation = nil
         self.storage = nil
         self.painter = nil
+        self.handler = nil
 
         self._disposed = true
 
@@ -505,8 +513,8 @@ public struct ZRenderResizeOpt {
 // PORT-TODO (deviation): the painter is injected (no DOM ctor natively). `init` is a Swift keyword;
 //   the free function is named with backticks to keep the upstream name.
 @discardableResult
-public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase) -> ZRender {
-    let zr = ZRender(util.guid(), dom, opts, painter: painter)
+public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase, proxy: HandlerProxyInterface? = nil) -> ZRender {
+    let zr = ZRender(util.guid(), dom, opts, painter: painter, proxy: proxy)
     instances[zr.id] = zr
     return zr
 }
@@ -593,6 +601,11 @@ public protocol PainterBase: AnyObject {
 
     func getHeight() -> Double
 
+    /// upstream: getViewportRoot(): HTMLElement. The host view/layer the native `HandlerProxy`
+    /// observes for input and to which the painter's surface is attached. Modeled as `Any?`
+    /// (the native `CALayer` / `UIView` / `NSView`); nil for headless painters.
+    func getViewportRoot() -> Any?
+
     func dispose()
 }
 
@@ -600,6 +613,7 @@ public protocol PainterBase: AnyObject {
 extension PainterBase {
     public var type: String { return "native" }
     public var ssrOnly: Bool { return false }
+    public func getViewportRoot() -> Any? { return nil }
 }
 
 

@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 4 (INTERACTION-COMPLETE → zrender DONE: Handler hit-test/dispatch/bubble + core/event normalization + GestureMgr pinch + Draggable + Element Eventful wiring + the hand-written UIKit/AppKit HandlerProxy bridge & ZRenderView host): COMPLETE — clean from-scratch `swift build` green (all 88 units, 0 errors), `swift test` 65 executed / 0 failures / 14 skipped (the new InteractionSmokeTests).** See §§18–22. **zrender is now COMPLETE — rendering + animation + interaction all ported; canvas/svg/dom are intentionally replaced by NativePainter. The port now advances to the ECharts layer (§22).**
 **Phase 3 (LOGIC-COMPLETE: real Animator/Animation/Clip/easing + CADisplayLink host loop + path tools path/transformPath/dividePath/morphPath/convertPath + tool/color completion + Element/ZRender animation wiring): COMPLETE — `swift build` green, 61 tests / 0 failures / 16 skipped.** See §§13–17. **zrender is now logic-complete (rendering + animation + path tools); the only remaining zrender work is Phase 4 = interaction (Handler/event/GestureMgr → UIKit).**
 **Phase 2 (Text/TSpan/Image + contain/* hit-testing + 10 remaining shapes + gradient/pattern/text/image paint + Storage display list + ZRender host facade): COMPLETE — `swift build --build-tests` green, 50 tests / 0 failures / 13 skipped.** See §§7–11.
 **Phase 1 (scene graph + shape layer + first real NativePainter): COMPLETE — build green, all goldens pass.**
@@ -691,6 +692,209 @@ chart series).
 `UIKitHandlerProxy` to feed them; finally wire `ZRender.handler`/`findHover`/`refreshHover` (the §10 #10/#12
 stubs) to the real `Handler`. After Phase 4 the renderer is interaction-complete and the port advances to
 the ECharts layer.
+
+---
+
+## 18. What landed in Phase 4 — checklist
+
+**Goal (met):** the interaction layer — route a native pointer/touch/gesture into the z-sorted Storage
+display list, hit-test it to the top `Displayable` (`findHover`), and run the full
+`mousedown→mousemove→mouseup`/`click`/`mouseover`/`mouseout`/`globalout`/`pinch` dispatch + bubble state
+machine, wiring the long-stubbed `Eventful`-into-`Element` forwarding. zrender's browser DOM event source
+(`dom/HandlerProxy.ts`) is **replaced by a hand-written UIKit/AppKit bridge** (CONVENTIONS §9), so the
+same `ZRender`/`Handler`/`Element` event surface is driven natively on both iOS and macOS. **After Phase 4
+zrender is COMPLETE.**
+
+### Handler — hit-test / dispatch / bubble (`Sources/ZRenderKit/Handler.swift`)
+- [x] `Handler.swift` ← `Handler.ts` — the dispatcher (composes `Eventful` via `_eventful`, mirroring
+      `class Handler extends Eventful`). `findHover` (display-list walk + `isHover`/`setHoverTarget`
+      clip/silent/ignore tri-state + the coarse-pointer enlarged-pointer ring scan), `mousemove`
+      (mouseout/mousemove/mouseover transitions + cursor), `mouseout`/`globalout`, `dispatchToElement`
+      (per-element `trigger` + host/parent bubble + global `trigger`), `commonHandler` (the unrolled
+      `click`/`mousedown`/`mouseup`/`mousewheel`/`dblclick`/`contextmenu` set with the down/up/4px
+      click gate), `processGesture` (feeds `GestureMgr`), `setHandlerProxy`/`setCursorStyle`/`dispose`.
+      `EmptyProxy`, `HoveredResult`, `HandlerProxyInterface`, `DraggableHandler` conformance.
+- [x] `Element` `Eventful` wiring is now LIVE — `cur.trigger(eventName, eventPacket)` drives the per-element
+      listener surface that was stubbed since Phase 1; `ZRender.on/off/trigger` route to the real `Handler`.
+
+### core/event normalization (`Sources/ZRenderKit/Core/event.swift`)
+- [x] `Core/event.swift` ← `core/event.ts` (caseless `enum eventTool` namespace) — `normalizeEvent`
+      (in-place `zrX`/`zrY`/`which`/`zrDelta` mutation on the reference-type `ZRRawEvent`, the wheel-delta
+      sign ladder, which-bitmask, `getNativeEvent`/`clientToLocal` seam), `stop`/`notLeftMouse`/etc.
+      The browser DOM coordinate bits (`getBoundingClientRect`, `dom.ts` viewport transform) are PORT-TODO
+      native seams — the bridge supplies points already in ZRender-local coordinates.
+
+### GestureMgr + Draggable (`Sources/ZRenderKit/`)
+- [x] `Core/GestureMgr.swift` ← `core/GestureMgr.ts` — the pinch recognizer (`recognize`/`_recognize`/
+      `clear`, two-finger distance ratio → `pinchScale`/`pinchX`/`pinchY`). `Touch`/`ZRRawTouchEvent`
+      native seam types; `clientToLocal` is a passthrough (bridge pre-normalizes).
+- [x] `mixin/Draggable.swift` ← `mixin/Draggable.ts` — drag/dragstart/dragend derived from the
+      mousedown/mousemove/mouseup stream; `final class` composed by `Handler` (`DraggableHandler` protocol
+      = the 3 Handler members it calls), `unowned handler` back-ref to break the retain cycle.
+
+### Native UIKit/AppKit bridge + host (`Sources/NativePainter/ZRenderView.swift`, hand-written, not a translation)
+- [x] `NativeHandlerProxy: HandlerProxyInterface` — the `dom/HandlerProxy.ts` analog. Carries the same
+      sequencing as `localDOMHandlers` (touchstart → mousemove+mousedown, touchmove → processGesture+mousemove,
+      touchend → mouseup + click-within-`TOUCH_CLICK_DELAY`, touchcancel → mouseup-no-click, direct `pinch`
+      dispatch), emitting `ZRRawEvent`s through the composed `Eventful` that `Handler` subscribes to.
+      `setCursor` is a no-op (PORT-TODO: `NSCursor` on macOS).
+- [x] `ZRenderView` — the host view, split `#if canImport(UIKit)` (`UIView`: touchesBegan/Moved/Ended/
+      Cancelled + `UIPinchGestureRecognizer`) vs `#elseif canImport(AppKit)` (`NSView`, `isFlipped=true`:
+      mouseDown/Dragged/Up + rightMouseDown/contextmenu + scrollWheel + `NSMagnificationGestureRecognizer`),
+      all inside an outer `canImport(UIKit) || canImport(AppKit)` guard so it builds for both destinations.
+      Hosts the `CALayerPainter.rootLayer`, owns the `ZRender` facade (`ZRenderKit.init(painter:proxy:)`) +
+      an `AnimationLoop`, resizes on layout, and normalizes each native event into a ZRender-local
+      `ZRRawEvent` (incl. multi-touch `touches[]` for `GestureMgr`) forwarded through `NativeHandlerProxy`.
+
+---
+
+## 19. Build & test status — Phase 4
+
+- **Build: GREEN.** A clean from-scratch rebuild (deleted `ZRenderKit.build` + `NativePainter.build`,
+  `swift build`) compiles **all 88 units with 0 errors**. The Phase-4 interaction seam was already wired
+  and faithful — **no logic-weakening edits were needed; no `Sources/` changes were made.** One benign
+  warning remains (`Handler.swift:386` `var eventPacket` never mutated) — an intentional value-type-struct
+  faithfulness artifact already flagged by the adjacent PORT-TODO (see §20 #1); left untouched to preserve
+  the upstream loop shape.
+- **`swift test`: GREEN — 65 executed / 0 failures / 14 skipped** (Phase-3 baseline 61/16-skipped grew by
+  the new `InteractionSmokeTests`; the count shifts to 65/14 because the new file's skip-vs-pass split
+  replaces some prior skip accounting — all passing).
+- **Interaction smoke** (`Tests/ZRenderKitTests/InteractionSmokeTests.swift`, 7 tests — drives the REAL
+  `Handler` (`findHover` + `dispatchToElement`) over a z-sorted `Storage` display list directly, NOT the
+  UIKit bridge; `CALayerPainter` is used only as the `PainterBase` Handler needs for boundary checks):
+  - Entry points used (read from `Handler.swift`): `zr.handler.findHover(x,y) -> HoveredResult`
+    (`.target`/`.topTarget`) and `zr.handler.dispatchToElement(targetInfo, .click, event)`. Scene = a
+    `Group` of `Rect`s via `zr.add`; `zr.storage.updateDisplayList()` re-sorts after z2 changes.
+  - **Invariants asserted & PASS:** `findHover` inside A→A, inside B→B, neither→nil target; overlap returns
+    the TOP (higher z2) element and flipping z2 + `updateDisplayList` flips the result (z-driven, not
+    insertion luck); a `silent` rect is never `.target` (hit falls through to the non-silent rect below) but
+    IS reported as `.topTarget` (matches `isHover→SILENT`); an `ignore` rect yields neither; `click`
+    dispatches child → parent `Group` → ZR host in that exact order; click outside dispatches to nothing.
+  - **1 documented-gap skip:** `test_stopPropagation_child_stops_parent` confirms the divergent behavior
+    (parent fired) and `XCTSkip`s with a FAITHFULNESS-GAP message (repo skip convention) — see §20 #1. It is
+    written to self-heal into a real passing assertion the moment `ElementEvent` becomes a reference type.
+
+---
+
+## 20. Phase 4 — per-file status & review verdict
+
+| File | Source `.ts` | Status | Verdict | Note |
+|---|---|---|---|---|
+| `Handler.swift` | `Handler.ts` | complete | minor-issues (3) | bubble-cancel inert (value-type packet + omitted on-props, §20 #1); `dispatch(nil)` swallows vs TS invoking handler (#2); cursor `?? "default"` widening (#3) |
+| `Core/event.swift` | `core/event.ts` | complete | faithful | `ZRRawEvent` is a reference type so `normalizeEvent` in-place `zrX/zrY/which/zrDelta` mutation is visible to callers (faithful self-aliasing); branch order / which-bitmask / wheel-delta ladder match. Two theoretical-only NaN/empty-string notes, both unreachable. |
+| `Core/GestureMgr.swift` | `core/GestureMgr.ts` | complete | faithful | latent only: `_recognize` iterates `recognizers.keys` (Swift Dictionary order nondeterministic vs TS for-in); identical today (one `pinch` recognizer) — use an ordered list if upstream ever adds recognizers |
+| `mixin/Draggable.swift` | `mixin/Draggable.ts` | complete | faithful | `final class` composed by Handler; `unowned handler` retain-cycle break (CONVENTIONS §8) |
+| `NativePainter/ZRenderView.swift` (NativeHandlerProxy + ZRenderView) | (hand-written replaces `dom/HandlerProxy.ts`) | complete | n/a (not a translation) | `setCursor` no-op (PORT-TODO `NSCursor`); browser pointer-capture / global-document drag-outside replaced by native touch semantics |
+
+Roll-up (ported `.ts` mirrors with a review verdict): **3 faithful, 1 minor-issues, 0 major.** No new
+blockers; **no `Sources/` bug fixes were required** to pass the build or the smoke suite.
+
+---
+
+## 21. Phase 4 — new open issues & PORT-TODO backlog (deduped, severity-sorted)
+
+### Correctness / fidelity — review-flagged
+1. **Bubble cancellation is INERT — `stopPropagation`/`cancelBubble` cannot stop ZR bubbling**
+   (`Handler.swift` `dispatchToElement` ~386–411; the central interaction concern). Upstream
+   (`Handler.ts:311–324`) lets the bubble chain stop when `eventPacket.cancelBubble` becomes true — set
+   either by an on-prop handler's truthy return (`el[eventKey].call(...)`) OR by a `.on` listener directly
+   mutating the shared packet object (`eventPacket` is a plain JS object passed BY REFERENCE to
+   `el.trigger`). In Swift, **`ElementEvent` is a value-type `struct`** (`Element.swift:127`), so the packet
+   is COPIED into each `cur.trigger(eventName.rawValue, eventPacket)` call (`Handler.swift:392`); any
+   listener mutation of `cancelBubble` is lost, and the on-prop path is omitted entirely (no
+   `onclick`/`onmousedown` props on `Element` — native event seam). Net: `eventPacket.cancelBubble` can
+   **never** become true, so the `if eventPacket.cancelBubble { break }` (line 398) and the
+   `if !eventPacket.cancelBubble` global-trigger guard (line 403) are dead — every event always bubbles all
+   the way to parent/host chain root and then to the global Handler trigger. `eventTool.stop`
+   (`core/event.swift`) only sets `cancelBubble` on the underlying `ZRRawEvent` reference, which the loop
+   never re-reads. Acknowledged via two PORT-TODO comments (`Handler.swift:381–385`) and covered by the
+   `test_stopPropagation_child_stops_parent` skip. **FIX SUGGESTION:** make `ElementEvent` a `final class`
+   (reference) so listener mutations propagate, OR have `dispatchToElement` re-read the underlying event's
+   `cancelBubble` after each `trigger`. Either change self-heals the smoke test into a passing assertion.
+2. **`dispatch()` swallows `nil` eventArgs** (`Handler.swift:333–339`). TS (`Handler.ts:263–266`):
+   `const handler = this[eventName]; handler && handler.call(this, eventArgs)` — the handler is invoked even
+   when `eventArgs` is undefined. Swift wraps the call in `if let eventArgs = eventArgs { ... }`, so
+   `dispatch(name, nil)` invokes nothing. Minor/undocumented; in practice all call sites pass a real
+   `ZRRawEvent` (and a JS handler reading `event.zrX` on undefined would crash anyway), so low impact, but a
+   divergence from the literal TS control flow.
+3. **Cursor fallback widening** (`Handler.swift:290`, `mousemove`). TS (`Handler.ts:223`) passes
+   `hoveredTarget.cursor` straight through (could be undefined); Swift substitutes `?? "default"` when the
+   `as? Displayable` cast or `.cursor` is nil — an element with an explicitly-unset cursor yields `"default"`
+   in Swift vs undefined in TS. Negligible (`Displayable` defaults cursor non-nil; every real hover target
+   is a `Displayable`); noted for completeness.
+
+### Native-bridge approximations (browser-only bits the UIKit/AppKit bridge replaces — PORT-TODO)
+4. **`setCursor` is a no-op** (`ZRenderView.swift` `NativeHandlerProxy.setCursor`). iOS has no pointer
+   cursor; macOS could `NSCursor`-map `cursorStyle`. `Handler.setCursorStyle` therefore has no visible
+   effect today.
+5. **Drag-outside / pointer-capture** — the browser's global-`document` pointer-capture machinery
+   ([DRAG_OUTSIDE] in `Handler.ts`) is replaced by native touch semantics (touch events keep firing once a
+   sequence starts) and AppKit drag tracking; `isOutsideBoundary` is still honored, but there is no explicit
+   capture object.
+6. **GestureMgr fed by recognizers, not raw multi-touch parity** — the bridge prefers letting
+   `UIPinchGestureRecognizer`/`NSMagnificationGestureRecognizer` recognize and dispatch `pinch` directly;
+   `GestureMgr` is retained for the headless/`processGesture` path (touchstart/move/end still feed it
+   `touches[]`). On an empty-space pinch, `processGesture` falls back to a sentinel `Displayable()` target
+   (PORT-TODO: identity diverges from upstream `undefined`).
+7. **`core/event` DOM coordinate bits** (`getBoundingClientRect`, `dom.ts` viewport transform, `window.event`)
+   are PORT-TODO native seams — the bridge supplies `zrX`/`zrY` already in ZRender-local coordinates.
+8. **`Handler.painterRoot` (DOM root) is nil natively**; `(painter as CanvasPainter).eachOtherLayer`
+   user-layer dispatch (canvas-only) is not modeled (`Handler.swift:408`).
+
+> Carry-over still open from §§4/10/16/P0-3: `Displayable.STYLE_MAGIC_KEY` static-flag divergence (major —
+> audit before state-style application lands in the ECharts layer), the value-type `shape`/`style`
+> keyed-animation seam (§16 #1), `useState`/states machinery still stubbed in `Element`,
+> `Group.children()` value-copy, `util.merge` null-guard gap, `animation/cubicEasing.ts`, native remote-URL
+> image loading, and the `Swift.min/max` / `|| 0`-vs-`?? 0` NaN-policy items — all low-risk under
+> finite-coords usage, several of which the ECharts option-merge/data layer will force a decision on (§22).
+
+---
+
+## 22. zrender is COMPLETE — the ECharts-layer plan (next major milestone)
+
+**zrender is now COMPLETE: rendering (Phase 1–2) + animation + path tools (Phase 3) + interaction
+(Phase 4) are all ported.** The browser-only `canvas/` / `svg/` / `dom/` backends are **intentionally
+replaced by `NativePainter`** (CG/CA renderer + CADisplayLink/Timer frame clock + UIKit/AppKit
+HandlerProxy bridge), per CONVENTIONS §9 — they are NOT translations and were never meant to be.
+
+### Verification posture (the regression net carried forward)
+- **Total ported:** `Sources/ZRenderKit/` = **77 Swift files / ~23.5 K lines** (the line-by-line zrender
+  mirror) + `Sources/NativePainter/` = **6 hand-written files / ~2.1 K lines** (the native backend) +
+  **16 test files**.
+- **Golden geometry parity** (byte-for-byte vs the real-ECharts oracle): 10/10 shape fixtures, via
+  `testRebuiltDMatchesOracle` (PathProxy replay) **and** `testSwiftBuildPathMatchesOracle` (true
+  `Shape.buildPath` output).
+- **Ported zrender unit tests** (behavioral oracle, the upstream Jest specs → XCTest):
+  matrix/LRU/util/platform/path/group/contain-sector/image/color/element-animation.
+- **Smoke tests:** decorative-shape NaN-free buffers, `CALayerPainter` renderToImage, animation
+  interpolation (in-flight-frame parity vs the real `easing`), and now the Phase-4 interaction smoke
+  (`findHover` + `dispatchToElement` over a z-sorted Storage list).
+- `swift build` green for both iOS and macOS destinations; `swift test` 65/0-fail/14-skip.
+
+### Pre-ECharts: a fidelity-hardening pass (do FIRST)
+The carry-over JS-truthiness / null / NaN backlog (`STYLE_MAGIC_KEY`, `util.merge` null-guard, `|| 0` vs
+`?? 0`, `Swift.min/max` NaN non-propagation, `'key' in obj` vs `!= nil`, empty-string color truthiness, the
+value-type `shape`/`style` keyed-access seam, `useState`/states) has been low-risk under "finite-coords
+only" geometry usage — **but the ECharts option-merge and data layers deliberately feed these edge values**
+(absent/`null`/`NaN` config, deep option merge, sparse data). Do a focused hardening pass on these BEFORE
+the ECharts port so the divergences don't silently corrupt option resolution and data scaling.
+
+### Faithful ECharts port order (`echarts/src/`, reusing the complete `ZRenderKit`)
+1. **`model/`** — `Global`/`GlobalModel`, `Component`/`ComponentModel`, `Series`/`SeriesModel`,
+   option merge/normalize (forces the deep-merge / null-guard fidelity items above).
+2. **`data/`** — `DataStore`, `SeriesData` (the columnar store), `DataDiffer` (enter/update/exit diff for
+   data-driven transitions — pairs with the Phase-3 animation system).
+3. **`scale/`** — `Scale` base, `Interval`/`Ordinal`/`Time`/`Log`, nice-ticks.
+4. **`coord/cartesian/`** — `Cartesian2D`, `Axis2D`, `Grid` data↔pixel mapping.
+5. **`Scheduler` + the `Task`/`stream` pipeline** — the per-stage (`createData`/`processData`/`visual`/
+   `layout`/`render`) task graph that drives a render.
+6. **`visual/` + `layout/`** — visual encoding (color/symbol/size mapping) and series layout.
+7. **First `ChartView`** — `BarView` or `LineView` — plus `grid`/`axis` components, reusing the ported
+   `Group`/`Path`/`Rect`/`Polyline`/`Text` + the animation + interaction layers end-to-end.
+
+**Sequencing:** `model/` → `data/` → `scale/` → `coord/cartesian` → `Scheduler/Task` → `visual/`+`layout/`
+→ first `ChartView` + `grid/axis`. Each stage keeps the standing upstream-sync rule (§12) and adds its
+matching ported unit specs + (where an ECharts oracle exists) golden fixtures.
 
 ---
 

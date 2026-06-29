@@ -492,6 +492,13 @@ extension CALayerPainter: PainterBase {
         return Double(surfaceSize.height)
     }
 
+    /// The host layer the scene is rendered into — the native equivalent of zrender's DOM
+    /// `getViewportRoot()`. `ZRenderView` adds this as (a sublayer of) its backing layer, and the
+    /// `NativeHandlerProxy` uses it as the coordinate reference for normalizing input.
+    public func getViewportRoot() -> Any? {
+        return rootLayer
+    }
+
     public func dispose() {
         rootLayer.contents = nil
         rootLayer.sublayers = nil

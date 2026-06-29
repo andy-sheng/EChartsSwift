@@ -122,6 +122,10 @@ public enum ElementEventName: String {
     case dragover
     case drop
     case globalout
+    // upstream dispatches the gesture type (e.g. 'pinch') through `type as ElementEventName`
+    //   in `Handler.processGesture` — a TS cast that bypasses the union, so 'pinch' is not a
+    //   literal member upstream. Added here so the Swift enum can carry it. // PORT-TODO: deviation.
+    case pinch
 }
 
 public enum ElementEventNameWithOn: String {
