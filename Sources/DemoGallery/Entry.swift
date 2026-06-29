@@ -186,10 +186,23 @@ func symbol(for category: String) -> String {
 
 // MARK: - Sidebar (NSOutlineView, source-list style)
 
-final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+/// Outline view that copies the selected demo's name on ⌘C (the app has no menu bar to route copy:).
+final class DemoOutlineView: NSOutlineView {
+    var onCopy: (() -> Void)?
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "c" {
+            onCopy?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuItemValidation {
     let sections = demoSections()
     var onSelect: ((Demo) -> Void)?
-    private let outline = NSOutlineView()
+    private let outline = DemoOutlineView()
 
     override func loadView() {
         outline.headerView = nil
@@ -202,6 +215,15 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         outline.outlineTableColumn = col
         outline.dataSource = self
         outline.delegate = self
+
+        // Copy a demo's name: right-click → Copy, or ⌘C on the selected row. Handy for noting a
+        // problem case's exact id.
+        let menu = NSMenu()
+        let copyName = NSMenuItem(title: "Copy Name", action: #selector(copyClickedDemoName(_:)), keyEquivalent: "")
+        let copyNameCat = NSMenuItem(title: "Copy Name & Category", action: #selector(copyClickedDemoNameCategory(_:)), keyEquivalent: "")
+        for it in [copyName, copyNameCat] { it.target = self; menu.addItem(it) }
+        outline.menu = menu
+        outline.onCopy = { [weak self] in self?.copySelectedDemoName() }
 
         let scroll = NSScrollView()
         scroll.drawsBackground = false
@@ -227,6 +249,36 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             outline.selectRowIndexes(IndexSet(integer: r), byExtendingSelection: false)
             break
         }
+    }
+
+    // MARK: Copy demo name
+
+    private func demo(atRow row: Int) -> Demo? {
+        guard row >= 0, row < outline.numberOfRows else { return nil }
+        return outline.item(atRow: row) as? Demo
+    }
+
+    private func copyToPasteboard(_ s: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+    }
+
+    @objc private func copyClickedDemoName(_ sender: Any?) {
+        if let d = demo(atRow: outline.clickedRow) { copyToPasteboard(d.name) }
+    }
+
+    @objc private func copyClickedDemoNameCategory(_ sender: Any?) {
+        if let d = demo(atRow: outline.clickedRow) { copyToPasteboard("\(d.name) [\(d.category)]") }
+    }
+
+    private func copySelectedDemoName() {
+        if let d = demo(atRow: outline.selectedRow) { copyToPasteboard(d.name) }
+    }
+
+    // Disable the context-menu items when the right-clicked row isn't a demo (e.g. a section header).
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        return demo(atRow: outline.clickedRow) != nil
     }
 
     // Data source

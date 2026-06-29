@@ -743,10 +743,20 @@ open class Path: Displayable {
         if key == "style" {
             return _pathStyleAnimationAccessor
         }
+        // `__morphT` is a plain animatable scalar on the path (upstream `MorphingPath.__morphT`),
+        // driven by `morphPath()`'s `animateTo({__morphT: 1})`. Expose it so the animator gets a
+        // real start value (nil would make the track inert — the morph never runs).
+        if key == "__morphT" {
+            return __morphT
+        }
         return super.animationGet(key)
     }
 
     public override func animationSet(_ key: String, _ value: Any?) {
+        if key == "__morphT" {
+            if let v = value as? Double { self.__morphT = v }
+            return
+        }
         if key == "shape" {
             // Whole-shape direct assign (the non-animated branch of animateToShallow).
             if let s = value as? PathShape {

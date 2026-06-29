@@ -90,18 +90,21 @@ _Generated from the parity audit (49 non-Shapes demos). The 6 Shapes demos
 - **pattern** _(Paint)_ — Two image-Pattern-filled Circles with centered white labels; native matches HTML element set + tiled-pattern fill, deviations all in the acceptable bucket — aligned.
 - **event** _(Interaction)_ — Two circles with chained Element.on handlers + draggable; native faithfully mirrors all zrender calls (incl. circle2's default-black fill) — aligned, only gallery/DOM-adaptation deviations.
 
-## 🏗 Reclassified to framework-change during the fix pass (2)
+## 🏗 Reclassified to framework-change during the fix pass (2 → 1 fixed)
 
-The audit marked these "demo-fix"; applying the aligned morph calls then exposed a hard CRASH in the
+The audit marked these "demo-fix"; applying the aligned morph calls then exposed a CRASH/inert path in the
 path-morphing tools (same pattern as the earlier strokePercent → `_calculateLength` discovery). The
-demos now show their static source shapes; the morph loop is deferred until the framework bug is fixed.
+splitAnimation demo still shows its static source shapes until its framework bug is fixed.
 
-### morphPath  _(Path tools)_
-- **Crash:** `morphPath()` → `animateTo` → `Path.animationSet` — **Bad pointer dereference**
-  (Tool/morphPath.swift:573 / Element.swift:1500). Likely a dangling `unowned` Path in the morph
-  animation accessor (the morph creates/swaps Paths whose accessors outlive them).
-- **Demo now:** shows the first target (red Rect) statically; 7 morph targets still constructed.
-- **To restore:** fix the morph-path animation lifecycle, then re-enable the `morphShape()` loop.
+### morphPath  _(Path tools)_ — FIXED ✅
+- **Root cause (not a dangling pointer):** `__morphT` was not wired into `Path.animationGet/animationSet`,
+  so `morphPath()` → `animateTo({__morphT: 1})` read a `nil` start value → **no animator created**
+  (the `__morphT` track was inert). The morph never ran; the demo could only show a static source shape.
+- **Fix:** expose `__morphT` as an animatable scalar in `Path.animationGet/animationSet`
+  (Graphic/Path.swift). One-line wiring — the morph build/restore lifecycle was already correct.
+- **Demo now:** runs the continuous single-element morph loop (html `morphShape`), deterministic +1
+  cycle, `cfg.delay = 100` for the `setTimeout(…, 100)` pause. Regression test: `MorphPathTests`
+  (animator tweens 0→1; all 7 html targets morph + rebuild geometry without crashing).
 
 ### splitAnimation  _(Animation)_
 - **Crash:** `separateMorph()`/`combineMorph()` → `dividePath.split` → `Rect.init`/`Path.useStyle` —

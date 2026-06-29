@@ -41,15 +41,40 @@ extension DemoRegistry {
             styled(createPathFromString(D3, 100, 100, 200), fill: "red", stroke: "red", opacity: 0.5),
         ]
 
-        // The aligned call here is the continuous single-element morph loop:
-        //   morphPath(current, next, {duration:1000, easing:'cubicInOut', done: …}) re-fired forever.
-        // DEFERRED: ZRenderKit's `morphPath()` tool currently CRASHES (bad pointer dereference in the
-        // morph animation path — Tool/morphPath.swift → Path.animationSet) when actually run, so the
-        // loop is omitted and the first target (the red Rect) is shown statically. The 7 morph targets
-        // above are the faithful aligned elements. See DEMO_PARITY_GAPS.md (framework gap).
+        // Continuous single-element morph loop (html `morphShape`): show ONE element, then
+        // morphPath() it forever between targets (1000ms cubicInOut), re-firing from the done()
+        // callback (html's `setTimeout(morphShape, 100)` → cfg.delay = 100). The random next-index
+        // is replaced by a deterministic +1 cycle — a render-stable stand-in for Math.random()
+        // (CONVENTIONS: deterministic stand-ins are acceptable). A headless --render snapshot shows
+        // the first element (shapes[0], the Rect) at morph t=0.
+        var currentIdx = 0
         zr.add(shapes[0])
+
+        // The loop reschedules itself from `done`, so it lives in a box it can call recursively.
+        // `zr` is captured WEAKLY: when the gallery tears down the live view, zr deallocs, its
+        // animation clock stops, and the loop simply stops re-firing (no zombie animation, no
+        // ZRender retain cycle).
+        let loop = MorphLoop()
+        loop.fire = { [weak zr] in
+            guard let zr = zr else { return }
+            let current = shapes[currentIdx]
+            currentIdx = (currentIdx + 1) % shapes.count
+            let next = shapes[currentIdx]
+            zr.remove(current)
+            zr.add(next)
+            var cfg = ElementAnimateConfig()
+            cfg.duration = 1000
+            cfg.delay = 100
+            cfg.easing = .named("cubicInOut")
+            cfg.done = { loop.fire?() }
+            _ = morphPath(current, next, cfg)
+        }
+        loop.fire?()
     }
 }
+
+/// Mutable box holding the self-rescheduling morph closure (so `done` can re-fire the loop).
+private final class MorphLoop { var fire: (() -> Void)? }
 
 // The 3 SVG path-data strings, copied verbatim from test/morphPath.html.
 private let D1 = "M910.5,263.6C899.5,229,801.5-57.8,576.9,24.9c-36.9,19.3-65.7,83-52.9,124.4c13,42,85.6,44.7,111.1,16.5c14.7-16.2,34.5-89.9-8.2-82.4c-8.8,17.5,15.6,87.3-36.6,74.5c-38.6-9.4-31-68.7-10.7-89.8c24.9-26,65.6-34.8,102-26.2c31.8,7.5,303.5,164.9,164.3,440c-10,11.1-25.8,17.1-33.4,28.2c-5.6-2.7-11.3-5.1-16.9-7.6l-4.9-12.9L780,415.5l-9.8-25.4c-3.4-5.6-6.5-11.1-9.1-16.5c11.2-6.5,5.2-8.7,1.1-19.4c-1.3-3.3,2.3-6.1-2.5-12c-3.6-4.4-10-5.5-12.5-10.1c-0.2-1.3-0.3-2.5-0.4-3.7c5.7-0.7,11.4-1,16.9-2.4c-7.6-7.5-18.6-11.1-27-17.8c5.9-0.3,11.9,0.5,17.7-1.2c-6.2-4.1-13.6-5.9-19.9-9.9c4.9-3.7,13-1,19.3-3c-8.9-3.8-25.6-8.2-35.6-12.7c2.6-1.3,6.9-2.2,10.5-2.1c-10.5-6-25.6-10.1-37.6-12.9c5.4,0.1,11.3,0.6,16.3-0.7c-9-5.6-21-5.7-31.3-7.8c3-1.9,5.6-3.6,9-4.5c-6.3-6-21.4-3-30-3c2.1-0.4,8-4.3,10.7-7.3c-6.6-0.2-13,2.3-19.7,2.1c2.5-3.4,5.2-7,7-10.6c-6.1-0.9-11.9,1.4-18,0.7c0.5-1,0.9-2.6,1.7-3.9c-5.8-0.1-11.5,2.5-17.5,1.8c0.5-1.4,0.3-3.7,0.7-5.1c-8.5,1.2-16.8,6.4-25.4,5.1c0.2-1.7-0.7-4.5-0.5-5.9c-4.5,1.9-8.3,4.1-11.4,5.7c-3.3-0.4-6.5-0.6-9.7-0.8c-1-1.8-1.7-4.6-2.2-8.8c-4.2,1.9-7.6,5.3-11.1,8.5c-3.3,0-6.6,0.1-9.9,0.3c-0.3-3.1-0.3-6.2-0.3-9.4c-6.3,2.2-10.7,10.2-17.9,9.5c-0.3-5.1-0.1-10.3-0.3-15.3c-6,3.9-11.2,13.6-14.7,20.2c-0.4,0.1-0.8,0.2-1.2,0.3c-1.2-6.9-2.3-14-4.2-20.8c-4,8.3-6.9,18-12,25.7c-0.6,0.2-1.1,0.4-1.7,0.6c-2.5-5.7-3.8-13.2-5.3-19.1c-2.3,8.7-5.7,16.9-9.3,24.9c-3.2,1.5-6.4,3-9.6,4.7c-1.7-5.9-3.3-11.9-5.1-17.8c-6.9,7.2-9.3,19.1-13.3,28.4c-0.5,0.3-1,0.7-1.6,1c-2.9-9.4-4.4-19.6-5.4-29.3c-5.9,11-6.2,26.2-11.8,38.1c-2.3-5.9-3.1-12.6-3.1-18.9c-4.1,9.9-6.4,21.1-9,32.1c-1.2,1.1-2.5,2.2-3.7,3.3c-4.1-5.2-6.4-11.3-9.8-17c-2.2,8.9-1.6,18.5-1.9,27.9c-0.6,0.6-1.2,1.1-1.8,1.7c-3.7-4.3-6.2-9.9-9.7-13.8c-0.1,8.4-0.4,18.1-2.6,26.2c-3.9-3.7-6-10.2-9.4-13.5c-2.9,7.4-0.9,17.6-1.2,25.9c-0.2,0.2-0.3,0.4-0.5,0.5c-3.2-5-6.3-10.5-9.3-15.8c-2.1,7.5-1.5,18.7-0.5,27.8c-0.7,0.8-1.3,1.7-2,2.6c-3-3.1-5.9-6.7-8.8-9.1c-0.3,6.3,0.1,12.8-0.4,19.1c-3.8-7.7-9.1-14.5-15.7-20.9c4.4,9.9,7.7,21.3,9.1,32.4c-4.1,6-8.3,12.1-12.3,18.4l-14.1,77.9c-23-14.8-23.2-33.1-0.6-55.1l-30.9,3l-12.5,4.9l-24.1-2.5c-30.3-4.6-56.6-5.2-79.2-1.9c-25.2,9.3-49.7,10.8-73.6,4.4c35.1,71,25,129.1-30.2,174.2c30-3.4,33.3,5.1,9.8,25.4c39.2-10.2,46.3,0.7,21,32.8c28.8-11.5,52.9-9.1,72.5,7.4c23.9,3.2,46.2,3.4,66.9,0.6l4.9,12.5c5.7,14.7,8.4,29.4,7.9,43.8c14.3,17,24.7,34.3,31.1,52c14.5,55.2,13.4,105.9-3.2,152.2c-60.2,51.7-51.4,64.8,26.6,39.5c21.8-46.3,34.4-89.8,37.7-130.5l19.3-10.4c24.2,53.9,23.6,98.6-1.7,134.2l9.2,31.5c27.5,0.7,50.2-3,68.1-11.2c3.4-23.1,3.5-43.5,0.4-61.1l-1.8-42.7c-12.2-27.3-17.6-54.3-16.1-81c9.7-26.4,20-47.8,30.9-64.2c20-229.4,88.4-149.7,88.4-149.7c25.3,30.2,33.9,65.7,25.9,106.4c121.4,105.1,126,199.2,13.7,282.5l-1.8,18c64.9,6.1,104.5-22.4,118.7-85.4c20.6-45.1,27.4-11.9,20.4,99.6c81.5-8.9,87.4-87.7,18-236.2c5.1-49.6,15.8-87.9,39.4-133c17.4-33.2,27.3-69.7,59.3-92.3C933.8,441.5,928.6,320.8,910.5,263.6z M153.7,510.1c15,9,23.9,22.1,26.6,39.1C160.1,542,151.2,529,153.7,510.1z M224.6,535.5l27.2-27.8C263.5,537.6,254.4,546.9,224.6,535.5z"
