@@ -306,6 +306,12 @@ public final class CALayerPainter: Painter {
     private var _frameContext: CGContext?
     private var _frameRenderer: CGRenderer?
 
+    // Motion-blur layer config (zr.configLayer): instead of clearing each frame, the previous frame is
+    // composited at `_lastFrameAlpha`, leaving fading trails. Native is single-layer, so this is global.
+    private var _motionBlur = false
+    private var _lastFrameAlpha: Double = 0
+    private var _lastFrameImage: CGImage?
+
     public init(size: CGSize, dpr: Double? = nil, backgroundColor: CGColor? = nil) {
         self.surfaceSize = size
         self.dpr = dpr ?? defaultDPR()
@@ -411,6 +417,16 @@ public final class CALayerPainter: Painter {
             ctx.fill(CGRect(x: 0, y: 0, width: pxW, height: pxH))
         }
 
+        // Motion blur (zr.configLayer): composite the previous frame at `_lastFrameAlpha` over the fresh
+        // background BEFORE drawing the new scene, so moving elements leave fading trails. Drawn here in
+        // raw pixel space (before the y-flip/dpr below), matching how `endFrame`'s makeImage captured it.
+        if _motionBlur, _lastFrameAlpha > 0, let prev = _lastFrameImage {
+            ctx.saveGState()
+            ctx.setAlpha(CGFloat(_lastFrameAlpha))
+            ctx.draw(prev, in: CGRect(x: 0, y: 0, width: pxW, height: pxH))
+            ctx.restoreGState()
+        }
+
         // Flip to y-down (canvas convention) and apply dpr so 1 user unit == dpr device px.
         ctx.translateBy(x: 0, y: CGFloat(pxH))
         ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
@@ -425,9 +441,19 @@ public final class CALayerPainter: Painter {
         guard let ctx = _frameContext else { return }
         if let image = ctx.makeImage() {
             rootLayer.contents = image
+            // Retain this frame as the source for the next frame's motion-blur composite.
+            if _motionBlur { _lastFrameImage = image }
         }
         _frameContext = nil
         _frameRenderer = nil
+    }
+
+    /// upstream painter.configLayer(zLevel, config) — enable/disable motion blur for the (single) layer.
+    public func configLayer(_ zLevel: Double, _ config: Any?) {
+        guard let c = config as? LayerConfig else { return }
+        _motionBlur = c.motionBlur
+        _lastFrameAlpha = c.lastFrameAlpha
+        if !_motionBlur { _lastFrameImage = nil }
     }
 
     /// Composite `root` into the offscreen frame buffer and publish it to `rootLayer.contents`.

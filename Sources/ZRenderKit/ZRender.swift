@@ -220,7 +220,8 @@ public final class ZRender {
         if self._disposed {
             return
         }
-        // PORT-TODO: canvas-layer config (LayerConfig) — `this.painter.configLayer?.(zLevel, config)`.
+        // upstream: `this.painter.configLayer?.(zLevel, config)` — forward to the painter, then refresh.
+        self.painter.configLayer(zLevel, config)
         self.refresh()
     }
 
@@ -580,6 +581,19 @@ public typealias ZRenderType = ZRender
 // itself. Natively the painter does not own the storage, so `refresh(_:)` receives the already-built
 // display list from `ZRender._refresh` ("build Storage display list -> Painter", per the task brief).
 // ============================================================================
+/// upstream: LayerConfig — per-zlevel canvas-layer options. The motion-blur subset is modeled here
+/// (the native painter is single-layer, so `zLevel` is informational). `clearColor` is omitted.
+public struct LayerConfig {
+    /// Keep a faded copy of the previous frame instead of clearing → motion-blur trails.
+    public var motionBlur: Bool
+    /// Fraction of the previous frame retained each frame (e.g. 0.99 → long, slow-fading trails).
+    public var lastFrameAlpha: Double
+    public init(motionBlur: Bool = false, lastFrameAlpha: Double = 0) {
+        self.motionBlur = motionBlur
+        self.lastFrameAlpha = lastFrameAlpha
+    }
+}
+
 public protocol PainterBase: AnyObject {
 
     /// upstream: type: string ('canvas' | 'svg'). Identifies the backend.
@@ -606,6 +620,9 @@ public protocol PainterBase: AnyObject {
     /// (the native `CALayer` / `UIView` / `NSView`); nil for headless painters.
     func getViewportRoot() -> Any?
 
+    /// upstream: configLayer?(zLevel, config) — optional per-layer config (e.g. motion blur).
+    func configLayer(_ zLevel: Double, _ config: Any?)
+
     func dispose()
 }
 
@@ -614,6 +631,7 @@ extension PainterBase {
     public var type: String { return "native" }
     public var ssrOnly: Bool { return false }
     public func getViewportRoot() -> Any? { return nil }
+    public func configLayer(_ zLevel: Double, _ config: Any?) {}
 }
 
 
