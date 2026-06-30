@@ -1,50 +1,54 @@
 import ZRenderKit
-// Migrated from zrender test/animation.html
+// Faithful port of zrender test/animation.html
+//
+// ONE gradient Circle (shape cx:50,cy:50,r:50 at position [100,100], fill = gradient1 red→black,
+// lineWidth 5) with an attached white "Circle" label (textConfig position 'inside'), driven by three
+// animators:
+//   1. circle.animate('').when(200, {position:[200,0]}).start()                 — one-shot quick move
+//   2. circle.animate('style', true).when(1000, {fill: gradient2}).start()      — LOOPING fill tween
+//   3. circle.animate('', true).when(1000,[200,0])…when(4000,[100,100]).start() — LOOPING square path
+//
+// All three are now real: the looping square `position` path animates root x/y (supported), the inner
+// label uses the real attached textContent (Element.updateInnerText), and the gradient1→gradient2 fill
+// tween works now that the Animator's gradient interpolation is wired (util.isGradientObject +
+// zrColorToAnimValue gradients). zrender's legacy `position:[x,y]` array maps to element x/y.
 extension DemoRegistry {
     static let demo_animation: Demo = Demo(
         name: "animation", category: "Animation",
-        summary: "Shapes animateTo new positions and fill colors (position + style tweens)"
+        summary: "One gradient circle: looping square position path + looping gradient→gradient fill tween + inner label",
+        width: 340, height: 340
     ) { zr in
-        // animation.html builds ONE gradient Circle (red → black) labelled 'Circle', then drives
-        // it with several animators: a looping square `position` path and a fill tween toward a
-        // second gradient. The label is attached via `textConfig: { position: 'inside' }`, but the
-        // port's inner-text layout (Element.updateInnerText) is a deferred no-op, so a standalone
-        // centred ZRText reproduces the same look. We build the INITIAL frame (so the static thumb
-        // shows the start state) and call the PUBLIC Element.animateTo so the gallery's animation
-        // loop tweens each shape — faithful to upstream `circle.animate(...).when(...).start()`.
-
-        // The HTML's first gradient (`gradient`): red → black. (Its second gradient — black → blue
-        // → white — drove the fill tween; here the colour animation is shown with solid fills below,
-        // the proven animation path — see barAnimation.)
+        // gradient = red → black; gradient2 = black → blue → white.
         let gradient = LinearGradient(0, 0, 1, 1)
-        gradient.addColorStop(0, "#ff0000")
-        gradient.addColorStop(1, "#000000")
+        gradient.addColorStop(0, "red"); gradient.addColorStop(1, "black")
+        let gradient2 = LinearGradient(0, 0, 1, 1)
+        gradient2.addColorStop(0, "black"); gradient2.addColorStop(0.5, "blue"); gradient2.addColorStop(1, "white")
 
-        // The labelled gradient circle. Drawn at its element origin (shape centred on 0,0) and held
-        // in place so the 'Circle' label stays centred, while its radius pulses — one representative
-        // `shape` animation in lieu of the off-canvas square `position` loop.
-        let main = gradFill(circle(0, 0, 40), .linearGradient(gradient))
-        main.x = 110; main.y = 100
-        zr.add(main)
-        zr.add(text("Circle", 110, 100, "#ffffff", size: 15, align: .center))
-        var pulse = ElementAnimateConfig(); pulse.duration = 1200
-        main.animateTo(["shape": ["r": 58.0] as [String: Any]], pulse)
+        // Circle: shape {cx:50,cy:50,r:50}, position [100,100], style {fill: gradient, lineWidth: 5}.
+        var cs = CircleShape(); cs.cx = 50; cs.cy = 50; cs.r = 50
+        let circ = Circle(); circ.setShape(cs)
+        circ.x = 100; circ.y = 100
+        var st = PathStyleProps(); st.fill = .linearGradient(gradient); st.lineWidth = 5
+        circ.useStyle(st)
 
-        // Two solid circles that animate to NEW POSITIONS and NEW COLORS — the core of the HTML
-        // (which animates `position` and the style `fill`). Element x/y are Transformable props
-        // (the position tween) and the style fill tween mirrors barAnimation's proven path.
-        let blue = styled(circle(0, 0, 30), fill: "#0000ff")
-        blue.x = 300; blue.y = 60
-        zr.add(blue)
-        var moveA = ElementAnimateConfig(); moveA.duration = 1400
-        blue.animateTo(["x": 560.0, "y": 60.0,
-                        "style": ["fill": "#00c853"] as [String: Any]], moveA)
+        // textContent: Text { fill:'white', text:'Circle' }, textConfig { position:'inside' }.
+        var ts = TextStyleProps(); ts.text = "Circle"; ts.fill = "white"
+        let label = ZRText(); label.useStyle(ts)
+        circ.setTextContent(label)
+        var tc = ElementTextConfig(); tc.position = "inside"
+        circ.setTextConfig(tc)
+        zr.add(circ)
 
-        let green = styled(circle(0, 0, 30), fill: "#3ba272")
-        green.x = 300; green.y = 150
-        zr.add(green)
-        var moveB = ElementAnimateConfig(); moveB.duration = 1400
-        green.animateTo(["x": 560.0, "y": 150.0,
-                         "style": ["fill": "#ee6666"] as [String: Any]], moveB)
+        // 1. one-shot quick move to [200, 0].
+        _ = circ.animate("").when(200, ["x": 200.0, "y": 0.0]).start()
+        // 2. looping fill tween gradient → gradient2.
+        _ = circ.animate("style", true).when(1000, ["fill": gradient2]).start()
+        // 3. looping square position path.
+        _ = circ.animate("", true)
+            .when(1000, ["x": 200.0, "y": 0.0])
+            .when(2000, ["x": 200.0, "y": 200.0])
+            .when(3000, ["x": 0.0, "y": 200.0])
+            .when(4000, ["x": 100.0, "y": 100.0])
+            .start()
     }
 }

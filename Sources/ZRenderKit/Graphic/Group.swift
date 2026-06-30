@@ -345,4 +345,23 @@ public protocol GroupLike: AnyObject {
 
 extension Group: GroupLike {}
 
+public extension Element {
+    /// Whether this element currently acts as a CONTAINER, and if so the children to descend into.
+    ///
+    /// Upstream duck-types `(el as GroupLike).childrenRef` — truthy whenever a `childrenRef` method is
+    /// present on the instance: `Group` and `ZRText` always have it; a `Path` acquires a monkey-patched
+    /// one ONLY while combine-morphing (`__morphChildrenRef` set by `combineMorph`). Returns the
+    /// children for a container, or `nil` for a leaf `Displayable`.
+    ///
+    /// This is the SINGLE source of truth for that decision so every traversal (`Storage`, the painter's
+    /// `flattenDisplayList`) duck-types identically. Narrowing it to a concrete type — `as? GroupLike`
+    /// alone (misses the combine-morph `Path`) or `isGroup` (also misses `ZRText`) — silently drops
+    /// rich-text spans or combine-morph sub-paths from the display list. Matches upstream Storage.ts.
+    func activeChildrenRef() -> [Element]? {
+        if let g = self as? GroupLike { return g.childrenRef() }
+        if let p = self as? Path, p.__morphChildrenRef != nil { return p.childrenRef() }
+        return nil
+    }
+}
+
 // upstream: export default Group;

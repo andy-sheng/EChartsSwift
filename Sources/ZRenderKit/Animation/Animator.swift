@@ -416,11 +416,10 @@ public final class Track {
                 }
             }
             else if util.isGradientObject(rawValue) {
-                // TODO Color to gradient or gradient to color.
-                // PORT-TODO: `extend({}, value)` shallow-clone over a GradientObject plus the
-                //   x/y/x2/y2/r geometry copy depends on svg/helper + a Gradient clone seam; this
-                //   branch is dead (util.isGradientObject returns false). Faithful skeleton retained.
-                if let grad = rawValue as? GradientObject {
+                // Parse the Gradient into a ParsedGradientObject (rgba color stops + geometry), so the
+                // interpolation branch can tween it. `Gradient` is the concrete base class (the
+                // GradientObject protocol isn't adopted — see util.isGradientObject).
+                if let grad = rawValue as? Gradient {
                     let parsedGradient = ParsedGradientObject()
                     parsedGradient.colorStops = util.map(grad.colorStops) { colorStop, _ in
                         ParsedColorStop(
@@ -428,11 +427,15 @@ public final class Track {
                             offset: colorStop.offset
                         )
                     }
-                    if isLinearGradient(grad) {
+                    parsedGradient.global = grad.global
+                    if let lg = grad as? LinearGradient {
                         valType = VALUE_TYPE_LINEAR_GRADIENT
+                        parsedGradient.x = lg.x; parsedGradient.y = lg.y
+                        parsedGradient.x2 = lg.x2; parsedGradient.y2 = lg.y2
                     }
-                    else if isRadialGradient(grad) {
+                    else if let rg = grad as? RadialGradient {
                         valType = VALUE_TYPE_RADIAL_GRADIENT
+                        parsedGradient.x = rg.x; parsedGradient.y = rg.y; parsedGradient.r = rg.r
                     }
                     value = parsedGradient
                 }
@@ -464,9 +467,8 @@ public final class Track {
                 kf.easingFunc = f
             case .named(let name):
                 // easingFuncs[easing] || createCubicEasingFunc(easing)
-                // PORT-TODO: createCubicEasingFunc(name) (cubicEasing.ts) not ported — a named
-                //   easing that misses `easingFuncs` falls through to nil (same as Clip.setEasing).
                 kf.easingFunc = ZRenderKit.easing.easingFuncs[name]
+                    ?? ZRenderKit.easing.createCubicEasingFunc(name)
             }
         }
         // Not check if value equal here.

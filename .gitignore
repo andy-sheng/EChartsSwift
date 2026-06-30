@@ -15,3 +15,13 @@ upstream/upstream/
 .DS_Store
 *.xcodeproj
 *.xcworkspace
+
+# DemoGallery staged .app (local dev/test artifact, built by scripts/build-demo-gallery.sh)
+/build/
+
+# Local editor / tool state + secrets (never commit)
+.vscode/
+.env
+**/.archon/
+**/.cursor/
+**/.codebuddy/

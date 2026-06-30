@@ -8,12 +8,12 @@ extension DemoRegistry {
         // singleCanvas.html builds a 20×20 grid of identical `zrender.Image` tiles onto one
         // canvas: `new zrender.Image({ position:[i*50,j*50], scale:[1,1],
         // style:{ x:0, y:0, image:'asset/test.png', width:50, height:50 }, draggable:true })`.
-        // The upstream PNG (`asset/test.png`) can't resolve here, so we substitute the same
-        // self-contained 20×20 base64 PNG tile dragOrigin.swift uses; the native painter's
-        // loadCGImage decodes the data-URI and scales it to 50×50. We mirror the i*50/j*50,
-        // 50×50, draggable layout (scale [1,1] is identity → no scaleX/scaleY). The grid is
-        // capped to fit the 1200×600 stage (20 cols × 12 rows) instead of the full 20×20.
-        let tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAd0lEQVR4nGP8dSLiPwMURK3IY6AUMFFsAq0NZAwpOAb3MjUAEzUNI8nA1f2WlHt5NR5DQguPk+bC1QRchEueiYHKgIkuBq4mMgKwqWMiJcCJUcfEQGXARDcDQwl4G5c8I7F5GRQBxIQtEzGG4XMRA7kGEgsGv4EAElwhSajUA98AAAAASUVORK5CYII="
+        // Uses the SAME image as the html (upstream/zrender/test/asset/test.png, decoded once and
+        // shared via the `.image(...)` source seam — like image.swift). We mirror the i*50/j*50,
+        // 50×50, draggable layout (scale [1,1] is identity → no scaleX/scaleY). The grid is capped
+        // to fit the 1200×600 stage (20 cols × 12 rows) instead of the full 20×20.
+        let source: ImageSource = decodedUpstreamAsset("test.png").map { .image($0) }
+            ?? .url(upstreamAsset("test.png").path)
 
         let cols = 20
         let rows = 12
@@ -21,7 +21,7 @@ extension DemoRegistry {
             for j in 0..<rows {
                 // mirror style:{ x:0, y:0, image, width:50, height:50 }
                 var ist = ImageStyleProps()
-                ist.image = .url(tile)
+                ist.image = source
                 ist.x = 0; ist.y = 0
                 ist.width = 50; ist.height = 50
                 let img = ZRImage()

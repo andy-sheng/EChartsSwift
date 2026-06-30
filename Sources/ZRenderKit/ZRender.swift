@@ -130,6 +130,12 @@ public final class ZRender {
     // true can lead to creating a hover layer. Do not set true unless required.
     private var _needsRefreshHover = false
     private var _disposed: Bool = false
+
+    /// Whether `dispose()` has run. Native-only read accessor (no upstream analogue): a deferred
+    /// closure that outlives the host view (e.g. a `DispatchQueue.asyncAfter` loop holding a strong
+    /// element chain, which strongly back-references this zr via `Element.__zr`) can use this to stop
+    /// rescheduling once the zr is torn down, instead of poking a disposed animation clock.
+    public var isDisposed: Bool { return self._disposed }
     /// If theme is dark mode. It will determine the color strategy for labels.
     private var _darkMode = false
 

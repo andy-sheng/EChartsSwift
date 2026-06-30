@@ -4,65 +4,78 @@ import Foundation
 extension DemoRegistry {
     static let demo_animationStart: Demo = Demo(
         name: "animationStart", category: "Animation",
-        summary: "Ring of red dots flung outward with an elasticOut position tween"
+        summary: "Ring of red dots; every mousemove flings them outward with an elasticOut tween",
+        width: 800, height: 600
     ) { zr in
-        // animationStart.html scatters `count` tiny circles — shape {cx:0, cy:0, r:3},
-        // style {fill:'red', opacity:0.2} — whose ELEMENT position is a point on a ring band
-        // of width 60 around the canvas center. On mousemove it runs update(point): for every
-        // dot it computes
-        //     dist   = |point - dot.position|
+        // Faithful port of animationStart.html. The html scatters `count` tiny red circles
+        // (shape {cx:0,cy:0,r:3}, style {fill:'red',opacity:0.2}) at RANDOM points on a ring band
+        // around the canvas center, then on every `mousemove` runs update(point): for each dot
+        //     dist   = |point - el.position|
         //     ratio  = (baseRadius + rand*60) / dist
-        //     target = point + (dot.position - point) * ratio
-        // then fires el.stopAnimation().animate('').when(3000,{position:target}).start('elasticOut').
-        // That elasticOut fling IS the demo. A static gallery has no mouse, so we drive the SAME
-        // update() math once against a fixed deterministic point P (the ring center) — reproducing
-        // the signature motion. The position track is animated by carrying the ring position as the
-        // element's x/y (shape stays centred on the origin), so x/y are what tweens — mirroring the
-        // html's `position` array.
+        //     target = point + (el.position - point) * ratio
+        // and `el.stopAnimation().animate('').when(3000,{position:target}).start('elasticOut')`.
+        // That elasticOut fling on mouse MOVEMENT is the whole demo — the initial frame is just the
+        // static scatter ring, exactly like the html before you move the mouse.
         //
-        // DEVIATIONS (the only allowed ones): Math.random()→deterministic per-dot stand-in (varied
-        // by index); center [400,300]→(340,100), baseRadius 180→50, band 60→~35 (native canvas size);
-        // the unused red→black LinearGradient (dead code) and the per-dot onclick:alert(i) debug
-        // handler are dropped.
-        let center = (x: 340.0, y: 100.0)
-        let baseRadius = 50.0
-        let rings = 6                  // sub-rings across the band
-        let perRing = 60               // dots per sub-ring
-        let step = 7.0                 // radial gap between sub-rings (band ≈ 35 wide)
+        // position ↔ x/y: this port maps an element's `position` array onto its x/y, so the shape
+        // stays centred on the origin (cx=cy=0) and the dot's *position* (x/y) is what tweens —
+        // mirroring the html's `position` track. (Element.x/y are Optional, hence the `?? 0` reads.)
+        //
+        // Gallery input note: the macOS host feeds zr `mousemove` from pointer movement over the
+        // view (bare hover via its tracking area, or a drag), so sweeping the cursor across the
+        // dots flings them outward — the same gesture as the html.
+        //
+        // DEVIATIONS (documented): count 5000→500 (native CALayer budget; the per-dot call sequence
+        // is byte-for-byte the same); Math.random()→a deterministic LCG (reproducible scatter +
+        // per-mousemove jitter); the unused red→black LinearGradient (dead code in the html) and the
+        // per-dot `onclick: alert(i)` debug handler are dropped.
 
-        // update(point) is driven against a fixed point P = ring center (the mousemove stand-in).
-        let P = (x: center.x, y: center.y)
+        let viewW = 800.0, viewH = 600.0
+        let center = (x: viewW / 2, y: viewH / 2)          // [400, 300]
+        let baseRadius = min(viewW, viewH) * 0.3            // 180
+        let count = 500                                     // html: 5000 (perf deviation)
 
-        for ring in 0..<rings {
-            let radius = baseRadius + Double(ring) * step
-            // stagger each sub-ring's angular phase so dots don't line up radially
-            let phase = Double(ring) * (2 * π / Double(perRing)) * 0.5
-            for j in 0..<perRing {
-                let theta = 2 * π * Double(j) / Double(perRing) + phase
-                let px = center.x + radius * cos(theta)
-                let py = center.y + radius * sin(theta)
+        // Deterministic stand-in for Math.random() (a small LCG) — reproducible across runs.
+        var seed: UInt64 = 0x9E3779B97F4A7C15
+        func rnd() -> Double {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Double(seed >> 11) / Double(1 << 53)     // [0, 1)
+        }
 
-                // Build: shape centred on the origin (cx=cy=0, r=3); the ring position is carried
-                // as the element's x/y so the elasticOut tween animates x/y (the `position` track).
-                let dot = styled(circle(0, 0, 3), fill: "#ff0000", opacity: 0.2)
-                dot.x = px; dot.y = py
-                zr.add(dot)
+        var els: [Circle] = []
+        for _ in 0..<count {
+            let theta = rnd() * 2 * π
+            let r = baseRadius + rnd() * 60
+            // shape centred on the origin (cx=cy=0, r=3); the ring point is the element position.
+            let dot = styled(circle(0, 0, 3), fill: "#ff0000", opacity: 0.2)
+            dot.x = center.x + r * cos(theta)
+            dot.y = center.y + r * sin(theta)
+            zr.add(dot)
+            els.append(dot)
+        }
 
-                // update(P) — faithful to the html's per-dot math.
-                let dx = P.x - px, dy = P.y - py
+        // update(point) — the html's per-dot elasticOut fling, re-run on every mousemove.
+        func update(_ px: Double, _ py: Double) {
+            for el in els {
+                let ex = el.x ?? 0, ey = el.y ?? 0
+                let dx = px - ex, dy = py - ey
                 let dist = (dx * dx + dy * dy).squareRoot()
-                if dist < 0.1 { continue }                            // html's early-out guard
-                // deterministic stand-in for `baseRadius + Math.random() * 60`, varied per dot
-                let randTerm = Double(((ring * perRing + j) * 37) % 60)
-                let ratio = (baseRadius + randTerm) / dist
-                let tx = P.x + (px - P.x) * ratio
-                let ty = P.y + (py - P.y) * ratio
-
-                // el.stopAnimation().animate('').when(3000,{position:[tx,ty]}).start('elasticOut')
-                dot.animate("")
+                if dist < 0.1 { return }                    // html early-out (returns from update)
+                let ratio = (baseRadius + rnd() * 60) / dist
+                let tx = px + (ex - px) * ratio
+                let ty = py + (ey - py) * ratio
+                // el.stopAnimation().animate('').when(3000, {position}).start('elasticOut')
+                el.stopAnimation().animate("")
                     .when(3000, ["x": tx, "y": ty])
                     .start(.named("elasticOut"))
             }
+        }
+
+        // zr.on('mousemove', e => update([e.offsetX, e.offsetY]))
+        zr.on("mousemove") { _, args in
+            guard let ev = args.first as? ElementEvent else { return nil }
+            update(ev.offsetX, ev.offsetY)
+            return nil
         }
     }
 }

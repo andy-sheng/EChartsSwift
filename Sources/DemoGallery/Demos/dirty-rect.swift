@@ -50,20 +50,19 @@ extension DemoRegistry {
         circ.useStyle(cst)
         circ.x = 100; circ.y = 200
         circ.zlevel = 1
+
+        // The circle's 'Start' label, attached via textContent + textConfig.position 'inside'
+        // (Element.updateInnerText). It follows the circle's centre as the shape animates.
+        var startStyle = TextStyleProps()
+        startStyle.text = "Start"; startStyle.fill = "#ffffff"
+        let startText = ZRText(); startText.useStyle(startStyle)
+        circ.setTextContent(startText)
+        var circTC = ElementTextConfig(); circTC.position = "inside"
+        circ.setTextConfig(circTC)
         zr.add(circ)
         var moveCfg = ElementAnimateConfig(); moveCfg.duration = 3000
         circ.animateTo(["shape": ["cx": 800.0, "cy": 200.0] as [String: Any]], moveCfg)
-
-        // The circle's 'Start' label. Upstream attaches it via textContent + textConfig.position
-        // 'inside'; the port's inner-text layout (updateInnerText) is a deferred no-op (see rectText /
-        // animation demos), so a standalone centred ZRText reproduces the look at the circle's start
-        // centre (canvas 150,250). The fill tween toward '#444' is issued to mirror upstream.
-        var startStyle = TextStyleProps()
-        startStyle.text = "Start"; startStyle.x = 150; startStyle.y = 250
-        startStyle.fill = "#ffffff"; startStyle.fontSize = .number(14)
-        startStyle.align = .center; startStyle.verticalAlign = .middle
-        let startText = ZRText(); startText.useStyle(startStyle); startText.zlevel = 1
-        zr.add(startText)
+        // text.animateTo({style:{fill:'#444'}}, 3000)
         var textCfg = ElementAnimateConfig(); textCfg.duration = 3000
         startText.animateTo(["style": ["fill": "#444"] as [String: Any]], textCfg)
 

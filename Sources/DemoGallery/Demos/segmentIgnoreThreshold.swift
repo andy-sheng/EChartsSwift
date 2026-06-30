@@ -29,6 +29,14 @@ extension DemoRegistry {
             return s
         }
 
+        // The CompoundPath is added FIRST (empty), exactly like the html (so its strokes sit BELOW
+        // the labels). Its `shape.paths` is populated after the loop. segmentIgnoreThreshold:20 skips
+        // subpixel segments at small global scales — the whole point of the demo.
+        let cp = CompoundPath()
+        cp.segmentIgnoreThreshold = 20
+        styled(cp, stroke: "#000", lineWidth: 2)   // fill:none, matching the HTML's fill:null
+        zr.add(cp)
+
         var polys: [Path] = []
         polys.reserveCapacity(30)
         for _ in 0..<30 {
@@ -58,11 +66,7 @@ extension DemoRegistry {
             r /= 1.3
         }
 
-        // The whole point of the demo: one CompoundPath holding all 30 dense polygons, with
-        // segmentIgnoreThreshold:20 so subpixel segments are skipped at small global scales.
-        let cp = CompoundPath()
+        // Populate the (already-added) CompoundPath's paths — all 30 dense polygons.
         cp.setShape(CompoundPathShape(paths: polys))
-        cp.segmentIgnoreThreshold = 20
-        zr.add(styled(cp, stroke: "#000", lineWidth: 2))   // fill:none, matching the HTML's fill:null
     }
 }

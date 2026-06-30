@@ -380,11 +380,10 @@ public enum util {
     }
 
     public static func isGradientObject(_ value: Any?) -> Bool {
-        // (value as GradientObject).colorStops != null
-        // PORT-TODO: depends on graphic/Gradient (not yet ported). Returns false until
-        //            GradientObject lands; flag every consumer (Element animate path).
-        _ = value
-        return false
+        // upstream: (value as GradientObject).colorStops != null. `Gradient` is the concrete base of
+        // LinearGradient/RadialGradient (those can't adopt the `GradientObject` protocol — its
+        // `global: Bool?` clashes with Gradient's stored `global: Bool`), so detect the base class.
+        return value is Gradient
     }
 
     public static func isImagePatternObject(_ value: Any?) -> Bool {

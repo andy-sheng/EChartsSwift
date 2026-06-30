@@ -353,7 +353,11 @@ open class Transformable {
 
 
     public static func getLocalTransform(_ target: Transformable, _ m: MatrixArray? = nil) -> MatrixArray {
-        var m = m ?? MatrixArray(repeating: 0, count: 6)
+        // Upstream callers pass a reused scratch `const m: MatrixArray = []` and rely on JS
+        // auto-extending it when `m[4] = …` is assigned. Swift arrays can't grow by subscript, so an
+        // empty/short scratch must be (re)allocated to the 6-slot identity here — otherwise `m[4]`
+        // traps with "Index out of range" (e.g. ZRText/Group.getBoundingRect → getLocalTransform([])).
+        var m = (m?.count ?? 0) >= 6 ? m! : MatrixArray(repeating: 0, count: 6)
 
         let ox = jsOr0(target.originX)                           // upstream: target.originX || 0
         let oy = jsOr0(target.originY)                           // upstream: target.originY || 0

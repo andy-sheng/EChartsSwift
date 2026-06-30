@@ -182,9 +182,9 @@ public final class Clip {
         case .function(let f):
             self.easingFunc = f
         case .named(let name):
-            // PORT-TODO: createCubicEasingFunc(name) (animation/cubicEasing.ts) not ported —
-            // named lookups that miss `easingFuncs` fall through to nil for now.
+            // easingFuncs[easing] || createCubicEasingFunc(easing)
             self.easingFunc = ZRenderKit.easing.easingFuncs[name]
+                ?? ZRenderKit.easing.createCubicEasingFunc(name)
         }
     }
 }

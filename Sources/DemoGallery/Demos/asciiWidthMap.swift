@@ -1,41 +1,41 @@
 import ZRenderKit
-// Migrated from zrender test/asciiWidthMap.html
+// Faithful port of zrender test/asciiWidthMap.html
 //
-// The HTML builds an ASCII char-width map by calling `ctx.measureText(char).width`
-// for every printable character. The faithful Swift analogue uses the public
-// width-measuring API `ZRenderKit.text.getWidth(_:_:)` (and `getLineHeight`) to box
-// each sample string by its MEASURED pixel width — showing that equal-length strings
-// of narrow vs. wide glyphs occupy very different widths.
+// The html is a no-zrender utility: it measures every printable ASCII char (32–126) at
+// `12px sans-serif`, computes `ratio = round(width / 12 * 100)`, builds a string of
+// `String.fromCharCode(ratio + 20)`, and `document.write`s it (escaping backslashes). The output
+// is the packed ASCII width-map string — the very data that powers zrender's built-in ASCII width
+// table (core/platform `getWidth`).
 //
-// NOTE: the enum namespace is `ZRenderKit.text`; it must be fully qualified because the
-// shared `func text(...)` builder shadows the bare name `text` inside this closure.
+// This mirrors the algorithm 1:1 using the engine's own measurement (`ZRenderKit.text.getWidth`),
+// then renders the resulting map string (the analogue of `document.write`). Equal char count, same
+// ratio formula, same +20 char-code packing — so the native output is the same width-map string.
 extension DemoRegistry {
     static let demo_asciiWidthMap: Demo = Demo(
         name: "asciiWidthMap", category: "Text",
-        summary: "Strings boxed by their measured text width"
+        summary: "ASCII (32–126) width-map string — round(width/12*100)+20 per char, like the html's document.write",
+        width: 1000, height: 200
     ) { zr in
-        let font = "20px sans-serif"
-        let lineHeight = ZRenderKit.text.getLineHeight(font)
+        let font = "12px sans-serif"
 
-        zr.add(text("measureText — each box = measured string width", 40, 10, "#333", size: 14))
-
-        // (string, color) samples: equal-length narrow vs. wide glyph runs, plus mixed runs.
-        let samples: [(String, String)] = [
-            ("iiiiiiiiiiii", "#5470c6"),
-            ("WWWWWWWWWWWW", "#91cc75"),
-            ("Hello, zrender!", "#fac858"),
-            ("MIX 0123 ||| .,;", "#ee6666"),
-        ]
-
-        for (i, sample) in samples.enumerated() {
-            let (str, col) = sample
-            let y = 42 + Double(i) * 38
-            let w = ZRenderKit.text.getWidth(str, font)
-            // Stroke-only box sized exactly to the measured width (styled() => fill "none").
-            zr.add(styled(rect(40, y, w, lineHeight), stroke: col, lineWidth: 1.5))
-            zr.add(text(str, 40, y, col, size: 20))
-            // Annotate the measured width to the right of the box.
-            zr.add(text("\(Int(w.rounded())) px", 40 + w + 12, y + 2, "#999", size: 13))
+        // for (i = 32; i <= 126; i++): ratio = round(measureText(char).width / 12 * 100); map += charCode(ratio + 20)
+        var mapStr = ""
+        for code in 32...126 {
+            let char = String(UnicodeScalar(code)!)
+            let width = ZRenderKit.text.getWidth(char, font)
+            let ratio = Int((width / 12.0 * 100.0).rounded())
+            if let scalar = UnicodeScalar(ratio + 20) {
+                mapStr.unicodeScalars.append(scalar)
+            }
         }
+        // a = mapStr.replace(/\\/g, '\\\\')
+        let escaped = mapStr.replacingOccurrences(of: "\\", with: "\\\\")
+
+        zr.add(text("ASCII width map — measureText(char).width for chars 32…126 @ 12px sans-serif:",
+                    30, 24, "#333", size: 14))
+        // document.write(a): the packed width-map string.
+        zr.add(text(escaped, 30, 70, "#111", size: 22))
+        zr.add(text("(each char = round(width/12·100)+20; this is the data behind the built-in ASCII width table)",
+                    30, 120, "#999", size: 12))
     }
 }

@@ -33,19 +33,22 @@ extension DemoRegistry {
         r.on("mouseout")  { ctx, _ in setFill(ctx, "#007"); return nil }
         zr.add(r)
 
-        // Instructional marker circles (silent). Upstream attaches each block of text as a
-        // textContent child with textConfig.position top/bottom; the port's updateInnerText is a
-        // Phase-2 no-op, so — like the text-color / rectText / strokePercent demos — the label is
-        // drawn as a standalone ZRText placed where that position would land.
-        let g0 = circle(180, 95, 5); g0.silent = true
-        zr.add(styled(g0, fill: "green"))
-        zr.add(text("1. Touch around the green circles.\n2. Expect the blue shape to be a lighter blue.",
-                    180, 64, "#000", size: 12, align: .center))
-
-        let rd0 = circle(260, 180, 5); rd0.silent = true
-        zr.add(styled(rd0, fill: "red"))
-        zr.add(text("3. Touch around the red circles.\n4. Expect the blue shape not to change.",
-                    260, 192, "#000", size: 12, align: .center))
+        // Instructional marker circles (silent), each with its text block attached as a textContent
+        // child positioned via textConfig.position (top/bottom) — the real attach path
+        // (Element.updateInnerText).
+        func marker(_ cx: Double, _ cy: Double, _ fill: String, _ label: String, _ position: String) {
+            let m = circle(cx, cy, 5); m.silent = true
+            var ts = TextStyleProps(); ts.text = label; ts.fontSize = .number(12)
+            let lbl = ZRText(); lbl.useStyle(ts)
+            m.setTextContent(lbl)
+            var tc = ElementTextConfig(); tc.position = position
+            m.setTextConfig(tc)
+            zr.add(styled(m, fill: fill))
+        }
+        marker(180, 95, "green",
+               "1. Touch around the green circles.\n2. Expect the blue shape to be a lighter blue.", "top")
+        marker(260, 180, "red",
+               "3. Touch around the red circles.\n4. Expect the blue shape not to change.", "bottom")
 
         // 2) Polygon — exact upstream points; same #007 -> #06f mouseover toggle.
         var ps = PolygonShape()
@@ -69,9 +72,15 @@ extension DemoRegistry {
         r2.ignoreCoarsePointer = true
         r2.on("mouseover") { ctx, _ in setFill(ctx, "#f00"); return nil }
         r2.on("mouseout")  { ctx, _ in setFill(ctx, "#700"); return nil }
+        // textContent (ignoreCoarsePointer too), textConfig.position 'bottom'.
+        var r2ts = TextStyleProps()
+        r2ts.text = "This is a shape with `ignoreCoarsePointer`.\nIt will NOT be affected by `useCoarsePointer`."
+        r2ts.fontSize = .number(12)
+        let r2label = ZRText(); r2label.useStyle(r2ts); r2label.ignoreCoarsePointer = true
+        r2.setTextContent(r2label)
+        var r2tc = ElementTextConfig(); r2tc.position = "bottom"
+        r2.setTextConfig(r2tc)
         zr.add(r2)
-        zr.add(text("This is a shape with `ignoreCoarsePointer`.\nIt will NOT be affected by `useCoarsePointer`.",
-                    195, 512, "#000", size: 12, align: .center))
 
         // rect2's silent markers: two green, two red (upstream order preserved).
         let m1 = circle(200, 470, 5); m1.silent = true; zr.add(styled(m1, fill: "green"))

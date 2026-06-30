@@ -9,7 +9,30 @@
 //
 // Depends ONLY on ZRenderKit's public API; touches no framework source.
 
+import Foundation
+import ImageIO        // CGImageSource* — decode upstream assets so demos use the SAME images as html
 import ZRenderKit
+
+// MARK: - upstream test assets (the SAME images the test/*.html use)
+
+/// Absolute URL of an upstream zrender test asset (e.g. `"test.png"`), resolved from this file's
+/// location at compile time — the same `#filePath` trick the gallery's web pane uses (Entry.swift).
+/// Lets demos fill with the SAME images as the `test/*.html` instead of embedded stand-ins. Resolves
+/// as long as the repo stays put (same constraint as the side-by-side html pane).
+func upstreamAsset(_ name: String) -> URL {
+    URL(fileURLWithPath: #filePath)            // .../Sources/DemoGallery/Demos.swift
+        .deletingLastPathComponent()           // DemoGallery
+        .deletingLastPathComponent()           // Sources
+        .deletingLastPathComponent()           // repo root
+        .appendingPathComponent("upstream/zrender/test/asset/\(name)")
+}
+
+/// Decode an upstream asset ONCE into a CGImage, for the `.image(...)` source seam (shared across
+/// many tiles so they don't each re-decode the file). Returns nil if the asset is missing.
+func decodedUpstreamAsset(_ name: String) -> CGImage? {
+    CGImageSourceCreateWithURL(upstreamAsset(name) as CFURL, nil)
+        .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+}
 
 /// A single live control (the native analog of one `dat.GUI` row) some demos expose so the gallery
 /// can drive the scene interactively — e.g. poly.html's `smooth` / `percent` / `animatePercent`.

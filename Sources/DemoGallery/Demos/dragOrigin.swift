@@ -8,18 +8,18 @@ extension DemoRegistry {
         // dragOrigin.html builds two `zrender.Image`s, each `draggable: true`, `rotation: 2`,
         // `origin: [50, 50]`, drawn 100×100 — so each rotates ~114.6° about the CENTRE of its own
         // 100×100 box. The first sits at the canvas origin; the second lives inside a Group at
-        // position [100, 100]. The upstream PNG source (`./asset/test.png`) is a file path that
-        // can't resolve here, so we substitute the same self-contained 20×20 base64 PNG tile the
-        // pattern demo uses; the native painter's loadCGImage decodes data-URIs and scales it to
-        // 100×100. Element x/y offsets are added (deterministically) so both rotated boxes fit the
-        // default canvas; the `draggable` flag is preserved via the public Element.draggable API
-        // (interactivity is exercised by the GUI Handler — the static frame shows the rotated pose).
-        let tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAd0lEQVR4nGP8dSLiPwMURK3IY6AUMFFsAq0NZAwpOAb3MjUAEzUNI8nA1f2WlHt5NR5DQguPk+bC1QRchEueiYHKgIkuBq4mMgKwqWMiJcCJUcfEQGXARDcDQwl4G5c8I7F5GRQBxIQtEzGG4XMRA7kGEgsGv4EAElwhSajUA98AAAAASUVORK5CYII="
+        // position [100, 100]. Uses the SAME image as the html (upstream/zrender/test/asset/test.png,
+        // decoded once and shared via the `.image(...)` source seam). Element x/y offsets are added
+        // (deterministically) so both rotated boxes fit the default canvas; the `draggable` flag is
+        // preserved via Element.draggable (interactivity via the GUI Handler — the static frame shows
+        // the rotated pose).
+        let source: ImageSource = decodedUpstreamAsset("test.png").map { .image($0) }
+            ?? .url(upstreamAsset("test.png").path)
 
         // mirror `new zrender.Image({ draggable, rotation: 2, origin: [50,50], style: { image, w, h } })`
         func dragImage() -> ZRImage {
             var ist = ImageStyleProps()
-            ist.image = .url(tile)
+            ist.image = source
             ist.width = 100
             ist.height = 100
             let img = ZRImage()

@@ -409,6 +409,29 @@ public enum easing {   // upstream default export: `easingFuncs`
         return bounceOut(k * 2 - 1) * 0.5 + 0.5
     }
 
+    /// upstream animation/cubicEasing.ts — parse a `cubic-bezier(a, b, c, d)` easing string into an
+    /// easing function (CSS-style cubic-bezier). Returns nil if the string isn't a valid cubic-bezier.
+    /// Used as the fallback when a named easing misses `easingFuncs` (Clip.setEasing / Animator).
+    public static func createCubicEasingFunc(_ cubicEasingStr: String) -> EasingFunc? {
+        // regexp: /cubic-bezier\(([0-9,\.e ]+)\)/
+        guard let open = cubicEasingStr.range(of: "cubic-bezier("),
+              let close = cubicEasingStr.range(of: ")", range: open.upperBound..<cubicEasingStr.endIndex)
+        else { return nil }
+        let nums = cubicEasingStr[open.upperBound..<close.lowerBound]
+            .split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard nums.count >= 4, let a = nums[0], let b = nums[1], let c = nums[2], let d = nums[3] else {
+            return nil
+        }
+        if (a + b + c + d).isNaN { return nil }
+        return { p in
+            if p <= 0 { return 0 }
+            if p >= 1 { return 1 }
+            // p<=0?0 : p>=1?1 : cubicRootAt(0,a,c,1,p) && cubicAt(0,b,d,1,roots[0])
+            let r = curve.cubicRootAt(0, a, c, 1, p)
+            return r.n >= 1 ? curve.cubicAt(0, b, d, 1, r.roots[0]) : 0
+        }
+    }
+
     /// upstream: `const easingFuncs = { ... }; export default easingFuncs;`
     /// Name → function table backing the `AnimationEasing` string lookup.
     public static let easingFuncs: [String: EasingFunc] = [

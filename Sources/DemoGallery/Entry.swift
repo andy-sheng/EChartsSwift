@@ -161,6 +161,28 @@ func substringBetween(_ s: String, after start: String, upTo end: String) -> Str
     return String(s[a.upperBound..<b.lowerBound])
 }
 
+/// Make a dist-script test html self-contained so it renders in the web pane without file access:
+/// inline every LOCAL `<script src>` (../dist, lib/, data/) as a `data:` URI, and point the dead
+/// `localhost:8001` dat.gui reference (text-overflow.html) at the public CDN. Then it can be loaded
+/// with `baseURL: nil` (only the CDN dat.gui is fetched over the network). Returns nil unchanged-pages.
+func sanitizedTestPage(_ html: String, testDir: URL) -> String? {
+    var out = html
+    // The dead localhost dat.gui → the same CDN the other dat.gui demos use.
+    out = out.replacingOccurrences(
+        of: "http://localhost:8001/echarts/infra/test_local/dat.gui.js",
+        with: "https://cdn.jsdelivr.net/npm/dat.gui@0.7.6/build/dat.gui.js")
+
+    // Inline local script sources (so no relative-file resolution / read access is needed).
+    let locals = ["../dist/zrender.js", "lib/config.js", "lib/testHelper.js", "data/text.js", "./data/text.js"]
+    for rel in locals where out.contains("\"\(rel)\"") {
+        let fileURL = URL(fileURLWithPath: rel, relativeTo: testDir).standardizedFileURL
+        guard let data = try? Data(contentsOf: fileURL) else { continue }
+        let dataURI = "data:text/javascript;base64," + data.base64EncodedString()
+        out = out.replacingOccurrences(of: "\"\(rel)\"", with: "\"\(dataURI)\"")
+    }
+    return out
+}
+
 func demoSections() -> [DemoSection] {
     var order: [String] = []
     var byCat: [String: [Demo]] = [:]
@@ -509,6 +531,11 @@ final class CanvasViewController: NSViewController {
             if html.contains("type=\"module\""),
                let umd = inlinedUMDPage(moduleHTML: html, distJSURL: Self.distJSURL) {
                 webView.loadHTMLString(umd, baseURL: nil)
+            } else if html.contains("localhost:8001"),
+                      let page = sanitizedTestPage(html, testDir: Self.testDir) {
+                // Pages referencing a dead localhost script (text-overflow.html's dat.gui) render
+                // blank via loadFileURL — load a sanitized, self-contained copy instead.
+                webView.loadHTMLString(page, baseURL: nil)
             } else {
                 // dist-bundle demo (or rewrite unavailable) — load the file as-is.
                 webView.loadFileURL(htmlURL, allowingReadAccessTo: Self.zrenderDir)
@@ -845,10 +872,13 @@ func runCLI() -> Bool {
         wv.navigationDelegate = snapper
         // Mirror the GUI right pane: ES-module demos load via the inlined-UMD rewrite, others as-is.
         let zrenderDir = testDir.deletingLastPathComponent()
-        if let html = try? String(contentsOf: htmlURL, encoding: .utf8),
-           html.contains("type=\"module\""),
+        let snapHTML = try? String(contentsOf: htmlURL, encoding: .utf8)
+        if let html = snapHTML, html.contains("type=\"module\""),
            let umd = inlinedUMDPage(moduleHTML: html, distJSURL: zrenderDir.appendingPathComponent("dist/zrender.js")) {
             wv.loadHTMLString(umd, baseURL: nil)
+        } else if let html = snapHTML, html.contains("localhost:8001"),
+                  let page = sanitizedTestPage(html, testDir: testDir) {
+            wv.loadHTMLString(page, baseURL: nil)
         } else {
             wv.loadFileURL(htmlURL, allowingReadAccessTo: zrenderDir)
         }

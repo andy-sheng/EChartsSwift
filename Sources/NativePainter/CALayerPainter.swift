@@ -33,8 +33,12 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
     var collected: [Displayable] = []
     func walk(_ el: Element) {
         if el.ignore { return }
-        if el.isGroup, let g = el as? Group {
-            let children = g.childrenRef()
+        // Duck-type the container check exactly like Storage (shared `activeChildrenRef()`): descend
+        // into Group, ZRText (→ TSpan children), AND a combine-morphing Path (→ its sub-paths). The
+        // previous `el.isGroup` check was narrower than upstream's `(el as GroupLike).childrenRef` — it
+        // missed ZRText spans and combine-morph sub-paths, so this Storage-bypassing route (retained
+        // `render`, `renderComposite`, `renderToImage`) dropped them.
+        if let children = el.activeChildrenRef() {
             for i in 0..<children.count {
                 walk(children[i])
             }
@@ -61,17 +65,28 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
 public func renderScene(_ root: Element, into renderer: CGRenderer) {
     let list = flattenDisplayList(root)
     for el in list {
-        if let p = el as? Path {
-            drawPath(p, into: renderer)
-        }
-        else if let t = el as? TSpan {
-            drawTSpan(t, into: renderer)
-        }
-        else if let img = el as? ZRImage {
-            drawZRImage(img, into: renderer)
-        }
-        // else: unknown Displayable — nothing to paint.
+        drawDisplayable(el, into: renderer)
     }
+}
+
+/// Dispatch one `Displayable` to its draw helper. Shared by the snapshot route (`renderScene`) and the
+/// live refresh loop. An `IncrementalDisplayable` is drawn one-shot here (all its pending displayables),
+/// which is correct for a single offscreen frame; the live path uses the retained-bitmap variant
+/// (`CALayerPainter.drawIncrementalRetained`) so accumulated dots are not redrawn every frame.
+func drawDisplayable(_ el: Displayable, into r: CGRenderer) {
+    if let p = el as? Path {
+        drawPath(p, into: r)
+    }
+    else if let t = el as? TSpan {
+        drawTSpan(t, into: r)
+    }
+    else if let img = el as? ZRImage {
+        drawZRImage(img, into: r)
+    }
+    else if let inc = el as? IncrementalDisplayable {
+        inc.eachPendingDisplayable { d in drawDisplayable(d, into: r) }
+    }
+    // else: unknown Displayable — nothing to paint.
 }
 
 private func drawPath(_ p: Path, into r: CGRenderer) {
@@ -82,10 +97,8 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     r.save()
     defer { r.restore() }
 
-    // 1. Clip (applied at the base CTM, with the clip path baked into its own world transform).
-    if let clip = p.getClipPath() {
-        applyClip(clip, into: r)
-    }
+    // 1. Clip (applied at the base CTM, with each clip path baked into its own world transform).
+    applyClipChain(p, into: r)
 
     // 2. Element world transform (concatenated onto the base flipped+dpr CTM).
     if let world = p.getComputedTransform() {
@@ -112,6 +125,10 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     if let shadow = makeShadow(style) {
         r.shadow(shadow)
     }
+
+    // 4b. Composite/blend mode (canvas globalCompositeOperation). Scoped by the save()/restore()
+    //     bracketing this element; 'lighter' is the additive blend the incremental demos depend on.
+    r.setBlendMode(style.blend)
 
     // 5. Geometry: replay the Path's PathProxy into the renderer's CGPath rebuilder.
     // strokePercent: zrender rebuilds the path to its leading fraction (canvas/graphic.ts:225,
@@ -145,9 +162,7 @@ private func drawTSpan(_ t: TSpan, into r: CGRenderer) {
     r.save()
     defer { r.restore() }
 
-    if let clip = t.getClipPath() {
-        applyClip(clip, into: r)
-    }
+    applyClipChain(t, into: r)
     if let world = t.getComputedTransform() {
         r.transform(AffineTransform(world))
     }
@@ -178,9 +193,7 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
     r.save()
     defer { r.restore() }
 
-    if let clip = img.getClipPath() {
-        applyClip(clip, into: r)
-    }
+    applyClipChain(img, into: r)
     if let world = img.getComputedTransform() {
         r.transform(AffineTransform(world))
     }
@@ -238,6 +251,26 @@ private func asCGImage(_ value: Any?) -> CGImage? {
 /// Apply `clip` (a clip Path) as a clip region at the renderer's current (base) CTM. The clip's
 /// own world transform is baked into the path so the clip is correct regardless of the element's
 /// transform (which is concatenated AFTER this).
+/// Apply the element's full inherited clip chain — the parent Group clips intersected with the
+/// element's own clip — as built by `Storage._updateAndAddDisplayable` into `el.__clipPaths`
+/// (Storage.swift:118-165). Upstream's canvas brush reads `el.__clipPaths` directly; the older code
+/// here applied only `el.getClipPath()` (the element's OWN clip), so `Group.setClipPath()` never
+/// reached the group's children and nested intersection (e.g. clipping.html's circle ∩ rect) could
+/// not render. Each clip bakes its own world transform, so all are applied at the base CTM (before
+/// the element's own transform); `setClipPath` intersects with the current region, so applying the
+/// whole chain yields the nested intersection. Falls back to `getClipPath()` for the (unused)
+/// renderScene path where Storage has not populated the chain.
+private func applyClipChain(_ el: Displayable, into r: CGRenderer) {
+    if let chain = el.__clipPaths, !chain.isEmpty {
+        for clip in chain {
+            applyClip(clip, into: r)
+        }
+    }
+    else if let clip = el.getClipPath() {
+        applyClip(clip, into: r)
+    }
+}
+
 private func applyClip(_ clip: Path, into r: CGRenderer) {
     let rb = CGPathRebuilder()
     let pp = clip.getUpdatedPathProxy(false)
@@ -315,6 +348,10 @@ public final class CALayerPainter: Painter {
     private var _motionBlur = false
     private var _lastFrameAlpha: Double = 0
     private var _lastFrameImage: CGImage?
+
+    // Retained per-`IncrementalDisplayable` device-pixel bitmaps (keyed by element identity). Accumulate
+    // dots across frames so only the pending ones are drawn each flush. See `drawIncrementalRetained`.
+    private var _incrementalLayers: [ObjectIdentifier: CGContext] = [:]
 
     public init(size: CGSize, dpr: Double? = nil, backgroundColor: CGColor? = nil) {
         self.surfaceSize = size
@@ -490,25 +527,75 @@ extension CALayerPainter: PainterBase {
         let renderer = beginFrame()
         if let cg = renderer as? CGRenderer {
             for el in displayList {
-                if let p = el as? Path {
-                    drawPath(p, into: cg)
+                if let inc = el as? IncrementalDisplayable {
+                    drawIncrementalRetained(inc, into: cg)   // retained bitmap — O(pending), not O(total)
                 }
-                else if let t = el as? TSpan {
-                    drawTSpan(t, into: cg)
+                else {
+                    drawDisplayable(el, into: cg)
                 }
-                else if let img = el as? ZRImage {
-                    drawZRImage(img, into: cg)
-                }
-                // else: unknown Displayable — nothing to paint.
             }
         }
         endFrame()
+    }
+
+    /// Render an `IncrementalDisplayable` through a per-element RETAINED device-pixel bitmap: only its
+    /// *pending* displayables (the new ones since the last flush, via `eachPendingDisplayable`) are
+    /// drawn into the persistent bitmap, then the whole bitmap is composited into the frame in raw pixel
+    /// space (the same way `beginFrame` composites the motion-blur `_lastFrameImage`). So already-drawn
+    /// dots are never repainted — the per-frame cost stays O(pending), which is what lets the incremental
+    /// demo run at the html's real per-frame batch. `clearDisplaybles()` (notClear == false) wipes the
+    /// bitmap. The bitmap matches `beginFrame`'s flip+dpr base CTM so element coords map identically.
+    private func drawIncrementalRetained(_ inc: IncrementalDisplayable, into cg: CGRenderer) {
+        let pxW = Int((surfaceSize.width * CGFloat(dpr)).rounded())
+        let pxH = Int((surfaceSize.height * CGFloat(dpr)).rounded())
+        guard pxW > 0, pxH > 0 else { return }
+        let key = ObjectIdentifier(inc)
+
+        let ic: CGContext
+        if let existing = _incrementalLayers[key], existing.width == pxW, existing.height == pxH {
+            ic = existing
+        }
+        else {
+            guard let fresh = CGContext(
+                data: nil, width: pxW, height: pxH, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            fresh.translateBy(x: 0, y: CGFloat(pxH))     // same flip + dpr base CTM as beginFrame
+            fresh.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
+            _incrementalLayers[key] = fresh
+            ic = fresh
+        }
+
+        // clearDisplaybles() → notClear == false: wipe the retained pixels, then consume the signal.
+        if inc.notClear == false {
+            ic.saveGState()
+            ic.concatenate(ic.ctm.inverted())            // raw pixel space
+            ic.clear(CGRect(x: 0, y: 0, width: pxW, height: pxH))
+            ic.restoreGState()
+            inc.notClear = true
+        }
+
+        // Draw ONLY the pending displayables into the retained bitmap (blend/transform preserved), then
+        // advance the cursor and drop the temp LIST (its pixels remain baked into the bitmap).
+        let ir = CGRenderer(ic, flipped: true)
+        inc.eachPendingDisplayable { d in drawDisplayable(d, into: ir) }
+        inc.innerAfterBrush()
+        inc.clearTemporalDisplayables()
+
+        // Composite the accumulated bitmap into the frame, 1:1 in raw pixel space.
+        if let image = ic.makeImage() {
+            cg.ctx.saveGState()
+            cg.ctx.concatenate(cg.ctx.ctm.inverted())
+            cg.ctx.draw(image, in: CGRect(x: 0, y: 0, width: pxW, height: pxH))
+            cg.ctx.restoreGState()
+        }
     }
 
     public func resize(_ width: Double?, _ height: Double?, _ dpr: Double?) {
         if let w = width, let h = height {
             surfaceSize = CGSize(width: w, height: h)
             rootLayer.bounds = CGRect(origin: .zero, size: surfaceSize)
+            _incrementalLayers.removeAll()   // retained bitmaps are sized to the old surface
         }
         // PORT-TODO: `dpr` is immutable on CALayerPainter (set at init); a dpr change needs a fresh
         //   painter / backing store. Honored only for width/height here.
@@ -517,6 +604,7 @@ extension CALayerPainter: PainterBase {
     public func clear() {
         rootLayer.contents = nil
         rootLayer.sublayers = nil
+        _incrementalLayers.removeAll()
     }
 
     public func getWidth() -> Double {
@@ -537,6 +625,7 @@ extension CALayerPainter: PainterBase {
     public func dispose() {
         rootLayer.contents = nil
         rootLayer.sublayers = nil
+        _incrementalLayers.removeAll()
     }
 }
 

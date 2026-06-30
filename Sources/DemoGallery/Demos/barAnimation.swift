@@ -13,6 +13,18 @@ extension DemoRegistry {
             // Upstream builds each Rect COLLAPSED at the baseline (shape.y = height, shape.height = 0).
             let bar = rect(Double(i) * barW + 1.5, baseline, barW - 3, 0)
             zr.add(styled(bar, fill: "#0000b4"))   // base color rgb(0, 0, 180)
+
+            // Upstream per-bar hover handlers: recolor blue↔red over 200ms.
+            //   onmouseover: this.animateStyle().when(200, {fill:'rgb(180,0,0)'}).start()
+            //   onmouseout : this.animateStyle().when(200, {fill:'rgb(0,0,180)'}).start()
+            bar.on("mouseover") { ctx, _ in
+                (ctx as? Path)?.animate("style").when(200, ["fill": "rgb(180, 0, 0)"]).start()
+                return nil
+            }
+            bar.on("mouseout") { ctx, _ in
+                (ctx as? Path)?.animate("style").when(200, ["fill": "rgb(0, 0, 180)"]).start()
+                return nil
+            }
             // Faithful to upstream `barShape.animateTo({ shape: { height, y }, style: { fill: 'red' } }, { duration: 500 })`:
             // the bar grows UPWARD from the baseline (height 0 -> h, y baseline -> baseline - h) while
             // recoloring blue -> red. Must add to `zr` first so the animator registers with the host loop.

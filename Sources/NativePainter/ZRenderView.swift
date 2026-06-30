@@ -316,6 +316,11 @@ public final class ZRenderView: NSView {
     public let proxy: NativeHandlerProxy
 
     private let animationLoop: AnimationLoop
+    /// Tracking area so bare pointer movement (no button) is delivered as `mouseMoved`. The browser
+    /// fires `mousemove` on hover, which zrender turns into hover dispatch (mouseover/mouseout) and
+    /// which demos listen to via `zr.on("mousemove")`; without this, AppKit only delivers movement
+    /// while a button is held (`mouseDragged`). `.inVisibleRect` keeps it sized to the view.
+    private var movementTrackingArea: NSTrackingArea?
 
     public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
@@ -366,6 +371,20 @@ public final class ZRenderView: NSView {
     }
 
     // MARK: Mouse capture → normalized ZRRawEvent → proxy
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = movementTrackingArea { removeTrackingArea(area) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.activeInActiveApp, .mouseMoved, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        movementTrackingArea = area
+    }
+
+    public override func mouseMoved(with event: NSEvent) {
+        proxy.mousemove(makeMouseEvent("mousemove", event, which: 0))
+    }
 
     public override func mouseDown(with event: NSEvent) {
         proxy.mousedown(makeMouseEvent("mousedown", event, which: 1))

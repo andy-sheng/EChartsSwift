@@ -165,10 +165,13 @@ public final class Storage {
             el.__clipPaths = thisClipPaths
         }
 
-        // ZRText and Group and combining morphing Path may use children
-        if let groupLike = el as? GroupLike {
-            let children = groupLike.childrenRef()
-
+        // ZRText and Group and combining morphing Path may use children.
+        // Upstream duck-types `(el as GroupLike).childrenRef`; `activeChildrenRef()` is the shared
+        // single-source-of-truth for that decision (Group/Text via GroupLike, a combine-morphing Path
+        // via its monkey-patched `__morphChildrenRef`). Before this, the plain `as? GroupLike` cast
+        // missed the combine `toPath` — it was drawn as its own (un-morphed) shape while its sub-paths
+        // never entered the display list.
+        if let children = el.activeChildrenRef() {
             for i in 0..<children.count {
                 let child = children[i]
 

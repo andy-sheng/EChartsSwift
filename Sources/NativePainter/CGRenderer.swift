@@ -199,34 +199,51 @@ public final class CGRenderer: Renderer {
         ctx.restoreGState()
     }
 
-    /// Tile `img` over the current clip region. PORT-TODO: only the `repeat` mode + x/y offset and
-    /// uniform scale are honored; rotation and `repeat-x`/`repeat-y`/`no-repeat` are best-effort
-    /// (always tiled in both axes). zrender's `createCanvasPattern` rotation/scale matrix is the
-    /// exotic case deferred here.
+    /// Tile `img` over the current clip region, honoring the pattern's full transform.
+    ///
+    /// zrender's `createCanvasPattern` (canvas/graphic.ts:81-85) sets the canvas pattern's transform
+    /// to `M = translate(x, y) · rotate(rotation) · scale(scaleX, scaleY)`, then tiles the RAW image
+    /// (period = image size) in pattern-local space, mapping the whole grid into world space by M. We
+    /// reproduce that exactly: concatenate M onto the (world-space) CTM, tile the raw image in local
+    /// space, and map the clip's world bounding box back through M⁻¹ to bound the tile indices.
+    ///
+    /// PORT-TODO: `repeat-x`/`repeat-y`/`no-repeat` are still best-effort (always tiled in both axes);
+    /// only the default `repeat` is exercised today.
     private func tilePattern(_ img: CGImage, pattern: Pattern) {
         // Callers (`fillPatternClipped` / `strokeWithPaint`) bracket this in save/clip/restore.
-        let bb = ctx.boundingBoxOfClipPath
-        let tileW = CGFloat(img.width) * CGFloat(pattern.scaleX)
-        let tileH = CGFloat(img.height) * CGFloat(pattern.scaleY)
-        guard tileW > 0, tileH > 0, bb.width > 0, bb.height > 0 else { return }
-        // Anchor the tile grid at (pattern.x, pattern.y), backing up to cover the clip's top-left.
-        var startX = CGFloat(pattern.x)
-        while startX > bb.minX { startX -= tileW }
-        var startY = CGFloat(pattern.y)
-        while startY > bb.minY { startY -= tileH }
+        let bb = ctx.boundingBoxOfClipPath   // world-space (current user space) clip bounds
+        let imgW = CGFloat(img.width), imgH = CGFloat(img.height)
+        let sx = CGFloat(pattern.scaleX), sy = CGFloat(pattern.scaleY)
+        guard imgW > 0, imgH > 0, sx != 0, sy != 0, bb.width > 0, bb.height > 0 else { return }
+
+        // M: pattern-local space -> world space. Same compose order as the upstream DOMMatrix:
+        // translateSelf → rotateSelf → scaleSelf (each post-multiplies).
+        var m = CGAffineTransform(translationX: CGFloat(pattern.x), y: CGFloat(pattern.y))
+        m = m.rotated(by: CGFloat(pattern.rotation))
+        m = m.scaledBy(x: sx, y: sy)
+
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.concatenate(m)
+
+        // Tile extent: the world clip box mapped into pattern-local space (axis-aligned bbox of the
+        // four mapped corners). Tiles step by the RAW image size — the scale already lives in the CTM.
+        let local = bb.applying(m.inverted())
+        let startX = (local.minX / imgW).rounded(.down) * imgW
+        let startY = (local.minY / imgH).rounded(.down) * imgH
         var py = startY
-        while py < bb.maxY {
+        while py < local.maxY {
             var px = startX
-            while px < bb.maxX {
+            while px < local.maxX {
                 // Draw upright (CGContext.draw paints bottom-up; the surrounding CTM is y-down).
                 ctx.saveGState()
-                ctx.translateBy(x: px, y: py + tileH)
+                ctx.translateBy(x: px, y: py + imgH)
                 ctx.scaleBy(x: 1, y: -1)
-                ctx.draw(img, in: CGRect(x: 0, y: 0, width: tileW, height: tileH))
+                ctx.draw(img, in: CGRect(x: 0, y: 0, width: imgW, height: imgH))
                 ctx.restoreGState()
-                px += tileW
+                px += imgW
             }
-            py += tileH
+            py += imgH
         }
     }
 
@@ -392,6 +409,41 @@ public final class CGRenderer: Renderer {
         )
     }
 
+    // MARK: - 9. Blend mode (canvas `globalCompositeOperation` / zrender `style.blend`)
+
+    /// Map zrender's `style.blend` (a canvas composite-operation string) onto a `CGBlendMode` and set
+    /// it on the context. `nil` / "source-over" is the default (`.normal`); the incremental demos rely
+    /// on "lighter" → `.plusLighter` (additive) so stacked dark dots accumulate toward a bright glow.
+    public func setBlendMode(_ blend: String?) {
+        ctx.setBlendMode(Self.cgBlendMode(blend))
+    }
+
+    static func cgBlendMode(_ blend: String?) -> CGBlendMode {
+        switch blend {
+        case nil, "", "source-over", "normal": return .normal
+        case "lighter":      return .plusLighter   // additive — the incremental glow
+        case "multiply":     return .multiply
+        case "screen":       return .screen
+        case "overlay":      return .overlay
+        case "darken":       return .darken
+        case "lighten":      return .lighten
+        case "color-dodge":  return .colorDodge
+        case "color-burn":   return .colorBurn
+        case "hard-light":   return .hardLight
+        case "soft-light":   return .softLight
+        case "difference":   return .difference
+        case "exclusion":    return .exclusion
+        case "hue":          return .hue
+        case "saturation":   return .saturation
+        case "color":        return .color
+        case "luminosity":   return .luminosity
+        case "destination-out": return .destinationOut
+        case "copy":         return .copy
+        case "xor":          return .xor
+        default:             return .normal
+        }
+    }
+
     // MARK: - GState bracketing (used by the painter per element)
 
     public func save() { ctx.saveGState() }
@@ -485,11 +537,21 @@ func isSafeNum(_ x: Double) -> Bool {
     return x.isFinite
 }
 
+#if canImport(ImageIO)
+/// Decode cache for `loadCGImage`, keyed by the source string. A tiled Pattern fill calls
+/// `loadCGImage` on every fill, and a repaint re-runs it each frame, so without this the same image
+/// (e.g. a 180×180 asset/test.png) would be re-decoded continuously. Browsers cache decoded images
+/// by URL; this is the native equivalent. NSCache is thread-safe + memory-pressure aware.
+private let _cgImageDecodeCache = NSCache<NSString, CGImage>()
+#endif
+
 /// Decode a `string` image source (file path or `data:` URI) to a `CGImage` via ImageIO.
 /// PORT-TODO: this is the `string` arm of zrender's `ImageLike | string`; remote URL loading
 /// (`platform.loadImage`) and the cached `ImageLike` handle are the deferred renderer seam.
 func loadCGImage(_ src: String) -> CGImage? {
     #if canImport(ImageIO)
+    let cacheKey = src as NSString
+    if let cached = _cgImageDecodeCache.object(forKey: cacheKey) { return cached }
     var data: Data?
     if src.hasPrefix("data:") {
         // data:[<mime>][;base64],<payload>
@@ -509,6 +571,7 @@ func loadCGImage(_ src: String) -> CGImage? {
           let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
         return nil
     }
+    _cgImageDecodeCache.setObject(img, forKey: cacheKey)
     return img
     #else
     // PORT-TODO: ImageIO unavailable — pattern/image string decode unsupported on this platform.

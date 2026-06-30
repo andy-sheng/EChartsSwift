@@ -24,6 +24,14 @@ private let m: MatrixArray = MatrixArray(repeating: 0, count: 6)
 
 public final class IncrementalDisplayable: Displayable {
 
+    // RENDERING: this stays a single leaf `Displayable` in the display list (NOT a flattened container).
+    //   The native painter renders it into its own RETAINED device-pixel bitmap — each flush draws only
+    //   the *pending* displayables (`eachPendingDisplayable` / cursor) into that bitmap and composites it
+    //   into the frame, so old dots are never redrawn (the upstream incremental-layer perf model). See
+    //   `CALayerPainter.drawIncrementalRetained`. (An earlier attempt exposed all displayables via
+    //   `childrenRef` so they flattened into the normal list — render-correct but O(total)/frame, which
+    //   defeated the whole point; the retained bitmap is O(pending)/frame instead.)
+
     // PORT-TODO: upstream re-declares `notClear: boolean = true` / `incremental = …` as own fields;
     //   Swift can't redeclare inherited stored properties (both live on `Displayable`), so they are
     //   seeded in `init` instead.

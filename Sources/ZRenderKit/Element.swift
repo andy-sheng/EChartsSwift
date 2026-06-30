@@ -176,13 +176,30 @@ fileprivate let DEFAULT_ANIMATABLE_MAP: [String: Bool] = {
 }()
 
 // PORT-TODO: ElementStatePropNames / ElementState / ElementCommonState — `Pick<ElementProps, ...>`
-//   utility types. The states machinery is stubbed (Phase 2); `ElementState` is modeled as an
-//   opaque prop bag carrying just the fields the stub references.
-public struct ElementState {
+//   utility types. `ElementState` is modeled as a prop bag (`props`), carrying the overrides a named
+//   state applies (transform keys as scalars; `shape` / `style` as `[String: Any]` sub-bags — the
+//   same shape an `animateTo` target takes).
+//
+// REFERENCE TYPE: upstream states are plain mutable objects (`el.ensureState('x').x = 1` mutates the
+//   stored state in place). A Swift value type would hand `ensureState` a COPY, so the mutation would
+//   be lost. `ElementState` is therefore a `class`.
+public final class ElementState {
     public var props: [String: Any] = [:]
     public var textConfig: ElementTextConfig?
     public var hoverLayer: Any?   // upstream: boolean | number
     public init() {}
+
+    // Convenience accessors so a state reads like upstream (`state.x = 200`, `state.shape = {...}`).
+    // All are stored in `props` (the generic bag the state machinery operates on).
+    public var x: Double? { get { props["x"] as? Double } set { props["x"] = newValue } }
+    public var y: Double? { get { props["y"] as? Double } set { props["y"] = newValue } }
+    public var rotation: Double? { get { props["rotation"] as? Double } set { props["rotation"] = newValue } }
+    public var scaleX: Double? { get { props["scaleX"] as? Double } set { props["scaleX"] = newValue } }
+    public var scaleY: Double? { get { props["scaleY"] as? Double } set { props["scaleY"] = newValue } }
+    /// A partial shape override, as shape-key → value (e.g. `["width": 200]`).
+    public var shape: [String: Any]? { get { props["shape"] as? [String: Any] } set { props["shape"] = newValue } }
+    /// A partial style override, as style-key → value (e.g. `["fill": ZRColor.string("green")]`).
+    public var style: [String: Any]? { get { props["style"] as? [String: Any] } set { props["style"] = newValue } }
 }
 
 // TextPositionCalculationResult is now ported in Contain/text.swift; the opaque stub is removed.
@@ -398,12 +415,153 @@ open class Element: Transformable, AnimationTarget {
         }
     }
 
+    /// Lay out the attached `_textContent`: position it from `textConfig` (position / rotation /
+    /// offset / origin) via contain/text `calculateTextPosition`, written into the text's
+    /// `innerTransformable` (which `ZRText.getLocalTransform` renders from), and resolve inside/outside
+    /// fill+stroke into the text's default style. Storage already adds the attached text to the
+    /// display list, so this is what makes `setTextContent` + `textConfig.position` actually render.
+    ///
+    /// PORT-NOTE: the `autoOverflowArea` / `overflowRect` branch is not ported (it needs the
+    /// inverse-transform overflow clamp + the full parseText overflow engine); everything else
+    /// (the rectText demo's position/rotation/distance/offset/origin/fill controls) is faithful.
     public func updateInnerText(_ forceUpdate: Bool? = nil) {
-        // PORT-TODO: ZRText (Text) integration is Phase 2. The faithful body lays out the
-        //   attached `_textContent`: applies host transform, calculates text position via
-        //   contain/text.ts `calculateTextPosition`, resolves inside/outside fill & stroke, and
-        //   flags the text element dirty. Deferred — no-op for render-only.
-        _ = forceUpdate
+        guard let textEl = self._textContent, (!textEl.ignore || (forceUpdate ?? false)) else { return }
+        if self.textConfig == nil { self.textConfig = ElementTextConfig() }
+        let textConfig = self.textConfig!
+        let isLocal = textConfig.local ?? false
+        guard let innerTransformable = textEl.innerTransformable else { return }
+
+        var textAlign: TextAlign? = nil
+        var textVerticalAlign: TextVerticalAlign? = nil
+        var textStyleChanged = false
+
+        // Apply host's transform (local → positioned in host space; else global).
+        innerTransformable.parent = isLocal ? self : nil
+        var innerOrigin = false
+        innerTransformable.copyTransform(textEl)   // reset x/y/rotation from the text
+
+        let hasPosition = textConfig.position != nil
+
+        var layoutRect: BoundingRect? = nil
+        if hasPosition {
+            let lr = tmpBoundingRect
+            if let lrc = textConfig.layoutRect {
+                lr.copy(BoundingRect(lrc.x, lrc.y, lrc.width, lrc.height))
+            }
+            else if let br = self.getBoundingRect() {
+                lr.copy(br)
+            }
+            if !isLocal, let t = self.transform {
+                lr.applyTransform(t)
+            }
+            layoutRect = lr
+        }
+
+        // Force-set the attached text's position if `position` is in config.
+        if hasPosition, let layoutRect = layoutRect {
+            var opts = CalculateTextPositionOpts()
+            opts.position = _textConfigPositionOpt(textConfig.position)
+            opts.distance = textConfig.distance
+            let res = ZRenderKit.text.calculateTextPosition(nil, opts, layoutRect)
+
+            innerTransformable.x = res.x
+            innerTransformable.y = res.y
+            // User align/verticalAlign has higher priority (useful when the text is rotated 90°).
+            textAlign = res.align
+            textVerticalAlign = res.verticalAlign
+
+            if let origin = textConfig.origin, textConfig.rotation != nil {
+                var relOriginX = 0.0
+                var relOriginY = 0.0
+                if let s = origin as? String, s == "center" {
+                    relOriginX = layoutRect.width * 0.5
+                    relOriginY = layoutRect.height * 0.5
+                }
+                else if let arr = origin as? [Double], arr.count >= 2 {
+                    relOriginX = ZRenderKit.text.parsePercent(.number(arr[0]), layoutRect.width)
+                    relOriginY = ZRenderKit.text.parsePercent(.number(arr[1]), layoutRect.height)
+                }
+                innerOrigin = true
+                innerTransformable.originX = -innerTransformable.x + relOriginX + (isLocal ? 0 : layoutRect.x)
+                innerTransformable.originY = -innerTransformable.y + relOriginY + (isLocal ? 0 : layoutRect.y)
+            }
+        }
+
+        if let rot = textConfig.rotation {
+            innerTransformable.rotation = rot
+        }
+
+        if let textOffset = textConfig.offset, textOffset.count >= 2 {
+            innerTransformable.x += textOffset[0]
+            innerTransformable.y += textOffset[1]
+            if !innerOrigin {
+                innerTransformable.originX = -textOffset[0]
+                innerTransformable.originY = -textOffset[1]
+            }
+        }
+        // [CAUTION] Do not change `innerTransformable` below.
+
+        // Calculate text color (inside vs outside).
+        let isInside: Bool
+        if let inside = textConfig.inside {
+            isInside = inside
+        }
+        else if let posStr = textConfig.position as? String {
+            isInside = posStr.contains("inside")
+        }
+        else {
+            isInside = false
+        }
+
+        var textFill: String?
+        var textStroke: String?
+        var autoStroke: Bool? = nil
+        if isInside && self.canBeInsideText() {
+            textFill = textConfig.insideFill
+            textStroke = textConfig.insideStroke
+            if textFill == nil || textFill == "auto" { textFill = self.getInsideTextFill() }
+            if textStroke == nil || textStroke == "auto" {
+                textStroke = self.getInsideTextStroke(textFill); autoStroke = true
+            }
+        }
+        else {
+            textFill = textConfig.outsideFill
+            textStroke = textConfig.outsideStroke
+            if textFill == nil || textFill == "auto" { textFill = self.getOutsideFill() }
+            if textStroke == nil || textStroke == "auto" {
+                textStroke = self.getOutsideStroke(textFill); autoStroke = true
+            }
+        }
+        textFill = textFill ?? "#000"
+
+        if self._innerTextDefaultStyle == nil { self._innerTextDefaultStyle = DefaultTextStyle() }
+        var defStyle = self._innerTextDefaultStyle!
+        if textFill != defStyle.fill || textStroke != defStyle.stroke || autoStroke != defStyle.autoStroke
+            || textAlign != defStyle.align || textVerticalAlign != defStyle.verticalAlign {
+            textStyleChanged = true
+            defStyle.fill = textFill
+            defStyle.stroke = textStroke
+            defStyle.autoStroke = autoStroke
+            defStyle.align = textAlign
+            defStyle.verticalAlign = textVerticalAlign
+            self._innerTextDefaultStyle = defStyle
+            textEl.setDefaultTextStyle(defStyle)
+        }
+
+        // Mark textEl to update transform (NOT markRedraw — that would re-dirty the host).
+        textEl.__dirty = Double(Int(textEl.__dirty) | Int(REDRAW_BIT))
+        if textStyleChanged {
+            textEl.dirtyStyle(true)
+        }
+    }
+
+    /// Convert `textConfig.position` (the `Any?` union — a `BuiltinTextPosition` string or a number
+    /// array) into the typed opts the contain/text `calculateTextPosition` takes.
+    private func _textConfigPositionOpt(_ pos: Any?) -> BuiltinTextPositionOrArray? {
+        if let bp = pos as? BuiltinTextPosition { return .position(bp) }
+        if let s = pos as? String, let bp = BuiltinTextPosition(rawValue: s) { return .position(bp) }
+        if let arr = pos as? [Double] { return .array(arr.map { NumberOrString.number($0) }) }
+        return nil
     }
 
     internal func canBeInsideText() -> Bool {  // upstream: protected
@@ -591,15 +749,97 @@ open class Element: Transformable, AnimationTarget {
 
     // Save current state to normal
     public func saveCurrentToNormalState(_ toState: ElementState) {
-        // PORT-TODO: states machinery is Phase 2. Faithful body saves the current value of each
-        //   primary/animatable prop to `_normalState` (including final animation values). Deferred.
         self._innerSaveToNormal(toState)
+        // PORT-NOTE: upstream additionally walks `this.animators` here to bake a running animation's
+        //   FINAL value into `_normalState` before switching. That loop SKIPS loop animators and
+        //   state-transition animators (`__fromStateTransition`), so it only fires when a plain
+        //   `animateTo` is interrupted by a state change mid-flight — a combination the state demos do
+        //   not produce. Omitted (writing into the value-type `_normalState` sub-bags would also need
+        //   a reference target). See DEMO_PARITY_GAPS.md / state.
     }
 
+    // Save the CURRENT value of every prop a target state will change — once — so it can be restored
+    // when that state is removed. Sub-bag props (`shape` / `style`) are saved key-by-key, read through
+    // the element's keyed animation accessor (which mirrors the subclass's value-type bag).
     internal func _innerSaveToNormal(_ toState: ElementState) {  // upstream: protected
-        // PORT-TODO: states machinery is Phase 2. Deferred.
         if self._normalState == nil {
             self._normalState = ElementState()
+        }
+        let normalState = self._normalState!
+        if toState.textConfig != nil && normalState.textConfig == nil {
+            normalState.textConfig = self.textConfig
+        }
+        for key in util.keys(toState.props) {
+            if let subDict = toState.props[key] as? [String: Any] {
+                let accessor = self.animationGet(key) as? AnimationTarget
+                var normalSub = (normalState.props[key] as? [String: Any]) ?? [:]
+                for subKey in util.keys(subDict) where normalSub[subKey] == nil {
+                    normalSub[subKey] = accessor?.animationGet(subKey)
+                }
+                normalState.props[key] = normalSub
+            }
+            else if normalState.props[key] == nil {
+                normalState.props[key] = self.animationGet(key)
+            }
+        }
+    }
+
+    // Deep-merge `from` into `into` (recursing one level into shape/style sub-bags).
+    private func _deepMergeProps(_ into: inout [String: Any], _ from: [String: Any]) {
+        for key in util.keys(from) {
+            if let vDict = from[key] as? [String: Any],
+               let existing = into[key] as? [String: Any] {
+                var merged = existing
+                self._deepMergeProps(&merged, vDict)
+                into[key] = merged
+            }
+            else {
+                into[key] = from[key]
+            }
+        }
+    }
+
+    // The full apply target for a set of active states: the union of their props laid over the saved
+    // normal values, so props no longer covered by any active state restore to normal (and within a
+    // shape/style sub-bag, sub-keys no longer covered restore too).
+    private func _computeRestoreTarget(_ stateObjects: [ElementState]) -> [String: Any] {
+        var merged: [String: Any] = [:]
+        for s in stateObjects {
+            self._deepMergeProps(&merged, s.props)
+        }
+        let normal = self._normalState?.props ?? [:]
+        var target: [String: Any] = [:]
+        var allKeys = Set(normal.keys)
+        allKeys.formUnion(merged.keys)
+        for key in allKeys {
+            if let mv = merged[key] {
+                if let mDict = mv as? [String: Any], let nDict = normal[key] as? [String: Any] {
+                    var sub = nDict                       // start from normal (restores dropped sub-keys)
+                    self._deepMergeProps(&sub, mDict)     // active state sub-keys win
+                    target[key] = sub
+                }
+                else {
+                    target[key] = mv
+                }
+            }
+            else if let nv = normal[key] {
+                target[key] = nv                          // dropped by all active states → restore normal
+            }
+        }
+        return target
+    }
+
+    // Apply a state target. With a transition it animates (tagging the animators with the state name,
+    // exactly like `_transitionState`); otherwise it jumps via a duration-0 transition.
+    private func _stateApply(_ stateName: String, _ target: [String: Any], _ transition: Bool) {
+        if target.isEmpty { return }
+        if transition {
+            self._transitionState(stateName, target, self.stateTransition)
+        }
+        else {
+            var cfg = self.stateTransition ?? ElementAnimateConfig()
+            cfg.duration = 0
+            self._transitionState(stateName, target, cfg)
         }
     }
 
@@ -636,6 +876,13 @@ open class Element: Transformable, AnimationTarget {
     }
 
     /// Use state. State is a collection of properties.
+    ///
+    /// PORT-NOTE: upstream routes application through `_applyStateObj` (per-class, with a transform /
+    /// style / shape split + hover-layer branches). This port instead computes the full target prop
+    /// bag and applies it via `animateTo` (`_stateApply`), which already drives transform / shape /
+    /// style uniformly — same observable result (animated transition to the active states, restoring
+    /// dropped props to normal). Hover-layer (`shouldUseHoverLayer`) is a no-op for non-text elements
+    /// and is omitted; `_applyStateObj` is left unused.
     @discardableResult
     public func useState(
         _ stateName: String,
@@ -643,20 +890,111 @@ open class Element: Transformable, AnimationTarget {
         _ noAnimation: Bool? = nil,
         _ forceUseHoverLayer: Bool? = nil
     ) -> ElementState? {
-        // PORT-TODO: states / emphasis / blur / select machinery is Phase 2. The faithful body
-        //   resolves the named state (stateProxy → states), saves current-to-normal, enters/leaves
-        //   the hover layer, applies the state object (with optional transition animation), and
-        //   cascades to textContent / textGuide. Deferred — no-op for render-only.
-        return nil
+        let toNormalState = (stateName == PRESERVED_NORMAL_STATE)
+        let hasStates = self.hasState()
+        let keep = keepCurrentStates ?? false
+
+        // Switching from normal to normal — nothing to do.
+        if !hasStates && toNormalState {
+            return nil
+        }
+
+        // No need to change: keeping current states and it's already applied, or it's the only state.
+        if util.indexOf(self.currentStates, stateName) >= 0 && (keep || self.currentStates.count == 1) {
+            return nil
+        }
+
+        var state: ElementState?
+        if let proxy = self.stateProxy, !toNormalState {
+            state = proxy(stateName, nil)
+        }
+        if state == nil {
+            state = self.states[stateName]
+        }
+        if state == nil && !toNormalState {
+            util.logError("State \(stateName) not exists.")
+            return nil
+        }
+
+        if !toNormalState, let st = state {
+            self.saveCurrentToNormalState(st)
+        }
+
+        let canTransition = !(noAnimation ?? false) && (self.stateTransition?.duration ?? 0) > 0
+
+        let target: [String: Any]
+        if toNormalState {
+            target = self._normalState?.props ?? [:]          // restore every saved normal value
+        }
+        else if keep {
+            target = state!.props                              // additive: lay this state over current
+        }
+        else {
+            target = self._computeRestoreTarget([state!])      // sole state: over normal, restore others
+        }
+        self._stateApply(stateName, target, canTransition)
+
+        if toNormalState {
+            self.currentStates = []
+            self._normalState = ElementState()
+        }
+        else if !keep {
+            self.currentStates = [stateName]
+        }
+        else {
+            self.currentStates.append(stateName)
+        }
+
+        self._updateAnimationTargets()
+        self.markRedraw()
+        return state
     }
 
-    /// Apply multiple states.
+    /// Apply multiple states (the merged union of them; props no longer covered restore to normal).
     public func useStates(
         _ states: [String],
         _ noAnimation: Bool? = nil,
         _ forceUseHoverLayer: Bool? = nil
     ) {
-        // PORT-TODO: states machinery is Phase 2 (merges state objects + applies). Deferred.
+        if states.isEmpty {
+            self.clearStates(noAnimation)
+            return
+        }
+
+        // No change if the requested list equals the current one (same order).
+        if states.count == self.currentStates.count {
+            var notChange = true
+            for i in 0..<states.count where states[i] != self.currentStates[i] {
+                notChange = false
+                break
+            }
+            if notChange { return }
+        }
+
+        var stateObjects: [ElementState] = []
+        for stateName in states {
+            var stateObj: ElementState?
+            if let proxy = self.stateProxy {
+                stateObj = proxy(stateName, states)
+            }
+            if stateObj == nil {
+                stateObj = self.states[stateName]
+            }
+            if let s = stateObj {
+                stateObjects.append(s)
+            }
+        }
+
+        let mergedState = self._mergeStates(stateObjects)
+        let canTransition = !(noAnimation ?? false) && (self.stateTransition?.duration ?? 0) > 0
+
+        self.saveCurrentToNormalState(mergedState)
+        let target = self._computeRestoreTarget(stateObjects)
+        self._stateApply(states.joined(separator: ","), target, canTransition)
+
+        self._updateAnimationTargets()
+        self.currentStates = states
+        self.markRedraw()
     }
 
     /// Return if el.silent or any ancestor element has silent true.
@@ -679,10 +1017,14 @@ open class Element: Transformable, AnimationTarget {
         return false
     }
 
-    /// Update animation targets when reference is changed.
+    /// Update animation targets when reference is changed (re-point each sub-bag animator at the
+    /// element's current accessor after a state swap).
     private func _updateAnimationTargets() {
-        // PORT-TODO: animation surface deferred (Phase 3). Faithful body re-points each animator
-        //   whose `targetName` is set at the (possibly replaced) sub-target. Deferred.
+        for animator in self.animators {
+            if let targetName = animator.targetName, let newTarget = self.animationGet(targetName) {
+                animator.changeTarget(newTarget)
+            }
+        }
     }
 
     /// Remove state
@@ -727,8 +1069,16 @@ open class Element: Transformable, AnimationTarget {
     }
 
     internal func _mergeStates(_ states: [ElementState]) -> ElementState {  // upstream: protected
-        // PORT-TODO: states machinery is Phase 2 (extends each state + merges textConfig). Deferred.
-        return ElementState()
+        let mergedState = ElementState()
+        var mergedTextConfig: ElementTextConfig?
+        for state in states {
+            self._deepMergeProps(&mergedState.props, state.props)
+            if let tc = state.textConfig {
+                mergedTextConfig = tc   // PORT-NOTE: upstream `extend`s textConfig; last-wins here (demos set none).
+            }
+        }
+        mergedState.textConfig = mergedTextConfig
+        return mergedState
     }
 
     internal func _applyStateObj(  // upstream: protected
@@ -1012,8 +1362,13 @@ open class Element: Transformable, AnimationTarget {
         self.animators.append(animator)
 
         // If animate after added to the zrender
-        if let zr = zr {
-            zr.animation.addAnimator(animator)
+        // DEVIATION (robustness): upstream does `if (zr) { zr.animation.addAnimator(...) }` and would
+        //   TypeError if `zr.animation` were null. Natively `zr.animation` is nulled by `dispose()`
+        //   (ZRender.swift), and a still-referenced element (e.g. a deferred morph/asyncAfter closure
+        //   firing after the host view tore down its zr) can reach here with a disposed `zr`. Bind the
+        //   IUO so a disposed clock is a no-op rather than an implicit-unwrap trap.
+        if let zr = zr, let animation = zr.animation {
+            animation.addAnimator(animator)
         }
 
         // Wake up zrender to start the animation loop.

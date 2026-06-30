@@ -185,11 +185,20 @@ public struct PathStyleProps {
 // rgba strings (color.parse → interpolate → rgba2String), so `fill`/`stroke` are exposed/accepted
 // as color strings. Gradient/pattern colors are not keyed (PORT-TODO).
 private func zrColorToAnimValue(_ c: ZRColor?) -> Any? {
-    if case .some(.string(let s)) = c {
+    switch c {
+    case .some(.string(let s)):
         return s
+    // Gradient fill/stroke tweening: hand the Animator the Gradient object — it detects it
+    // (util.isGradientObject), parses it to a ParsedGradientObject, and interpolates the stops +
+    // geometry, writing back the dict that `animValueToZRColor` reconstructs.
+    case .some(.linearGradient(let g)):
+        return g
+    case .some(.radialGradient(let g)):
+        return g
+    // PORT-TODO: pattern color tweening.
+    default:
+        return nil
     }
-    // PORT-TODO: gradient / pattern color tweening — only the `.string` case flows for animation.
-    return nil
 }
 private func animValueToZRColor(_ v: Any?) -> ZRColor? {
     if let s = v as? String {
@@ -200,6 +209,22 @@ private func animValueToZRColor(_ v: Any?) -> ZRColor? {
     if let arr = v as? [Double], arr.count >= 3 {
         let a = arr.count > 3 ? arr[3] : 1
         return .string("rgba(\(Int(floor(arr[0]))),\(Int(floor(arr[1]))),\(Int(floor(arr[2]))),\(a))")
+    }
+    // The Animator writes an interpolated gradient back as a `[String: Any]` dict (type / x / y /
+    // colorStops / global / x2,y2 | r) — rebuild a Linear/RadialGradient ZRColor from it.
+    if let d = v as? [String: Any], let type = d["type"] as? String {
+        let stops = (d["colorStops"] as? [[String: Any]] ?? []).map {
+            GradientColorStop(offset: $0["offset"] as? Double ?? 0, color: $0["color"] as? String ?? "#000")
+        }
+        let global = d["global"] as? Bool
+        if type == "linear" {
+            return .linearGradient(LinearGradient(
+                d["x"] as? Double, d["y"] as? Double, d["x2"] as? Double, d["y2"] as? Double, stops, global))
+        }
+        else if type == "radial" {
+            return .radialGradient(RadialGradient(
+                d["x"] as? Double, d["y"] as? Double, d["r"] as? Double, stops, global))
+        }
     }
     return nil
 }

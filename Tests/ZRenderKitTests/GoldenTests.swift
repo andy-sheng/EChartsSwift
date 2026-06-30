@@ -412,5 +412,181 @@ final class CALayerPainterSmokeTests: XCTestCase {
         XCTAssertEqual(img.width, 200, "rendered image width")
         XCTAssertEqual(img.height, 150, "rendered image height")
     }
+
+    /// Inherited-clip propagation (clipping.html's core). A leaf that sets NO clip of its own,
+    /// nested in g1 (rect clip) ⊃ g2 (circle clip), must paint only inside rect ∩ circle.
+    ///
+    /// Storage builds the leaf's `__clipPaths` chain (parent g1 rect ∩ parent g2 circle); the painter
+    /// must apply the WHOLE chain (CALayerPainter.applyClipChain), not just the leaf's own
+    /// `getClipPath()` (which is nil here). Before that fix the leaf rendered fully unclipped.
+    ///
+    /// Geometry (200x200, all probes at y=100 — the vertical centre — so the CGImage y-flip is moot):
+    ///   g1.clip = rect  x0 y0 w100 h200      → keeps x < 100
+    ///   g2.clip = circle cx100 cy100 r80     → keeps dist((100,100)) < 80
+    ///   cell    = rect  x0 y0 w200 h200 red  → covers the whole canvas, NO clip of its own
+    func testGroupClipChainPropagatesToChildren() throws {
+        let g1 = Group()
+        let g2 = Group()
+        _ = g1.add(g2)
+
+        var rs = RectShape(); rs.x = 0; rs.y = 0; rs.width = 100; rs.height = 200
+        let clipRect = Rect(); clipRect.setShape(rs)
+        g1.setClipPath(clipRect)
+
+        var cs = CircleShape(); cs.cx = 100; cs.cy = 100; cs.r = 80
+        let clipCircle = Circle(); clipCircle.setShape(cs)
+        g2.setClipPath(clipCircle)
+
+        var cellShape = RectShape(); cellShape.x = 0; cellShape.y = 0; cellShape.width = 200; cellShape.height = 200
+        let cell = Rect(); cell.setShape(cellShape)
+        var fill = PathStyleProps(); fill.fill = .string("red"); cell.useStyle(fill)
+        _ = g2.add(cell)
+
+        // Populate each element's __clipPaths chain exactly as the live ZRender path does.
+        let storage = Storage()
+        storage.addRoot(g1)
+        _ = storage.getDisplayList(true)
+        XCTAssertEqual(cell.__clipPaths?.count, 2,
+                       "leaf should inherit BOTH parent group clips (rect ∩ circle)")
+
+        let img = try XCTUnwrap(renderToImage(group: g1, size: CGSize(width: 200, height: 200), dpr: 1))
+
+        // (50,100): inside rect (x<100) AND inside circle (dist 50<80) → painted red.
+        let inside = try pixelRGBA(img, 50, 100)
+        XCTAssertGreaterThan(inside.a, 0.5, "inside rect∩circle should be painted")
+        XCTAssertGreaterThan(inside.r, 0.5, "inside should be red")
+        XCTAssertLessThan(inside.g, 0.5, "inside should be red (low green)")
+
+        // (10,100): inside rect but OUTSIDE circle (dist 90>80) → clipped away by the inherited circle.
+        let outCircle = try pixelRGBA(img, 10, 100)
+        XCTAssertLessThan(outCircle.a, 0.5, "outside the inherited circle clip should be unpainted")
+
+        // (150,100): inside circle (dist 50<80) but OUTSIDE rect (x>100) → clipped by the inherited rect.
+        let outRect = try pixelRGBA(img, 150, 100)
+        XCTAssertLessThan(outRect.a, 0.5, "outside the inherited rect clip should be unpainted")
+    }
+
+    /// A Rect filled with an image Pattern carrying a transform (rotation + scaleX + x offset) must
+    /// still paint inside the rect and nowhere outside it. Guards the `CGRenderer.tilePattern` rewrite
+    /// that applies the full pattern matrix (translate·rotate·scale) and bounds tiles via M⁻¹ — a
+    /// broken extent/inverse would render the rect blank or spill the tiling outside the clip.
+    /// (Rotation *direction* is verified visually against the upstream html; see DEMO_PARITY_GAPS.md.)
+    func testRotatedPatternFillsRectAndClips() throws {
+        // 20x20 tile: ECharts-blue with a white dot + amber corner (same as the pattern demos).
+        let tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAd0lEQVR4nGP8dSLiPwMURK3IY6AUMFFsAq0NZAwpOAb3MjUAEzUNI8nA1f2WlHt5NR5DQguPk+bC1QRchEueiYHKgIkuBq4mMgKwqWMiJcCJUcfEQGXARDcDQwl4G5c8I7F5GRQBxIQtEzGG4XMRA7kGEgsGv4EAElwhSajUA98AAAAASUVORK5CYII="
+        let pat = Pattern(tile, .repeat)
+        pat.x = 100; pat.scaleX = 0.5; pat.rotation = 0.5235987755982988  // π/6
+
+        var rs = RectShape(); rs.x = 0; rs.y = 0; rs.width = 200; rs.height = 200
+        let r = Rect(); r.setShape(rs)
+        var st = PathStyleProps(); st.fill = .pattern(pat); r.useStyle(st)
+
+        let group = Group(); _ = group.add(r)
+        let img = try XCTUnwrap(renderToImage(group: group, size: CGSize(width: 400, height: 300), dpr: 1))
+
+        // (100,100): inside the rect → some tile pixel is painted (the tile is fully opaque).
+        let inside = try pixelRGBA(img, 100, 100)
+        XCTAssertGreaterThan(inside.a, 0.5, "pattern should fill inside the rect")
+
+        // (350,250): well outside the 200x200 rect → nothing painted (no tiling spill).
+        let outside = try pixelRGBA(img, 350, 250)
+        XCTAssertLessThan(outside.a, 0.5, "pattern fill must stay clipped to the rect")
+    }
+
+    /// `IncrementalDisplayable` must actually render its added displayables — it now exposes them via
+    /// `childrenRef`, so the shared `activeChildrenRef()` descends into it. Before this it never entered
+    /// the display list and the incremental demos drew nothing (the "没有增加" report).
+    func testIncrementalDisplayableRendersAddedDisplayables() throws {
+        let inc = IncrementalDisplayable()
+        var cs = CircleShape(); cs.cx = 100; cs.cy = 100; cs.r = 40
+        let c = Circle(); c.setShape(cs)
+        var st = PathStyleProps(); st.fill = .string("#00ff00"); c.useStyle(st)
+        inc.addDisplayable(c, true)   // html: inc.addDisplayable(circleShape, true)
+
+        let group = Group(); _ = group.add(inc)
+        let img = try XCTUnwrap(renderToImage(group: group, size: CGSize(width: 200, height: 200), dpr: 1))
+        let inside = try pixelRGBA(img, 100, 100)
+        XCTAssertGreaterThan(inside.a, 0.5, "an incremental displayable's child must paint")
+        XCTAssertGreaterThan(inside.g, 0.5, "the child is green")
+    }
+
+    /// The incremental RETAINED layer accumulates pixels across flushes: a dot drawn on one `refresh`
+    /// must survive the NEXT refresh even though it is no longer "pending" (its temp list was cleared) —
+    /// i.e. old dots are not redrawn but stay on screen. And `clearDisplaybles()` wipes the bitmap.
+    /// This is what makes the incremental demo O(batch)/frame instead of O(total).
+    func testIncrementalRetainedLayerAccumulatesAndClears() throws {
+        func greenDot(_ cx: Double, _ cy: Double) -> Circle {
+            var cs = CircleShape(); cs.cx = cx; cs.cy = cy; cs.r = 8
+            let c = Circle(); c.setShape(cs)
+            var st = PathStyleProps(); st.fill = .string("#00ff00"); c.useStyle(st)
+            return c
+        }
+        func contentsImage(_ p: CALayerPainter) throws -> CGImage {
+            let cf = try XCTUnwrap(p.rootLayer.contents) as CFTypeRef
+            XCTAssertEqual(CFGetTypeID(cf), CGImage.typeID)
+            return cf as! CGImage
+        }
+
+        let painter = CALayerPainter(size: CGSize(width: 100, height: 100), dpr: 1)
+        let inc = IncrementalDisplayable()
+
+        // Flush 1: a dot at (25,25). It is drawn into the retained bitmap; its temp list is then cleared.
+        inc.addDisplayable(greenDot(25, 25), true)
+        painter.refresh([inc])
+
+        // Flush 2: a NEW dot at (75,75). Dot #1 is no longer pending — yet it must still be on screen
+        // (retained), proving old dots are not redrawn but persist.
+        inc.addDisplayable(greenDot(75, 75), true)
+        painter.refresh([inc])
+        let acc = try contentsImage(painter)
+        XCTAssertGreaterThan(try pixelRGBA(acc, 25, 25).g, 0.5, "dot from flush 1 must be retained")
+        XCTAssertGreaterThan(try pixelRGBA(acc, 75, 75).g, 0.5, "dot from flush 2 must be drawn")
+
+        // clearDisplaybles() wipes the retained bitmap on the next flush.
+        inc.clearDisplaybles()
+        painter.refresh([inc])
+        let cleared = try contentsImage(painter)
+        XCTAssertLessThan(try pixelRGBA(cleared, 25, 25).g, 0.5, "clearDisplaybles must wipe the retained pixels")
+        XCTAssertLessThan(try pixelRGBA(cleared, 75, 75).g, 0.5, "clearDisplaybles must wipe the retained pixels")
+    }
+
+    /// blend 'lighter' is additive: a green dot over a red fill brightens toward yellow (red+green),
+    /// where the default source-over would replace red with green. Guards `CGRenderer.setBlendMode` —
+    /// the additive composite the incremental demos' '#121' dots rely on to glow.
+    func testLighterBlendIsAdditive() throws {
+        func redChannelOfDot(_ blend: String?) throws -> Double {
+            let group = Group()
+            var rs = RectShape(); rs.x = 0; rs.y = 0; rs.width = 60; rs.height = 60
+            let bg = Rect(); bg.setShape(rs)
+            var bgs = PathStyleProps(); bgs.fill = .string("red"); bg.useStyle(bgs)
+            _ = group.add(bg)
+            var cs = CircleShape(); cs.cx = 30; cs.cy = 30; cs.r = 20
+            let c = Circle(); c.setShape(cs)
+            var s = PathStyleProps(); s.fill = .string("#00ff00"); s.blend = blend; c.useStyle(s)
+            _ = group.add(c)
+            let img = try XCTUnwrap(renderToImage(group: group, size: CGSize(width: 60, height: 60), dpr: 1))
+            return try pixelRGBA(img, 30, 30).r
+        }
+        // 'lighter' adds green onto the red bg → red channel stays high (→ yellow). source-over replaces
+        // it → red channel drops to ~0 (→ green).
+        XCTAssertGreaterThan(try redChannelOfDot("lighter"), 0.5, "additive blend keeps the red channel")
+        XCTAssertLessThan(try redChannelOfDot(nil), 0.5, "source-over replaces red with green")
+    }
+
+    /// Read one pixel's straight (un-premultiplied via opaque-red assumption) RGBA in 0...1 from a
+    /// CGImage by blitting it into a known RGBA8 buffer.
+    private func pixelRGBA(_ image: CGImage, _ x: Int, _ y: Int)
+        throws -> (r: Double, g: Double, b: Double, a: Double) {
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        let ctx = try XCTUnwrap(CGContext(
+            data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let i = (y * w + x) * 4
+        return (Double(buf[i]) / 255, Double(buf[i + 1]) / 255,
+                Double(buf[i + 2]) / 255, Double(buf[i + 3]) / 255)
+    }
 }
 #endif
