@@ -107,7 +107,7 @@ private enum IsHoverResult {
 }
 
 private func makeEventPacket(_ eveType: ElementEventName, _ targetInfo: DraggableTargetInfo, _ event: ZRRawEvent) -> ElementEvent {
-    var packet = ElementEvent()
+    let packet = ElementEvent()
     packet.type = eveType
     packet.event = event
     // target can only be an element that is not silent.
@@ -313,7 +313,7 @@ public final class Handler: DraggableHandler {
         if eventControl != "no_globalout" {
             // FIXME: if the pointer moving from the extra doms to realy "outside",
             // the `globalout` should have been triggered. But currently not.
-            var globalOut = ElementEvent()
+            let globalOut = ElementEvent()
             globalOut.type = .globalout
             globalOut.event = event
             self.trigger("globalout", globalOut)
@@ -380,13 +380,10 @@ public final class Handler: DraggableHandler {
         // const eventKey = ('on' + eventName) as ElementEventNameWithOn;
         // PORT-TODO: the `on`-prop handlers (ElementEventHandlerProps: onclick/onmousedown/...) are
         //   not modeled on Element (native event seam, CONVENTIONS §9), so `el[eventKey]` and its
-        //   `cancelBubble` write are omitted. Consequently bubble-cancel via on-props is inert.
-        // PORT-TODO: ElementEvent is a value-type struct here; mutations a listener makes to the
-        //   packet (e.g. `cancelBubble`) do not propagate back to this loop's `eventPacket`, so it
-        //   is never reassigned (hence `let`). FIDELITY-GAP: make ElementEvent a `final class` so
-        //   listener `cancelBubble` writes are visible here and stopPropagation works (see
-        //   InteractionSmokeTests.test_stopPropagation_child_stops_parent). Tracked for the
-        //   pre-echarts fidelity-hardening pass.
+        //   `cancelBubble` write are omitted. The `.on(...)` listener path below works: a listener
+        //   sets `e.cancelBubble = true` on the shared packet (ElementEvent is a reference type), and
+        //   the loop re-reads it after each `trigger` to break — so stopPropagation is functional
+        //   (see InteractionSmokeTests.test_stopPropagation_child_stops_parent).
         let eventPacket = makeEventPacket(eventName, targetInfo, (event as? ZRRawEvent) ?? ZRRawEvent())
 
         while let cur = el {

@@ -25,3 +25,6 @@ upstream/upstream/
 **/.archon/
 **/.cursor/
 **/.codebuddy/
+
+# Claude Code local config
+.claude/

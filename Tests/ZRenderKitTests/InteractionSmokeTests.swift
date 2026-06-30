@@ -182,7 +182,7 @@ final class InteractionSmokeTests: XCTestCase {
         XCTAssertFalse(childFired, "a click outside the element must not dispatch to it")
     }
 
-    // MARK: - stopPropagation (FAITHFULNESS GAP)
+    // MARK: - stopPropagation
 
     func test_stopPropagation_child_stops_parent() throws {
         let zr = makeZR()
@@ -197,14 +197,14 @@ final class InteractionSmokeTests: XCTestCase {
         var parentFired = false
         // Upstream mechanism: an `.on` listener stops ZR bubbling by mutating the SHARED event packet
         // (`e.cancelBubble = true`); the dispatch loop re-reads `eventPacket.cancelBubble` after each
-        // `el.trigger` and breaks. We attempt both the cancelBubble write AND `e.stop()`.
+        // `el.trigger` and breaks. ElementEvent is now a reference type, so the write is visible to
+        // the loop.
         _ = rect.on("click", { _, args in
             childFired = true
-            if var e = args.first as? ElementEvent {
-                e.cancelBubble = true   // value-type COPY — does not write back to the loop's packet
-                e.stop?()               // sets cancelBubble on the underlying ZRRawEvent, not the packet
+            if let e = args.first as? ElementEvent {
+                e.cancelBubble = true   // reference type — writes back to the loop's packet
             }
-            return true                 // upstream on-PROP return would set cancelBubble; .on return is ignored
+            return nil
         })
         _ = group.on("click", { _, _ in parentFired = true; return nil })
 
@@ -212,23 +212,6 @@ final class InteractionSmokeTests: XCTestCase {
         zr.handler.dispatchToElement(hovered, .click, makePointerEvent(50, 50))
 
         XCTAssertTrue(childFired, "child handler must fire")
-
-        if parentFired {
-            // The faithful expectation is `XCTAssertFalse(parentFired)`. It does not hold yet because
-            // `ElementEvent` is a Swift `struct` (value type): the listener receives a COPY, so its
-            // `cancelBubble = true` write never reaches the dispatch loop's `eventPacket`. Additionally
-            // the `on`-prop handler path (which upstream uses to set `cancelBubble` from a return value)
-            // is omitted (native event seam). See Handler.swift dispatchToElement PORT-TODO (~L384-385)
-            // and core/event.swift `eventTool.stop` (sets the raw event's cancelBubble, which the loop
-            // never reads). This self-heals to a real pass if the packet is made a reference type.
-            throw XCTSkip("""
-                FAITHFULNESS GAP: stopPropagation/cancelBubble cannot stop ZR bubbling. ElementEvent is a \
-                value-type struct, so a listener's `e.cancelBubble = true` mutates a copy and never reaches \
-                the dispatchToElement loop; the on-prop return-value path that upstream uses to set \
-                cancelBubble is also omitted (native event seam). Parent + host therefore always fire. \
-                See Handler.swift dispatchToElement PORT-TODO. (Handler.swift / Element.swift ElementEvent)
-                """)
-        }
         XCTAssertFalse(parentFired, "stopPropagation on the child must stop the parent Group handler")
     }
 }

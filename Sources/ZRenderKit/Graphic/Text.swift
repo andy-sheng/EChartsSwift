@@ -1612,6 +1612,759 @@ public final class RichTextContentBlock {
 //   `import { parsePlainText, parseRichText, ... } from './helper/parseText'` → `parseText.*`.
 public enum parseText {
 
+    // upstream: const STYLE_REG = /\{([a-zA-Z0-9_]+)\|([^}]*)\}/g
+    //   Token syntax: `{styleName|content}`. styleName ∈ [A-Za-z0-9_]+, content = any non-`}` run.
+    fileprivate static let STYLE_REG = try! NSRegularExpression(
+        pattern: "\\{([a-zA-Z0-9_]+)\\|([^}]*)\\}"
+    )
+
+    // ---- truncate -------------------------------------------------------------------------------
+
+    // upstream: interface InnerPreparedTruncateOption (the prepared options bag).
+    fileprivate final class PreparedTruncateOption {
+        var maxIterations: Int = 2
+        var minChar: Int = 0
+        var placeholder: String = ""
+        var ellipsis: String = ""
+        var ellipsisWidth: Double = 0
+        var contentWidth: Double = 0
+        var containerWidth: Double = 0
+        var fontMeasureInfo: FontMeasureInfo!
+        init() {}
+    }
+
+    fileprivate struct TruncateLineOut {
+        var textLine: String = ""
+        var isTruncated: Bool = false
+    }
+
+    fileprivate struct TruncateOut {
+        var text: String = ""
+        var isTruncated: Bool = false
+    }
+
+    // upstream: export function truncateText(text, containerWidth, font, ellipsis?, options?): string
+    public static func truncateText(
+        _ text: String,
+        _ containerWidth: Double,
+        _ font: String?,
+        _ ellipsis: String? = nil,
+        _ minChar: Int? = nil,
+        _ placeholder: String? = nil,
+        _ maxIterations: Int? = nil
+    ) -> String {
+        var out = TruncateOut()
+        truncateText2(&out, text, containerWidth, font, ellipsis, minChar, placeholder, maxIterations)
+        return out.text
+    }
+
+    // upstream: function truncateText2(out, text, containerWidth, font, ellipsis?, options?): void
+    fileprivate static func truncateText2(
+        _ out: inout TruncateOut,
+        _ text: String,
+        _ containerWidth: Double,
+        _ font: String?,
+        _ ellipsis: String?,
+        _ minChar: Int?,
+        _ placeholder: String?,
+        _ maxIterations: Int?
+    ) {
+        // upstream `if (!containerWidth)` — JS falsy: 0/NaN.
+        if containerWidth == 0 || containerWidth.isNaN {
+            out.text = ""
+            out.isTruncated = false
+            return
+        }
+
+        var textLines = text.components(separatedBy: "\n")
+        let options = prepareTruncateOptions(containerWidth, font, ellipsis, minChar, placeholder, maxIterations)
+
+        // FIXME (upstream): every line gets '...' when truncating multiple lines.
+        var isTruncated = false
+        var truncateOut = TruncateLineOut()
+        for i in 0..<textLines.count {
+            truncateSingleLine(&truncateOut, textLines[i], options)
+            textLines[i] = truncateOut.textLine
+            isTruncated = isTruncated || truncateOut.isTruncated
+        }
+
+        out.text = textLines.joined(separator: "\n")
+        out.isTruncated = isTruncated
+    }
+
+    // upstream: function prepareTruncateOptions(containerWidth, font, ellipsis?, options?)
+    fileprivate static func prepareTruncateOptions(
+        _ containerWidth: Double,
+        _ font: String?,
+        _ ellipsis: String?,
+        _ minChar: Int?,
+        _ placeholder: String?,
+        _ maxIterations: Int?
+    ) -> PreparedTruncateOption {
+        let preparedOpts = PreparedTruncateOption()
+
+        var ellipsis = ellipsis ?? "..."   // retrieve2(ellipsis, '...')
+        preparedOpts.maxIterations = maxIterations ?? 2
+        let minChar = minChar ?? 0
+        preparedOpts.minChar = minChar
+        let fontMeasureInfo = ZRenderKit.text.ensureFontMeasureInfo(font)
+        preparedOpts.fontMeasureInfo = fontMeasureInfo
+        let ascCharWidth = fontMeasureInfo.asciiCharWidth
+        preparedOpts.placeholder = placeholder ?? ""
+
+        // Example 1: minChar: 3, text: 'asdfzxcv', truncate result: 'asdf', but not: 'a...'.
+        // Example 2: minChar: 3, text: '维度', truncate result: '维', but not: '...'.
+        let containerWidth = Swift.max(0, containerWidth - 1)   // Reserve some gap.
+        var contentWidth = containerWidth
+        var i = 0
+        while i < minChar && contentWidth >= ascCharWidth {
+            contentWidth -= ascCharWidth
+            i += 1
+        }
+
+        var ellipsisWidth = ZRenderKit.text.measureWidth(fontMeasureInfo, ellipsis)
+        if ellipsisWidth > contentWidth {
+            ellipsis = ""
+            ellipsisWidth = 0
+        }
+
+        contentWidth = containerWidth - ellipsisWidth
+
+        preparedOpts.ellipsis = ellipsis
+        preparedOpts.ellipsisWidth = ellipsisWidth
+        preparedOpts.contentWidth = contentWidth
+        preparedOpts.containerWidth = containerWidth
+
+        return preparedOpts
+    }
+
+    // upstream: function truncateSingleLine(out, textLine, options): void
+    fileprivate static func truncateSingleLine(
+        _ out: inout TruncateLineOut,
+        _ textLine: String,
+        _ options: PreparedTruncateOption
+    ) {
+        let containerWidth = options.containerWidth
+        let contentWidth = options.contentWidth
+        let fontMeasureInfo = options.fontMeasureInfo!
+
+        if containerWidth == 0 || containerWidth.isNaN {
+            out.textLine = ""
+            out.isTruncated = false
+            return
+        }
+
+        var textLine = textLine
+        var lineWidth = ZRenderKit.text.measureWidth(fontMeasureInfo, textLine)
+
+        if lineWidth <= containerWidth {
+            out.textLine = textLine
+            out.isTruncated = false
+            return
+        }
+
+        var j = 0
+        while true {
+            if lineWidth <= contentWidth || j >= options.maxIterations {
+                textLine += options.ellipsis
+                break
+            }
+
+            let subLength = j == 0
+                ? estimateLength(textLine, contentWidth, fontMeasureInfo)
+                : (lineWidth > 0
+                    ? Int(Foundation.floor(Double(textLine.count) * contentWidth / lineWidth))
+                    : 0)
+
+            // textLine.substr(0, subLength)
+            textLine = String(textLine.prefix(subLength))
+            lineWidth = ZRenderKit.text.measureWidth(fontMeasureInfo, textLine)
+            j += 1
+        }
+
+        if textLine == "" {
+            textLine = options.placeholder
+        }
+
+        out.textLine = textLine
+        out.isTruncated = true
+    }
+
+    // upstream: function estimateLength(text, contentWidth, fontMeasureInfo): number
+    fileprivate static func estimateLength(
+        _ text: String,
+        _ contentWidth: Double,
+        _ fontMeasureInfo: FontMeasureInfo
+    ) -> Int {
+        var width: Double = 0
+        var i = 0
+        // Iterate by UTF-16 code units to match JS `charCodeAt`/`.length` semantics.
+        let units = Array(text.utf16)
+        while i < units.count && width < contentWidth {
+            width += ZRenderKit.text.measureCharWidth(fontMeasureInfo, Double(units[i]))
+            i += 1
+        }
+        return i
+    }
+
+    // ---- plain text -----------------------------------------------------------------------------
+
+    // upstream: export function parsePlainText(rawText, style, defaultOuterWidth, defaultOuterHeight)
+    public static func parsePlainText(
+        _ rawText: String?,
+        _ style: TextStyleProps,
+        _ defaultOuterWidth: Double?,
+        _ defaultOuterHeight: Double?
+    ) -> PlainTextContentBlock {
+        let text = rawText ?? ""    // formatText
+
+        // textPadding has been normalized
+        let overflow = style.overflow
+        let padding = asNumberArray(style.padding)
+        let paddingH = padding != nil ? padding![1] + padding![3] : 0
+        let paddingV = padding != nil ? padding![0] + padding![2] : 0
+        let font = style.font
+        let truncate = overflow == "truncate"
+        let calculatedLineHeight = ZRenderKit.text.getLineHeight(font)
+        let lineHeight = style.lineHeight ?? calculatedLineHeight
+
+        let truncateLineOverflow = style.lineOverflow == "truncate"
+        var isTruncated = false
+
+        var width = style.width
+        if width == nil, let dw = defaultOuterWidth {
+            width = dw - paddingH
+        }
+        var height = style.height
+        if height == nil, let dh = defaultOuterHeight {
+            height = dh - paddingV
+        }
+
+        var lines: [String]
+        if let width = width, overflow == "break" || overflow == "breakAll" {
+            lines = text.isEmpty
+                ? []
+                : wrapText(text, style.font, width, overflow == "breakAll", 0).lines
+        }
+        else {
+            lines = text.isEmpty ? [] : text.components(separatedBy: "\n")
+        }
+
+        var contentHeight = Double(lines.count) * lineHeight
+        if height == nil {
+            height = contentHeight
+        }
+
+        // Truncate lines.
+        if contentHeight > height! && truncateLineOverflow {
+            let lineCount = Int(Foundation.floor(height! / lineHeight))
+
+            isTruncated = isTruncated || (lines.count > lineCount)
+            lines = Array(lines.prefix(Swift.max(0, lineCount)))
+            contentHeight = Double(lines.count) * lineHeight
+            // TODO (upstream): show ellipsis for line truncate.
+        }
+
+        if !text.isEmpty && truncate, let width = width {
+            let options = prepareTruncateOptions(
+                width, font, style.ellipsis,
+                style.truncateMinChar.map { Int($0) }, style.placeholder, nil
+            )
+            // Having every line has '...' when truncate multiple lines.
+            var singleOut = TruncateLineOut()
+            for i in 0..<lines.count {
+                truncateSingleLine(&singleOut, lines[i], options)
+                lines[i] = singleOut.textLine
+                isTruncated = isTruncated || singleOut.isTruncated
+            }
+        }
+
+        // Calculate real text width and height
+        var outerHeight = height!
+        var contentWidth: Double = 0
+        let fontMeasureInfo = ZRenderKit.text.ensureFontMeasureInfo(font)
+        for i in 0..<lines.count {
+            contentWidth = Swift.max(ZRenderKit.text.measureWidth(fontMeasureInfo, lines[i]), contentWidth)
+        }
+        if width == nil {
+            // When width is not explicitly set, use contentWidth as width.
+            width = contentWidth
+        }
+
+        var outerWidth = width!
+        outerHeight += paddingV
+        outerWidth += paddingH
+
+        let block = PlainTextContentBlock()
+        block.lines = lines
+        block.height = height!
+        block.outerWidth = outerWidth
+        block.outerHeight = outerHeight
+        block.lineHeight = lineHeight
+        block.calculatedLineHeight = calculatedLineHeight
+        block.contentWidth = contentWidth
+        block.contentHeight = contentHeight
+        block.width = width!
+        block.isTruncated = isTruncated
+        return block
+    }
+
+    // ---- rich text ------------------------------------------------------------------------------
+
+    // upstream: type WrapInfo = { width, accumWidth, breakAll }
+    fileprivate final class WrapInfo {
+        var width: Double
+        var accumWidth: Double
+        var breakAll: Bool
+        init(_ width: Double, _ accumWidth: Double, _ breakAll: Bool) {
+            self.width = width; self.accumWidth = accumWidth; self.breakAll = breakAll
+        }
+    }
+
+    // upstream: export function parseRichText(rawText, style, defaultOuterWidth, defaultOuterHeight,
+    //   topTextAlign): RichTextContentBlock
+    public static func parseRichText(
+        _ rawText: String?,
+        _ style: TextStyleProps,
+        _ defaultOuterWidth: Double?,
+        _ defaultOuterHeight: Double?,
+        _ topTextAlign: TextAlign?
+    ) -> RichTextContentBlock {
+        let contentBlock = RichTextContentBlock()
+
+        let text = rawText ?? ""    // formatText
+        if text.isEmpty {
+            return contentBlock
+        }
+
+        let stlPadding = asNumberArray(style.padding)
+        let stlPaddingH = stlPadding != nil ? stlPadding![1] + stlPadding![3] : 0
+        let stlPaddingV = stlPadding != nil ? stlPadding![0] + stlPadding![2] : 0
+
+        var topWidth = style.width
+        if topWidth == nil, let dw = defaultOuterWidth {
+            topWidth = dw - stlPaddingH
+        }
+        var topHeight = style.height
+        if topHeight == nil, let dh = defaultOuterHeight {
+            topHeight = dh - stlPaddingV
+        }
+
+        let overflow = style.overflow
+        let wrapInfo: WrapInfo? = (overflow == "break" || overflow == "breakAll") && topWidth != nil
+            ? WrapInfo(topWidth!, 0, overflow == "breakAll")
+            : nil
+
+        // Tokenize: walk STYLE_REG matches over UTF-16 ranges (JS `.lastIndex`/`.index`).
+        let ns = text as NSString
+        var lastIndex = 0
+        STYLE_REG.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { result, _, _ in
+            guard let result = result else { return }
+            let matchedIndex = result.range.location
+            if matchedIndex > lastIndex {
+                pushTokens(contentBlock,
+                           ns.substring(with: NSRange(location: lastIndex, length: matchedIndex - lastIndex)),
+                           style, wrapInfo, nil)
+            }
+            let styleName = ns.substring(with: result.range(at: 1))
+            let content = ns.substring(with: result.range(at: 2))
+            pushTokens(contentBlock, content, style, wrapInfo, styleName)
+            lastIndex = result.range.location + result.range.length
+        }
+
+        if lastIndex < ns.length {
+            pushTokens(contentBlock,
+                       ns.substring(with: NSRange(location: lastIndex, length: ns.length - lastIndex)),
+                       style, wrapInfo, nil)
+        }
+
+        // For `textWidth: xx%`
+        var pendingList: [RichTextToken] = []
+
+        var calculatedHeight: Double = 0
+        var calculatedWidth: Double = 0
+
+        let truncate = overflow == "truncate"
+        let truncateLine = style.lineOverflow == "truncate"
+        var tmpTruncateOut = TruncateOut()
+
+        func finishLine(_ line: RichTextLine, _ lineWidth: Double, _ lineHeight: Double) {
+            line.width = lineWidth
+            line.lineHeight = lineHeight
+            calculatedHeight += lineHeight
+            calculatedWidth = Swift.max(calculatedWidth, lineWidth)
+        }
+
+        // Calculate layout info of tokens.
+        outer: for i in 0..<contentBlock.lines.count {
+            let line = contentBlock.lines[i]
+            var lineHeight: Double = 0
+            var lineWidth: Double = 0
+
+            for j in 0..<line.tokens.count {
+                let token = line.tokens[j]
+                let tokenStyle: TextStylePropsPart? = token.styleName.flatMap { style.rich?[$0] }
+                // textPadding should not inherit from style.
+                let textPadding = asNumberArray(tokenStyle?.padding)
+                token.textPadding = textPadding
+                let paddingH = textPadding != nil ? textPadding![1] + textPadding![3] : 0
+
+                let font = strOrOpt(tokenStyle?.font, style.font)
+                token.font = font ?? ""
+
+                token.contentHeight = ZRenderKit.text.getLineHeight(font)
+                // textHeight can be used when textVerticalAlign is specified in token.
+                var tokenHeight = tokenStyle?.height ?? token.contentHeight
+                token.innerHeight = tokenHeight
+
+                if let tp = textPadding { tokenHeight += tp[0] + tp[2] }
+                token.height = tokenHeight
+                // Include padding in lineHeight.
+                token.lineHeight = tokenStyle?.lineHeight ?? style.lineHeight ?? tokenHeight
+
+                token.align = tokenStyle?.align ?? topTextAlign
+                token.verticalAlign = tokenStyle?.verticalAlign ?? .middle
+
+                if truncateLine, let th = topHeight, calculatedHeight + token.lineHeight > th {
+                    let originalLength = contentBlock.lines.count
+                    if j > 0 {
+                        line.tokens = Array(line.tokens.prefix(j))
+                        finishLine(line, lineWidth, lineHeight)
+                        contentBlock.lines = Array(contentBlock.lines.prefix(i + 1))
+                    }
+                    else {
+                        contentBlock.lines = Array(contentBlock.lines.prefix(i))
+                    }
+                    contentBlock.isTruncated = contentBlock.isTruncated || (contentBlock.lines.count < originalLength)
+                    break outer
+                }
+
+                let styleTokenWidth = tokenStyle?.width
+                // tokenWidthNotSpecified: width == null || width === 'auto'
+                let tokenWidthNotSpecified: Bool
+                switch styleTokenWidth {
+                case .none: tokenWidthNotSpecified = true
+                case .some(.string(let s)): tokenWidthNotSpecified = (s == "auto")
+                case .some(.number): tokenWidthNotSpecified = false
+                }
+
+                // Percent width: '100%' style — drawn separately when box width is auto.
+                if case .some(.string(let s)) = styleTokenWidth, s.hasSuffix("%") {
+                    token.percentWidth = s
+                    pendingList.append(token)
+                    token.contentWidth = ZRenderKit.text.measureWidth(ZRenderKit.text.ensureFontMeasureInfo(font), token.text)
+                    // Do not truncate in this case.
+                }
+                else {
+                    if tokenWidthNotSpecified {
+                        // FIXME (upstream): if bg image not loaded and textWidth not specified,
+                        //   getBoundingRect() will be incorrect.
+                        // PORT-TODO: the `backgroundColor.image` → token-width-from-image-size branch
+                        //   needs the image-loading seam (imageHelper.findExistImage / isImageReady),
+                        //   which is the canvas/browser image cache (CONVENTIONS §9), not ported.
+                        //   Token width falls back to its measured text width below.
+                    }
+
+                    let remainTruncWidth: Double? = (truncate && topWidth != nil) ? topWidth! - lineWidth : nil
+
+                    if let remain = remainTruncWidth, remain < token.width {
+                        if !tokenWidthNotSpecified || remain < paddingH {
+                            token.text = ""
+                            token.width = 0
+                            token.contentWidth = 0
+                        }
+                        else {
+                            truncateText2(
+                                &tmpTruncateOut,
+                                token.text, remain - paddingH, font, style.ellipsis,
+                                style.truncateMinChar.map { Int($0) }, nil, nil
+                            )
+                            token.text = tmpTruncateOut.text
+                            contentBlock.isTruncated = contentBlock.isTruncated || tmpTruncateOut.isTruncated
+                            let w = ZRenderKit.text.measureWidth(ZRenderKit.text.ensureFontMeasureInfo(font), token.text)
+                            token.width = w
+                            token.contentWidth = w
+                        }
+                    }
+                    else {
+                        token.contentWidth = ZRenderKit.text.measureWidth(ZRenderKit.text.ensureFontMeasureInfo(font), token.text)
+                    }
+                }
+
+                token.width += paddingH
+
+                lineWidth += token.width
+                // upstream `tokenStyle && (lineHeight = ...)` — but token.lineHeight is set
+                //   regardless; matching the observable max.
+                lineHeight = Swift.max(lineHeight, token.lineHeight)
+            }
+
+            finishLine(line, lineWidth, lineHeight)
+        }
+
+        contentBlock.width = topWidth ?? calculatedWidth
+        contentBlock.outerWidth = contentBlock.width
+        contentBlock.height = topHeight ?? calculatedHeight
+        contentBlock.outerHeight = contentBlock.height
+        contentBlock.contentHeight = calculatedHeight
+        contentBlock.contentWidth = calculatedWidth
+
+        contentBlock.outerWidth += stlPaddingH
+        contentBlock.outerHeight += stlPaddingV
+
+        for token in pendingList {
+            if let percentWidth = token.percentWidth {
+                // parseInt(percentWidth, 10) / 100 * contentBlock.width
+                let pct = color.parseInt(percentWidth, 10) / 100
+                token.width = pct * contentBlock.width
+            }
+        }
+
+        return contentBlock
+    }
+
+    // upstream: function pushTokens(block, str, style, wrapInfo, styleName?)
+    fileprivate static func pushTokens(
+        _ block: RichTextContentBlock,
+        _ str: String,
+        _ style: TextStyleProps,
+        _ wrapInfo: WrapInfo?,
+        _ styleName: String?
+    ) {
+        let isEmptyStr = (str == "")
+        let tokenStyle: TextStylePropsPart? = styleName.flatMap { style.rich?[$0] }
+        let lines = block.lines        // reference to the array's class elements; we mutate `block.lines`
+        let font = strOrOpt(tokenStyle?.font, style.font)
+        var newLine = false
+        var strLines: [String]? = nil
+        var linesWidths: [Double]? = nil
+
+        if let wrapInfo = wrapInfo {
+            let tokenPadding = asNumberArray(tokenStyle?.padding)
+            let tokenPaddingH = tokenPadding != nil ? tokenPadding![1] + tokenPadding![3] : 0
+            // tokenStyle.width != null && tokenStyle.width !== 'auto'
+            var fixedWidth = false
+            if case .some(.number) = tokenStyle?.width { fixedWidth = true }
+            if case .some(.string(let s)) = tokenStyle?.width, s != "auto" { fixedWidth = true }
+
+            if fixedWidth {
+                // Wrap the whole token if tokenWidth is fixed.
+                let widthVal: NumberOrString = tokenStyle!.width!
+                let outerWidth = ZRenderKit.text.parsePercent(widthVal, wrapInfo.width) + tokenPaddingH
+                if lines.count > 0 {   // Not first line
+                    if outerWidth + wrapInfo.accumWidth > wrapInfo.width {
+                        // TODO (upstream): support wrap text in token.
+                        strLines = str.components(separatedBy: "\n")
+                        newLine = true
+                    }
+                }
+                wrapInfo.accumWidth = outerWidth
+            }
+            else {
+                let res = wrapText(str, font, wrapInfo.width, wrapInfo.breakAll, wrapInfo.accumWidth)
+                wrapInfo.accumWidth = res.accumWidth + tokenPaddingH
+                linesWidths = res.linesWidths
+                strLines = res.lines
+            }
+        }
+
+        if strLines == nil {
+            strLines = str.components(separatedBy: "\n")
+        }
+
+        let fontMeasureInfo = ZRenderKit.text.ensureFontMeasureInfo(font)
+        for i in 0..<strLines!.count {
+            let text = strLines![i]
+            let token = RichTextToken()
+            token.styleName = styleName
+            token.text = text
+            token.isLineHolder = text.isEmpty && !isEmptyStr
+
+            if case .some(.number(let w)) = tokenStyle?.width {
+                token.width = w
+            }
+            else {
+                token.width = linesWidths != nil
+                    ? linesWidths![i]   // Calculated width in the wrap
+                    : ZRenderKit.text.measureWidth(fontMeasureInfo, text)
+            }
+
+            // The first token should be appended to the last line if not new line.
+            if i == 0 && !newLine {
+                // (lines[lines.length - 1] || (lines[0] = new RichTextLine())).tokens
+                if block.lines.isEmpty {
+                    block.lines.append(RichTextLine())
+                }
+                let lastLine = block.lines[block.lines.count - 1]
+                let tokensLen = lastLine.tokens.count
+                if tokensLen == 1 && lastLine.tokens[0].isLineHolder {
+                    lastLine.tokens[0] = token
+                }
+                else if !text.isEmpty || tokensLen == 0 || isEmptyStr {
+                    lastLine.tokens.append(token)
+                }
+            }
+            // Other tokens always start a new line.
+            else {
+                let newRichLine = RichTextLine()
+                newRichLine.tokens = [token]
+                block.lines.append(newRichLine)
+            }
+        }
+    }
+
+    // upstream: function isAlphabeticLetter(ch)
+    fileprivate static func isAlphabeticLetter(_ code: Int) -> Bool {
+        return (code >= 0x20 && code <= 0x24F)      // Latin
+            || (code >= 0x370 && code <= 0x10FF)    // Greek, Coptic, Cyrillic, etc.
+            || (code >= 0x1200 && code <= 0x13FF)   // Ethiopic and Cherokee
+            || (code >= 0x1E00 && code <= 0x206F)   // Latin and Greek extended
+    }
+
+    // upstream: const breakCharMap = reduce(',&?/;] '.split(''), ...)
+    fileprivate static let breakCharMap: Set<Character> = [",", "&", "?", "/", ";", "]", " "]
+
+    // upstream: function isWordBreakChar(ch)
+    fileprivate static func isWordBreakChar(_ ch: Character, _ code: Int) -> Bool {
+        if isAlphabeticLetter(code) {
+            return breakCharMap.contains(ch)
+        }
+        return true
+    }
+
+    fileprivate struct WrapResult {
+        var accumWidth: Double
+        var lines: [String]
+        var linesWidths: [Double]
+    }
+
+    // upstream: function wrapText(text, font, lineWidth, isBreakAll, lastAccumWidth)
+    fileprivate static func wrapText(
+        _ text: String,
+        _ font: String?,
+        _ lineWidth: Double,
+        _ isBreakAll: Bool,
+        _ lastAccumWidth: Double
+    ) -> WrapResult {
+        var lines: [String] = []
+        var linesWidths: [Double] = []
+        var line = ""
+        var currentWord = ""
+        var currentWordWidth: Double = 0
+        var accumWidth: Double = 0
+        let fontMeasureInfo = ZRenderKit.text.ensureFontMeasureInfo(font)
+
+        // Iterate by UTF-16 code units to match JS charAt/charCodeAt semantics.
+        let units = Array(text.utf16)
+        for i in 0..<units.count {
+            let unit = units[i]
+            let scalar = Unicode.Scalar(unit)
+            let ch: Character = scalar.map { Character($0) } ?? " "
+            if unit == 0x0A {   // '\n'
+                if !currentWord.isEmpty {
+                    line += currentWord
+                    accumWidth += currentWordWidth
+                }
+                lines.append(line)
+                linesWidths.append(accumWidth)
+                line = ""; currentWord = ""; currentWordWidth = 0; accumWidth = 0
+                continue
+            }
+
+            let chWidth = ZRenderKit.text.measureCharWidth(fontMeasureInfo, Double(unit))
+            let inWord = isBreakAll ? false : !isWordBreakChar(ch, Int(unit))
+
+            let exceeds = lines.isEmpty
+                ? (lastAccumWidth + accumWidth + chWidth > lineWidth)
+                : (accumWidth + chWidth > lineWidth)
+
+            if exceeds {
+                if accumWidth == 0 {    // If nothing appended yet.
+                    if inWord {
+                        // The word is still too long for one line — force break the word.
+                        lines.append(currentWord)
+                        linesWidths.append(currentWordWidth)
+                        currentWord = String(ch)
+                        currentWordWidth = chWidth
+                    }
+                    else {
+                        // lineWidth is too small for ch.
+                        lines.append(String(ch))
+                        linesWidths.append(chWidth)
+                    }
+                }
+                else if !line.isEmpty || !currentWord.isEmpty {
+                    if inWord {
+                        if line.isEmpty {
+                            // The one word is still too long for one line — force break.
+                            line = currentWord
+                            currentWord = ""
+                            currentWordWidth = 0
+                            accumWidth = currentWordWidth
+                        }
+
+                        lines.append(line)
+                        linesWidths.append(accumWidth - currentWordWidth)
+
+                        // Break the whole word.
+                        currentWord += String(ch)
+                        currentWordWidth += chWidth
+                        line = ""
+                        accumWidth = currentWordWidth
+                    }
+                    else {
+                        // Append lastWord if have.
+                        if !currentWord.isEmpty {
+                            line += currentWord
+                            currentWord = ""
+                            currentWordWidth = 0
+                        }
+                        lines.append(line)
+                        linesWidths.append(accumWidth)
+
+                        line = String(ch)
+                        accumWidth = chWidth
+                    }
+                }
+
+                continue
+            }
+
+            accumWidth += chWidth
+
+            if inWord {
+                currentWord += String(ch)
+                currentWordWidth += chWidth
+            }
+            else {
+                // Append whole word.
+                if !currentWord.isEmpty {
+                    line += currentWord
+                    currentWord = ""
+                    currentWordWidth = 0
+                }
+                // Append character.
+                line += String(ch)
+            }
+        }
+
+        // Append last line.
+        if !currentWord.isEmpty {
+            line += currentWord
+        }
+        if !line.isEmpty {
+            lines.append(line)
+            linesWidths.append(accumWidth)
+        }
+
+        if lines.count == 1 {
+            // No new line.
+            accumWidth += lastAccumWidth
+        }
+
+        return WrapResult(accumWidth: accumWidth, lines: lines, linesWidths: linesWidths)
+    }
+
     // upstream: export function calcInnerTextOverflowArea(out, overflowRect, baseX, baseY, textAlign,
     //   textVerticalAlign): void
     public static func calcInnerTextOverflowArea(
@@ -1627,87 +2380,33 @@ public enum parseText {
         out.outerWidth = nil
         out.outerHeight = nil
 
-        if overflowRect == nil {
+        guard let overflowRect = overflowRect else {
             return
         }
-        // PORT-TODO: the `overflowRect` intersection path (autoOverflowArea) needs
-        //   BoundingRect.intersect(clamp) + adjustTextX/Y(inverse) — deferred with parseText.
+
+        let textWidth = overflowRect.width * 2
+        let textHeight = overflowRect.height * 2
+        BoundingRect.set(
+            tmpCITCTextRect,
+            ZRenderKit.text.adjustTextX(baseX, textWidth, textAlign),
+            ZRenderKit.text.adjustTextY(baseY, textHeight, textVerticalAlign),
+            textWidth,
+            textHeight
+        )
+        // `clamp` so that `overflow: break` with no/insufficient intersection still displays text
+        // on the edge (logically sound + helps debug).
+        let intersectRect = BoundingRect(0, 0, 0, 0)
+        var opt = BoundingRectIntersectOpt()
+        opt.outIntersectRect = intersectRect
+        opt.clamp = true
+        _ = BoundingRect.intersect(overflowRect, tmpCITCTextRect, nil, opt)
+        out.outerWidth = intersectRect.width
+        out.outerHeight = intersectRect.height
+        out.baseX = ZRenderKit.text.adjustTextX(intersectRect.x, intersectRect.width, textAlign, true)
+        out.baseY = ZRenderKit.text.adjustTextY(intersectRect.y, intersectRect.height, textVerticalAlign, true)
     }
 
-    // upstream: export function parsePlainText(rawText, style, defaultOuterWidth, defaultOuterHeight)
-    // PORT-TODO: minimal subset — the no-wrap / no-truncate / no-lineOverflow path. The
-    //   `overflow` ('break'/'breakAll'/'truncate'), `lineOverflow`, and ellipsis/placeholder
-    //   branches are NOT implemented (deferred to the full parseText port).
-    public static func parsePlainText(
-        _ rawText: String?,
-        _ style: TextStyleProps,
-        _ defaultOuterWidth: Double?,
-        _ defaultOuterHeight: Double?
-    ) -> PlainTextContentBlock {
-        let text = rawText ?? ""    // formatText
-
-        let padding = asNumberArray(style.padding)
-        let paddingH = padding != nil ? padding![1] + padding![3] : 0
-        let paddingV = padding != nil ? padding![0] + padding![2] : 0
-        let font = style.font
-        let calculatedLineHeight = ZRenderKit.text.getLineHeight(font)
-        let lineHeight = style.lineHeight ?? calculatedLineHeight
-
-        var width = style.width
-        if width == nil, let dw = defaultOuterWidth {
-            width = dw - paddingH
-        }
-        var height = style.height
-        if height == nil, let dh = defaultOuterHeight {
-            height = dh - paddingV
-        }
-
-        // PORT-TODO: the `overflow === 'break' | 'breakAll'` wrap path is not ported.
-        let lines: [String] = text.isEmpty ? [] : text.components(separatedBy: "\n")
-
-        let contentHeight = Double(lines.count) * lineHeight
-        if height == nil {
-            height = contentHeight
-        }
-
-        // PORT-TODO: the `lineOverflow === 'truncate'` and `overflow === 'truncate'` paths are not ported.
-
-        var contentWidth: Double = 0
-        let fontMeasureInfo = ZRenderKit.text.ensureFontMeasureInfo(font)
-        for i in 0..<lines.count {
-            contentWidth = Swift.max(ZRenderKit.text.measureWidth(fontMeasureInfo, lines[i]), contentWidth)
-        }
-        if width == nil {
-            width = contentWidth
-        }
-
-        let block = PlainTextContentBlock()
-        block.lines = lines
-        block.height = height!
-        block.outerWidth = width! + paddingH
-        block.outerHeight = height! + paddingV
-        block.lineHeight = lineHeight
-        block.calculatedLineHeight = calculatedLineHeight
-        block.contentWidth = contentWidth
-        block.contentHeight = contentHeight
-        block.width = width!
-        block.isTruncated = false
-        return block
-    }
-
-    // upstream: export function parseRichText(rawText, style, defaultOuterWidth, defaultOuterHeight,
-    //   topTextAlign)
-    // PORT-TODO: minimal stub — returns an empty content block. The STYLE_REG token parsing,
-    //   wrap/truncate, and token measurement are deferred to the full parseText port.
-    public static func parseRichText(
-        _ rawText: String?,
-        _ style: TextStyleProps,
-        _ defaultOuterWidth: Double?,
-        _ defaultOuterHeight: Double?,
-        _ topTextAlign: TextAlign?
-    ) -> RichTextContentBlock {
-        return RichTextContentBlock()
-    }
+    fileprivate static let tmpCITCTextRect = BoundingRect(0, 0, 0, 0)
 
     // upstream: export function tSpanCreateBoundingRect2(style, contentWidth, contentHeight,
     //   forceLineWidth): BoundingRect  — ported in full (depends only on contain/text, which is ported).

@@ -124,7 +124,11 @@ public struct ElementTextGuideLineConfig {
     public init() {}
 }
 
-public struct ElementEvent {
+// upstream: export class ElementEvent. Modeled as a `final class` (reference type) — critical for
+//   event bubbling: a listener that sets `e.cancelBubble = true` must mutate the SAME packet the
+//   dispatch loop (`Handler.dispatchToElement`) re-reads after each `el.trigger`, so stopPropagation
+//   works. (A struct would hand each listener a copy, leaving the loop's packet untouched.)
+public final class ElementEvent {
     // PORT-TODO: ElementEvent references ZRRawEvent and the gesture/touch fields, which belong
     // to the native event-dispatch seam (CONVENTIONS §9), not the render-only milestone. Minimal
     // placeholder so `drift`'s optional `e` param keeps a faithful type.
