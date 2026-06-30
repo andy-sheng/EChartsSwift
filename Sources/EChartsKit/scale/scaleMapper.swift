@@ -561,22 +561,5 @@ private func writeExtent(
 
 // ------ END: Linear Scale Mapper ------
 
-
-// ============================================================================
-// PORT-TODO: forward declaration of sibling-file public API not yet translated.
-//   `DataSanitizationFilter` is owned by data/helper/dataValueHelper.ts (not yet landed). This
-//   minimal shim (mirroring the established placeholder pattern in util/model.swift) keeps the
-//   build green; REMOVE it once data/helper/dataValueHelper.swift lands.
-// ============================================================================
-
-// upstream: data/helper/dataValueHelper.ts —
-//   export type DataSanitizationFilter = {g?: number; ge?: number; l?: number; le?: number;};
-public struct DataSanitizationFilter {
-    public var g: Double?
-    public var ge: Double?
-    public var l: Double?
-    public var le: Double?
-    public init(g: Double? = nil, ge: Double? = nil, l: Double? = nil, le: Double? = nil) {
-        self.g = g; self.ge = ge; self.l = l; self.le = le
-    }
-}
+// NOTE: the former `DataSanitizationFilter` forward-declaration placeholder was removed;
+//   the real type is now defined in data/helper/dataValueHelper.swift.

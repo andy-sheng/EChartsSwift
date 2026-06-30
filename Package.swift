@@ -40,6 +40,13 @@ let package = Package(
             dependencies: ["ZRenderKit", "NativePainter"],
             path: "Tests/ZRenderKitTests"
         ),
+        // Behavioral oracle: ported ECharts unit tests (scale/number) run against
+        // the translated EChartsKit modules. The first oracle for the Phase-5a scale math.
+        .testTarget(
+            name: "EChartsKitTests",
+            dependencies: ["EChartsKit", "ZRenderKit"],
+            path: "Tests/EChartsKitTests"
+        ),
         // macOS demo gallery — the native equivalent of opening zrender's test/*.html in a
         // browser. A *consumer* of the public API only (no @testable); it renders the migrated
         // demo scenes via NativePainter. Does NOT modify the framework. Run on macOS:

@@ -898,6 +898,196 @@ matching ported unit specs + (where an ECharts oracle exists) golden fixtures.
 
 ---
 
+## 23. What landed in Phase 5b — the ECharts data engine (`echarts/src/data/`)
+
+**Phase 5b (DATA-ENGINE: the columnar store + series data facade + diff + source/dimension pipeline):
+COMPLETE — `swift build` GREEN, `swift test` 143 executed / 0 failures / 16 skipped, and the FIRST
+ported ECharts unit tests (number + scale-interval) landed as a behavioral oracle.** Builds on the
+Phase-5a `util/` + `scale/` layers (no integration breakage; no source edits to the existing layers).
+The MODEL layer (Phase 5c) is still absent — `SeriesModel`/option access points are minimal protocols
+/ `// PORT-TODO` stubs so data compiles standalone.
+
+### The columnar store + series-data facade (`Sources/EChartsKit/data/`)
+- [x] `data/DataStore.swift` ← `data/DataStore.ts` — the low-level columnar store: chunked `_chunks`
+      typed columns, `appendData`/`appendValues`, `getRawIndex`/`get`/`getValues`, `getDataExtent`,
+      `indexOfRawIndex`/`indicesOfNearest`, ordinal collection (`collectOrdinalMeta`), `map`/`modify`/
+      `filter`/`selectRange`/`downSample`/`lttbDownSample`, `getMedian`, `clone`/`_copyCommonProps`.
+- [x] `data/SeriesData.swift` ← `data/SeriesData.ts` — the high-level facade over `DataStore`: dimension
+      bookkeeping (`_dimInfos`/`_dimSummary`), `initData`/`appendData`/`appendValues`, `getId`/`getRawIndex`,
+      `getName`/`getItemModel`(stubbed for 5c), `each`/`map`/`filterSelf`/`selectRange`/`mapArray`,
+      visual/layout state bags, `diff` key-getters, `cloneShallow`/`downSample`.
+- [x] `data/DataDiffer.swift` ← `data/DataDiffer.ts` — the enter/update/exit diff (`add`/`update`/`remove`/
+      `updateManyToOne`/`updateOneToMany`/`updateManyToMany`, `_executeOneToOne`/`_executeMultiple`,
+      key-array dedup). Pairs with the Phase-3 animation system for data-driven transitions.
+- [x] `data/Source.swift` ← `data/Source.ts` — `Source` (seriesLayoutBy / sourceFormat / dimensionsDefine /
+      startIndex / encodeDefine), `createSource`/`createSourceFromSeriesDataOption`, `detectSourceFormat`.
+- [x] `data/SeriesDimensionDefine.swift` ← `data/SeriesDimensionDefine.ts` — the per-dimension descriptor.
+- [x] `data/OrdinalMeta.swift` (already landed Phase-5a stub; relied on here) — ordinal category mapping.
+
+### Data helpers (`Sources/EChartsKit/data/helper/`)
+- [x] `helper/dataValueHelper.swift` ← `helper/dataValueHelper.ts` — value parse/compare (`parseDataValue`,
+      `createOrdinalSortInfo`, `SortOrderComparator`).
+- [x] `helper/SeriesDataSchema.swift` ← `helper/SeriesDataSchema.ts` — dimension schema + `createDimensions` glue.
+- [x] `helper/dimensionHelper.swift` ← `helper/dimensionHelper.ts` — `summarizeDimensions`, dimension-type maps.
+- [x] `helper/sourceHelper.swift` ← `helper/sourceHelper.ts` — `prepareSource`/`querySeriesUpstreamDatasetMetaRawData`-class glue.
+- [x] `helper/createDimensions.swift` ← `helper/createDimensions.ts` — dimension inference from source + encode.
+- [x] `helper/dataProvider.swift` ← `helper/dataProvider.ts` — `DefaultDataProvider`, `getRawSourceItemGetter`/`getDataItemValue` accessors.
+- [x] `helper/dataStackHelper.swift` ← `helper/dataStackHelper.ts` — `enableDataStack`/`getStackedDimension` (via the `DataStackSeriesData` PORT-TODO bridge).
+
+### Phase 5b — per-file status & review verdict
+| File | Source `.ts` | Status | Verdict | Note |
+|---|---|---|---|---|
+| `data/DataStore.swift` | `data/DataStore.ts` | complete | **minor-issues (3)** | `getMedian` can TRAP out-of-bounds on dims with NaN/empty points (upstream returns NaN) — §24 #1; `clone()`/`_copyCommonProps` value-copies `_dimensions` (struct) vs upstream reference-share — §24 #2; `downSample` drops `\|\| 0` (verified inert) |
+| `data/SeriesData.swift` | `data/SeriesData.ts` | complete | **major-issues (1)** | `diff()` key-getters feed the loop index `i` to `getId` instead of the rawIndex `value` — wrong diff keys on FILTERED data (dataZoom) — §24 #0 (the one real bug to fix) |
+| `data/DataDiffer.swift` | `data/DataDiffer.ts` | complete | faithful | — |
+| `data/Source.swift` | `data/Source.ts` | complete | minor-issues (1) | `:486` dead `rawItem == nil` branch (loose dim is non-optional `Any`); coercion path always runs — faithful shape preserved |
+| `data/SeriesDimensionDefine.swift` | `data/SeriesDimensionDefine.ts` | complete | (foundation sweep) | — |
+| `data/helper/dataValueHelper.swift` | `helper/dataValueHelper.ts` | complete | (foundation sweep) | — |
+| `data/helper/SeriesDataSchema.swift` | `helper/SeriesDataSchema.ts` | complete | (foundation sweep) | — |
+| `data/helper/dimensionHelper.swift` | `helper/dimensionHelper.ts` | complete | (foundation sweep) | — |
+| `data/helper/sourceHelper.swift` | `helper/sourceHelper.ts` | complete | (foundation sweep) | — |
+| `data/helper/createDimensions.swift` | `helper/createDimensions.ts` | complete | (foundation sweep) | — |
+| `data/helper/dataProvider.swift` | `helper/dataProvider.ts` | complete | (foundation sweep) | — |
+| `data/helper/dataStackHelper.swift` | `helper/dataStackHelper.ts` | complete | (foundation sweep) | `:309`/`:315` redundant `as? DataStackSeriesData` (always succeeds) — PORT-TODO bridge for `getCalculationInfo`, left to mirror upstream call shape until 5c |
+
+Also reviewed (carried scale/util mirrors, all **faithful**): `scale/Interval.swift`, `scale/Scale.swift`
+— no semantic divergences; two benign notes (`getLabel` `precision as! Double` traps on a non-Double
+caller; `Scale._isBlank` initialized `false` vs TS `undefined`, both falsy).
+
+Roll-up (ported `.ts` mirrors with a review verdict): **majority faithful; 1 major-issues
+(`SeriesData.diff`), 3 minor (`DataStore`), plus `Source` minor.** One genuine bug surfaced (§24 #0).
+
+---
+
+## 24. Build & test status — Phase 5b (incl. the FIRST ported ECharts unit tests)
+
+- **`swift build`: GREEN.** The data engine compiled cleanly against the already-ported `util/` and
+  `scale/` layers on the first iteration — **no integration edits to existing sources were required**,
+  no DataStore/SeriesData/diff math was weakened, and no call sites needed model stubs beyond what the
+  parallel translation already added.
+- **`swift test`: GREEN — 143 executed / 0 failures / 16 skipped** (up from Phase-5a's 115/14). The 14
+  pre-existing skips are all ZRenderKit faithfulness-gaps (`util.clone` TypedArray/user-class,
+  `util.merge` null/undefined target — unrelated to data); the 2 NEW skips are the scale extreme-ticks
+  tests that need `createChart` + model/coord (Phase 5c).
+- **FIRST ported ECharts unit tests** (a new `EChartsKitTests` target in `Package.swift`, deps
+  EChartsKit + ZRenderKit — the first behavioral oracle for the Phase-5a scale math):
+  - `Tests/EChartsKitTests/NumberUnitTests.swift` ← `test/ut/spec/util/number.test.ts` (24 methods):
+    `linearMap` (accuracy/clamp/noClamp/zeroInterval), `parseDate`, `reformIntervals`, `getPrecision`/
+    `getPrecisionSafe` (incl. the 500-iter fuzz), `addSafe` (full ~250-case decimal.js table),
+    `getPercentWithPrecision`, `quantityExponent`, `quantity`, `nice`, `isNumeric`/`numericToNumber`,
+    `getAcceptableTickPrecision`/`getPixelPrecision`.
+  - `Tests/EChartsKitTests/ScaleIntervalUnitTests.swift` ← `test/ut/spec/scale/interval.test.ts`: the
+    portable `helper.intervalScaleNiceTicks(...)` half of `doSingleTestDeal` (4 explicit cases +
+    `randomCover` 500+200 iters, asserting finite interval/precision and niceTickExtent ⊂ extent).
+  - **EChartsKitTests: 28 methods, 26 pass / 0 fail / 2 skip.** Skips: `test_extreme_ticks_min_max` and
+    `test_extreme_ticks_small_value` (both need `createChart` + CartesianAxisModel + a full axis →
+    Phase 5c). The `scaleCalcNice2`/new-IntervalScale half of the ticks cases was omitted in-place
+    (documented in-test; depends on coord/axisNiceTicks, Phase 5c).
+- **Specs NOT ported (no module/scope):** `util/format` has NO upstream spec; there is NO
+  `data/DataStore.test.ts` upstream; `data/{dataValueHelper,createDimensions,SeriesData,dataTransform}.test.ts`
+  exist but hinge on JS dynamic-typing of `unknown` values + Source/`SeriesModel`/`createSource` surfaces
+  + deep object `toEqual` — deferred behind the scale-math priority until Phase 5c lands the model layer.
+- **No `Sources/` was edited to paper over any behavioral divergence.** The only Source touches were a
+  case-collision filename rename (build-system, not behavior) and header-provenance notes.
+
+---
+
+## 25. Phase 5b — new open issues & PORT-TODO backlog (deduped, severity-sorted)
+
+### Major — the one real bug to fix (review-flagged)
+0. **`SeriesData.diff()` key-getters pass the WRONG argument to `getId`** (`SeriesData.swift:1035–1040`).
+   The closures `{ _, idx in SeriesData.getId(otherList!, idx) }` discard the value and pass the loop
+   POSITION `idx`. `DataDiffer.swift:326` invokes `keyGetter(arr[i], i)` (value first), and upstream
+   `SeriesData.ts:1149–1154` binds `idx` to that FIRST arg = the rawIndex from `getStore().getIndices()`.
+   So the port keys items by display position, not rawIndex. **When `getIndices()` is identity (fresh/
+   unfiltered data) `arr[i] === i` so there is no observable difference; but after `filterSelf`/
+   `selectRange` (dataZoom) the indices are a non-identity subset (e.g. `[2,5,9]`) and the diff produces
+   wrong ids → wrong add/update/remove classification → broken update animations / state continuity on
+   filtered data.** Correct port: `{ value, _ in SeriesData.getId(otherList!, value as! Int) }` (and the
+   same for `thisList`). FIX before any dataZoom/transition work in 5c+.
+
+### Correctness / fidelity — review-flagged, fix opportunistically
+1. **`DataStore.getMedian` can TRAP out-of-bounds** (`DataStore.swift:559–579`). It faithfully copies
+   upstream's index math using `len = count()` to index `dimDataArray`, but `dimDataArray` only holds the
+   NON-NaN values. With any NaN/empty points (common in line charts) `dimDataArray.count < len`, so
+   `dimDataArray[(len-1)/2]`/`[len/2]` go out of bounds → Swift fatal crash, where upstream TS
+   (`DataStore.ts:525–531`) returns `undefined`→NaN. Behavioral divergence: crash vs NaN.
+2. **`DataStore` value-vs-reference divergence across `clone()`** (`_copyCommonProps`, `DataStore.swift:1332`).
+   Upstream `_copyCommonProps` shares `_dimensions` BY REFERENCE (`target._dimensions = this._dimensions`,
+   `DataStore.ts:1258`) — and likewise non-picked `_chunks` columns. The port models
+   `DataStoreDimensionDefine` as a `struct` and value-copies, so in-place dim mutations after a clone
+   (`collectOrdinalMeta` setting `ordinalMeta`/`type`/`ordinalOffset`; `ensureCalculationDimension` adding
+   dims) are visible to sibling clones in TS but NOT in Swift (each clone is independent), and non-picked
+   columns are COW value-copies not shared objects. Practical trigger is narrow under the actual call order
+   (collect/ensure run at init/stack time before filter/map/downSample clones), but it is a genuine
+   reference-semantics divergence — audit before Phase-5c stack/transition wiring relies on shared dims.
+3. **`Source.swift:486` dead null branch** — upstream guards `rawItem == null`; the Swift loose dimension
+   value is non-optional `Any`, so the null branch (and its dependent ternary else) is unreachable. The
+   `plusEmptyString` coercion path always runs, matching the non-null case. Faithful shape preserved.
+4. **`DataStore.downSample` drops `Math.min(..., len-1) || 0`** (`DataStore.swift:1134`) — verified a true
+   no-op (`sampleIndex` returns `Int`, cannot be NaN; sum is ≥ 0), the `|| 0` only ever mattered for a JS
+   NaN that cannot occur in Swift. Noted for mechanical-resync exactness, not a behavioral divergence.
+
+### MODEL refs stubbed for Phase 5c (PORT-TODOs the data layer left open)
+5. **`SeriesData.getItemModel`/`getModel`/option access** are minimal-protocol / `// PORT-TODO` stubs —
+   the real `SeriesModel`/`Model` does not exist yet. `getName`/visual defaults that read model option are
+   the seams Phase 5c must wire.
+6. **`dataStackHelper` `getCalculationInfo` bridge** (`dataStackHelper.swift:309/315`) — `data` is cast
+   `as? DataStackSeriesData` (redundant today since `SeriesData` already conforms; emits a warning). Left
+   to mirror upstream's `data.getCalculationInfo('stackedDimension'/'stackResultDimension')` call shape
+   until 5c provides the real `getCalculationInfo`.
+7. **`scale/Interval.getLabel` `precision as! Double`** traps if a caller stores `opt.precision` as a
+   non-Double numeric. Consistent with number→Double; faithful callers (model `'auto' | number`) unaffected.
+
+> Carry-over still open from §§4/10/16/21/P0-3: `Displayable.STYLE_MAGIC_KEY` static-flag divergence
+> (major — the ECharts option/visual layer will force this), the value-type `shape`/`style` keyed-animation
+> seam, `useState`/states still stubbed in `Element`, `util.merge` null-guard gap (the §22 fidelity-hardening
+> pass — the model option-merge in 5c is exactly where the deep-merge/null-guard items become load-bearing),
+> `Group.children()` value-copy, and the `Swift.min/max` / `|| 0`-vs-`?? 0` NaN-policy items.
+
+---
+
+## 26. Phase 5c plan — the `model/` spine (HIGHEST-RISK layer: the dynamic option-merge system)
+
+**Goal:** the ECharts model spine — `Model` + mixins, `ComponentModel`, `SeriesModel`, `GlobalModel`,
+`OptionManager`, and `model/globalDefault` — i.e. the **dynamic option-merge / normalize / default-cascade
+system**. This is the highest-risk layer: it is where ECharts' deeply-dynamic JS option object (absent /
+`null` / `NaN` / mixed-type config, arbitrary nesting, `mergeOption`, default cascades, query paths) meets
+Swift's value/type system, and it is what `data/` (§§23–25) was deliberately stubbed against. It directly
+forces the §22 fidelity-hardening decisions (`util.merge` null-guard, `'key' in obj` vs `!= nil`, `|| 0`
+vs `?? 0`, JS truthiness) — **do that hardening pass on `util/` FIRST, then port `model/`.**
+
+### 26a. Upstream files (port order) — `echarts/src/model/`
+| Upstream file | Swift target | Already-ported deps | Nature |
+|---|---|---|---|
+| `model/Model.ts` | `model/Model.swift` | `util/{clazz,model,component}` (Phase-5a), `util.merge`/`clone`/query | the base: `get`/`getShallow`/`getModel`/`option`, `mergeOption`, mixin host |
+| `model/mixin/{lineStyle,areaStyle,textStyle,itemStyle}.ts` + `model/mixin/makeStyleMapper.ts` | `model/mixin/*.swift` | `Model`, `util` | the style-getter mixins (`getItemStyle`/`getLineStyle`/…) — Swift composition vs TS `mixin()` |
+| `model/Component.ts` (`ComponentModel`) | `model/Component.swift` | `Model`, `util/{component,clazz}`, `ComponentType`/subType registry | component base + the `extend`/`registerClass`/`getClass` registry + `defaultOption` cascade |
+| `model/Series.ts` (`SeriesModel`) | `model/Series.swift` | `ComponentModel`, `data/SeriesData`+helpers (§23 — wires the §25 #5 stubs), `Source`/`createSource` | series base: `getInitialData`/`getData`/`getRawData`, `formatTooltip`, `mergeDefaultAndTheme` |
+| `model/Global.ts` (`GlobalModel`) | `model/Global.swift` | `ComponentModel`, `OptionManager`, `util/model` (`mappingToExists`/`makeIdAndName`) | the option root: `mergeOption`, component instance create/merge/remove, `getComponent`/`queryComponents`/`eachSeries` |
+| `model/OptionManager.ts` | `model/OptionManager.swift` | `GlobalModel`, `util/model`, media-query/timeline | raw-option lifecycle: `setOption`/`mergeOption`, media-query resolution, timeline option, `getTimelineOption` |
+| `model/globalDefault.ts` | `model/globalDefault.swift` | — | the top-level default option object |
+| (support) `model/referHelper.ts`, `model/internalComponentCreator.ts` | as needed | `Global`, `util/model` | coord-sys refer + internal component creation |
+
+### 26b. Risk surface + sequencing
+- **Option merge is the crux:** `Model.mergeOption`/`GlobalModel.mergeOption` lean on faithful deep-merge
+  with null/undefined semantics (`util.merge` — §25 carry-over) and `'key' in option` existence checks.
+  The value-type `Any`/dictionary modeling of the option tree must preserve absent-vs-`null`-vs-falsy
+  distinctions or default cascades silently diverge. **This is the §22 hardening pass's payoff point.**
+- **Registry/`extend` dynamics:** `ComponentModel.extend`/`registerClass`/`getClass` and subType lookup are
+  JS-prototype/`this`-dynamic; port to a Swift type-registry + protocol surface (mirror names, mark the
+  deviation `// PORT-TODO`).
+- **Mixins:** TS `mixin(Model, LineStyleMixin)` → Swift protocol-extension composition; keep getter names
+  (`getItemStyle`/`getLineStyle`/`getAreaStyle`/`getTextStyle`) identical.
+- **Sequencing:** `util/` fidelity-hardening (merge/null/`in`/NaN) → `Model` + mixins → `ComponentModel`
+  (+registry) → `SeriesModel` (wires the §25 #5 `getItemModel`/`getModel` data stubs to real models) →
+  `GlobalModel` → `OptionManager` + `globalDefault`. Each stage ports its matching upstream spec
+  (`test/ut/spec/model/*`) as the behavioral oracle and keeps the §12 upstream-sync rule.
+- **After 5c**, the data layer's model stubs (§25 #5/#6) resolve, unblocking `scale`↔`axisModel`,
+  `coord/cartesian` (the original §22 step 4), and the first `ChartView`.
+
+---
+
 ## 12. Standing rule for syncing upstream
 
 Every ported file is a **diffable mirror** of its `.ts` original (CONVENTIONS §0). To keep re-sync

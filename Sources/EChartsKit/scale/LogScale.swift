@@ -1,4 +1,8 @@
 // Ported from echarts/src/scale/Log.ts — keep in sync with upstream
+// NOTE (PORT_STATUS §8): on-disk basename renamed `Log.swift` -> `LogScale.swift` to avoid the
+// case-insensitive (macOS APFS) object-file collision with `util/log.swift` (`log.swift.o`),
+// which silently dropped this file's symbols from the EChartsKit static archive. Type names and
+// upstream mapping are unchanged; re-sync stays mechanical.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file

@@ -59,11 +59,19 @@ public protocol GlobalModel: AnyObject {}                                  // PO
 // '../core/ExtensionAPI' — ExtensionAPI
 public protocol ExtensionAPI: AnyObject {}                                 // PORT-TODO
 // '../model/Series' — SeriesModel (upstream is generic SeriesModel<Opt>)
-public protocol SeriesModel: AnyObject {}                                  // PORT-TODO: generics dropped
+public protocol SeriesModel: AnyObject {                                   // PORT-TODO: generics dropped
+    // PORT-TODO (Phase 5c): minimal stub member required by data/helper/sourceHelper
+    //   (`seriesModel.ecModel`). The full SeriesModel surface is ported in Phase 5c;
+    //   the model-porting agent MUST replace this placeholder with the real type.
+    var ecModel: GlobalModel { get }
+}
 // '../data/SeriesData' — SeriesData
-public protocol SeriesData: AnyObject {}                                   // PORT-TODO
+//   The real `SeriesData` (`final class`) is now ported in data/SeriesData.swift; the
+//   forward-reference placeholder protocol was removed to avoid a redeclaration (the class
+//   provides `dimensions`/`getDimensionInfo`/`getDimensionIndex` consumed by dimensionHelper).
 // '../data/Source' — Source
-public protocol Source: AnyObject {}                                       // PORT-TODO
+//   The real `Source` (typealias to `SourceImpl`) is now ported in data/Source.swift;
+//   the forward-reference placeholder protocol was removed to avoid a redeclaration.
 // '../model/Model' — Model (upstream is generic Model<Opt>)
 public protocol Model: AnyObject {}                                        // PORT-TODO: generics dropped
 // '../model/Component' — ComponentModel (upstream is generic ComponentModel<Opt>)
