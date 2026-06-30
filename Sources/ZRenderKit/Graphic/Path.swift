@@ -604,6 +604,31 @@ open class Path: Displayable {
         return self.path
     }
 
+    /// Cached path proxy for the per-frame render path. Mirrors upstream `canvas/graphic.ts`'s
+    /// `brushPath` (line 204): the PathProxy command buffer is rebuilt ONLY on first draw or when
+    /// SHAPE_CHANGED_BIT is set — otherwise the existing buffer is reused and just replayed via
+    /// `rebuildPath`. This is what keeps a moving-but-not-reshaping element (e.g. 5000 circles that
+    /// only translate) cheap: `getUpdatedPathProxy` instead rebuilds the geometry every frame, which
+    /// dominated the per-frame cost. Honors the morph seam exactly like `getUpdatedPathProxy`.
+    public func getCachedPathProxy(_ inBatch: Bool = false) -> PathProxy {
+        var firstInvoke = false
+        if self.path == nil {
+            firstInvoke = true
+            self.createPathProxy()
+        }
+        if firstInvoke || self.shapeChanged() {
+            _ = self.path.beginPath()
+            if let morphBuildPath = self.__morphBuildPath {
+                morphBuildPath(self.path)
+            }
+            else {
+                self.buildPath(self.path, self.shape, inBatch)
+            }
+            self.pathUpdated()
+        }
+        return self.path
+    }
+
     public func createPathProxy() {
         self.path = PathProxy(false)
     }

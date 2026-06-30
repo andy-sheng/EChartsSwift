@@ -322,6 +322,15 @@ public final class ZRenderView: NSView {
     /// while a button is held (`mouseDragged`). `.inVisibleRect` keeps it sized to the view.
     private var movementTrackingArea: NSTrackingArea?
 
+    /// Latest un-dispatched pointer move, coalesced to the frame clock. AppKit can deliver
+    /// `mouseMoved`/`mouseDragged` faster than the ~60Hz frame loop (ProMotion / high-rate
+    /// trackpads), and dispatching each one immediately re-runs every `mousemove` listener at
+    /// that raw rate — which on heavy handlers (e.g. animationStart restarts 500 animators per
+    /// call) causes lag. The browser coalesces pointer events to the rAF cadence; we mirror that
+    /// by keeping only the most recent move and flushing it once per frame (see `flushPendingMove`).
+    private var pendingMove: ZRRawEvent?
+    private let _loopBox = _FrameHook()
+
     public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
@@ -331,9 +340,17 @@ public final class ZRenderView: NSView {
         self.painter = painter
         self.proxy = proxy
         self.zr = zr
-        self.animationLoop = AnimationLoop(animation: zr.animation)
+        // Drive frames through a hook so the coalesced pointer move is flushed BEFORE the animation
+        // update — any animators a `mousemove` handler starts then advance + paint in the same frame.
+        let hook = self._loopBox
+        self.animationLoop = AnimationLoop { [weak hook] in hook?.run?() }
 
         super.init(frame: frame)
+
+        hook.run = { [weak self] in
+            self?.flushPendingMove()
+            zr.animation.update()
+        }
 
         self.wantsLayer = true
         self.layer?.addSublayer(painter.rootLayer)
@@ -383,18 +400,21 @@ public final class ZRenderView: NSView {
     }
 
     public override func mouseMoved(with event: NSEvent) {
-        proxy.mousemove(makeMouseEvent("mousemove", event, which: 0))
+        // Coalesce to the frame clock (browser-like): keep only the latest, flush once per frame.
+        pendingMove = makeMouseEvent("mousemove", event, which: 0)
     }
 
     public override func mouseDown(with event: NSEvent) {
+        flushPendingMove()   // preserve ordering: a pending move is delivered before the press.
         proxy.mousedown(makeMouseEvent("mousedown", event, which: 1))
     }
 
     public override func mouseDragged(with event: NSEvent) {
-        proxy.mousemove(makeMouseEvent("mousemove", event, which: 1))
+        pendingMove = makeMouseEvent("mousemove", event, which: 1)
     }
 
     public override func mouseUp(with event: NSEvent) {
+        flushPendingMove()   // deliver the final drag position before the release/click.
         let e = makeMouseEvent("mouseup", event, which: 1)
         proxy.mouseup(e)
         // A press-release without drag is a click (the Handler's own down/up/distance gate filters
@@ -410,6 +430,14 @@ public final class ZRenderView: NSView {
     public override func rightMouseDown(with event: NSEvent) {
         proxy.mousedown(makeMouseEvent("mousedown", event, which: 3))
         proxy.contextmenu(makeMouseEvent("contextmenu", event, which: 3))
+    }
+
+    /// Deliver the most recent coalesced pointer move (if any). Called once per frame from the
+    /// animation loop, and before any press/release so event ordering is preserved.
+    private func flushPendingMove() {
+        guard let event = pendingMove else { return }
+        pendingMove = nil
+        proxy.mousemove(event)
     }
 
     public override func scrollWheel(with event: NSEvent) {
@@ -445,6 +473,12 @@ public final class ZRenderView: NSView {
         e.button = which > 0 ? which - 1 : nil
         return e
     }
+}
+
+/// Mutable indirection so the `AnimationLoop` callback (captured at init, before `self` is fully
+/// available) can call back into the view each frame without a retain cycle.
+private final class _FrameHook {
+    var run: (() -> Void)?
 }
 
 #endif // UIKit / AppKit

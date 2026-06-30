@@ -302,7 +302,9 @@ public final class Eventful {
 
         if let _h = _h {
             let argLen = args.count
-            let ctx = args[argLen - 1] as? AnyObject
+            // upstream: `const ctx = args[argLen - 1]` — JS reads args[-1] as undefined
+            // when there are no args. Swift Array traps on a negative index, so guard it.
+            let ctx = argLen > 0 ? (args[argLen - 1] as? AnyObject) : nil
 
             let len = _h.count
             for i in 0..<len {

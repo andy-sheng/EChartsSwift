@@ -135,7 +135,7 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     // `path.rebuildPath(ctx, strokePart ? strokePercent : 1)`); fill and stroke both follow the
     // trimmed geometry ("Not support separate fill and stroke"). Mirror that here.
     r.beginPath()
-    let pathProxy = p.getUpdatedPathProxy(false)
+    let pathProxy = p.getCachedPathProxy(false)
     let strokePercent = style.strokePercent ?? 1
     pathProxy.rebuildPath(r.pathRebuilder, strokePercent < 1 ? strokePercent : 1)
 

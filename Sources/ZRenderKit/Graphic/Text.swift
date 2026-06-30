@@ -1176,9 +1176,11 @@ public final class ZRText: Displayable, GroupLike {
             imgEl!.imageStyle.height = height
         }
 
-        if (textBorderWidth ?? 0) != 0 && textBorderColor != nil {
+        // upstream: `if (textBorderWidth && textBorderColor)` — JS treats an empty-string
+        // color as falsy, so "" must not draw a border (matches needDrawBackground below).
+        if (textBorderWidth ?? 0) != 0, let bc = textBorderColor, !bc.isEmpty {
             rectEl!.pathStyle.lineWidth = textBorderWidth
-            rectEl!.pathStyle.stroke = textBorderColor.map { .string($0) }
+            rectEl!.pathStyle.stroke = .string(bc)
             rectEl!.pathStyle.strokeOpacity = util.retrieve2(style.strokeOpacity, 1)
             rectEl!.pathStyle.lineDash = style.borderDash
             rectEl!.pathStyle.lineDashOffset = numOr(style.borderDashOffset, 0)

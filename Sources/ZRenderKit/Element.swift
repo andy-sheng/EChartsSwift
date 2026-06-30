@@ -1388,7 +1388,9 @@ open class Element: Transformable, AnimationTarget {
         var leftAnimators: [Animator<Any>] = []
         for i in 0..<len {
             let animator = animators[i]
-            if scope == nil || scope == animator.scope {
+            // upstream: `if (!scope || scope === animator.scope)` — JS `!scope` is also
+            // true for the empty string, so `stopAnimation("")` stops every animator.
+            if scope == nil || scope!.isEmpty || scope == animator.scope {
                 animator.stop(forwardToLast)
             }
             else {

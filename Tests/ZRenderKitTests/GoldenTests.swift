@@ -514,6 +514,31 @@ final class CALayerPainterSmokeTests: XCTestCase {
     /// must survive the NEXT refresh even though it is no longer "pending" (its temp list was cleared) —
     /// i.e. old dots are not redrawn but stay on screen. And `clearDisplaybles()` wipes the bitmap.
     /// This is what makes the incremental demo O(batch)/frame instead of O(total).
+    /// The painter draws through `Path.getCachedPathProxy` (upstream brushPath caching: the PathProxy
+    /// command buffer is rebuilt only on first draw or when SHAPE_CHANGED_BIT is set). Guards that a
+    /// shape change between flushes DOES invalidate the cache — otherwise a moving/resizing shape would
+    /// render stale geometry forever.
+    func testCachedPathProxyInvalidatesOnShapeChange() throws {
+        func contentsImage(_ p: CALayerPainter) throws -> CGImage {
+            let cf = try XCTUnwrap(p.rootLayer.contents) as CFTypeRef
+            return cf as! CGImage
+        }
+        let painter = CALayerPainter(size: CGSize(width: 60, height: 60), dpr: 1)
+        var cs = CircleShape(); cs.cx = 30; cs.cy = 30; cs.r = 5
+        let c = Circle(); c.setShape(cs)
+        var st = PathStyleProps(); st.fill = .string("#00ff00"); c.useStyle(st)
+
+        // Flush 1: r=5. A point 12px above center is OUTSIDE the circle → not green.
+        painter.refresh([c])
+        XCTAssertLessThan(try pixelRGBA(contentsImage(painter), 30, 18).g, 0.5, "outside r=5 → unpainted")
+
+        // Grow to r=20 (setShape sets SHAPE_CHANGED_BIT). Flush 2 must reflect the new geometry.
+        cs.r = 20; c.setShape(cs)
+        painter.refresh([c])
+        XCTAssertGreaterThan(try pixelRGBA(contentsImage(painter), 30, 18).g, 0.5,
+                             "shape change must invalidate the cached path proxy")
+    }
+
     func testIncrementalRetainedLayerAccumulatesAndClears() throws {
         func greenDot(_ cx: Double, _ cy: Double) -> Circle {
             var cs = CircleShape(); cs.cx = cx; cs.cy = cy; cs.r = 8
