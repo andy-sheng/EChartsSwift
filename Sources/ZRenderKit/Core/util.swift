@@ -387,10 +387,10 @@ public enum util {
     }
 
     public static func isImagePatternObject(_ value: Any?) -> Bool {
-        // (value as ImagePatternObject).image != null
-        // PORT-TODO: depends on graphic/Pattern (not yet ported). Returns false for now.
-        _ = value
-        return false
+        // upstream: (value as ImagePatternObject).image != null. `ImagePatternObject`
+        // (graphic/Pattern) carries a non-optional `image: String`, so any conformer
+        // necessarily has it present — the faithful check is just the type test.
+        return value is ImagePatternObject
     }
 
     public static func isRegExp(_ value: Any?) -> Bool {

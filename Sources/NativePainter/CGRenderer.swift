@@ -207,8 +207,9 @@ public final class CGRenderer: Renderer {
     /// reproduce that exactly: concatenate M onto the (world-space) CTM, tile the raw image in local
     /// space, and map the clip's world bounding box back through M⁻¹ to bound the tile indices.
     ///
-    /// PORT-TODO: `repeat-x`/`repeat-y`/`no-repeat` are still best-effort (always tiled in both axes);
-    /// only the default `repeat` is exercised today.
+    /// The canvas `repeat` mode (Pattern.ts: `repeat`/`repeat-x`/`repeat-y`/`no-repeat`) bounds the
+    /// per-axis tile range: a non-repeating axis draws a single tile at the pattern origin (local
+    /// index 0) instead of tiling across the mapped clip extent.
     private func tilePattern(_ img: CGImage, pattern: Pattern) {
         // Callers (`fillPatternClipped` / `strokeWithPaint`) bracket this in save/clip/restore.
         let bb = ctx.boundingBoxOfClipPath   // world-space (current user space) clip bounds
@@ -229,12 +230,18 @@ public final class CGRenderer: Renderer {
         // Tile extent: the world clip box mapped into pattern-local space (axis-aligned bbox of the
         // four mapped corners). Tiles step by the RAW image size — the scale already lives in the CTM.
         let local = bb.applying(m.inverted())
-        let startX = (local.minX / imgW).rounded(.down) * imgW
-        let startY = (local.minY / imgH).rounded(.down) * imgH
+        // A repeating axis tiles across the mapped clip extent; a non-repeating axis collapses to a
+        // single tile at the pattern origin (local 0 → the half-open interval [0, imgW) / [0, imgH)).
+        let tileX = pattern.`repeat` == .repeat || pattern.`repeat` == .repeatX
+        let tileY = pattern.`repeat` == .repeat || pattern.`repeat` == .repeatY
+        let startX = tileX ? (local.minX / imgW).rounded(.down) * imgW : 0
+        let startY = tileY ? (local.minY / imgH).rounded(.down) * imgH : 0
+        let endX = tileX ? local.maxX : imgW
+        let endY = tileY ? local.maxY : imgH
         var py = startY
-        while py < local.maxY {
+        while py < endY {
             var px = startX
-            while px < local.maxX {
+            while px < endX {
                 // Draw upright (CGContext.draw paints bottom-up; the surrounding CTM is y-down).
                 ctx.saveGState()
                 ctx.translateBy(x: px, y: py + imgH)
@@ -484,10 +491,19 @@ public extension PaintStyle {
         out.opacity = opacity
         out.strokeFirst = style.strokeFirst ?? false
 
-        // lineDash: only the concrete `number[]` form is honored here; 'solid'/'dashed'/'dotted'
-        // keyword resolution is PORT-TODO (it depends on lineWidth-relative presets in zrender).
-        if case let .some(.values(values)) = style.lineDash, !values.isEmpty {
+        // lineDash: the concrete `number[]` form, plus the 'solid'/'dashed'/'dotted' keyword
+        // presets resolved to lineWidth-relative arrays exactly as zrender's `normalizeLineDash`
+        // (canvas/dashStyle.ts:5-15): 'solid' → no dash, 'dashed' → [4·lw, 2·lw], 'dotted' → [lw];
+        // the dashed/dotted presets only apply when lineWidth > 0 (`false`/`solid`/nil → no dash).
+        switch style.lineDash {
+        case .some(.values(let values)) where !values.isEmpty:
             out.lineDash = values
+        case .some(.dashed) where out.lineWidth > 0:
+            out.lineDash = [4 * out.lineWidth, 2 * out.lineWidth]
+        case .some(.dotted) where out.lineWidth > 0:
+            out.lineDash = [out.lineWidth]
+        default:
+            break
         }
 
         return out
@@ -558,7 +574,12 @@ func loadCGImage(_ src: String) -> CGImage? {
         if let comma = src.firstIndex(of: ","), src.contains(";base64") {
             data = Data(base64Encoded: String(src[src.index(after: comma)...]))
         }
-        // PORT-TODO: non-base64 (URL-encoded) data URIs are not decoded.
+        else if let comma = src.firstIndex(of: ",") {
+            // Non-base64 (percent-encoded) data URI, e.g. `data:image/svg+xml,<svg .../>`.
+            // The payload is URL-encoded text; decode it, falling back to its raw UTF-8 bytes.
+            let payload = String(src[src.index(after: comma)...])
+            data = (payload.removingPercentEncoding ?? payload).data(using: .utf8)
+        }
     }
     else if let url = URL(string: src), url.isFileURL {
         data = try? Data(contentsOf: url)

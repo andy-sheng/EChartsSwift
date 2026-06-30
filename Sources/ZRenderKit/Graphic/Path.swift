@@ -471,6 +471,21 @@ open class Path: Displayable {
         let defaultStyle = self.getDefaultStyle()
         if let defaultStyle = defaultStyle {
             self.useStyle(defaultStyle)
+            // upstream: useStyle(createObject(DEFAULT_PATH_STYLE, defaultStyle)) — the object RETURNED
+            //   by getDefaultStyle is laid over DEFAULT_PATH_STYLE by `createObject`, so ITS OWN keys
+            //   SHADOW the prototype defaults. The stroke-only line shapes (Line/Polyline/BezierCurve/
+            //   Arc/Rose/Trochoid) declare an explicit `fill: null` there to UNSET the '#000' default.
+            //   Our PathStyleProps struct can't distinguish "key present == null" from "absent", and
+            //   `extendPathStyle` (used by createStyle) skips nil — so that explicit-null `fill` would
+            //   NOT override DEFAULT_PATH_STYLE.fill ('#000'), leaving those shapes spuriously
+            //   `hasFill()`==true. That defeats the no-fill stroke policy in getBoundingRect()/contain()
+            //   (the `!hasFill()` → max(lineWidth, strokeContainThreshold) inflation), so their styled
+            //   bounding rect grows by lineWidth/2 instead of strokeContainThreshold/2 (the divergence
+            //   documented by GeometryGoldenTests.test_strokeOnly_styledBoundingRect_knownDivergence).
+            //   Re-apply the default style's `fill` as the upstream own-key value to restore the shadow.
+            //   `fill` is the only DEFAULT_PATH_STYLE field these defaults null out; FILLED shapes don't
+            //   override getDefaultStyle, so this is inert for them (their fill stays '#000').
+            self.pathStyle.fill = defaultStyle.fill
         }
 
         for i in 0..<keysArr.count {

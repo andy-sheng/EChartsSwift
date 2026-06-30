@@ -12,8 +12,9 @@ import Foundation
 // upstream: import easingFuncs, { AnimationEasing } from './easing';        → Animation/easing.swift
 // upstream: import Animation from './Animation';                            → ZRender.swift (Animation stub)
 // upstream: import { createCubicEasingFunc } from './cubicEasing';
-//   PORT-TODO: animation/cubicEasing.ts not ported — named easings that miss `easingFuncs`
-//   fall through to nil (same deferral as Clip.setEasing).
+//   PORTED: animation/cubicEasing.ts lives as `easing.createCubicEasingFunc` (easing.swift:415)
+//   and is wired as the `easingFuncs[easing] || createCubicEasingFunc(easing)` fallback at
+//   Animator.swift:471 and Clip.swift:187 — named/cubic easings no longer fall through to nil.
 // upstream: import { isLinearGradient, isRadialGradient } from '../svg/helper';
 //   PORT-TODO: svg/helper.ts not ported — modeled as local `.type` checks below.
 

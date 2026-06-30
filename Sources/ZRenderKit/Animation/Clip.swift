@@ -80,8 +80,7 @@ public final class Clip {
     private var _paused: Bool = false
 
     // upstream: animation: Animation
-    // PORT-TODO: `Animation` (animation/Animation.ts) not ported yet — typed AnyObject?.
-    public weak var animation: AnyObject?
+    public weak var animation: Animation?
 
     public var loop: Bool
 
@@ -98,7 +97,11 @@ public final class Clip {
 
     public init(_ opts: ClipProps) {
 
-        self._life = opts.life ?? 1000
+        // upstream: `opts.life || 1000` — JS `||` coerces a falsy 0 to 1000, so a
+        // passed `life: 0` must map to 1000 (else step() divides by zero -> NaN and a
+        // non-loop clip never terminates). `??` only covers nil, so handle 0 explicitly.
+        let life = opts.life ?? 1000
+        self._life = life == 0 ? 1000 : life
         self._delay = opts.delay ?? 0
 
         self.loop = opts.loop ?? false

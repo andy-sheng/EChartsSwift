@@ -275,17 +275,19 @@ open class Displayable: Element {
             // Ignore scale 0 element, in some environment like node-canvas
             // Draw a scale 0 element can cause all following draw wrong
             // And setTransform with scale 0 will cause set back transform failed.
-            // PORT-TODO: `!m[0] && !m[3]` is JS falsy (also matches NaN); modeled as `== 0`.
-            || (m != nil && m![0] == 0 && m![3] == 0)
+            // upstream `!m[0] && !m[3]` is JS falsy, which is also true for NaN (not just 0).
+            // Match that: a degenerate/NaN scale on both axes triggers the cull.
+            || (m != nil
+                && (m![0] == 0 || m![0].isNaN)
+                && (m![3] == 0 || m![3].isNaN))
         {
             return false
         }
 
         if considerClipPath, let clipPaths = self.__clipPaths, clipPaths.count > 0 {
             for i in 0..<clipPaths.count {
-                // PORT-TODO: Path.isZeroArea() not ported yet (graphic/Path.ts, Phase 1 4a).
-                // if clipPaths[i].isZeroArea() { return false }
-                _ = clipPaths[i]
+                // upstream: `if (this.__clipPaths[i].isZeroArea()) return false` — ignore zero area shape.
+                if clipPaths[i].isZeroArea() { return false }
             }
         }
 
