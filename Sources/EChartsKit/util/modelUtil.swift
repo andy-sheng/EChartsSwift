@@ -1,4 +1,7 @@
 // Ported from echarts/src/util/model.ts — keep in sync with upstream
+// NOTE: file renamed model.swift -> modelUtil.swift (upstream import alias `modelUtil`) to avoid a
+//   case-insensitive object-file name collision with model/Model.swift on macOS (see PORT_STATUS §8).
+//   The namespace enum is still `model`; no call sites change.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -55,17 +58,9 @@ import ZRenderKit
 // ============================================================================
 
 // '../model/Global' — QueryConditionKindA (return type of makeQueryConditionKindA)
-public struct QueryConditionKindA {                                          // PORT-TODO: belongs to model/Global
-    public var mainType: ComponentMainType
-    // upstream: { [k: string]: OptionId | OptionId[] }
-    public var query: [String: Any]
-    public var subType: ComponentSubType?
-    public init(mainType: ComponentMainType, query: [String: Any], subType: ComponentSubType? = nil) {
-        self.mainType = mainType
-        self.query = query
-        self.subType = subType
-    }
-}
+//   The real `QueryConditionKindA` is now defined in model/Global.swift (this phase); the placeholder
+//   struct was removed to avoid a redeclaration. `makeQueryConditionKindA` below constructs it via
+//   `QueryConditionKindA(mainType:query:)` and sets `.subType`, which the real definition supports.
 
 // '../model/Component' — ComponentModelConstructor (the constructor/metatype with static
 //   `determineSubType`). Modeled as a protocol whose metatype is passed where upstream passes
@@ -994,8 +989,15 @@ public enum model {
         var mapA: [String: [String: Double?]] = [:]
         var mapB: [String: [String: Double?]] = [:]
 
-        makeMap(batchA ?? [], &mapA, nil)
-        makeMap(batchB ?? [], &mapB, mapA)
+        // PORT: upstream `otherMap` is a JS object (reference) that `makeMap` mutates in place
+        //   (`otherDataIndices[dataIndex] = null`) so the cross-batch dedup is reflected back in
+        //   `mapA`. Swift dictionaries are value types, so `otherMap` MUST be `inout` (see the
+        //   §3/§4 value-vs-reference hazard) — otherwise the nulling is lost and resultA still
+        //   contains cross-batch duplicates. The first (batchA) call has no other map upstream
+        //   (`otherMap?`); we pass an empty dict (behaviorally == absent: every lookup misses).
+        var noOtherMap: [String: [String: Double?]] = [:]
+        makeMap(batchA ?? [], &mapA, &noOtherMap)
+        makeMap(batchB ?? [], &mapB, &mapA)
 
         return (mapToArrayOuter(mapA), mapToArrayOuter(mapB))
     }
@@ -1003,9 +1005,8 @@ public enum model {
     static func makeMap(
         _ sourceBatch: [BatchItem],
         _ map: inout [String: [String: Double?]],
-        _ otherMap: [String: [String: Double?]]?
+        _ otherMap: inout [String: [String: Double?]]
     ) {
-        var otherMap = otherMap
         var i = 0
         let len = sourceBatch.count
         while i < len {
@@ -1014,7 +1015,7 @@ public enum model {
                 return
             }
             let dataIndices: [Double] = normalizeToArray(sourceBatch[i].dataIndex)
-            var otherDataIndices = otherMap?[seriesId!]
+            var otherDataIndices = otherMap[seriesId!]
 
             var j = 0
             let lenj = dataIndices.count
@@ -1025,7 +1026,7 @@ public enum model {
                 if let od = otherDataIndices, let cell = od[dataIndexKey], cell != nil {
                     // otherDataIndices[dataIndex] = null;
                     otherDataIndices!.updateValue(nil, forKey: dataIndexKey)
-                    otherMap![seriesId!] = otherDataIndices
+                    otherMap[seriesId!] = otherDataIndices
                 }
                 else {
                     // (map[seriesId] || (map[seriesId] = {}))[dataIndex] = 1;

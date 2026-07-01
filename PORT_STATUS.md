@@ -1047,7 +1047,7 @@ Roll-up (ported `.ts` mirrors with a review verdict): **majority faithful; 1 maj
 
 ---
 
-## 26. Phase 5c plan — the `model/` spine (HIGHEST-RISK layer: the dynamic option-merge system)
+## 26. Phase 5c plan (HISTORICAL — executed; results in §§27–30) — the `model/` spine (HIGHEST-RISK layer: the dynamic option-merge system)
 
 **Goal:** the ECharts model spine — `Model` + mixins, `ComponentModel`, `SeriesModel`, `GlobalModel`,
 `OptionManager`, and `model/globalDefault` — i.e. the **dynamic option-merge / normalize / default-cascade
@@ -1085,6 +1085,273 @@ vs `?? 0`, JS truthiness) — **do that hardening pass on `util/` FIRST, then po
   (`test/ut/spec/model/*`) as the behavioral oracle and keeps the §12 upstream-sync rule.
 - **After 5c**, the data layer's model stubs (§25 #5/#6) resolve, unblocking `scale`↔`axisModel`,
   `coord/cartesian` (the original §22 step 4), and the first `ChartView`.
+
+---
+
+## 27. What landed in Phase 5c — the ECharts model spine (`echarts/src/model/`)
+
+**Phase 5c (MODEL SPINE: the dynamic option-merge / normalize / default-cascade system —
+`Model` + 7 mixins, `ComponentModel`, `SeriesModel`, `GlobalModel`, `OptionManager`, `globalDefault`
++ support): COMPLETE — clean `rm -rf .build && swift build` GREEN across ZRenderKit/NativePainter/
+EChartsKit/DemoGallery, `swift build --build-tests` GREEN, `swift test` GREEN (208 executed / 55
+skipped / 0 failures across the whole package; 26 NEW active model-layer tests all pass).** The
+parallel-translated spine integrated with the Phase-5a/5b `util/`+`scale/`+`data/` layers with **no
+source edits** to the existing layers. This is the crux dynamic-option layer: `Model` is a reference
+type, dynamic bags are `[String: Any]`, deep-merge routes through `util.merge` (null/undefined guard),
+and `Model.get(path)` does dynamic keyed/dotted-path access with parent-model cascade.
+
+### The base + mixins (`Sources/EChartsKit/model/` + `model/mixin/`)
+- [x] `model/Model.swift` ← `model/Model.ts` — the base: `get`/`getShallow`/`getModel`/`option`,
+      `_doGet` keyed+dotted path access, parent-model cascade + `ignoreParent`, `mergeOption` deep-merge,
+      `isEmpty`, `clone`, `isAnimationEnabled`, mixin host. Reference type (`final/open class`).
+- [x] `model/mixin/makeStyleMapper.swift` ← `model/mixin/makeStyleMapper.ts` — the style-key → getter
+      mapper factory shared by the style mixins.
+- [x] `model/mixin/{itemStyle,lineStyle,areaStyle,textStyle}.swift` ← matching `model/mixin/*.ts` — the
+      style-getter mixins (`getItemStyle`/`getLineStyle`/`getAreaStyle`/`getTextStyle`). **TS `mixin()`
+      is realized as Swift protocol + protocol-extension composition; getter names kept identical.**
+- [x] `model/mixin/palette.swift` ← `model/mixin/palette.ts` — `getColorFromPalette`/color-cache
+      (`PaletteMixin` protocol).
+- [x] `model/mixin/dataFormat.swift` ← `model/mixin/dataFormat.ts` — `getDataParams`/`formatTooltip`
+      glue (`DataFormatMixin`).
+
+### Component / Series / Global / OptionManager (`Sources/EChartsKit/model/`)
+- [x] `model/Component.swift` ← `model/Component.ts` (`ComponentModel`) — component base + the
+      `mergeDefaultAndTheme`/`mergeOption`/`getDefaultOption` default cascade, `mainType`/`subType`,
+      `getBoxLayoutParams`, the class-registry surface (`registerClass`/`getClass`/`getAllClassMainTypes`/
+      `topologicalTravel`).
+- [x] `model/Series.swift` ← `model/Series.ts` (`SeriesModel`) — series base: `getInitialData`/`getData`/
+      `getRawData`, `mergeDefaultAndTheme`, `mergeOption`, `isAnimationEnabled`. **Wires the §25 #5 data
+      stubs to real types: `getInitialData(_:_:) -> SeriesData?`** (see §29 below).
+- [x] `model/Global.swift` ← `model/Global.ts` (`GlobalModel`) — the option root: `mergeOption`/
+      `_mergeOption`, `getTheme()` (returns a real `Model`), `mergeTheme`, `getComponent`/`queryComponents`/
+      `eachSeries`/`getSeries*`/`reCreateSeriesIndices`, `isNotTargetSeries`. **Component/series
+      instantiation from the option tree is stubbed to nil (documented — see §29/§30).**
+- [x] `model/OptionManager.swift` ← `model/OptionManager.ts` — raw-option lifecycle: `setOption`/
+      `mergeOption`, timeline `getTimelineOption`/`options`, media `getMediaOption`/`parseRawOption`.
+- [x] `model/globalDefault.swift` ← `model/globalDefault.ts` — the top-level default option object.
+- [x] `model/referHelper.swift` ← `model/referHelper.ts`, `model/internalComponentCreator.swift`
+      ← `model/internalComponentCreator.ts` — coord-sys refer + internal-component creation support.
+
+### Phase 5c — per-file status & review verdict
+| File | Source `.ts` | Status | Verdict | Note |
+|---|---|---|---|---|
+| `model/Model.swift` | `model/Model.ts` | complete | minor-issues (3) | `isAnimationEnabled` truthy-non-dict option skips parent-recursion (dict-cast gate); `getModel` returns a Model over a VALUE-COPY subtree (no mutate-through — inherent to `[String:Any]` bag); `clone()` returns base `Model` not the concrete subclass (PORT-TODO) |
+| `model/mixin/makeStyleMapper.swift` | `model/mixin/makeStyleMapper.ts` | complete | (foundation sweep) | — |
+| `model/mixin/{itemStyle,lineStyle,areaStyle,textStyle}.swift` | `model/mixin/*.ts` | complete | (foundation sweep) | TS `mixin()` → Swift protocol-extension composition |
+| `model/mixin/palette.swift` | `model/mixin/palette.ts` | complete | (foundation sweep) | — |
+| `model/mixin/dataFormat.swift` | `model/mixin/dataFormat.ts` | complete | (foundation sweep) | — |
+| `model/Component.swift` | `model/Component.ts` | complete | minor-issues (2) | THEME-MERGE stub un-wired against a now-STALE reason (`getTheme()` exists — §615) → per-mainType theme options never merged (masked: new-component init is a documented no-op); layout-mode merge deferred (no `util/layout`) |
+| `model/Series.swift` | `model/Series.ts` | complete | **major-issues (3)** | see §29 #0a/#0b/#0c (the two value-vs-reference bugs + the `animationThreshold ?? 0` NaN/`>undefined` divergence) |
+| `model/Global.swift` | `model/Global.ts` | complete | minor-issues (3) | `isNotTargetSeries` coerces id/name before compare (upstream uses raw `!==`); `_mergeOption` value-copy write-back vs in-place; `visitComponent`/instantiation stubbed → dynamic-option→component pipeline presently inert (PORT-TODO, blocked by scaffolding) |
+| `model/OptionManager.swift` | `model/OptionManager.ts` | complete | **major-issues (2)** | see §29 #0d (MEDIA UNITS silently dropped — dynamic bag cast to a foreign `MediaUnit` struct); minor `hasTimeline` malformed-input edge |
+| `model/globalDefault.swift` | `model/globalDefault.ts` | complete | faithful | — |
+| `model/referHelper.swift`, `model/internalComponentCreator.swift` | `model/{referHelper,internalComponentCreator}.ts` | complete | (foundation sweep) | — |
+
+Roll-up (ported `.ts` mirrors with a review verdict): **majority faithful/foundation-sweep; 3
+minor-issues (`Model`, `Component`, `Global`), 2 major-issues (`Series`, `OptionManager`).** The
+dynamic option engine (`Model.get`/`mergeOption`) itself pins clean; the major-issues are the
+value-vs-reference seam (`Series` passing un-merged option to `getInitialData`) and one real
+correctness break (`OptionManager` media drop) — see §29.
+
+---
+
+## 28. Build & test status — Phase 5c (incl. the ported model unit tests)
+
+- **`swift build`: GREEN.** Clean from-scratch build compiled ZRenderKit, NativePainter, EChartsKit,
+  and DemoGallery first try; **no source edits to the existing 5a/5b layers were required** — the
+  parallel-translated model spine integrated cleanly. `swift build --build-tests`: GREEN. One benign
+  non-blocking warning at `Series.swift:582` (conditional downcast `GlobalModel?` → palette-mixin
+  equivalent to an implicit optional conversion) left untouched to avoid behavior change.
+- **`swift test`: GREEN — 208 executed / 55 skipped / 0 failures** (whole package; up from Phase-5b's
+  143/16). Deterministic across repeated runs (ran `componentDependency` 3× + full suite). Model-layer
+  tests added this phase: **65 across 6 new files = 26 active (ALL PASS) + 39 skipped.**
+- **NEW test files** (all under `Tests/EChartsKitTests/`):
+  - `ModelUnitTests.swift` — **15 pass.** The crux (no upstream `Model.test.ts` exists; pins the ported
+    dynamic-option engine directly): `get()`/`get(path)`/`get([path])` keyed+dotted access, empty-segment
+    skip, parent-model cascade + `ignoreParent`, `getShallow`, `getModel` sub-Model wrapping +
+    `resolveParentPath` chain, `mergeOption` deep-merge, `isEmpty`, `clone` independence,
+    `isAnimationEnabled` truthiness/inheritance.
+  - `UtilModelUnitTests.swift` ← `test/ut/spec/util/model.test.ts` — **4 pass + 1 skip.** `compressBatches`
+    (namespace `model`), `removeDuplicates` (resolve1/priority/edges).
+  - `ComponentDependencyUnitTests.swift` ← `test/ut/spec/model/componentDependency.test.ts` — **7 pass.**
+    `registerClass`/`getAllClassMainTypes`/`topologicalTravel` over fixed file-scope `ComponentModel`
+    subclasses (upstream runtime class-gen has no Swift equivalent): base/empty/isolate/diamond/loop
+    (Circular throw)/missingSomeNode/subType.
+  - `GlobalModelUnitTests.swift` (22 skip), `TimelineMediaOptionsUnitTests.swift` (10 skip),
+    `ComponentMissingUnitTests.swift` (6 skip) — every upstream `it` preserved as an `XCTSkip` with reason.
+- **Skips (39) with reasons:** `Global.test.ts` (22) + `timelineMediaOptions.test.ts` (10) +
+  `componentMissing.test.ts` (6) are all driven through `createChart()`/`init()`+`use()`/resize +
+  `getData()`/`getInitialData()` — need the ChartView map + Scheduler + series-data pipeline + real
+  component models (Phase 6). `removeDuplicates_no_resolve_has_value` (1): upstream keeps BOTH `undefined`
+  and `null` (distinct `+''` keys); Swift collapses both to nil (CONVENTIONS §6) — cannot port faithfully.
+- **ONE REAL BUG FOUND AND FIXED** (the only `Sources/` behavior change this phase) — a §3/§4
+  value-vs-reference hazard: **`modelUtil.compressBatches` / `makeMap` mutated a value-type copy**
+  (`Sources/EChartsKit/util/modelUtil.swift` ~line 992/998). Upstream `makeMap(batchB, mapB, mapA)`
+  mutates `otherMap` (a JS reference object) in place via `otherDataIndices[dataIndex] = null` so
+  cross-batch duplicates are removed from resultA; the Swift `otherMap` was a plain value parameter, so
+  the nulling hit a throwaway copy and cross-batch duplicates were NEVER removed from batchA (failed 5/7
+  `compressBatches_base` sub-cases). **Fix:** made `makeMap`'s `otherMap` parameter `inout` (matching
+  upstream reference semantics) and pass `&mapA` / an empty `&noOtherMap`. All `compressBatches` cases pass.
+- **DOCUMENTED FAITHFULNESS GAP (pre-existing PORT-TODO, not newly introduced):** Swift `Dictionary`
+  key-iteration order is unspecified (`clazz.getAllClassMainTypes`, `modelUtil.compressBatches` maps),
+  whereas upstream relies on JS object iteration order (integer-like keys ascending; string keys
+  insertion-order). Consequence: `compressBatches` item/dataIndex ordering and `topologicalTravel`
+  emission order are nondeterministic in the port. The ported tests assert order-normalized content
+  (values faithful; only dict-order nondeterminism normalized). Content correctness is fully asserted;
+  closing the ordering divergence needs an order-preserving dictionary.
+
+---
+
+## 29. Phase 5c — new open issues & PORT-TODO backlog (deduped, severity-sorted)
+
+### Major — value-vs-reference / real-correctness (review-flagged, fix before Phase 6 wiring relies on them)
+0a. **`Series.init` passes the UN-merged option to `getInitialData`** (`Series.swift:210`). TS
+   `Series.ts:283-287` merges theme+defaults into `option` IN PLACE (option === `this.option`), so
+   `getInitialData(option, ecModel)` receives the fully-merged option. In Swift the option bag is a value
+   type: `mergeDefaultAndTheme` merges defaults into `self.option` and writes back there
+   (`Series.swift:265-269`), but `Series.swift:210` then calls `getInitialData(option, …)` with the
+   original, default-less PARAM. **Consequence:** concrete series whose `getInitialData` reads its
+   `option` arg see none of the merged defaults/theme. **Fix:** pass `self.option`.
+0b. **`Series.mergeOption` passes only the incremental delta to `getInitialData`** (`Series.swift:303`).
+   TS `Series.ts:302` `newSeriesOption = merge(this.option, newSeriesOption, true)` rebinds the local to
+   the merged `this.option`; Swift merges into `self.option` (`:288-292`) but does NOT rebind, so `:303`
+   passes the raw partial delta. **Consequence:** data rebuilt from an option missing everything not in
+   the incremental update. **Fix:** pass the merged `self.option` (`target`).
+0c. **`OptionManager` MEDIA UNITS silently dropped** (`OptionManager.swift:390`, unflagged correctness
+   break). `parseRawOption` does `util.each(mediaOnRoot as? [MediaUnit])`, but `mediaOnRoot =
+   rawOption["media"]` comes from the dynamic `ECUnitOption=[String:Any]` bag and holds `[[String:Any]]`
+   dicts, not the typed `MediaUnit` structs (`util/types.swift:1046`); `[[String:Any]] as? [MediaUnit]`
+   returns nil, so the loop body never runs → `mediaList`/`mediaDefault` stay empty → `getMediaOption`
+   short-circuits and returns `[]`. The sibling timeline `options` path survives only because
+   `[ECUnitOption]` is itself `[[String:Any]]`. **Fix:** read media entries dynamically as `[[String:Any]]`
+   and access `["option"]`/`["query"]` by key (as the timeline path already does).
+
+### Correctness / fidelity — review-flagged, fix opportunistically
+1. **`Series.isAnimationEnabled` threshold default** (`Series.swift:556`): `getShallow("animationThreshold")
+   as? Double ?? 0`. When absent, JS `count > undefined` = false (animation stays on); Swift `count > 0` =
+   true for non-empty data, wrongly disabling animation. Treat missing threshold as no-cap (Infinity).
+2. **`Component` THEME-MERGE un-wired against a now-STALE reason** (`Component.swift:196-211`). Upstream
+   `mergeDefaultAndTheme` merges `ecModel.getTheme().get(mainType)` (overwrite=false) BEFORE the default
+   (`Component.ts:169-171`); the port skips it (`_ = ecModel`). The PORT-TODO reason ("GlobalModel has no
+   getTheme()") is no longer true — `Global.swift:615` defines `getTheme() -> Model`. **Wire to
+   `ecModel.getTheme().get(mainType)` merged (overwrite=false) before the default.** Severity reduced
+   (not eliminated): new-component init is itself a documented no-op (Global instantiation stubbed), so
+   `mergeDefaultAndTheme` is not reached yet; the separate top-level `mergeTheme` (Global.swift:1069) does
+   NOT substitute — upstream keeps both mechanisms.
+3. **`Model.isAnimationEnabled` non-dict-option parent-recursion** (`Model.swift:244`). Upstream recurses
+   into `parentModel` for a truthy non-dict option with no `animation`; the Swift dict-cast gate
+   short-circuits to nil. Edge case (option is normally a dict for animatable models).
+4. **`Model.getModel` returns a Model over a VALUE-COPY subtree** (`Model.swift:177-191`). Upstream
+   `_doGet` returns a reference to the nested option object (mutate-through); Swift extracts a value copy,
+   so a child-Model mutation does NOT propagate to the parent tree. Inherent to the `[String:Any]` bag
+   modeling; document in header for any mutate-through-getModel pattern.
+5. **`Model.clone()` drops the concrete subclass** (`Model.swift:210`, documented PORT-TODO). Upstream
+   `new (this.constructor)(clone(option))` preserves the subtype; Swift always returns base `Model`.
+6. **`Global.isNotTargetSeries` coerces before comparing** (`Global.swift:1062-1063`). Upstream uses raw
+   `!==` (no coercion) on id/name; Swift runs `convertOptionIdName` first, so a numeric `seriesId`/
+   `seriesName` in a `restoreData` payload matches a string component id/name in Swift but not upstream.
+7. **`Global._mergeOption` value-copy write-back vs in-place** (`Global.swift:342` + `:564`). Upstream
+   mutates the shared `this.option` reference throughout the merge; the port operates on a local copy and
+   publishes only at the end, and `optionsByMainType.append(componentModel.option)` copies by value.
+   Any reentrant read of `ecModel.option` during component init/merge would see the pre-merge snapshot.
+   Masked today because component instantiation is stubbed; will surface once registry/init lands.
+8. **`OptionManager.hasTimeline` malformed-input edge** (`:362-366`) — `as? [ECUnitOption]` is nil for a
+   non-array `options`, whereas upstream uses truthiness; only affects malformed input.
+
+### Dynamic-option-model decisions (design, standing)
+- **`Model` is a reference type; dynamic bags are `[String: Any]`; deep-merge routes through `util.merge`
+  (null/undefined guard); `Model.get(path)` does keyed/dotted-path access** — the mandated modeling
+  (§26b). Two consequences are inherent, not bugs: `getModel` value-copy (#4) and the value-type
+  write-back seam (#7) — both flow from `[String:Any]` being a value type rather than a JS reference.
+- **Mixins:** TS `mixin()` is realized as Swift protocol + protocol-extension composition
+  (`ItemStyleMixin`/`LineStyleMixin`/`AreaStyleMixin`/`TextStyleMixin`/`PaletteMixin`/`DataFormatMixin`),
+  getter names kept identical (`getItemStyle`/`getLineStyle`/`getAreaStyle`/`getTextStyle`).
+
+### Stubbed surfaces — whole features deferred to Phase 6 (each is `// PORT-TODO`, faithful signatures)
+- **Component/series instantiation from the option tree is INERT.** `Global.visitComponent`
+  (`:404-406`) + component-create (`:500-529`, `componentModel = nil`) are stubbed, and
+  `normalizeToArray<ComponentOption>` over the dynamic `[String:Any]` bag returns `[]`, so
+  `_componentsMap['series']` stays empty and `eachSeries`/`getSeries*`/`reCreateSeriesIndices` operate on
+  nothing. The crux dynamic-option → component pipeline is present but presently inert — it lands with
+  the registry/`ChartView` map in Phase 6.
+- **Genuine Phase-6 deferrals** (faithful-signature PORT-TODO stubs, none weakening merge/get/data
+  logic): `coord/CoordinateSystem`, `coord/Axis`, `core/Scheduler`+`task`, `data/helper/sourceManager`,
+  `visual/LegendVisualProvider`, tooltip/legend/marker/brush components, `util/layout`, `util/symbol`.
+
+### Does `Series.getInitialData` build a real `SeriesData`?
+**Partially — the type wiring is real, the base body is intentionally an override seam.** The §25 #5
+data stubs are now consumed via the real types: `Series.getInitialData(_:_:) -> SeriesData?` returns a
+real `SeriesData?` (base returns `nil`, faithful to upstream's `return;` meant to be overridden by
+concrete series), `Series.init` calls it and asserts non-nil (`Series.swift:213`), and `getData`/
+`getRawData` traffic in the real `SeriesData`/`GlobalModel` types (no more minimal-protocol stubs).
+**No concrete series (e.g. `BarSeries`) exists yet**, so no real column-building `getInitialData`
+override runs end-to-end — that is the first thing Phase 6 lands (the §29 #0a/#0b un-merged-option fixes
+must precede it so the override sees merged defaults).
+
+---
+
+## 30. The ECharts model spine is in place — Phase 6 plan (the first real chart: bar vertical → pixels through ZRenderKit)
+
+**Goal:** the first END-TO-END vertical — a hand-built `option` (`{xAxis, yAxis, series:[{type:'bar',
+data}]}`) flows through `GlobalModel` → coord/cartesian → `Scheduler`/`Task` (processor/visual/layout) →
+`BarView` and renders a REAL bar chart through the complete `ZRenderKit` (`Group`/`Rect`/`Text` +
+animation + interaction). This closes the dynamic-option → component pipeline left inert in §29 and
+turns the 39 `createChart`-driven skips (§28) green.
+
+### Pre-Phase-6 (do FIRST): resolve the §29 majors + the standing hardening carry-over
+- Fix `Series` #0a/#0b (pass the MERGED `self.option` to `getInitialData`) and `OptionManager` #0c
+  (read media dynamically) — they are load-bearing the moment a concrete series builds data / a media
+  query resolves. Wire `Component` theme-merge #2 (now-unblocked by `getTheme()`).
+- Close the `Global` instantiation stub (§29 stubbed surfaces): make `visitComponent` iterate the dynamic
+  `[String:Any]` option bag (not `normalizeToArray<ComponentOption>`) and instantiate via the
+  `ComponentModel` registry so `_componentsMap`/`eachSeries` are populated.
+- The §22 fidelity-hardening carry-over (`util.merge` null-guard, `'key' in obj` vs `!= nil`, `|| 0` vs
+  `?? 0`, JS truthiness) is now maximally load-bearing — the option→component→coord path feeds exactly
+  these edge values.
+
+### 30a. `coord/cartesian/` — Axis + Scale wiring + `dataToPoint` (`echarts/src/coord/`)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `coord/Axis.ts` | `coord/Axis.swift` | `scale/{Scale,Interval,Ordinal}` (5a), `util/number` |
+| `coord/cartesian/Cartesian.ts`, `coord/cartesian/Cartesian2D.ts` | `coord/cartesian/*.swift` | `Axis`, `data/SeriesData` (5b) |
+| `coord/cartesian/Axis2D.ts`, `coord/cartesian/AxisModel.ts`, `coord/cartesian/GridModel.ts` | `coord/cartesian/*.swift` | `ComponentModel` (5c — wires the §25 #5 `scale`↔`axisModel` seam) |
+| `coord/cartesian/Grid.ts` (`dataToPoint`/`pointToData`, axis layout) | `coord/cartesian/Grid.swift` | `Cartesian2D`, `Axis2D`, `util/layout` (to port) |
+| `coord/axisHelper.ts`, `coord/axisTickLabelBuilder.ts` | `coord/*.swift` | `scale` nice-ticks, `util/number` |
+
+### 30b. `Scheduler` + the `Task`/`stream` pipeline (`echarts/src/core/` + `stream/`)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `core/task.ts` | `core/task.swift` | `util` |
+| `core/Scheduler.ts` | `core/Scheduler.swift` | `task`, `GlobalModel` (5c), `data/SeriesData` (5b) |
+| the per-stage graph: `createData`/`processData`/`visual`/`layout`/`render` | driven via Scheduler | pairs the 5b data engine with the 5c model |
+
+### 30c. `visual/` + `layout/barGrid` (`echarts/src/visual/` + `layout/`)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `visual/style.ts`, `visual/seriesColor.ts`, `visual/VisualMapping.ts` | `visual/*.swift` | `model/mixin/palette` (5c), `data/SeriesData` |
+| `layout/barGrid.ts` | `layout/barGrid.swift` | `coord/cartesian/Grid` (30a), `data/SeriesData`, `data/helper/dataStackHelper` (5b) |
+
+### 30d. FIRST `ChartView` = `BarView` + `component/grid` + `component/axis` (`echarts/src/chart/` + `component/`)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `chart/bar/BarSeries.ts` (concrete `getInitialData` → real column build) | `chart/bar/BarSeries.swift` | `SeriesModel` (5c), `data/{SeriesData,helper/createDimensions}` (5b), `Source` |
+| `chart/bar/BarView.ts` (`ChartView` → `Group{Rect}` per datum, enter/update/exit + animation) | `chart/bar/BarView.swift` | `ZRenderKit` `Group`/`Rect`/`Path` + animation (Phase 1–3), `DataDiffer` (5b) |
+| `view/Chart.ts` (`ChartView` base), `view/Component.ts` | `view/*.swift` | `ZRenderKit` `Group`, `GlobalModel` |
+| `component/grid/GridView.ts` | `component/grid/*.swift` | `coord/cartesian/Grid` (30a), `Group`/`Rect` |
+| `component/axis/{CartesianAxisView,AxisBuilder}.ts` | `component/axis/*.swift` | `coord/Axis` (30a), `Group`/`Line`/`Text` (Phase 1–2) |
+| `core/echarts.ts` (the `ECharts`/`init`/`setOption`/`_update` render driver — minimal slice) | `core/echarts.swift` | `GlobalModel`+`OptionManager` (5c), `Scheduler` (30b), `ZRender` host (Phase 4) |
+
+**Sequencing:** §29 majors + instantiation stub → `coord/cartesian` (Axis+Scale+`dataToPoint`) →
+`Scheduler`/`Task` → `visual/`+`layout/barGrid` → `BarSeries`+`BarView`+`grid`+`axis` + the minimal
+`echarts.ts` driver. Each stage keeps the §12 upstream-sync rule and ports its matching upstream spec
+as the behavioral oracle (turning the §28 `createChart`-driven skips green as `createChart`/`init`/
+`getData` become real).
+
+### After Phase 6: the simulator demo shows a REAL echarts-driven chart
+Once §30d lands, the `DemoGallery` app can call the minimal `echarts.ts` driver with a real `option`
+and render an actual ECharts-computed bar chart (data → scale → coord → layout → `Rect`s) on the
+iOS/macOS simulator through `NativePainter` — the first time the full ECharts→ZRenderKit vertical is
+visible on screen, not just hand-built `Group` trees.
 
 ---
 

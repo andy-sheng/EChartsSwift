@@ -1,4 +1,7 @@
 // Ported from echarts/src/util/component.ts — keep in sync with upstream
+// NOTE: file renamed component.swift -> componentUtil.swift (upstream import alias `componentUtil`) to
+//   avoid a case-insensitive object-file name collision with model/Component.swift on macOS (see
+//   PORT_STATUS §8). The namespace enum is still `component`; no call sites change.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file

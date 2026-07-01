@@ -53,18 +53,25 @@ import ZRenderKit
 // ============================================================================
 
 // '../model/mixin/dataFormat' — DataFormatMixin
-public protocol DataFormatMixin: AnyObject {}                              // PORT-TODO
+//   Now ported: see `DataFormatMixin` (protocol + extension) in model/mixin/dataFormat.swift.
 // '../model/Global' — GlobalModel
-public protocol GlobalModel: AnyObject {}                                  // PORT-TODO
+//   The real `GlobalModel` (`open class GlobalModel: Model, PaletteMixin`) is now ported in
+//   model/Global.swift (this phase); the forward-reference placeholder protocol was removed to avoid
+//   a redeclaration. Generics are dropped per CONVENTIONS (`Opt` -> the dynamic `ECUnitOption` bag).
+//   Existing uses (`GlobalModel` as a param/return type, closure types) resolve against the class,
+//   which is a subclass of `Model` and conforms to `AnyObject`.
 // '../core/ExtensionAPI' — ExtensionAPI
 public protocol ExtensionAPI: AnyObject {}                                 // PORT-TODO
 // '../model/Series' — SeriesModel (upstream is generic SeriesModel<Opt>)
-public protocol SeriesModel: AnyObject {                                   // PORT-TODO: generics dropped
-    // PORT-TODO (Phase 5c): minimal stub member required by data/helper/sourceHelper
-    //   (`seriesModel.ecModel`). The full SeriesModel surface is ported in Phase 5c;
-    //   the model-porting agent MUST replace this placeholder with the real type.
-    var ecModel: GlobalModel { get }
-}
+//   The real `SeriesModel` (`open class SeriesModel: ComponentModel, PaletteMixin, DataHost`) is now
+//   ported in model/Series.swift (this phase); the forward-reference placeholder protocol was removed
+//   to avoid a redeclaration. Generics are dropped per CONVENTIONS (`Opt` -> the dynamic `ModelOption`
+//   = `Any` option bag). Existing uses (`[SeriesModel]`, params, closure types) continue to resolve
+//   against the class.
+//   PORT-TODO: the placeholder protocol exposed a *non-optional* `ecModel: GlobalModel`; the real
+//   class inherits `Model.ecModel: GlobalModel?` (optional). Consumers that read `seriesModel.ecModel`
+//   as non-optional (e.g. data/helper/sourceHelper) must unwrap once Model.ecModel optionality is
+//   reconciled with Global.
 // '../data/SeriesData' — SeriesData
 //   The real `SeriesData` (`final class`) is now ported in data/SeriesData.swift; the
 //   forward-reference placeholder protocol was removed to avoid a redeclaration (the class
@@ -73,9 +80,15 @@ public protocol SeriesModel: AnyObject {                                   // PO
 //   The real `Source` (typealias to `SourceImpl`) is now ported in data/Source.swift;
 //   the forward-reference placeholder protocol was removed to avoid a redeclaration.
 // '../model/Model' — Model (upstream is generic Model<Opt>)
-public protocol Model: AnyObject {}                                        // PORT-TODO: generics dropped
+//   The real `Model` (`open class`) is now ported in model/Model.swift (Phase 5c); the
+//   forward-reference placeholder protocol was removed to avoid a redeclaration. Generics are
+//   dropped per CONVENTIONS (`Opt` -> the dynamic `ModelOption` = `Any` option bag).
 // '../model/Component' — ComponentModel (upstream is generic ComponentModel<Opt>)
-public protocol ComponentModel: AnyObject {}                              // PORT-TODO: generics dropped
+//   The real `ComponentModel` (`open class ComponentModel: Model, ClassManageable`) is now ported in
+//   model/Component.swift (this phase); the forward-reference placeholder protocol was removed to
+//   avoid a redeclaration. Generics are dropped per CONVENTIONS (`Opt` -> the dynamic `ModelOption`
+//   = `Any` option bag). Existing uses (`[ComponentModel]`, `ComponentModel & RoamHostModel`, params)
+//   continue to resolve against the class.
 // '../coord/View' — View
 public protocol View: AnyObject {}                                         // PORT-TODO
 // '../view/Chart' — ChartView
@@ -281,7 +294,11 @@ public protocol DataHost {
 }
 
 // upstream: interface DataModel extends Model<unknown>, DataHost, DataFormatMixin { ... }
-public protocol DataModel: Model, DataHost, DataFormatMixin {
+// PORT-TODO: `Model` is now a concrete `open class` (model/Model.swift); a Swift protocol cannot
+//   refine a class, so the `extends Model<unknown>` arm is dropped here. A `DataModel` is, in
+//   upstream, also a `Model` — conforming types are `ComponentModel`/`SeriesModel` subclasses of
+//   `Model` — but that IS-A relationship is no longer expressible through this protocol.
+public protocol DataModel: DataHost, DataFormatMixin {
     func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType?, _ el: Element?) -> CallbackDataParams
 }
     // Pick<DataHost, 'getData'>,

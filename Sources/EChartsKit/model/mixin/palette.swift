@@ -1,0 +1,150 @@
+// Ported from echarts/src/model/mixin/palette.ts — keep in sync with upstream
+
+import ZRenderKit
+// import {Dictionary} from 'zrender/src/core/types';                                 -> [String: T]                       (= zrender Dictionary)
+// import {makeInner, normalizeToArray} from '../../util/model';                       -> model.makeInner / model.normalizeToArray (util/model.swift)
+// import Model from '../Model';                                                       -> Model                             (sibling model/Model.swift: ref type with `get`)
+// import {ZRColor, PaletteOptionMixin, DecalObject, AriaOptionMixin} from '../../util/types'; -> ZRColor / PaletteOptionMixin / DecalObject / AriaOptionMixin (util/types.swift)
+// import GlobalModel from '../Global';                                                -> GlobalModel                       (util/types.swift stub; sibling model/Global.swift)
+
+// upstream: type Inner<T> = (hostObj: PaletteMixin<PaletteOptionMixin>) => { paletteIdx: number; paletteNameMap: Dictionary<T>; };
+//   The host (`scope`) is only used as a `makeInner`/WeakMap identity key (an arbitrary
+//   object), so it is typed `AnyObject` here rather than `PaletteMixin`. The returned
+//   per-host store is the reference-type `PaletteInner<T>` (see below).
+typealias Inner<T> = (AnyObject) -> PaletteInner<T>
+
+// upstream: the `{ paletteIdx: number; paletteNameMap: Dictionary<T> }` object stored per host.
+//   `makeInner` requires a reference type (CONVENTIONS §2 / util/model.makeInner), so the
+//   inline object literal becomes a `final class`. Both fields start `undefined` (upstream
+//   creates an empty `{}`), modeled as Optionals so `paletteIdx || 0` / `paletteNameMap || {}`
+//   port verbatim.
+final class PaletteInner<T> {
+    var paletteIdx: Double?
+    var paletteNameMap: [String: T]?
+}
+
+private let innerColor: Inner<ZRColor> = model.makeInner { PaletteInner<ZRColor>() }
+
+private let innerDecal: Inner<DecalObject> = model.makeInner { PaletteInner<DecalObject>() }
+
+
+
+// upstream:
+//   interface PaletteMixin<T extends PaletteOptionMixin = PaletteOptionMixin> extends Pick<Model<T>, 'get'> {}
+//   class PaletteMixin<T extends PaletteOptionMixin = PaletteOptionMixin> { ... }
+//   ... applied via `mixin(GlobalModel, PaletteMixin)` and `mixin(SeriesModel, PaletteMixin)`.
+// Per CONVENTIONS §2 a TS mixin is ported as a Swift protocol + protocol-extension. The
+// `Pick<Model<T>, 'get'>` constraint becomes the `get` protocol requirement; the class
+// methods (`getColorFromPalette`, `clearColorPalette`) become extension default methods.
+// GlobalModel and SeriesModel declare conformance (`: PaletteMixin`) where they are ported,
+// mirroring upstream's two `mixin(...)` call sites. The `T extends PaletteOptionMixin`
+// generic only narrows `get`'s option type and has no Swift analogue, so it is dropped.
+public protocol PaletteMixin: AnyObject {
+    // upstream: Pick<Model<T>, 'get'>  (path can be `string | readonly string[]`, hence `Any?`)
+    func get(_ path: Any?, _ ignoreParent: Bool) -> Any?
+}
+
+extension PaletteMixin {
+
+    public func getColorFromPalette(
+        _ name: String,
+        _ scope: AnyObject? = nil,
+        _ requestNum: Double? = nil
+    ) -> ZRColor? {
+        // PORT-TODO: the dynamic option tree stores `color`/`colorLayer` as raw `Any`; if a
+        //   raw value is not already a `ZRColor`/`[ZRColor]`, `normalizeToArray<ZRColor>` yields
+        //   `[]` (no coercion). Faithful once the option ingest builds typed `ZRColor` values.
+        let defaultPalette: [ZRColor] = model.normalizeToArray(self.get("color", true))
+        let layeredPalette = self.get("colorLayer", true) as? [[ZRColor]]
+        return getFromPalette(self, innerColor, defaultPalette, layeredPalette, name, scope, requestNum)
+    }
+
+    public func clearColorPalette() {
+        clearPalette(self, innerColor)
+    }
+
+}
+
+public func getDecalFromPalette(
+    _ ecModel: GlobalModel,
+    _ name: String,
+    _ scope: AnyObject,
+    _ requestNum: Double? = nil
+) -> DecalObject? {
+    // upstream: const defaultDecals = normalizeToArray((ecModel as Model<AriaOptionMixin>).get(['aria', 'decal', 'decals']));
+    // PORT-TODO: upstream casts ecModel to `Model<AriaOptionMixin>` purely for typing `get`;
+    //   here GlobalModel conforms to PaletteMixin (upstream `mixin(GlobalModel, PaletteMixin)`),
+    //   which exposes `get`, so the cast targets PaletteMixin.
+    let that = ecModel as PaletteMixin   // GlobalModel conforms to PaletteMixin (upcast)
+    let defaultDecals: [DecalObject] = model.normalizeToArray(that.get(["aria", "decal", "decals"], false))
+    return getFromPalette(that, innerDecal, defaultDecals, nil, name, scope, requestNum)
+}
+
+
+private func getNearestPalette<T>(
+    _ palettes: [[T]], _ requestColorNum: Double
+) -> [T] {
+    let paletteNum = palettes.count
+    // TODO palettes must be in order
+    for i in 0..<paletteNum {
+        if Double(palettes[i].count) > requestColorNum {
+            return palettes[i]
+        }
+    }
+    // PORT-TODO: upstream `palettes[paletteNum - 1]` returns `undefined` when `palettes` is empty
+    //   (then handled by `palette = palette || defaultPalette` at the call site); the Swift
+    //   subscript would trap on an empty array. `palettes` is non-empty in practice.
+    return palettes[paletteNum - 1]
+}
+
+/**
+ * @param name MUST NOT be null/undefined. Otherwise call this function
+ *             twise with the same parameters will get different result.
+ * @param scope default this.
+ * @return Can be null/undefined
+ */
+private func getFromPalette<T>(
+    _ that: PaletteMixin,
+    _ inner: Inner<T>,
+    _ defaultPalette: [T],
+    _ layeredPalette: [[T]]?,
+    _ name: String,
+    _ scope: AnyObject?,
+    _ requestNum: Double?
+) -> T? {
+    let scope = scope ?? that   // scope = scope || that
+    let scopeFields = inner(scope)
+    let paletteIdx = scopeFields.paletteIdx ?? 0   // scopeFields.paletteIdx || 0
+    // const paletteNameMap = scopeFields.paletteNameMap = scopeFields.paletteNameMap || {};
+    // (upstream `paletteNameMap` aliases the same object; Swift dicts are value types, so we
+    //  operate directly on `scopeFields.paletteNameMap`.)
+    if scopeFields.paletteNameMap == nil {
+        scopeFields.paletteNameMap = [:]
+    }
+    // Use `hasOwnProperty` to avoid conflict with Object.prototype.
+    if let existing = scopeFields.paletteNameMap![name] {
+        return existing
+    }
+    var palette: [T]? = ((requestNum == nil || layeredPalette == nil)
+        ? defaultPalette : getNearestPalette(layeredPalette!, requestNum!))
+
+    // In case can't find in layered color palette.
+    palette = palette ?? defaultPalette
+
+    guard let palette = palette, palette.count > 0 else {
+        return nil
+    }
+
+    let pickedPaletteItem = palette[Int(paletteIdx)]
+    if !name.isEmpty {   // if (name)
+        scopeFields.paletteNameMap![name] = pickedPaletteItem
+    }
+    scopeFields.paletteIdx = (paletteIdx + 1).truncatingRemainder(dividingBy: Double(palette.count))
+
+    return pickedPaletteItem
+}
+
+private func clearPalette<T>(_ that: PaletteMixin, _ inner: Inner<T>) {
+    inner(that).paletteIdx = 0
+    inner(that).paletteNameMap = [:]
+}

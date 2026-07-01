@@ -153,7 +153,9 @@ public enum sourceHelper {
         var encodeItemName: [DimensionIndex] = []
         var encodeSeriesName: [DimensionIndex] = []
 
-        let ecModel = seriesModel.ecModel
+        // upstream `ComponentModel.ecModel` is non-null; `Model.ecModel` is `GlobalModel?` in the port
+        // (see the reconciliation PORT-TODO in util/types.swift, resolved now that model/Global landed).
+        let ecModel = seriesModel.ecModel!
         let datasetMap = innerGlobalModel(ecModel).datasetMap!
         let key = datasetModel.uid + "_" + source.seriesLayoutBy
 
