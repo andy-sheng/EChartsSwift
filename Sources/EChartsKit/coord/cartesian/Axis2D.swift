@@ -179,7 +179,5 @@ public final class Axis2D: Axis {
 
 // upstream: export default Axis2D;  -> `public final class Axis2D` above.
 
-// PORT-TODO: type-only placeholder for `AxisBuilder` (upstream: component/axis/AxisBuilder — Phase 6b).
-//   Only the *type name* is needed here (the `axisBuilder` field). Remove this stub when the real
-//   component/axis/AxisBuilder.swift lands to avoid a duplicate declaration.
-public final class AxisBuilder {}
+// NOTE: the former type-only placeholder `final class AxisBuilder { let group }` was removed;
+//   the real `AxisBuilder` now lives in component/axis/AxisBuilder.swift.

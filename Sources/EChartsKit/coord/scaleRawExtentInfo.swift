@@ -686,9 +686,7 @@ private func scaleRawExtentInfoCreateDeal(
 ) {
     let scaleStore = ensureScaleStore(axis.scale)
     var extent = scaleStore.extent!
-    // PORT-TODO(Phase 6b): restore to `var` when the `__requireStartValue` branch below is wired
-    //   (it reassigns this to true). Currently that branch is stubbed, so it stays false.
-    let requireStartValue = false
+    var requireStartValue = false
 
     eachSeriesOnAxis(axis) { seriesModel in
         // PORT-TODO: `seriesModel.boxCoordinateSystem` + `getCoordForCoordSysUsageKindBox`
@@ -717,10 +715,14 @@ private func scaleRawExtentInfoCreateDeal(
                 EChartsKit.model.unionExtentFromExtent(&extent, data.getApproximateExtent(dim, filter))
             }
             // }
-            // PORT-TODO: `seriesModel.__requireStartValue(axis)` not on the ported SeriesModel (Phase 6b).
-            //   if (seriesModel.__requireStartValue && seriesModel.__requireStartValue(axis)) {
-            //       requireStartValue = true;
-            //   }
+            // upstream: `if (seriesModel.__requireStartValue && seriesModel.__requireStartValue(axis))`.
+            //   `__requireStartValue` is duck-typed presence; the only ported implementor is
+            //   `BaseBarSeriesModel` (returns `getBaseAxis() !== axis`, i.e. true for the VALUE axis of a
+            //   bar). Without this, the value axis has no default `startValue` and the bar layout's
+            //   `getStartValue` asserts (barCommon.swift).
+            if let bar = seriesModel as? BaseBarSeriesModel, bar.__requireStartValue(axis) {
+                requireStartValue = true
+            }
         }
     }
 

@@ -1,0 +1,271 @@
+// Ported from echarts/src/chart/helper/createClipPathFromCoordSys.ts — keep in sync with upstream
+/*
+* Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
+*/
+
+import Foundation
+import ZRenderKit
+
+// upstream:
+// import * as graphic from '../../util/graphic';
+//   -> `graphic.Rect` / `graphic.Sector` / `graphic.Path` are re-exports of the zrender shapes, so
+//      ZRenderKit `Rect` / `Sector` / `Path` are used directly. `graphic.initProps` (a re-export of
+//      `animation/basicTransition.initProps`) is NOT ported yet — see the PORT-TODO in
+//      `createGridClipPath`.
+// import {round} from '../../util/number';                        -> `number.round` (util/number.swift)
+// import SeriesModel from '../../model/Series';                   -> `SeriesModel` (this module)
+// import { NullUndefined, SeriesOption } from '../../util/types';
+//   -> `NullUndefined` collapses to Optional (CONVENTIONS §6); `SeriesOption` is only used to
+//      parametrize `SeriesModel<...>`, which is non-generic here (see `SeriesModelWithLineWidth`).
+// import type Cartesian2D from '../../coord/cartesian/Cartesian2D'; -> `Cartesian2D` (this module)
+// import type Polar from '../../coord/polar/Polar';                 -> PORT-TODO: Polar not ported.
+// import { CoordinateSystem, CoordinateSystemClipArea } from '../../coord/CoordinateSystem';
+//   -> `CoordinateSystem` / `CoordinateSystemClipArea` (coord/CoordinateSystem.swift)
+// import { assert, isFunction } from 'zrender/src/core/util';      -> `util.assert` / `util.isFunction`
+// import type Element from 'zrender/src/Element';                  -> `Element` (ZRenderKit)
+
+// upstream:
+// type SeriesModelWithLineWidth = SeriesModel<SeriesOption & { lineStyle?: { width?: number } }>;
+//   The generic parameter collapses (SeriesModel is a non-generic `open class`); the `lineStyle.width`
+//   field is read dynamically via `get(['lineStyle', 'width'])` (see below). So the alias is just
+//   `SeriesModel`.
+public typealias SeriesModelWithLineWidth = SeriesModel
+
+public func createGridClipPath(
+    _ cartesian: Cartesian2D,
+    _ hasAnimation: Bool,
+    _ seriesModel: SeriesModelWithLineWidth,
+    _ done: (() -> Void)? = nil,
+    _ during: ((Double, Rect) -> Void)? = nil
+) -> Rect {
+    let rect = cartesian.getArea()
+
+    var x = rect.x
+    var y = rect.y
+    var width = rect.width
+    var height = rect.height
+
+    // upstream: const lineWidth = seriesModel.get(['lineStyle', 'width']) || 0;
+    let lineWidth = (seriesModel.get(["lineStyle", "width"]) as? Double) ?? 0
+    // Expand the clip path a bit to avoid the border is clipped and looks thinner
+    x -= lineWidth / 2
+    y -= lineWidth / 2
+    width += lineWidth
+    height += lineWidth
+
+    // fix: https://github.com/apache/incubator-echarts/issues/11369
+    width = ceil(width)
+    if x != floor(x) {
+        x = floor(x)
+        // if no extra 1px on `width`, it will still be clipped since `x` is floored
+        width += 1
+    }
+
+    // upstream: new graphic.Rect({ shape: { x, y, width, height } })
+    var initialShape = RectShape()
+    initialShape.x = x
+    initialShape.y = y
+    initialShape.width = width
+    initialShape.height = height
+    let clipPath = Rect(["shape": initialShape])
+
+    if hasAnimation {
+        let baseAxis = cartesian.getBaseAxis()
+        let isHorizontal = baseAxis.isHorizontal()
+        let isAxisInversed = baseAxis.inverse
+
+        // upstream mutates `clipPath.shape.x`/`.width`/... in place. Our `shape` is a value-typed
+        //   `RectShape` behind `PathShape!`, so read-modify-write it wholesale.
+        var shape = clipPath.shape as! RectShape
+        if isHorizontal {
+            if isAxisInversed {
+                shape.x += width
+            }
+            shape.width = 0
+        }
+        else {
+            if !isAxisInversed {
+                shape.y += height
+            }
+            shape.height = 0
+        }
+        clipPath.shape = shape
+
+        // upstream:
+        //   const duringCb = isFunction(during) ? (percent) => { during(percent, clipPath); } : null;
+        let duringCb: ((Double) -> Void)? = util.isFunction(during)
+            ? { percent in during!(percent, clipPath) }
+            : nil
+
+        // upstream:
+        //   graphic.initProps(clipPath, { shape: { width, height, x, y } }, seriesModel, null, done, duringCb);
+        //
+        // PORT-TODO: `graphic.initProps` (== animation/basicTransition.initProps) is not ported yet.
+        //   It derives an animation config from `seriesModel` via `getAnimationConfig` (also unported)
+        //   and, when a positive duration results, calls `clipPath.animateTo({shape: ...}, cfg)`.
+        //   Until that lands we reproduce initProps' NO-ANIMATION branch faithfully: set the element to
+        //   its final ("full") shape immediately, then invoke `during(1)` and `done()` once (matching
+        //   `animateOrSetProps`'s `else` branch: `el.attr(props); during && during(1); cb && cb();`).
+        //   The wipe-reveal animation is therefore skipped (final geometry is correct); restore the real
+        //   call once `util/graphic` + `animation/basicTransition` are ported.
+        var finalShape = clipPath.shape as! RectShape
+        finalShape.width = width
+        finalShape.height = height
+        finalShape.x = x
+        finalShape.y = y
+        clipPath.shape = finalShape
+        duringCb?(1)
+        done?()
+    }
+
+    return clipPath
+}
+
+// upstream: export function createPolarClipPath(polar, hasAnimation, seriesModel): graphic.Sector
+//
+// PORT-TODO: the polar branch is out of scope for the bar/cartesian milestone and its dependency
+//   `coord/polar/Polar` is not ported, so `createPolarClipPath` cannot be expressed yet. The upstream
+//   body is preserved verbatim below for a later mechanical port; `createClipPath` short-circuits the
+//   `'polar'` type to `nil` in the meantime.
+//
+//   export function createPolarClipPath(
+//       polar: Polar,
+//       hasAnimation: boolean,
+//       seriesModel: SeriesModelWithLineWidth
+//   ) {
+//       const sectorArea = polar.getArea();
+//       // Avoid float number rounding error for symbol on the edge of axis extent.
+//       const r0 = round(sectorArea.r0, 1);
+//       const r = round(sectorArea.r, 1);
+//       const clipPath = new graphic.Sector({
+//           shape: {
+//               cx: round(polar.cx, 1),
+//               cy: round(polar.cy, 1),
+//               r0: r0,
+//               r: r,
+//               startAngle: sectorArea.startAngle,
+//               endAngle: sectorArea.endAngle,
+//               clockwise: sectorArea.clockwise
+//           }
+//       });
+//       if (hasAnimation) {
+//           const isRadial = polar.getBaseAxis().dim === 'angle';
+//           if (isRadial) {
+//               clipPath.shape.endAngle = sectorArea.startAngle;
+//           }
+//           else {
+//               clipPath.shape.r = r0;
+//           }
+//           graphic.initProps(clipPath, {
+//               shape: { endAngle: sectorArea.endAngle, r: r }
+//           }, seriesModel);
+//       }
+//       return clipPath;
+//   }
+
+public func createClipPath(
+    _ coordSys: CoordinateSystem?,
+    _ hasAnimation: Bool,
+    _ seriesModel: SeriesModelWithLineWidth,
+    _ done: (() -> Void)? = nil,
+    _ during: ((Double) -> Void)? = nil
+) -> Path? {
+    if coordSys == nil {
+        return nil
+    }
+    else if coordSys!.type == "polar" {
+        // upstream: return createPolarClipPath(coordSys as Polar, hasAnimation, seriesModel);
+        // PORT-TODO: deferred — see `createPolarClipPath` above (Polar not ported).
+        return nil
+    }
+    else if coordSys!.type == "cartesian2d" {
+        guard let cartesian = coordSys as? Cartesian2D else {
+            return nil
+        }
+        // upstream `createGridClipPath`'s `during` is `(percent, clipRect) => void`; `createClipPath`'s
+        //   `during` is `(percent) => void`. TS silently drops the extra argument — adapt the arity by
+        //   wrapping into a 2-arg closure that ignores `clipRect`.
+        let gridDuring: ((Double, Rect) -> Void)? = during.map { d in { percent, _ in d(percent) } }
+        return createGridClipPath(cartesian, hasAnimation, seriesModel, done, gridDuring)
+    }
+    return nil
+}
+
+// upstream:
+//   export type ShapeClipKind = typeof SHAPE_CLIP_KIND_NOT_CLIPPED | ...;
+//   export const SHAPE_CLIP_KIND_NOT_CLIPPED = 0; (etc.)
+// PORT-TODO: the union-of-literal-types `ShapeClipKind` is erased to `Int` (the constants' runtime
+//   type); callers compare against the `SHAPE_CLIP_KIND_*` constants below.
+public typealias ShapeClipKind = Int
+public let SHAPE_CLIP_KIND_NOT_CLIPPED = 0
+public let SHAPE_CLIP_KIND_PARTIALLY_CLIPPED = 1
+public let SHAPE_CLIP_KIND_FULLY_CLIPPED = 2
+
+public func updateClipPath(
+    _ clip: Bool,
+    _ symbolEl: Element,
+    _ clipPath: Path?
+) {
+    if clip {
+        if __DEV__ {
+            util.assert(clipPath != nil)
+        }
+        // upstream: symbolEl.setClipPath(clipPath) — `setClipPath` takes a non-optional Path, so unwrap
+        //   (guarded by the DEV assert above; matches upstream's non-null contract in `clip` mode).
+        if let clipPath = clipPath {
+            symbolEl.setClipPath(clipPath)
+        }
+    }
+    else {
+        symbolEl.removeClipPath()
+    }
+}
+
+// upstream:
+//   export function createCoordSysClipAreaSimply(
+//       seriesModel: SeriesModel<SeriesOption & {clip?: boolean}>
+//   ): CoordinateSystemClipArea | NullUndefined
+public func createCoordSysClipAreaSimply(
+    _ seriesModel: SeriesModel
+) -> CoordinateSystemClipArea? {
+    // upstream: const coordSys = seriesModel.coordinateSystem;
+    //   `coordinateSystem` is `Any?` on SeriesModel; narrow to the coord-sys protocol.
+    let coordSys = seriesModel.coordinateSystem as? CoordinateSystem
+
+    // upstream: seriesModel.get('clip', true) — default `clip: true`; used in a boolean `&&`.
+    let clip = (seriesModel.get("clip", true) as? Bool) ?? false
+
+    // upstream: (!coordSys.shouldClip || coordSys.shouldClip())
+    //   `shouldClip` is optional; our protocol default returns nil. `!coordSys.shouldClip` (method
+    //   absent) is emulated by `shouldClip() == nil`, in which case the condition is `true`; otherwise
+    //   the method's Bool result is used. => `shouldClip() ?? true`.
+    if clip,
+       let coordSys = coordSys,
+       (coordSys.shouldClip() ?? true) {
+        // PENDING make `0.1` configurable, for example, `clipTolerance`?
+        // upstream: return coordSys.getArea && coordSys.getArea(.1);
+        // PORT-TODO: `getArea` is an optional coord-sys method whose default returns nil, and (per the
+        //   note in Cartesian2D.getArea) the concrete `Cartesian2D.getArea` does NOT satisfy the
+        //   protocol witness (concrete `Cartesian2DArea` return vs the protocol's existential), so this
+        //   protocol-dispatched call currently yields `nil` for cartesian2d. Callers of this helper are
+        //   symbol-clipping paths (scatter/line), out of the bar milestone's scope; revisit when the
+        //   coord-sys `getArea` witness is unified.
+        return coordSys.getArea(0.1)
+    }
+    return nil
+}

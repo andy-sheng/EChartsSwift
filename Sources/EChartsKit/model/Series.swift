@@ -480,9 +480,25 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost {
     open func getBaseAxis() -> Any? {
         // const coordSys = this.coordinateSystem;
         // return coordSys && coordSys.getBaseAxis && coordSys.getBaseAxis();
-        // PORT-TODO: coord/CoordinateSystem.ts + coord/Axis.ts not ported; `coordinateSystem` is
-        //   `Any?`. Returns nil until the coordinate-system layer lands.
-        return nil
+        // (coord/CoordinateSystem + coord/Axis have landed.) `coordinateSystem` is `Any?`; upstream
+        //   duck-types `coordSys.getBaseAxis`. NOTE: `Cartesian2D.getBaseAxis(): Axis2D` does NOT witness
+        //   the `CoordinateSystem.getBaseAxis(): Axis?` protocol requirement (concrete non-optional
+        //   subclass return vs optional protocol return → the protocol's nil default is used, same
+        //   pattern as `getRect`), so a `as? CoordinateSystem` cast would spuriously return nil. Narrow
+        //   to the concrete `Cartesian2D` — the same pattern `BarView`/`barGrid` use. (Polar is out of
+        //   the current bar scope → nil.)
+        // NOTE: narrow to the concrete `Cartesian2D` (polar is out of the current bar scope → nil).
+        guard let coordSys = self.coordinateSystem as? Cartesian2D else { return nil }
+        // The base axis MUST be bound to an explicit `Axis2D` local, NOT returned inline. `Cartesian2D`
+        //   has a concrete `getBaseAxis(): Axis2D`, and its superprotocol `CoordinateSystem` declares
+        //   `getBaseAxis(): Axis?` WITH A nil-returning default (CoordinateSystem.swift:316). In an
+        //   untyped `Any?`-return position, Swift overload resolution prefers the protocol's `-> Axis?`
+        //   member (its optional result matches the `Any?` context) over the concrete `-> Axis2D`, so a
+        //   direct `return coordSys.getBaseAxis()` binds the DEFAULT and yields nil (verified: bars then
+        //   get NaN x/width because the axis-statistics `isBaseAxis` check fails → §35b). The typed local
+        //   pins resolution to the concrete method.
+        let baseAxis: Axis2D = coordSys.getBaseAxis()
+        return baseAxis
     }
 
     /**

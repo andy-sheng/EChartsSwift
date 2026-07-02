@@ -373,10 +373,14 @@ public func injectCoordSysByOption(_ opt: InjectCoordSysByOptionOpt) -> Coordina
         if __DEV__ {
             util.assert(targetModel.mainType == "series")
         }
-        (targetModel as! SeriesModel).coordinateSystem = coordSys as Any?
+        // Store the UNWRAPPED existential (`coordSys!`) — it is guaranteed non-nil past the guard above.
+        // `coordSys as Any?` boxes an `Optional<CoordinateSystemMaster>` (a nested optional-in-`Any?`),
+        // which downstream `coordinateSystem as? Cartesian2D` casts resolve unreliably; storing the
+        // unwrapped value yields a clean `Any? = .some(existential)` that casts consistently.
+        (targetModel as! SeriesModel).coordinateSystem = coordSys!
     }
     else { // kind === COORD_SYS_USAGE_KIND_BOX
-        targetModel.boxCoordinateSystem = coordSys as Any?
+        targetModel.boxCoordinateSystem = coordSys!
     }
 
     return kind

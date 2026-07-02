@@ -94,9 +94,14 @@ import ZRenderKit
 // '../coord/View' — View
 public protocol View: AnyObject {}                                         // PORT-TODO
 // '../view/Chart' — ChartView
-public protocol ChartView: AnyObject {}                                    // PORT-TODO
+//   The real `ChartView` (`open class ChartView`) is now ported in view/Chart.swift (this phase);
+//   the forward-reference placeholder protocol was removed to avoid a redeclaration (same pattern
+//   as `ComponentModel` above). Existing opaque uses (`ChartView?`, `-> ChartView`, params in
+//   Scheduler/ExtensionAPI/modelUtil) continue to resolve against the class.
 // '../view/Component' — ComponentView
-public protocol ComponentView: AnyObject {}                               // PORT-TODO
+//   Now ported: the real `open class ComponentView` lives in view/ComponentView.swift (this phase);
+//   the forward-reference placeholder protocol was removed to avoid a redeclaration. Existing uses
+//   (ExtensionAPI.getViewOfComponentModel return type, etc.) continue to resolve against the class.
 // './format' — TooltipMarker = string | RichTextTooltipMarker.
 //   Now ported: see `format.TooltipMarker` (enum) in util/format.swift.
 public typealias TooltipMarker = format.TooltipMarker

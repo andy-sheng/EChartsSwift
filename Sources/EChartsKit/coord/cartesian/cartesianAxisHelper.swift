@@ -276,58 +276,7 @@ public typealias LayoutRect = BoundingRect  // PORT-TODO: replace with real util
 //   CoordinateSystem`. Now provided by the real `coord/cartesian/Cartesian2D.swift`; the former
 //   placeholder class was removed to avoid an invalid redeclaration.
 
-// '../../component/axis/AxisBuilder' — AxisBuilderCfg: upstream interface (component/axis, Phase 6b).
-//   Superset of `CartesianAxisLayout` plus the auto-show / move-overlap flags set below.
-public struct AxisBuilderCfg {  // PORT-TODO: replace with real component/axis/AxisBuilder.swift
-    public var position: [Double]
-    public var rotation: Double
-    public var nameDirection: Double?       // upstream: -1 | 1
-    public var tickDirection: Double?       // upstream: -1 | 1
-    public var labelDirection: Double?      // upstream: -1 | 1
-    public var labelOffset: Double?
-    public var axisLineAutoShow: Bool?
-    public var axisTickAutoShow: Bool?
-    public var labelRotate: Double?
-    public var defaultNameMoveOverlap: Bool?
-    public var z2: Double?
-
-    // Build from a `CartesianAxisLayout` (upstream relies on structural typing:
-    //   `const layoutResult: AxisBuilderCfg = layout(...)`).
-    public init(_ l: CartesianAxisLayout) {
-        self.position = l.position
-        self.rotation = l.rotation
-        self.nameDirection = l.nameDirection
-        self.tickDirection = l.tickDirection
-        self.labelDirection = l.labelDirection
-        self.labelOffset = l.labelOffset
-        self.labelRotate = l.labelRotate
-        self.z2 = l.z2
-    }
-}
-
-// '../../component/axis/AxisBuilder' — AxisBuilderSharedContext: upstream `class` (component/axis, Phase 6b).
-public final class AxisBuilderSharedContext {}  // PORT-TODO: replace with real component/axis/AxisBuilder.swift
-
-// '../../component/axis/AxisBuilder' — AxisBuilder members needed here (Phase 6b). The empty
-//   `final class AxisBuilder {}` placeholder lives in coord/cartesian/Axis2D.swift; graft the
-//   constructor / `__getRawCfg` / `updateCfg` used by this file via an extension.
-extension AxisBuilder {  // PORT-TODO: replace with real component/axis/AxisBuilder.swift
-    // upstream: constructor(axisModel: AxisBaseModel, api: ExtensionAPI, opt: AxisBuilderCfg, ctx?)
-    public convenience init(
-        _ axisModel: CartesianAxisModel,
-        _ api: ExtensionAPI,
-        _ opt: AxisBuilderCfg,
-        _ ctx: AxisBuilderSharedContext?
-    ) {
-        self.init()
-        // PORT-TODO: real construction deferred to component/axis/AxisBuilder.swift (Phase 6b).
-    }
-
-    public func __getRawCfg() -> AxisBuilderCfg {
-        fatalError("PORT-TODO: AxisBuilder.__getRawCfg not yet ported (Phase 6b)")
-    }
-
-    public func updateCfg(_ opt: AxisBuilderCfg) {
-        // PORT-TODO: real updateCfg deferred to component/axis/AxisBuilder.swift (Phase 6b).
-    }
-}
+// NOTE: the former placeholders `AxisBuilderCfg` / `AxisBuilderSharedContext` / `extension AxisBuilder`
+//   (constructor / __getRawCfg / updateCfg) were removed; the real types now live in
+//   component/axis/AxisBuilder.swift. The `AxisBuilderCfg(CartesianAxisLayout)` convenience init used
+//   above is provided there.

@@ -1017,10 +1017,13 @@ public final class SeriesData: DataStackSeriesData {
         // const hostModel = this.hostModel;
         // const dataItem = this.getRawDataItem(idx) as ModelOption;
         // return new Model(dataItem, hostModel, hostModel && hostModel.ecModel);
-        // PORT-TODO: `Model` is a forward-ref placeholder (model layer is Phase 5c) and cannot be
-        //   instantiated yet. Restore when model/Model lands.
-        _ = idx
-        fatalError("PORT-TODO: getItemModel requires model/Model (Phase 5c)")
+        // (model/Model has landed — Phase 5c — so this is now the faithful implementation.)
+        let hostModel = self.hostModel
+        // upstream: `getRawDataItem(idx) as ModelOption`. `OptionDataItem` and `ModelOption` are both the
+        //   `Any` PORT-TODO alias, so the TS assertion cast is a no-op here — pass through directly
+        //   (a conditional `as?` between two `Any` aliases always succeeds → warning).
+        let dataItem: ModelOption = self.getRawDataItem(idx)
+        return Model(dataItem, hostModel, hostModel?.ecModel)
     }
 
     /**

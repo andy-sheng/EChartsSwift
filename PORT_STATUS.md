@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 6b (RENDERING VERTICAL — a REAL bar chart end-to-end: slim `EChartsSlim` driver + `view/` bases + `visual/style` + `layout/barGrid` + `chart/bar/{BaseBarSeries,BarSeries,BarView}` + `component/{grid/GridView,axis/CartesianAxisView+AxisBuilder}`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 215 executed / 0 failures / 58 skipped (was 212; +3 real 6b tests, no regression). A cartesian bar `option` renders four bar `Rect`s through `ZRenderKit` (`BarChartRenderTests`), also exercising `NativePainter.renderToImage`.** See §35. Closeout fixed one real defect the killed workflow left: `SeriesModel.getBaseAxis()` returned `nil` via an `Any?`-return conversion, so bar x/width were NaN (§35b).
 **Phase 6a (COORDINATE SYSTEM + PIPELINE + COMPONENT-INSTANTIATION: `coord/cartesian` Grid/Cartesian2D/Axis2D/AxisModel + axis-helper cluster + the REAL `scaleRawExtentInfo`; `core/` Scheduler/task/CoordinateSystemManager/ExtensionAPI; `GlobalModel` component/series instantiation wired so `getComponent`/`eachSeries` return REAL `GridModel`/`CartesianAxisModel`/bar `SeriesModel`): COMPLETE — `swift build` GREEN, `swift test` 212 executed / 155 passed / 0 failures / 57 skipped (was 208; +4 new coord tests = 2 pass + 2 skip; no regression).** See §§31–34. **The dynamic-option→component pipeline left inert in §29 is now live; `dataToPoint` is exercised by a pixel oracle. The rendering vertical (views + slim orchestrator) is Phase 6b (§34).**
 **Phase 4 (INTERACTION-COMPLETE → zrender DONE: Handler hit-test/dispatch/bubble + core/event normalization + GestureMgr pinch + Draggable + Element Eventful wiring + the hand-written UIKit/AppKit HandlerProxy bridge & ZRenderView host): COMPLETE — clean from-scratch `swift build` green (all 88 units, 0 errors), `swift test` 65 executed / 0 failures / 14 skipped (the new InteractionSmokeTests).** See §§18–22. **zrender is now COMPLETE — rendering + animation + interaction all ported; canvas/svg/dom are intentionally replaced by NativePainter. The port now advances to the ECharts layer (§22).**
 **Phase 3 (LOGIC-COMPLETE: real Animator/Animation/Clip/easing + CADisplayLink host loop + path tools path/transformPath/dividePath/morphPath/convertPath + tool/color completion + Element/ZRender animation wiring): COMPLETE — `swift build` green, 61 tests / 0 failures / 16 skipped.** See §§13–17. **zrender is now logic-complete (rendering + animation + path tools); the only remaining zrender work is Phase 4 = interaction (Handler/event/GestureMgr → UIKit).**
@@ -1615,10 +1616,163 @@ divergence. Carry the §30 majors/hardening only if still open.
 keeps the §12 upstream-sync rule and ports its matching upstream spec as the behavioral oracle (turning
 the `createChart`-driven skips green as `createChart`/`init`/`getData` become real).
 
-### After Phase 6b: the simulator demo shows a REAL echarts-driven chart
-Once §34c lands, `DemoGallery` calls the slim `echarts.swift` driver with a real `option` and renders an
-actual ECharts-computed bar chart (data → scale → coord → layout → `Rect`s) through `NativePainter` — the
-first time the full ECharts→ZRenderKit vertical is visible on screen, not just hand-built `Group` trees.
+---
+
+## 35. What landed in Phase 6b — the rendering vertical (a REAL bar chart end-to-end): COMPLETE
+
+**Phase 6b (the §34 plan): COMPLETE — `swift build` GREEN (0 warnings, clean `rm -rf .build`),
+`swift test` 215 executed / 0 failures / 58 skipped (was 212; +3 real 6b tests, no regression).**
+An `option` `{grid, xAxis:category, yAxis:value, series:[{type:'bar', data}]}` now flows
+`GlobalModel` → coord/cartesian → visual → layout → `BarView` and emits four bar `Rect`s in the
+`ZRenderKit` scene graph, within the grid rect, heights monotonic with the data, palette fills —
+asserted by `Tests/EChartsKitTests/BarChartRenderTests.testBarChartRendersFourBars` (which also
+exercises `NativePainter.renderToImage`).
+
+### 35a. New files
+- **`core/EChartsSlim.swift`** — DELIBERATELY MINIMAL subset of `core/echarts.ts` (NOT the ~3400-line
+  driver). Owns a `Storage` + root `Group`; `setOption` builds `GlobalModel` via `OptionManager`, then
+  `update()` runs the faithful stage ORDER of `updateMethods.update` with minimal bodies (restoreData →
+  performSeriesTasks(dataTaskReset) → coordSysMgr.create → axis-statistics processor → coordSysMgr.update
+  → visual → layout → render). The `Scheduler` task graph, media/actions/lifecycle/states are documented
+  PORT-TODO skips. Registration is explicit (`installOnce`) with `SlimXAxisModel`/`SlimYAxisModel`
+  stand-ins for the runtime-generated `axisModelCreator` classes, and `()->View` factories (Swift can't
+  `new` a bare metatype).
+- **View bases:** `view/Chart.swift` (`ChartView`), `view/ComponentView.swift` (`ComponentView`),
+  `chart/helper/createRenderPlanner.swift` (the incremental/large render planner).
+- **Visual:** `visual/style.swift` (`seriesStyleTask` + `dataColorPaletteTask`: palette + series/data style).
+- **Layout:** `layout/barGrid.swift` (cross-series `calcBarWidthAndOffset` + progressive layout),
+  `layout/barCommon.swift` (per-item bar layout math).
+- **Bar series + view:** `chart/bar/{BaseBarSeries,BarSeries}.swift`, `chart/bar/BarView.swift`
+  (`ChartView` → `Group{Rect}` per datum, `data.diff` enter/update/leave + animation), helpers
+  `chart/helper/{createSeriesData,createClipPathFromCoordSys}.swift`.
+- **Axis + grid views:** `component/axis/{AxisView,CartesianAxisView}.swift` +
+  `component/axis/AxisBuilder.swift` (axis line/tick/label/name builder — **partial**),
+  `component/grid/installSimple.swift` (grid + axis registration; unstubs the 6a
+  `createOrUpdateAxesView`/`AxisBuilder` seams).
+
+### Per-file status & review verdict (Phase 6b)
+| File | Source `.ts` | Status | Verdict | Note |
+|---|---|---|---|---|
+| `core/EChartsSlim.swift` | `core/echarts.ts` (subset) | **partial** | (slim driver by design) | faithful stage ORDER; Scheduler/media/actions/lifecycle/states are documented skips |
+| `view/Chart.swift` | `view/Chart.ts` | complete | minor-issues (2) | `eachRendered` uses `Group.traverse` (children only) — upstream `traverseElements` also visits the root group; `context.payload!`/`ecModel!`/`api!` force-unwraps in render tasks trap on a nil payload (TS tolerates undefined) |
+| `view/ComponentView.swift` | `view/Component.ts` | complete | faithful | base only |
+| `chart/helper/createRenderPlanner.swift` | `chart/helper/createRenderPlanner.ts` | complete | faithful | |
+| `visual/style.swift` | `visual/style.ts` | complete | minor-issues (3) | palette-rotation skips filtered points (no global `colorFromPalette` fallback) so `colorBy:'data'` would shift after filtering; `== nil` vs JS-falsy on empty-string/0 color; optional key removed vs `undefined`. All out of bar-only scope (bars are `isColorBySeries()`) |
+| `layout/barCommon.swift` | `layout/barGrid.ts` (item half) | complete | faithful | |
+| `layout/barGrid.swift` | `layout/barGrid.ts` | complete | major → **FIXED** | the NaN-vs-JS-truthiness bar-width poisoning (`barWidth`/`barMaxWidth`/`barMinWidth`) is fixed via `barGridTruthy` (0/NaN → false); default no-`barWidth` chart now yields finite widths |
+| `chart/helper/createSeriesData.swift` | `chart/helper/createSeriesData.ts` | complete | faithful | |
+| `chart/helper/createClipPathFromCoordSys.swift` | `chart/helper/createClipPathFromCoordSys.ts` | complete | faithful | cartesian branch; polar `createPolarClipPath` deferred |
+| `chart/bar/BaseBarSeries.swift` | `chart/bar/BaseBarSeries.ts` | complete | faithful | `getInitialData`/`defaultOption`/`getMarkerPosition` match upstream incl. JS-truthiness quirks |
+| `chart/bar/BarSeries.swift` | `chart/bar/BarSeries.ts` | complete | faithful | |
+| `chart/bar/BarView.swift` | `chart/bar/BarView.ts` | complete | major (1 OPEN) | **update-diff branch does NOT clip `layout` in place** — it clips a throwaway `clipLayout` then feeds the UNCLIPPED `layout` to `updateStyle`/`setShape`/`updateProps`, so a partially-overflowing bar renders unclamped on any steady-state (oldData) render. The add branch is correct; only fully-clipped bars are still handled. The render test exercises only the add path, so first-render bars are correct (§35c) |
+| `component/axis/AxisView.swift` | `component/axis/AxisView.ts` | complete | faithful | base |
+| `component/axis/AxisBuilder.swift` | `component/axis/AxisBuilder.ts` | **partial** | major (OPEN) | `axisTick`/`minorTick` `length` and `nameGap` read via `... as? Double` but their defaults are **Int** literals → cast fails → ticks collapse to zero length (invisible) and axis name gets 0 gap. Same Int-boxing class as §33 #6. Not caught by the render test (asserts bars only). Label/name overlap-nudge is a no-op stub |
+| `component/axis/CartesianAxisView.swift` | `component/axis/CartesianAxisView.ts` | complete | faithful | drives `AxisBuilder`; splitLine/splitArea deferred |
+| `component/grid/installSimple.swift` | `component/grid/install.ts` (subset) | complete | faithful | grid + axis registration |
+
+Roll-up: **13 complete, 3 partial; 2 major FIXED-or-OPEN (barGrid width FIXED; BarView update-path clip
+OPEN), 1 major OPEN in AxisBuilder (Int-boxed tick/name lengths); the rest faithful/minor.**
+
+### 35b. Key bug found & fixed during closeout — `SeriesModel.getBaseAxis()` `Any?` conversion
+The workflow was killed (session abort) before its Verify/Synthesize stages, leaving one real defect the
+end-to-end test caught: **bars had `x`/`width` = NaN** (y/height were correct). Root cause chain:
+`layout/barGrid` reads `data.getLayout("size"/"offset")` (→ NaN default) which the **cross-series bar
+layout** (`createCrossSeriesLayoutHandler`) only writes for axes collected under the bar `AxisStatKey`.
+Collection happens in `associateSeriesWithAxis` (`axisStatistics.swift`), gated by
+`isBaseAxis = seriesModel.getBaseAxis() === axis`. **`SeriesModel.getBaseAxis()` (returns `Any?`) returned
+`nil`**: `Cartesian2D` has a concrete `getBaseAxis(): Axis2D`, but its superprotocol `CoordinateSystem`
+declares `getBaseAxis(): Axis?` WITH a nil-returning default (`CoordinateSystem.swift:316`). In an untyped
+`Any?`-return position, Swift overload resolution prefers the protocol's `-> Axis?` member (its optional
+result matches the `Any?` context) over the concrete `-> Axis2D`, so a direct `return coordSys.getBaseAxis()`
+bound the DEFAULT → nil. **Fix** (`model/Series.swift:490+`): narrow to concrete `Cartesian2D`, then bind
+the result to an explicit `let baseAxis: Axis2D` local (pins resolution to the concrete method) before
+returning. With that, `isBaseAxis` is true for the category axis → statistics collect the series →
+`size`/`offset` are set → bar geometry is finite. (NOT a compiler miscompile — an overload-resolution trap;
+empirically confirmed by clean-build A/B on the direct vs. typed-local return.)
+
+**Process note:** this bug was obscured for most of the investigation by STALE build artifacts — leftover
+`PORTDIAG_*` diagnostic globals (added mid-debug, then removed from the source) left probe test files that
+failed to compile, so `swift test` silently ran cached binaries. A `rm -rf .build` + removing the probe
+tests was required to see the true (passing) state. Lesson for future closeouts: on contradictory probe
+output, clean-build before trusting anything.
+
+### 35c. Build + test status — DOES A BAR CHART RENDER?
+- **`swift build`: GREEN** (clean `rm -rf .build`, 0 warnings, all targets).
+- **`swift test`: 215 executed / 157 passed / 0 failures / 58 skipped** (was 212 in 6a; +3 new 6b tests, no
+  regression). The 58 skips are the 57 pre-existing intentional gaps + 1 new `getVisual` skip.
+- **End-to-end render test — `Tests/EChartsKitTests/BarChartRenderTests.testBarChartRendersFourBars`: PASS**
+  (re-run and confirmed green this closeout, 0.003 s). **YES — a real ECharts bar `option` renders 4 bars
+  through `ZRenderKit.`** Its 6 assertions all hold: (1) exactly 4 bar `Rect` elements (name `item`) in the
+  root `Group`; (2) every bar rect lies within the injected `Cartesian2D.getArea()` (`{50,20,300,200}`);
+  (3) bar x increases left→right (61.6/136.6/211.6/286.6); (4) `|height|` monotonic with data
+  (50/100/150/200); (5) fills are REAL palette colors (`#5070dd`, not the `#000` default); (6)
+  `CALayerPainter.renderToImage` returns a non-nil 400×300 `CGImage`. Plus 1 `XCTSkip`
+  (`test_api_getVisual_barColorFromPalette`, needs `createChart`) and `EChartsSlimSmokeTests` (drives the
+  slim update cycle; prints rects=0 because it uses an empty-DataStore double).
+- **Real bugs found & fixed to get here (in Sources, not papered over in the test):** the `layout/barGrid`
+  **NaN-vs-JS-truthiness** bar-width poisoning (`barGridTruthy`, §35a table) and the
+  **`SeriesModel.getBaseAxis()` `Any?` overload-resolution trap** (§35b) — the latter is why x/width were
+  NaN before this closeout.
+- **Data source caveat (NOT a bug):** the real `BarSeriesModel.getInitialData → SourceManager.getSource()`
+  is still a `fatalError` stub (`data/helper/sourceManager.ts` not ported), so all three render/coord tests
+  supply data via a populated `DataStore` double — a documented substitute for a known-unported layer.
+
+### 35d. New open issues & PORT-TODOs (deduped, severity-first)
+**OPEN correctness bugs (carry into 6c pre-work):**
+1. **`BarView` update-diff branch clips a throwaway copy, not the real `layout`** (see §35a table). Fix: make
+   `layout` a `var` in the `.update` closure and `clipCartesian2D(coordSysClipArea, &layout)` in place, as the
+   `.add` closure does. Latent today (render test hits only the add path); bites on the first re-render.
+2. **`AxisBuilder` Int-boxed `axisTick.length`/`minorTick.length`/`nameGap` read via `... as? Double` → 0**
+   → invisible ticks + zero name gap. Same `as? Double` Int-boxing class as §33 #6 (project-wide). Fix at
+   ingestion (normalize option numerics to Double) or read with an Int-tolerant coercion helper.
+3. **`Chart.eachRendered` visits children only** (`Group.traverse`), where upstream `traverseElements` first
+   visits the root group; and `context.payload!`/`ecModel!`/`api!` force-unwraps in the render tasks trap on
+   a nil payload the `Scheduler` may set (TS tolerates undefined). Both `view/Chart.swift`.
+4. **`visual/style` palette rotation** skips filtered points (no global `colorFromPalette` fallback) so
+   `colorBy:'data'` would shift after legend/dataZoom filtering. Out of bar-only scope (bars are
+   `isColorBySeries()`), but mark before line/scatter land.
+
+**Deferred features (faithful-signature PORT-TODO stubs; none block the bar vertical):**
+- **Prereq util still unported** (blocks fuller BarView/AxisBuilder fidelity): `util/graphic`
+  (`updateProps`/`initProps`/`subPixelOptimizeLine`/`removeElementWithFadeOut` — currently local shims),
+  `util/states` (`toggleHoverEmphasis`/`setStatesStylesFromModel`), `label/labelStyle`
+  (`createTextStyle`/`setLabelStyle`) — **the emphasis/states and label blocks in `BarView.updateStyle` are
+  documented PORT-TODO no-ops.**
+- **Label collision / layout:** `labelLayoutHelper` hideOverlap/OBB, `LabelManager`, axis-name move-overlap
+  resolution, `sectorLabel` — all deferred.
+- **BarView non-core paths:** large/progressive (`LargePath`, `throttle`), `realtimeSort`/`changeAxisOrder`,
+  `showBackground`, polar `Sector`/`Sausage` branch, `pictorialBar`.
+- **Axis extras:** `splitLine`/`splitArea` (`axisSplitHelper`), functional `axisLabel.formatter`
+  (`AxisBuilder` `rawLabel` read-back), axis-break rendering; other axis views (Angle/Radius/Single/Parallel).
+- **Slim driver skips:** the `Scheduler` task graph proper, media/actions/lifecycle/states, and the full
+  `core/echarts.ts` orchestrator (`init`/`setOption`/`_update`).
+- **Other chart types + components:** line/scatter/pie/etc.; tooltip/legend/dataZoom/brush/markLine/axisPointer;
+  decal/aria; other coordinate systems (polar/geo/single/radar/calendar/parallel/matrix).
+
+### 35e. The SIMULATOR DEMO is now updatable to a REAL echarts-option-driven bar chart
+The hand-built-shapes demo can now be replaced by a chart driven end-to-end from an ECharts `option`. Exact
+entry point (all public, exercised by `BarChartRenderTests`):
+1. **Driver:** `EChartsSlim(width:height:)` → `.setOption(_ option: [String: Any])`
+   (`Sources/EChartsKit/core/EChartsSlim.swift`).
+2. **Scene-graph accessor:** `EChartsSlim.getRoot() -> ZRenderKit.Group` (the rendered display tree; also
+   `.getStorage() -> Storage`, `.getModel() -> GlobalModel?`).
+3. **Paint:** `NativePainter.renderToImage(group:size:dpr:backgroundColor:) -> CGImage?`
+   (`Sources/NativePainter/CALayerPainter.swift:654`) for a still image; or attach `getRoot()` to the live
+   host `ZRenderView` (`Sources/NativePainter/ZRenderView.swift`) for an on-screen/animated view.
+
+So `Sources/DemoGallery` can add a demo that builds `{grid, xAxis, yAxis, series:[{type:'bar', data}]}`,
+feeds it to `EChartsSlim.setOption`, and renders `getRoot()` — the first time the full ECharts→ZRenderKit
+vertical (data → scale → coord → layout → `Rect`s) is on screen, not hand-built `Group` trees. (Until
+`SourceManager.getSource` lands, a demo must supply data via a `DataStore` double, as the tests do.)
+
+### 35f. Roadmap beyond Phase 6b
+1. **6c pre-work:** fix the §35d OPEN bugs (BarView clip-in-place, AxisBuilder Int-boxed lengths) and port
+   `SourceManager.getSource` so `BarSeriesModel.getInitialData` is real (removes the `DataStore` double).
+2. **Emphasis/states + labels:** port `util/graphic`, `util/states`, `label/labelStyle` → real hover/select
+   + bar value labels.
+3. **More chart types:** line + scatter `ChartView`s (reuse the coord/visual/layout pipeline).
+4. **More components:** tooltip, legend, dataZoom, axisPointer, splitLine/splitArea.
+5. **More coordinate systems:** polar, then geo/single/radar as demand dictates.
 
 ---
 

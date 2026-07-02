@@ -51,10 +51,14 @@ extension PaletteMixin {
         _ scope: AnyObject? = nil,
         _ requestNum: Double? = nil
     ) -> ZRColor? {
-        // PORT-TODO: the dynamic option tree stores `color`/`colorLayer` as raw `Any`; if a
-        //   raw value is not already a `ZRColor`/`[ZRColor]`, `normalizeToArray<ZRColor>` yields
-        //   `[]` (no coercion). Faithful once the option ingest builds typed `ZRColor` values.
-        let defaultPalette: [ZRColor] = model.normalizeToArray(self.get("color", true))
+        // The dynamic option tree stores `color`/`colorLayer` as raw `Any` (e.g. the default theme
+        //   palette is `[String]`; see globalDefault.swift `themeColorTheme`). A plain color string IS a
+        //   valid `ZRColor` upstream (`ZRColor = ColorString | GradientObject | PatternObject`), but
+        //   `normalizeToArray<ZRColor>` cannot cast `[String]`→`[ZRColor]`, so it would yield `[]` and no
+        //   series would ever get a palette color. Coerce raw strings → `.color` (and pass through any
+        //   already-typed `ZRColor`) so the palette is populated. Faithful bridge until the option ingest
+        //   stores typed `ZRColor` values directly.
+        let defaultPalette: [ZRColor] = coerceZRColorArray(self.get("color", true))
         let layeredPalette = self.get("colorLayer", true) as? [[ZRColor]]
         return getFromPalette(self, innerColor, defaultPalette, layeredPalette, name, scope, requestNum)
     }
@@ -80,6 +84,23 @@ public func getDecalFromPalette(
     return getFromPalette(that, innerDecal, defaultDecals, nil, name, scope, requestNum)
 }
 
+
+// Coerce a raw dynamic `color` option (String / [String] / ZRColor / [ZRColor] / mixed [Any]) into a
+// `[ZRColor]`. A plain color string maps to `.string`. Not an upstream symbol — bridges the dynamic
+// option bag to the typed `ZRColor` enum (see `getColorFromPalette`).
+private func coerceZRColorArray(_ raw: Any?) -> [ZRColor] {
+    func one(_ el: Any?) -> ZRColor? {
+        if let z = el as? ZRColor { return z }
+        if let s = el as? ColorString { return .color(s) }
+        return nil
+    }
+    guard let raw = raw else { return [] }
+    if let arr = raw as? [ZRColor] { return arr }
+    if let arr = raw as? [ColorString] { return arr.map { .color($0) } }
+    if let arr = raw as? [Any] { return arr.compactMap(one) }
+    if let single = one(raw) { return [single] }
+    return []
+}
 
 private func getNearestPalette<T>(
     _ palettes: [[T]], _ requestColorNum: Double

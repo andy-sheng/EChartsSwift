@@ -44,7 +44,7 @@ let package = Package(
         // the translated EChartsKit modules. The first oracle for the Phase-5a scale math.
         .testTarget(
             name: "EChartsKitTests",
-            dependencies: ["EChartsKit", "ZRenderKit"],
+            dependencies: ["EChartsKit", "ZRenderKit", "NativePainter"],
             path: "Tests/EChartsKitTests"
         ),
         // macOS demo gallery — the native equivalent of opening zrender's test/*.html in a
