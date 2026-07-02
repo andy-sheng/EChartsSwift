@@ -968,11 +968,25 @@ func createAxisBiulders(
     _ axesMap: AxesMap,
     _ optionContainLabel: Any?,  // upstream: GridOption['containLabel']
     _ api: ExtensionAPI
-) -> Any? {  // PORT-TODO: AxisBuilderSharedContext (component/axis, Phase 6b)
-    // PORT-TODO: builds `axis.axisBuilder` via `createCartesianAxisViewCommonPartBuilder` for each shown axis
-    //   and returns a `new AxisBuilderSharedContext(resolveAxisNameOverlapForGrid)`. Stubbed (no builders).
-    _ = (gridRect, cartesians, axesMap, optionContainLabel, api)
-    return nil
+) -> Any? {  // upstream returns AxisBuilderSharedContext; typed `Any?` so callers (layOutGridByOuterBounds) stay loose.
+    // upstream: const axisBuilderSharedCtx = new AxisBuilderSharedContext(resolveAxisNameOverlapForGrid);
+    // PORT-TODO: `resolveAxisNameOverlapForGrid` (grid-specific name-overlap resolver, Grid.swift:1053) is
+    //   not yet ported; the default resolver is sufficient to BUILD the axis elements (overlap nudging is a
+    //   refinement, not required for correct axisLine/tick/label geometry).
+    let axisBuilderSharedCtx = AxisBuilderSharedContext(resolveAxisNameOverlapDefault)
+    // See `AxisBaseOptionCommon['nameMoveOverlap']`: default is `!containLabel`.
+    let defaultNameMoveOverlap = !((optionContainLabel as? Bool) ?? false)
+    func buildFor(_ axis: Axis2D) {
+        if axisHelper.shouldAxisShow(axis.model) {
+            axis.axisBuilder = cartesianAxisHelper.createCartesianAxisViewCommonPartBuilder(
+                gridRect, cartesians, axis.model as! CartesianAxisModel, api,
+                axisBuilderSharedCtx, defaultNameMoveOverlap
+            )
+        }
+    }
+    axesMap.x.each { axis, _ in buildFor(axis) }
+    axesMap.y.each { axis, _ in buildFor(axis) }
+    return axisBuilderSharedCtx
 }
 
 /**
@@ -994,9 +1008,25 @@ func createOrUpdateAxesView(
     _ noPxChange: Bool,
     _ layoutRef: BoxLayoutReferenceResult
 ) {
-    // PORT-TODO: updates each `axis.axisBuilder`, calls `build({axisTickLabel*}/{axisName}/{axisLine})`,
-    //   and computes `nameMarginLevel`. Requires component/axis AxisBuilder. Stubbed as a no-op.
-    _ = (gridRect, axesMap, kind, outerBoundsContain, noPxChange, layoutRef)
+    // upstream: each shown axis → updateCartesianAxisViewCommonPartBuilder(...) then axisBuilder.build(...).
+    let isDetermine = kind == AxisTickLabelComputingKind.determine
+    func buildFor(_ axis: Axis2D) {
+        if axisHelper.shouldAxisShow(axis.model) {
+            cartesianAxisHelper.updateCartesianAxisViewCommonPartBuilder(
+                axis.axisBuilder, gridRect, axis.model as! CartesianAxisModel
+            )
+            _ = axis.axisBuilder.build(
+                isDetermine ? ["axisTickLabelDetermine": true] : ["axisTickLabelEstimate": true],
+                AxisBuilderBuildExtraParams(noPxChange: noPxChange)
+            )
+        }
+    }
+    axesMap.x.each { axis, _ in buildFor(axis) }
+    axesMap.y.each { axis, _ in buildFor(axis) }
+    // PORT-TODO: upstream then computes `nameMarginLevelMap` via calcNameMarginLevel(0/1) to nudge axis
+    //   NAME margins by relative grid size — an axis-name refinement (not axisLine/tick/label geometry);
+    //   deferred with the name-overlap resolver.
+    _ = (outerBoundsContain, layoutRef)
 }
 
 // upstream: prepareOuterBounds(gridModel, rawGridRect: BoundingRect, layoutRef): {outerBoundsRect, parsedOuterBoundsContain, outerBoundsClamp}

@@ -33,6 +33,14 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
     var collected: [Displayable] = []
     func walk(_ el: Element) {
         if el.ignore { return }
+        // Mirror Storage._updateAndAddDisplayable: run the per-element update hooks before descending.
+        // This is load-bearing for `ZRText`, whose `update()` (→ `_updateSubTexts`) BUILDS its `TSpan`
+        // children; without it a text element has no spans, so the walk below finds no children and the
+        // bare `ZRText` (not drawable itself) is dropped — axis/labels rendered blank. Paths/lines carry
+        // absolute geometry so they were unaffected, which is why this only surfaced once text landed.
+        el.beforeUpdate()
+        el.update()
+        el.afterUpdate()
         // Duck-type the container check exactly like Storage (shared `activeChildrenRef()`): descend
         // into Group, ZRText (→ TSpan children), AND a combine-morphing Path (→ its sub-paths). The
         // previous `el.isGroup` check was narrower than upstream's `(el as GroupLike).childrenRef` — it

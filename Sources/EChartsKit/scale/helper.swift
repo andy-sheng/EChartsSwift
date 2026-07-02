@@ -57,11 +57,10 @@
 //   `intervalScaleEnsureValidExtent` reads only `rawExtentResult.ctnShp`, which the real struct exposes.
 
 // './scaleMapper' — getScaleExtentForTickUnsafe(mapper): number[].
-// The upstream call site is a bare `getScaleExtentForTickUnsafe(ordinalScale)`. When scaleMapper.swift
-// is ported (caseless enum `scaleMapper`), this becomes `scaleMapper.getScaleExtentForTickUnsafe(...)`.
-public func getScaleExtentForTickUnsafe(_ mapper: OrdinalScale) -> [Double] {  // PORT-TODO: belongs to scale/scaleMapper
-    fatalError("PORT-TODO: scaleMapper.getScaleExtentForTickUnsafe not yet ported")
-}
+//   The real implementation now lives in scale/scaleMapper.swift (`getScaleExtentForTickUnsafe(ScaleMapper)`);
+//   the former fatalError placeholder here (typed `OrdinalScale`) was superseded and REMOVED per the
+//   forward-reference contract above — leaving it caused an overload-resolution trap that routed some
+//   callers into the stub. All call sites resolve to the real `ScaleMapper` overload.
 
 
 // upstream: type intervalScaleNiceTicksResult = { interval, intervalPrecision, niceTickExtent }.

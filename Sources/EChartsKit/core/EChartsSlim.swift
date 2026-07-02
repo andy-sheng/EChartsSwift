@@ -73,12 +73,26 @@ struct GridCoordinateSystemCreator: CoordinateSystemCreator {
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
 // ============================================================================
 
+/// Merge the per-type `axisDefault` (show:true + axisLine/axisTick/axisLabel/splitLine sub-defaults)
+/// UNDER the model's own option, so `axisModel.get("show")` / the AxisBuilder's sub-option reads resolve.
+/// This stands in for the deferred `AxisModel.mergeDefaultAndTheme` default-merge (the real
+/// axisModelCreator path injects `getDefaultOption()`; the slim stand-in models never run through it).
+/// Overwrite=false → user option wins; nested dicts deep-merge (util.merge).
+private func slimMergeAxisDefaults(_ model: CartesianAxisModel, _ defaultType: String) {
+    guard var opt = model.option as? [String: Any] else { return }
+    let axisType = (opt["type"] as? String) ?? defaultType
+    guard let def = axisDefault.option[axisType] as? [String: Any] else { return }
+    _ = util.merge(&opt, def, false)
+    model.option = opt
+}
+
 /// `xAxis` model. `static type = 'xAxis'` so `ComponentModel.registerClass` keys it correctly.
 final class SlimXAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     override class var type: ComponentFullType { return "xAxis" }
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
+        slimMergeAxisDefaults(self, "category")
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
@@ -100,6 +114,7 @@ final class SlimYAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
+        slimMergeAxisDefaults(self, "value")
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
