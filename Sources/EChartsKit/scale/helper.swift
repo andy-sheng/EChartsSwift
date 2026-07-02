@@ -52,12 +52,9 @@
 //   (placeholder removed per the contract above). It exposes `count()` and is a `Scale`, so it
 //   satisfies both `ordinalScaleCreateTicks` and the `getScaleExtentForTickUnsafe` placeholder.
 
-// '../coord/scaleRawExtentInfo' — ScaleExtentFixMinMax = boolean[]
-public typealias ScaleExtentFixMinMax = [Bool]                              // PORT-TODO: belongs to coord/scaleRawExtentInfo
-// '../coord/scaleRawExtentInfo' — ScaleRawExtentResultFinal (only `ctnShp` is read here).
-public protocol ScaleRawExtentResultFinal {                                 // PORT-TODO: belongs to coord/scaleRawExtentInfo
-    var ctnShp: Bool { get }
-}
+// '../coord/scaleRawExtentInfo' — ScaleExtentFixMinMax / ScaleRawExtentResultFinal are now the real,
+//   fully-ported types in coord/scaleRawExtentInfo.swift (placeholders removed per the contract above).
+//   `intervalScaleEnsureValidExtent` reads only `rawExtentResult.ctnShp`, which the real struct exposes.
 
 // './scaleMapper' — getScaleExtentForTickUnsafe(mapper): number[].
 // The upstream call site is a bare `getScaleExtentForTickUnsafe(ordinalScale)`. When scaleMapper.swift

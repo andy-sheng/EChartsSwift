@@ -61,7 +61,9 @@ import ZRenderKit
 //   Existing uses (`GlobalModel` as a param/return type, closure types) resolve against the class,
 //   which is a subclass of `Model` and conforms to `AnyObject`.
 // '../core/ExtensionAPI' — ExtensionAPI
-public protocol ExtensionAPI: AnyObject {}                                 // PORT-TODO
+//   Now the real `open class ExtensionAPI` (core/ExtensionAPI.swift); the placeholder protocol is
+//   removed to avoid a redeclaration. Existing uses (param/return/closure types) resolve against the
+//   class, which conforms to `AnyObject`.
 // '../model/Series' — SeriesModel (upstream is generic SeriesModel<Opt>)
 //   The real `SeriesModel` (`open class SeriesModel: ComponentModel, PaletteMixin, DataHost`) is now
 //   ported in model/Series.swift (this phase); the forward-reference placeholder protocol was removed
@@ -112,13 +114,7 @@ public typealias DimensionUserOuputEncode = Dictionary<[Double]>           // PO
 // './time' — PrimaryTimeUnit = (typeof primaryTimeUnits)[number]
 //   Now fully ported in util/time.swift (same module); the placeholder was removed.
 // '../core/task' — TaskPlanCallbackReturn, TaskProgressParams
-public typealias TaskPlanCallbackReturn = Any                              // PORT-TODO
-public struct TaskProgressParams {                                         // PORT-TODO
-    public var start: Double = 0
-    public var end: Double = 0
-    public var count: Double = 0
-    public var next: (() -> Double?)?
-}
+//   Now fully ported in core/task.swift (same module); the placeholders were removed.
 
 // DOM lib types referenced by upstream (browser only / backend seam, CONVENTIONS §9):
 public typealias HTMLElement = Any                                         // PORT-TODO: DOM type
@@ -1815,6 +1811,15 @@ public struct ComponentOption {
     public var coordinateSystem: String?
     public var coordinateSystemUsage: CoordinateSystemUsageOption?
     public var coord: CoordinateSystemDataCoord?
+
+    // PORT: the raw dynamic option bag ([String: Any]) this typed ComponentOption was projected
+    //   from. Upstream `ComponentOption` IS the dynamic option object (a plain JS object flowing by
+    //   identity from `newOption[mainType]` through `mappingToExists` into
+    //   `new ComponentModelClass(newCmptOption, ...)`); the Swift struct is a lossy typed subset, so
+    //   the full bag is carried here to reconstruct the option passed to component-model
+    //   instantiation/merge in Global._mergeOption. `nil` for typed-only ComponentOptions (e.g.
+    //   internal option creators that do not originate from the dynamic tree).
+    public var rawOption: [String: Any]?
     public init() {}
 }
 

@@ -303,12 +303,12 @@ public enum util {
 
     public static func isFunction(_ value: Any?) -> Bool {
         // typeof value === 'function'
-        // PORT-TODO: Swift cannot reliably runtime-detect an arbitrary closure type
-        //            (closures carry no introspectable metadata and have heterogeneous
-        //            signatures). Callers should resolve "is this callable" statically.
-        //            Returned conservatively as false; revisit if a consumer needs it.
-        _ = value
-        return false
+        // Swift closures carry no protocol conformance, but a function value's dynamic type
+        // description always contains "->" (e.g. "(Int) -> String"), which no non-function value
+        // produces. This heuristic covers the callers that matter (e.g. DataStore's provider
+        // getItem/count sanity assert). Non-function values (incl. metatypes) never match.
+        guard let value = value else { return false }
+        return String(describing: Swift.type(of: value)).contains("->")
     }
 
     public static func isString(_ value: Any?) -> Bool {

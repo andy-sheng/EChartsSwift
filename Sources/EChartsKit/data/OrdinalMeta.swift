@@ -88,11 +88,10 @@ public final class OrdinalMeta {
     }
 
     public static func createByAxisModel(_ axisModel: Model) -> OrdinalMeta {
-        // PORT-TODO: `Model` is a forward-ref stub in this tier (an empty protocol) and does
-        // not yet expose `.option`; `axisModel.option` / `option.data` / `option.dedplication`
-        // are deferred until model/Model lands. Treated as an empty option bag for now.
-        _ = axisModel
-        let option: Dictionary<Any> = [:]   // const option = axisModel.option;
+        // const option = axisModel.option; const data = option.data;
+        // Model.option now exists (model/Model.swift) — read categories from the axis option bag
+        // (e.g. `xAxis.data`) so category axes actually collect their categories.
+        let option = (axisModel.option as? [String: Any]) ?? [:]
         let data = option["data"] as? [OrdinalRawValue]   // const data = option.data;
         // const categories = data && map(data, getName);
         let categories = data != nil ? util.map(data, { (obj, _) in getName(obj) }) : nil

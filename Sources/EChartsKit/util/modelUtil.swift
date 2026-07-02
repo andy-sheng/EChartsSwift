@@ -123,6 +123,10 @@ public final class HashMap<V> {                                             // P
         return data[hashKey(key)]
     }
 
+    public func hasKey(_ key: Any?) -> Bool {
+        return data[hashKey(key)] != nil
+    }
+
     public func each(_ cb: (V, String) -> Void) {
         for k in _keys {
             if let v = data[k] {
@@ -1251,11 +1255,13 @@ public enum model {
 
         if !result.specified {
             // Use the first as default if `useDefault`.
-            // PORT-TODO: GlobalModel placeholder (util/types.swift) has no `getComponent`.
-            //   result.models = (opt.useDefault && (firstCmpt = ecModel.getComponent(mainType)))
-            //       ? [firstCmpt] : [];
-            _ = ecModel
-            result.models = []
+            // result.models = (opt.useDefault && (firstCmpt = ecModel.getComponent(mainType))) ? [firstCmpt] : [];
+            if opt.useDefault == true, let firstCmpt = ecModel.getComponent(mainType) {
+                result.models = [firstCmpt]
+            }
+            else {
+                result.models = []
+            }
             return result
         }
 
@@ -1288,12 +1294,10 @@ public enum model {
                 indexOption = -1.0
             }
         }
-        // PORT-TODO: GlobalModel placeholder (util/types.swift) has no `queryComponents`.
-        //   result.models = ecModel.queryComponents({ mainType, index: indexOption, id: idOption, name: nameOption });
-        _ = indexOption
-        _ = idOption
-        _ = nameOption
-        result.models = []
+        // result.models = ecModel.queryComponents({ mainType, index: indexOption, id: idOption, name: nameOption });
+        result.models = ecModel.queryComponents(
+            QueryConditionKindB(mainType: mainType, index: indexOption, id: idOption, name: nameOption)
+        )
         return result
     }
 

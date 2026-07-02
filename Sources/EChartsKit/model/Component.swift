@@ -178,7 +178,12 @@ open class ComponentModel: Model, ClassManageable {
     //   -> Expressed as the property default values above (`type`/`id`/`name`/`mainType`/`subType`/
     //      `componentIndex`). Swift has no prototype to mutate at module-load time.
 
-    public override init(_ option: ModelOption?, _ parentModel: Model?, _ ecModel: GlobalModel?) {
+    // upstream: `constructor(option, parentModel, ecModel) { super(...); this.uid = ... }`.
+    //   Marked `required` so the class-registry `Constructor` (= `ComponentModel.Type`) is
+    //   instantiable via the metatype in `Global._mergeOption` (`new ComponentModelClass(...)`).
+    //   Every subclass inherits it (none declares its own designated initializer). CONVENTIONS §2:
+    //   Swift metatypes can not call a non-`required` init, so this is the minimal enabling change.
+    public required override init(_ option: ModelOption?, _ parentModel: Model?, _ ecModel: GlobalModel?) {
         self.uid = component.getUID("ec_cpt_model")
         super.init(option, parentModel, ecModel)
     }
@@ -345,9 +350,7 @@ open class ComponentModel: Model, ClassManageable {
         // Consider itself having box layout configs.
         // For backward compatibility, by default do not `ignoreParent`.
         // return layout.getBoxLayoutParams(this as Model<BoxLayoutOptionMixin>, false);
-        // PORT-TODO: `layout` util (util/layout.ts) not yet ported — returns an empty box-layout
-        //   params bag until it lands.
-        return BoxLayoutOptionMixin()
+        return layout.getBoxLayoutParams(self, false)
     }
 
     /**

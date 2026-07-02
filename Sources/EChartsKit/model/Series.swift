@@ -399,7 +399,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost {
     open func setData(_ data: SeriesData) {
         let task = getCurrentTask(self)
         if let task = task {
-            let context = task.context
+            let context = task.context!
             // Consider case: filter, data sample.
             // FIXME:TS never used, so comment it
             // if (context.data !== data && task.modifyOutputEnd) {
@@ -855,7 +855,7 @@ func getSeriesAutoName(_ seriesModel: SeriesModel) -> String {
 }
 
 func dataTaskCount(_ context: SeriesTaskContext) -> Double {
-    return Double(context.model.getRawData().count())
+    return Double(context.model!.getRawData().count())
 }
 
 @discardableResult
@@ -868,7 +868,7 @@ func dataTaskReset(_ context: SeriesTaskContext) -> Any? {
 func dataTaskProgress(_ param: TaskProgressParams, _ context: SeriesTaskContext) {
     // Avoid repeat cloneShallow when data just created in reset.
     if let outputData = context.outputData, Int(param.end) > outputData.count() {
-        _ = context.model.getRawData().cloneShallow(context.outputData)
+        _ = context.model!.getRawData().cloneShallow(context.outputData)
     }
 }
 
@@ -894,7 +894,7 @@ func onDataChange(_ this: SeriesData, _ seriesModel: SeriesModel, _ newList: Ser
     let task = getCurrentTask(seriesModel)
     if let task = task {
         // Consider case: filter, selectRange
-        task.setOutputEnd((newList ?? this).count())
+        task.setOutputEnd(Double((newList ?? this).count()))
     }
     return newList
 }
@@ -921,37 +921,28 @@ func getCurrentTask(_ seriesModel: SeriesModel) -> SeriesTask? {
 // `data/helper/sourceManager.ts` MUST remove these and replace them with the real types.
 // ============================================================================
 
-// '../core/Scheduler' — SeriesTaskContext (the `task.context` carried on `dataTask`).
-public final class SeriesTaskContext {                                       // PORT-TODO: belongs to core/Scheduler
-    public var model: SeriesModel!
-    public var data: SeriesData?
-    public var outputData: SeriesData?
-    public init() {}
-}
+// '../core/Scheduler' — SeriesTaskContext and SeriesTask are now the REAL types ported in
+//   core/Scheduler.swift (`SeriesTaskContext: TaskContext`, `SeriesTask = Task<SeriesTaskContext>`).
+//   The former local stubs were removed by the Scheduler-porting agent, per their PORT-TODO note.
 
-// '../core/Scheduler' — SeriesTask (the per-series data task). Upstream is a `GeneralTask` with
-//   `context`/`dirty()`/`setOutputEnd()`/`perform()`; only the surface touched here is stubbed.
-public final class SeriesTask {                                              // PORT-TODO: belongs to core/Scheduler
-    public var context = SeriesTaskContext()
-    public init() {}
-    public func dirty() {
-        // PORT-TODO: marks the task dirty for the next `perform` (Phase 6).
-    }
-    public func setOutputEnd(_ end: Int) {
-        // PORT-TODO: sets the task output range end (Phase 6).
-        _ = end
-    }
-}
-
-// '../core/task' — createTask({ count, reset }). The config closures are kept (so `dataTaskCount`/
-//   `dataTaskReset` remain referenced and faithful) but the returned stub ignores them.
+// '../core/task' — createTask({ count, reset }). Bridges the `dataTask` config closures (which use
+//   the upstream `(context)`-only shape) to the real `createTask<Ctx>(TaskDefineParam)` (core/task.swift).
+//   The single-unlabeled-arg call resolves to the global generic `createTask`; this labeled overload
+//   preserves the `init`/`mergeOption` call sites unchanged.
 func createTask(
     count: @escaping (SeriesTaskContext) -> Double,
     reset: @escaping (SeriesTaskContext) -> Any?
-) -> SeriesTask {                                                            // PORT-TODO: belongs to core/task
-    _ = count
-    _ = reset
-    return SeriesTask()
+) -> SeriesTask {
+    return createTask(TaskDefineParam<SeriesTaskContext>(
+        reset: { (_: SeriesTask, ctx: SeriesTaskContext) -> TaskResetCallbackReturn<SeriesTaskContext>? in
+            let progress = reset(ctx)
+            if let prog = progress as? (TaskProgressParams, SeriesTaskContext) -> Void {
+                return .progress(.single({ (_, params, c) in prog(params, c) }))
+            }
+            return nil
+        },
+        count: { (_: SeriesTask, ctx: SeriesTaskContext) -> Double in count(ctx) }
+    ))
 }
 
 // '../data/helper/sourceManager' — SourceManager. Upstream builds/refreshes the `Source` from the

@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 6a (COORDINATE SYSTEM + PIPELINE + COMPONENT-INSTANTIATION: `coord/cartesian` Grid/Cartesian2D/Axis2D/AxisModel + axis-helper cluster + the REAL `scaleRawExtentInfo`; `core/` Scheduler/task/CoordinateSystemManager/ExtensionAPI; `GlobalModel` component/series instantiation wired so `getComponent`/`eachSeries` return REAL `GridModel`/`CartesianAxisModel`/bar `SeriesModel`): COMPLETE — `swift build` GREEN, `swift test` 212 executed / 155 passed / 0 failures / 57 skipped (was 208; +4 new coord tests = 2 pass + 2 skip; no regression).** See §§31–34. **The dynamic-option→component pipeline left inert in §29 is now live; `dataToPoint` is exercised by a pixel oracle. The rendering vertical (views + slim orchestrator) is Phase 6b (§34).**
 **Phase 4 (INTERACTION-COMPLETE → zrender DONE: Handler hit-test/dispatch/bubble + core/event normalization + GestureMgr pinch + Draggable + Element Eventful wiring + the hand-written UIKit/AppKit HandlerProxy bridge & ZRenderView host): COMPLETE — clean from-scratch `swift build` green (all 88 units, 0 errors), `swift test` 65 executed / 0 failures / 14 skipped (the new InteractionSmokeTests).** See §§18–22. **zrender is now COMPLETE — rendering + animation + interaction all ported; canvas/svg/dom are intentionally replaced by NativePainter. The port now advances to the ECharts layer (§22).**
 **Phase 3 (LOGIC-COMPLETE: real Animator/Animation/Clip/easing + CADisplayLink host loop + path tools path/transformPath/dividePath/morphPath/convertPath + tool/color completion + Element/ZRender animation wiring): COMPLETE — `swift build` green, 61 tests / 0 failures / 16 skipped.** See §§13–17. **zrender is now logic-complete (rendering + animation + path tools); the only remaining zrender work is Phase 4 = interaction (Handler/event/GestureMgr → UIKit).**
 **Phase 2 (Text/TSpan/Image + contain/* hit-testing + 10 remaining shapes + gradient/pattern/text/image paint + Storage display list + ZRender host facade): COMPLETE — `swift build --build-tests` green, 50 tests / 0 failures / 13 skipped.** See §§7–11.
@@ -1352,6 +1353,272 @@ Once §30d lands, the `DemoGallery` app can call the minimal `echarts.ts` driver
 and render an actual ECharts-computed bar chart (data → scale → coord → layout → `Rect`s) on the
 iOS/macOS simulator through `NativePainter` — the first time the full ECharts→ZRenderKit vertical is
 visible on screen, not just hand-built `Group` trees.
+
+---
+
+## 31. What landed in Phase 6a — coord/cartesian + core pipeline + Global instantiation wiring
+
+**Phase 6a (the §30 plan, executed up to but excluding the rendering views/orchestrator): COMPLETE.**
+This lands the coordinate-system layer (`coord/cartesian` geometry + axis models + the full axis-helper
+cluster + the REAL `scaleRawExtentInfo` replacing the §22 minimal stub), the core scheduling pipeline
+(`Scheduler`/`task` + `CoordinateSystemManager` + `ExtensionAPI`), and closes the §29 **component/series
+instantiation stub** in `GlobalModel` — so a hand-built bar-chart option now materializes real
+`GridModel`/`CartesianAxisModel`/bar `SeriesModel` objects and `Cartesian2D.dataToPoint` maps data →
+pixels. The rendering half (BarView/GridView/CartesianAxisView + the slim `echarts.ts` driver) is Phase
+6b (§34). Six scout tiers landed as one integrated unit against the existing 5a/5b/5c layers.
+
+### Coord — leaf helpers + coordinate-system interface (`Sources/EChartsKit/coord/`)
+- [x] `coord/axisDefault.swift` ← `coord/axisDefault.ts` — per-axis-type default option.
+- [x] `coord/axisStatistics.swift` + `coord/axisStatisticsMetricsImpl.swift` ←
+      `coord/axisTickLabelBuilder`-adjacent metrics — tick/label statistics over the real `Axis`.
+- [x] `coord/CoordinateSystem.swift` ← `coord/CoordinateSystem.ts` — `CoordinateSystem`/
+      `CoordinateSystemMaster` protocols (`AnyObject`), `dataToPoint`/`pointToData`/`getViewRect`
+      surface + `isGeoLikeCoordSys`.
+- [x] `coord/axisModelCommonMixin.swift` ← `coord/axisModelCommonMixin.ts` — the axis-model mixin
+      (`getCoordSysModel`, `axis`/`option` requirements).
+
+### Coord — axis base + helper cluster + REAL scaleRawExtentInfo (landed as one unit)
+- [x] `coord/Axis.swift` ← `coord/Axis.ts` — the `open class Axis`: `dataToCoord`/`coordToData`
+      (`linearMap`), band layout (`getBandWidth`/`makeExtentWithBands`), `getTicksCoords`/
+      `getMinorTicksCoords`/`fixOnBandTicksCoords`, `getExtent` copy semantics.
+- [x] `coord/AxisBaseModel.swift` ← `coord/AxisBaseModel.ts` — axis-model base (`getCategories`,
+      `axis`, scale/extent option surface).
+- [x] `coord/axisHelper.swift` ← `coord/axisHelper.ts` — `createScaleByModel`/`niceScaleExtent`/
+      `getAxisRawValue`/`makeLabelFormatter`/`getFormattedLabel`.
+- [x] `coord/axisNiceTicks.swift` ← `coord/axisNiceTicks.ts` (extracted) — `scaleCalcNice`/
+      `scaleCalcNice2`/`calcNiceForIntervalOrLogScale` + `adoptScaleExtentKindMapping`.
+- [x] `coord/axisAlignTicks.swift` ← `coord/axisAlignTicks.ts` — multi-axis tick alignment.
+- [x] `coord/axisBand.swift` ← axis-band layout helpers.
+- [x] `coord/axisTickLabelBuilder.swift` ← `coord/axisTickLabelBuilder.ts` — `createAxisTicks`/
+      `createAxisLabels`/`calculateCategoryInterval` (`AxisTicksCreated`/`AxisCategoryTicksCreated`).
+- [x] `coord/scaleRawExtentInfo.swift` ← `coord/scaleRawExtentInfo.ts` — **THE REAL ONE** (replaces the
+      §22 minimal PORT-TODO stub): `ScaleRawExtentInfo` (min/max/`fixMin`/`fixMax` resolution,
+      `calculate`/`freeze`/`ensureScaleRawExtentInfo`, `parseAxisModelMinMax`).
+- [x] `coord/axisModelCreator.swift` ← `coord/axisModelCreator.ts` — `axisModelCreator` factory +
+      the base `AxisModel` (with `getCategories` override). `axisAction`/`axisBreakHelper` stubbed
+      (`getAxisBreakHelper()->null`, PORT-TODO 6b).
+
+### Coord — cartesian (`Sources/EChartsKit/coord/cartesian/`)
+- [x] `Cartesian.swift` ← `coord/cartesian/Cartesian.ts` — generic N-axis container (`addAxis`/
+      `getAxis`/`getAxes`).
+- [x] `Cartesian2D.swift` ← `coord/cartesian/Cartesian2D.ts` — `dataToPoint`/`pointToData`/
+      `dataToPoints`/`getOtherAxis`/`getArea`, `toGlobalCoord` wiring.
+- [x] `Axis2D.swift` ← `coord/cartesian/Axis2D.ts` — cartesian axis (`getGlobalExtent`/`isHorizontal`/
+      `toGlobalCoord`/`toLocalCoord`/`setCategorySortInfo`).
+- [x] `AxisModel.swift` ← `coord/cartesian/AxisModel.ts` — `CartesianAxisModel` (now **subclasses
+      `AxisBaseModel`** so it satisfies `Axis.model`); `getCoordSysModel` via `SINGLE_REFERRING`.
+- [x] `GridModel.swift` ← `coord/cartesian/GridModel.ts` — grid component model + defaultOption.
+- [x] `cartesianAxisHelper.swift` ← `coord/cartesian/cartesianAxisHelper.ts` — `layout`/
+      `findAxisModels`/`rotateTextRect`.
+- [x] `defaultAxisExtentFromData.swift` ← `coord/cartesian/defaultAxisExtentFromData.ts`.
+- [~] `Grid.swift` ← `coord/cartesian/Grid.ts` — **PARTIAL**: `create`/`update`/`resize`/`_updateScale`/
+      `getCartesian`/`convertToPixel`/`convertFromPixel`/`getTooltipAxes` ported and exercised;
+      `createOrUpdateAxesView` is a documented no-op stub (needs `AxisBuilder`, 6b).
+
+### Core — scheduling pipeline + API (`Sources/EChartsKit/core/`)
+- [x] `core/task.swift` ← `core/task.ts` — `Task`/`createTask`, `TaskPlanCallback`/reset/progress,
+      pipe-chaining.
+- [x] `core/Scheduler.swift` ← `core/Scheduler.ts` — the stage graph (`getPipeline`/`updateStreamModes`/
+      `performDataProcessorTasks`/`performVisualTasks`/`prepareStageTasks`).
+- [x] `core/CoordinateSystemManager.swift` ← `core/CoordinateSystem.ts` — `CoordinateSystemManager`
+      (register/get, `create`/`update` ordering, `getCoordinateSystems`).
+- [x] `core/ExtensionAPI.swift` ← `core/ExtensionAPI.ts` — the `ExtensionAPI` forwarding surface
+      (`getWidth`/`getHeight` faithful-signature PORT-TODO members for the layout-reference path).
+
+### Support ports pulled in on demand (`Sources/EChartsKit/util/`)
+- [x] `util/vendor.swift` ← `util/vendor.ts` — `TypedArrayCtor`/`CompatibleTypedArray`/
+      `createFloat32Array` (consumed by axis statistics).
+- [~] `util/layout.swift` ← `util/layout.ts` — **PARTIAL**: full `getLayoutRect` (2 overloads) +
+      `createBoxLayoutReference` (viewport branch); the `boxCoordinateSystem` branch is a 6b PORT-TODO.
+
+### Global instantiation wiring (`Sources/EChartsKit/model/Global.swift`)
+- [~] **`GlobalModel` now instantiates REAL component/series models** — the §29 "inert" stub is CLOSED.
+      `visitComponent`/component-create iterate the dynamic `[String:Any]` option bag and instantiate via
+      the `ComponentModel` registry; `getComponent`/`queryComponents` return real objects. Marked
+      **partial** because three downstream stubs (see §33) still block the full data pipeline.
+
+### Phase 6a — per-file status & review verdict
+| File | Source `.ts` | Status | Verdict | Note |
+|---|---|---|---|---|
+| `coord/CoordinateSystem.swift` | `coord/CoordinateSystem.ts` | complete | minor-issues (3) | `isGeoLikeCoordSys` unguarded `dimensions[0]` subscript TRAPS on empty dims (TS short-circuits false); `getViewRect() != nil` tests RETURN not method-EXISTENCE; `GeoLikeCoordSys.getViewRect` mandatoriness not enforced (default supplies it) |
+| `coord/Axis.swift` | `coord/Axis.ts` | complete | minor-issues (2) | `splitNumber`/threshold read via `as? Double` drops Int-boxed options → nan/default; `pointToData` base returns `.nan` vs TS `undefined`. Core math (dataToCoord/band margin/fixOnBandTicks) faithful |
+| `coord/axisHelper.swift` | `coord/axisHelper.ts` | complete | minor-issues (3) | `util.isFunction`==false ⇒ functional `axisLabel.formatter` DEAD CODE (falls to default label); string-formatter `{value}` replaces ALL not first; `idx ?? 0`/`?? nan` fallback changes callback arg |
+| `coord/axisNiceTicks.swift` | `coord/axisNiceTicks.ts` | complete | minor-issues (3) | empty `fixMinMax` OOB-index crash via public `scaleCalcNiceDirectly` (TS tolerant); Int-boxed `interval`/`splitNumber` silently dropped; `model.axis as? Axis` can no-op extent-kind adoption if `axis` isn't a real `Axis` |
+| `coord/scaleRawExtentInfo.swift` | `coord/scaleRawExtentInfo.ts` | complete | (real port; foundation) | replaces the §22 stub; `fixMM` always `[false,false]` on the internal path so the axisNiceTicks OOB is external-caller-only |
+| `coord/axisTickLabelBuilder.swift` | `coord/axisTickLabelBuilder.ts` | complete | (foundation) | `AxisTicksCreated`/`AxisCategoryTicksCreated` made public |
+| `coord/axisAlignTicks.swift`, `axisBand.swift`, `axisModelCommonMixin.swift`, `AxisBaseModel.swift`, `axisDefault.swift`, `axisStatistics.swift`, `axisStatisticsMetricsImpl.swift`, `axisModelCreator.swift` | matching `.ts` | complete | (foundation) | `getCategories` moved to `AxisBaseModel` base (dynamic dispatch); `getFilter?()` optional-closure guard |
+| `core/CoordinateSystemManager.swift` | `core/CoordinateSystem.ts` | complete | minor-issues (2) | dropped DEV `assert(!master.update)`; `update()` called unconditionally (safe: no-op default). create/update ordering faithful |
+| `coord/cartesian/Cartesian.swift` | `coord/cartesian/Cartesian.ts` | complete | faithful | `getAxis` returns Optional (more honest than TS non-optional); force-unwraps safe under `addAxis` invariant |
+| `coord/cartesian/AxisModel.swift` | `coord/cartesian/AxisModel.ts` | complete | minor-issues (2) | `getCoordSysModel().models[0]` unguarded subscript TRAPS when no grid (TS yields `undefined` → descriptive throw); `getCoordSysModel` static-dispatch via extension-default (not protocol requirement) — correct today via concrete types |
+| `coord/cartesian/Axis2D.swift` | `coord/cartesian/Axis2D.ts` | complete | minor-issues (3) | `setCategorySortInfo` returns `true` vs TS implicit `undefined`; option write-back guarded (skips if not `[String:Any]`); `?? "value"`/`?? "bottom"` vs `||` on empty string |
+| `coord/cartesian/Cartesian2D.swift`, `Axis2D` deps, `GridModel.swift`, `cartesianAxisHelper.swift`, `defaultAxisExtentFromData.swift` | matching `.ts` | complete | (foundation) | `dataToPoint`/`toGlobalCoord` pipeline exercised by the pixel oracle (§32) |
+| `coord/cartesian/Grid.swift` | `coord/cartesian/Grid.ts` | **partial** | minor-issues | `createOrUpdateAxesView` no-op stub (AxisBuilder, 6b); `getBoxLayoutParams`/layout feed empty so grid rect fills container (§33) |
+| `core/task.swift`, `core/Scheduler.swift`, `core/ExtensionAPI.swift` | matching `.ts` | complete | (foundation) | `ExtensionAPI.getWidth`/`getHeight` real forwarding = 6b PORT-TODO |
+| `util/vendor.swift` | `util/vendor.ts` | complete | (support) | NEW |
+| `util/layout.swift` | `util/layout.ts` | **partial** | (support) | `getLayoutRect` full; `createBoxLayoutReference` viewport-only, boxCoordinateSystem = 6b |
+| `model/Global.swift` | `model/Global.ts` | **partial** | (instantiation wired) | component/series instantiation now live; blocked downstream by §33 stubs |
+
+Roll-up: **coord/core geometry + scale/extent math faithful; the review-flagged issues are (a) a
+cluster of Swift-traps-where-TS-tolerates on unguarded array subscripts (`isGeoLikeCoordSys` dims,
+`getCoordSysModel().models[0]`), (b) the project-wide `as? Double` Int-boxing drop hitting axis
+`splitNumber`/`interval`, and (c) `util.isFunction`==false making functional label-formatters dead
+code.** None weaken the ported scale/axis-extent MATH; all are logged below.
+
+---
+
+## 32. Build & test status — Phase 6a (incl. the coord dataToPoint oracle + instantiation test)
+
+- **`swift build`: GREEN.** The coord/cartesian + pipeline + Global instantiation were translated in
+  parallel against the OLD §22 PORT-TODO stubs; integration reconciled the collisions with **minimal,
+  faithful edits (no scale/axis-extent math weakened)** — see the integration log below.
+- **`swift test`: GREEN — 212 executed / 155 passed / 0 failures / 57 skipped** (whole package; up from
+  Phase-5c's 208/55). The new `CartesianCoordTests.swift` adds 4 (2 pass + 2 skip); **no pre-existing
+  test regressed.**
+- **NEW test file** `Tests/EChartsKitTests/CartesianCoordTests.swift` (4 tests):
+  - **`testComponentInstantiationReturnsRealModels` — PASS.** Builds a `GlobalModel` from a minimal
+    bar-chart option and asserts `getComponent("grid")` is a real `GridModel`, `getComponent("xAxis"/
+    "yAxis")` are real `CartesianAxisModel`, and `eachSeries`/`getSeriesByType("bar")` return a real bar
+    `SeriesModel` — **proving the §29 instantiation stub is closed and no longer inert.**
+  - **`testDataToPointOracleAndInverse` — PASS.** Runs `Grid.create` with a fixed 400×300 `ExtensionAPI`,
+    gets `Cartesian2D` (x0,y0), and asserts `dataToPoint` maps known (categoryIndex, value) → expected
+    pixels, cross-checked against an independent `number.linearMap` re-derivation (grid fills the full
+    400×300 container; X(rank)=rank/3·400, Y(v)=300−3v; ordinal N=4 onBand=false, value scale [0,100]),
+    plus bounds checks and `pointToData` inverting `dataToPoint`.
+  - `test_api_converter_cartesian`, `test_api_containPixel_cartesian` (ported upstream specs) — **SKIP**
+    (need `createChart`/orchestrator + ChartView map + Scheduler = Phase 6b; the underlying
+    `Grid.convertToPixel`/`convertFromPixel` + `Cartesian2D.dataToPoint` ARE ported and exercised by the
+    oracle).
+- **INTEGRATION LOG — minimal faithful edits to make the parallel work build (no math weakened):**
+  removed obsolete §22 placeholder `Axis`/`AxisModelForAxisStat` protocols in `axisStatistics.swift`
+  (source of the "`Axis` is ambiguous" clash) and rewired to the real `Axis`; NEW `util/vendor.swift` +
+  `util/layout.swift`; `getFilter?()` optional-closure guard; reconciled `Axis.getTicksCoords` to the real
+  `axisTickLabelBuilder` API; made `AxisTicksCreated`/`AxisCategoryTicksCreated` public; moved the base
+  `getCategories` onto `AxisBaseModel` (dynamic dispatch); `CartesianAxisModel` now subclasses
+  `AxisBaseModel`; `scaleCalcNice2` axis param `Any?`→`Axis?`; `Grid.createOrUpdateAxesView` `kind` param
+  → `Double`; various `.model` → `.model!` IUO-bind fixups.
+- **The oracle/data pipeline is reachable only through THREE documented TEST-SIDE workarounds**, each
+  mapping to a real §33 Sources bug (NOT papered over, confined to private test doubles): (B1) probe series
+  feeds an empty DataStore to dodge the `isFunction` assert; (B2) probe axis models override
+  `getCoordSysModel` to resolve the grid via `ecModel.getComponent` (bypass the `queryReferringComponents`
+  crash); (B3) ordinal scale extent set by hand to stand in for the blocked data-collection stage.
+
+---
+
+## 33. Phase 6a — new open issues & PORT-TODO backlog (deduped, blockers first)
+
+### CRITICAL — real bugs the test doubles work around (fix FIRST in Phase 6b pre-work)
+1. **`queryReferringComponents` still stubbed to always return `models: []`** (`util/modelUtil.swift:
+   1256-1298`, both branches). Its PORT-TODO reason (GlobalModel has no `getComponent`/`queryComponents`)
+   is now STALE — both exist (`Global.swift:665`/`:686`). Consequence: `CartesianAxisModel.getCoordSysModel()`
+   (`AxisModel.swift:93`) does `.models[0]` → **index-out-of-range CRASH**, which crashes the entire
+   `Grid.create`/cartesian pipeline via `isAxisUsedInTheGrid` (`Grid.swift:719`). **Primary blocker**; the
+   test must override `getCoordSysModel` (workaround B2). **Fix:** implement `queryReferringComponents` over
+   the now-real `getComponent`/`queryComponents`; also change `.models[0]` → `.models.first` (mirror TS
+   `undefined` → the ported descriptive throw at `Grid.swift:679-684`).
+2. **`util.isFunction` still hardcoded `false`** (ZRenderKit `Core/util.swift:304`, stub). Because
+   `__DEV__` is hardcoded `true` (`util/log.swift:33`), `DataStore.initData` (`data/DataStore.swift:
+   227-231`) asserts `isFunction(provider.getItem) && isFunction(provider.count)` and **ALWAYS
+   fatalErrors "Invalid data provider."** ⇒ a `DefaultDataProvider` can never init a `DataStore` in a
+   `__DEV__`/test build, making the whole `getInitialData`→`Source`→`DataStore` series-data pipeline
+   unreachable (workaround B1). Also breaks the `axisHelper` functional-formatter branch (§31 verdict).
+   **Fix:** port a real `isFunction` (`typeof x === 'function'` → Swift closure/`is` check).
+3. **`OrdinalMeta.createByAxisModel` ignores its `axisModel` argument** (`data/OrdinalMeta.swift:90`,
+   `_ = axisModel; let option: [String:Any] = [:]`). Its PORT-TODO reason (Model has no `.option`) is
+   STALE. Consequence: a category axis NEVER collects categories from `xAxis.data`; `categories` stays
+   nil, `needCollect` always true, `OrdinalScale.count()` is wrong ⇒ category `dataToPoint` is NaN out of
+   the box (workaround B3). **Fix:** read `axisModel.get("data")`/`.option`.
+4. **`ComponentModel.getBoxLayoutParams` returns an empty `BoxLayoutOptionMixin()`**
+   (`model/Component.swift:349`). Its PORT-TODO reason (util/layout not ported) is STALE — `util/layout.
+   swift` now exists and Grid consumes it. Consequence: `grid.left/right/top/bottom/width/height` are never
+   read into layout, so `getLayoutRect` sees an empty position bag and the **grid rect ALWAYS fills the
+   whole container** regardless of the option (and the `GridModel.defaultOption` left-15% etc. is never
+   applied). **Fix:** read the box-layout keys off the model option.
+
+### Correctness / fidelity — review-flagged, fix opportunistically (see §31 verdict table for the full set)
+5. **Swift-traps-where-TS-tolerates on unguarded array subscripts:** `isGeoLikeCoordSys`
+   `dimensions[0]` (`CoordinateSystem.swift:386`) on empty dims (parallel-style dimensionless coord
+   systems are a documented reachable case); `getCoordSysModel().models[0]` (dup of #1). Bounds-guard
+   both to mirror JS `undefined`.
+6. **Project-wide `as? Double` drops Int-boxed options.** Axis `splitNumber`/`interval`/`minInterval`/
+   `maxInterval` (`axisNiceTicks.swift:309-312`, `Axis.swift:280`) read via `model.get(...) as? Double`;
+   an Int literal in the `[String:Any]` bag yields nil ⇒ user override silently ignored / default used.
+   Only bites if option ingestion does not normalize numerics to Double — flag for the ingestion path.
+7. **`util.isFunction`==false makes functional `axisLabel.formatter` dead code** (dup of #2 downstream)
+   and the string-formatter `{value}` replaces ALL occurrences not just the first (`axisHelper.swift:241`).
+8. **`isGeoLikeCoordSys` `getViewRect() != nil` tests RETURN value, not method existence** (TS `!!coordSys.
+   getViewRect`) — a geo coord system with a transiently-nil view rect is misclassified. Documented PORT-TODO.
+9. **`Axis2D.setCategorySortInfo` returns `true`** where TS implicitly returns `undefined` (falsy); only
+   caller discards it. **`Axis2D` constructor defaulting** `?? "value"`/`?? "bottom"` diverges from TS `||`
+   on empty string (unrealistic input).
+
+### Deferred → Phase 6b (faithful-signature PORT-TODO stubs; none exercised by the 212 tests)
+- **`core/echarts.ts` orchestrator** — the full ~125KB `ECharts`/`init`/`setOption`/`_update` driver; a
+  SLIM driver comes in 6b (§34).
+- **Rendering views** — `chart/*` (BarView etc.), `component/grid` `GridView`, `component/axis`
+  `CartesianAxisView` + `AxisBuilder`/`AxisBuilderSharedContext`. `Grid`/`Axis2D`/`cartesianAxisHelper`
+  reference `AxisBuilder` as PORT-TODO stubs; `Grid.createOrUpdateAxesView` is a documented no-op.
+- **`component/axis/axisAction.ts` + `axisBreakHelper.ts`** — referenced by `axisModelCreator`; stubbed
+  (`getAxisBreakHelper()->null`).
+- **`util/layout` `createBoxLayoutReference` boxCoordinateSystem branch; `ExtensionAPI.getWidth/getHeight`
+  real forwarding.**
+- **`core/lifecycle.ts`, `core/locale.ts`, `core/impl.ts`, `core/ExtendedElement.ts`** — 6b orchestration.
+- **Other coordinate systems:** polar, geo, single, radar, calendar, parallel, matrix, `coord/View.ts`;
+  and `coord/cartesian/legacyContainLabel.ts` + `prepareCustom.ts` (out of scope); dataZoom/axisPointer/brush.
+
+### Does `GlobalModel` now instantiate real component/series models?
+**YES — the §29 stub is CLOSED (proven by `testComponentInstantiationReturnsRealModels`, §32).** From a
+minimal bar-chart option, `GlobalModel` builds real `GridModel`, `CartesianAxisModel` (x/y), and a bar
+`SeriesModel`; `getComponent`/`queryComponents`/`eachSeries`/`getSeriesByType` all operate on real
+objects. **Caveat:** the pipeline BEYOND instantiation (grid resolution + series-data build) is blocked by
+the four §33 CRITICAL stubs (`queryReferringComponents`, `isFunction`, `OrdinalMeta.createByAxisModel`,
+`getBoxLayoutParams`) — the test uses private doubles to reach `dataToPoint`; closing those four is the
+pre-work for Phase 6b.
+
+---
+
+## 34. Coord + pipeline are in place — Phase 6b plan (the rendering vertical: a REAL bar chart on screen)
+
+**Goal:** finish the §30 vertical — after the §33 CRITICAL pre-work, a hand-built `option`
+(`{xAxis, yAxis, series:[{type:'bar', data}]}`) flows through `GlobalModel` → coord/cartesian →
+`Scheduler` → `visual`/`layout` → `BarView` and renders a REAL bar chart through the complete
+`ZRenderKit` (`Group`/`Rect`/`Text` + animation + interaction) on the iOS/macOS simulator via
+`NativePainter`. This turns the §28/§32 `createChart`-driven skips green.
+
+### Pre-6b (do FIRST): close the four §33 CRITICAL stubs
+`queryReferringComponents` (real impl over `getComponent`/`queryComponents` + `.models.first`),
+`util.isFunction` (real closure check), `OrdinalMeta.createByAxisModel` (read `axisModel` data), and
+`ComponentModel.getBoxLayoutParams` (read box-layout keys). Each removes a private test double and a real
+divergence. Carry the §30 majors/hardening only if still open.
+
+### 34a. Slim `ECharts` orchestrator (`echarts/src/core/echarts.ts` — documented subset)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `core/echarts.ts` (the `init`/`setOption`/`update` cycle — a SLIM hand-driven slice, not the full ~125KB driver; each ported/omitted method flagged) | `core/echarts.swift` | `GlobalModel`+`OptionManager` (5c), `Scheduler`+`CoordinateSystemManager` (6a), `ExtensionAPI` (6a), `ZRender` host (Phase 4) |
+
+### 34b. `visual/` (style/color) + `layout/barGrid`
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `visual/style.ts`, `visual/seriesColor.ts`, `visual/VisualMapping.ts` | `visual/*.swift` | `model/mixin/palette` (5c), `data/SeriesData` (5b) |
+| `layout/barGrid.ts` | `layout/barGrid.swift` | `coord/cartesian/Grid` (6a), `data/SeriesData`, `data/helper/dataStackHelper` (5b) |
+
+### 34c. FIRST `ChartView` = `BarSeries` + `BarView` + `component/grid`(GridView) + `component/axis`(CartesianAxisView)
+| Upstream file | Swift target | Already-ported deps |
+|---|---|---|
+| `chart/bar/BarSeries.ts` (concrete `getInitialData` → real column build) | `chart/bar/BarSeries.swift` | `SeriesModel` (5c), `data/{SeriesData,helper/createDimensions}` (5b), `Source` |
+| `chart/bar/BarView.ts` (`ChartView` → `Group{Rect}` per datum, enter/update/exit + animation) | `chart/bar/BarView.swift` | `ZRenderKit` `Group`/`Rect`/`Path` + animation (Phase 1–3), `DataDiffer` (5b) |
+| `view/Chart.ts` (`ChartView` base), `view/Component.ts` | `view/*.swift` | `ZRenderKit` `Group`, `GlobalModel` |
+| `component/grid/GridView.ts` | `component/grid/*.swift` | `coord/cartesian/Grid` (6a), `Group`/`Rect` |
+| `component/axis/{AxisBuilder,CartesianAxisView}.ts` (unstub the 6a `createOrUpdateAxesView` / `AxisBuilder` seams) | `component/axis/*.swift` | `coord/Axis`/`Axis2D` (6a), `Group`/`Line`/`Text` (Phase 1–2) |
+
+**Sequencing:** §33 CRITICAL pre-work → slim `echarts.ts` driver → `visual/`+`layout/barGrid` →
+`BarSeries`+`BarView`+`GridView`+`CartesianAxisView` (unstubbing the 6a `AxisBuilder` seams). Each stage
+keeps the §12 upstream-sync rule and ports its matching upstream spec as the behavioral oracle (turning
+the `createChart`-driven skips green as `createChart`/`init`/`getData` become real).
+
+### After Phase 6b: the simulator demo shows a REAL echarts-driven chart
+Once §34c lands, `DemoGallery` calls the slim `echarts.swift` driver with a real `option` and renders an
+actual ECharts-computed bar chart (data → scale → coord → layout → `Rect`s) through `NativePainter` — the
+first time the full ECharts→ZRenderKit vertical is visible on screen, not just hand-built `Group` trees.
 
 ---
 

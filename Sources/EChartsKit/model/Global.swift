@@ -57,9 +57,8 @@ import ZRenderKit
 
 // OptionManager: the real `final class OptionManager` is ported in the sibling model/OptionManager.swift.
 
-// PORT-TODO: core/Scheduler.ts not ported (Phase 6). Placeholder for the injectable `scheduler`
-//   property; REMOVE once core/Scheduler.swift lands.
-public protocol Scheduler: AnyObject {}
+// core/Scheduler.ts — the real `final class Scheduler` is ported in core/Scheduler.swift (same
+//   module). `GlobalModelSetOptionOpts.scheduler` references it directly.
 
 public struct GlobalModelSetOptionOpts {
     // upstream: replaceMerge: ComponentMainType | ComponentMainType[]
@@ -397,12 +396,14 @@ open class GlobalModel: Model, PaletteMixin {
         //   Ported as a nested func capturing `option`/`componentsMap`/`componentsCount`/`newOption`/self.
         func visitComponent(_ mainType: ComponentMainType, _ dependencies: [ComponentMainType]) {
             // const newCmptOptionList = concatInternalOptions(this, mainType, modelUtil.normalizeToArray(newOption[mainType]));
-            // PORT-TODO: `newOption[mainType]` is a dynamic option bag (`[String: Any]` / array of bags),
-            //   NOT a typed `[ComponentOption]`, so `normalizeToArray<ComponentOption>` yields `[]` here.
-            //   The typed-`ComponentOption` component pipeline is disconnected from the dynamic option
-            //   tree in the ported model layer; faithful once option ingest builds `ComponentOption`s.
+            // PORT: `newOption[mainType]` is a dynamic option bag (`[String: Any]` / array of bags),
+            //   NOT a typed `[ComponentOption]`. Upstream's `ComponentOption` IS that dynamic object;
+            //   the Swift struct is a lossy typed subset, so each bag is projected into a
+            //   `ComponentOption` that also carries the full bag in `.rawOption` (used below when the
+            //   option is handed to the created/merged component model). This replaces the previous
+            //   inert `normalizeToArray<ComponentOption>` (which yielded `[]` on dynamic bags).
             let newCmptOptionList: [ComponentOption] = concatInternalOptions(
-                self, mainType, model.normalizeToArray(newOption[mainType])
+                self, mainType, normalizeToComponentOptionList(newOption[mainType])
             )
 
             let oldCmptList = componentsMap.get(mainType)
@@ -497,35 +498,64 @@ open class GlobalModel: Model, PaletteMixin {
                         tooltipExists = true
                     }
 
+                    // PORT: `newCmptOption` (a `ComponentOption`) carries the full dynamic option bag
+                    //   in `.rawOption`; that bag (`[String: Any]`) is what the ported model layer
+                    //   consumes as `ModelOption` (`self.option`). Upstream passes the `ComponentOption`
+                    //   object directly.
+                    let newCmptOptionBag = newCmptOption!.rawOption
+
                     if componentModel != nil && sameConstructor(componentModel!, ComponentModelClass!) {
                         componentModel!.name = resultItem.keyInfo!.name
                         // componentModel.settingTask && componentModel.settingTask.dirty();
-                        componentModel!.mergeOption(newCmptOption, self)
-                        componentModel!.optionUpdated(newCmptOption, false)
+                        componentModel!.mergeOption(newCmptOptionBag, self)
+                        componentModel!.optionUpdated(newCmptOptionBag, false)
                     }
                     else {
                         // PENDING Global as parent ?
-                        // PORT-TODO: component instantiation from the class registry is blocked in the
-                        //   current scaffolding — the ported `Constructor` (= `ClassManageable.Type`) has
-                        //   no callable initializer (ComponentModel's init is not `required`), and the
-                        //   registry returns `ClassManageable.Type` rather than `ComponentModel.Type`.
-                        //   The faithful upstream body is preserved below; the new component instance can
-                        //   not be created until the registry/init wiring lands.
-                        //     const extraOpt = extend({ componentIndex: index }, resultItem.keyInfo);
-                        //     componentModel = new ComponentModelClass(newCmptOption, this, this, extraOpt);
-                        //     // Assign `keyInfo`
-                        //     extend(componentModel, extraOpt);
-                        //     if (resultItem.brandNew) {
-                        //         componentModel.__requireNewView = true;
-                        //     }
-                        //     componentModel.init(newCmptOption, this, this);
-                        //     // Call optionUpdated after init.
-                        //     // newCmptOption has been used as componentModel.option
-                        //     // and may be merged with theme and default, so pass null
-                        //     // to avoid confusion.
-                        //     componentModel.optionUpdated(null, true);
-                        _ = index
-                        componentModel = nil
+                        // const extraOpt = extend({ componentIndex: index }, resultItem.keyInfo);
+                        // componentModel = new ComponentModelClass(newCmptOption, this, this, extraOpt);
+                        // // Assign `keyInfo`
+                        // extend(componentModel, extraOpt);
+                        //
+                        // PORT: the registry returns a `Constructor` (= `ClassManageable.Type`); the
+                        //   registered classes are `ComponentModel` subclasses, so downcast to
+                        //   `ComponentModel.Type` and instantiate via the `required` designated init.
+                        //   `extraOpt` (= { componentIndex } ∪ keyInfo) is assigned to the typed
+                        //   stored properties directly (no dynamic `extend`). The Swift `ComponentModel`
+                        //   initializer does NOT auto-call the lifecycle `` `init` `` (that JS-constructor
+                        //   auto-call is commented out in Model.swift), so the explicit `` `init` ``
+                        //   below is the single lifecycle-init call. keyInfo is assigned BEFORE it so
+                        //   `mergeDefaultAndTheme`/series init can read `subType`/`componentIndex`.
+                        guard let componentModelClass = ComponentModelClass as? ComponentModel.Type else {
+                            // PORT-TODO: a registered class that is not a ComponentModel subclass can
+                            //   not be instantiated through this path; skip (upstream has no analogue —
+                            //   every registered class is a ComponentModel).
+                            _ = index
+                            componentModel = nil
+                            return
+                        }
+                        let created = componentModelClass.init(newCmptOptionBag, self, self)
+
+                        // extend(componentModel, extraOpt): componentIndex + keyInfo fields.
+                        created.componentIndex = Double(index)
+                        if let keyInfo = resultItem.keyInfo {
+                            created.mainType = keyInfo.mainType
+                            created.subType = keyInfo.subType
+                            created.name = keyInfo.name
+                            created.id = keyInfo.id
+                        }
+                        if resultItem.brandNew == true {
+                            created.__requireNewView = true
+                        }
+                        created.`init`(newCmptOptionBag, self, self)
+
+                        // Call optionUpdated after init.
+                        // newCmptOption has been used as componentModel.option
+                        // and may be merged with theme and default, so pass null
+                        // to avoid confusion.
+                        created.optionUpdated(nil, true)
+
+                        componentModel = created
                     }
                 }
 
@@ -1195,6 +1225,47 @@ private func optionBagToComparable(_ any: Any?) -> ComponentOption {
         co.id = d["id"]
         co.name = d["name"]
     }
+    return co
+}
+
+// upstream: `modelUtil.normalizeToArray(newOption[mainType])` yields the raw `ComponentOption[]`.
+//   Because upstream `ComponentOption` IS the dynamic option object, the same objects flow into
+//   `mappingToExists` and then into `new ComponentModelClass(newCmptOption, ...)`. The Swift
+//   `ComponentOption` is a lossy typed struct, so each dynamic bag is projected into a
+//   `ComponentOption` carrying the full bag in `.rawOption`. Not an upstream symbol (the projection
+//   bridges the dynamic tree and the typed mapping struct).
+private func normalizeToComponentOptionList(_ value: Any?) -> [ComponentOption] {
+    // value instanceof Array
+    if let arr = value as? [Any] {
+        return arr.compactMap { optionBagToComponentOption($0) }
+    }
+    // value == null
+    if value == nil || value is NSNull {
+        return []
+    }
+    // [value]
+    if let one = optionBagToComponentOption(value) {
+        return [one]
+    }
+    return []
+}
+
+// Projects one dynamic option bag (`[String: Any]`) into a `ComponentOption`, copying the typed
+// fields read by the mapping engine (`id`/`name`/`type`/`mainType`/`z`/`zlevel`) and retaining the
+// full bag in `.rawOption`. Returns nil when the value is not an option object. Not an upstream
+// symbol (see `normalizeToComponentOptionList`).
+private func optionBagToComponentOption(_ any: Any?) -> ComponentOption? {
+    guard let d = any as? [String: Any] else {
+        return nil
+    }
+    var co = ComponentOption()
+    co.mainType = d["mainType"] as? String
+    co.type = d["type"] as? String
+    co.id = d["id"]
+    co.name = d["name"]
+    co.z = d["z"] as? Double
+    co.zlevel = d["zlevel"] as? Double
+    co.rawOption = d
     return co
 }
 

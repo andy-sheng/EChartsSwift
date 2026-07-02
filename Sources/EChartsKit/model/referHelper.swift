@@ -58,11 +58,11 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 // protocol cannot inherit from a class), so the `as?` downcasts below stay valid.
 // ============================================================================
 
-// '../coord/AxisBaseModel' — AxisBaseModel (also covers FetcherAxisModel: a
-//   Model<Pick<AxisBaseOptionCommon,'type'>> & Pick<AxisModelExtendedInCreator,'getOrdinalMeta'>)
-public protocol AxisBaseModel: AnyObject {                                 // PORT-TODO
-    func get(_ path: String) -> Any?                                       // PORT-TODO: Model.get / + getOrdinalMeta (FetcherAxisModel)
-}
+// '../coord/AxisBaseModel' — AxisBaseModel is now the real, fully-ported reference type in
+//   coord/AxisBaseModel.swift (an `open class` extending ComponentModel). The former PORT-TODO
+//   placeholder protocol declared here has been removed per its own note; the `func get(...)` it
+//   exposed is provided by ComponentModel's Model.get. (FetcherAxisModel, which upstream Picks
+//   `getOrdinalMeta` from AxisModelExtendedInCreator, is still collapsed to AxisBaseModel below.)
 // '../coord/polar/PolarModel' — PolarModel
 public protocol PolarModel: AnyObject {                                    // PORT-TODO
     func findAxisModel(_ axisType: String) -> AxisBaseModel?
@@ -73,7 +73,10 @@ public protocol ParallelModel: AnyObject {                                 // PO
     var parallelAxisIndex: [Double] { get }
 }
 // '../coord/parallel/AxisModel' — ParallelAxisModel
-public protocol ParallelAxisModel: AxisBaseModel {}                        // PORT-TODO
+// PORT-TODO: coord/parallel/AxisModel.ts not yet ported. Upstream `ParallelAxisModel` extends
+//   AxisBaseModel; now that AxisBaseModel is a concrete `open class`, this placeholder becomes a
+//   trivial subclass (a protocol can no longer inherit it). Replace with the real ported class.
+public final class ParallelAxisModel: AxisBaseModel {}                     // PORT-TODO
 // '../coord/matrix/MatrixModel' — MatrixModel
 public protocol MatrixModel: AnyObject {                                   // PORT-TODO
     func getDimensionModel(_ dim: String) -> AxisBaseModel

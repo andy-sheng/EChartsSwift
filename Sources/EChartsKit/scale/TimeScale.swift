@@ -866,45 +866,7 @@ extension TimeScale {
 
 // upstream: export default TimeScale;  -> `public final class TimeScale` above.
 
-
-// ============================================================================
-// Forward-declaration placeholder (PORT-TODO).
-//
-// `ScaleCalcNiceMethod` / `ScaleCalcNiceMethodOpt` are owned by `coord/axisNiceTicks.ts`
-// (a later tier). Declared here only so this file compiles; when axisNiceTicks lands, DELETE
-// these and rely on the real types.
-// ============================================================================
-
-// upstream: type ScaleCalcNiceMethod = (scale: Scale, opt: ScaleCalcNiceMethodOpt) => void;
-public typealias ScaleCalcNiceMethod = (Scale, ScaleCalcNiceMethodOpt) -> Void   // PORT-TODO: belongs to coord/axisNiceTicks
-
-// upstream: type ScaleCalcNiceMethodOpt = {
-//     splitNumber?; minInterval?; maxInterval?; userInterval?;
-//     userIntervalUseLegacy?; fixMinMax?; rawExtentResult?;
-// };
-public struct ScaleCalcNiceMethodOpt {   // PORT-TODO: belongs to coord/axisNiceTicks
-    public var splitNumber: Double?
-    public var minInterval: Double?
-    public var maxInterval: Double?
-    public var userInterval: Double?
-    public var userIntervalUseLegacy: Bool?
-    public var fixMinMax: ScaleExtentFixMinMax?
-    public var rawExtentResult: ScaleRawExtentResultFinal?
-    public init(
-        splitNumber: Double? = nil,
-        minInterval: Double? = nil,
-        maxInterval: Double? = nil,
-        userInterval: Double? = nil,
-        userIntervalUseLegacy: Bool? = nil,
-        fixMinMax: ScaleExtentFixMinMax? = nil,
-        rawExtentResult: ScaleRawExtentResultFinal? = nil
-    ) {
-        self.splitNumber = splitNumber
-        self.minInterval = minInterval
-        self.maxInterval = maxInterval
-        self.userInterval = userInterval
-        self.userIntervalUseLegacy = userIntervalUseLegacy
-        self.fixMinMax = fixMinMax
-        self.rawExtentResult = rawExtentResult
-    }
-}
+// upstream: import type { ScaleCalcNiceMethod, ScaleCalcNiceMethodOpt } from '../coord/axisNiceTicks';
+//   Now that coord/axisNiceTicks.swift has landed, `ScaleCalcNiceMethod` / `ScaleCalcNiceMethodOpt`
+//   are defined there (their real owner); the forward-declaration placeholder previously kept here
+//   has been removed per its own instructions.
