@@ -7,5 +7,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_line_basic,    // Line
         EChartsDemoRegistry.demo_scatter_basic, // Scatter
         EChartsDemoRegistry.demo_pie_basic,     // Pie
+        EChartsDemoRegistry.demo_bar_title_legend, // Component (title + legend)
     ]
 }

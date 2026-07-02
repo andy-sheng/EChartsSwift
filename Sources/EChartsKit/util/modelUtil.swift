@@ -138,6 +138,15 @@ public final class HashMap<V> {                                             // P
     public func keys() -> [String] {
         return _keys
     }
+
+    // zrender HashMap.removeKey (used by ElementMap.removeEl in GraphicView).
+    public func removeKey(_ key: Any?) {
+        let k = hashKey(key)
+        data.removeValue(forKey: k)
+        if let idx = _keys.firstIndex(of: k) {
+            _keys.remove(at: idx)
+        }
+    }
 }
 public func createHashMap<V>() -> HashMap<V> {                              // PORT-TODO: temporary shim for zrender createHashMap
     return HashMap<V>()

@@ -75,6 +75,114 @@ public enum layout {
         return m
     }
 
+    // upstream: export const LOCATION_PARAMS = ['left', 'right', 'top', 'bottom', 'width', 'height'] as const;
+    public static let LOCATION_PARAMS: [String] = ["left", "right", "top", "bottom", "width", "height"]
+
+    // upstream: export const HV_NAMES = [['width','left','right'], ['height','top','bottom']] as const;
+    public static let HV_NAMES: [[String]] = [
+        ["width", "left", "right"],
+        ["height", "top", "bottom"]
+    ]
+
+    // upstream: function boxLayout(orient, group, gap, maxWidth?, maxHeight?)
+    private static func boxLayout(
+        _ orient: String,
+        _ group: Group,
+        _ gap: Double,
+        _ maxWidthIn: Double? = nil,
+        _ maxHeightIn: Double? = nil
+    ) {
+        var x: Double = 0
+        var y: Double = 0
+
+        // if (maxWidth == null) { maxWidth = Infinity; }
+        let maxWidth = maxWidthIn ?? Double.infinity
+        // if (maxHeight == null) { maxHeight = Infinity; }
+        let maxHeight = maxHeightIn ?? Double.infinity
+        var currentLineMaxSize: Double = 0
+
+        _ = group.eachChild { child, idx in
+            let rect = child.getBoundingRect()!
+            let nextChild = group.childAt(idx + 1)
+            let nextChildRect = nextChild?.getBoundingRect()
+            var nextX: Double = 0
+            var nextY: Double = 0
+
+            if orient == "horizontal" {
+                let moveX = rect.width + (nextChildRect != nil ? (-nextChildRect!.x + rect.x) : 0)
+                nextX = x + moveX
+                // Wrap when width exceeds maxWidth or meet a `newline` group
+                // FIXME compare before adding gap?
+                if nextX > maxWidth || isNewlineElement(child) {
+                    x = 0
+                    nextX = moveX
+                    y += currentLineMaxSize + gap
+                    currentLineMaxSize = rect.height
+                }
+                else {
+                    // FIXME: consider rect.y is not `0`?
+                    currentLineMaxSize = Swift.max(currentLineMaxSize, rect.height)
+                }
+            }
+            else {
+                let moveY = rect.height + (nextChildRect != nil ? (-nextChildRect!.y + rect.y) : 0)
+                nextY = y + moveY
+                // Wrap when width exceeds maxHeight or meet a `newline` group
+                if nextY > maxHeight || isNewlineElement(child) {
+                    x += currentLineMaxSize + gap
+                    y = 0
+                    nextY = moveY
+                    currentLineMaxSize = rect.width
+                }
+                else {
+                    currentLineMaxSize = Swift.max(currentLineMaxSize, rect.width)
+                }
+            }
+
+            if isNewlineElement(child) {
+                return
+            }
+
+            child.x = x
+            child.y = y
+            child.markRedraw()
+
+            if orient == "horizontal" {
+                x = nextX + gap
+            }
+            else {
+                y = nextY + gap
+            }
+        }
+    }
+
+    /**
+     * VBox or HBox layouting
+     */
+    // upstream: export const box = boxLayout;
+    public static func box(
+        _ orient: String,
+        _ group: Group,
+        _ gap: Double,
+        _ width: Double? = nil,
+        _ height: Double? = nil
+    ) {
+        boxLayout(orient, group, gap, width, height)
+    }
+
+    // upstream: export const vbox = zrUtil.curry(boxLayout, 'vertical');
+    //           export const hbox = zrUtil.curry(boxLayout, 'horizontal');
+    // PORT-TODO: `vbox`/`hbox` (curried `boxLayout`) have no current consumer in the ported surface;
+    //   add the thin `box('vertical', ...)` / `box('horizontal', ...)` forwarders when one lands.
+
+    // upstream: `interface NewlineElement extends Element { newline: boolean }` — LegendView tags a
+    //   spacer `Group` with `g.newline = true`, which `boxLayout` reads as a hard line break. Element is
+    //   not dynamically extensible in Swift, so the flag lives in an inner-store side table keyed by
+    //   element identity. `layout.markNewline(el)` sets it; `boxLayout` reads it via `isNewlineElement`.
+    public static func markNewline(_ el: Element) {
+        _newlineInner(el).newline = true
+    }
+
     /**
      * Uniformly calculate layout reference (rect or center) based on either viewport or coord sys.
      */
@@ -333,6 +441,194 @@ public enum layout {
         )
         return rect
     }
+
+    // ------------------------------------------------------------------------
+    // upstream: export function positionElement(el, positionInfo, containerRect, margin?, opt?, out?): boolean
+    // Value-returning port (the `out` out-param is dropped per CONVENTIONS §3): returns
+    // `(layouted, out)` where `out` carries the computed x/y. `opt` carries `hv:[Bool]` and
+    // `boundingMode:String`.
+    // ------------------------------------------------------------------------
+    public static func positionElement(
+        _ el: Element,
+        _ positionInfo: [String: Any],
+        _ containerRect: BoundingRect,
+        _ margin: Any?,
+        _ opt: [String: Any]?
+    ) -> (layouted: Bool, out: [String: Double]) {
+        let hvArr = opt?["hv"] as? [Bool]
+        let h = (opt == nil) || (hvArr == nil) || (hvArr!.count > 0 && hvArr![0])
+        let v = (opt == nil) || (hvArr == nil) || (hvArr!.count > 1 && hvArr![1])
+        let boundingMode = (opt?["boundingMode"] as? String) ?? "all"
+
+        var out: [String: Double] = [:]
+        out["x"] = el.x
+        out["y"] = el.y
+
+        if !h && !v {
+            return (false, out)
+        }
+
+        var rect: BoundingRect
+        if boundingMode == "raw" {
+            if el.type == "group" {
+                let w = (positionInfo["width"] as? Double) ?? 0
+                let ht = (positionInfo["height"] as? Double) ?? 0
+                rect = BoundingRect(0, 0, w, ht)
+            }
+            else {
+                rect = el.getBoundingRect() ?? BoundingRect(0, 0, 0, 0)
+            }
+        }
+        else {
+            rect = el.getBoundingRect() ?? BoundingRect(0, 0, 0, 0)
+            if el.needLocalTransform() {
+                let transform = el.getLocalTransform()
+                // Notice: raw rect may be inner object of el, which should not be modified.
+                rect = rect.clone()
+                rect.applyTransform(transform)
+            }
+        }
+
+        // getLayoutRect(defaults({width: rect.width, height: rect.height}, positionInfo), containerRect, margin)
+        // `defaults` keeps the width/height from `rect` (target) and fills the rest from positionInfo.
+        var merged = positionInfo
+        merged["width"] = rect.width
+        merged["height"] = rect.height
+        let layoutRect = getLayoutRect(merged as Any?, containerRect, margin)
+
+        let dx = h ? layoutRect.x - rect.x : 0
+        let dy = v ? layoutRect.y - rect.y : 0
+
+        if boundingMode == "raw" {
+            out["x"] = dx
+            out["y"] = dy
+        }
+        else {
+            out["x"] = (out["x"] ?? 0) + dx
+            out["y"] = (out["y"] ?? 0) + dy
+        }
+        return (true, out)
+    }
+
+    // ------------------------------------------------------------------------
+    // upstream: export function mergeLayoutParam(targetOption, newOption, opt?) — operating on the
+    // dynamic option bags (opt supports `ignoreSize`).
+    // ------------------------------------------------------------------------
+    public static func mergeLayoutParam(
+        _ targetOption: inout [String: Any],
+        _ newOption: [String: Any],
+        _ opt: [String: Any]?
+    ) {
+        var ignoreSize: [Bool]
+        let rawIgnore = opt?["ignoreSize"]
+        if let arr = rawIgnore as? [Bool] {
+            ignoreSize = arr.count >= 2 ? arr : [arr.first ?? false, arr.first ?? false]
+        }
+        else {
+            let b = (rawIgnore as? Bool) ?? false
+            ignoreSize = [b, b]
+        }
+
+        let hResult = mergeLayoutHV(HV_NAMES[0], 0, targetOption, newOption, ignoreSize)
+        let vResult = mergeLayoutHV(HV_NAMES[1], 1, targetOption, newOption, ignoreSize)
+
+        copyLayoutHV(HV_NAMES[0], &targetOption, hResult)
+        copyLayoutHV(HV_NAMES[1], &targetOption, vResult)
+    }
+
+    private static func mergeLayoutHasValue(_ obj: [String: Any], _ name: String) -> Bool {
+        guard let val = obj[name] else { return false }
+        if val is NSNull { return false }
+        if let s = val as? String, s == "auto" { return false }
+        return true
+    }
+
+    private static func mergeLayoutHV(
+        _ names: [String],
+        _ hvIdx: Int,
+        _ targetOption: [String: Any],
+        _ newOption: [String: Any],
+        _ ignoreSize: [Bool]
+    ) -> [String: Any] {
+        var newParams: [String: Any] = [:]
+        var newValueCount = 0
+        var merged: [String: Any] = [:]
+        var mergedValueCount = 0
+        let enoughParamNumber = 2
+
+        // each(names): merged[name] = targetOption[name]
+        for name in names {
+            if let v = targetOption[name] { merged[name] = v }
+        }
+        for name in names {
+            // hasOwn(newOption, name) — key present (even if NSNull).
+            if let nv = newOption[name] {
+                newParams[name] = nv
+                merged[name] = nv
+            }
+            if mergeLayoutHasValue(newParams, name) { newValueCount += 1 }
+            if mergeLayoutHasValue(merged, name) { mergedValueCount += 1 }
+        }
+
+        if ignoreSize[hvIdx] {
+            // Only one of left/right is permitted to exist.
+            if mergeLayoutHasValue(newOption, names[1]) {
+                merged.removeValue(forKey: names[2])
+            }
+            else if mergeLayoutHasValue(newOption, names[2]) {
+                merged.removeValue(forKey: names[1])
+            }
+            return merged
+        }
+
+        if mergedValueCount == enoughParamNumber || newValueCount == 0 {
+            return merged
+        }
+        else if newValueCount >= enoughParamNumber {
+            return newParams
+        }
+        else {
+            for name in names {
+                if newParams[name] == nil && targetOption[name] != nil {
+                    newParams[name] = targetOption[name]
+                    break
+                }
+            }
+            return newParams
+        }
+    }
+
+    private static func copyLayoutHV(_ names: [String], _ target: inout [String: Any], _ source: [String: Any]) {
+        for name in names {
+            if let v = source[name] {
+                target[name] = v
+            }
+            else {
+                target.removeValue(forKey: name)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // upstream: export function copyLayoutParams(target, source) — copies LOCATION_PARAMS keys, returns target.
+    // ------------------------------------------------------------------------
+    public static func copyLayoutParams(_ target: [String: Any], _ source: [String: Any]) -> [String: Any] {
+        var result = target
+        for name in LOCATION_PARAMS {
+            if let v = source[name] {
+                result[name] = v
+            }
+        }
+        return result
+    }
+}
+
+// upstream augmentation `interface NewlineElement extends Element { newline: boolean }` (LegendView).
+//   The boolean is held per-element in an inner-store side table (see `layout.markNewline`).
+private final class NewlineFlag { var newline: Bool = false }
+private let _newlineInner: (Element) -> NewlineFlag = model.makeInner { NewlineFlag() }
+private func isNewlineElement(_ el: Element) -> Bool {
+    return _newlineInner(el).newline
 }
 
 // PORT-TODO: JS truthiness shim (matches the per-file `jsTruthy` used across the port). Used only for

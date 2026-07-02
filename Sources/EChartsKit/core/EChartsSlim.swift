@@ -231,6 +231,34 @@ public final class EChartsSlim: EChartsType {
         //   (registerLayOutOnCoordSysUsage asserts uniqueness — reference EXACTLY once, here in installOnce).
         _ = pieLayOutOnCoordSysUsageRegistered
 
+        // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
+        ComponentModel.registerClass(TitleModel.self)
+
+        // -- component/graphic/install.ts -- registerComponentModel(GraphicComponentModel) +
+        //   registerComponentView(GraphicComponentView) + registerPreprocessor(graphicOptionPreprocessor).
+        //   The preprocessor is invoked in `setOption` (see below).
+        ComponentModel.registerClass(GraphicComponentModel.self)
+
+        // -- component/legend/installLegendPlain.ts -- registerComponentModel(LegendModel) +
+        //   registerComponentView(LegendView) + registerSubTypeDefaulter('legend', () => 'plain').
+        //   LegendModel.type == 'legend.plain', so a subtype defaulter is required for the bare
+        //   `legend: {...}` option (mainType 'legend', no subtype) to resolve to 'legend.plain'.
+        ComponentModel.registerClass(LegendModel.self)
+        ComponentModel.registerSubTypeDefaulter("legend", { _ in "plain" })
+
+        // -- component/marker/installMark{Point,Line,Area}.ts --
+        //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
+        //   whose render path depends on deep deps that are still stubbed in this phase:
+        //     - CoordinateSystem.getAxis/getOtherAxis dispatch the nil-returning protocol defaults
+        //       (Cartesian2D's specialized signatures do not witness them) → statistic (min/max/average/
+        //       median) and single-axis (Infinity) markers cannot resolve axes/containData.
+        //     - SeriesModel.indicesOfNearest is stubbed to [] (statistic coord resolution).
+        //     - SymbolDraw/LineDraw are replaced by MarkerSymbolDraw/local stand-ins; util/states
+        //       enterBlur/leaveBlur and util/graphic traverseUpdateZ/retrieveZInfo are no-op stubs.
+        //   The files COMPILE and are kept in place; wiring (registerClass + view factory + the
+        //   markPoint/markLine/markArea preprocessors) is deferred until those deps land.
+        //     ComponentModel.registerClass(MarkPointModel.self) / MarkLineModel / MarkAreaModel
+
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
         // These are file-scope closures, assigned lazily on first `install`.
@@ -241,7 +269,12 @@ public final class EChartsSlim: EChartsType {
     private let _componentViewFactories: [String: () -> ComponentView] = [
         "grid": { GridView() },
         "xAxis": { CartesianXAxisView() },
-        "yAxis": { CartesianYAxisView() }
+        "yAxis": { CartesianYAxisView() },
+        // Phase 7 static components (keyed by mainType; legend's subtype 'plain' is resolved by the
+        //   registerSubTypeDefaulter above, but the VIEW is still looked up by mainType 'legend').
+        "title": { TitleView() },
+        "graphic": { GraphicComponentView() },
+        "legend": { LegendView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -263,6 +296,9 @@ public final class EChartsSlim: EChartsType {
         if opt["xAxis"] != nil && opt["yAxis"] != nil && opt["grid"] == nil {
             opt["grid"] = [String: Any]()
         }
+        // Preprocessor from component/graphic/install.ts: normalize the `graphic` option into its
+        //   canonical `[{ elements: [...] }]` shape so GraphicComponentModel can consume it.
+        graphicOptionPreprocessor(&opt)
 
         let ecModel = GlobalModel()
         let om = OptionManager(_api)

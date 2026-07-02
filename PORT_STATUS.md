@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 7 (STATIC COMPONENT LAYER): `title`, `graphic`, and `legend` (model) now register in `EChartsSlim` (`TitleModel`+`TitleView`, `GraphicComponentModel`+`GraphicComponentView`+`graphicOptionPreprocessor`, `LegendModel`+`registerSubTypeDefaulter('legend','plain')`+`LegendView`); the three marker components (`markPoint`/`markLine`/`markArea`) are PORTED-but-BLOCKED (files compile; registration + view factories + preprocessors left unwired) on a stubbed coord/axis-resolution + SymbolDraw/LineDraw + util/states+graphic dep stack. All interaction (legend select/scroll, marker drag, actions, emphasis/animation) is deferred PORT-TODO per CONVENTIONS §5. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Three faithfulness reviews all `minor-issues` (notable: legend per-series glyph stubbed → default icon; markerHelper statistic/valueAxis branch dead until coord protocol witnesses land). See §38.**
 **Phase 6d (SYMBOLS + SCATTER + PIE verticals): faithful `util/symbol` (the symbol-path factory + `createSymbol`), `LineView` now honors `showSymbol`, plus two minimal new chart verticals — `chart/scatter/{ScatterSeries,ScatterView}` (points via `coord.dataToPoint` + `createSymbol`) and a coordless `chart/pie/{PieSeries,PieView,pieLayout}` (per-item angle/radius geometry through a `pieLayout(ecModel, api)` render hook + `createSeriesDataSimply`/`util/layout` box). Registered in `EChartsSlim` (`ScatterSeriesModel`/`PieSeriesModel` + `scatter`/`pie` view factories + pie's `registerLayOutOnCoordSysUsage`). Post-workflow verification fixed the visual-task ORDER (`dataColorPaletteTask` must run LAST) and a `getColorFromPalette` overload trap so pie's per-slice `colorBy:'data'` palette works; added `Scatter`/`PieChartRenderTests`. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Label/emphasis/`SymbolDraw` are documented PORT-TODOs. See §37.**
 **Phase 6c (REAL DATA SOURCE PIPELINE — the faithful `data/helper/sourceManager.ts` port replaces the Series stub `SourceManager`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 216 executed / 0 failures / 58 skipped (no regression).** The reachable series-inline-data path (no dataset) is fully live and verified: no upstream → `data = seriesModel.get("data")`, `SOURCE_FORMAT_ORIGINAL`, `createSource` → `DataStore` via `DefaultDataProvider`; `getSharedDataStore` now ships on the real class. Dataset/transform arms are documented PORT-TODOs (unreachable this phase). Faithfulness review: faithful, 0 findings. See §36.
 **Phase 6b (RENDERING VERTICAL — a REAL bar chart end-to-end: slim `EChartsSlim` driver + `view/` bases + `visual/style` + `layout/barGrid` + `chart/bar/{BaseBarSeries,BarSeries,BarView}` + `component/{grid/GridView,axis/CartesianAxisView+AxisBuilder}`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 215 executed / 0 failures / 58 skipped (was 212; +3 real 6b tests, no regression). A cartesian bar `option` renders four bar `Rect`s through `ZRenderKit` (`BarChartRenderTests`), also exercising `NativePainter.renderToImage`.** See §35. Closeout fixed one real defect the killed workflow left: `SeriesModel.getBaseAxis()` returned `nil` via an `Any?`-return conversion, so bar x/width were NaN (§35b).
@@ -1941,6 +1942,223 @@ the reviews flagged or the renders exposed:
 - **Render parity confirmed** (native vs `echarts.js`, `--render-all`): bar (4 palette bars), line (polyline
   + hollow symbol points via `showSymbol`), scatter (8 filled circles at correct value×value coords), pie
   (5 palette-colored proportional slices). New gallery demos: `scatter-basic`, `pie-basic`.
+
+---
+
+## 38. Phase 7 — static component layer (title + legend + graphic + marker)
+
+**Goal (met, scoped):** stand up the static (non-interactive) component layer — `title`, `legend`,
+`graphic`, and the three `mark*` series markers — as diffable mirrors of upstream, registering the ones
+whose full dependency stack is present and landing the rest as compile-clean, PORT-TODO-annotated
+files awaiting their deps. **`swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures /
+58 skipped** (no regression vs §37's 218; +2). Per CONVENTIONS §5 (STATIC RENDER ONLY), every
+interaction/event/action/animation path is deferred as an in-file PORT-TODO — see the per-component
+notes below.
+
+### Registered in `EChartsSlim` (live end-to-end)
+- [x] **`title`** — `TitleModel` + `TitleView` view factory. Interaction deferred: the `link`/`sublink`
+      `textEl.on('click', …)` handlers + `format.windowOpen` navigation (install.ts:193-202) and the
+      `getECData(textEl/subTextEl).eventData` assignment gated on `triggerEvent` (install.ts:204-209).
+      `link`/`sublink`/`triggerEvent` ARE still read to compute `textEl.silent`/`subTextEl.silent`
+      faithfully. `disableBox` background-box parsing in the minimal `createTextStyle` is out of
+      static-render scope. Behavioral note (documented inline, not a shortcut): for numeric
+      `top`/`bottom`, upstream leaves `textVerticalAlign` as the raw number (renders as 'top'); the port
+      coerces non-string → nil → `?? 'top'`, matching the rendered result.
+- [x] **`graphic`** — `GraphicComponentModel` + `GraphicComponentView` view factory +
+      `graphicOptionPreprocessor(_ option: inout [String: Any])` wired into `setOption`. Full model
+      normalization path ported (`mergeOption`/`optionUpdated`/`_flatten`/`useElOptionsToUpdate` +
+      `setKeyInfoToNewElOption`/`isSetLoc`/`mergeNewElOptionToExist`/`copyTransitionInfo`/
+      `setLayoutInfoToExist`) and the view build/layout path (`_updateElements`/`_relocate`/`_clear`/
+      `newEl`/`createEl`/`removeEl`/`updateCommonAttrs`/`getCleanedElOption`/`setEventData`). Design
+      deviations (documented in-file): the `GraphicComponentElementOption` union collapsed to ONE
+      reference bag class conforming to `MappingExistingItem`; `model.mappingToExists` (specialized to
+      `ComponentOption`) is bridged by smuggling the element reference through
+      `ComponentOption.rawOption[GRAPHIC_EL_KEY]`; raw `setOption` element dicts wrapped via
+      `normalizeElementOptions` (recursing into children). Deferred PORT-TODO: animation/transition
+      (`applyUpdateTransition` → static substitute `applyUpdateTransitionStatic` = `el.attr(cleanedOption)`,
+      the no-transition-config final geometry/style; `applyLeaveTransition` → immediate detach;
+      `updateLeaveTo`/`isTransitionAll`/`updateProps`/`applyKeyframeAnimation`/
+      `stopPreviousKeyframeAnimationAndRestore` are no-ops); interaction (`on*` handlers + `el.draggable`
+      in `updateCommonAttrs` dropped; `setEventData` IS ported — it only builds the ECData.eventData bag);
+      `util/styleCompat` EC4 back-compat branch not ported (EC5 options don't hit it);
+      `graphicUtil.setTooltipConfig` deferred; `graphicUtil.getShapeClass` (extendShape name→class
+      registry) NOT ported — only group/image/text elements are constructed, shape elements
+      (circle/rect/line/polygon/…) and non-group/image/text clipPaths return nil until the shape registry
+      lands; `setTextConfig` bag→typed `ElementTextConfig` bridged for common keys (rich/union fields not
+      fully bridged).
+- [x] **`legend` (model only)** — `LegendModel` + `registerSubTypeDefaulter('legend', 'plain')` +
+      `LegendView` view factory. STATIC MODEL scope: `legendAction.ts`/`legendFilter.ts` (the whole
+      action/event/dispatch layer + `legendFilterStageHandler` processor), `installLegendScroll` /
+      `ScrollableLegend*` are NOT ported. The selected-map bookkeeping
+      (`select`/`unSelect`/`toggleSelected`/`allSelect`/`inverseSelect`/`isSelected`) IS ported faithfully
+      — pure `option.selected` manipulation with no action-layer reference; `optionUpdated`'s single-select
+      init (static render) depends on `select`/`isSelected`. Only the DISPATCH that invokes these on user
+      interaction is deferred (PORT-TODO on those methods). Deferred with safe fallbacks: (a) `visual/tokens.ts`
+      — `tokens.color.*`/`tokens.size.m` inlined as resolved constants in `defaultOption`; (b)
+      `layout.fetchLayoutMode` — `layoutMode` modeled as a class-var override returning
+      `{type:'box', ignoreSize:true}`; (c) `LegendVisualProvider` — provider branch in `_updateData` uses a
+      minimal `LegendVisualProviderLike` protocol that nothing conforms to yet (isPotential=true fallback).
+      Because Swift option bags are value types (not JS shared refs), init/_updateSelector and the
+      select/unSelect/toggle/allSelect/inverseSelect methods operate on `self.option` and write the merged
+      result back (documented PORT-TODO).
+
+### Ported but BLOCKED — compile-clean, registration/view/preprocessor left UNWIRED
+All three markers share one root blocker: **coord/axis resolution is stubbed.** `getAxisInfo`/`dataTransform`
+call `coordSys.getAxis`/`getOtherAxis` through the `CoordinateSystem` PROTOCOL, but `Cartesian2D`'s
+more-specific signatures (`getAxis(_:DimensionName)`, `getOtherAxis(_:Axis2D)->Axis2D`) do NOT witness the
+protocol's optional-param requirements, so the nil-returning protocol default is dispatched — axis
+resolution is effectively deferred until the coord-system protocol witnesses are reconciled. Also common:
+`SeriesModel.indicesOfNearest` is stubbed `[]`; `util/states` `enterBlur`/`leaveBlur` and `util/graphic`
+`traverseUpdateZ`/`retrieveZInfo` are no-op stubs (blur toggling + z/zlevel propagation onto the marker
+draw group stubbed); `renderSeries` + `MarkerModel.createMarkerModelFromSeries` are abstract (`fatalError`)
+so per-type subclasses override. `MarkerModel`/`MarkerView`/`markerHelper` base files were added (see below).
+Registration was intentionally NOT added to `EChartsSlim` for these (Integrate owns wiring).
+
+- [~] **`markPoint`** — file compiles; `registerClass` + view factory + `markPointPreprocessor` left
+      unwired. `SymbolDraw.updateData` (enter/update/leave diff + item labels + emphasis/blur + animation)
+      replaced by a direct per-point symbol build (same deliberate deviation as `ScatterView`) using a
+      minimal `MarkerSymbolDraw`/`MarkerDraw` stand-in that only holds the `group` slot. Deferred:
+      callback-in-data-item (`symbol`/`symbolSize`/`symbolRotate`/`symbolOffset` as user functions) — the
+      `isFunction` guards ported, the `getRawValue`/`getDataParams` fetch + 4 invocations deferred
+      (getRawValue unavailable: `DataFormatMixin` conformance blocked on `MarkerModel`); `updateTransform`'s
+      per-draw `symbolDraw.updateLayout()` layout recompute kept, the relayout call stubbed; tooltip
+      host-model wiring (`getECData(child).dataModel = mpModel`) deferred; symbolRotate/symbolOffset/
+      symbolKeepAspect + emphasis scale not applied; `install()` registration boilerplate left to the slim
+      driver (a reusable `markPointPreprocessor(&opt)` free function is provided). In `updateMarkerLayout`,
+      upstream's `point[0]=xPx` on an undefined point (JS throw in degenerate configs) is a safe
+      optional-chained no-op.
+- [~] **`markLine`** — file compiles; `registerClass` + view factory + `checkMarkerInSeries` preprocessor
+      left unwired. Same coord axis-resolution gap (statistic/Infinity single-axis marklines cannot
+      resolve axes/containData). Ported Model (defaultOption + createMarkerModelFromSeries) fully, and the
+      View geometry (`markLineTransform`, `isInfinity`, `ifMarkLineHasOnlyDim`, `markLineFilter`,
+      `updateSingleMarkerEndLayout` — parsePercent x/y, coordSys.dataToPoint, cartesian Infinity-edge
+      expansion; `createList` from/to/line SeriesData + dimValueGetter bridge; `renderSeries`;
+      `updateTransform`). Deferred: `chart/helper/LineDraw`+`Line` (needs util/states, label/labelStyle,
+      emphasis) replaced with a MINIMAL in-file `LineDraw` stand-in that draws the from→to segment as a
+      `Polyline` stroked from the item's `style.stroke` — NO diff/enter-leave animation, NO end symbols,
+      NO labels, dashed `lineStyle.type` not applied; `seriesModel.getMarkerPosition` (bar/candlestick
+      override) not ported — generic dataToPoint else-branch always taken; `getECData` host-model tagging
+      commented out; `getVisualFromData` approximated by a local helper reading series `style.fill`;
+      `MarkerPositionOption` is position-only (item-level lineStyle/itemStyle/label/symbol re-read via
+      getItemModel, `merge()` deep-recursion approximated by shallow `mergePositionOption`); registration/
+      install intentionally NOT written.
+- [~] **`markArea`** — file compiles; `registerClass` + view factory + `markAreaPreprocessor` left unwired.
+      Same coord axis-resolution + `getVisualFromData`/`barStyleFromDict` approximations; depends on the
+      same per-series `MarkerModel` instantiation not driven by the slim update cycle. Deferred: label
+      (`setLabelStyle`/`getLabelStatesModels` + tokens.color.neutral99); emphasis/states
+      (`setStatesStylesFromModel`/`toggleHoverEmphasis`); tooltip/data-model wiring
+      (`getECData(polygon).dataModel` — MarkerModel not yet `DataModel`); animation
+      (`graphic.updateProps` → local no-anim shim: setShape + z2 immediately); `updateTransform` geometry
+      ported but its render-pipeline invocation deferred; `seriesModel.getMarkerPosition`
+      (bar/candlestick corner-snap) deferred — generic dataToPoint else-branch, matching `MarkLineView`;
+      polar/geo coord systems out (cartesian2d only — getAxis/clampData/dataToPoint dispatched on concrete
+      Cartesian2D since protocol witnesses return nil); 1D-object markArea items
+      (`MarkArea1DDataItemOption`) yield nil from `markAreaTransform` and are filtered out; z/zlevel
+      propagation inherited from `MarkerView.updateZ` (already PORT-TODO); registration + preprocessor
+      (`markAreaPreprocessor` provided as a reusable free function) left to Integrate.
+
+### Files added under `Sources/EChartsKit/component/`
+- `component/title/` — `TitleModel.swift`, `TitleView.swift` (installTitle path).
+- `component/graphic/` — `GraphicComponentModel.swift`, `GraphicComponentView.swift` (+
+  `graphicOptionPreprocessor`), `layout.swift` helpers (positionElement/mergeLayoutParam/copyLayoutHV).
+- `component/legend/` — `LegendModel.swift`, `LegendView.swift`.
+- `component/marker/` — `MarkerModel.swift`, `MarkerView.swift`, `markerHelper.swift` (shared base +
+  helper), plus the per-type `MarkPoint*`/`MarkLine*`/`MarkArea*` model+view files.
+
+Marker base notes (all PORT-TODO in-file): `MarkerModel.fillLabel`/`defaultEmphasis` — the
+`DisplayStateHostOption`↔`[String:Any]` bridging deferred (mirrors `SeriesModel.fillDataTextStyle`); the
+structural `_mergeOption` walk (item-is-Array branch, per-item fillLabel) is preserved, the actual
+`defaultEmphasis` call is a no-op stub. `zrUtil.mixin(MarkerModel, DataFormatMixin.prototype)` NOT
+expressed as a conformance — blocked by the same impedance as `SeriesModel` (`DataFormatMixin` requires
+non-optional `ecModel: GlobalModel` but `Model.ecModel` is `GlobalModel?`), so `getFormattedLabel`/
+`getRawValue` are unavailable and `getDataParams` computes only the host-series patch (base fields
+color/encode/userOutput/dimensionNames NOT computed). `formatTooltip` fully stubbed (returns nil).
+`isAnimationEnabled`'s `if (env.node) return false` early-return dropped (native treated as browser-like,
+env.node==false — matches `model/Series.swift`). DEV abstract-marker guard uses `fatalError` in place of
+upstream throw. `markerHelper.markerTypeCalculatorWithExtent`: `indicesOfNearest` stubbed `[]` so `[0]`
+falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicated via `%.*f`
+(rounding-mode approximation).
+
+### Deferred interactive PORT-TODOs (summary)
+- **legend:** select/unSelect/toggle DISPATCH (legendAction.ts), legendFilter processor, scrollable
+  legend (installLegendScroll/ScrollableLegend*), `LegendView` item click/mouseover/mouseout +
+  dispatchSelect/Highlight/Downplay, packEventData/triggerEvent, enableHoverEmphasis (no-op), selector
+  onclick, function-valued formatter, pie/funnel `legendVisualProvider` branch (provider never assigned
+  → pie/funnel legend items not drawn), series-specific `getLegendIcon` glyph (always false → every
+  series uses `getDefaultLegendIcon`), decal `createOrUpdatePatternFromDecal` (falls back to
+  series-visual decal).
+- **marker:** drag/click, `dispatchSelectAction`/highlight/downplay, blur (enterBlur/leaveBlur no-op),
+  emphasis/label/animation, z2/zlevel `traverseUpdateZ` propagation, tooltip data-model wiring, and the
+  per-type registration + preprocessors themselves (Integrate owns EChartsSlim wiring for the blocked
+  three).
+- **graphic:** `on*` handlers + `el.draggable`, keyframe/transition animation, `setTooltipConfig`.
+- **title:** `link`/`sublink` click + windowOpen navigation, `triggerEvent` eventData assignment.
+
+### Build & test status — Phase 7
+- **`swift build`: GREEN (0 warnings).**
+- **`swift test`: 220 executed / 0 failures (0 unexpected) / 58 skipped** in 0.280 (0.289) s — matches
+  §37's 220 baseline (title/graphic/legend registration + the compile-clean blocked markers add no
+  regression).
+
+### Faithfulness reviews — three verdicts, all `minor-issues`
+1. **`component/legend/LegendView.swift` — minor-issues.**
+   - *(minor)* Series-specific legend glyph never rendered: the upstream
+     `isFunction(seriesModel.getLegendIcon)` branch (line+symbol composite for line/scatter-like series)
+     is stubbed, so every series falls through to `getDefaultLegendIcon` → flat default icon
+     (roundRect/plain symbol). A line-series legend item shows a filled roundRect instead of a
+     line-with-marker. Documented PORT-TODO tied to unported SeriesModel subclasses; a rendering (not
+     interaction) divergence. (upstream LegendView.ts:422-453 vs LegendView.swift:432-458)
+   - *(low)* `show` visibility test narrower than upstream: upstream `if (!legendModel.get('show', true))`
+     uses JS falsiness (undefined/null/0/''/false all hide), the port
+     `if (legendModel.get("show", true) as? Bool) == false` only returns for explicit Bool false; a
+     non-Bool falsy (show:0/null) would leave the legend rendered. Benign (merged default is Bool true).
+     (LegendView.ts:114 vs LegendView.swift:167)
+   - *(low)* `createTextStyle` reused from AxisBuilder is a minimal reproduction of upstream
+     `label/labelStyle.createTextStyle` — resolves font/fill/align/verticalAlign but drops the
+     `{inheritColor}` 3rd-arg fallback and rich-text/background/shadow; faithful for plain legend text
+     (fill pre-resolved), diverges for rich/inheritColor-driven color. (LegendView.ts:470-479 vs
+     LegendView.swift:480-489 / AxisBuilder.swift:1267-1288)
+2. **`component/marker/markerHelper.swift` — minor-issues.**
+   - *(medium)* The statistic-with-extent coord branch (type:min|max|average|median → base/value axes) is
+     effectively dead at runtime: `getAxisInfo` resolves valueAxis via `coordSys.getOtherAxis(...)` through
+     the protocol (default returns nil, CoordinateSystem.swift:317) because
+     `Cartesian2D.getOtherAxis(_:Axis2D)->Axis2D` doesn't witness the requirement; valueAxis comes back
+     nil, so `dataTransform`'s guard (baseAxis!=nil && valueAxis!=nil, markerHelper.swift:187) is false and
+     control falls to the xAxis/yAxis else-branch → coord=[nil,nil], no computed item.value. PORT-TODO at
+     markerHelper.swift:242-247. (markerHelper.ts:129-144,176-199)
+   - *(medium)* `markerTypeCalculatorWithExtent` resolves the base/target coord from data index 0 rather
+     than nearest, because `SeriesModel.indicesOfNearest` is stubbed `[]` (Series.swift:546) → `.first ?? 0`.
+     Upstream picks the index nearest the computed statistic; the port places it at datum 0. Latent
+     (unreachable while valueAxis is nil) but wrong once axis resolution lands. PORT-TODO at
+     markerHelper.swift:102-106. (markerHelper.ts:73-81)
+   - *(low)* `scaleDataValues` comment claims 'dropping nils' but `coord.map { ($0 as Any) as ScaleDataValue }`
+     keeps nil entries — actually MORE faithful than the comment (upstream passes item.coord straight
+     through); stale-comment doc issue, not behavioral.
+   - *(low)* `toFixedNumber` approximates JS `Number.prototype.toFixed` (round-half-away-from-zero) with
+     `String(format:"%.*f")` (round-half-to-even) — last-digit rounding can differ at exact .5 boundaries.
+     PORT-TODO at markerHelper.swift:124-126.
+   - *(low)* `numCalculate` 'average' reads via `args[0] as? Double ?? .nan` and skips non-Double, whereas
+     upstream uses `isNaN(val)` — matches while DataStore chunks hold Double (confirmed), but a future
+     non-Double numeric ParsedValue (ordinal Int) would be silently excluded from the mean. Informational —
+     currently faithful.
+3. **`component/graphic/GraphicView.swift` — minor-issues (all low).**
+   - *(low)* `updateCommonAttrs` (GraphicView.swift:519-528) replaces upstream's
+     `else if ((el)[prop] == null)` guard with an unconditional default write when the option omits
+     cursor/zlevel/z/z2, so a `merge` re-render can clobber an existing value; limited this phase (the only
+     external writer, keyframe animation, is deferred) and for fresh (isInit) elements it writes the same
+     defaults. (upstream GraphicView.ts:451-462)
+   - *(low)* `layout.swift:474-475` (positionElement raw-group branch) uses
+     `(positionInfo["width"] as? Double) ?? 0` / height, dropping upstream's `+positionInfo.width || 0`
+     numeric coercion; a string-valued group width ('100') yields 0. Group width is pixel-only, so only
+     malformed input bites. (util/layout.ts:592-594)
+   - *(low)* `layout.swift:591-596` (mergeLayoutParam fallback) + `copyLayoutHV` (601-609) key on value-nil
+     instead of upstream `zrUtil.hasOwn` key-presence, so an explicit `null` (user clearing width/right) is
+     treated as absent rather than present-with-null; diverges only for that explicit-null edge.
+     (util/layout.ts:733-745,751-755)
+   - *(low)* `GraphicView.swift:153-163` top/bottom text-align clear sets style keys to nil (removes them)
+     rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
+     align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
+     (static-render common case). (GraphicView.ts:133-141)
 
 ---
 
