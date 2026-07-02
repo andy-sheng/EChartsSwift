@@ -57,6 +57,17 @@ let package = Package(
             name: "DemoGallery",
             dependencies: ["ZRenderKit", "NativePainter"],
             path: "Sources/DemoGallery"
+        ),
+        // macOS ECharts demo gallery — the echarts analog of DemoGallery. Renders each demo `option`
+        // two ways side-by-side: NATIVE (EChartsKit → EChartsSlim → ZRenderKit → NativePainter) and
+        // the REAL echarts.js (upstream/echarts/dist) in a WKWebView. A public-API consumer only.
+        //   swift run EChartsDemoGallery                        # GUI: native | echarts.js panes
+        //   swift run EChartsDemoGallery --list
+        //   swift run EChartsDemoGallery --compare bar-basic <dir>   # native + web PNGs
+        .executableTarget(
+            name: "EChartsDemoGallery",
+            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit"],
+            path: "Sources/EChartsDemoGallery"
         )
     ]
 )
