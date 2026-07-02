@@ -76,6 +76,25 @@ final class DemoBarSeriesModel: BarSeriesModel {
     }
 }
 
+/// A `series.line` model supplying its data from the option's own `series[].data` (same bypass of the
+/// unported SourceManager as `DemoBarSeriesModel`). Registered globally by `renderNativeGroup`.
+final class DemoLineSeriesModel: LineSeriesModel {
+    override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
+        let values = demoSeriesValues((self.option as? [String: Any])?["data"])
+        let rows = values.enumerated().map { [Double($0.offset), $0.element] }
+        let d = SeriesData(["x", "y"], self)
+        let source = createSourceFromSeriesDataOption(rows)
+        let provider = DefaultDataProvider(source, 2)
+        let store = DataStore()
+        store.initData(provider, [
+            DataStoreDimensionDefine(type: .float, property: "x"),
+            DataStoreDimensionDefine(type: .float, property: "y")
+        ])
+        d.initData(store)
+        return d
+    }
+}
+
 /// Coerce a `series.data` option (`[Double]` / `[Int]` / `[NSNumber]`) to `[Double]`.
 func demoSeriesValues(_ raw: Any?) -> [Double] {
     guard let arr = raw as? [Any] else { return [] }

@@ -213,6 +213,11 @@ public final class EChartsSlim: EChartsType {
         registerBarGridAxisHandlers(_registers)   // populates axisStatistics `clientsForLookup` +
                                                   //   captures the axis-statistics processor (see registrar).
 
+        // -- chart/line/install.ts (minimal) -- registerSeriesModel(LineSeries) + registerChartView(LineView).
+        //   Line needs NO cross-series/progressive layout registrar (LineView computes points directly
+        //   from `coord.dataToPoint`); the visual stage colors it like any series.
+        ComponentModel.registerClass(LineSeriesModel.self)
+
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
         // These are file-scope closures, assigned lazily on first `install`.
@@ -226,7 +231,8 @@ public final class EChartsSlim: EChartsType {
         "yAxis": { CartesianYAxisView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
-        "bar": { BarView() }
+        "bar": { BarView() },
+        "line": { LineView() }
     ]
 
     // ------------------------------------------------------------------------

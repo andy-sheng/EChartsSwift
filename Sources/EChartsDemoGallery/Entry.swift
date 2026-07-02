@@ -41,7 +41,11 @@ func renderNativeGroup(_ demo: EChartsDemo) -> Group {
     // Register the data double AFTER that (once, globally) so it wins the "series.bar" key — exactly
     // the order BarChartRenderTests uses.
     let ec = EChartsSlim(width: demo.width, height: demo.height)
-    if !_doubleRegistered { ComponentModel.registerClass(DemoBarSeriesModel.self); _doubleRegistered = true }
+    if !_doubleRegistered {
+        ComponentModel.registerClass(DemoBarSeriesModel.self)
+        ComponentModel.registerClass(DemoLineSeriesModel.self)
+        _doubleRegistered = true
+    }
     ec.setOption(demo.option)
     return ec.getRoot()
 }
