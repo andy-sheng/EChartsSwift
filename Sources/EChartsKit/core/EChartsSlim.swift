@@ -231,6 +231,28 @@ public final class EChartsSlim: EChartsType {
         //   (registerLayOutOnCoordSysUsage asserts uniqueness — reference EXACTLY once, here in installOnce).
         _ = pieLayOutOnCoordSysUsageRegistered
 
+        // -- chart/funnel/install.ts (minimal) -- registerSeriesModel(FunnelSeries) + registerChartView(FunnelView) +
+        //   registerLayout(funnelLayoutStageHandler). Funnel has NO cartesian coord (coordinateSystemUsage:"box",
+        //   like pie); FunnelView reads its per-piece polygon `points` from `data.getItemLayout` populated by the
+        //   funnel layout stage (run in `render`). Funnel needs no `registerLayOutOnCoordSysUsage` (it reads no
+        //   `center`/`getCoord2`; the layout resolves its view rect purely from `createBoxLayoutReference`).
+        ComponentModel.registerClass(FunnelSeriesModel.self)
+
+        // -- chart/candlestick/install.ts (minimal) -- registerSeriesModel(CandlestickSeries) +
+        //   registerChartView(CandlestickView) + registerLayout(candlestickLayout) + registerVisual(candlestickVisual)
+        //   + registerCandlestickAxisHandlers(registers). Candlestick is a cartesian2d series (like bar): the axis
+        //   handlers populate the axisStatistics `clientsForLookup` (bandWidth for candle width). The already-captured
+        //   axis-statistics processor (registered once by the bar handlers) picks up the candlestick client too.
+        ComponentModel.registerClass(CandlestickSeriesModel.self)
+        registerCandlestickAxisHandlers(_registers)
+
+        // -- chart/boxplot/install.ts (minimal) -- registerSeriesModel(BoxplotSeries) + registerChartView(BoxplotView)
+        //   + registerLayout(boxplotLayoutStageHandler) + registerBoxplotAxisHandlers(registers). Boxplot is a
+        //   cartesian2d series (like bar); its colors come from the generic visual stage (visualDrawType:'stroke'),
+        //   so it needs NO dedicated visual handler — only the layout stage + axis statistics.
+        ComponentModel.registerClass(BoxplotSeriesModel.self)
+        registerBoxplotAxisHandlers(_registers)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -280,7 +302,10 @@ public final class EChartsSlim: EChartsType {
         "bar": { BarView() },
         "line": { LineView() },
         "scatter": { ScatterView() },
-        "pie": { PieView() }
+        "pie": { PieView() },
+        "funnel": { FunnelView() },
+        "candlestick": { CandlestickView() },
+        "boxplot": { BoxplotView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -448,6 +473,30 @@ public final class EChartsSlim: EChartsType {
         //   start/end angle + r0/r via `getCircleLayout` and stores it with `data.setItemLayout`, which
         //   `PieView.render` reads back. Bare 2-arg handler (like the bar layout handlers above).
         pieLayout(ecModel, api)
+
+        // LAYOUT — funnel piece polygons (upstream `registerLayout(funnelLayoutStageHandler)`). Like pie,
+        //   funnel is box-usage with no cartesian coord; this OVERALL stage computes each piece's 4-corner
+        //   `points` (via createBoxLayoutReference + linearMap) and stores it with `data.setItemLayout`,
+        //   which `FunnelView.render` reads back.
+        funnelLayout(ecModel, api)
+
+        // LAYOUT + VISUAL — candlestick. Upstream registers `candlestickLayout` (a SERIES_STAGE_TASK that
+        //   computes each candle's 8-point `ends` + `sign` from the cartesian `dataToPoint`) and
+        //   `candlestickVisual` (colors body/whiskers bull/bear FROM `itemLayout.sign`). candlestickVisual
+        //   READS the sign written by candlestickLayout, so — unlike the generic visual stage, which runs
+        //   before layout — the layout MUST run first. Upstream orders them by pipeline priority (layout
+        //   before visual); the slim driver reproduces that by running BOTH here (layout, then visual),
+        //   after the generic performVisualStage (candlestickVisual only extends fill/stroke onto the
+        //   existing item-visual style, so running it last is correct). Both are SERIES_STAGE_TASKs.
+        runSeriesStageHandler(candlestickLayout, ecModel, api)
+        runSeriesStageHandler(candlestickVisual, ecModel, api)
+
+        // LAYOUT — boxplot box/whisker geometry (upstream `registerLayout(boxplotLayoutStageHandler)`).
+        //   An OVERALL stage (cross-series offset/width from the axis bandWidth statistics); computes each
+        //   datum's `ends` + `initBaseline` via `dataToPoint` and stores it with `data.setItemLayout`,
+        //   which `BoxplotView.render` reads back. Colors come from the generic visual stage
+        //   (visualDrawType:'stroke'), so no dedicated boxplot visual handler is needed. Bare 1-arg handler.
+        boxplotLayout(ecModel)
 
         renderSeries(ecModel, api)
     }

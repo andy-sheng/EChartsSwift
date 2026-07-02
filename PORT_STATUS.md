@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 8 (NEW CHART TYPES — funnel + candlestick + boxplot): all three chart types now register end-to-end in `EChartsSlim` (`FunnelSeriesModel`+`funnelLayout`/`funnelLayoutStageHandler`+`FunnelView`; `CandlestickSeriesModel`+`candlestickLayout`+`candlestickVisual`+`CandlestickView`+`'k'→'candlestick'` preprocessor; `BoxplotSeriesModel`+`boxplotLayout`+`boxplotVisual`+`BoxplotView`), each wired into the layout + visual stages with its axis-handler registration; nothing blocked. New custom shapes `NormalBoxPath`/`BoxPath` (candlestick/boxplot box+whisker geometry) landed. Independent post-workflow verification rendered all three vs echarts.js (funnel trapezoids, candlestick bull/bear K-line, boxplot box+median+whiskers — all faithful), added `funnel-basic`/`candlestick-basic`/`boxplot-basic` gallery demos + `NewChartsRenderTests`, and fixed a real ZRenderKit crash: `Element.getOutsideStroke` force-unwrapped `self.__zr!` (nil in the headless render path — funnel outside-labels hit it) → now guarded like its sibling `getOutsideFill`. `swift build` GREEN (0 warnings), `swift test` 223 executed / 0 failures / 58 skipped. Deferred PORT-TODOs: large/progressive draw path (LargeBoxPath/createLarge no-op), emphasis/states + enter/update animation + labels, the `boxplotTransform` dataset transform, and the diff-based enter/update/remove (replaced by static from-scratch rebuild, same as Line/Pie/Funnel views). Three faithfulness reviews: funnel `FAITHFUL_WITH_MINOR_DIVERGENCES` (percent-string itemStyle width/height dropped; unstable sort tie-break; custom-comparator sort no-op), candlestick `FAITHFUL` (resolveNormalBoxClipping stubbed NOT_CLIPPED + large-mode no-op are the notable deferrals), boxplot `FAITHFUL` (0 findings). See §39.**
 **Phase 7 (STATIC COMPONENT LAYER): `title`, `graphic`, and `legend` (model) now register in `EChartsSlim` (`TitleModel`+`TitleView`, `GraphicComponentModel`+`GraphicComponentView`+`graphicOptionPreprocessor`, `LegendModel`+`registerSubTypeDefaulter('legend','plain')`+`LegendView`); the three marker components (`markPoint`/`markLine`/`markArea`) are PORTED-but-BLOCKED (files compile; registration + view factories + preprocessors left unwired) on a stubbed coord/axis-resolution + SymbolDraw/LineDraw + util/states+graphic dep stack. All interaction (legend select/scroll, marker drag, actions, emphasis/animation) is deferred PORT-TODO per CONVENTIONS §5. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Three faithfulness reviews all `minor-issues` (notable: legend per-series glyph stubbed → default icon; markerHelper statistic/valueAxis branch dead until coord protocol witnesses land). See §38.**
 **Phase 6d (SYMBOLS + SCATTER + PIE verticals): faithful `util/symbol` (the symbol-path factory + `createSymbol`), `LineView` now honors `showSymbol`, plus two minimal new chart verticals — `chart/scatter/{ScatterSeries,ScatterView}` (points via `coord.dataToPoint` + `createSymbol`) and a coordless `chart/pie/{PieSeries,PieView,pieLayout}` (per-item angle/radius geometry through a `pieLayout(ecModel, api)` render hook + `createSeriesDataSimply`/`util/layout` box). Registered in `EChartsSlim` (`ScatterSeriesModel`/`PieSeriesModel` + `scatter`/`pie` view factories + pie's `registerLayOutOnCoordSysUsage`). Post-workflow verification fixed the visual-task ORDER (`dataColorPaletteTask` must run LAST) and a `getColorFromPalette` overload trap so pie's per-slice `colorBy:'data'` palette works; added `Scatter`/`PieChartRenderTests`. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Label/emphasis/`SymbolDraw` are documented PORT-TODOs. See §37.**
 **Phase 6c (REAL DATA SOURCE PIPELINE — the faithful `data/helper/sourceManager.ts` port replaces the Series stub `SourceManager`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 216 executed / 0 failures / 58 skipped (no regression).** The reachable series-inline-data path (no dataset) is fully live and verified: no upstream → `data = seriesModel.get("data")`, `SOURCE_FORMAT_ORIGINAL`, `createSource` → `DataStore` via `DefaultDataProvider`; `getSharedDataStore` now ships on the real class. Dataset/transform arms are documented PORT-TODOs (unreachable this phase). Faithfulness review: faithful, 0 findings. See §36.
@@ -2159,6 +2160,147 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 39. Phase 8 — new chart types (funnel + candlestick + boxplot)
+
+**Goal (met, in full):** land three new chart verticals — `funnel`, `candlestick`, and `boxplot` —
+Model → layout → visual → View, and register all three end-to-end in `EChartsSlim`. **Nothing is
+blocked this phase:** every type renders through the real layout + visual stages. **`swift build`
+GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped** (no regression). Per
+CONVENTIONS §5 (STATIC RENDER ONLY), emphasis/states, enter/update animation, labels, and the
+large/progressive draw path are deferred as in-file PORT-TODOs; the diff-based enter/update/remove is
+replaced by a from-scratch group rebuild each render (the same deliberate deviation Line/Pie/Funnel
+views use).
+
+### Registered in `EChartsSlim` (live end-to-end)
+- [x] **`funnel`** — `FunnelSeriesModel` + `funnelLayout`/`funnelLayoutStageHandler` (layout stage) +
+      `FunnelView` view factory. Coordless (`coordinateSystemUsage:'box'`).
+- [x] **`candlestick`** — `CandlestickSeriesModel` + `candlestickLayout` (layout stage) +
+      `candlestickVisual` (visual stage) + `CandlestickView` view factory + the `'k' → 'candlestick'`
+      series-type preprocessor + `registerCandlestickAxisHandlers`.
+- [x] **`boxplot`** — `BoxplotSeriesModel` + `boxplotLayout` (layout stage) + `boxplotVisual` (visual
+      stage) + `BoxplotView` view factory + `registerBoxplotAxisHandlers`.
+
+### Files added under `Sources/EChartsKit/chart/`
+- `chart/funnel/` — `FunnelSeries.swift` (`FunnelSeriesModel`), `funnelLayout.swift`
+  (`funnelLayout` + `funnelLayoutStageHandler`), `FunnelView.swift`.
+- `chart/candlestick/` — `CandlestickSeries.swift` (`CandlestickSeriesModel`), `candlestickLayout.swift`
+  (+ `registerCandlestickAxisHandlers`, public `CandlestickItemLayout`/`CandlestickBrushRect`),
+  `candlestickVisual.swift`, `CandlestickView.swift` (with the `NormalBoxPath` custom shape;
+  `LargeBoxPath` stubbed).
+- `chart/boxplot/` — `BoxplotSeries.swift` (`BoxplotSeriesModel`), `boxplotLayout.swift`
+  (+ `registerBoxplotAxisHandlers`, public `BoxplotItemLayout`), `boxplotVisual.swift`,
+  `BoxplotView.swift` (with the `BoxPath` custom shape).
+
+### Custom shapes
+- **`NormalBoxPath`** (candlestick) — the box-body ends + whisker geometry built via
+  `dataToPoint` + `subPixelOptimize`; `buildPath` matches upstream index-for-index. Exposes the layout
+  output the View consumes (`CandlestickItemLayout`: sign / initBaseline / ends / brushRect).
+- **`BoxPath`** (boxplot) — the 5-number box+whisker path from `BoxplotItemLayout` (ends[][] +
+  initBaseline), stored via `data.setItemLayout`.
+
+### What was ported faithfully (per type)
+- **funnel:** `FunnelSeriesModel` defaults (incl. `coordinateSystemUsage:'box'`, `SERIES_TYPE_FUNNEL`,
+  `getInitialData` via `createSeriesDataSimply`); `funnelLayout` — `getSortedIndices` (sort/gap/
+  `funnelAlign`), the trapezoid `getLinePoints` geometry, min/max/minSize/maxSize/`linearMap` sizing,
+  the per-item 4-corner `points` stored on the data layout, ascending reversal, itemStyle width/height
+  overrides, and the full `labelLayout` label-position geometry (stored as `layout.label`);
+  `funnelLayoutStageHandler`; and a static `FunnelView.render` drawing one `ZRenderKit` `Polygon` per
+  datum (points → `PolygonShape`, visual style via `barStyleFromDict`, `lineJoin:'round'`, final opacity).
+- **candlestick:** `CandlestickSeriesModel` (defaults, dependencies, `getShadowDim`, and the
+  `getInitialData`/`getBaseAxis`/`getWhiskerBoxesLayout`/`_hasEncodeRule` inlined from
+  `WhiskerBoxCommonMixin`); `candlestickLayout` (candleWidth calc + normalProgress box/whisker geometry
+  via `dataToPoint`+`subPixelOptimize`, `getSign`); `candlestickVisual` (`getColor`/`getBorderColor` +
+  bull/bear fill/stroke assignment); the `'k' → 'candlestick'` preprocessor. `CandlestickView` box-body
+  ends + whisker geometry, the bull/bear `sign(close-open)` color assignment, and `NormalBoxPath.buildPath`
+  are all exact index-for-index ports (review-confirmed FAITHFUL).
+- **boxplot:** `BoxplotSeriesModel` with `WhiskerBoxCommonMixin` FOLDED directly in (stored state
+  `_baseAxisDim`/`_layout` + `_hasEncodeRule`/`getInitialData`/`getBaseAxis`/`getWhiskerBoxesLayout`,
+  per CONVENTIONS §2 explicit forwarding); `boxplotLayout` (exposes `BoxplotItemLayout`); `boxplotVisual`.
+  Review verdict FAITHFUL, 0 findings.
+
+### Deferred PORT-TODOs (marked in-code)
+- **Large / progressive draw path** — `LargeBoxPath`/`LargeBoxPathShape`/`createLarge`/`setLargeStyle`
+  stubbed to no-op (full upstream body preserved in a PORT-TODO block). Layout `largeProgress`
+  (`largePoints` buffer) is ported for structural fidelity but is unreachable on the normal path and has
+  no consumer; `dataToPoint` out-param collapsed to a value-return. **Consequence:** with `large:true` +
+  `largeThreshold:600`, a candlestick series over the threshold enters large mode and currently renders
+  NOTHING (documented review finding).
+- **Diff-based enter/update/remove** — `data.diff(oldData).add/.update/.remove/.execute` replaced by
+  `group.removeAll()` + a straight loop over all data (static rebuild; same strategy as Line/Pie/Funnel).
+- **Enter/update animation** — `initProps`/`updateProps`/`saveOldStyle` are no-animation shims (final
+  geometry set immediately; `transInit` init-baseline shape is computed but immediately overwritten since
+  there is no tween).
+- **Emphasis / hover / select states + labels** — `getItemModel`/`emphasisModel`/
+  `setStatesStylesFromModel`/`toggleHoverEmphasis`, per-state `getColor`/`getBorderColor` loops, and all
+  label niceties (`setLabelStyle`/`getLabelStatesModels`/labelLine) deferred (util/states not ported).
+- **Clipping** — `resolveNormalBoxClipping`/`needClip`/`createClipPath`/`SHAPE_CLIP_KIND_*` stubbed to
+  `NOT_CLIPPED`, so boxes fully outside the coord area are still drawn and partially-clipped boxes get no
+  per-item clipPath (real divergence when data straddles the grid edge, e.g. dataZoom).
+- **`boxplotTransform.ts` dataset transform** — deferred per task scope; `install()` left uncalled /
+  kept as commented source. `registerBoxplotAxisHandlers`/`registerCandlestickAxisHandlers` ARE ported
+  and callable (Integrate owns the rest of the install wiring).
+- **`StageHandler.plan` (`createRenderPlanner`)** — left unwired on both StageHandlers (the non-optional
+  `plan` return-type mismatch, same deviation as `layout/barGrid.swift`); `reset` recomputes each pass.
+- **`brushSelector`** — signature preserved but returns false (component/brush not ported).
+- **Funnel-specific deferrals** — the whole `FunnelPiece` class (ZRenderKit `Polygon` is `final`, so it
+  is collapsed to a plain inline `Polygon` + a `funnelUpdateLabel` free function): label/labelLine
+  states, animation (opacity fade 0→opacity, `removeElementWithFadeOut`), and the SymbolDraw-style diff.
+  Also: `LegendVisualProvider` assignment, `_defaultLabelLine` mutation, `getDataParams` percent/`$vars`
+  (DataFormatMixin not grafted), `tokens.color.*` inlined as `'#fff'`/`'#3c3c41'`, and the custom-function
+  `sort` branch (option-bag cannot carry a closure — string forms supported). The `labelLayout` GEOMETRY
+  IS ported (not deferred) though nothing consumes `layout.label` until the label subsystem lands.
+
+### Known value-semantics deviation (documented PORT-TODO)
+`whiskerBoxCommon`'s `addOrdinal` path mutates source-referenced data in place upstream (dual-alias with
+a clean `option.data` for idempotency). Because the Swift `Source` holds a value copy, the port writes
+index-prepended data back to `self.option["data"]` and re-prepares the `SourceManager`
+(`dirty()`+`prepareSource()`) to reproduce the SOURCE state. Caveat: a later `mergeOption` that does not
+replace `data` could double-prepend. First-render correctness holds. (Boxplot's inline `getInitialData`
+`addOrdinal` writeback is INERT — the option bag is a value type and the Source is already prepared;
+the ordinal index arrives through the source/encode pipeline instead.)
+
+### Locally stubbed helpers (pending `chart/helper/axisSnippets.swift`, mirroring barGrid/barCommon)
+`makeAxisStatKey(seriesType)`, `createMetricsNonOrdinalLinearPositiveMinGap(axis)`,
+`createBandWidthBasedAxisContainShapeHandler(axisStatKey)` — from `axisSnippets.ts` (not ported). Inlined
+constants pending `visual/tokens.swift`: `tokens.color.neutral00 → '#fff'`, `tokens.color.shadow →
+'rgba(0,0,0,0.2)'` (same convention as `ScatterSeries.swift`).
+
+### Build & test status — Phase 8
+- **`swift build`: GREEN (0 warnings).**
+- **`swift test`: 220 executed / 0 failures (0 unexpected) / 58 skipped** in 0.264 (0.274) s — matches
+  the §38 baseline (all three new chart types register with no regression).
+
+### Faithfulness reviews — three verdicts
+1. **`chart/funnel/funnelLayout.swift` — FAITHFUL_WITH_MINOR_DIVERGENCES.**
+   - *(medium)* Per-item `itemStyle.width`/`height` given as a percent STRING (e.g. `"50%"`) is silently
+     dropped: `asDoubleOpt()` returns nil for any String, so the code takes the itemSize branch instead
+     of `parsePercent(width, viewWidth)`. Upstream `width == null` is false for a non-null string, so it
+     honors the explicit percentage. Only plain-number overrides (and the default unset case) survive the
+     port; percent-string overrides produce the wrong trapezoid width/height. (funnelLayout.ts:352-359 /
+     373-380 vs funnelLayout.swift:393-401 / 414-421)
+   - *(low)* `getSortedIndices` uses Swift `Array.sort(by:)` (not guaranteed stable) whereas upstream
+     relies on ES2019+ stable `Array.prototype.sort`, so the tie-break ordering of equal-valued slices can
+     differ. (funnelLayout.ts:46-50 vs funnelLayout.swift:62-66)
+   - *(low)* Custom-function `sort` (isFunction branch) is a documented no-op PORT-TODO: a comparator
+     passed via options is ignored, leaving indices in natural 0..n order. (funnelLayout.ts:42-44 vs
+     funnelLayout.swift:53-57)
+2. **`chart/candlestick/CandlestickView.swift` — FAITHFUL.** The three focus areas are exact ports:
+   box-body ends + whisker geometry from `dataToPoint`, the bull/bear `sign(close-open)` color/border
+   assignment, and `NormalBoxPath.buildPath` all match upstream index-for-index. All divergences are
+   explicitly-documented PORT-TODO deferrals (not silent bugs):
+   - *(medium)* `resolveNormalBoxClipping` stubbed to always return `SHAPE_CLIP_KIND_NOT_CLIPPED` — boxes
+     fully outside the coord-sys area are drawn and partially-clipped boxes get no per-item clipPath (real
+     divergence when data straddles the grid edge). (CandlestickView.swift:491-494)
+   - *(medium)* Large-mode draw path is a no-op (`createLarge`/`setLargeStyle`/`LargeBoxPath` stubbed): a
+     candlestick series exceeding `largeThreshold:600` with `large:true` renders NOTHING; `largeProgress`
+     still fills `largePoints` but has no consumer. (CandlestickView.swift:464-479)
+   - *(low)* `setBoxCommon` defers the states/emphasis block (per-state getColor/getBorderColor loop +
+     `toggleHoverEmphasis`); *(low)* enter/update animation dropped (final geometry immediate); *(low)*
+     `StageHandler.plan` left unwired in both layout and visual (optional-return mismatch).
+3. **`chart/boxplot/boxplotLayout.swift`, `chart/boxplot/BoxplotView.swift` — FAITHFUL** (0 findings).
 
 ---
 

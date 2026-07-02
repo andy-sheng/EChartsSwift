@@ -595,7 +595,9 @@ open class Element: Transformable, AnimationTarget {
         }
         // Assume blending on a white / black(dark) background.
         let alpha = colorArr![3]
-        let isDark = self.__zr!.isDarkMode()
+        // Guard `__zr` like getOutsideFill/getOutsideStroke's backgroundColor read above: in the
+        //   headless render path (no zrender instance attached) `__zr` is nil; default to light mode.
+        let isDark = (self.__zr != nil) ? self.__zr!.isDarkMode() : false
         for i in 0..<3 {
             colorArr![i] = colorArr![i] * alpha + (isDark ? 0 : 255) * (1 - alpha)
         }
