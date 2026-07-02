@@ -2,8 +2,10 @@
 // Add a new Demos/*.swift then append its constant here.
 extension EChartsDemoRegistry {
     public static let everything: [EChartsDemo] = [
-        EChartsDemoRegistry.demo_bar_basic,   // Bar
-        EChartsDemoRegistry.demo_bar_seven,   // Bar
-        EChartsDemoRegistry.demo_line_basic,  // Line (html-only for now)
+        EChartsDemoRegistry.demo_bar_basic,     // Bar
+        EChartsDemoRegistry.demo_bar_seven,     // Bar
+        EChartsDemoRegistry.demo_line_basic,    // Line
+        EChartsDemoRegistry.demo_scatter_basic, // Scatter
+        EChartsDemoRegistry.demo_pie_basic,     // Pie
     ]
 }

@@ -218,6 +218,19 @@ public final class EChartsSlim: EChartsType {
         //   from `coord.dataToPoint`); the visual stage colors it like any series.
         ComponentModel.registerClass(LineSeriesModel.self)
 
+        // -- chart/scatter/install.ts (minimal) -- registerSeriesModel(ScatterSeries) + registerChartView(ScatterView).
+        //   Scatter (like line) computes point positions directly from `coord.dataToPoint`; no cross-series
+        //   or progressive layout registrar is needed for the static render.
+        ComponentModel.registerClass(ScatterSeriesModel.self)
+
+        // -- chart/pie/install.ts (minimal) -- registerSeriesModel(PieSeries) + registerChartView(PieView) +
+        //   registerLayout(pieLayout). Pie has NO cartesian coord (coordinateSystemUsage:"box"); PieView reads
+        //   its geometry from `data.getItemLayout` populated by the pie layout stage (run in `render`).
+        ComponentModel.registerClass(PieSeriesModel.self)
+        // Trigger the lazy Swift-global that runs `registerLayOutOnCoordSysUsage` for pie's box coord-sys-usage
+        //   (registerLayOutOnCoordSysUsage asserts uniqueness — reference EXACTLY once, here in installOnce).
+        _ = pieLayOutOnCoordSysUsageRegistered
+
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
         // These are file-scope closures, assigned lazily on first `install`.
@@ -232,7 +245,9 @@ public final class EChartsSlim: EChartsType {
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
-        "line": { LineView() }
+        "line": { LineView() },
+        "scatter": { ScatterView() },
+        "pie": { PieView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -313,11 +328,14 @@ public final class EChartsSlim: EChartsType {
     // VISUAL stage — run the ported `visual/style.swift` handlers.
     // ------------------------------------------------------------------------
     private func performVisualStage(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // Order mirrors visual/style.ts install: color-palette (overallReset) then per-series style,
-        //   then per-data style. Each is a `StageHandler` from visual/style.swift.
-        runOverallStageHandler(dataColorPaletteTask, ecModel, api)
+        // Order mirrors upstream registration (core/echarts.ts:3360-3362): seriesStyleTask (GLOBAL),
+        //   then dataStyleTask, then dataColorPaletteTask (both CHART_DATA_CUSTOM). The palette task
+        //   MUST run LAST: it reads the `colorFromPalette` item visual that seriesStyleTask sets, and
+        //   assigns per-item palette colors for `colorBy:'data'` series (e.g. pie slices). Running it
+        //   first (as before) left `colorFromPalette` unset → every pie slice collapsed to one color.
         runSeriesStageHandler(seriesStyleTask, ecModel, api)
         runSeriesStageHandler(dataStyleTask, ecModel, api)
+        runOverallStageHandler(dataColorPaletteTask, ecModel, api)
     }
 
     /// Run an OVERALL_STAGE_TASK handler (has `overallReset`).
@@ -388,6 +406,12 @@ public final class EChartsSlim: EChartsType {
         //   `runSeriesStageHandler` used for the visual stages (the `next`-iterator fix above makes its
         //   `progress` executor actually iterate the data). `BarView.getLayoutCartesian2D` consumes it.
         runSeriesStageHandler(EChartsSlim._barProgressiveLayoutHandler, ecModel, api)
+
+        // LAYOUT — pie angle/radius layout (upstream `registerLayout(pieLayout)`). Pie has no cartesian
+        //   coord, so `_coordSysMgr` never injects geometry; this OVERALL stage computes each datum's
+        //   start/end angle + r0/r via `getCircleLayout` and stores it with `data.setItemLayout`, which
+        //   `PieView.render` reads back. Bare 2-arg handler (like the bar layout handlers above).
+        pieLayout(ecModel, api)
 
         renderSeries(ecModel, api)
     }

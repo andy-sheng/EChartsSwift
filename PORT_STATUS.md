@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 6d (SYMBOLS + SCATTER + PIE verticals): faithful `util/symbol` (the symbol-path factory + `createSymbol`), `LineView` now honors `showSymbol`, plus two minimal new chart verticals — `chart/scatter/{ScatterSeries,ScatterView}` (points via `coord.dataToPoint` + `createSymbol`) and a coordless `chart/pie/{PieSeries,PieView,pieLayout}` (per-item angle/radius geometry through a `pieLayout(ecModel, api)` render hook + `createSeriesDataSimply`/`util/layout` box). Registered in `EChartsSlim` (`ScatterSeriesModel`/`PieSeriesModel` + `scatter`/`pie` view factories + pie's `registerLayOutOnCoordSysUsage`). Post-workflow verification fixed the visual-task ORDER (`dataColorPaletteTask` must run LAST) and a `getColorFromPalette` overload trap so pie's per-slice `colorBy:'data'` palette works; added `Scatter`/`PieChartRenderTests`. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Label/emphasis/`SymbolDraw` are documented PORT-TODOs. See §37.**
 **Phase 6c (REAL DATA SOURCE PIPELINE — the faithful `data/helper/sourceManager.ts` port replaces the Series stub `SourceManager`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 216 executed / 0 failures / 58 skipped (no regression).** The reachable series-inline-data path (no dataset) is fully live and verified: no upstream → `data = seriesModel.get("data")`, `SOURCE_FORMAT_ORIGINAL`, `createSource` → `DataStore` via `DefaultDataProvider`; `getSharedDataStore` now ships on the real class. Dataset/transform arms are documented PORT-TODOs (unreachable this phase). Faithfulness review: faithful, 0 findings. See §36.
 **Phase 6b (RENDERING VERTICAL — a REAL bar chart end-to-end: slim `EChartsSlim` driver + `view/` bases + `visual/style` + `layout/barGrid` + `chart/bar/{BaseBarSeries,BarSeries,BarView}` + `component/{grid/GridView,axis/CartesianAxisView+AxisBuilder}`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 215 executed / 0 failures / 58 skipped (was 212; +3 real 6b tests, no regression). A cartesian bar `option` renders four bar `Rect`s through `ZRenderKit` (`BarChartRenderTests`), also exercising `NativePainter.renderToImage`.** See §35. Closeout fixed one real defect the killed workflow left: `SeriesModel.getBaseAxis()` returned `nil` via an `Any?`-return conversion, so bar x/width were NaN (§35b).
 **Phase 6b.1 (AXIS RENDERING): the cartesian axes now draw too — axisLine, split(grid)Lines, ticks, and tick LABELS (x: A/B/C/D, y: 0–40).** The native `EChartsDemoGallery` render now matches echarts.js essentially 1:1. Four defects fixed: (1) `Grid.createAxisBiulders` + `createOrUpdateAxesView` were no-op stubs → un-stubbed to `new AxisBuilder → build()` per shown axis (they call the already-ported `cartesianAxisHelper.create/updateCartesianAxisViewCommonPartBuilder`); (2) the slim stand-in axis models never merged the per-type `axisDefault` (deferred `mergeDefaultAndTheme`) → `show` was nil → `shouldAxisShow` false → axes hidden; now `EChartsSlim` merges `axisDefault.option[type]` under the option; (3) a STALE `getScaleExtentForTickUnsafe(OrdinalScale)` fatalError placeholder in `scale/helper.swift` shadowed the real `scaleMapper` impl (overload-resolution trap) → removed; (4) `NativePainter.flattenDisplayList` skipped the per-element `update()` that `Storage` runs, so `ZRText` never built its `TSpan` children and all text dropped → now mirrors `Storage` (`beforeUpdate/update/afterUpdate`). Added `Sources/EChartsDemoGallery` (native vs echarts.js side-by-side) + `scripts/build-echarts-gallery.sh`.
@@ -1855,6 +1856,91 @@ extension was removed at integrate).
 ### Review findings & disposition
 - **Faithfulness review: `faithful`, 0 findings.** No open bugs from this phase. The dataset/transform
   arms remain the only deferrals (all `// PORT-TODO`-marked with exact upstream line refs, above).
+
+---
+
+## 37. Phase 6d — symbols (util/symbol) + scatter + pie
+
+**Goal (met):** land the symbol-path factory (`echarts/src/util/symbol.ts`) so line/scatter markers can
+draw, teach `LineView` to honor `showSymbol`, and stand up two minimal new chart verticals — a cartesian
+`series.scatter` and a coordless `series.pie` — end-to-end through `EChartsSlim`. **`swift build` GREEN
+(0 warnings), `swift test` 218 executed / 0 failures / 58 skipped** — matches the required baseline
+(+2 vs §36's 216, no regression).
+
+### What landed — tier 1 (fully ported + reviewed)
+- [x] `Sources/EChartsKit/util/symbol.swift` ← `echarts/src/util/symbol.ts` — the symbol-path shape
+      subclasses + `symbolBuildProxies` registry + `createSymbol`. **Review: `faithful`, 0 findings.**
+- [x] `Sources/EChartsKit/chart/helper/createSeriesDataSimply.swift` ← `chart/helper/createSeriesDataSimply.ts`
+      — the coordless `SeriesData` builder pie uses (no Grid coord).
+- [x] `Sources/EChartsKit/chart/pie/pieLayout.swift` ← `chart/pie/pieLayout.ts` — per-item angle/radius
+      geometry via `data.setItemLayout` (see the render hook below).
+- [x] `Sources/EChartsKit/util/layout.swift` ← `echarts/src/util/layout.ts` — the box/`getLayoutRect`
+      helper pie's center/radius resolution needs.
+
+### What landed — tier 2 (minimal verticals)
+- [x] `Sources/EChartsKit/chart/scatter/{ScatterSeries,ScatterView}.swift` — points via
+      `coord.dataToPoint` + `createSymbol`.
+- [x] `Sources/EChartsKit/chart/line/{LineView,LineSeries}.swift` — `LineView` now honors `showSymbol`
+      (draws per-datum symbols atop the polyline).
+- [x] `Sources/EChartsKit/chart/pie/{PieSeries,PieView}.swift` — coordless pie sectors from the
+      `pieLayout` item geometry.
+
+### Integration into `EChartsSlim` (no coord for pie)
+- `installOnce()`: registered `ScatterSeriesModel` and `PieSeriesModel` via `ComponentModel.registerClass`
+  (next to `LineSeriesModel`), with faithful `chart/scatter/install.ts` + `chart/pie/install.ts` comment
+  blocks.
+- `installOnce()`: referenced `_ = pieLayOutOnCoordSysUsageRegistered` exactly once to trigger the Swift
+  lazy-global that runs `registerLayOutOnCoordSysUsage` for pie's `box` coordinateSystemUsage.
+- `_chartViewFactories`: added `"scatter": { ScatterView() }` and `"pie": { PieView() }`.
+- `render()`: added a `pieLayout(ecModel, api)` call **before** `renderSeries` so the coordless pie series
+  gets per-item angle/radius geometry via `data.setItemLayout` — the minimal faithful hook so pie renders
+  without a Grid coord.
+
+### Deferred PORT-TODOs (this phase)
+- **Label + emphasis** on scatter/pie/line symbols — documented `// PORT-TODO`.
+- **`SymbolDraw`** (the reusable symbol-collection helper) — not ported; each view draws symbols directly.
+- Scatter **stacking** (see review finding below).
+
+### Build / test status
+- **`swift build`: GREEN, 0 warnings.** **`swift test`: 220 executed / 0 failures (0 unexpected) /
+  58 skipped** — the 218 baseline plus the two new `Scatter`/`PieChartRenderTests`.
+
+### Review findings & disposition
+- `util/symbol.swift` — **`faithful`, 0 findings.**
+- `chart/pie/pieLayout.swift` — **`minor-issues`, 2 findings (both currently masked, accepted):**
+  - *(minor, pieLayout.ts:64)* `clockwise` falls back to `false` when `get("clockwise")` isn't a `Bool`
+    (`?? false`), but the upstream default is `true`; a nil would flip winding (`dir = -1`), inverting
+    sector geometry. **Masked** because `PieSeries.defaultOption` sets `clockwise: true`.
+  - *(minor, pieLayout.ts:62)* `unitRadian` uses `sum != 0 ? sum : validDataCount` vs upstream JS-truthy
+    `sum || validDataCount`: a `NaN` sum keeps `NaN` (Swift) where upstream falls through. **Practically
+    unreachable** since `getSum` returns finite.
+- `chart/scatter/ScatterView.swift` — **`minor-issues`, 1 finding (now a marked PORT-TODO):**
+  - *(minor, upstream `src/layout/points.ts:50-56`)* stacking not applied to point coords — the render reads
+    raw store values (`baseDimIdx`/`valueDimIdx`) with no `isDimensionStacked`/`stackResultDimension`
+    substitution, so a **stacked** scatter would mis-place points. **Low impact** (stacked scatter is rare);
+    a `PORT-TODO` referencing `points.ts:50-56` now sits at the dim derivation in `ScatterView.swift`.
+
+### Post-workflow fixes (independent verification pass)
+After the workflow, I clean-built + ran the suite, rendered all four verticals, and fixed three real defects
+the reviews flagged or the renders exposed:
+1. **`pieLayout.swift` `clockwise` fallback** — changed `?? false` → `?? true` to match the upstream default;
+   a nil option no longer inverts sector winding. (Was review finding 1, promoted from "masked" to fixed.)
+2. **`pieLayout.swift` `unitRadian` NaN-truthiness** — `sum != 0 ? sum : validDataCount` →
+   `(sum == 0 || sum.isNaN) ? validDataCount : sum`, byte-faithful to JS `sum || validDataCount`.
+3. **Pie slices rendered a single color / then all-black** — TWO coupled bugs:
+   - **Visual-task order** (`EChartsSlim.performVisualStage`) ran `dataColorPaletteTask` FIRST; upstream
+     (`core/echarts.ts:3360-3362`) runs it LAST, after `seriesStyleTask` sets the `colorFromPalette` item
+     visual it reads. Reordered to `seriesStyle → dataStyle → dataColorPalette`.
+   - **`SeriesModel.getColorFromPalette` overload trap** — its `scope: Any?` param differed from the
+     `PaletteMixin` extension's `scope: AnyObject?`, so `dataColorPaletteTask`'s `AnyObject?` `colorScope`
+     argument resolved to the EXTENSION (no ecModel fallback → nil for a series with no own `color`), and
+     `itemStyle["fill"] = nil` DELETED the fill (Swift dict semantics) → black slices. Unified the override
+     signature to `AnyObject?` so the class method wins for a `SeriesModel` receiver and the ecModel
+     fallback runs. This is the general `colorBy: 'data'` per-item palette path; pie now renders 5 distinct
+     palette colors matching echarts.js.
+- **Render parity confirmed** (native vs `echarts.js`, `--render-all`): bar (4 palette bars), line (polyline
+  + hollow symbol points via `showSymbol`), scatter (8 filled circles at correct value×value coords), pie
+  (5 palette-colored proportional slices). New gallery demos: `scatter-basic`, `pie-basic`.
 
 ---
 

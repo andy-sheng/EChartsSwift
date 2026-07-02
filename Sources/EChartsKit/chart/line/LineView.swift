@@ -72,6 +72,47 @@ open class LineView: ChartView {
         polyline.useStyle(st)
 
         _ = group.add(polyline)
+
+        // ── SymbolDraw pass (statically inlined) ────────────────────────────────────────────────
+        // upstream: LineView creates a `SymbolDraw` and calls `symbolDraw.updateData(data, {...})`,
+        //   which enters/updates one `Symbol` (graphic.Path) per datum. We omit the diff/animation
+        //   machinery and just build a symbol per point when `showSymbol` is truthy and the resolved
+        //   symbol type is not 'none' — enough for a static render.
+        // PORT-TODO: SymbolDraw enter/leave animation, symbolRotate/symbolOffset, endLabel, and
+        //   showAllSymbol / 'auto' sampling (upstream hides symbols when points are dense) — the
+        //   static port always shows them when showSymbol != false. emphasis/label = PORT-TODO.
+        let showSymbol = seriesModel.get("showSymbol")
+        // upstream truthiness: draw unless showSymbol is explicitly false.
+        if (showSymbol as? Bool) != false {
+            let seriesSymbol = (seriesModel.get("symbol") as? String) ?? "emptyCircle"
+            let seriesSymbolSize: Any = seriesModel.get("symbolSize") ?? 4.0
+            // Re-project per datum (rather than reusing `points`) so each symbol tracks its own datum
+            //   even where a non-finite coord was dropped from the polyline point array above.
+            for i in 0..<data.count() {
+                let baseVal = lineToNumber(store.get(baseDimIdx, i))
+                let value = lineToNumber(store.get(valueDimIdx, i))
+                let p = isValueAxisH ? coord.dataToPoint([value, baseVal]) : coord.dataToPoint([baseVal, value])
+                if !(p.count >= 2 && p[0].isFinite && p[1].isFinite) { continue }
+
+                // upstream resolves the per-item symbol/size via the symbol visual stage
+                //   (data.getItemVisual(i, 'symbol' / 'symbolSize')), falling back to the series option.
+                let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol
+                if symbolType == "none" { continue }
+                let symbolSizeVisual = data.getItemVisual(i, "symbolSize") ?? seriesSymbolSize
+                let (w, h) = symbol.normalizeSymbolSize(symbolSizeVisual)
+
+                // Color the symbol with the line's resolved stroke (matches upstream, where the symbol
+                //   adopts the line's visual color): emptyCircle → stroke=lineColor/fill=neutral00/lw=2,
+                //   solid → fill=lineColor. createSymbol positions the symbol's top-left at (x, y), so
+                //   offset by half the size to center it on the point.
+                let el = symbol.createSymbol(symbolType, p[0] - w / 2, p[1] - h / 2, w, h, ZRenderKit.ZRColor.string(stroke))
+                if let element = el as? Path {
+                    element.name = "symbol"
+                    _ = group.add(element)   // added AFTER the polyline so symbols sit on top
+                }
+            }
+        }
+
         self._data = data
     }
 }

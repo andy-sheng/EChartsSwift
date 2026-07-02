@@ -101,6 +101,97 @@ public enum layout {
         )
     }
 
+    // upstream: `type CircleLayoutSeriesOption = SeriesOption & CircleLayoutOptionMixin<{...}>` — a
+    //   type-only alias for the circle-layout-capable series option; dropped per CONVENTIONS §2.
+
+    // upstream `getViewRectAndCenterForCircleLayout` is module-private; kept as a private static helper
+    //   inside the `layout` namespace (same call shape: `getViewRectAndCenterForCircleLayout(seriesModel, api)`).
+    //   Returns `{viewRect, center}`.
+    private static func getViewRectAndCenterForCircleLayout(
+        _ seriesModel: SeriesModel,
+        _ api: ExtensionAPI
+    ) -> (viewRect: LayoutRect, center: [Double]) {
+        // const layoutRef = createBoxLayoutReference(seriesModel, api, { enableLayoutOnlyByCenter: true });
+        let layoutRef = createBoxLayoutReference(seriesModel, api, ["enableLayoutOnlyByCenter": true])
+        // const boxLayoutParams = seriesModel.getBoxLayoutParams();
+        let boxLayoutParams = seriesModel.getBoxLayoutParams()
+
+        let viewRect: LayoutRect
+        let center: [Double]
+        if layoutRef.type == BOX_LAYOUT_REFERENCE_TYPE_POINT {
+            // PORT-TODO: the `point` reference kind is produced only when the box coord-sys branch of
+            //   `createBoxLayoutReference` (with `enableLayoutOnlyByCenter: true` + `boxCoordSys.dataToPoint`)
+            //   lands (Phase 6b). `createBoxLayoutReference` ignores `opt` today and always returns the
+            //   `rect` kind, so this branch is currently unreachable. Kept faithful for when it lands.
+            center = layoutRef.refPoint
+            // `viewRect` is required in `pie/labelLayout.ts`.
+            // upstream container is `{ width: api.getWidth(), height: api.getHeight() }` (x/y default 0).
+            viewRect = getLayoutRect(
+                boxLayoutParams, BoundingRect(0, 0, api.getWidth(), api.getHeight())
+            )
+        }
+        else { // layoutRef.type === layout.BoxLayoutReferenceType.rect
+            let centerOption = seriesModel.get("center")
+            let centerOptionArr: [Any?]
+            if util.isArray(centerOption) {
+                centerOptionArr = (centerOption as? [Any])?.map { $0 as Any? } ?? []
+            }
+            else {
+                centerOptionArr = [centerOption, centerOption]
+            }
+            viewRect = getLayoutRect(
+                boxLayoutParams, layoutRef.refContainer
+            )
+            // upstream: `layoutRef.boxCoordFrom === BOX_COORD_SYS_COORD_FROM_PROP_COORD2`.
+            //   `boxCoordFrom` is `nil` on the current viewport-only reference, so the else branch is taken.
+            let usedAsCoord = (layoutRef.boxCoordFrom as? Double) == BOX_COORD_SYS_COORD_FROM_PROP_COORD2
+            center = usedAsCoord
+                ? layoutRef.refPoint // option `series.center` has been used as coord.
+                : [
+                    number.parsePercent(centerOptionArr[0], viewRect.width) + viewRect.x,
+                    number.parsePercent(centerOptionArr[1], viewRect.height) + viewRect.y,
+                ]
+        }
+
+        return (viewRect: viewRect, center: center)
+    }
+
+    // upstream: getCircleLayout<TOption extends CircleLayoutSeriesOption>(seriesModel, api)
+    //   : Pick<SectorShape, 'cx' | 'cy' | 'r' | 'r0'> & { viewRect: LayoutRect }
+    public static func getCircleLayout(
+        _ seriesModel: SeriesModel,
+        _ api: ExtensionAPI
+    ) -> (cx: Double, cy: Double, r0: Double, r: Double, viewRect: LayoutRect) {
+
+        // center can be string or number when coordinateSystem is specified
+        let (viewRect, center) = getViewRectAndCenterForCircleLayout(seriesModel, api)
+
+        let radius = seriesModel.get("radius")
+
+        // if (!zrUtil.isArray(radius)) { radius = [0, radius]; }
+        let radiusArr: [Any?]
+        if !util.isArray(radius) {
+            radiusArr = [0.0, radius]
+        }
+        else {
+            radiusArr = (radius as? [Any])?.map { $0 as Any? } ?? []
+        }
+
+        let width = number.parsePercent(viewRect.width, api.getWidth())
+        let height = number.parsePercent(viewRect.height, api.getHeight())
+        let size = Swift.min(width, height)
+        let r0 = number.parsePercent(radiusArr[0], size / 2)
+        let r = number.parsePercent(radiusArr[1], size / 2)
+
+        return (
+            cx: center[0],
+            cy: center[1],
+            r0: r0,
+            r: r,
+            viewRect: viewRect
+        )
+    }
+
     /**
      * Parse position info.
      */

@@ -595,19 +595,25 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost {
     }
 
     // upstream return: ZRColor
-    open func getColorFromPalette(_ name: String, _ scope: Any? = nil, _ requestColorNum: Double? = nil) -> ZRColor? {
+    // NOTE: the `scope` parameter type MUST match the `PaletteMixin` extension method's `scope:
+    //   AnyObject?` EXACTLY. If it differs (e.g. `Any?`), the two form an overload SET rather than a
+    //   shadow, and a call with an `AnyObject?` argument (e.g. `dataColorPaletteTask`'s per-item
+    //   `colorScope`) resolves to the EXTENSION — bypassing this override's ecModel fallback and
+    //   returning nil for any series whose own `color` option is unset (→ pie slices lose their fill).
+    //   With identical signatures, this class method wins for a statically-`SeriesModel` receiver.
+    open func getColorFromPalette(_ name: String, _ scope: AnyObject? = nil, _ requestColorNum: Double? = nil) -> ZRColor? {
         let ecModel = self.ecModel
         // PENDING
         // let color = PaletteMixin.prototype.getColorFromPalette.call(this, name, scope, requestColorNum);
         // PORT-TODO: upstream calls the mixin's prototype method to avoid recursing into this
         //   override; in Swift the protocol-extension method is reached by casting `self` to
         //   `PaletteMixin` (static dispatch onto the extension default).
-        var color = (self as PaletteMixin).getColorFromPalette(name, scope as AnyObject?, requestColorNum)
+        var color = (self as PaletteMixin).getColorFromPalette(name, scope, requestColorNum)
         if color == nil {
             // color = ecModel.getColorFromPalette(name, scope, requestColorNum);
             // PORT-TODO: GlobalModel placeholder has no `getColorFromPalette`; upstream mixes
             //   PaletteMixin onto GlobalModel, so route through that conformance when present.
-            color = ecModel?.getColorFromPalette(name, scope as AnyObject?, requestColorNum)   // GlobalModel conforms to PaletteMixin
+            color = ecModel?.getColorFromPalette(name, scope, requestColorNum)   // GlobalModel conforms to PaletteMixin
         }
         return color
     }

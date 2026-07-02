@@ -1,0 +1,311 @@
+// Ported from echarts/src/chart/pie/PieSeries.ts — keep in sync with upstream
+/*
+* Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
+*/
+
+import Foundation
+import ZRenderKit
+
+// upstream imports:
+//   import createSeriesDataSimply from '../helper/createSeriesDataSimply';
+//       -> `createSeriesDataSimply` (sibling chart/helper/createSeriesDataSimply.swift).
+//   import * as zrUtil from 'zrender/src/core/util';               -> `zrUtil.*` / `util.*` (ZRenderKit).
+//   import * as modelUtil from '../../util/model';                 -> `model.*` (util/modelUtil.swift).
+//   import { getPercentSeats } from '../../util/number';           -> `number.getPercentSeats` (util/number.swift).
+//   import { makeSeriesEncodeForNameBased } from '../../data/helper/sourceHelper';
+//       -> `sourceHelper.makeSeriesEncodeForNameBased` (data/helper/sourceHelper.swift).
+//   import LegendVisualProvider from '../../visual/LegendVisualProvider';
+//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend deferred).
+//   import SeriesModel from '../../model/Series';                  -> SeriesModel (model/Series.swift).
+//   import { ... } from '../../util/types';                        -> util/types.swift (type-only; the dynamic
+//       option tree is the `[String: Any]` bag per CONVENTIONS §2).
+//   import type SeriesData from '../../data/SeriesData';           -> SeriesData (data/SeriesData.swift).
+//   import { registerLayOutOnCoordSysUsage } from '../../core/CoordinateSystem';
+//       -> `registerLayOutOnCoordSysUsage` (core/CoordinateSystemManager.swift).
+
+// ============================================================================
+// The upstream `interface`/`type` declarations (PieItemStyleOption, PieCallbackDataParams,
+// PieStateOption, PieLabelOption, PieLabelLineOption, ExtraStateOption, PieDataItemOption,
+// PieSeriesOption) describe the (dynamic) option tree. Per CONVENTIONS §2 the option tree is the
+// `[String: Any]` bag; these types are kept as documentation only — no Swift types are emitted.
+// ============================================================================
+
+// export const SERIES_TYPE_PIE = 'pie';
+public let SERIES_TYPE_PIE = "pie"
+
+// const innerData = modelUtil.makeInner<{ seats?: number[] }, SeriesData>();
+// PORT-TODO: only read by `getDataParams` (percent seats), which is deferred below — kept for provenance.
+//   `makeInner` requires a class Host/value (CONVENTIONS §2 + innerStore.swift); the anonymous inner
+//   record `{ seats?: number[] }` is modeled as a small class.
+public final class PieInnerData {
+    public var seats: [Double]?
+    public init() {}
+}
+private let innerData: (SeriesData) -> PieInnerData = model.makeInner { PieInnerData() }
+
+// upstream: class PieSeriesModel extends SeriesModel<PieSeriesOption>
+open class PieSeriesModel: SeriesModel {
+
+    // upstream: static readonly type = 'series.' + SERIES_TYPE_PIE;  /  readonly type = PieSeriesModel.type;
+    //   The static drives the instance `type` (inherited `var type { Self.type }` from ComponentModel).
+    public override class var type: ComponentFullType { return "series." + SERIES_TYPE_PIE }
+
+    /**
+     * @overwrite
+     */
+    // upstream: init(option: PieSeriesOption): void { super.init.apply(this, arguments); ... }
+    //   The upstream `init` is the model LIFECYCLE method (ported as `func \`init\``), NOT the Swift
+    //   constructor. Delegates to `super.init` (builds the data via `getInitialData`) then wires the
+    //   legend provider + label-line defaults.
+    open override func `init`(
+        _ option: ModelOption?, _ parentModel: Model? = nil, _ ecModel: GlobalModel? = nil, _ rest: Any...
+    ) {
+        // super.init.apply(this, arguments as any);
+        super.`init`(option, parentModel, ecModel)
+
+        // Enable legend selection for each data item
+        // Use a function instead of direct access because data reference may changed
+        // this.legendVisualProvider = new LegendVisualProvider(
+        //     zrUtil.bind(this.getData, this), zrUtil.bind(this.getRawData, this)
+        // );
+        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend component deferred). Restore
+        //   this assignment once LegendVisualProvider lands; `legendVisualProvider` slot already exists
+        //   on SeriesModel (typed `Any?`).
+
+        // this._defaultLabelLine(option);
+        // PORT-TODO: `_defaultLabelLine` mutates `option.labelLine.show`/`option.emphasis.labelLine.show`
+        //   from `label.show`/`emphasis.label.show` (via `modelUtil.defaultEmphasis`, which IS ported).
+        //   The label/labelLine subsystem is deferred (nothing reads `labelLine.show` in the static
+        //   PieView render), so this is kept as a documented no-op with faithful call shape.
+    }
+
+    /**
+     * @overwrite
+     */
+    // upstream: mergeOption(): void { super.mergeOption.apply(this, arguments); }
+    //   Pure delegation — the inherited `ComponentModel.mergeOption` already does exactly this, so no
+    //   override is emitted (a body that only calls `super` would change nothing).
+
+    /**
+     * @overwrite
+     */
+    // upstream signature: getInitialData(this: PieSeriesModel): SeriesData  (ignores both params).
+    //   Overrides the base `getInitialData(option, ecModel) -> SeriesData?`.
+    open override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
+        // return createSeriesDataSimply(this, {
+        //     coordDimensions: ['value'],
+        //     encodeDefaulter: zrUtil.curry(makeSeriesEncodeForNameBased, this)
+        // });
+        // The `{coordDimensions, encodeDefaulter}` object literal is the `PrepareSeriesDataSchemaParams`
+        //   overload of `createSeriesDataSimply` (the `extend({encodeDefine: getEncode()}, opt)` branch).
+        //   `zrUtil.curry(makeSeriesEncodeForNameBased, this)` binds the series as the first arg, leaving
+        //   `(source, dimCount) -> encode` — exactly the `EncodeDefaulter` shape.
+        // `SeriesEncodeInternal` ([String: [DimensionIndex]]) widens to `OptionEncode`
+        //   ([String: OptionEncodeValue=Any]) via `mapValues` — same bridge as createSeriesData.swift.
+        return createSeriesDataSimply(self, PrepareSeriesDataSchemaParams(
+            coordDimensions: ["value"],
+            encodeDefaulter: { (source: Source, dimCount: Double) -> OptionEncode in
+                let internalEncode = sourceHelper.makeSeriesEncodeForNameBased(self, source, dimCount)
+                return internalEncode.mapValues { $0 as Any } as OptionEncode
+            }
+        ))
+    }
+
+    /**
+     * @overwrite
+     */
+    // upstream: getDataParams(dataIndex: number): PieCallbackDataParams { ... percent seats ... }
+    // PORT-TODO: `getDataParams` is provided by the `DataFormatMixin` graft, which is NOT yet a
+    //   conformance on SeriesModel (see model/Series.swift — blocked on `Model.ecModel` optionality), so
+    //   there is no `super.getDataParams` to extend here. `percent`/`$vars` only feed labels/tooltip,
+    //   both deferred. Faithful upstream body (for the eventual port):
+    //     const data = this.getData();
+    //     const dataInner = innerData(data);
+    //     let seats = dataInner.seats;
+    //     if (!seats) {
+    //         const valueList: number[] = [];
+    //         data.each(data.mapDimension('value'), value => valueList.push(value));
+    //         seats = dataInner.seats = getPercentSeats(valueList, data.hostModel.get('percentPrecision'));
+    //     }
+    //     const params = super.getDataParams(dataIndex);
+    //     params.percent = seats[dataIndex] || 0;
+    //     params.$vars.push('percent');
+    //     return params;
+    //   `number.getPercentSeats` + `innerData` (above) are ported/available for that port.
+
+    // upstream: private _defaultLabelLine(option): void { ... }
+    // PORT-TODO: deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:
+    //     modelUtil.defaultEmphasis(option, 'labelLine', ['show']);
+    //     const labelLineNormalOpt = option.labelLine;
+    //     const labelLineEmphasisOpt = option.emphasis.labelLine;
+    //     labelLineNormalOpt.show = labelLineNormalOpt.show && option.label.show;
+    //     labelLineEmphasisOpt.show = labelLineEmphasisOpt.show && option.emphasis.label.show;
+    //   (`modelUtil.defaultEmphasis` IS ported as `model.defaultEmphasis`.)
+
+    // upstream: static defaultOption: Omit<PieSeriesOption, 'type'> = { ... }
+    //   LOAD-BEARING: `coordinateSystemUsage: 'box'` is what `registerLayOutOnCoordSysUsage` /
+    //   `createBoxLayoutReference` / `getCircleLayout` key on to resolve the pie's view rect (analogous
+    //   to line's `coordinateSystem` being load-bearing). The full label/labelLine/labelLayout subtree
+    //   is kept VERBATIM even though rendering is deferred (it is the diffable option surface).
+    open override class var defaultOption: ModelOption? {
+        return [
+            // zlevel: 0,
+            "z": 2.0,
+            "legendHoverLink": true,
+            "colorBy": "data",
+            // 默认全局居中
+            "center": ["50%", "50%"],
+            "radius": [0, "50%"] as [Any],
+            // 默认顺时针
+            "clockwise": true,
+            "startAngle": 90.0,
+            "endAngle": "auto",
+            "padAngle": 0.0,
+            // 最小角度改为0
+            "minAngle": 0.0,
+
+            // If the angle of a sector less than `minShowLabelAngle`,
+            // the label will not be displayed.
+            "minShowLabelAngle": 0.0,
+
+            // 选中时扇区偏移量
+            "selectedOffset": 10.0,
+
+            // 选择模式，默认关闭，可选single，multiple
+            // selectedMode: false,
+            // 南丁格尔玫瑰图模式，'radius'（半径） | 'area'（面积）
+            // roseType: null,
+
+            "percentPrecision": 2.0,
+
+            // If still show when all data zero.
+            "stillShowZeroSum": true,
+
+            // cursor: null,
+            "coordinateSystemUsage": "box",
+
+            "left": 0.0,
+            "top": 0.0,
+            "right": 0.0,
+            "bottom": 0.0,
+            // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            "width": NSNull(),
+            "height": NSNull(),
+
+            "label": [
+                // color: 'inherit',
+                // If rotate around circle
+                "rotate": 0.0,
+                "show": true,
+                "overflow": "truncate",
+                // 'outer', 'inside', 'center'
+                "position": "outer",
+                // 'none', 'labelLine', 'edge'. Works only when position is 'outer'
+                "alignTo": "none",
+                // Closest distance between label and chart edge.
+                // Works only position is 'outer' and alignTo is 'edge'.
+                "edgeDistance": "25%",
+                // Works only position is 'outer' and alignTo is not 'edge'.
+                // The default `bleedMargin` is auto determined according to view rect size.
+                // bleedMargin: 10,
+                // Distance between text and label line.
+                "distanceToLabelLine": 5.0
+                // formatter: 标签文本格式器，同 tooltip.formatter，不支持异步回调
+                // 默认使用全局文本样式，详见 textStyle
+                // distance: 当position为inner时有效，为label位置到圆心的距离与圆半径(环状图为内外半径和)的比例系数
+            ] as [String: Any],
+            // Enabled when label.normal.position is 'outer'
+            "labelLine": [
+                "show": true,
+                // 引导线两段中的第一段长度
+                "length": 15.0,
+                // 引导线两段中的第二段长度
+                "length2": 30.0,
+                "smooth": false,
+                "minTurnAngle": 90.0,
+                "maxSurfaceAngle": 90.0,
+                "lineStyle": [
+                    // color: 各异,
+                    "width": 1.0,
+                    "type": "solid"
+                ] as [String: Any]
+            ] as [String: Any],
+            "itemStyle": [
+                "borderWidth": 1.0,
+                "borderJoin": "round"
+            ] as [String: Any],
+
+            "showEmptyCircle": true,
+            "emptyCircleStyle": [
+                "color": "lightgray",
+                "opacity": 1.0
+            ] as [String: Any],
+
+            "labelLayout": [
+                // Hide the overlapped label.
+                "hideOverlap": true
+            ] as [String: Any],
+
+            "emphasis": [
+                "scale": true,
+                "scaleSize": 5.0
+            ] as [String: Any],
+
+            // If use strategy to avoid label overlapping
+            "avoidLabelOverlap": true,
+
+            // Animation type. Valid values: expansion, scale
+            "animationType": "expansion",
+
+            "animationDuration": 1000.0,
+
+            // Animation type when update. Valid values: transition, expansion
+            "animationTypeUpdate": "transition",
+
+            "animationEasingUpdate": "cubicInOut",
+            "animationDurationUpdate": 500.0,
+            "animationEasing": "cubicInOut"
+        ] as [String: Any]
+    }
+
+}
+
+// upstream (module-level side effect):
+//   registerLayOutOnCoordSysUsage({
+//       fullType: PieSeriesModel.type,
+//       getCoord2(model: PieSeriesModel) { return model.getShallow('center'); }
+//   });
+//
+// Swift library files can not run top-level statements, so the call is wrapped in a lazily-initialized
+// global whose initializer runs the registration EXACTLY ONCE on first access (matching a load-time
+// side effect; `registerLayOutOnCoordSysUsage` asserts uniqueness, so it must not run twice). INTEGRATION
+// must reference this symbol once during pie install (e.g. `_ = pieLayOutOnCoordSysUsageRegistered`),
+// mirroring how the module's other registrations are wired in EChartsSlim.
+public let pieLayOutOnCoordSysUsageRegistered: Void = {
+    registerLayOutOnCoordSysUsage(RegisterLayOutOnCoordSysUsageOpt(
+        fullType: PieSeriesModel.type,
+        // upstream typed param `model: PieSeriesModel`; the registrar callback is `(ComponentModel) -> …`.
+        getCoord2: { model in
+            // Not able to validate `center` type here.
+            // But percentage center, such as '12%', is not allowed in this case.
+            return (model.getShallow("center") as Any)
+        }
+    ))
+}()
+
+// export default PieSeriesModel;  -> `open class PieSeriesModel` above.
