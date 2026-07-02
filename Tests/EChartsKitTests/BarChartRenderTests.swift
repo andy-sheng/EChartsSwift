@@ -5,14 +5,9 @@
 // fills. If NativePainter's `CALayerPainter` is reachable, the paint path is also exercised via
 // `renderToImage`.
 //
-// WHY A TEST-DOUBLE SERIES (not the real BarSeriesModel): the real
-// `BarSeriesModel.getInitialData → createSeriesData → SourceManager.getSource()` is a documented
-// Phase-6b `fatalError` stub (data/helper/sourceManager.ts not ported; see Series.swift:961). So —
-// exactly as `EChartsSlimSmokeTests` / `CartesianCoordTests` do — this test overrides
-// `getInitialData` to build a `SeriesData` populated directly from a `DataStore`. Unlike the smoke
-// double (which used an EMPTY store → 0 bars), this double appends the four real (category-index,
-// value) rows so the coord + layout + view pipeline has data to turn into bars. This substitutes a
-// KNOWN-UNPORTED layer; it is not a workaround for a bug in ported code.
+// Phase 6c: uses the REAL `BarSeriesModel` — its `getInitialData → createSeriesData →
+// SourceManager.getSource()` now builds the data straight from the option's own `series.data`
+// ([10,20,30,40] on a category axis → the four [categoryIndex, value] rows). No test double.
 
 import XCTest
 import ZRenderKit
@@ -23,35 +18,11 @@ import NativePainter
 import CoreGraphics
 #endif
 
-// A `series.bar` model whose data is supplied via a populated `DataStore` (bypassing the unported
-// SourceManager source path). Rows are [categoryIndex, value]: [0,10],[1,20],[2,30],[3,40].
-private final class RenderBarSeriesModel: BarSeriesModel {
-    override class var type: ComponentFullType { return "series.bar" }
-    override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
-        let d = SeriesData(["x", "y"], self)
-        // Build a real (arrayRows) source of explicit [categoryIndex, value] pairs. Populating through a
-        // provider (rather than `appendValues`) keeps both the parsed store chunks AND the raw data items
-        // consistent — `getItemModel`/`getRawDataItem` read the raw source, and the value-axis data
-        // extent [10, 40] / category index dim [0, 3] both fall out of the store.
-        let source = createSourceFromSeriesDataOption([
-            [0.0, 10.0],
-            [1.0, 20.0],
-            [2.0, 30.0],
-            [3.0, 40.0]
-        ])
-        let provider = DefaultDataProvider(source, 2)
-        let store = DataStore()
-        let dims = [
-            DataStoreDimensionDefine(type: .float, property: "x"),
-            DataStoreDimensionDefine(type: .float, property: "y")
-        ]
-        store.initData(provider, dims)
-        d.initData(store)
-        return d
-    }
-}
-
 final class BarChartRenderTests: XCTestCase {
+
+    // Other suites register empty-data `series.bar` doubles into the GLOBAL ComponentModel registry;
+    // re-register the real model so this test (which uses the real data pipeline) is order-independent.
+    override func setUp() { super.setUp(); ComponentModel.registerClass(BarSeriesModel.self) }
 
     // Grid option: left 50, top 20, width 300, height 200 (the B4 grid-layout fix is applied, so the
     // grid rect really is {50, 20, 300, 200} — see CartesianCoordTests).
@@ -79,9 +50,6 @@ final class BarChartRenderTests: XCTestCase {
     func testBarChartRendersFourBars() {
         let width = 400.0, height = 300.0
         let ec = EChartsSlim(width: width, height: height)
-        // Replace the real (SourceManager-backed) bar model with the populated-data double.
-        ComponentModel.registerClass(RenderBarSeriesModel.self)
-
         ec.setOption(barChartOption())
 
         // ---- 1. Four bar Rects were emitted. ----

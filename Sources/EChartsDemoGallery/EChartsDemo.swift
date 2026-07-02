@@ -51,57 +51,7 @@ public enum EChartsDemoRegistry {
     public static func byName(_ name: String) -> EChartsDemo? { everything.first { $0.name == name } }
 }
 
-// MARK: - native-render data double (see PHASE-6b LIMITATION)
-
-/// A `series.bar` model that supplies its data from the demo option's own `series[].data`
-/// (`[Double]` of category values → rows `[categoryIndex, value]`), bypassing the unported
-/// `SourceManager` source path. Registered globally by `renderNativeGroup`.
-final class DemoBarSeriesModel: BarSeriesModel {
-    // Inherits `type == "series.bar"` from BarSeriesModel (its class `type` is not `open`, and a
-    // subclass in another module can't re-declare it — but the inherited value already keys
-    // registration correctly, replacing the real BarSeriesModel for `series.bar`).
-    override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
-        let values = demoSeriesValues((self.option as? [String: Any])?["data"])
-        let rows = values.enumerated().map { [Double($0.offset), $0.element] }
-        let d = SeriesData(["x", "y"], self)
-        let source = createSourceFromSeriesDataOption(rows)
-        let provider = DefaultDataProvider(source, 2)
-        let store = DataStore()
-        store.initData(provider, [
-            DataStoreDimensionDefine(type: .float, property: "x"),
-            DataStoreDimensionDefine(type: .float, property: "y")
-        ])
-        d.initData(store)
-        return d
-    }
-}
-
-/// A `series.line` model supplying its data from the option's own `series[].data` (same bypass of the
-/// unported SourceManager as `DemoBarSeriesModel`). Registered globally by `renderNativeGroup`.
-final class DemoLineSeriesModel: LineSeriesModel {
-    override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
-        let values = demoSeriesValues((self.option as? [String: Any])?["data"])
-        let rows = values.enumerated().map { [Double($0.offset), $0.element] }
-        let d = SeriesData(["x", "y"], self)
-        let source = createSourceFromSeriesDataOption(rows)
-        let provider = DefaultDataProvider(source, 2)
-        let store = DataStore()
-        store.initData(provider, [
-            DataStoreDimensionDefine(type: .float, property: "x"),
-            DataStoreDimensionDefine(type: .float, property: "y")
-        ])
-        d.initData(store)
-        return d
-    }
-}
-
-/// Coerce a `series.data` option (`[Double]` / `[Int]` / `[NSNumber]`) to `[Double]`.
-func demoSeriesValues(_ raw: Any?) -> [Double] {
-    guard let arr = raw as? [Any] else { return [] }
-    return arr.compactMap { v in
-        if let d = v as? Double { return d }
-        if let i = v as? Int { return Double(i) }
-        if let n = v as? NSNumber { return n.doubleValue }
-        return nil
-    }
-}
+// NOTE: the former `DemoBarSeriesModel` / `DemoLineSeriesModel` data doubles were REMOVED in Phase 6c.
+// The real `SourceManager` is now ported, so the stock `BarSeriesModel` / `LineSeriesModel`
+// `getInitialData → createSeriesData → SourceManager.getSource()` builds each series' data straight
+// from the option's own `series[].data` — no double needed.

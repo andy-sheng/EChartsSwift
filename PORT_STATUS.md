@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 6c (REAL DATA SOURCE PIPELINE — the faithful `data/helper/sourceManager.ts` port replaces the Series stub `SourceManager`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 216 executed / 0 failures / 58 skipped (no regression).** The reachable series-inline-data path (no dataset) is fully live and verified: no upstream → `data = seriesModel.get("data")`, `SOURCE_FORMAT_ORIGINAL`, `createSource` → `DataStore` via `DefaultDataProvider`; `getSharedDataStore` now ships on the real class. Dataset/transform arms are documented PORT-TODOs (unreachable this phase). Faithfulness review: faithful, 0 findings. See §36.
 **Phase 6b (RENDERING VERTICAL — a REAL bar chart end-to-end: slim `EChartsSlim` driver + `view/` bases + `visual/style` + `layout/barGrid` + `chart/bar/{BaseBarSeries,BarSeries,BarView}` + `component/{grid/GridView,axis/CartesianAxisView+AxisBuilder}`): COMPLETE — `swift build` GREEN (0 warnings), `swift test` 215 executed / 0 failures / 58 skipped (was 212; +3 real 6b tests, no regression). A cartesian bar `option` renders four bar `Rect`s through `ZRenderKit` (`BarChartRenderTests`), also exercising `NativePainter.renderToImage`.** See §35. Closeout fixed one real defect the killed workflow left: `SeriesModel.getBaseAxis()` returned `nil` via an `Any?`-return conversion, so bar x/width were NaN (§35b).
 **Phase 6b.1 (AXIS RENDERING): the cartesian axes now draw too — axisLine, split(grid)Lines, ticks, and tick LABELS (x: A/B/C/D, y: 0–40).** The native `EChartsDemoGallery` render now matches echarts.js essentially 1:1. Four defects fixed: (1) `Grid.createAxisBiulders` + `createOrUpdateAxesView` were no-op stubs → un-stubbed to `new AxisBuilder → build()` per shown axis (they call the already-ported `cartesianAxisHelper.create/updateCartesianAxisViewCommonPartBuilder`); (2) the slim stand-in axis models never merged the per-type `axisDefault` (deferred `mergeDefaultAndTheme`) → `show` was nil → `shouldAxisShow` false → axes hidden; now `EChartsSlim` merges `axisDefault.option[type]` under the option; (3) a STALE `getScaleExtentForTickUnsafe(OrdinalScale)` fatalError placeholder in `scale/helper.swift` shadowed the real `scaleMapper` impl (overload-resolution trap) → removed; (4) `NativePainter.flattenDisplayList` skipped the per-element `update()` that `Storage` runs, so `ZRText` never built its `TSpan` children and all text dropped → now mirrors `Storage` (`beforeUpdate/update/afterUpdate`). Added `Sources/EChartsDemoGallery` (native vs echarts.js side-by-side) + `scripts/build-echarts-gallery.sh`.
 **Phase 6b.2 (LINE vertical): a cartesian `series.line` now renders natively too** — minimal `chart/line/{LineSeries,LineView}` (a `Polyline` through `coord.dataToPoint` per datum, palette stroke; symbols/areaStyle/step/stack are documented PORT-TODOs), registered in `EChartsSlim`. `line-basic` in the gallery now renders on BOTH panes and matches echarts.js (modulo point symbols). Key gotcha: `LineSeriesModel` MUST override `static defaultOption` with `coordinateSystem:'cartesian2d'` — `decideCoordSysUsageKind` reads `getShallow("coordinateSystem")`, so without it the coord system is never injected and `LineView` renders nothing. `LineChartRenderTests` locks it in (216 tests / 0 failures).
@@ -1775,6 +1776,85 @@ vertical (data → scale → coord → layout → `Rect`s) is on screen, not han
 3. **More chart types:** line + scatter `ChartView`s (reuse the coord/visual/layout pipeline).
 4. **More components:** tooltip, legend, dataZoom, axisPointer, splitLine/splitArea.
 5. **More coordinate systems:** polar, then geo/single/radar as demand dictates.
+
+---
+
+## 36. Phase 6c — real data source pipeline (SourceManager)
+
+**Goal (met):** replace the Series-local stub `SourceManager` with a faithful port of
+`echarts/src/data/helper/sourceManager.ts`, making `BarSeriesModel.getInitialData`'s source/data-store
+provisioning real (the §35d "6c pre-work" item: port `SourceManager.getSource` so the `DataStore`
+double is removed). **`swift build` GREEN (0 warnings), `swift test` 216 executed / 0 failures /
+58 skipped — no regression vs §35 (was 216/0/58).**
+
+### What landed
+- [x] `Sources/EChartsKit/data/helper/sourceManager.swift` ← `echarts/src/data/helper/sourceManager.ts` —
+      all methods preserved in upstream name / order / control-flow: `dirty`, `_setLocalSource`,
+      `_getVersionSign`, `prepareSource`, `_createSource`, `_applyTransform`, `_isDirty`, `getSource`,
+      `getSharedDataStore`, `_innerGetDataStore`, `_getUpstreamSourceManagers`, `_getSourceMetaRawOption`,
+      plus free funcs `isSeries` / `doThrow` / `disableTransformOptionMerge`. Reuses the already-ported
+      `createSource` / `Source` / `DataStore` / `DefaultDataProvider` / `SeriesDataSchema` / `query*` —
+      nothing re-ported.
+
+### The faithful no-dataset path (series inline data → createSource) — fully live & verified
+For a cartesian series with inline `data:` and no dataset, the reachable path is exercised end-to-end:
+`_getUpstreamSourceManagers() == []` → `hasUpstream = false` → the `isSeries` else-branch →
+`data = seriesModel.get("data", true)`, `sourceFormat = SOURCE_FORMAT_ORIGINAL`,
+`needsCreateSource = true` → `createSource(...)`. `_innerGetDataStore` then builds a `DataStore` via
+`DefaultDataProvider`, and `getSharedDataStore` now ships on the real class (the createSeriesData stub
+extension was removed at integrate).
+
+### Design choices
+- **Host typing:** added `public protocol SourceManagerHost: AnyObject { var uid }` (mirrors upstream's
+  `DatasetModel | SeriesModel` union) with `extension SeriesModel: SourceManagerHost {}` declared *in the
+  sourceManager file* — no `Series.swift` edit needed. INTEGRATION NOTE: do **not** also add
+  `: SourceManagerHost` to the `SeriesModel` class decl (that would duplicate-conform). `DatasetModel`
+  conformance is deferred (dataset host unreachable this phase).
+- **`isSeries` uses `host is SeriesModel`** — equivalent to upstream `mainType === 'series'` for the two
+  host kinds, and robust against mainType-timing (avoids the `Global.swift` mainType-vs-lifecycle-init
+  ordering fragility).
+- **`DataStoreMap`:** added `public typealias DataStoreMap = [String: DataStore]`; `_storeList` uses
+  auto-vivify + value-type write-back for the cache mutation (CONVENTIONS).
+- **`getSource()` returns `Source?`** (upstream can return `undefined`) — an intended public-surface change
+  vs the stub. On the reachable inline-data path a source is always created, so callers force-unwrap.
+
+### Source.swift friction resolved (kept, +14/-5)
+- `SourceMetaRawOption.seriesLayoutBy` made Optional (`SeriesLayoutBy?`) so the `retrieve2(...) || null`
+  value is carried faithfully; ripple: `determineSourceDimensions` / `arrayRowsTravelFirst`
+  `seriesLayoutBy` params → Optional (compared only vs `SERIES_LAYOUT_BY_ROW`), and `createSource`
+  `sourceData` widened to Optional (upstream data may be `undefined`; no other callers).
+- `needsCreateSource` reproduces the JS null-vs-undefined distinction: `upMetaRawOption` modeled as
+  `SourceMetaRawOption?` (`nil` ≡ JS empty `{}`), so with no upstream a source IS created for inline data.
+  A residual null/undefined subtlety in the (unreachable) upstream-present case is flagged
+  `// PORT-TODO(ts:240)`.
+
+### Dataset / transform PORT-TODO deferrals (unreachable this phase; exact upstream refs in-file)
+- `_createSource` dataset-host branch (ts:249-268) — `fatalError`.
+- `_applyTransform` whole body (ts:277-330) — needs `applyDataTransform` + `DatasetModel.get`.
+- `_getUpstreamSourceManagers` dataset arm + series `getSourceManager()` call (ts:437, 439-444).
+- `_getSourceMetaRawOption` dataset arm (ts:458-463).
+- `disableTransformOptionMerge` (ts:471-474) — needs `setAsPrimitive`.
+
+### Integration (stub → real)
+- `Sources/EChartsKit/model/Series.swift`: removed the local stub `public final class SourceManager`
+  (weak `_sourceHost`, no-op `prepareSource`/`dirty`, `fatalError` `getSource`), replaced with a comment
+  pointing at the real `data/helper/sourceManager.swift`. `getSourceManager()` / init / `mergeOption`
+  wiring unchanged. `getSource()` now force-unwraps the real `SourceManager.getSource()` (`Source?` →
+  `Source`) with a comment noting upstream returns non-optional and a source is always created on the
+  reachable inline-data path.
+- `Sources/EChartsKit/chart/helper/createSeriesData.swift`: removed the private
+  `extension SourceManager { getSharedDataStore }` PORT-TODO stub; line 184
+  `source = sourceManager.getSource()` force-unwrapped to `getSource()!` (extra integration point found
+  beyond the scout list, alongside the `Series.swift` `getSource()` force-unwrap).
+
+### Build / test status
+- **`swift build`: GREEN, 0 warnings.** **`swift test`: 216 executed / 0 failures / 58 skipped** — no
+  regression vs §35. The stub-vs-real duplicate-`SourceManager` state that briefly made the tree red
+  during pre-integration verification is resolved by the integrate step.
+
+### Review findings & disposition
+- **Faithfulness review: `faithful`, 0 findings.** No open bugs from this phase. The dataset/transform
+  arms remain the only deferrals (all `// PORT-TODO`-marked with exact upstream line refs, above).
 
 ---
 

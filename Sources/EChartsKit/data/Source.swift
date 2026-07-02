@@ -75,12 +75,16 @@ import ZRenderKit
  */
 
 public struct SourceMetaRawOption {
-    public var seriesLayoutBy: SeriesLayoutBy
+    // PORT note: upstream `seriesLayoutBy?: SeriesLayoutBy` (optional). Kept Optional so the
+    // SourceManager pipeline can carry the JS `retrieve2(...) || null` (i.e. absent) value
+    // faithfully — see sourceManager.swift `_createSource`/`_getSourceMetaRawOption`.
+    // `SourceImpl.seriesLayoutBy` stays non-optional (defaults to 'column' when nil).
+    public var seriesLayoutBy: SeriesLayoutBy?
     public var sourceHeader: OptionSourceHeader?      // OptionSourceHeader = Any
     public var dimensions: [DimensionDefinitionLoose]?
 
     public init(
-        seriesLayoutBy: SeriesLayoutBy,
+        seriesLayoutBy: SeriesLayoutBy? = nil,
         sourceHeader: OptionSourceHeader? = nil,
         dimensions: [DimensionDefinitionLoose]? = nil
     ) {
@@ -203,7 +207,10 @@ public func isSourceInstance(_ val: Any?) -> Bool {
  * NOTE: Created source is immutable. Don't change any properties in it.
  */
 public func createSource(
-    _ sourceData: OptionSourceData,
+    // PORT note: upstream `sourceData: OptionSourceData` may be `undefined` (e.g. a series
+    // with no `data`). Widened to Optional so callers (SourceManager) can pass through an
+    // absent value faithfully; `determineSourceDimensions`/`SourceImpl` already handle nil.
+    _ sourceData: OptionSourceData?,
     _ thisMetaRawOption: SourceMetaRawOption,
     // can be null. If not provided, auto detect it from `sourceData`.
     _ sourceFormat: SourceFormat?
@@ -316,7 +323,9 @@ public func detectSourceFormat(_ data: Any?) -> SourceFormat {
 private func determineSourceDimensions(
     _ data: OptionSourceData?,
     _ sourceFormat: SourceFormat,
-    _ seriesLayoutBy: SeriesLayoutBy,
+    // PORT note: Optional to carry the SourceManager `|| null` value; compared only via
+    // `== SERIES_LAYOUT_BY_ROW`, so nil (null/undefined) behaves as "not row" like upstream.
+    _ seriesLayoutBy: SeriesLayoutBy?,
     _ sourceHeader: OptionSourceHeader?,
     // standalone raw dimensions definition, like:
     // {
@@ -529,7 +538,7 @@ private func normalizeDimensionsOption(_ dimensionsDefine: [DimensionDefinitionL
 
 private func arrayRowsTravelFirst(
     _ cb: (OptionDataValue, Int) -> Void,
-    _ seriesLayoutBy: SeriesLayoutBy,
+    _ seriesLayoutBy: SeriesLayoutBy?,
     _ data: OptionSourceDataArrayRows,
     _ maxLoop: Double
 ) {

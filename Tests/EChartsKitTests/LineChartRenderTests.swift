@@ -1,34 +1,20 @@
 // END-TO-END RENDER TEST for the cartesian LINE vertical (sibling of BarChartRenderTests). Drives the
 // slim EChartsSlim with a line option and inspects the ZRenderKit scene: one `Polyline` (name "line")
 // with a point per datum, within the grid rect, x strictly increasing, y monotone-ish with the data,
-// and a palette stroke. Uses a populated-DataStore double for the same documented reason as the bar
-// test (SourceManager unported).
+// and a palette stroke. Phase 6c: uses the REAL LineSeriesModel (data built from the option's own
+// series.data via the ported SourceManager) — no test double.
 
 import XCTest
 import ZRenderKit
 @testable import EChartsKit
 
-private final class RenderLineSeriesModel: LineSeriesModel {
-    override func getInitialData(_ option: ModelOption?, _ ecModel: GlobalModel?) -> SeriesData? {
-        let d = SeriesData(["x", "y"], self)
-        let source = createSourceFromSeriesDataOption([
-            [0.0, 10.0], [1.0, 20.0], [2.0, 15.0], [3.0, 40.0]
-        ])
-        let store = DataStore()
-        store.initData(DefaultDataProvider(source, 2), [
-            DataStoreDimensionDefine(type: .float, property: "x"),
-            DataStoreDimensionDefine(type: .float, property: "y")
-        ])
-        d.initData(store)
-        return d
-    }
-}
-
 final class LineChartRenderTests: XCTestCase {
+    // Re-register the real line model (global registry may hold doubles from other suites).
+    override func setUp() { super.setUp(); ComponentModel.registerClass(LineSeriesModel.self) }
+
     func testLineChartRendersPolyline() {
         let width = 400.0, height = 300.0
         let ec = EChartsSlim(width: width, height: height)
-        ComponentModel.registerClass(RenderLineSeriesModel.self)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],

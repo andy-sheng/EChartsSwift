@@ -444,7 +444,10 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost {
     }
 
     open func getSource() -> Source {
-        return self.getSourceManager().getSource()
+        // upstream `SeriesModel.getSource` returns `Source` (non-optional). The ported
+        // `SourceManager.getSource()` returns `Source?` (faithful to upstream's `Source | undefined`
+        // return type); on the reachable series inline-data path a source is always created.
+        return self.getSourceManager().getSource()!
     }
 
     /**
@@ -961,24 +964,9 @@ func createTask(
     ))
 }
 
-// '../data/helper/sourceManager' — SourceManager. Upstream builds/refreshes the `Source` from the
-//   series option + upstream dataset. Stubbed: `prepareSource`/`dirty` are no-ops.
-public final class SourceManager {                                           // PORT-TODO: belongs to data/helper/sourceManager
-    private weak var _sourceHost: SeriesModel?
-    public init(_ sourceHost: SeriesModel) {
-        self._sourceHost = sourceHost
-    }
-    public func prepareSource() {
-        // PORT-TODO: data/helper/sourceManager.ts not ported — builds the encoded Source (Phase 5b/6).
-    }
-    public func dirty() {
-        // PORT-TODO: marks the source dirty so the next `prepareSource` rebuilds it.
-    }
-    public func getSource() -> Source {
-        // PORT-TODO: data/helper/sourceManager.ts not ported — no Source is built yet.
-        fatalError("PORT-TODO: SourceManager.getSource — data/helper/sourceManager not ported")
-    }
-}
+// '../data/helper/sourceManager' — SourceManager is now the REAL type ported in
+//   data/helper/sourceManager.swift (faithful port of echarts/src/data/helper/sourceManager.ts).
+//   The former local stub was removed by the sourceManager-integration agent.
 
 // upstream inline param type of `appendData`: `{ data: ArrayLike<any> }` — the anonymous object type
 //   becomes a value struct (CONVENTIONS §4; no identity, plain data bag).

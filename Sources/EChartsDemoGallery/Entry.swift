@@ -33,19 +33,12 @@ enum Upstream {
 // NATIVE render: EChartsKit → EChartsSlim → ZRenderKit Group → NativePainter → CGImage.
 // ---------------------------------------------------------------------------
 
-/// Register the bar-data double ONCE (see EChartsDemo PHASE-6b LIMITATION), then drive EChartsSlim.
-@MainActor private var _doubleRegistered = false
+/// Drive EChartsSlim with the demo option. Phase 6c: the real SourceManager builds each series' data
+/// from the option's own `series[].data`, so the stock Bar/Line series models render directly — no
+/// data double is registered anymore.
 @MainActor
 func renderNativeGroup(_ demo: EChartsDemo) -> Group {
-    // Construct the driver FIRST: EChartsSlim.init → installOnce() registers the real BarSeriesModel.
-    // Register the data double AFTER that (once, globally) so it wins the "series.bar" key — exactly
-    // the order BarChartRenderTests uses.
     let ec = EChartsSlim(width: demo.width, height: demo.height)
-    if !_doubleRegistered {
-        ComponentModel.registerClass(DemoBarSeriesModel.self)
-        ComponentModel.registerClass(DemoLineSeriesModel.self)
-        _doubleRegistered = true
-    }
     ec.setOption(demo.option)
     return ec.getRoot()
 }

@@ -181,7 +181,10 @@ public func createSeriesData(
         source = createSourceFromSeriesDataOption(sourceRaw)
     }
     else {
-        source = sourceManager.getSource()
+        // upstream `getSource()` returns `Source` (non-optional); the ported
+        // `SourceManager.getSource()` returns `Source?` (faithful to `Source | undefined`).
+        // On the reachable series inline-data path a source is always created.
+        source = sourceManager.getSource()!
         // Is series.data. not dataset.
         isOriginalSource = source.sourceFormat == SOURCE_FORMAT_ORIGINAL
     }
@@ -304,20 +307,6 @@ private func firstDataNotNull(_ arr: [Any]) -> Any? {
 }
 
 // export default createSeriesData;  -> `public func createSeriesData(...)` above.
-
-// ============================================================================
-// PORT-TODO: `SourceManager.getSharedDataStore(schema)` is not yet ported — the `SourceManager`
-// referenced by `model/Series.swift` is a stub (only `prepareSource`/`dirty`/`getSource`). This
-// method is reached ONLY on the non-original (dataset) source path, which is outside the current
-// bar + cartesian grid scope. Provide a faithful placeholder so this file compiles; the agent that
-// ports `data/helper/sourceManager.ts` MUST remove this extension and expose the real method
-// (upstream builds/shares a `DataStore` keyed by the `SeriesDataSchema`).
-// ============================================================================
-private extension SourceManager {
-    func getSharedDataStore(_ schema: SeriesDataSchema) -> DataStore {
-        fatalError("PORT-TODO: SourceManager.getSharedDataStore — data/helper/sourceManager not ported (dataset path)")
-    }
-}
 
 // JS truthiness shim for the dynamic `useEncodeDefaulter` bag (nil/false/0/NaN/"" are falsy). Not an
 // upstream symbol — replaces the inline `useEncodeDefaulter ? ... : ...` truthiness on `Any?`.
