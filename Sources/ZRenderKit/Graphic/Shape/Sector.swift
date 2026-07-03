@@ -71,7 +71,9 @@ public struct SectorShape: PathShape {
 public typealias SectorProps = PathProps
 
 // upstream: class Sector extends Path<SectorProps>
-public final class Sector: Path {
+// PORT NOTE: `open` (not `final`) so `SunburstPiece extends graphic.Sector` (chart/sunburst/SunburstPiece.swift)
+//   can subclass it cross-module, matching upstream where `SunburstPiece extends graphic.Sector`.
+open class Sector: Path {
 
     // upstream: shape: SectorShape — narrows the inherited `PathShape` existential. The base `Path`
     //   stores `shape` as `PathShape!`; `buildPath` downcasts (see GENERICS DECISION in Path.swift).

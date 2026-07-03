@@ -181,7 +181,7 @@ public final class SeriesData: DataStackSeriesData {
      * @readonly
      * Host tree if List is used to store tree nodes.
      */
-    public var tree: AnyObject?    // PORT-TODO: Tree not ported (Phase 5+)
+    public var tree: Tree?         // upstream: `tree?: Tree` — wired by the sibling data/Tree.swift port
 
     private var _store: DataStore!
 

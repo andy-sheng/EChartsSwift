@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 9 (TREE DATA STRUCTURE + SUNBURST render layer — STAGED, not yet slim-wired): the faithful `data/Tree.ts` port (`Tree`/`TreeNode`: buildHierarchy/updateDepthAndHeight/preorder+postorder `eachNode` with subtree-suppress/getNodeById/contains/getAncestors/isAncestorOf/getValue through the real `SeriesData` data pipeline) plus its `data/helper/linkSeriesData.ts` port land, alongside the whole `chart/sunburst/` render layer (`SunburstSeriesModel`+`SunburstView`+`SunburstPiece`+`sunburstLayout`+`sunburstVisual`+`sunburstInstall`) and `chart/helper/sectorHelper`. `swift build` GREEN (0 warnings), `swift test` 229 executed / 0 failures / 58 skipped (+6 new `TreeUnitTests`, no regression). Closeout fixed the render-layer so it compiles clean: retyped the pre-Tree `SeriesData.tree` placeholder `AnyObject?`→`Tree?` (matches upstream `tree?: Tree`), fixed the IUO-bound-to-`let` Optional-inference gotcha at every `.root`/`hostTree.data` binding, and matched the typed `eachNode` callback form. Two faithfulness reviews (Tree.swift, sunburstLayout.swift) both `MINOR-ISSUES`, geometry/algorithms byte-faithful; BOTH findings fixed: `TreeNode.getValue` now uses JS-falsy `dimension || 'value'` semantics (not nil-only `??`), and the custom-comparator `sort` branch is now stable (original-index tie-break) to match ES2019 `Array.prototype.sort`. DEFERRED (next step): slim registration + end-to-end render (sunburst is coordless like pie — needs `SunburstSeriesModel` + view factory + layout/visual stage registration in `EChartsSlim` and a gallery demo); `sunburstAction` (rollup/highlight), emphasis/states, and enter/update animation are PORT-TODO. The two `install.swift` files (boxplot + sunburst) were renamed `boxplotInstall.swift`/`sunburstInstall.swift` — SwiftPM flattens object-file basenames, so two `install.swift` in one target collide (`multiple producers`); this is the scalable convention for future per-chart install files. See §40.**
 **Phase 8 (NEW CHART TYPES — funnel + candlestick + boxplot): all three chart types now register end-to-end in `EChartsSlim` (`FunnelSeriesModel`+`funnelLayout`/`funnelLayoutStageHandler`+`FunnelView`; `CandlestickSeriesModel`+`candlestickLayout`+`candlestickVisual`+`CandlestickView`+`'k'→'candlestick'` preprocessor; `BoxplotSeriesModel`+`boxplotLayout`+`boxplotVisual`+`BoxplotView`), each wired into the layout + visual stages with its axis-handler registration; nothing blocked. New custom shapes `NormalBoxPath`/`BoxPath` (candlestick/boxplot box+whisker geometry) landed. Independent post-workflow verification rendered all three vs echarts.js (funnel trapezoids, candlestick bull/bear K-line, boxplot box+median+whiskers — all faithful), added `funnel-basic`/`candlestick-basic`/`boxplot-basic` gallery demos + `NewChartsRenderTests`, and fixed a real ZRenderKit crash: `Element.getOutsideStroke` force-unwrapped `self.__zr!` (nil in the headless render path — funnel outside-labels hit it) → now guarded like its sibling `getOutsideFill`. `swift build` GREEN (0 warnings), `swift test` 223 executed / 0 failures / 58 skipped. Deferred PORT-TODOs: large/progressive draw path (LargeBoxPath/createLarge no-op), emphasis/states + enter/update animation + labels, the `boxplotTransform` dataset transform, and the diff-based enter/update/remove (replaced by static from-scratch rebuild, same as Line/Pie/Funnel views). Three faithfulness reviews: funnel `FAITHFUL_WITH_MINOR_DIVERGENCES` (percent-string itemStyle width/height dropped; unstable sort tie-break; custom-comparator sort no-op), candlestick `FAITHFUL` (resolveNormalBoxClipping stubbed NOT_CLIPPED + large-mode no-op are the notable deferrals), boxplot `FAITHFUL` (0 findings). See §39.**
 **Phase 7 (STATIC COMPONENT LAYER): `title`, `graphic`, and `legend` (model) now register in `EChartsSlim` (`TitleModel`+`TitleView`, `GraphicComponentModel`+`GraphicComponentView`+`graphicOptionPreprocessor`, `LegendModel`+`registerSubTypeDefaulter('legend','plain')`+`LegendView`); the three marker components (`markPoint`/`markLine`/`markArea`) are PORTED-but-BLOCKED (files compile; registration + view factories + preprocessors left unwired) on a stubbed coord/axis-resolution + SymbolDraw/LineDraw + util/states+graphic dep stack. All interaction (legend select/scroll, marker drag, actions, emphasis/animation) is deferred PORT-TODO per CONVENTIONS §5. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Three faithfulness reviews all `minor-issues` (notable: legend per-series glyph stubbed → default icon; markerHelper statistic/valueAxis branch dead until coord protocol witnesses land). See §38.**
 **Phase 6d (SYMBOLS + SCATTER + PIE verticals): faithful `util/symbol` (the symbol-path factory + `createSymbol`), `LineView` now honors `showSymbol`, plus two minimal new chart verticals — `chart/scatter/{ScatterSeries,ScatterView}` (points via `coord.dataToPoint` + `createSymbol`) and a coordless `chart/pie/{PieSeries,PieView,pieLayout}` (per-item angle/radius geometry through a `pieLayout(ecModel, api)` render hook + `createSeriesDataSimply`/`util/layout` box). Registered in `EChartsSlim` (`ScatterSeriesModel`/`PieSeriesModel` + `scatter`/`pie` view factories + pie's `registerLayOutOnCoordSysUsage`). Post-workflow verification fixed the visual-task ORDER (`dataColorPaletteTask` must run LAST) and a `getColorFromPalette` overload trap so pie's per-slice `colorBy:'data'` palette works; added `Scatter`/`PieChartRenderTests`. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Label/emphasis/`SymbolDraw` are documented PORT-TODOs. See §37.**
@@ -2162,6 +2163,57 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 40. Phase 9 — Tree data structure + Sunburst render layer (STAGED)
+
+**Goal (partially met — staged, not yet slim-wired):** land the `data/Tree.ts` data structure and
+the `chart/sunburst/` render layer so a future integration step can register sunburst end-to-end.
+**`swift build` GREEN (0 warnings), `swift test` 229 executed / 0 failures / 58 skipped** (+6 new
+`TreeUnitTests`, no regression). The Tree data structure is COMPLETE and unit-tested; the sunburst
+render layer is PORTED + faithfulness-reviewed but NOT registered in `EChartsSlim` (no end-to-end
+render yet).
+
+### Files landed
+- `data/Tree.swift` (`Tree` + `TreeNode`) — buildHierarchy/`createTree`, `updateDepthAndHeight`
+  (`height = maxChildHeight + 1`, so a leaf has height 1), `eachNode` (preorder/postorder + truthy-
+  return subtree-suppress; string/function/options arg normalization), `getNodeById`, `contains`,
+  `getAncestors`/`getAncestorsIndices`/`getDescendantIndices`, `isAncestorOf`/`isDescendantOf`,
+  `getValue` (reads the `value` dim through the real `SeriesData` store), `update`,
+  `getNodeByDataIndex`, `getLevelModel`, `setLayout`/`getLayout`/`clearLayouts`.
+- `data/helper/linkSeriesData.swift` — `linkSeriesData`/`transferInjection` (wires `data.tree`).
+- `chart/sunburst/` — `SunburstSeries.swift` (`SunburstSeriesModel` + level models + `getViewRoot`),
+  `SunburstView.swift`, `SunburstPiece.swift`, `sunburstLayout.swift` (angle/radius geometry),
+  `sunburstVisual.swift` (per-node palette fill), `sunburstInstall.swift` (commented install surface).
+- `chart/helper/sectorHelper.swift`; `ZRenderKit/Graphic/Shape/Sector.swift` (+3 lines).
+
+### Closeout fixes (made it compile clean + faithful)
+- **`SeriesData.tree` retyped** `AnyObject?` → `Tree?` (was a pre-Tree placeholder; matches upstream
+  `tree?: Tree`). `linkSeriesData` assigns a `Tree` into it; the 4 sunburst read sites now type-check.
+- **IUO-bound-to-`let` Optional-inference gotcha** at every `.root` / `hostTree.data` binding
+  (`let x = tree.root` infers `TreeNode?` from the IUO) → added explicit `: TreeNode` / `: SeriesData`
+  annotations. Also switched `data.tree as? Tree` guards to plain `guard let` now that `tree` is typed.
+- **Typed `eachNode` callback** — the closure must be `(TreeNode) -> Any?` (the `TreeTraverseCallback`)
+  to pass as the `Any?` options/cb arg; annotated + `return nil` to continue traversal.
+- **Two faithfulness-review findings fixed** (both files reviewed `MINOR-ISSUES`, geometry/algorithms
+  byte-faithful otherwise): (1) `TreeNode.getValue` used nil-only `?? "value"`; upstream is JS-falsy
+  `dimension || 'value'` (also `0`/`""`) → now uses a `jsTruthy` guard. (2) the custom-comparator
+  `sort` branch used Swift's non-stable `sort(by:)`; ES2019 `Array.prototype.sort` is stable → added an
+  original-index tie-break so equal-ranked nodes keep input order.
+- **`install.swift` basename collision** — SwiftPM flattens per-file object names, so `boxplot/install.swift`
+  + `sunburst/install.swift` both emit `install.swift.o` (`multiple producers` build error). Renamed both
+  to `boxplotInstall.swift` / `sunburstInstall.swift`; this is the convention for future per-chart installs.
+
+### Deferred (the next step to make sunburst actually render)
+- **Slim registration + gallery demo** — sunburst is coordless (like pie): register `SunburstSeriesModel`
+  + a `sunburst` view factory + the `sunburstLayoutStageHandler`/`sunburstVisualStageHandler` stages in
+  `EChartsSlim`, add a `sunburst-basic` demo, and verify vs echarts.js.
+- **`sunburstAction`** (rollup/highlight actions), emphasis/states, and enter/update animation — PORT-TODO
+  per CONVENTIONS §5 (static render only).
+
+### Tests
+- `TreeUnitTests.swift` (6, hand-authored oracle — upstream ships NO Jest spec for Tree/sunburst, only
+  HTML visual tests + data fixtures): hierarchy + depth/height, preorder/postorder traversal, preorder
+  subtree-suppress, ancestor/containment queries, and `getValue` read-back through the data pipeline.
 
 ## 39. Phase 8 — new chart types (funnel + candlestick + boxplot)
 
