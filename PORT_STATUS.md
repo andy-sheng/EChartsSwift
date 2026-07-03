@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 10 (TREE-FAMILY CHARTS — sunburst wired end-to-end + treemap + tree verticals): all three hierarchical chart types now register end-to-end in `EChartsSlim`. Sunburst (staged in Phase 9) is now fully wired — `SunburstSeriesModel` + `sunburst` view factory + `sunburstLayoutStageHandler`/`sunburstVisualStageHandler` overall stages run in `render`. NEW verticals `chart/treemap/` (`TreemapSeriesModel`+`TreemapView`+`treemapLayout`+`treemapVisual`+`Breadcrumb`) and `chart/tree/` (`TreeSeriesModel`+`TreeView`+`treeLayout`+`treeVisualStageHandler`+`layoutHelper`/`traversalHelper`) also register end-to-end; all three are coordless/box-usage (hierarchical, like pie) — each View reads its per-node geometry (sunburst sector angle/radius, treemap rect, tree x/y) back from its layout stage. `swift build` GREEN, `swift test` **232 executed / 0 failures / 58 skipped** (baseline 229 + 3 new hierarchical render tests). Demos added: `sunburst-basic`, `treemap-basic`, `tree-basic`. Deferred PORT-TODOs per CONVENTIONS §5: actions (sunburst rollup/highlight, treemap drill/roam/RoamController, tree roam), enter/update/remove animation (static from-scratch rebuild), and emphasis/states (util/states not ported). Four faithfulness reviews: `treemapLayout` FAITHFUL (0), `treeLayout` FAITHFUL (0), `TreeSeries` FAITHFUL (0), `TreemapView` MINOR-ISSUES (1). No CRITICAL findings; build is green. See §41.**
 **Phase 9 (TREE DATA STRUCTURE + SUNBURST render layer — STAGED, not yet slim-wired): the faithful `data/Tree.ts` port (`Tree`/`TreeNode`: buildHierarchy/updateDepthAndHeight/preorder+postorder `eachNode` with subtree-suppress/getNodeById/contains/getAncestors/isAncestorOf/getValue through the real `SeriesData` data pipeline) plus its `data/helper/linkSeriesData.ts` port land, alongside the whole `chart/sunburst/` render layer (`SunburstSeriesModel`+`SunburstView`+`SunburstPiece`+`sunburstLayout`+`sunburstVisual`+`sunburstInstall`) and `chart/helper/sectorHelper`. `swift build` GREEN (0 warnings), `swift test` 229 executed / 0 failures / 58 skipped (+6 new `TreeUnitTests`, no regression). Closeout fixed the render-layer so it compiles clean: retyped the pre-Tree `SeriesData.tree` placeholder `AnyObject?`→`Tree?` (matches upstream `tree?: Tree`), fixed the IUO-bound-to-`let` Optional-inference gotcha at every `.root`/`hostTree.data` binding, and matched the typed `eachNode` callback form. Two faithfulness reviews (Tree.swift, sunburstLayout.swift) both `MINOR-ISSUES`, geometry/algorithms byte-faithful; BOTH findings fixed: `TreeNode.getValue` now uses JS-falsy `dimension || 'value'` semantics (not nil-only `??`), and the custom-comparator `sort` branch is now stable (original-index tie-break) to match ES2019 `Array.prototype.sort`. DEFERRED (next step): slim registration + end-to-end render (sunburst is coordless like pie — needs `SunburstSeriesModel` + view factory + layout/visual stage registration in `EChartsSlim` and a gallery demo); `sunburstAction` (rollup/highlight), emphasis/states, and enter/update animation are PORT-TODO. The two `install.swift` files (boxplot + sunburst) were renamed `boxplotInstall.swift`/`sunburstInstall.swift` — SwiftPM flattens object-file basenames, so two `install.swift` in one target collide (`multiple producers`); this is the scalable convention for future per-chart install files. See §40.**
 **Phase 8 (NEW CHART TYPES — funnel + candlestick + boxplot): all three chart types now register end-to-end in `EChartsSlim` (`FunnelSeriesModel`+`funnelLayout`/`funnelLayoutStageHandler`+`FunnelView`; `CandlestickSeriesModel`+`candlestickLayout`+`candlestickVisual`+`CandlestickView`+`'k'→'candlestick'` preprocessor; `BoxplotSeriesModel`+`boxplotLayout`+`boxplotVisual`+`BoxplotView`), each wired into the layout + visual stages with its axis-handler registration; nothing blocked. New custom shapes `NormalBoxPath`/`BoxPath` (candlestick/boxplot box+whisker geometry) landed. Independent post-workflow verification rendered all three vs echarts.js (funnel trapezoids, candlestick bull/bear K-line, boxplot box+median+whiskers — all faithful), added `funnel-basic`/`candlestick-basic`/`boxplot-basic` gallery demos + `NewChartsRenderTests`, and fixed a real ZRenderKit crash: `Element.getOutsideStroke` force-unwrapped `self.__zr!` (nil in the headless render path — funnel outside-labels hit it) → now guarded like its sibling `getOutsideFill`. `swift build` GREEN (0 warnings), `swift test` 223 executed / 0 failures / 58 skipped. Deferred PORT-TODOs: large/progressive draw path (LargeBoxPath/createLarge no-op), emphasis/states + enter/update animation + labels, the `boxplotTransform` dataset transform, and the diff-based enter/update/remove (replaced by static from-scratch rebuild, same as Line/Pie/Funnel views). Three faithfulness reviews: funnel `FAITHFUL_WITH_MINOR_DIVERGENCES` (percent-string itemStyle width/height dropped; unstable sort tie-break; custom-comparator sort no-op), candlestick `FAITHFUL` (resolveNormalBoxClipping stubbed NOT_CLIPPED + large-mode no-op are the notable deferrals), boxplot `FAITHFUL` (0 findings). See §39.**
 **Phase 7 (STATIC COMPONENT LAYER): `title`, `graphic`, and `legend` (model) now register in `EChartsSlim` (`TitleModel`+`TitleView`, `GraphicComponentModel`+`GraphicComponentView`+`graphicOptionPreprocessor`, `LegendModel`+`registerSubTypeDefaulter('legend','plain')`+`LegendView`); the three marker components (`markPoint`/`markLine`/`markArea`) are PORTED-but-BLOCKED (files compile; registration + view factories + preprocessors left unwired) on a stubbed coord/axis-resolution + SymbolDraw/LineDraw + util/states+graphic dep stack. All interaction (legend select/scroll, marker drag, actions, emphasis/animation) is deferred PORT-TODO per CONVENTIONS §5. `swift build` GREEN (0 warnings), `swift test` 220 executed / 0 failures / 58 skipped. Three faithfulness reviews all `minor-issues` (notable: legend per-series glyph stubbed → default icon; markerHelper statistic/valueAxis branch dead until coord protocol witnesses land). See §38.**
@@ -2163,6 +2164,55 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 41. Phase 10 — Tree-family charts (sunburst wired end-to-end + treemap + tree verticals)
+
+**Goal (met):** finish wiring the tree-family charts so all three hierarchical types render
+end-to-end. The Phase 9 sunburst render layer (STAGED, not slim-wired) is now registered and
+driven from `render`, and two new verticals — `chart/treemap/` and `chart/tree/` — land and
+register alongside it. **`swift build` GREEN, `swift test` 232 executed / 0 failures / 58 skipped**
+(baseline 229 + 3 new hierarchical render tests; no regression). `buildGreen = true`. All three
+charts are coordless (hierarchical / box-like usage, like pie): each View reads its per-node
+geometry back from a dedicated layout stage.
+
+### What registered end-to-end in `EChartsSlim`
+- **Sunburst (now wired — was staged in §40):** `ComponentModel.registerClass(SunburstSeriesModel)`
+  + a `"sunburst"` view factory (`SunburstView`) + the `sunburstLayoutStageHandler.overallReset` and
+  `sunburstVisualStageHandler.overallReset` OVERALL stages run in `render`. Sunburst has no cartesian
+  coord; `SunburstView` reads per-node sector angle/radius from the layout stage.
+- **Treemap (new):** `TreemapSeriesModel` + a `"treemap"` view factory (`TreemapView`) + `treemapLayout`
+  (a SERIES_STAGE_TASK whose `reset` computes each node's rect + area/isInView/invisible) + `treemapVisual`
+  (a SERIES_STAGE_TASK whose `reset` colors each node FROM that layout — like candlestick, the visual READS
+  the layout). Both run via `runSeriesStageHandler` in `render`.
+- **Tree (new):** `TreeSeriesModel` + a `"tree"` view factory (`TreeView`) + `treeLayout` (a bare 2-arg
+  OVERALL layout fn computing each node's x/y via the non-layered tidy-tree walk, like pie/sunburst layout)
+  + `treeVisualStageHandler.overallReset` (per-node symbol colors). `TreeView` reads the per-node x/y back.
+
+### Files added
+- `chart/treemap/`: `TreemapSeries.swift` (`TreemapSeriesModel` + level models), `TreemapView.swift`,
+  `treemapLayout.swift`, `treemapVisual.swift`, `Breadcrumb.swift`.
+- `chart/tree/`: `TreeSeries.swift` (`TreeSeriesModel`), `TreeView.swift`, `treeLayout.swift`,
+  `treeVisual.swift` (`treeVisualStageHandler`), `layoutHelper.swift`, `traversalHelper.swift`.
+- Demos: `Sources/EChartsDemoGallery/Demos/sunburst-basic.swift`, `treemap-basic.swift`, `tree-basic.swift`
+  (registered in `Registry.swift`).
+- Tests: `Tests/EChartsKitTests/HierarchicalChartsRenderTests.swift` (3: `testSunburstRendersSectors`,
+  `testTreemapRendersRects`, `testTreeRendersNodesAndEdges`).
+- Touched: `core/EChartsSlim.swift` (registration + stage wiring), `data/SeriesData.swift`.
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static render only)
+- **Actions:** sunburst rollup/highlight (`sunburstAction`), treemap drill/zoom/roam
+  (`treemapAction` + RoamController pan/zoom, node click / drill re-root / windowOpen link), tree roam.
+- **Animation:** enter/update/remove transitions (replaced by static from-scratch rebuild, same as the
+  Line/Pie/Funnel/Sunburst views); treemap fade-out-to-corner / drill re-root transitions.
+- **Emphasis/states:** `util/states` (high-down dispatch, `Z2_EMPHASIS_LIFT`) not ported; DataDiffer diff,
+  `makeStyleMapper` treemap-custom option→style mapping, `chart/helper/treeHelper` also deferred.
+
+### Faithfulness reviews
+- `chart/treemap/treemapLayout.swift` — **FAITHFUL** (0 findings).
+- `chart/tree/treeLayout.swift` — **FAITHFUL** (0 findings).
+- `chart/tree/TreeSeries.swift` — **FAITHFUL** (0 findings).
+- `chart/treemap/TreemapView.swift` — **MINOR-ISSUES** (1 finding).
+No CRITICAL findings; `buildGreen = true`.
 
 ## 40. Phase 9 — Tree data structure + Sunburst render layer (STAGED)
 

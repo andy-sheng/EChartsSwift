@@ -253,6 +253,27 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(BoxplotSeriesModel.self)
         registerBoxplotAxisHandlers(_registers)
 
+        // -- chart/sunburst/install.ts (minimal) -- registerSeriesModel(SunburstSeries) +
+        //   registerChartView(SunburstView) + registerLayout(sunburstLayoutStageHandler) +
+        //   registerVisual(sunburstVisualStageHandler). Sunburst has NO cartesian coord (hierarchical,
+        //   box-like usage like pie); SunburstView reads its per-node sector geometry from the tree
+        //   layout populated by the sunburst layout stage (run in `render`). Its dedicated visual stage
+        //   colors each node (installSunburstAction rollup/highlight is DEFERRED — see sunburstInstall.swift).
+        ComponentModel.registerClass(SunburstSeriesModel.self)
+
+        // -- chart/treemap/install.ts (minimal) -- registerSeriesModel(TreemapSeries) +
+        //   registerChartView(TreemapView) + registerLayout(treemapLayout) + registerVisual(treemapVisual).
+        //   Treemap is hierarchical/box-usage (no cartesian coord); TreemapView reads each node's rect from
+        //   the treemap layout stage, and treemapVisual colors each node FROM that layout (isInView/invisible),
+        //   so — like candlestick — the layout MUST run before the visual (both run in `render`).
+        ComponentModel.registerClass(TreemapSeriesModel.self)
+
+        // -- chart/tree/install.ts (minimal) -- registerSeriesModel(TreeSeries) +
+        //   registerChartView(TreeView) + registerLayout(treeLayout) + registerVisual(treeVisualStageHandler).
+        //   Tree is hierarchical/box-usage (no cartesian coord); TreeView reads each node's x/y from the tree
+        //   layout stage. Its dedicated visual stage sets per-node symbol colors (independent of layout).
+        ComponentModel.registerClass(TreeSeriesModel.self)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -305,7 +326,10 @@ public final class EChartsSlim: EChartsType {
         "pie": { PieView() },
         "funnel": { FunnelView() },
         "candlestick": { CandlestickView() },
-        "boxplot": { BoxplotView() }
+        "boxplot": { BoxplotView() },
+        "sunburst": { SunburstView() },
+        "treemap": { TreemapView() },
+        "tree": { TreeView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -497,6 +521,30 @@ public final class EChartsSlim: EChartsType {
         //   which `BoxplotView.render` reads back. Colors come from the generic visual stage
         //   (visualDrawType:'stroke'), so no dedicated boxplot visual handler is needed. Bare 1-arg handler.
         boxplotLayout(ecModel)
+
+        // LAYOUT + VISUAL — sunburst. Upstream registers `sunburstLayoutStageHandler` (an OVERALL stage
+        //   that computes each tree node's sector angle/radius from `center`/`radius`) and
+        //   `sunburstVisualStageHandler` (an OVERALL stage that colors each node). Sunburst is coordless
+        //   (hierarchical, box-like usage like pie); SunburstView reads the per-node layout back. Both are
+        //   OVERALL stage handlers — invoke their `overallReset` directly (like the pie layout stage).
+        sunburstLayoutStageHandler.overallReset?(ecModel, api, nil)
+        sunburstVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT + VISUAL — treemap. Upstream registers `treemapLayout` (a SERIES_STAGE_TASK whose `reset`
+        //   computes each node's rect + area/isInView/invisible) and `treemapVisual` (a SERIES_STAGE_TASK
+        //   whose `reset` colors each node FROM that layout). Like candlestick, treemapVisual READS the
+        //   layout, so the layout MUST run first; both are SERIES_STAGE_TASKs (reset does the full work and
+        //   returns nil), so drive them through `runSeriesStageHandler` (layout, then visual).
+        runSeriesStageHandler(treemapLayout, ecModel, api)
+        runSeriesStageHandler(treemapVisual, ecModel, api)
+
+        // LAYOUT + VISUAL — tree. Upstream registers `treeLayout` (a 2-arg OVERALL layout fn that computes
+        //   each node's x/y via the non-layered tidy-tree walk) and `treeVisualStageHandler` (an OVERALL
+        //   stage that sets per-node symbol colors). Tree is coordless (hierarchical, box-usage); TreeView
+        //   reads the per-node layout back. `treeLayout` is a bare 2-arg fn (like pie/sunburst layout); the
+        //   visual is an OVERALL stage handler.
+        treeLayout(ecModel, api)
+        treeVisualStageHandler.overallReset?(ecModel, api, nil)
 
         renderSeries(ecModel, api)
     }

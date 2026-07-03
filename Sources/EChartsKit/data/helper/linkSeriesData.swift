@@ -110,13 +110,16 @@ public enum linkSeriesData {
         linkAll(mainData, datas!, &opt)
 
         // Porxy data original methods.
-        // PORT-TODO(linkSeriesData.ts:78-92): upstream rebinds each transferable/changable method
-        //   via `wrapMethod` + `curry`, so the injections below fire when those methods run.
-        //   The Swift `SeriesData.wrapMethod` is a bookkeeping-only stub (it cannot replace a
-        //   method by name), so these registrations record `__wrappedMethods` for transfer fidelity
-        //   but the injection closures are never actually invoked. The injection functions
-        //   (transferInjection/changeInjection/cloneShallowInjection) and getLinkedData(All) are
-        //   ported below for faithfulness / future re-wiring.
+        // PORT NOTE(linkSeriesData.ts:78-92): upstream rebinds each transferable/changable method
+        //   via `wrapMethod` + `curry` so the injection runs after the original method. Swift cannot
+        //   replace a method by name, so `SeriesData.wrapMethod` STORES the injection keyed by method
+        //   name and the ported wrappable methods fire it explicitly (in registration order, matching
+        //   upstream's outer-most-last wrap chain). `cloneShallow` fires today (it is what re-links the
+        //   shared tree/graph struct onto the clone produced by `dataTaskReset`, so a hierarchical
+        //   series' `getData().tree` survives). The other transferable methods (downSample/map) and the
+        //   changable methods (filterSelf/selectRange) record their injections here but do not yet fire
+        //   them — PORT-TODO: invoke the stored injections from those methods when data-zoom/sampling
+        //   lands (they are unreachable in the current static render path).
         for (_, data) in datas! {
             for methodName in mainData.TRANSFERABLE_METHODS {
                 data.wrapMethod(methodName) { args in

@@ -239,6 +239,14 @@ public final class SeriesData: DataStackSeriesData {
 
     private var __wrappedMethods: [String]?
 
+    // PORT NOTE: upstream `wrapMethod` rebinds `this[methodName]` so registered injections fire when the
+    //   method runs. Swift can not replace a method by string name, so instead `wrapMethod` stores the
+    //   injection closures here, keyed by method name, and the ported methods that support wrapping invoke
+    //   them explicitly (currently only `cloneShallow`, which the tree/graph link relies on — see
+    //   linkSeriesData `transferInjection`/`cloneShallowInjection`). Registration order is preserved so the
+    //   injections fire in the same order upstream's wrap chain does (original → transfer → cloneShallow).
+    private var _wrappedMethodInjections: [String: [(SeriesData) -> Void]] = [:]
+
     // Methods that create a new list based on this list should be listed here.
     // Notice that those method should `RETURN` the new list.
     public let TRANSFERABLE_METHODS = ["cloneShallow", "downSample", "minmaxDownSample", "lttbDownSample", "map"]
@@ -1244,6 +1252,15 @@ public final class SeriesData: DataStackSeriesData {
         SeriesData.transferProperties(list!, self)
         list!._store = self._store
 
+        // PORT NOTE: fire the injections `linkSeriesData` registered on `cloneShallow` (transferInjection +
+        //   cloneShallowInjection). Upstream does this via the `wrapMethod` rebind; here the ported methods
+        //   invoke stored injections explicitly. This is what re-links the shared tree/graph struct onto the
+        //   fresh clone (`clone.tree = struct`, `struct.data = clone`), so a tree/treemap/sunburst series'
+        //   `getData().tree` survives the `dataTaskReset` cloneShallow.
+        for injection in self._wrappedMethodInjections["cloneShallow"] ?? [] {
+            injection(list!)
+        }
+
         return list!
     }
 
@@ -1254,12 +1271,16 @@ public final class SeriesData: DataStackSeriesData {
         _ methodName: String,   // FunctionPropertyNames<SeriesData>
         _ injectFunction: @escaping (_ args: Any...) -> Any?
     ) {
-        // PORT-TODO: upstream dynamically rebinds `this[methodName]` to wrap the original method.
-        //   Swift cannot replace a method by string name; only the bookkeeping is preserved so
-        //   `transferProperties` can carry `__wrappedMethods` forward.
-        _ = injectFunction
+        // PORT NOTE: upstream dynamically rebinds `this[methodName]` to run the original method then the
+        //   injection. Swift cannot replace a method by string name, so the injection is STORED here (keyed
+        //   by method name) and the ported wrappable methods invoke it explicitly. The injection is fed the
+        //   original method's result (a new `SeriesData`), matching upstream's `[res].concat(arguments)`.
+        //   `__wrappedMethods` bookkeeping is still recorded for `transferProperties` fidelity.
         self.__wrappedMethods = self.__wrappedMethods ?? []
         self.__wrappedMethods!.append(methodName)
+        self._wrappedMethodInjections[methodName, default: []].append { res in
+            _ = injectFunction(res)
+        }
     }
 
     // ----------------------------------------------------------

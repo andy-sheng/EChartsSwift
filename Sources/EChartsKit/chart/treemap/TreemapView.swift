@@ -1,0 +1,690 @@
+// Ported from echarts/src/chart/treemap/TreemapView.ts — keep in sync with upstream
+/*
+* Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
+*/
+
+import Foundation
+import ZRenderKit
+
+// upstream imports:
+//   import {bind, each, indexOf, curry, extend, normalizeCssArray, isFunction} from 'zrender/src/core/util';
+//       -> `util.*` (ZRenderKit).
+//   import * as graphic from '../../util/graphic';                  -> ZRenderKit `Group` / `Rect` (used directly).
+//   import {getECData} from '../../util/innerStore';                -> `innerStore.getECData`.
+//   import { isHighDownDispatcher, setAsHighDownDispatcher, setDefaultStateProxy, enableHoverFocus,
+//            Z2_EMPHASIS_LIFT } from '../../util/states';
+//       -> PORT-TODO: util/states NOT ported (states/emphasis/high-down dispatch DEFERRED). `Z2_EMPHASIS_LIFT`
+//          is inlined below as its upstream literal (10).
+//   import DataDiffer from '../../data/DataDiffer';                 -> PORT-TODO: DataDiffer diff DEFERRED (static rebuild).
+//   import * as helper from '../helper/treeHelper';                 -> PORT-TODO: chart/helper/treeHelper NOT ported
+//       (retrieveTargetInfo / aboveViewRoot used by drill-down/roll-up actions — DEFERRED).
+//   import Breadcrumb from './Breadcrumb';                          -> sibling Breadcrumb.swift.
+//   import RoamController, { RoamEventParams } from '../../component/helper/RoamController';
+//       -> PORT-TODO: RoamController NOT ported (pan/zoom roam DEFERRED).
+//   import BoundingRect, { RectLike } from 'zrender/src/core/BoundingRect';  -> `BoundingRect` (ZRenderKit).
+//   import * as matrix from 'zrender/src/core/matrix';             -> `matrix` (ZRenderKit) — used by the deferred zoom.
+//   import * as animationUtil from '../../util/animation';         -> PORT-TODO: util/animation NOT ported (DEFERRED).
+//   import makeStyleMapper from '../../model/mixin/makeStyleMapper';
+//       -> PORT-TODO: makeStyleMapper's treemap-custom mapping (strokeColor→stroke, strokeWidth→lineWidth)
+//          is approximated by `Model.getItemStyle()` + the three-field clear below.
+//   import ChartView from '../../view/Chart';                      -> `ChartView` (view/Chart.swift).
+//   import Tree, { TreeNode } from '../../data/Tree';              -> `Tree` / `TreeNode` (data/Tree.swift).
+//   import TreemapSeriesModel, { TreemapSeriesNodeItemOption } from './TreemapSeries';  -> sibling TreemapSeries.swift.
+//   import GlobalModel from '../../model/Global';                  -> `GlobalModel`.
+//   import ExtensionAPI from '../../core/ExtensionAPI';            -> `ExtensionAPI`.
+//   import Model from '../../model/Model';                         -> `Model`.
+//   import { LayoutRect } from '../../util/layout';                -> `LayoutRect` (== BoundingRect).
+//   import { calculateCurrentZoom, treemapClampZoom, TreemapLayoutNode } from './treemapLayout';
+//       -> sibling treemapLayout.swift (zoom helpers used only by the deferred roam).
+//   import Element from 'zrender/src/Element';                     -> `Element`.
+//   import Displayable from 'zrender/src/graphic/Displayable';     -> `Displayable`.
+//   import { makeInner, convertOptionIdName } from '../../util/model';  -> `model.makeInner` / `model.convertOptionIdName`.
+//   import { PathStyleProps, PathProps } from 'zrender/src/graphic/Path';  -> `PathStyleProps` / `PathProps`.
+//   import { TreeSeriesNodeItemOption } from '../tree/TreeSeries';  -> type-only (link click; DEFERRED).
+//   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> PORT-TODO: treemapAction NOT ported (actions DEFERRED).
+//   import { ColorString, ECElement } from '../../util/types';     -> type-only.
+//   import { windowOpen } from '../../util/format';                -> PORT-TODO: only used by the deferred link click.
+//   import { TextStyleProps } from 'zrender/src/graphic/Text';     -> `TextStyleProps`.
+//   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
+//       -> PORT-TODO: label/labelStyle NOT ported. A MINIMAL faithful NORMAL-state label (node name,
+//          centered) replaces the full setLabelStyle path (see `prepareText`).
+
+// const Group = graphic.Group;  /  const Rect = graphic.Rect;  -> ZRenderKit `Group` / `Rect` used directly.
+
+// const DRAG_THRESHOLD = 3;  -> only used by the deferred roam pan.
+private let DRAG_THRESHOLD: Double = 3
+// const PATH_LABEL_NOAMAL = 'label';
+private let PATH_LABEL_NOAMAL = "label"
+// const PATH_UPPERLABEL_NORMAL = 'upperLabel';
+private let PATH_UPPERLABEL_NORMAL = "upperLabel"
+// PORT-TODO: util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
+private let Z2_EMPHASIS_LIFT: Double = 10
+// Should larger than emphasis states lift z
+// const Z2_BASE = Z2_EMPHASIS_LIFT * 10;  // Should bigger than every z2.
+private let Z2_BASE = Z2_EMPHASIS_LIFT * 10
+// const Z2_BG = Z2_EMPHASIS_LIFT * 2;
+private let Z2_BG = Z2_EMPHASIS_LIFT * 2
+// const Z2_CONTENT = Z2_EMPHASIS_LIFT * 3;
+private let Z2_CONTENT = Z2_EMPHASIS_LIFT * 3
+
+// const getStateItemStyle = makeStyleMapper([ ['fill','color'], ['stroke','strokeColor'], ... ]);
+// const getItemStyleNormal = function (model) { const itemStyle = getStateItemStyle(model); itemStyle.stroke = itemStyle.fill = itemStyle.lineWidth = null; return itemStyle; };
+// PORT-TODO: makeStyleMapper's treemap-custom option→style mapping is DEFERRED. `Model.getItemStyle()`
+//   (the standard itemStyle mixin) is used as the base, then stroke/fill/lineWidth are cleared to mirror
+//   `getItemStyleNormal`. The remaining shadow* props carry through faithfully.
+private func getItemStyleNormal(_ model: Model) -> [String: Any] {
+    // Normal style props should include emphasis style props.
+    var itemStyle = model.getItemStyle()
+    // Clear styles set by emphasis.
+    itemStyle["stroke"] = nil
+    itemStyle["fill"] = nil
+    itemStyle["lineWidth"] = nil
+    return itemStyle
+}
+
+// interface RenderElementStorage { nodeGroup: Group[]; background: Rect[]; content: Rect[] }
+// PORT-TODO: upstream arrays are indexed by rawIndex and iterated by the deferred diff/animation. The
+//   static rebuild only needs by-rawIndex lookup (findTarget), so `[Int: T]` (keyed by rawIndex) is used;
+//   lookup semantics (nil when absent) match `array[rawIndex]`.
+private final class RenderElementStorage {
+    var nodeGroup: [Int: Group] = [:]
+    var background: [Int: Rect] = [:]
+    var content: [Int: Rect] = [:]
+}
+
+// interface FoundTargetInfo { node: TreeNode; offsetX?: number; offsetY?: number }
+public struct FoundTargetInfo {
+    public var node: TreeNode
+    public var offsetX: Double?
+    public var offsetY: Double?
+    public init(node: TreeNode, offsetX: Double? = nil, offsetY: Double? = nil) {
+        self.node = node
+        self.offsetX = offsetX
+        self.offsetY = offsetY
+    }
+}
+
+// upstream: RenderResult / ReRoot / LastCfg / inner(makeInner) — DEFERRED (animation/diff subsystem).
+// PORT-TODO: the animation storage (`lastsForAnimation`, `willDeleteEls`, `willInvisibleEls`,
+//   `renderFinally`), the reRoot drill/roll descriptor, and `inner(el).{nodeWidth,nodeHeight,willDelete}`
+//   are not ported — the static render rebuilds the group each pass (SunburstView/PieView convention).
+
+// upstream: class TreemapView extends ChartView
+open class TreemapView: ChartView {
+
+    // static type = 'treemap';  /  type = TreemapView.type;
+    public static let treemapType = "treemap"
+    open override var type: String {
+        get { TreemapView.treemapType }
+        set { /* readonly upstream */ }
+    }
+
+    // private _containerGroup: graphic.Group;
+    private var _containerGroup: Group?
+    // private _breadcrumb: Breadcrumb;
+    private var _breadcrumb: Breadcrumb?
+    // private _controller: RoamController;  -> DEFERRED (roam not ported).
+
+    // private _oldTree: Tree;
+    private var _oldTree: Tree?
+
+    // private _state: 'ready' | 'animating' = 'ready';
+    private var _state: String = "ready"
+
+    // private _storage = createStorage();
+    private var _storage = RenderElementStorage()
+
+    // seriesModel; api; ecModel; (injected in render)
+    public var seriesModel: TreemapSeriesModel?
+    public var api: ExtensionAPI?
+    public var ecModel: GlobalModel?
+
+    /**
+     * @override
+     */
+    open override func render(
+        _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        // upstream typed `seriesModel: TreemapSeriesModel`.
+        let seriesModel = seriesModelBase as! TreemapSeriesModel
+
+        // const models = ecModel.findComponents({ mainType: 'series', subType: 'treemap', query: payload });
+        // if (indexOf(models, seriesModel) < 0) { return; }
+        // upstream passes the whole `payload` as `query`; its component-query fields live in `payload.other`.
+        let models = ecModel.findComponents(
+            QueryConditionKindA(mainType: "series", query: payload.other, subType: "treemap")
+        )
+        if !models.contains(where: { ($0 as AnyObject) === (seriesModel as AnyObject) }) {
+            return
+        }
+
+        self.seriesModel = seriesModel
+        self.api = api
+        self.ecModel = ecModel
+
+        // const types = ['treemapZoomToNode', 'treemapRootToNode'];
+        // const targetInfo = helper.retrieveTargetInfo(payload, types, seriesModel);
+        // PORT-TODO: chart/helper/treeHelper.retrieveTargetInfo (drill/zoom target from payload) DEFERRED;
+        //   with no payload target the breadcrumb tail is found by `findTarget` (see `_renderBreadcrumb`).
+        let targetInfo: FoundTargetInfo? = nil
+        // const payloadType = payload && payload.type;  -> consumed only by the deferred animation routing.
+        // const layoutInfo = seriesModel.layoutInfo;
+        //   `seriesModel.layoutInfo` is the treemapLayout output rect (`LayoutRect?` in the sibling port;
+        //   non-null upstream after the layout stage). Bail if the layout has not run.
+        guard let layoutInfo = seriesModel.layoutInfo else {
+            return
+        }
+        // const isInit = !this._oldTree;  -> consumed by the deferred animation routing.
+        // const thisStorage = this._storage;  -> consumed by the deferred reRoot descriptor.
+
+        // Mark new root when action is treemapRootToNode.
+        // const reRoot = ...  -> DEFERRED (drill-down/roll-up actions not ported).
+
+        // const containerGroup = this._giveContainerGroup(layoutInfo);
+        let containerGroup = self._giveContainerGroup(layoutInfo)
+        // const hasAnimation = seriesModel.get('animation');  -> DEFERRED (animation not ported).
+
+        // const renderResult = this._doRender(containerGroup, seriesModel, reRoot);
+        self._doRender(containerGroup, seriesModel)
+        // PORT-TODO: (hasAnimation && !isInit && ...) ? this._doAnimation(...) : renderResult.renderFinally();
+        //   Animation + `renderFinally` (deferred removal / invisible flagging) DEFERRED — the static
+        //   rebuild already reflects the final state.
+
+        // this._resetController(api);
+        // PORT-TODO: RoamController pan/zoom DEFERRED (roam not ported).
+
+        // this._renderBreadcrumb(seriesModel, api, targetInfo);
+        self._renderBreadcrumb(seriesModel, api, targetInfo)
+    }
+
+    private func _giveContainerGroup(_ layoutInfo: LayoutRect) -> Group {
+        // let containerGroup = this._containerGroup;
+        var containerGroup = self._containerGroup
+        if containerGroup == nil {
+            // FIXME
+            // 加一层containerGroup是为了clip，但是现在clip功能并没有实现。
+            let g = Group()
+            self._containerGroup = g
+            containerGroup = g
+            self._initEvents(g)
+            _ = self.group.add(g)
+        }
+        // containerGroup.x = layoutInfo.x; containerGroup.y = layoutInfo.y;
+        containerGroup!.x = layoutInfo.x
+        containerGroup!.y = layoutInfo.y
+
+        return containerGroup!
+    }
+
+    private func _doRender(_ containerGroup: Group, _ seriesModel: TreemapSeriesModel) {
+        // const thisTree = seriesModel.getData().tree;
+        guard let thisTree = seriesModel.getData().tree else {
+            return
+        }
+
+        // ------------------------------------------------------------------------------------------
+        // STATIC render deviation: upstream builds new/old element storage, runs a hierarchical
+        //   `DataDiffer` (`dualTravel`) that reuses graphic elements by rawIndex/id and records
+        //   `lastsForAnimation` for `_doAnimation`, then defers removal via `renderFinally`. The diff +
+        //   element reuse + animation are DEFERRED, so the container is rebuilt from scratch each render
+        //   (SunburstView/PieView convention): one nodeGroup (background + optional content) per node,
+        //   travelled from the tree root.
+        // ------------------------------------------------------------------------------------------
+        _ = containerGroup.removeAll()
+        self._storage = RenderElementStorage()
+
+        // dualTravel([thisTree.root], ...) collapsed to a static pre-order travel.
+        func travel(_ thisNode: TreeNode, _ parentGroup: Group, _ depth: Double) {
+            let group = self.renderNode(seriesModel, thisNode, parentGroup, depth)
+            // group && dualTravel(thisNode.viewChildren || [], group, depth + 1);
+            if let group = group {
+                for child in thisNode.viewChildren {
+                    travel(child, group, depth + 1)
+                }
+            }
+        }
+        travel(thisTree.root, containerGroup, 0)
+
+        // this._oldTree = thisTree; this._storage = thisStorage;
+        self._oldTree = thisTree
+    }
+
+    // upstream: _doAnimation(...) — DEFERRED (util/animation not ported; static render is the final state).
+    // PORT-TODO: delete/other animations (fade-out to corner, drill/roll re-root transitions, fade-in)
+    //   are not ported.
+
+    // upstream: _resetController(api) / _clearController() / _onPan(e) / _onZoom(e) — DEFERRED.
+    // PORT-TODO: RoamController (pan/zoom roam → treemapMove/treemapRender dispatchAction) not ported.
+
+    private func _initEvents(_ containerGroup: Group) {
+        // containerGroup.on('click', (e) => { ... nodeClick zoomToNode | link | rootToNode ... });
+        // PORT-TODO: node click (zoomToNode / rootToNode drill actions, link windowOpen) DEFERRED
+        //   (treemapAction + events + windowOpen not ported).
+        _ = containerGroup
+    }
+
+    private func _renderBreadcrumb(_ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI, _ targetInfoIn: FoundTargetInfo?) {
+        var targetInfo = targetInfoIn
+        // if (!targetInfo) { targetInfo = leafDepth != null ? {node: getViewRoot()} : findTarget(center); }
+        if targetInfo == nil {
+            // `getViewRoot()` is `TreeNode?` in the sibling port (upstream is non-null).
+            if seriesModel.get("leafDepth", true) != nil, let viewRoot = seriesModel.getViewRoot() {
+                targetInfo = FoundTargetInfo(node: viewRoot)
+            }
+            else {
+                // FIXME better way? Find breadcrumb tail on center of containerGroup.
+                targetInfo = self.findTarget(api.getWidth() / 2, api.getHeight() / 2)
+            }
+
+            // if (!targetInfo) { targetInfo = {node: seriesModel.getData().tree.root}; }
+            if targetInfo == nil, let tree = seriesModel.getData().tree {
+                targetInfo = FoundTargetInfo(node: tree.root)
+            }
+        }
+
+        // (this._breadcrumb || (this._breadcrumb = new Breadcrumb(this.group))).render(seriesModel, api, node, onSelect);
+        if self._breadcrumb == nil {
+            self._breadcrumb = Breadcrumb(self.group)
+        }
+        guard let targetInfo = targetInfo else {
+            return
+        }
+        self._breadcrumb!.render(seriesModel, api, targetInfo.node) { _ in
+            // if (this._state !== 'animating') { aboveViewRoot(...) ? this._rootToNode(...) : this._zoomToNode(...); }
+            // PORT-TODO: breadcrumb click (drill/zoom dispatchAction via helper.aboveViewRoot) DEFERRED
+            //   (treemapAction + treeHelper.aboveViewRoot not ported).
+        }
+    }
+
+    /**
+     * @override
+     */
+    open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        // this._clearController();  -> DEFERRED (roam not ported).
+        // this._containerGroup && this._containerGroup.removeAll();
+        _ = self._containerGroup?.removeAll()
+        // this._storage = createStorage();
+        self._storage = RenderElementStorage()
+        // this._state = 'ready';
+        self._state = "ready"
+        // this._breadcrumb && this._breadcrumb.remove();
+        self._breadcrumb?.remove()
+    }
+
+    open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        // this._clearController();  -> DEFERRED (roam not ported).
+    }
+
+    // upstream: _zoomToNode(targetInfo) / _rootToNode(targetInfo) — DEFERRED (dispatchAction not ported).
+    // PORT-TODO: treemapZoomToNode / treemapRootToNode actions not ported.
+
+    /**
+     * @param x Global coord x.
+     * @param y Global coord y.
+     * @return info If not found, return undefined;
+     */
+    public func findTarget(_ x: Double, _ y: Double) -> FoundTargetInfo? {
+        // let targetInfo;
+        var targetInfo: FoundTargetInfo?
+        // const viewRoot = this.seriesModel.getViewRoot();
+        guard let viewRoot = self.seriesModel?.getViewRoot() else {
+            return nil
+        }
+
+        viewRoot.eachNode(["attr": "viewChildren", "order": "preorder"], { (node: TreeNode) -> Any? in
+            // const bgEl = this._storage.background[node.getRawIndex()];
+            let bgEl = self._storage.background[node.getRawIndex()]
+            // If invisible, there might be no element.
+            if let bgEl = bgEl {
+                // const point = bgEl.transformCoordToLocal(x, y);
+                let point = bgEl.transformCoordToLocal(x, y)
+                // const shape = bgEl.shape;
+                let shape = bgEl.shape as! RectShape
+
+                // For performance consideration, don't use 'getBoundingRect'.
+                if shape.x <= point[0]
+                    && point[0] <= shape.x + shape.width
+                    && shape.y <= point[1]
+                    && point[1] <= shape.y + shape.height
+                {
+                    targetInfo = FoundTargetInfo(node: node, offsetX: point[0], offsetY: point[1])
+                }
+                else {
+                    return false // Suppress visit subtree.
+                }
+            }
+            return nil
+        })
+
+        return targetInfo
+    }
+
+    /**
+     * @return Return undefined means do not travel further.
+     */
+    // upstream: function renderNode(seriesModel, thisStorage, oldStorage, reRoot, lastsForAnimation,
+    //   willInvisibleEls, thisNode, oldNode, parentGroup, depth): Group
+    // STATIC form: the diff/animation params (oldStorage, reRoot, lastsForAnimation, willInvisibleEls,
+    //   oldNode) are dropped; elements are freshly created into `self._storage` each render.
+    private func renderNode(
+        _ seriesModel: TreemapSeriesModel,
+        _ thisNode: TreeNode,
+        _ parentGroup: Group,
+        _ depth: Double
+    ) -> Group? {
+        // Whether under viewRoot. (Static: thisNode is always non-null.)
+
+        // const thisLayout = thisNode.getLayout();
+        let thisLayoutOpt = thisNode.getLayout() as? [String: Any]
+        // const data = seriesModel.getData();
+        let data = seriesModel.getData()
+        // const nodeModel = thisNode.getModel<TreemapSeriesNodeItemOption>();
+        //   PORT-TODO: `Model?` — nil for dataIndex < 0; upstream assumes non-null. Guard defensively.
+        let nodeModel = thisNode.getModel()
+
+        // Only for enabling highlight/downplay. Clear firstly.
+        // data.setItemGraphicEl(thisNode.dataIndex, null);
+        data.setItemGraphicEl(thisNode.dataIndex, nil)
+
+        // if (!thisLayout || !thisLayout.isInView) { return; }
+        guard let thisLayout = thisLayoutOpt,
+              (thisLayout["isInView"] as? Bool) ?? false,
+              let nodeModel = nodeModel else {
+            return nil
+        }
+
+        // const thisWidth = thisLayout.width; ... etc
+        let thisWidth = (thisLayout["width"] as? Double) ?? 0
+        let thisHeight = (thisLayout["height"] as? Double) ?? 0
+        let borderWidth = (thisLayout["borderWidth"] as? Double) ?? 0
+        let thisInvisible = (thisLayout["invisible"] as? Bool) ?? false
+
+        let thisRawIndex = thisNode.getRawIndex()
+
+        // const thisViewChildren = thisNode.viewChildren;
+        let thisViewChildren = thisNode.viewChildren
+        let upperHeight = (thisLayout["upperHeight"] as? Double) ?? 0
+        // const isParent = thisViewChildren && thisViewChildren.length;
+        let isParent = !thisViewChildren.isEmpty
+        let itemStyleNormalModel = nodeModel.getModel("itemStyle")
+        // itemStyleEmphasis/Blur/Select models -> DEFERRED (states not ported).
+        // const borderRadius = itemStyleNormalModel.get('borderRadius') || 0;
+        //   `borderRadius` may be a scalar OR a per-corner `number[]` (e.g. [8,8,0,0]); keep it raw
+        //   and let makeRectShape map it to `.number`/`.array`. (`|| 0` = no rounding when falsy.)
+        let borderRadius: Any? = itemStyleNormalModel.get("borderRadius")
+
+        // Node group
+        // const group = giveGraphic('nodeGroup', Group);
+        let group: Group
+        if thisInvisible {
+            // If invisible and no old element, do not create new element (for optimizing).
+            return nil
+        }
+        else {
+            group = Group()
+            self._storage.nodeGroup[thisRawIndex] = group
+        }
+
+        // parentGroup.add(group);
+        _ = parentGroup.add(group)
+        // x,y are not set when el is above view root.
+        // group.x = thisLayout.x || 0; group.y = thisLayout.y || 0;
+        group.x = (thisLayout["x"] as? Double) ?? 0
+        group.y = (thisLayout["y"] as? Double) ?? 0
+        group.markRedraw()
+        // inner(group).nodeWidth = thisWidth; inner(group).nodeHeight = thisHeight;  -> DEFERRED (animation).
+
+        // if (thisLayout.isAboveViewRoot) { return group; }
+        if (thisLayout["isAboveViewRoot"] as? Bool) ?? false {
+            return group
+        }
+
+        // Background
+        // const bg = giveGraphic('background', Rect, depth, Z2_BG);
+        let bg = Rect()
+        bg.z2 = calculateZ2(depth, Z2_BG)
+        self._storage.background[thisRawIndex] = bg
+        // bg && renderBackground(group, bg, isParent && thisLayout.upperLabelHeight);
+        let upperLabelHeight = (thisLayout["upperLabelHeight"] as? Double) ?? 0
+        renderBackground(group, bg, isParent && upperLabelHeight != 0)
+
+        // const emphasisModel = nodeModel.getModel('emphasis'); focus/blurScope/disabled -> DEFERRED.
+        // const focusOrIndices = ... -> DEFERRED.
+
+        // No children, render content.
+        if isParent {
+            // Because of the implementation about "traverse" in graphic hover style, we can not set
+            // hover listener on the "group" of non-leaf node. (high-down dispatch DEFERRED.)
+            // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, bg);
+            data.setItemGraphicEl(thisNode.dataIndex, bg)
+            // setAsHighDownDispatcher(bg, !isDisabled); enableHoverFocus(...) -> DEFERRED (states not ported).
+        }
+        else {
+            // const content = giveGraphic('content', Rect, depth, Z2_CONTENT);
+            let content = Rect()
+            content.z2 = calculateZ2(depth, Z2_CONTENT)
+            self._storage.content[thisRawIndex] = content
+            // content && renderContent(group, content);
+            renderContent(group, content)
+
+            // (bg as ECElement).disableMorphing = true;  -> DEFERRED (morph/animation not ported).
+            // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, group);
+            data.setItemGraphicEl(thisNode.dataIndex, group)
+
+            // const cursorStyle = nodeModel.getShallow('cursor'); cursorStyle && content.attr('cursor', cursorStyle);
+            if let cursorStyle = nodeModel.getShallow("cursor") {
+                _ = content.attr("cursor", cursorStyle)
+            }
+            // setAsHighDownDispatcher(group, !isDisabled); enableHoverFocus(...) -> DEFERRED.
+        }
+
+        return group
+
+        // ----------------------------
+        // | Procedures in renderNode |
+        // ----------------------------
+
+        func renderBackground(_ group: Group, _ bg: Rect, _ useUpperLabel: Bool) {
+            // const ecData = getECData(bg); ecData.dataIndex = thisNode.dataIndex; ecData.seriesIndex = ...;
+            let ecData = innerStore.getECData(bg)
+            ecData.dataIndex = Double(thisNode.dataIndex)
+            ecData.seriesIndex = seriesModel.seriesIndex
+
+            // bg.setShape({x: 0, y: 0, width: thisWidth, height: thisHeight, r: borderRadius});
+            _ = bg.setShape(makeRectShape(0, 0, thisWidth, thisHeight, borderRadius))
+
+            if thisInvisible {
+                // processInvisible(bg);  -> DEFERRED (delayed-invisible is an animation concern).
+                bg.invisible = true
+            }
+            else {
+                bg.invisible = false
+                // const style = thisNode.getVisual('style'); const visualBorderColor = style.stroke;
+                let style = (thisNode.getVisual("style") as? [String: Any]) ?? [:]
+                let visualBorderColor = style["stroke"]
+                var normalStyle = getItemStyleNormal(itemStyleNormalModel)
+                // normalStyle.fill = visualBorderColor;
+                normalStyle["fill"] = visualBorderColor
+                // emphasis/blur/select fills -> DEFERRED (states not ported).
+
+                if useUpperLabel {
+                    // const upperLabelWidth = thisWidth - 2 * borderWidth;
+                    let upperLabelWidth = thisWidth - 2 * borderWidth
+                    prepareText(
+                        bg, visualBorderColor as? String, style["opacity"] as? Double,
+                        makeRectLike(borderWidth, 0, upperLabelWidth, upperHeight)
+                    )
+                }
+                // For old bg. else { bg.removeTextContent(); }
+                else {
+                    bg.removeTextContent()
+                }
+
+                // bg.setStyle(normalStyle);
+                bg.useStyle(barStyleFromDict(normalStyle))
+                // ensureState('emphasis'|'blur'|'select') + setDefaultStateProxy -> DEFERRED (states not ported).
+            }
+
+            // group.add(bg);
+            _ = group.add(bg)
+        }
+
+        func renderContent(_ group: Group, _ content: Rect) {
+            let ecData = innerStore.getECData(content)
+            ecData.dataIndex = Double(thisNode.dataIndex)
+            ecData.seriesIndex = seriesModel.seriesIndex
+
+            // const contentWidth = Math.max(thisWidth - 2 * borderWidth, 0);
+            let contentWidth = Swift.max(thisWidth - 2 * borderWidth, 0)
+            let contentHeight = Swift.max(thisHeight - 2 * borderWidth, 0)
+
+            content.culling = true
+            // content.setShape({x: borderWidth, y: borderWidth, width, height, r: borderRadius});
+            _ = content.setShape(makeRectShape(borderWidth, borderWidth, contentWidth, contentHeight, borderRadius))
+
+            if thisInvisible {
+                content.invisible = true
+            }
+            else {
+                content.invisible = false
+                // const nodeStyle = thisNode.getVisual('style'); const visualColor = nodeStyle.fill;
+                let nodeStyle = (thisNode.getVisual("style") as? [String: Any]) ?? [:]
+                let visualColor = nodeStyle["fill"]
+                var normalStyle = getItemStyleNormal(itemStyleNormalModel)
+                // normalStyle.fill = visualColor; normalStyle.decal = nodeStyle.decal;
+                normalStyle["fill"] = visualColor
+                normalStyle["decal"] = nodeStyle["decal"]
+                // emphasis/blur/select styles -> DEFERRED (states not ported).
+
+                prepareText(content, visualColor as? String, nodeStyle["opacity"] as? Double, nil)
+
+                // content.setStyle(normalStyle);
+                content.useStyle(barStyleFromDict(normalStyle))
+                // ensureState(...) + setDefaultStateProxy -> DEFERRED (states not ported).
+            }
+
+            // group.add(content);
+            _ = group.add(content)
+        }
+
+        // upstream: processInvisible(element) — DEFERRED (delayed invisible is an animation concern).
+
+        // upstream: prepareText(rectEl, visualColor, visualOpacity, upperLabelRect)
+        // PORT-TODO: the full setLabelStyle / getLabelStatesModels path (rich text states, truncation,
+        //   inheritColor, per-state, textConfig layoutRect, beforeUpdate width/height sizing, drillDownIcon)
+        //   is DEFERRED (label/labelStyle + util/states not ported). MINIMAL faithful NORMAL-state label:
+        //   text = node name when the (upper)label model's `show` is set; centered in the rect.
+        func prepareText(
+            _ rectEl: Rect,
+            _ visualColor: String?,
+            _ visualOpacity: Double?,
+            _ upperLabelRect: RectLike?
+        ) {
+            // const normalLabelModel = nodeModel.getModel(upperLabelRect ? 'upperLabel' : 'label');
+            let normalLabelModel = nodeModel.getModel(upperLabelRect != nil ? PATH_UPPERLABEL_NORMAL : PATH_LABEL_NOAMAL)
+
+            // const defaultText = convertOptionIdName(nodeModel.get('name'), null);
+            let defaultText = model.convertOptionIdName(nodeModel.get("name"), nil)
+
+            // const isShow = normalLabelModel.getShallow('show');
+            let isShow = (normalLabelModel.getShallow("show") as? Bool) ?? false
+
+            // setLabelStyle(...) DEFERRED — build a minimal centered Text when shown, else clear.
+            if !isShow || defaultText == nil {
+                rectEl.removeTextContent()
+                return
+            }
+
+            let textEl = ZRText()
+            var textStyle = TextStyleProps()
+            textStyle.text = defaultText
+            // inheritColor: visualColor (upstream uses it as the label inherit color).
+            textStyle.fill = normalLabelModel.get("color") as? String ?? visualColor
+            textStyle.opacity = visualOpacity
+            textStyle.align = .center
+            textStyle.verticalAlign = .middle
+            // textStyle.truncateMinChar = 2; textStyle.lineOverflow = 'truncate'; -> DEFERRED (truncation).
+            textEl.useStyle(textStyle)
+
+            // Place at the rect center (upper label: within the upperLabelRect; else within the content rect).
+            let shape = rectEl.shape as! RectShape
+            if let up = upperLabelRect {
+                rectEl.setTextConfig(makeInsideTextConfig())
+                textEl.x = up.x + up.width / 2
+                textEl.y = up.y + up.height / 2
+            }
+            else {
+                rectEl.setTextConfig(makeInsideTextConfig())
+                textEl.x = shape.x + shape.width / 2
+                textEl.y = shape.y + shape.height / 2
+            }
+            rectEl.setTextContent(textEl)
+
+            // addDrillDownIcon(...) -> DEFERRED (drill icon prepends to the label text on leaf-root).
+        }
+    }
+}
+
+// upstream: function createStorage() { return { nodeGroup: [], background: [], content: [] }; }
+//   -> `RenderElementStorage()` (see the class above).
+
+// We cannot set all background with the same z, because the behaviour of drill down and roll up differ
+// background creation sequence from tree hierarchy sequence, which cause lower background elements to
+// overlap upper ones. So we calculate z based on depth. Moreover, we try to shrink down z interval to
+// [0, 1] to avoid that treemap with large z overlaps other components.
+private func calculateZ2(_ depth: Double, _ z2InLevel: Double) -> Double {
+    return depth * Z2_BASE + z2InLevel
+}
+
+// Helpers (not upstream symbols): build the `{x,y,width,height,r}` RectShape / RectLike bags.
+private func makeRectShape(_ x: Double, _ y: Double, _ width: Double, _ height: Double, _ r: Any?) -> RectShape {
+    var shape = RectShape()
+    shape.x = x
+    shape.y = y
+    shape.width = width
+    shape.height = height
+    shape.r = rectRadiusFromOption(r)
+    return shape
+}
+
+// upstream `r: borderRadius` where borderRadius = get('borderRadius') || 0 — a scalar OR a
+// per-corner `number[]` ([r1,r2,r3,r4] shorthands). A falsy scalar (nil / 0) → no rounding.
+private func rectRadiusFromOption(_ r: Any?) -> RectRadius? {
+    if let arr = r as? [Double] {
+        return arr.isEmpty ? nil : .array(arr)
+    }
+    if let arr = r as? [Any] {
+        let ds = arr.map { ($0 as? Double) ?? Double(($0 as? Int) ?? 0) }
+        return ds.isEmpty ? nil : .array(ds)
+    }
+    let d = (r as? Double) ?? Double((r as? Int) ?? 0)
+    return d != 0 ? .number(d) : nil
+}
+
+private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {
+    // `RectLike` is a protocol (AnyObject); `BoundingRect` is the concrete conformer.
+    return BoundingRect(x, y, width, height)
+}
+
+private func makeInsideTextConfig() -> ElementTextConfig {
+    var cfg = ElementTextConfig()
+    cfg.inside = true
+    return cfg
+}
+
+// export default TreemapView;  -> `open class TreemapView` above.

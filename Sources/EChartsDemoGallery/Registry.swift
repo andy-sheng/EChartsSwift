@@ -11,5 +11,8 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_funnel_basic,      // Funnel
         EChartsDemoRegistry.demo_candlestick_basic, // Candlestick
         EChartsDemoRegistry.demo_boxplot_basic,     // Boxplot
+        EChartsDemoRegistry.demo_sunburst_basic,    // Sunburst
+        EChartsDemoRegistry.demo_treemap_basic,     // Treemap
+        EChartsDemoRegistry.demo_tree_basic,        // Tree
     ]
 }
