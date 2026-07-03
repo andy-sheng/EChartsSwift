@@ -372,7 +372,7 @@ public final class TreeNode {
 // PORT-TODO: upstream `Tree<HostModel extends Model = Model, LevelOption = any>` is generic; the
 //   Swift port fixes `HostModel = Model` / `LevelOption = Any` since the generic parameters are
 //   only surfaced through `hostModel`/`levelModels` typing.
-public final class Tree {
+public final class Tree: LinkableStruct {
 
     public let type: String = "tree"
 

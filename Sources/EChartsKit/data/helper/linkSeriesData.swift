@@ -62,12 +62,16 @@ private let inner: (SeriesData) -> LinkInner = model.makeInner { LinkInner() }
 //     datas?: Datas;
 //     datasAttr?: { [key in SeriesDataType]?: StructReferDataAttr };
 // };
+// upstream `struct` is `Graph | Tree` — both expose `update()`. Swift models the union as a shared
+// protocol both concrete structs conform to (see Tree/Graph `: LinkableStruct` conformances).
+public protocol LinkableStruct: AnyObject {
+    func update()
+}
+
 public struct LinkSeriesDataOpt {
     public var mainData: SeriesData?
     // For example, instance of Graph or Tree.
-    // PORT-TODO: upstream `struct` is `Graph | Tree` (both expose `update()`); only `Tree` is
-    //   ported so far, so this is typed as `Tree?`. When `Graph` lands, widen to a shared protocol.
-    public var `struct`: Tree?
+    public var `struct`: LinkableStruct?
     // Will designate: `mainData[structAttr] = struct;`
     public var structAttr: String
     public var datas: Datas?
@@ -77,7 +81,7 @@ public struct LinkSeriesDataOpt {
 
     public init(
         mainData: SeriesData? = nil,
-        struct structVal: Tree? = nil,
+        struct structVal: LinkableStruct? = nil,
         structAttr: String,
         datas: Datas? = nil,
         datasAttr: [SeriesDataType: String]? = nil
@@ -239,16 +243,27 @@ public enum linkSeriesData {
 
         if let structVal = opt.struct {
             // data[opt.structAttr] = struct;
-            // PORT-TODO: `structAttr` is a dynamic property name; only 'tree' is wired here.
-            if opt.structAttr == "tree" {
-                data.tree = structVal
+            // PORT NOTE: `structAttr` is a dynamic property name in upstream; Swift dispatches on the
+            //   two known struct attrs ('tree' / 'graph') and casts the shared LinkableStruct.
+            if opt.structAttr == "tree", let treeVal = structVal as? Tree {
+                data.tree = treeVal
+            }
+            else if opt.structAttr == "graph", let graphVal = structVal as? Graph {
+                data.graph = graphVal
             }
             // struct[opt.datasAttr[dataType]] = data;
             let attr = opt.datasAttr![dataType]
             if attr == "data" {
-                structVal.data = data
+                if let treeVal = structVal as? Tree {
+                    treeVal.data = data
+                }
+                else if let graphVal = structVal as? Graph {
+                    graphVal.data = data
+                }
             }
-            // PORT-TODO: 'edgeData' (Graph) attr unhandled until Graph is ported.
+            else if attr == "edgeData", let graphVal = structVal as? Graph {
+                graphVal.edgeData = data
+            }
         }
 
         // Supplement method.

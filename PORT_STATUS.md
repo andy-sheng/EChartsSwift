@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 11 (GRAPH / NETWORK CHART — `data/Graph.ts` port + graph vertical with CIRCULAR + SIMPLE layouts; force layout DEFERRED): the graph (network) chart registers end-to-end in `EChartsSlim`. The faithful `data/Graph.ts` port (`Graph`/`GraphNode`/`GraphEdge`: addNode/addEdge/getEdge(Direction)/eachNode/eachEdge/breadthFirstTraverse/updateNodeAndEdgeState/degree bookkeeping through the real `SeriesData` node+edge data pipeline) lands, alongside the whole `chart/graph/` vertical — `GraphSeriesModel` + `"graph"` view factory (`GraphView`) + two self-gating layout stage handlers (`graphCircularLayoutStageHandler` for `layout:'circular'`, `graphSimpleLayoutStageHandler` for `layout:'none'`) + the `categoryFilter` processor + `categoryVisual`/`edgeVisual` stages — plus `chart/helper/createGraphFromNodeEdge.ts` and `multipleGraphEdgeHelper.ts`. Graph is coordless (box/view usage): `GraphView` reads each node's `[x,y]` and each edge's point list back from whichever layout stage self-selected on the `layout` option. The graph link wiring lands too: `SeriesData.graph` retyped `AnyObject?`→`Graph?` (matches upstream `graph?: Graph`), and `linkSeriesData.linkSingle` grew the `graph`/`edgeData` arms (`structAttr=='graph'` sets `data.graph`; `attr=='data'`→`graph.data`, `attr=='edgeData'`→`graph.edgeData`). `swift test` **233 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 232 executed / 0 failures / 58 skipped; +1 is the new graph render test). Clean-from-scratch `rm -rf .build && swift build` = 0 warnings, Build complete (`buildGreen = true`). Demo `graph-basic` + render test `testGraphRendersNodesAndEdges` (in `HierarchicalChartsRenderTests`) added. Deferred PORT-TODOs per CONVENTIONS §5: force layout (`forceLayout`/`forceHelper`), the SymbolDraw/LineDraw draw-helper infra, and roam/drag/emphasis/labels/effect (effect-line). Faithfulness reviews: `data/Graph.swift` **MINOR-ISSUES** (2 findings), `chart/graph/circularLayoutHelper.swift` **FAITHFUL** (0), `chart/helper/createGraphFromNodeEdge.swift` **FAITHFUL** (0), `chart/graph/GraphView.swift` **FAITHFUL** (0). No CRITICAL findings; build is green. See §42.**
 **Phase 10 (TREE-FAMILY CHARTS — sunburst wired end-to-end + treemap + tree verticals): all three hierarchical chart types now register end-to-end in `EChartsSlim`. Sunburst (staged in Phase 9) is now fully wired — `SunburstSeriesModel` + `sunburst` view factory + `sunburstLayoutStageHandler`/`sunburstVisualStageHandler` overall stages run in `render`. NEW verticals `chart/treemap/` (`TreemapSeriesModel`+`TreemapView`+`treemapLayout`+`treemapVisual`+`Breadcrumb`) and `chart/tree/` (`TreeSeriesModel`+`TreeView`+`treeLayout`+`treeVisualStageHandler`+`layoutHelper`/`traversalHelper`) also register end-to-end; all three are coordless/box-usage (hierarchical, like pie) — each View reads its per-node geometry (sunburst sector angle/radius, treemap rect, tree x/y) back from its layout stage. `swift build` GREEN, `swift test` **232 executed / 0 failures / 58 skipped** (baseline 229 + 3 new hierarchical render tests). Demos added: `sunburst-basic`, `treemap-basic`, `tree-basic`. Deferred PORT-TODOs per CONVENTIONS §5: actions (sunburst rollup/highlight, treemap drill/roam/RoamController, tree roam), enter/update/remove animation (static from-scratch rebuild), and emphasis/states (util/states not ported). Four faithfulness reviews: `treemapLayout` FAITHFUL (0), `treeLayout` FAITHFUL (0), `TreeSeries` FAITHFUL (0), `TreemapView` MINOR-ISSUES (1). No CRITICAL findings; build is green. See §41.**
 **Phase 9 (TREE DATA STRUCTURE + SUNBURST render layer — STAGED, not yet slim-wired): the faithful `data/Tree.ts` port (`Tree`/`TreeNode`: buildHierarchy/updateDepthAndHeight/preorder+postorder `eachNode` with subtree-suppress/getNodeById/contains/getAncestors/isAncestorOf/getValue through the real `SeriesData` data pipeline) plus its `data/helper/linkSeriesData.ts` port land, alongside the whole `chart/sunburst/` render layer (`SunburstSeriesModel`+`SunburstView`+`SunburstPiece`+`sunburstLayout`+`sunburstVisual`+`sunburstInstall`) and `chart/helper/sectorHelper`. `swift build` GREEN (0 warnings), `swift test` 229 executed / 0 failures / 58 skipped (+6 new `TreeUnitTests`, no regression). Closeout fixed the render-layer so it compiles clean: retyped the pre-Tree `SeriesData.tree` placeholder `AnyObject?`→`Tree?` (matches upstream `tree?: Tree`), fixed the IUO-bound-to-`let` Optional-inference gotcha at every `.root`/`hostTree.data` binding, and matched the typed `eachNode` callback form. Two faithfulness reviews (Tree.swift, sunburstLayout.swift) both `MINOR-ISSUES`, geometry/algorithms byte-faithful; BOTH findings fixed: `TreeNode.getValue` now uses JS-falsy `dimension || 'value'` semantics (not nil-only `??`), and the custom-comparator `sort` branch is now stable (original-index tie-break) to match ES2019 `Array.prototype.sort`. DEFERRED (next step): slim registration + end-to-end render (sunburst is coordless like pie — needs `SunburstSeriesModel` + view factory + layout/visual stage registration in `EChartsSlim` and a gallery demo); `sunburstAction` (rollup/highlight), emphasis/states, and enter/update animation are PORT-TODO. The two `install.swift` files (boxplot + sunburst) were renamed `boxplotInstall.swift`/`sunburstInstall.swift` — SwiftPM flattens object-file basenames, so two `install.swift` in one target collide (`multiple producers`); this is the scalable convention for future per-chart install files. See §40.**
 **Phase 8 (NEW CHART TYPES — funnel + candlestick + boxplot): all three chart types now register end-to-end in `EChartsSlim` (`FunnelSeriesModel`+`funnelLayout`/`funnelLayoutStageHandler`+`FunnelView`; `CandlestickSeriesModel`+`candlestickLayout`+`candlestickVisual`+`CandlestickView`+`'k'→'candlestick'` preprocessor; `BoxplotSeriesModel`+`boxplotLayout`+`boxplotVisual`+`BoxplotView`), each wired into the layout + visual stages with its axis-handler registration; nothing blocked. New custom shapes `NormalBoxPath`/`BoxPath` (candlestick/boxplot box+whisker geometry) landed. Independent post-workflow verification rendered all three vs echarts.js (funnel trapezoids, candlestick bull/bear K-line, boxplot box+median+whiskers — all faithful), added `funnel-basic`/`candlestick-basic`/`boxplot-basic` gallery demos + `NewChartsRenderTests`, and fixed a real ZRenderKit crash: `Element.getOutsideStroke` force-unwrapped `self.__zr!` (nil in the headless render path — funnel outside-labels hit it) → now guarded like its sibling `getOutsideFill`. `swift build` GREEN (0 warnings), `swift test` 223 executed / 0 failures / 58 skipped. Deferred PORT-TODOs: large/progressive draw path (LargeBoxPath/createLarge no-op), emphasis/states + enter/update animation + labels, the `boxplotTransform` dataset transform, and the diff-based enter/update/remove (replaced by static from-scratch rebuild, same as Line/Pie/Funnel views). Three faithfulness reviews: funnel `FAITHFUL_WITH_MINOR_DIVERGENCES` (percent-string itemStyle width/height dropped; unstable sort tie-break; custom-comparator sort no-op), candlestick `FAITHFUL` (resolveNormalBoxClipping stubbed NOT_CLIPPED + large-mode no-op are the notable deferrals), boxplot `FAITHFUL` (0 findings). See §39.**
@@ -2164,6 +2165,68 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 42. Phase 11 — Graph / network chart (`data/Graph.ts` port + graph vertical, circular + simple layouts; force layout DEFERRED)
+
+**Goal (met):** land the `data/Graph.ts` data structure and a graph (network) chart vertical that
+registers end-to-end in `EChartsSlim` with the two static layouts — CIRCULAR and SIMPLE (`none`).
+Force layout is DEFERRED. **Clean-from-scratch `rm -rf .build && swift build` = 0 warnings, Build
+complete; `swift test` 233 executed / 0 failures (0 unexpected) / 58 skipped** (baseline was
+232 executed / 0 failures / 58 skipped; +1 is the new graph render test). `buildGreen = true`.
+Graph is coordless (box/view usage): `GraphView` reads each node's `[x,y]` and each edge's point
+list back from whichever layout stage self-selected on the `layout` option.
+
+### What registered end-to-end in `EChartsSlim`
+- **GraphSeriesModel:** `ComponentModel.registerClass(GraphSeriesModel)` + a `"graph"` view factory
+  (`GraphView`), mirroring the minimal `chart/graph/install.ts`.
+- **Layout (two self-gating OVERALL stage handlers):** `graphCircularLayoutStageHandler.overallReset`
+  (runs for `layout:'circular'`) and `graphSimpleLayoutStageHandler.overallReset` (runs for
+  `layout:'none'`/coord-sys). Each self-gates to a no-op unless its `layout` value matches, so both
+  are invoked in `render` and at most one does work.
+- **Processor:** `graphCategoryFilterStageHandler.overallReset` (`categoryFilter`) — filters graph
+  nodes by legend selection, self-gating to a no-op when no legend component is present. Runs BEFORE
+  the layout stage (layout reads the filtered data).
+- **Visual (two stage handlers):** `graphCategoryVisualStageHandler` colors nodes, then
+  `graphEdgeVisualStageHandler` colors edges FROM the node fill. Both run via the visual stages in
+  `render` after the layout handlers.
+
+### The graph link wiring
+- **`data/SeriesData.swift`:** the pre-Graph `SeriesData.graph` placeholder retyped `AnyObject?`→`Graph?`
+  (matches upstream `graph?: Graph`), now that the sibling `data/Graph.swift` port exists.
+- **`data/helper/linkSeriesData.swift` — `linkSingle` graph + edgeData arms:** the shared-struct linker
+  grew the `graph` cases alongside the existing `tree` cases — `opt.structAttr == "graph"` casts the
+  shared `LinkableStruct` and sets `data.graph`; the back-reference arm sets `graph.data` for the main
+  `data` attr and `graph.edgeData` for the `edgeData` attr. Graph (like Tree) is SHARED, not cloned,
+  across a `SeriesData` and its shallow clones.
+
+### Files added
+- `data/Graph.swift` (`Graph`/`GraphNode`/`GraphEdge` — addNode/addEdge/getEdge(Direction)/eachNode/
+  eachEdge/breadthFirstTraverse/updateNodeAndEdgeState/degree bookkeeping, through the real `SeriesData`
+  node+edge data pipeline).
+- `chart/graph/`: `GraphSeries.swift` (`GraphSeriesModel`), `GraphView.swift`, `circularLayout.swift` +
+  `circularLayoutHelper.swift`, `simpleLayout.swift` + `simpleLayoutHelper.swift`, `categoryFilter.swift`,
+  `categoryVisual.swift`, `edgeVisual.swift`, `adjustEdge.swift`, `graphHelper.swift`, `createView.swift`.
+- `chart/helper/`: `createGraphFromNodeEdge.swift`, `multipleGraphEdgeHelper.swift`.
+- Demo: `Sources/EChartsDemoGallery/Demos/graph-basic.swift` (registered in `Registry.swift`).
+- Test: `testGraphRendersNodesAndEdges` added to
+  `Tests/EChartsKitTests/HierarchicalChartsRenderTests.swift`.
+- Touched: `core/EChartsSlim.swift` (registration + stage wiring), `data/SeriesData.swift`
+  (`graph` retype), `data/helper/linkSeriesData.swift` (graph/edgeData arms).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static circular/simple render only)
+- **Force layout:** `forceLayout` + `forceHelper` (velocity/gravity/repulsion iteration) not ported;
+  `layout:'force'` is unsupported this phase.
+- **Draw-helper infra:** `SymbolDraw` / `LineDraw` (the incremental symbol + line draw helpers) not
+  ported — `GraphView` builds node symbols + edge lines from scratch instead.
+- **Interaction / decoration:** roam (RoamController pan/zoom), node drag, emphasis/states
+  (`util/states`), labels, and edge effect (effect-line / `effectSymbol`) are all deferred.
+
+### Faithfulness reviews
+- `data/Graph.swift` — **MINOR-ISSUES** (2 findings).
+- `chart/graph/circularLayoutHelper.swift` — **FAITHFUL** (0 findings).
+- `chart/helper/createGraphFromNodeEdge.swift` — **FAITHFUL** (0 findings).
+- `chart/graph/GraphView.swift` — **FAITHFUL** (0 findings).
+No CRITICAL findings; `buildGreen = true`.
 
 ## 41. Phase 10 — Tree-family charts (sunburst wired end-to-end + treemap + tree verticals)
 

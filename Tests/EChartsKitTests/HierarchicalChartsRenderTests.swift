@@ -48,4 +48,32 @@ final class HierarchicalChartsRenderTests: XCTestCase {
         _ = ec.getRoot().traverse { el in if el is ZRenderKit.Path { paths += 1 }; return false }
         XCTAssertGreaterThan(paths, 0, "tree nodes → symbol + edge Paths")
     }
+
+    // Graph (network) chart: circular layout → a Symbol (Path) per node + a Line per edge. Asserts BOTH
+    // the node symbols and the edge Lines reach the scene graph (the layout stage must run before the
+    // GraphView render, and the edge Lines are straight — curveness 0 — under the default circular layout).
+    func testGraphRendersNodesAndEdges() {
+        let ec = EChartsSlim(width: 460, height: 360)
+        ec.setOption([
+            "series": [["type": "graph", "layout": "circular",
+                        "left": "10%", "right": "10%", "top": "10%", "bottom": "10%",
+                        "symbolSize": 12.0,
+                        "data": [["name": "n0"], ["name": "n1"], ["name": "n2"],
+                                 ["name": "n3"], ["name": "n4"]],
+                        "edges": [["source": "n0", "target": "n1"],
+                                  ["source": "n1", "target": "n2"],
+                                  ["source": "n2", "target": "n3"],
+                                  ["source": "n3", "target": "n4"],
+                                  ["source": "n4", "target": "n0"]]] as [String: Any]]
+        ])
+        var lines = 0
+        var nodeSymbols = 0
+        _ = ec.getRoot().traverse { el in
+            if el is ZRenderKit.Line { lines += 1 }
+            else if el.name == "node", el is ZRenderKit.Path { nodeSymbols += 1 }
+            return false
+        }
+        XCTAssertGreaterThan(nodeSymbols, 0, "graph nodes → Symbol paths")
+        XCTAssertGreaterThan(lines, 0, "graph edges → Lines")
+    }
 }

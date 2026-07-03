@@ -175,7 +175,7 @@ public final class SeriesData: DataStackSeriesData {
      * @readonly
      * Host graph if List is used to store graph nodes / edges.
      */
-    public var graph: AnyObject?   // PORT-TODO: Graph not ported (Phase 5+)
+    public var graph: Graph?       // upstream: `graph?: Graph` — wired by the sibling data/Graph.swift port
 
     /**
      * @readonly

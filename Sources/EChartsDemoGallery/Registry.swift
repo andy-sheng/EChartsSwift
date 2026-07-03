@@ -14,5 +14,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_sunburst_basic,    // Sunburst
         EChartsDemoRegistry.demo_treemap_basic,     // Treemap
         EChartsDemoRegistry.demo_tree_basic,        // Tree
+        EChartsDemoRegistry.demo_graph_basic,       // Graph
     ]
 }

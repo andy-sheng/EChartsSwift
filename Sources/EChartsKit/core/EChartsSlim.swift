@@ -274,6 +274,16 @@ public final class EChartsSlim: EChartsType {
         //   layout stage. Its dedicated visual stage sets per-node symbol colors (independent of layout).
         ComponentModel.registerClass(TreeSeriesModel.self)
 
+        // -- chart/graph/install.ts (minimal) -- registerSeriesModel(GraphSeries) +
+        //   registerChartView(GraphView) + registerLayout(circular/simpleLayout stage handlers) +
+        //   registerProcessor(categoryFilter) + registerVisual(categoryVisual/edgeVisual). Graph is a
+        //   coordless network chart (box/view usage); GraphView reads each node's [x,y] and each edge's
+        //   [[p1],[p2](,[cp])] from the layout stage (circular or simple, self-gated on the `layout`
+        //   option). The category visual colors nodes; the edge visual MUST run AFTER it (edge
+        //   source/target stroke reads node fill). categoryFilter (legend-gated processor) runs in the
+        //   data-processor stage. All run in `render`/`update` below.
+        ComponentModel.registerClass(GraphSeriesModel.self)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -329,7 +339,8 @@ public final class EChartsSlim: EChartsType {
         "boxplot": { BoxplotView() },
         "sunburst": { SunburstView() },
         "treemap": { TreemapView() },
-        "tree": { TreeView() }
+        "tree": { TreeView() },
+        "graph": { GraphView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -390,6 +401,12 @@ public final class EChartsSlim: EChartsType {
         for processor in EChartsSlim._registers.capturedProcessors {
             processor(ecModel)
         }
+
+        // PROCESSOR — graph categoryFilter (upstream `registerProcessor(PROCESSOR.FILTER, categoryFilter)`).
+        //   Filters graph nodes by legend selection; self-gates to a no-op when no legend component is
+        //   present. Must run BEFORE the graph layout stage (layout reads the filtered data), so it lives
+        //   in the data-processor stage like upstream. OVERALL handler — invoke its overallReset directly.
+        graphCategoryFilterStageHandler.overallReset?(ecModel, api, nil)
 
         // updateStreamModes(...) — PORT-TODO skip (progressive/stream rendering out of scope).
 
@@ -545,6 +562,25 @@ public final class EChartsSlim: EChartsType {
         //   visual is an OVERALL stage handler.
         treeLayout(ecModel, api)
         treeVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT + VISUAL — graph. Upstream registers two layout stage handlers
+        //   (graphCircularLayoutStageHandler for `layout:'circular'`, graphSimpleLayoutStageHandler for
+        //   `layout:'none'`/coord-sys), and two visual stage handlers (graphCategoryVisualStageHandler
+        //   colors nodes, graphEdgeVisualStageHandler colors edges FROM the node fill). Each layout
+        //   handler self-gates on the series `layout` option, so both run every render (only the matching
+        //   one does work). GraphView reads each node's [x,y] + each edge's point list from the layout.
+        //   The edge visual MUST run AFTER the category visual (edge source/target stroke reads node
+        //   fill). All four are OVERALL stage handlers (like sunburst/tree visual).
+        // COORD SYS — upstream registers the graph's roam `View` coordinate system via a coord-sys creator
+        //   (`registerCoordinateSystem('view', View)` + `createViewCoordSys`) that runs before layout. That
+        //   full `View` is deferred (roam §5); `createViewCoordSys` here assigns a stand-in view coord sys
+        //   (GraphViewCoordSys) onto each graph series so the layout stages can read its bounding rect.
+        //   MUST run before the layout handlers below (circularLayout force-derefs the coord sys).
+        createViewCoordSys(ecModel, api)
+        graphCircularLayoutStageHandler.overallReset?(ecModel, api, nil)
+        graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
+        graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
+        graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
 
         renderSeries(ecModel, api)
     }
