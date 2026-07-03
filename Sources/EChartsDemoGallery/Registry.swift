@@ -15,5 +15,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_treemap_basic,     // Treemap
         EChartsDemoRegistry.demo_tree_basic,        // Tree
         EChartsDemoRegistry.demo_graph_basic,       // Graph
+        EChartsDemoRegistry.demo_radar_basic,       // Radar
     ]
 }

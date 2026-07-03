@@ -68,6 +68,22 @@ struct GridCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// Coordinate-system creator for radar (wraps `Radar.create` / `Radar.dimensions`). Radar is the FIRST
+// non-cartesian coordinate system wired here; the shape mirrors GridCoordinateSystemCreator exactly.
+// Upstream registers the `Radar` CLASS itself (`registerCoordinateSystem('radar', Radar)`); the ported
+// registry wants a `CoordinateSystemCreator` value, so this thin struct forwards to the static
+// `Radar.create`. Radar's static `dimensions` is `[]` (radar dimensions are data-derived per-indicator).
+// ============================================================================
+struct RadarCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        // Radar.create returns [Radar]; Radar conforms to CoordinateSystemMaster.
+        return Radar.create(ecModel, api).map { $0 as CoordinateSystemMaster }
+    }
+    var dimensions: [DimensionName]? { Radar.dimensions }        // static dimensions = [] (data-derived).
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { nil } // Radar has no dimensionsInfo hook.
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -284,6 +300,22 @@ public final class EChartsSlim: EChartsType {
         //   data-processor stage. All run in `render`/`update` below.
         ComponentModel.registerClass(GraphSeriesModel.self)
 
+        // -- component/radar/install.ts + chart/radar/install.ts (radar coordinate system) --
+        //   registerCoordinateSystem('radar', Radar) + registerComponentModel(RadarModel) +
+        //   registerComponentView(RadarComponentView) + registerSeriesModel(RadarSeriesModel) +
+        //   registerChartView(RadarView) + registerLayout(radarLayoutStageHandler) +
+        //   registerPreprocessor(radarBackwardCompat) + registerVisual(legendIcon 'roundRect').
+        //   Radar is the FIRST non-cartesian coordinate system wired: the coord-sys register mirrors the
+        //   cartesian2d register above (a CoordinateSystemCreator forwarding to Radar.create). The
+        //   RadarModel is the coord-sys HOST component (like GridModel); its per-indicator AxisBaseModels
+        //   feed the IndicatorAxes the coord builds. `_coordSysMgr.create`/`.update` (update() stages 3/5)
+        //   build + update each Radar; the radarLayout stage (run in render()) stores each datum's closed
+        //   point ring, which RadarView reads back. The backwardCompat preprocessor runs in setOption.
+        //   registerVisual(legendIcon 'roundRect') → PORT-TODO: deferred (legend-select provider not wired).
+        CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator()) // registerCoordinateSystem('radar', Radar)
+        ComponentModel.registerClass(RadarModel.self)                             // registerComponentModel(RadarModel)
+        ComponentModel.registerClass(RadarSeriesModel.self)                       // registerSeriesModel(RadarSeries)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -327,7 +359,10 @@ public final class EChartsSlim: EChartsType {
         //   registerSubTypeDefaulter above, but the VIEW is still looked up by mainType 'legend').
         "title": { TitleView() },
         "graphic": { GraphicComponentView() },
-        "legend": { LegendView() }
+        "legend": { LegendView() },
+        // Radar coord-sys component view (draws the axis lines/ticks/names + split rings/areas backdrop);
+        //   registered under mainType 'radar' (upstream install.ts `registerComponentView(RadarView)`).
+        "radar": { RadarComponentView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -340,7 +375,10 @@ public final class EChartsSlim: EChartsType {
         "sunburst": { SunburstView() },
         "treemap": { TreemapView() },
         "tree": { TreeView() },
-        "graph": { GraphView() }
+        "graph": { GraphView() },
+        // Radar chart view (per-item polyline outline + polygon area + vertex symbols); registered under
+        //   series subType 'radar' (upstream install.ts `registerChartView(RadarView)`).
+        "radar": { RadarView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -359,6 +397,11 @@ public final class EChartsSlim: EChartsType {
         // Preprocessor from component/graphic/install.ts: normalize the `graphic` option into its
         //   canonical `[{ elements: [...] }]` shape so GraphicComponentModel can consume it.
         graphicOptionPreprocessor(&opt)
+        // Preprocessor from chart/radar/backwardCompat.ts (registerPreprocessor(radarBackwardCompat)):
+        //   migrate ec2's `polar` radar option (a `polar` with an `indicator`) into `radar`, and map a
+        //   series' `polarIndex` → `radarIndex`. Mutates option.polar/option.radar/option.series in place
+        //   (inout write-back, value-type semantics, per the candlestick preprocessor precedent).
+        radarBackwardCompat(&opt)
 
         let ecModel = GlobalModel()
         let om = OptionManager(_api)
@@ -581,6 +624,15 @@ public final class EChartsSlim: EChartsType {
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
         graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
+        //   (non-cartesian) coordinate system, already built + updated by `_coordSysMgr.create`/`.update`
+        //   (update() stages 3/5). This OVERALL stage maps each datum's per-indicator values through
+        //   `coordSys.dataToPoint` into a CLOSED point ring (axes+1 points, last == copy of first) and
+        //   stores it with `data.setItemLayout`, which `RadarView.render` reads back. Bare 1-arg handler
+        //   (like boxplotLayout); the radarLayoutStageHandler wrapper exists for the upstream registrar,
+        //   but the slim driver invokes `radarLayout(ecModel)` directly (mirrors pieLayout).
+        radarLayout(ecModel)
 
         renderSeries(ecModel, api)
     }

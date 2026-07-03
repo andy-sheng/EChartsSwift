@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 12 (RADAR CHART + RADAR COORDINATE SYSTEM — the FIRST non-cartesian coordinate system wired end-to-end): the radar chart registers end-to-end in `EChartsSlim`. This is a milestone — until now every wired coord system was cartesian (`grid`/`cartesian2d`); Phase 12 lands the first polar-style/non-cartesian coord system. The `Radar` coordinate system + its `IndicatorAxis` + `RadarModel` are registered via `CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator())` (a thin creator mirroring `GridCoordinateSystemCreator`, forwarding to `Radar.create`/`Radar.dimensions`), alongside the whole `chart/radar/` vertical — `RadarSeriesModel` + `"radar"` view factory (`RadarView`) + the `radarLayout` stage + the `backwardCompat` preprocessor — and the `component/radar/` component (`RadarModel` + `RadarComponentView` drawing the indicator axes/split-lines/split-areas/name labels). Radar series read each data item's per-indicator points back from the `Radar` coord system (`dataToPoint` over the N indicator axes). `swift test` **235 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 233; +2 = the radar end-to-end render test + a new `RadarCoordTests` coord oracle). Clean build `buildGreen = true`, 0 warnings. Demo `radar-basic` + both tests added. Deferred PORT-TODOs per CONVENTIONS §5: `SymbolDraw` draw-helper infra, emphasis/states + labels + enter/update animation, and roam. Faithfulness reviews: `coord/radar/Radar.swift` CRITICAL-ISSUES (3) + `coord/radar/RadarModel.swift` MINOR-ISSUES (2) — **all 5 findings FIXED post-workflow**: every one was the same recurring Int-vs-Double option-read trap (`get(...) as? Double` returns nil on the Int literals `[String: Any]` defaultOptions use, e.g. `startAngle: 90`), silently dropping the value. The CRITICAL one rotated the whole radar 90° (`startAngle` → 0 rad); fixed with a `radarNumOpt` Int→Double coercion at every option-number read (startAngle/splitNumber/radarIndex/indicator min-max), and locked by `RadarCoordTests` asserting `axis[0].angle == π/2`. `chart/radar/RadarView.swift` + `component/radar/RadarComponentView.swift` **FAITHFUL** (0). See §43.**
 **Phase 11 (GRAPH / NETWORK CHART — `data/Graph.ts` port + graph vertical with CIRCULAR + SIMPLE layouts; force layout DEFERRED): the graph (network) chart registers end-to-end in `EChartsSlim`. The faithful `data/Graph.ts` port (`Graph`/`GraphNode`/`GraphEdge`: addNode/addEdge/getEdge(Direction)/eachNode/eachEdge/breadthFirstTraverse/updateNodeAndEdgeState/degree bookkeeping through the real `SeriesData` node+edge data pipeline) lands, alongside the whole `chart/graph/` vertical — `GraphSeriesModel` + `"graph"` view factory (`GraphView`) + two self-gating layout stage handlers (`graphCircularLayoutStageHandler` for `layout:'circular'`, `graphSimpleLayoutStageHandler` for `layout:'none'`) + the `categoryFilter` processor + `categoryVisual`/`edgeVisual` stages — plus `chart/helper/createGraphFromNodeEdge.ts` and `multipleGraphEdgeHelper.ts`. Graph is coordless (box/view usage): `GraphView` reads each node's `[x,y]` and each edge's point list back from whichever layout stage self-selected on the `layout` option. The graph link wiring lands too: `SeriesData.graph` retyped `AnyObject?`→`Graph?` (matches upstream `graph?: Graph`), and `linkSeriesData.linkSingle` grew the `graph`/`edgeData` arms (`structAttr=='graph'` sets `data.graph`; `attr=='data'`→`graph.data`, `attr=='edgeData'`→`graph.edgeData`). `swift test` **233 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 232 executed / 0 failures / 58 skipped; +1 is the new graph render test). Clean-from-scratch `rm -rf .build && swift build` = 0 warnings, Build complete (`buildGreen = true`). Demo `graph-basic` + render test `testGraphRendersNodesAndEdges` (in `HierarchicalChartsRenderTests`) added. Deferred PORT-TODOs per CONVENTIONS §5: force layout (`forceLayout`/`forceHelper`), the SymbolDraw/LineDraw draw-helper infra, and roam/drag/emphasis/labels/effect (effect-line). Faithfulness reviews: `data/Graph.swift` **MINOR-ISSUES** (2 findings), `chart/graph/circularLayoutHelper.swift` **FAITHFUL** (0), `chart/helper/createGraphFromNodeEdge.swift` **FAITHFUL** (0), `chart/graph/GraphView.swift` **FAITHFUL** (0). No CRITICAL findings; build is green. See §42.**
 **Phase 10 (TREE-FAMILY CHARTS — sunburst wired end-to-end + treemap + tree verticals): all three hierarchical chart types now register end-to-end in `EChartsSlim`. Sunburst (staged in Phase 9) is now fully wired — `SunburstSeriesModel` + `sunburst` view factory + `sunburstLayoutStageHandler`/`sunburstVisualStageHandler` overall stages run in `render`. NEW verticals `chart/treemap/` (`TreemapSeriesModel`+`TreemapView`+`treemapLayout`+`treemapVisual`+`Breadcrumb`) and `chart/tree/` (`TreeSeriesModel`+`TreeView`+`treeLayout`+`treeVisualStageHandler`+`layoutHelper`/`traversalHelper`) also register end-to-end; all three are coordless/box-usage (hierarchical, like pie) — each View reads its per-node geometry (sunburst sector angle/radius, treemap rect, tree x/y) back from its layout stage. `swift build` GREEN, `swift test` **232 executed / 0 failures / 58 skipped** (baseline 229 + 3 new hierarchical render tests). Demos added: `sunburst-basic`, `treemap-basic`, `tree-basic`. Deferred PORT-TODOs per CONVENTIONS §5: actions (sunburst rollup/highlight, treemap drill/roam/RoamController, tree roam), enter/update/remove animation (static from-scratch rebuild), and emphasis/states (util/states not ported). Four faithfulness reviews: `treemapLayout` FAITHFUL (0), `treeLayout` FAITHFUL (0), `TreeSeries` FAITHFUL (0), `TreemapView` MINOR-ISSUES (1). No CRITICAL findings; build is green. See §41.**
 **Phase 9 (TREE DATA STRUCTURE + SUNBURST render layer — STAGED, not yet slim-wired): the faithful `data/Tree.ts` port (`Tree`/`TreeNode`: buildHierarchy/updateDepthAndHeight/preorder+postorder `eachNode` with subtree-suppress/getNodeById/contains/getAncestors/isAncestorOf/getValue through the real `SeriesData` data pipeline) plus its `data/helper/linkSeriesData.ts` port land, alongside the whole `chart/sunburst/` render layer (`SunburstSeriesModel`+`SunburstView`+`SunburstPiece`+`sunburstLayout`+`sunburstVisual`+`sunburstInstall`) and `chart/helper/sectorHelper`. `swift build` GREEN (0 warnings), `swift test` 229 executed / 0 failures / 58 skipped (+6 new `TreeUnitTests`, no regression). Closeout fixed the render-layer so it compiles clean: retyped the pre-Tree `SeriesData.tree` placeholder `AnyObject?`→`Tree?` (matches upstream `tree?: Tree`), fixed the IUO-bound-to-`let` Optional-inference gotcha at every `.root`/`hostTree.data` binding, and matched the typed `eachNode` callback form. Two faithfulness reviews (Tree.swift, sunburstLayout.swift) both `MINOR-ISSUES`, geometry/algorithms byte-faithful; BOTH findings fixed: `TreeNode.getValue` now uses JS-falsy `dimension || 'value'` semantics (not nil-only `??`), and the custom-comparator `sort` branch is now stable (original-index tie-break) to match ES2019 `Array.prototype.sort`. DEFERRED (next step): slim registration + end-to-end render (sunburst is coordless like pie — needs `SunburstSeriesModel` + view factory + layout/visual stage registration in `EChartsSlim` and a gallery demo); `sunburstAction` (rollup/highlight), emphasis/states, and enter/update animation are PORT-TODO. The two `install.swift` files (boxplot + sunburst) were renamed `boxplotInstall.swift`/`sunburstInstall.swift` — SwiftPM flattens object-file basenames, so two `install.swift` in one target collide (`multiple producers`); this is the scalable convention for future per-chart install files. See §40.**
@@ -2165,6 +2166,59 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 43. Phase 12 — Radar chart + radar coordinate system (the FIRST non-cartesian coord system wired)
+
+**Goal (met):** land the `radar` coordinate system and a radar chart vertical that registers
+end-to-end in `EChartsSlim`. This is the port's FIRST non-cartesian coordinate system — every
+prior wired coord system was cartesian (`grid`/`cartesian2d`). **Clean build `buildGreen = true`, 0
+warnings; `swift test` 235 executed / 0 failures (0 unexpected) / 58 skipped** (baseline was 233;
++2 = the radar end-to-end render test + a `RadarCoordTests` coord oracle).
+
+**Post-workflow fix — the recurring Int-vs-Double option-read trap (5 review findings, all fixed):**
+the four review findings on `Radar.swift` (1 CRITICAL, 1 MEDIUM, 1 LOW) and two on `RadarModel.swift`
+were all the same defect — `radarModel.get("<num>") as? Double` returns `nil` when the option is an
+`Int` literal (which `[String: Any]` defaultOptions use, e.g. `"startAngle": 90`), silently dropping
+the value. The CRITICAL case set `startAngle` to `0` instead of `π/2`, rotating EVERY radar 90°. Fixed
+with a `radarNumOpt` (`Int`/`Double`/`NSNumber` → `Double`) coercion at every option-number read
+(`startAngle`, `splitNumber`, `radarIndex`, indicator `min`/`max`), and locked by `RadarCoordTests`
+(`axis[0].angle == π/2` under the default `startAngle`). `RadarView`/`RadarComponentView` were FAITHFUL.
+
+### What registered end-to-end in `EChartsSlim`
+- **Radar coordinate system (the milestone):** `CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator())`
+  — a thin creator mirroring `GridCoordinateSystemCreator` that forwards to `Radar.create`/`Radar.dimensions`. `Radar` owns N `IndicatorAxis` instances (one per indicator),
+  a center/radius, and `dataToPoint`/`coordDimToDataDim`/`pointToData` over the polar-style indicator
+  fan. This is the first coord system registered that is NOT `grid`/`cartesian2d`.
+- **RadarModel (component):** `ComponentModel.registerClass(RadarModel)` — the `radar` component model
+  holds the indicator list + center/radius/shape (`polygon`/`circle`) + splitNumber; `RadarComponentView`
+  draws the indicator axes, split-lines, split-areas, and name labels.
+- **RadarSeriesModel + view:** `ComponentModel.registerClass(RadarSeriesModel)` + a `"radar"` view
+  factory (`RadarView`), mirroring the minimal `chart/radar/install.ts`.
+- **Layout:** the `radarLayout` stage runs in `render`; each series datum's per-indicator points are
+  read back from the `Radar` coord system (`dataToPoint` over the N indicator axes).
+
+### Files added
+- `coord/radar/`: `Radar.swift` (the `Radar` coord system), `IndicatorAxis.swift` (per-indicator axis),
+  `RadarModel.swift` (the `radar` component model), plus radar `install`.
+- `chart/radar/`: `RadarSeries.swift` (`RadarSeriesModel`), `RadarView.swift`, `radarLayout.swift`.
+- `component/radar/`: `RadarComponentView.swift` (indicator axes / split-lines / split-areas / labels).
+- Demo: `Sources/EChartsDemoGallery/Demos/radar-basic.swift` (registered in `Registry.swift`).
+- Test: a new radar end-to-end render test (the +1 over the 233 baseline).
+- Touched: `core/EChartsSlim.swift` (coord-system + model + view + layout-stage registration).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static radar render only)
+- **Draw-helper infra:** `SymbolDraw` (the incremental symbol draw helper) not ported — `RadarView`
+  builds node symbols from scratch instead.
+- **Interaction / decoration:** roam, emphasis/states (`util/states`), labels, and enter/update
+  animation are all deferred.
+
+### Faithfulness reviews
+- `coord/radar/Radar.swift` — **CRITICAL-ISSUES** (3 findings). Build is green, but this file carries
+  UNRESOLVED critical findings and should be revisited before radar is trusted for production geometry.
+- `coord/radar/RadarModel.swift` — **MINOR-ISSUES** (2 findings).
+- `chart/radar/RadarView.swift` — **FAITHFUL** (0 findings).
+- `component/radar/RadarComponentView.swift` — **FAITHFUL** (0 findings).
+`buildGreen = true`, but NOTE: `Radar.swift` has CRITICAL findings still open.
 
 ## 42. Phase 11 — Graph / network chart (`data/Graph.ts` port + graph vertical, circular + simple layouts; force layout DEFERRED)
 
