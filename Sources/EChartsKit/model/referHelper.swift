@@ -68,16 +68,12 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 //   The former PORT-TODO placeholder protocol declared here has been removed per its own note;
 //   `findAxisModel` on the real class returns the concrete `PolarAxisModel?` (a subclass of
 //   AxisBaseModel), so the `axisMap.set`/`isCategory` uses below stay valid.
-// '../coord/parallel/ParallelModel' — ParallelModel
-public protocol ParallelModel: AnyObject {                                 // PORT-TODO
-    var dimensions: [String] { get }
-    var parallelAxisIndex: [Double] { get }
-}
-// '../coord/parallel/AxisModel' — ParallelAxisModel
-// PORT-TODO: coord/parallel/AxisModel.ts not yet ported. Upstream `ParallelAxisModel` extends
-//   AxisBaseModel; now that AxisBaseModel is a concrete `open class`, this placeholder becomes a
-//   trivial subclass (a protocol can no longer inherit it). Replace with the real ported class.
-public final class ParallelAxisModel: AxisBaseModel {}                     // PORT-TODO
+// '../coord/parallel/ParallelModel' — ParallelModel is now the real, fully-ported reference type in
+//   coord/parallel/ParallelModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
+//   The former PORT-TODO placeholder protocol declared here has been removed per its own note.
+// '../coord/parallel/AxisModel' — ParallelAxisModel is now the real, fully-ported reference type in
+//   coord/parallel/ParallelAxisModel.swift (an `AxisBaseModel` subclass). The former PORT-TODO
+//   placeholder subclass declared here has been removed per its own note.
 // '../coord/matrix/MatrixModel' — MatrixModel
 public protocol MatrixModel: AnyObject {                                   // PORT-TODO
     func getDimensionModel(_ dim: String) -> AxisBaseModel

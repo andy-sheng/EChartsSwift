@@ -117,6 +117,22 @@ struct SingleCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// parallel coord system is the FIFTH coordinate system wired here (after cartesian2d / radar / polar /
+// single); the shape mirrors SingleCoordinateSystemCreator exactly. Upstream registers the caseless
+// `parallelCoordSysCreator` (`registerCoordinateSystem('parallel', parallelCoordSysCreator)`); the ported
+// registry wants a `CoordinateSystemCreator` value, so this thin struct forwards to it.
+// parallelCoordSysCreator has NO static `dimensions` (parallel has no fixed dims), so `dimensions` is nil.
+// ============================================================================
+struct ParallelCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        // parallelCoordSysCreator.create already returns [CoordinateSystemMaster].
+        return parallelCoordSysCreator.create(ecModel, api)
+    }
+    var dimensions: [DimensionName]? { nil }                       // parallel has no static dimensions.
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { nil } // Parallel has no dimensionsInfo hook.
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -412,6 +428,28 @@ public final class EChartsSlim: EChartsType {
         CoordinateSystemManager.register("single", SingleCoordinateSystemCreator()) // registerCoordinateSystem('single', singleCreator)
         ComponentModel.registerClass(SingleAxisModel.self)                          // registerComponentModel(SingleAxisModel)
 
+        // -- coord/parallel/install.ts + component/parallel/install.ts + chart/parallel/install.ts --
+        //   registerCoordinateSystem('parallel', parallelCoordSysCreator) + registerComponentModel(ParallelModel)
+        //   + registerComponentModel(ParallelAxisModel) + axisModelCreator(registers, 'parallel', ParallelAxisModel,
+        //   defaultAxisOption) + registerPreprocessor(parallelPreprocessor) + registerComponentView(ParallelView)
+        //   + registerComponentView(ParallelAxisView) + registerSeriesModel(ParallelSeriesModel) +
+        //   registerChartView(ParallelView[chart]) + registerVisual(PRIORITY.VISUAL.BRUSH, parallelVisual).
+        //   Parallel is the FIFTH coordinate system wired: the coord-sys register mirrors the single register
+        //   above. ParallelModel is the coord-sys HOST component (dependencies ["parallelAxis"], so parallelAxis
+        //   models load first); ParallelAxisModel is registered DIRECTLY under mainType 'parallelAxis' (same
+        //   direct-registration shortcut as SingleAxisModel/the polar axis models — no runtime axisModelCreator),
+        //   so `getComponent('parallelAxis', …) as! ParallelAxisModel` in the coord + `axis.dim` /
+        //   getAreaSelectStyle() in ParallelAxisView resolve end-to-end. `_coordSysMgr.create`/`.update`
+        //   (update() stages 3/5) build + update each Parallel; ParallelAxisView draws each axis backdrop (N
+        //   registered 'parallelAxis' component views), ParallelView[component] is interaction-only, and the
+        //   chart-side ParallelView draws one Polyline per data item. The parallelPreprocessor (creates
+        //   parallelAxis components from parallel.parallelAxisDefault) runs in setOption. The brush/axis-drag/
+        //   active-interval selection ACTIONS are DEFERRED (// PORT-TODO in ParallelComponentView/ParallelAxisModel).
+        CoordinateSystemManager.register("parallel", ParallelCoordinateSystemCreator()) // registerCoordinateSystem('parallel', parallelCoordSysCreator)
+        ComponentModel.registerClass(ParallelModel.self)                            // registerComponentModel(ParallelModel)
+        ComponentModel.registerClass(ParallelAxisModel.self)                        // registerComponentModel(ParallelAxisModel) + axisModelCreator(..,'parallel',..)
+        ComponentModel.registerClass(ParallelSeriesModel.self)                      // registerSeriesModel(ParallelSeries)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -468,7 +506,15 @@ public final class EChartsSlim: EChartsType {
         // Single coord-sys component view (draws the single axis line + ticks + labels + splitLine grid
         //   across the coord rect). Registered under mainType 'singleAxis' (upstream component/axis/install.ts
         //   `registerComponentView(SingleAxisView)`).
-        "singleAxis": { SingleAxisView() }
+        "singleAxis": { SingleAxisView() },
+        // Parallel coord-sys component views. `parallelAxis` -> ParallelAxisView draws each axis backdrop
+        //   (one registered view per parallelAxis component, via AxisBuilder → the N-axis backdrop is the
+        //   composition of them). `parallel` -> ParallelComponentView (upstream component ParallelView) is
+        //   interaction-only (axis-expand) and draws nothing. Registered under mainType 'parallelAxis' /
+        //   'parallel' (upstream component/parallel/install.ts registerComponentView(ParallelAxisView) /
+        //   registerComponentView(ParallelView)).
+        "parallelAxis": { ParallelAxisView() },
+        "parallel": { ParallelComponentView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -496,7 +542,11 @@ public final class EChartsSlim: EChartsType {
         // ThemeRiver streamgraph view (one Polygon band per layer, on the single coord); geometry from the
         //   themeRiverLayout stage. Registered under series subType 'themeRiver'
         //   (upstream chart/themeRiver/install.ts `registerChartView(ThemeRiverView)`).
-        "themeRiver": { ThemeRiverView() }
+        "themeRiver": { ThemeRiverView() },
+        // Parallel chart view (one Polyline per data item across the N axes); geometry from
+        //   coord.dataToPoint per dimension. Registered under series subType 'parallel'
+        //   (upstream chart/parallel/install.ts `registerChartView(ParallelView)`).
+        "parallel": { ParallelView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -520,6 +570,12 @@ public final class EChartsSlim: EChartsType {
         //   series' `polarIndex` → `radarIndex`. Mutates option.polar/option.radar/option.series in place
         //   (inout write-back, value-type semantics, per the candlestick preprocessor precedent).
         radarBackwardCompat(&opt)
+        // Preprocessor from coord/parallel/install.ts (registerPreprocessor(parallelPreprocessor)):
+        //   create the `parallelAxis` components from `parallel.parallelAxisDefault` when absent, and merge
+        //   the per-axis option from the parallel component. Mutates option.parallel/option.parallelAxis in
+        //   place (inout write-back; ECUnitOption == [String: Any], so `&opt` binds directly — the bespoke
+        //   `inout ECUnitOption` signature is the same value type, no adapter needed).
+        parallelPreprocessor(&opt)
 
         let ecModel = GlobalModel()
         let om = OptionManager(_api)
@@ -772,6 +828,14 @@ public final class EChartsSlim: EChartsType {
         //   to Single). `themeRiverLayoutStageHandler` wraps this for the upstream registrar, but the slim
         //   driver invokes `themeRiverLayout(ecModel, api)` directly (mirrors sankeyLayout / radarLayout).
         themeRiverLayout(ecModel, api)
+
+        // VISUAL — parallel per-line opacity (upstream `registerVisual(PRIORITY.VISUAL.BRUSH, parallelVisual)`).
+        //   Parallel HAS a coordinate system, already built + updated by `_coordSysMgr.create`/`.update`
+        //   (update() stages 3/5). This SERIES_STAGE_TASK sets each line's item-visual `style.opacity` from
+        //   the (deferred) active-state → in the static-render phase every row is 'normal', giving each
+        //   polyline the `lineStyle.opacity`. ParallelView.render reads that item-visual style back. Run
+        //   AFTER the generic performVisualStage (it only extends `opacity` onto the existing style bag).
+        runSeriesStageHandler(parallelVisual, ecModel, api)
 
         renderSeries(ecModel, api)
     }

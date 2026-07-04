@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 17 (PARALLEL COORDINATE SYSTEM — the 5th coord system — + the PARALLEL chart; brush/axis-drag interaction DEFERRED): the `parallel` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, and `single`, this is the port's **5th coordinate system** (a set of N parallel axes; each data item is a polyline threading all axes). Registered: the `parallel` coord-system creator (`CoordinateSystemManager.register("parallel", ...)` → `parallelCreator`) + the `ParallelModel` + `ParallelAxisModel` components + the `ParallelComponentView` component view (draws the parallel axes), alongside the whole `chart/parallel/` vertical — `ParallelSeriesModel` + the `"parallel"` view factory (`ParallelView`) + the `parallelVisual` stage + the `parallelPreprocessor`. `ParallelView` draws one **polyline `Path` per data item** threading all the parallel axes; `ParallelComponentView` draws the N axes laid out by the coord system. Files added: `coord/parallel/{Parallel,ParallelAxis,ParallelAxisModel,parallelCreator,ParallelModel,parallelPreprocessor}.swift`, `component/parallel/ParallelComponentView.swift`, `chart/parallel/{ParallelSeries,ParallelView,parallelVisual,parallelInstall}.swift`; demo `parallel-basic` + a new Parallel render test. Clean build `buildGreen = true`; `swift test` — **Executed 240 tests, with 58 tests skipped and 0 failures (0 unexpected)** — up from a 239-test baseline (+1 new `ParallelRenderTests`), zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: brush / areaSelect / axis-drag / roam interaction deferred (static parallel render only), as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/parallel/Parallel.swift` (FAITHFUL/0), `chart/parallel/ParallelView.swift` (FAITHFUL/0), `component/parallel/ParallelComponentView.swift` (FAITHFUL/0), `coord/parallel/ParallelModel.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **16 chart types** and **5 coordinate systems** ported end-to-end. See §48.**
 **Phase 16 (SINGLE COORDINATE SYSTEM — the 4th coord system — + the THEMERIVER streamgraph chart): the `single` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, and `polar`, this is the port's **4th coordinate system** (a single one-dimensional axis, used by ThemeRiver). Registered: the `single` coord-system creator (`CoordinateSystemManager.register("single", ...)` → `singleCreator`) + the `SingleAxisModel` component + the `SingleAxisView` axis component view, alongside the whole `chart/themeRiver/` vertical — `ThemeRiverSeriesModel` + the `"themeRiver"` view factory (`ThemeRiverView`) + the `themeRiverLayout` overall stage. ThemeRiver is a streamgraph — `ThemeRiverView` draws the stacked, smoothed river bands (one smooth `Polygon`/`Path` band per series layer) laid out along the single axis by `themeRiverLayout`. Files added: `coord/single/{Single,SingleAxis,SingleAxisModel,singleCreator,singleAxisHelper,singlePrepareCustom}.swift`, `component/axis/SingleAxisView.swift`, `chart/themeRiver/{ThemeRiverSeries,ThemeRiverView,themeRiverLayout,themeRiverInstall}.swift`; demo `themeriver-basic` + a new ThemeRiver render test. Clean build `buildGreen = true`; `swift test` — **Executed 239 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline 238 + 1 new `ThemeRiverRenderTests`; no regressions). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/single/Single.swift` (FAITHFUL/0), `chart/themeRiver/themeRiverLayout.swift` (FAITHFUL/0), `chart/themeRiver/ThemeRiverView.swift` (FAITHFUL/0), `component/axis/SingleAxisView.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **15 chart types** and **4 coordinate systems** ported end-to-end. See §47.**
 **Phase 15 (SANKEY FLOW CHART — COORDLESS: the 14th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the sankey (flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge and the tree-family). Registered: `SankeySeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"sankey"` view factory (`SankeyView`) + the `sankeyLayout`/`sankeyVisual` overall stages. `SankeyView` draws the node **`Rect`s** + the bezier-ribbon edge **`Path`s** (the curved flow ribbons between nodes). Files added: `chart/sankey/SankeySeries.swift` (`SankeySeriesModel`), `chart/sankey/SankeyView.swift` (node Rects + bezier-ribbon edge Paths), `chart/sankey/sankeyLayout.swift`, `chart/sankey/sankeyVisual.swift`, `chart/sankey/sankeyInstall.swift`; demo `sankey-basic` + a sankey render test. Clean build `buildGreen = true`; `swift test` **Executed 238 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 237/0/58; +1 is the new `SankeyRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/sankey/sankeyLayout.swift` (FAITHFUL/0), `chart/sankey/SankeyView.swift` (FAITHFUL/0), `chart/sankey/SankeySeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **14 chart types** ported end-to-end. See §46.**
 **Phase 14 (GAUGE CHART — COORDLESS: the 13th chart type wired end-to-end in `EChartsSlim`): the gauge chart registers coordless (box/view usage, like pie/funnel/the tree-family — no coordinate system). Registered: `GaugeSeriesModel` + the `"gauge"` view factory (`GaugeView`). `GaugeView` draws the entire gauge directly (no separate axis component) — the axis arc (colored segments), split-lines, ticks, tick labels, the pointer/needle, the anchor, the progress arc, and the title + detail text blocks are all built inside the view. A custom needle shape `PointerPath` (in `PointerPath.swift`) supplies the pointer geometry. Files added: `chart/gauge/GaugeSeries.swift` (`GaugeSeriesModel`), `chart/gauge/GaugeView.swift` (the whole render), `chart/gauge/PointerPath.swift` (the custom pointer/needle path); demo `gauge-basic` + a gauge render test. Clean build `buildGreen = true`; `swift test` **Executed 237 tests, with 58 tests skipped and 0 failures (0 unexpected) in 0.285s** (baseline 236 + 1 new gauge render test). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/gauge/GaugeView.swift` (reviewed twice, FAITHFUL/0 both), `chart/gauge/PointerPath.swift` (FAITHFUL/0), `chart/gauge/GaugeSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **13 chart types** ported end-to-end. See §45.**
@@ -2168,6 +2169,63 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 48. Phase 17 — Parallel coordinate system (the 5th coord system) + Parallel chart (brush/axis-drag DEFERRED)
+
+**Goal (met):** land the `parallel` coordinate system + the `parallel` chart end-to-end in
+`EChartsSlim`. `parallel` is the port's **5th coordinate system** — after `cartesian2d` (grid),
+`radar`, `polar`, and `single`. It is a set of **N parallel axes** (upstream `coord/parallel/`); each
+data item becomes a polyline that threads every axis. **Clean build `buildGreen = true`; `swift test` —
+Executed 240 tests, with 58 tests skipped and 0 failures (0 unexpected)** — up from a 239-test baseline
+(+1 = the new `ParallelRenderTests`); zero regressions.
+
+### What registered end-to-end in `EChartsSlim`
+- **The `parallel` coord-system creator** — `CoordinateSystemManager.register("parallel", ...)` → the
+  `parallelCreator`, injecting the parallel coord system (N parallel axes). This is the **5th coordinate
+  system** wired end-to-end (after `cartesian2d`, `radar`, `polar`, `single`).
+- **`ParallelModel`** — the parallel coord-system component model.
+- **`ParallelAxisModel`** — the parallel-axis component model (one per axis).
+- **`ParallelComponentView`** — the parallel component view (draws the N parallel axes).
+- **`ParallelSeriesModel`** — the `parallel` series component model.
+- **The `"parallel"` view factory** → `ParallelView`.
+- **The `parallelVisual` stage** — the parallel visual (style) stage.
+- **The `parallelPreprocessor`** — the parallel option preprocessor.
+
+### Parallel draws one polyline per data item across N axes
+`ParallelComponentView` draws the N parallel axes laid out by the coord system; `ParallelView` renders
+one **polyline `Path` per data item** threading all the axes — each datum's value on each axis fixes the
+polyline's crossing point on that axis, the classic parallel-coordinates plot.
+
+### Files added
+- `coord/parallel/Parallel.swift` — the parallel coordinate system.
+- `coord/parallel/ParallelAxis.swift` — the parallel axis.
+- `coord/parallel/ParallelAxisModel.swift` — the parallel-axis component model.
+- `coord/parallel/parallelCreator.swift` — the coord-system creator/registration.
+- `coord/parallel/ParallelModel.swift` — the parallel coord-system component model.
+- `coord/parallel/parallelPreprocessor.swift` — the parallel option preprocessor.
+- `component/parallel/ParallelComponentView.swift` — the parallel component view (N axes).
+- `chart/parallel/ParallelSeries.swift` — `ParallelSeriesModel`.
+- `chart/parallel/ParallelView.swift` — the per-item polyline render.
+- `chart/parallel/parallelVisual.swift` — the parallel visual (style) stage.
+- `chart/parallel/parallelInstall.swift` — the registration wiring.
+- Demo: `Sources/EChartsDemoGallery/Demos/parallel-basic.swift`.
+- Test: a new Parallel end-to-end render test — `ParallelRenderTests` (the +1 over the 239 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static parallel render only)
+- Brush / areaSelect / axis-drag / roam interaction deferred, as in prior chart phases.
+- Interaction / decoration (emphasis/states, enter/update animation) deferred.
+
+### Faithfulness reviews
+All four review verdicts were **FAITHFUL** with **0 findings**; no CRITICAL issues, nothing to fix:
+- `coord/parallel/Parallel.swift` — **FAITHFUL** (0 findings).
+- `chart/parallel/ParallelView.swift` — **FAITHFUL** (0 findings).
+- `component/parallel/ParallelComponentView.swift` — **FAITHFUL** (0 findings).
+- `coord/parallel/ParallelModel.swift` — **FAITHFUL** (0 findings).
+
+`buildGreen = true`. This lands the **5th coordinate system** and the **16th chart type** ported
+end-to-end.
 
 ---
 
