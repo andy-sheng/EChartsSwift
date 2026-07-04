@@ -92,7 +92,9 @@ import ZRenderKit
 //   = `Any` option bag). Existing uses (`[ComponentModel]`, `ComponentModel & RoamHostModel`, params)
 //   continue to resolve against the class.
 // '../coord/View' — View
-public protocol View: AnyObject {}                                         // PORT-TODO
+//   The real `View` (`open class View: Transformable`) is now ported in coord/View.swift (Phase 23);
+//   the forward-reference placeholder protocol was removed to avoid a redeclaration (same pattern as
+//   `ComponentModel`/`ChartView` above). Existing opaque uses continue to resolve against the class.
 // '../view/Chart' — ChartView
 //   The real `ChartView` (`open class ChartView`) is now ported in view/Chart.swift (this phase);
 //   the forward-reference placeholder protocol was removed to avoid a redeclaration (same pattern

@@ -259,6 +259,25 @@ public final class EChartsSlim: EChartsType {
     }
 
     // ------------------------------------------------------------------------
+    // Public map registration facade. Upstream echarts.ts re-exports
+    //   `registerMap = mapDataStorage.registerMap` (the geo source manager). A GeoJSON must be
+    //   registered under a name BEFORE any `geo: { map: <name> }` option is set. Forwards to
+    //   `geoSourceManager.registerMap` (the reachable entry point).
+    // ------------------------------------------------------------------------
+    public static func registerMap(
+        _ mapName: String,
+        _ rawDef: Any?,
+        _ rawSpecialAreas: GeoSpecialAreas? = nil
+    ) {
+        geoSourceManager.registerMap(mapName, rawDef, rawSpecialAreas)
+    }
+
+    // upstream: echarts.getMap = mapDataStorage.getMapForUser
+    public static func getMap(_ mapName: String) -> GeoMapForUser? {
+        return geoSourceManager.getMapForUser(mapName)
+    }
+
+    // ------------------------------------------------------------------------
     // Registration (idempotent). Replaces the deferred `install(registers)` boilerplate.
     // ------------------------------------------------------------------------
     private static var _installed = false
@@ -513,6 +532,18 @@ public final class EChartsSlim: EChartsType {
         CoordinateSystemManager.register("calendar", CalendarCoordinateSystemCreator()) // registerCoordinateSystem('calendar', Calendar)
         ComponentModel.registerClass(CalendarModel.self)                            // registerComponentModel(CalendarModel)
 
+        // -- component/geo/install.ts (geo coordinate system, the SEVENTH) --
+        //   registerCoordinateSystem('geo', geoCreator) + registerComponentModel(GeoModel) +
+        //   registerComponentView(GeoView) (factory above) + registerMap/getMap (geoSourceManager).
+        //   The geo coord projects [lng, lat] to a pixel via the `View` transform (+ optional projection);
+        //   GeoView draws the static GeoJSON region outlines + labels backdrop.
+        //   `geoCreator` is the ported singleton `GeoCreator()` (conforms to CoordinateSystemCreator directly).
+        //   PORT-TODO (DEFERRED with events/roam): geoToggleSelect/geoSelect/geoUnSelect/geoRoam actions;
+        //   the geoPrepareCustom custom-series coord hook is unregistered (no prepareCustom registry yet —
+        //   same as calendarPrepareCustom / polar prepareCustom, custom series is Phase 6b).
+        CoordinateSystemManager.register("geo", geoCreator)                         // registerCoordinateSystem('geo', geoCreator)
+        ComponentModel.registerClass(GeoModel.self)                                // registerComponentModel(GeoModel)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -593,6 +624,9 @@ public final class EChartsSlim: EChartsType {
         "parallel": { ParallelComponentView() },
         // calendar coord backdrop (grid + split lines + day/week/month/year labels).
         "calendar": { CalendarView() },
+        // geo coord-sys component view (draws the static GeoJSON region outlines + labels backdrop).
+        //   Registered under mainType 'geo' (upstream component/geo/install.ts `registerComponentView(GeoView)`).
+        "geo": { GeoView() },
         // visualMap control widget. Keyed by FULL type (subtype dispatch) — the doPrepare lookup tries
         //   `model.type` before `model.mainType`, so continuous vs piecewise resolve to distinct views.
         //   ContinuousView draws the static gradient bar; PiecewiseVisualMapView draws the per-piece swatch

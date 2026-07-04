@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 23 (GEO COORDINATE SYSTEM + GeoJSON — the 7th coordinate system wired end-to-end in `EChartsSlim`; SVG-map + roam pan/zoom DEFERRED): the `geo` coordinate system registers end-to-end — after `cartesian2d` (grid), `radar`, `polar`, `single`, `parallel`, and `calendar`, this is the port's **7th coordinate system** (a GeoJSON-backed map projection). Registered in `EChartsSlim`: the `geo` coord-system creator (`CoordinateSystemManager.register("geo", …)` → `geoCreator`, which reads registered map JSON and builds `Geo` instances) + the `registerMap` API (the map-registry entry point that parses + stores GeoJSON by name) + `GeoModel` (via `ComponentModel.registerClass`) + the `"geo"` component view factory (`GeoView`, drawing each region's boundary `Polygon`/`Path`s + region name labels). The GeoJSON pipeline: `parseGeoJSON` decodes a GeoJSON FeatureCollection into `Region`s (each region = a named set of polygon/hole rings + a precomputed bounding rect + label center); `Geo` holds the region list and a projection (`dataToPoint`/`pointToData` map lon/lat ↔ pixel via the geo-rect → view-rect linear transform, y-flipped). **This UNLOCKS the map chart (next phase)** — the map series will render its shapes on this geo coord system. Files added: `coord/geo/{Geo,Region,geoCreator,GeoModel,geoJSONLoader,parseGeoJSON}.swift` (map-registry + GeoJSON parse + Region + Geo projection), `component/geo/GeoView.swift`; demo `geo-basic` + `GeoRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 249 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 247 + 2 new `GeoRenderTests`; no regressions. Deferred PORT-TODOs per CONVENTIONS §5: the `GeoSVGResource` (SVG-map source), roam pan/zoom (the `RoamController` interaction), the pluggable `projection` object (only the default linear lon/lat projection lands), and geo `specialAreas` — all DEFERRED. Faithfulness reviews: `coord/geo/Region.swift` **MINOR-ISSUES** (2 findings), `coord/geo/Geo.swift` **FAITHFUL** (0), `coord/geo/geoCreator.swift` **MINOR-ISSUES** (3 findings), `component/geo/GeoView.swift` **FAITHFUL** (0). No CRITICAL findings; `buildGreen = true`. **3 of the 5 MINOR findings FIXED post-workflow** — the two crash-on-malformed-input cases (parseGeoJson odd-length encoded string → bounded the pair loop; geoCreator short `boundingCoords` inner array → NaN-guarded so the existing isFinite check skips it, both matching upstream's graceful no-throw) and the `layoutSize` falsy guard (geoCreator `centerOption && sizeOption` now uses JS-truthy `geoOptTruthy`, so a boxed `0`/`""` layoutSize no longer collapses the geo to size 0). The 2 remaining MINOR are latent edge cases left documented (Region.transformTo double-transform on a cloned/aliased region; geoCreator merging two same-named source regions) — neither is reachable on the common GeoJSON path. This makes **7 coordinate systems** ported end-to-end. See §54.**
 **Phase 22 (HEATMAP chart — the 20th chart type wired end-to-end in `EChartsSlim`, on cartesian, colored by the Phase-21 `visualMap` encoding; geo/large-blur `HeatmapLayer` + calendar paths DEFERRED): the `heatmap` chart registers end-to-end and is **the payoff of Phase 21** — the visualMap value→visual encoding unlocks it. Registered: `HeatmapSeriesModel` (via `ComponentModel.registerClass`) + the `"heatmap"` view factory (`HeatmapView`). On a cartesian grid `HeatmapView` draws one colored `Rect` **cell** per datum, sized to the axis band and **colored from `getItemVisual("color")`** — the per-datum color stamped by the Phase-21 `visualEncoding` stage (the visualMap encoder). Files added: `chart/heatmap/HeatmapSeries.swift` (`HeatmapSeriesModel`), `chart/heatmap/HeatmapView.swift` (the cartesian colored-Rect cell render), `chart/heatmap/heatmapInstall.swift`; demo `heatmap-basic` + `HeatmapRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 247 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 246 + 1 new `HeatmapRenderTests` test; no regressions. Deferred PORT-TODOs per CONVENTIONS §5: the geo-coordinate blurred `HeatmapLayer` (the gradient/large-blur pixel path), the large/progressive draw path, and the calendar-coordinate branch (heatmap-on-calendar) — all DEFERRED; this phase lands the cartesian colored-cell heatmap only. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/heatmap/HeatmapView.swift` (FAITHFUL/0), `chart/heatmap/HeatmapSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **20 chart types** ported end-to-end. See §53.**
 **Phase 21 (visualMap ENCODING CORE — the value→visual encoder + models + the `visualEncoding` VISUAL stage; the interactive control WIDGET DEFERRED): the value→visual encoding half of `visualMap` registers end-to-end in `EChartsSlim` — enough to map data values to visual channels (color/opacity/symbolSize/…), but NOT the on-screen draggable control (that interactive widget is DEFERRED). Registered: `ContinuousVisualMapModel` + `PiecewiseVisualMapModel` (via `ComponentModel.registerClass`), the `visualMap` sub-type typeDefaulter (`continuous`/`piecewise`), the `visualMapPreprocessor`, the `visualEncoding` **VISUAL stage** (the `seriesVisualMap`/`visualMapVisual` value→visual pipeline that stamps each datum's visual from the model's `VisualMapping`), and a **minimal `VisualMapView`** (registration placeholder — the interactive control render is DEFERRED). The core encoder is `visual/VisualMapping.swift` — the faithful value→visual mapper (piecewise/category/linear mapping methods). **This UNLOCKS the heatmap chart (next phase), whose color comes from a visualMap.** Files added: `visual/VisualMapping.swift` (the encoder) + `visual/{visualDefault,visualSolution}.swift`; the whole `component/visualMap/` vertical — `VisualMapModel.swift` (base) + `ContinuousModel.swift` + `PiecewiseModel.swift` + `typeDefaulter.swift` + `visualMapPreprocessor.swift` + `visualEncoding.swift` + `visualMapHelper.swift` + `installCommon.swift` + the minimal `VisualMapView.swift`/`ContinuousView.swift`/`PiecewiseView.swift` + `visualMapAction.swift`; demo `visualmap-basic` + `VisualMapEncodingTests`. Clean build `buildGreen = true`; `swift test` **246 executed / 0 failures / 58 skipped** (baseline 244 preserved + 2 new `VisualMapEncodingTests`); zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: the interactive control WIDGET — the drag/hover handle, the range indicator, and the hover-highlight/select actions (`visualMapAction` select/highlight, the continuous drag-range interaction, the piecewise item toggle) — all DEFERRED (the models + value→visual encoding + minimal view only). Faithfulness reviews — ALL **FAITHFUL**: `visual/VisualMapping.swift` FAITHFUL (2 findings), `component/visualMap/ContinuousModel.swift` FAITHFUL (0), `component/visualMap/PiecewiseModel.swift` FAITHFUL (0), `component/visualMap/visualEncoding.swift` FAITHFUL (1). No CRITICAL findings; `buildGreen = true`. The 3 MINOR findings are **NOT yet fixed** — to be handled by the main loop post-workflow. See §52.**
 **Phase 20 (CALENDAR coordinate system — the 6th coord system + its component view; integrated MANUALLY after the workflow hit a session limit): the `calendar` coordinate system registers end-to-end in `EChartsSlim` — a grid of day cells keyed by DATE (after cartesian/radar/polar/single/parallel). Registered: `CalendarCoordinateSystemCreator` (forwards to `Calendar.create` / `Calendar.dimensions` `["time","value"]`) via `CoordinateSystemManager.register("calendar", …)` + `ComponentModel.registerClass(CalendarModel)` + the `"calendar"` component view factory (`CalendarView`, drawing the month/day-cell grid outline Polylines + day-rect + day/week/month/year labels from the `Calendar` cell geometry). Files added: `coord/calendar/{Calendar,CalendarModel,calendarPrepareCustom}.swift`, `component/calendar/CalendarView.swift`, and a NEW `util/graphic.swift` (partial — `expandOrShrinkRect`/`expandRectOnOneDimension`, the rect expand/shrink helper the calendar outline needs; Grid references it too); demo `calendar-basic` + `CalendarRenderTests`. Clean build `buildGreen = true` (0 product warnings); `swift test` **244 executed / 0 failures / 58 skipped** (baseline 243; +1 `CalendarRenderTests`). Manual-integration fixes: (1) `Calendar` (the coord class) SHADOWS `Foundation.Calendar` module-wide — qualified the Foundation uses in `util/{format,time,number}.swift` + `time.calendar(_:) -> Foundation.Calendar` + the creator's `EChartsKit.Calendar`; (2) the two date-modeling agents disagreed (coord `JSDate` reference wrapper vs view `Foundation.Date`) → `CalendarView` now mutates the `JSDate` in place (`setMonth`) like upstream; (3) landed `expandOrShrinkRect`; (4) RUNTIME CRASH (index-out-of-range in `_renderMonthText`/`_renderWeekText`): the not-yet-ported locale model supplies no `time.monthAbbr`/`dayOfWeekAbbr`, so the label `nameMap[i]` index blew up — added EN-locale fallbacks (documented locale-not-ported bridge). Faithfulness review (run after the limit reset): `Calendar.swift` date math **FAITHFUL** (0 findings) — getDateInfo day-of-week, _getRangeInfo weeks/nthWeek, getDateByWeeksAndDay/getNextNDay advancement, dataToPoint/dataToRect cell mapping + orient swap all match upstream, and the `JSDate` setDate/setMonth rollover was empirically confirmed against JS `Date` semantics. DEFERRED: scatter/heatmap-on-calendar (ScatterView calendar branch). This makes **6 coordinate systems**. See §51.**
@@ -2174,6 +2175,65 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 54. Phase 23 — Geo coordinate system + GeoJSON (the 7th coord system; GeoJSON parse/Region/Geo-projection pipeline; SVG-map + roam DEFERRED)
+
+**Goal (met):** land the `geo` coordinate system end-to-end in `EChartsSlim`, backed by GeoJSON — the
+port's **7th coordinate system** (after `cartesian2d`/grid, `radar`, `polar`, `single`, `parallel`,
+and `calendar`). A registered map's GeoJSON is parsed into `Region`s, held by a `Geo` instance that
+projects lon/lat ↔ pixel, and drawn by the `GeoView` component view. **This UNLOCKS the map chart
+(next phase)** — the map series renders on this geo coord system. **Clean build `buildGreen = true`;
+`swift test` — Executed 249 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline
+247 + 2 new `GeoRenderTests`; no regressions. This makes **7 coordinate systems** ported end-to-end.
+
+### What registered end-to-end in `EChartsSlim`
+- **The `geo` coord-system creator** — `CoordinateSystemManager.register("geo", …)` → `geoCreator`,
+  which reads the registered map JSON and builds `Geo` instances (forwarding to `Geo.create` /
+  `Geo.dimensions`), laid out into the view box.
+- **The `registerMap` API** — the map-registry entry point that parses a GeoJSON payload and stores
+  the resulting `Region`s by map name, so a `geo`/`GeoModel` referencing that name resolves its shapes.
+- **`GeoModel`** — the geo component model, registered via `ComponentModel.registerClass`.
+- **The `"geo"` component view factory (`GeoView`)** — draws each region's boundary
+  `Polygon`/`Path`s + region name labels from the `Geo`/`Region` geometry.
+
+### The GeoJSON parse / Region / Geo-projection pipeline
+- **`parseGeoJSON`** decodes a GeoJSON FeatureCollection into `Region`s: each region is a named set
+  of polygon exterior + hole rings, with a precomputed bounding rect and a label/center point.
+- **`Region`** holds those rings + the region rect + the label center; it is the unit the `GeoView`
+  iterates to build boundary paths.
+- **`Geo`** holds the region list and the projection: `dataToPoint`/`pointToData` map lon/lat ↔ pixel
+  through the geo-rect → view-rect linear transform (y-flipped, as upstream). Only the **default
+  linear lon/lat projection** lands this phase.
+
+### Files added
+- `coord/geo/Region.swift` — the `Region` (rings + rect + label center).
+- `coord/geo/Geo.swift` — the `Geo` coord system (region list + lon/lat↔pixel projection).
+- `coord/geo/geoCreator.swift` — the `geo` coord-system creator (map-registry read + `Geo` build + layout).
+- `coord/geo/GeoModel.swift` — `GeoModel`.
+- `coord/geo/geoJSONLoader.swift` + `coord/geo/parseGeoJSON.swift` — the `registerMap` map-registry +
+  the GeoJSON FeatureCollection → `Region` parser.
+- `component/geo/GeoView.swift` — the region-boundary + name-label render.
+- Demo: `Sources/EChartsDemoGallery/Demos/geo-basic.swift`.
+- Tests: `Tests/EChartsKitTests/GeoRenderTests.swift` (the +2 over the 247 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **`GeoSVGResource`** — the SVG-map source (map from an SVG instead of GeoJSON) — DEFERRED.
+- **Roam pan/zoom** — the `RoamController` drag/wheel interaction — DEFERRED.
+- **The pluggable `projection` object** — only the default linear lon/lat projection lands; a
+  custom/registered projection is DEFERRED.
+- **Geo `specialAreas`** — the inset/special-area repositioning — DEFERRED.
+
+### Faithfulness reviews
+- `coord/geo/Region.swift` — **MINOR-ISSUES** (2 findings).
+- `coord/geo/Geo.swift` — **FAITHFUL** (0 findings).
+- `coord/geo/geoCreator.swift` — **MINOR-ISSUES** (3 findings).
+- `component/geo/GeoView.swift` — **FAITHFUL** (0 findings).
+
+No CRITICAL findings; `buildGreen = true`. The **5 MINOR findings are NOT yet fixed** — to be handled
+by the main loop post-workflow. This lands the 7th coordinate system and unlocks the map chart (next
+phase).
 
 ---
 

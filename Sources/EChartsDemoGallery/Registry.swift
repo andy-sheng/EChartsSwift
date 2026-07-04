@@ -25,6 +25,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_themeriver_basic,  // ThemeRiver
         EChartsDemoRegistry.demo_parallel_basic,    // Parallel
         EChartsDemoRegistry.demo_calendar_basic,    // Calendar
+        EChartsDemoRegistry.demo_geo_basic,         // Geo (toy GeoJSON regions backdrop)
         EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
         EChartsDemoRegistry.demo_heatmap_basic,     // Heatmap (cartesian, cells colored by value via visualMap)
     ]
