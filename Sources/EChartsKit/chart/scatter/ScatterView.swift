@@ -53,23 +53,49 @@ open class ScatterView: ChartView {
     open override func render(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
-        // PORT-TODO: polar/geo/singleAxis/calendar/matrix scatter deferred (those coord systems not
-        //   ported). Only cartesian2d is handled.
-        guard let coord = seriesModel.coordinateSystem as? Cartesian2D else { return }
-
         let data = seriesModel.getData()
-        let baseAxis = coord.getBaseAxis()
-        let valueAxis = coord.getOtherAxis(baseAxis)
-        // PORT-TODO: `mapDimension` is force-unwrapped — a scatter's base/value dims are always present
-        //   (same derivation as LineView).
-        let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
-        let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
+        let store = data.getStore()
+
+        // Per-datum point placement. Upstream `pointsLayout` (layout/points.ts) is generic over the coord
+        //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
+        //   The static render below inlines that for the two coord systems wired so far — cartesian2d and
+        //   polar. Each branch returns a `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
+        //   PORT-TODO: geo/singleAxis/calendar/matrix scatter deferred (those coord systems not ported).
         // PORT-TODO (upstream/echarts/src/layout/points.ts:50-56): a STACKED scatter series substitutes
         //   the stacked base/value dim with `stackResultDimension` (via isDimensionStacked) before
         //   dataToPoint. We read the raw store dims, so a stacked scatter would place points at
         //   un-stacked positions. Stacked scatter is rare; wire the substitution when stacking lands.
-        let store = data.getStore()
-        let isValueAxisH = valueAxis.isHorizontal()
+        let pointAt: (Int) -> [Double]
+        if let coord = seriesModel.coordinateSystem as? Cartesian2D {
+            let baseAxis = coord.getBaseAxis()
+            let valueAxis = coord.getOtherAxis(baseAxis)
+            // PORT-TODO: `mapDimension` is force-unwrapped — a scatter's base/value dims are always present
+            //   (same derivation as LineView).
+            let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
+            let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
+            let isValueAxisH = valueAxis.isHorizontal()
+            pointAt = { i in
+                let baseVal = scatterToNumber(store.get(baseDimIdx, i))
+                let value = scatterToNumber(store.get(valueDimIdx, i))
+                return isValueAxisH ? coord.dataToPoint([value, baseVal]) : coord.dataToPoint([baseVal, value])
+            }
+        }
+        else if let coord = seriesModel.coordinateSystem as? Polar {
+            // Polar dims are ["radius", "angle"] (polarDimensions); `dataToPoint([radiusVal, angleVal])`
+            //   dispatches radius→dataToRadius and angle→dataToAngle in that order. Map the data dims by
+            //   the coord dim name (mirrors pointsLayout's `map(coordSys.dimensions, data.mapDimension)`).
+            let radiusDimIdx = data.getDimensionIndex(data.mapDimension("radius")!)
+            let angleDimIdx = data.getDimensionIndex(data.mapDimension("angle")!)
+            pointAt = { i in
+                let radiusVal = scatterToNumber(store.get(radiusDimIdx, i))
+                let angleVal = scatterToNumber(store.get(angleDimIdx, i))
+                return coord.dataToPoint([radiusVal, angleVal])
+            }
+        }
+        else {
+            // PORT-TODO: geo/singleAxis/calendar/matrix scatter deferred.
+            return
+        }
 
         let group = self.group
         group.removeAll()
@@ -92,9 +118,7 @@ open class ScatterView: ChartView {
         let seriesStyle = data.getVisual("style") as? [String: Any]
 
         for i in 0..<data.count() {
-            let baseVal = scatterToNumber(store.get(baseDimIdx, i))
-            let value = scatterToNumber(store.get(valueDimIdx, i))
-            let point = isValueAxisH ? coord.dataToPoint([value, baseVal]) : coord.dataToPoint([baseVal, value])
+            let point = pointAt(i)
             if point.count < 2 || !point[0].isFinite || !point[1].isFinite { continue }
 
             let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol

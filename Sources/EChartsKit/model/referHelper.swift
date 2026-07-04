@@ -63,10 +63,11 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 //   placeholder protocol declared here has been removed per its own note; the `func get(...)` it
 //   exposed is provided by ComponentModel's Model.get. (FetcherAxisModel, which upstream Picks
 //   `getOrdinalMeta` from AxisModelExtendedInCreator, is still collapsed to AxisBaseModel below.)
-// '../coord/polar/PolarModel' — PolarModel
-public protocol PolarModel: AnyObject {                                    // PORT-TODO
-    func findAxisModel(_ axisType: String) -> AxisBaseModel?
-}
+// '../coord/polar/PolarModel' — PolarModel is now the real, fully-ported reference type in
+//   coord/polar/PolarModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
+//   The former PORT-TODO placeholder protocol declared here has been removed per its own note;
+//   `findAxisModel` on the real class returns the concrete `PolarAxisModel?` (a subclass of
+//   AxisBaseModel), so the `axisMap.set`/`isCategory` uses below stay valid.
 // '../coord/parallel/ParallelModel' — ParallelModel
 public protocol ParallelModel: AnyObject {                                 // PORT-TODO
     var dimensions: [String] { get }

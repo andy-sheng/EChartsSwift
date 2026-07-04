@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 13 (POLAR COORDINATE SYSTEM + angle/radius axis component views — the SECOND non-cartesian coord system): the `polar` coordinate system registers end-to-end in `EChartsSlim` — after Phase 12's `radar`, this is the port's SECOND non-cartesian coord system. Registered: the polar coord-system creator (`CoordinateSystemManager.register("polar", ...)` → `polarCreator` injecting the coord sys + associating the angle/radius axes for scale extents) + `PolarModel`/`angleAxis`/`radiusAxis` component models + the two axis component views (`AngleAxisView` + `RadiusAxisView`). `ScatterView` was made polar-aware — `ScatterView.render` now branches by coord type: the existing Cartesian2D path is unchanged, and a NEW Polar branch maps data dims by coord dim name (radius=dim0, angle=dim1 per `polarDimensions`) and places each datum via `Polar.dataToPoint([radiusVal, angleVal])` — the faithful inline of upstream `layout/points.ts`'s generic `map(coordSys.dimensions, data.mapDimension)` + `dataToPoint`. Point computation was factored into a per-index closure so the symbol-build/color/add loop is shared. The e2e render test asserts all 10 polar data points produce finite-positioned symbol `Path`s (name `"item"`), confirming `dataToPoint` works; series must set `coordinateSystem:"polar"` (scatter defaults to cartesian2d). `swift test` **236 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 235 + 1 new polar render test; clean rebuild, 0 warnings, `buildGreen = true`). Demo `polar-basic` + the polar render test added. Deferred PORT-TODOs per CONVENTIONS §5. Faithfulness reviews: `coord/polar/Polar.swift` **FAITHFUL** (0), `coord/polar/polarCreator.swift` **FAITHFUL** (0), `component/axis/AngleAxisView.swift` **MINOR-ISSUES** (2), `component/axis/RadiusAxisView.swift` **MINOR-ISSUES** (1). No CRITICAL findings. **All 3 MINOR findings FIXED post-workflow** (+ a 4th same-class bug the review missed in RadiusAxisView): (a) two `lineCount % lineColors.count` / `% areaColors.count` splitLine/splitArea CRASHES on an explicit empty `color: []` (Swift `%` by zero traps where JS yields NaN → draws nothing) — guarded with `if …isEmpty { return }` in BOTH AngleAxisView and RadiusAxisView; (b) the shared `pathStyleFromDict` style bridge dropped Int-boxed numerics (`lineWidth`/`opacity`/`shadow*`/… `as? Double` → nil) — replaced with a `styleNum` Int→Double coercion across all three copies (Angle/Radius/RadarComponentView). See §44.**
 **Phase 12 (RADAR CHART + RADAR COORDINATE SYSTEM — the FIRST non-cartesian coordinate system wired end-to-end): the radar chart registers end-to-end in `EChartsSlim`. This is a milestone — until now every wired coord system was cartesian (`grid`/`cartesian2d`); Phase 12 lands the first polar-style/non-cartesian coord system. The `Radar` coordinate system + its `IndicatorAxis` + `RadarModel` are registered via `CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator())` (a thin creator mirroring `GridCoordinateSystemCreator`, forwarding to `Radar.create`/`Radar.dimensions`), alongside the whole `chart/radar/` vertical — `RadarSeriesModel` + `"radar"` view factory (`RadarView`) + the `radarLayout` stage + the `backwardCompat` preprocessor — and the `component/radar/` component (`RadarModel` + `RadarComponentView` drawing the indicator axes/split-lines/split-areas/name labels). Radar series read each data item's per-indicator points back from the `Radar` coord system (`dataToPoint` over the N indicator axes). `swift test` **235 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 233; +2 = the radar end-to-end render test + a new `RadarCoordTests` coord oracle). Clean build `buildGreen = true`, 0 warnings. Demo `radar-basic` + both tests added. Deferred PORT-TODOs per CONVENTIONS §5: `SymbolDraw` draw-helper infra, emphasis/states + labels + enter/update animation, and roam. Faithfulness reviews: `coord/radar/Radar.swift` CRITICAL-ISSUES (3) + `coord/radar/RadarModel.swift` MINOR-ISSUES (2) — **all 5 findings FIXED post-workflow**: every one was the same recurring Int-vs-Double option-read trap (`get(...) as? Double` returns nil on the Int literals `[String: Any]` defaultOptions use, e.g. `startAngle: 90`), silently dropping the value. The CRITICAL one rotated the whole radar 90° (`startAngle` → 0 rad); fixed with a `radarNumOpt` Int→Double coercion at every option-number read (startAngle/splitNumber/radarIndex/indicator min-max), and locked by `RadarCoordTests` asserting `axis[0].angle == π/2`. `chart/radar/RadarView.swift` + `component/radar/RadarComponentView.swift` **FAITHFUL** (0). See §43.**
 **Phase 11 (GRAPH / NETWORK CHART — `data/Graph.ts` port + graph vertical with CIRCULAR + SIMPLE layouts; force layout DEFERRED): the graph (network) chart registers end-to-end in `EChartsSlim`. The faithful `data/Graph.ts` port (`Graph`/`GraphNode`/`GraphEdge`: addNode/addEdge/getEdge(Direction)/eachNode/eachEdge/breadthFirstTraverse/updateNodeAndEdgeState/degree bookkeeping through the real `SeriesData` node+edge data pipeline) lands, alongside the whole `chart/graph/` vertical — `GraphSeriesModel` + `"graph"` view factory (`GraphView`) + two self-gating layout stage handlers (`graphCircularLayoutStageHandler` for `layout:'circular'`, `graphSimpleLayoutStageHandler` for `layout:'none'`) + the `categoryFilter` processor + `categoryVisual`/`edgeVisual` stages — plus `chart/helper/createGraphFromNodeEdge.ts` and `multipleGraphEdgeHelper.ts`. Graph is coordless (box/view usage): `GraphView` reads each node's `[x,y]` and each edge's point list back from whichever layout stage self-selected on the `layout` option. The graph link wiring lands too: `SeriesData.graph` retyped `AnyObject?`→`Graph?` (matches upstream `graph?: Graph`), and `linkSeriesData.linkSingle` grew the `graph`/`edgeData` arms (`structAttr=='graph'` sets `data.graph`; `attr=='data'`→`graph.data`, `attr=='edgeData'`→`graph.edgeData`). `swift test` **233 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 232 executed / 0 failures / 58 skipped; +1 is the new graph render test). Clean-from-scratch `rm -rf .build && swift build` = 0 warnings, Build complete (`buildGreen = true`). Demo `graph-basic` + render test `testGraphRendersNodesAndEdges` (in `HierarchicalChartsRenderTests`) added. Deferred PORT-TODOs per CONVENTIONS §5: force layout (`forceLayout`/`forceHelper`), the SymbolDraw/LineDraw draw-helper infra, and roam/drag/emphasis/labels/effect (effect-line). Faithfulness reviews: `data/Graph.swift` **MINOR-ISSUES** (2 findings), `chart/graph/circularLayoutHelper.swift` **FAITHFUL** (0), `chart/helper/createGraphFromNodeEdge.swift` **FAITHFUL** (0), `chart/graph/GraphView.swift` **FAITHFUL** (0). No CRITICAL findings; build is green. See §42.**
 **Phase 10 (TREE-FAMILY CHARTS — sunburst wired end-to-end + treemap + tree verticals): all three hierarchical chart types now register end-to-end in `EChartsSlim`. Sunburst (staged in Phase 9) is now fully wired — `SunburstSeriesModel` + `sunburst` view factory + `sunburstLayoutStageHandler`/`sunburstVisualStageHandler` overall stages run in `render`. NEW verticals `chart/treemap/` (`TreemapSeriesModel`+`TreemapView`+`treemapLayout`+`treemapVisual`+`Breadcrumb`) and `chart/tree/` (`TreeSeriesModel`+`TreeView`+`treeLayout`+`treeVisualStageHandler`+`layoutHelper`/`traversalHelper`) also register end-to-end; all three are coordless/box-usage (hierarchical, like pie) — each View reads its per-node geometry (sunburst sector angle/radius, treemap rect, tree x/y) back from its layout stage. `swift build` GREEN, `swift test` **232 executed / 0 failures / 58 skipped** (baseline 229 + 3 new hierarchical render tests). Demos added: `sunburst-basic`, `treemap-basic`, `tree-basic`. Deferred PORT-TODOs per CONVENTIONS §5: actions (sunburst rollup/highlight, treemap drill/roam/RoamController, tree roam), enter/update/remove animation (static from-scratch rebuild), and emphasis/states (util/states not ported). Four faithfulness reviews: `treemapLayout` FAITHFUL (0), `treeLayout` FAITHFUL (0), `TreeSeries` FAITHFUL (0), `TreemapView` MINOR-ISSUES (1). No CRITICAL findings; build is green. See §41.**
@@ -2166,6 +2167,64 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 44. Phase 13 — Polar coordinate system + angle/radius axis component views (the SECOND non-cartesian coord system)
+
+**Goal (met):** land the `polar` coordinate system and its angle/radius axis component views, and
+make `ScatterView` render on polar. This is the port's SECOND non-cartesian coordinate system — after
+Phase 12's `radar`, and unlike every earlier cartesian (`grid`/`cartesian2d`) coord system. **Clean
+rebuild `buildGreen = true`, 0 warnings; `swift test` 236 executed / 0 failures (0 unexpected) / 58
+skipped** (baseline was 235; +1 = the new polar end-to-end render test).
+
+### What registered end-to-end in `EChartsSlim`
+- **Polar coordinate system (the milestone):** `CoordinateSystemManager.register("polar", ...)` wired
+  to `polarCreator`, which injects the polar coord system into the coord-system list AND associates its
+  angle/radius axes so their scale extents are computed from series data. This is the second coord
+  system registered that is NOT `grid`/`cartesian2d`.
+- **Polar component models:** `PolarModel` (the `polar` component) plus the `angleAxis` and `radiusAxis`
+  axis component models (`PolarAxisModel`), holding the two axes that a polar coord system spans.
+- **Two axis component views:** `AngleAxisView` + `RadiusAxisView` — the angle-axis / radius-axis
+  component views (axis lines, split-lines/areas, ticks, labels for the polar frame).
+
+### ScatterView made polar-aware (implemented and verified end-to-end)
+`ScatterView.render` now branches by coord type: the existing **Cartesian2D path is unchanged**, and a
+NEW **Polar branch** maps data dims by coord dim name (radius = dim0, angle = dim1 per
+`polarDimensions`) and places each datum via `Polar.dataToPoint([radiusVal, angleVal])` — the faithful
+inline of upstream `layout/points.ts`'s generic `map(coordSys.dimensions, data.mapDimension)` +
+`dataToPoint`. Point computation was factored into a per-index closure so the symbol-build / color /
+add loop is shared between the two branches. Series must set `coordinateSystem:"polar"` (scatter
+defaults to `cartesian2d`); `polarCreator` injects the coord sys + associates axes for scale extents.
+The e2e test asserts all 10 polar data points produce finite-positioned symbol `Path`s (name `"item"`),
+confirming `dataToPoint` works end-to-end.
+
+### Files added
+- `coord/polar/`: `Polar.swift` (the `Polar` coord system), `AngleAxis.swift`, `RadiusAxis.swift`,
+  `PolarModel.swift` (the `polar` component model), `PolarAxisModel.swift` (`angleAxis`/`radiusAxis`
+  models), `polarCreator.swift` (the coord-system creator), `prepareCustom.swift`.
+- `component/axis/`: `AngleAxisView.swift`, `RadiusAxisView.swift` (the two polar axis component views).
+- Demo: `Sources/EChartsDemoGallery/Demos/polar-basic.swift` (registered in `Registry.swift`).
+- Test: a new polar end-to-end render test (the +1 over the 235 baseline).
+- Touched: `chart/scatter/ScatterView.swift` (the Polar branch), `core/EChartsSlim.swift`
+  (coord-system + model + axis-view registration).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static polar render only)
+- Interaction / decoration (roam, emphasis/states, labels, enter/update animation) deferred, as in
+  prior chart phases.
+
+### Faithfulness reviews
+- `coord/polar/Polar.swift` — **FAITHFUL** (0 findings).
+- `coord/polar/polarCreator.swift` — **FAITHFUL** (0 findings).
+- `component/axis/AngleAxisView.swift` — **MINOR-ISSUES** (2 findings). FIXED.
+- `component/axis/RadiusAxisView.swift` — **MINOR-ISSUES** (1 finding). FIXED (+ a 4th, same-class, the review missed here).
+`buildGreen = true`; no CRITICAL findings. **All findings FIXED post-workflow:**
+- **splitLine/splitArea modulo-by-zero crash** (AngleAxisView + RadiusAxisView): `lineCount % lineColors.count`
+  / `% areaColors.count` traps in Swift when an explicit `color: []` makes the array empty (upstream JS
+  `n % 0` = NaN → the NaN bucket is skipped by the length-based batch loop, i.e. draws nothing). Guarded
+  with `if …isEmpty { return }` in both views (the review only flagged AngleAxisView; the same bug was in
+  RadiusAxisView's splitLine + splitArea and was fixed too).
+- **Int-vs-Double style drop** in the shared `pathStyleFromDict` bridge (Angle/Radius/RadarComponentView):
+  `lineWidth`/`opacity`/`shadow*`/`lineDashOffset`/`miterLimit` read via `as? Double` dropped Int-boxed
+  option values → replaced with a `styleNum` (Int|Double|NSNumber→Double) coercion across all three copies.
 
 ## 43. Phase 12 — Radar chart + radar coordinate system (the FIRST non-cartesian coord system wired)
 

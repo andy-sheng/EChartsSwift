@@ -84,6 +84,23 @@ struct RadarCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// Coordinate-system creator for polar (wraps `polarCreator.create` / `polarCreator.dimensions`). The
+// polar coord system is the SECOND non-cartesian coordinate system wired here (after radar); the shape
+// mirrors GridCoordinateSystemCreator / RadarCoordinateSystemCreator exactly. Upstream registers the
+// `Polar` CLASS itself (`registerCoordinateSystem('polar', Polar)`); the ported registry wants a
+// `CoordinateSystemCreator` value, so this thin struct forwards to the caseless-namespace `polarCreator`.
+// polarCreator.dimensions is the static `polarDimensions` (["radius", "angle"]).
+// ============================================================================
+struct PolarCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        // polarCreator.create returns [Polar]; Polar conforms to CoordinateSystemMaster.
+        return polarCreator.create(ecModel, api).map { $0 as CoordinateSystemMaster }
+    }
+    var dimensions: [DimensionName]? { polarCreator.dimensions }  // static dimensions = polarDimensions.
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { nil } // Polar has no dimensionsInfo hook.
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -316,6 +333,27 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(RadarModel.self)                             // registerComponentModel(RadarModel)
         ComponentModel.registerClass(RadarSeriesModel.self)                       // registerSeriesModel(RadarSeries)
 
+        // -- component/polar/install.ts (polar coordinate system) --
+        //   registerCoordinateSystem('polar', Polar) + registerComponentModel(PolarModel) +
+        //   axisModelCreator(registers, 'angle'/'radius', AngleAxisModel/RadiusAxisModel, extra) +
+        //   registerComponentView(AngleAxisView) + registerComponentView(RadiusAxisView) +
+        //   registerComponentView(PolarView) [+ PolarAxisPointer, deferred].
+        //   Polar is the SECOND non-cartesian coordinate system wired: the coord-sys register mirrors the
+        //   cartesian2d/radar registers above (a CoordinateSystemCreator forwarding to polarCreator.create).
+        //   The PolarModel is the coord-sys HOST component (like GridModel/RadarModel); its angleAxis +
+        //   radiusAxis component models feed the AngleAxis/RadiusAxis the coord builds. Unlike the cartesian
+        //   x/y stand-ins (SlimXAxisModel), the polar axis models are the REAL AngleAxisModel/RadiusAxisModel
+        //   (concrete PolarAxisModel subclasses), registered directly here — so `PolarModel.findAxisModel`'s
+        //   `as? PolarAxisModel` + `getCoordSysModel()` resolve end-to-end (the axisModelCreator dynamic-
+        //   subclass gap that blocks the cartesian path does not apply). The polar axis models carry the
+        //   angle/radius extra defaults (startAngle 90 / splitNumber) via `polarAxisExtraOption` (merged in
+        //   mergeDefaultAndTheme). `_coordSysMgr.create`/`.update` (update() stages 3/5) build + update each
+        //   Polar; the AngleAxisView/RadiusAxisView draw the angle rings + radius axis backdrop.
+        CoordinateSystemManager.register("polar", PolarCoordinateSystemCreator()) // registerCoordinateSystem('polar', Polar)
+        ComponentModel.registerClass(PolarModel.self)                             // registerComponentModel(PolarModel)
+        ComponentModel.registerClass(AngleAxisModel.self)                         // axisModelCreator(..,'angle',..)
+        ComponentModel.registerClass(RadiusAxisModel.self)                        // axisModelCreator(..,'radius',..)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -362,7 +400,13 @@ public final class EChartsSlim: EChartsType {
         "legend": { LegendView() },
         // Radar coord-sys component view (draws the axis lines/ticks/names + split rings/areas backdrop);
         //   registered under mainType 'radar' (upstream install.ts `registerComponentView(RadarView)`).
-        "radar": { RadarComponentView() }
+        "radar": { RadarComponentView() },
+        // Polar coord-sys component views: the angleAxis view draws the angle rings (axisLine circle/arc +
+        //   split lines + split areas + tick labels around the ring); the radiusAxis view draws the radial
+        //   axis line + ticks + split lines. Registered under mainType 'angleAxis'/'radiusAxis' (upstream
+        //   install.ts `registerComponentView(AngleAxisView)` / `registerComponentView(RadiusAxisView)`).
+        "angleAxis": { AngleAxisView() },
+        "radiusAxis": { RadiusAxisView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },

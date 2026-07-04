@@ -306,22 +306,31 @@ private func jsTruthy(_ v: Any?) -> Bool {
 ///   onto the typed `PathStyleProps`. Same deviation as AxisBuilder.swift's `pathStyleFromLineStyleDict`
 ///   (kept file-private there); mirrored here for both stroke (split lines) and fill (split areas).
 ///   Delete when the graphic style bridge lands.
+// Coerce a dynamic style-bag number tolerating Int boxing (e.g. lineWidth: 2 as an Int literal);
+// a bare `as? Double` drops the value (the recurring Int-vs-Double option-read trap).
+private func styleNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.doubleValue }
+    return nil
+}
+
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
     // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the
     //   String form (incl. the sentinel 'none') is mapped here.
     if let fill = dict["fill"] as? String { s.fill = .string(fill) }
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
-    if let lineWidth = dict["lineWidth"] as? Double { s.lineWidth = lineWidth }
+    if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
     if let lineJoin = dict["lineJoin"] as? String { s.lineJoin = lineJoin }
-    if let opacity = dict["opacity"] as? Double { s.opacity = opacity }
-    if let shadowBlur = dict["shadowBlur"] as? Double { s.shadowBlur = shadowBlur }
-    if let shadowOffsetX = dict["shadowOffsetX"] as? Double { s.shadowOffsetX = shadowOffsetX }
-    if let shadowOffsetY = dict["shadowOffsetY"] as? Double { s.shadowOffsetY = shadowOffsetY }
+    if let opacity = styleNum(dict["opacity"]) { s.opacity = opacity }
+    if let shadowBlur = styleNum(dict["shadowBlur"]) { s.shadowBlur = shadowBlur }
+    if let shadowOffsetX = styleNum(dict["shadowOffsetX"]) { s.shadowOffsetX = shadowOffsetX }
+    if let shadowOffsetY = styleNum(dict["shadowOffsetY"]) { s.shadowOffsetY = shadowOffsetY }
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
-    if let lineDashOffset = dict["lineDashOffset"] as? Double { s.lineDashOffset = lineDashOffset }
-    if let miterLimit = dict["miterLimit"] as? Double { s.miterLimit = miterLimit }
+    if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
+    if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
     // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
     return s
 }
