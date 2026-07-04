@@ -288,6 +288,15 @@ public final class EChartsSlim: EChartsType {
         //   or progressive layout registrar is needed for the static render.
         ComponentModel.registerClass(ScatterSeriesModel.self)
 
+        // -- chart/effectScatter/install.ts (minimal) -- registerChartView(EffectScatterView) +
+        //   registerSeriesModel(EffectScatterSeries) + registerLayout(layoutPoints('effectScatter')) +
+        //   registerVisual(...). Like scatter, EffectScatterView computes point positions directly from
+        //   `coord.dataToPoint` (inlines pointsLayout), so no cross-series layout registrar is needed for the
+        //   static render. The animated RIPPLE (helper/EffectSymbol) is DEFERRED (CONVENTIONS §5) — the view
+        //   draws only the static base symbols. effectScatterInstall.swift is commented-only (diffable
+        //   surface); actual wiring lives here per the boxplotInstall/parallelInstall convention.
+        ComponentModel.registerClass(EffectScatterSeriesModel.self)
+
         // -- chart/pie/install.ts (minimal) -- registerSeriesModel(PieSeries) + registerChartView(PieView) +
         //   registerLayout(pieLayout). Pie has NO cartesian coord (coordinateSystemUsage:"box"); PieView reads
         //   its geometry from `data.getItemLayout` populated by the pie layout stage (run in `render`).
@@ -359,6 +368,19 @@ public final class EChartsSlim: EChartsType {
         //   both run in `render`/`update` below. The `dragNode` action + roam are DEFERRED (roamHelper
         //   not ported); see chart/sankey/sankeyInstall.swift.
         ComponentModel.registerClass(SankeySeriesModel.self)
+
+        // -- chart/lines/install.ts (minimal) -- registerChartView(LinesView) +
+        //   registerSeriesModel(LinesSeries) + registerLayout(linesLayout) + registerVisual(linesVisual).
+        //   Lines is a coord-space series (default coord 'geo'; ONLY cartesian2d is rendered by the ported
+        //   static view — polar/geo/calendar are PORT-TODO in linesLayout/LinesView). `linesLayout` is a
+        //   SERIES_STAGE_TASK (seriesType 'lines') whose reset→progress writes each line's per-item layout
+        //   (`data.setItemLayout(i, pts)`), same wiring as candlestickLayout. LinesView also inlines the
+        //   per-item dataToPoint + curveness control-point math (like ScatterView/LineView), so the layout
+        //   stage is run here for fidelity but the view does not depend on it. The effect (moving-dot/trail)
+        //   + large draw path are ANIMATED/DEFERRED; linesVisual (palette stroke) lands with a later phase —
+        //   the shared visual/style stage supplies the lineStyle→stroke color meanwhile. linesInstall.swift
+        //   is commented-only (diffable surface); actual wiring lives here.
+        ComponentModel.registerClass(LinesSeriesModel.self)
 
         // -- chart/gauge/install.ts (minimal) -- registerSeriesModel(GaugeSeries) + registerChartView(GaugeView).
         //   Gauge is COORDLESS (no coordinate system, no layout/visual stage): center/radius/startAngle/endAngle
@@ -520,6 +542,9 @@ public final class EChartsSlim: EChartsType {
         "bar": { BarView() },
         "line": { LineView() },
         "scatter": { ScatterView() },
+        // EffectScatter chart view (static base symbols; ripple DEFERRED). Registered under series subType
+        //   'effectScatter' (upstream chart/effectScatter/install.ts `registerChartView(EffectScatterView)`).
+        "effectScatter": { EffectScatterView() },
         "pie": { PieView() },
         "funnel": { FunnelView() },
         "candlestick": { CandlestickView() },
@@ -532,6 +557,11 @@ public final class EChartsSlim: EChartsType {
         //   geometry from the sankey box layout stage. Registered under series subType 'sankey'
         //   (upstream chart/sankey/install.ts `registerChartView(SankeyView)`).
         "sankey": { SankeyView() },
+        // Lines chart view (one Line/BezierCurve per two-point line, or one Polyline per polyline line);
+        //   geometry inlined via coord.dataToPoint + the curveness control-point formula (the layout STAGE
+        //   is registered/run but the view projects coords itself, like ScatterView/LineView). Registered
+        //   under series subType 'lines' (upstream chart/lines/install.ts `registerChartView(LinesView)`).
+        "lines": { LinesView() },
         // Gauge chart view (coordless): axis arc color bands, split lines + ticks, tick labels, pointer
         //   needle, anchor, and title/detail text — all computed in render. Registered under series subType
         //   'gauge' (upstream chart/gauge/install.ts `registerChartView(GaugeView)`).
@@ -809,6 +839,15 @@ public final class EChartsSlim: EChartsType {
         //   visual is an OVERALL stage handler.
         sankeyLayout(ecModel, api)
         sankeyVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT — lines per-item point projection (upstream `registerLayout(linesLayout)`). A
+        //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset`→`progress` maps each line's data-space
+        //   coords through the cartesian `dataToPoint` (plus the quadratic curveness control point) and
+        //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout. `LinesView.render`
+        //   inlines the same math (like ScatterView/LineView), so the view does not strictly depend on this
+        //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
+        //   (polar/geo/calendar are PORT-TODO in linesLayout).
+        runSeriesStageHandler(linesLayout, ecModel, api)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
         //   (non-cartesian) coordinate system, already built + updated by `_coordSysMgr.create`/`.update`

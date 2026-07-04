@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 18 (effectScatter + lines charts — the 17th & 18th chart types wired end-to-end in `EChartsSlim`, reusing existing coord systems; effect/ripple/large animations DEFERRED): both `effectScatter` and `lines` register end-to-end. `effectScatter` reuses the existing coord systems and renders as **static symbols** (the animated ripple effect DEFERRED). `lines` draws **straight / bezier-curve / polyline segments between coords** (one `Path` per line datum: straight two-point, curved single-bezier, or a multi-point polyline). Registered: `EffectScatterSeriesModel` + the `"effectScatter"` view factory (`EffectScatterView`); `LinesSeriesModel` + the `"lines"` view factory (`LinesView`) + the `linesLayout` stage. Files added: `chart/effectScatter/{EffectScatterSeries,EffectScatterView,effectScatterInstall}.swift`, `chart/lines/{LinesSeries,LinesView,linesLayout,linesInstall}.swift`; demos `effectscatter-basic` + `lines-basic` + 2 new render tests. Clean build `buildGreen = true`; `swift test` — **242 executed / 0 failures / 58 skipped (baseline 240; +2 new render tests)**, zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: effectScatter ripple (animated effect symbols); lines effect / moving-dot animation + large/progressive draw path + geo/polar coord paths; interaction/decoration (emphasis/states, enter/update animation) as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/effectScatter/EffectScatterView.swift` (FAITHFUL/0), `chart/lines/LinesView.swift` (FAITHFUL/0), `chart/lines/linesLayout.swift` (FAITHFUL/0), `chart/lines/LinesSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **18 chart types** ported end-to-end. See §49.**
 **Phase 17 (PARALLEL COORDINATE SYSTEM — the 5th coord system — + the PARALLEL chart; brush/axis-drag interaction DEFERRED): the `parallel` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, and `single`, this is the port's **5th coordinate system** (a set of N parallel axes; each data item is a polyline threading all axes). Registered: the `parallel` coord-system creator (`CoordinateSystemManager.register("parallel", ...)` → `parallelCreator`) + the `ParallelModel` + `ParallelAxisModel` components + the `ParallelComponentView` component view (draws the parallel axes), alongside the whole `chart/parallel/` vertical — `ParallelSeriesModel` + the `"parallel"` view factory (`ParallelView`) + the `parallelVisual` stage + the `parallelPreprocessor`. `ParallelView` draws one **polyline `Path` per data item** threading all the parallel axes; `ParallelComponentView` draws the N axes laid out by the coord system. Files added: `coord/parallel/{Parallel,ParallelAxis,ParallelAxisModel,parallelCreator,ParallelModel,parallelPreprocessor}.swift`, `component/parallel/ParallelComponentView.swift`, `chart/parallel/{ParallelSeries,ParallelView,parallelVisual,parallelInstall}.swift`; demo `parallel-basic` + a new Parallel render test. Clean build `buildGreen = true`; `swift test` — **Executed 240 tests, with 58 tests skipped and 0 failures (0 unexpected)** — up from a 239-test baseline (+1 new `ParallelRenderTests`), zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: brush / areaSelect / axis-drag / roam interaction deferred (static parallel render only), as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/parallel/Parallel.swift` (FAITHFUL/0), `chart/parallel/ParallelView.swift` (FAITHFUL/0), `component/parallel/ParallelComponentView.swift` (FAITHFUL/0), `coord/parallel/ParallelModel.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **16 chart types** and **5 coordinate systems** ported end-to-end. See §48.**
 **Phase 16 (SINGLE COORDINATE SYSTEM — the 4th coord system — + the THEMERIVER streamgraph chart): the `single` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, and `polar`, this is the port's **4th coordinate system** (a single one-dimensional axis, used by ThemeRiver). Registered: the `single` coord-system creator (`CoordinateSystemManager.register("single", ...)` → `singleCreator`) + the `SingleAxisModel` component + the `SingleAxisView` axis component view, alongside the whole `chart/themeRiver/` vertical — `ThemeRiverSeriesModel` + the `"themeRiver"` view factory (`ThemeRiverView`) + the `themeRiverLayout` overall stage. ThemeRiver is a streamgraph — `ThemeRiverView` draws the stacked, smoothed river bands (one smooth `Polygon`/`Path` band per series layer) laid out along the single axis by `themeRiverLayout`. Files added: `coord/single/{Single,SingleAxis,SingleAxisModel,singleCreator,singleAxisHelper,singlePrepareCustom}.swift`, `component/axis/SingleAxisView.swift`, `chart/themeRiver/{ThemeRiverSeries,ThemeRiverView,themeRiverLayout,themeRiverInstall}.swift`; demo `themeriver-basic` + a new ThemeRiver render test. Clean build `buildGreen = true`; `swift test` — **Executed 239 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline 238 + 1 new `ThemeRiverRenderTests`; no regressions). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/single/Single.swift` (FAITHFUL/0), `chart/themeRiver/themeRiverLayout.swift` (FAITHFUL/0), `chart/themeRiver/ThemeRiverView.swift` (FAITHFUL/0), `component/axis/SingleAxisView.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **15 chart types** and **4 coordinate systems** ported end-to-end. See §47.**
 **Phase 15 (SANKEY FLOW CHART — COORDLESS: the 14th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the sankey (flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge and the tree-family). Registered: `SankeySeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"sankey"` view factory (`SankeyView`) + the `sankeyLayout`/`sankeyVisual` overall stages. `SankeyView` draws the node **`Rect`s** + the bezier-ribbon edge **`Path`s** (the curved flow ribbons between nodes). Files added: `chart/sankey/SankeySeries.swift` (`SankeySeriesModel`), `chart/sankey/SankeyView.swift` (node Rects + bezier-ribbon edge Paths), `chart/sankey/sankeyLayout.swift`, `chart/sankey/sankeyVisual.swift`, `chart/sankey/sankeyInstall.swift`; demo `sankey-basic` + a sankey render test. Clean build `buildGreen = true`; `swift test` **Executed 238 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 237/0/58; +1 is the new `SankeyRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/sankey/sankeyLayout.swift` (FAITHFUL/0), `chart/sankey/SankeyView.swift` (FAITHFUL/0), `chart/sankey/SankeySeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **14 chart types** ported end-to-end. See §46.**
@@ -2169,6 +2170,58 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 49. Phase 18 — effectScatter + lines charts (the 17th & 18th chart types; effect/ripple/large animations DEFERRED)
+
+**Goal (met):** land the `effectScatter` and `lines` charts end-to-end in `EChartsSlim`, both
+**reusing the existing coordinate systems** (no new coord system this phase). `effectScatter` renders as
+**static symbols** (like scatter, minus the animated ripple); `lines` draws **straight / bezier-curve /
+polyline segments between coords**. **Clean build `buildGreen = true`; `swift test` —
+242 executed / 0 failures / 58 skipped** — up from a 240-test baseline (+2 = the two new render tests);
+zero regressions. This makes **18 chart types** ported end-to-end.
+
+### What registered end-to-end in `EChartsSlim`
+- **`EffectScatterSeriesModel`** — the `effectScatter` series component model.
+- **The `"effectScatter"` view factory** → `EffectScatterView` (reuses the existing coord systems; draws
+  static symbols — the animated ripple effect is DEFERRED).
+- **`LinesSeriesModel`** — the `lines` series component model.
+- **The `"lines"` view factory** → `LinesView`.
+- **The `linesLayout` stage** — the lines layout (resolves per-line coords).
+
+### effectScatter = static symbols; lines = segments between coords
+`EffectScatterView` places one static symbol per datum via the reused coord system's `dataToPoint` (the
+ripple/effect animation is not ported). `LinesView` draws **one `Path` per line datum** — a straight
+two-point segment, a single bezier curve (when a control point is present), or a multi-point polyline —
+connecting the resolved coordinates.
+
+### Files added
+- `chart/effectScatter/EffectScatterSeries.swift` — `EffectScatterSeriesModel`.
+- `chart/effectScatter/EffectScatterView.swift` — the static-symbol render.
+- `chart/effectScatter/effectScatterInstall.swift` — the registration wiring.
+- `chart/lines/LinesSeries.swift` — `LinesSeriesModel`.
+- `chart/lines/LinesView.swift` — the straight/bezier/polyline per-line render.
+- `chart/lines/linesLayout.swift` — the lines layout stage.
+- `chart/lines/linesInstall.swift` — the registration wiring.
+- Demos: `Sources/EChartsDemoGallery/Demos/effectscatter-basic.swift` + `lines-basic.swift`.
+- Tests: two new end-to-end render tests (the +2 over the 240 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **effectScatter ripple** — the animated effect/ripple symbols (static symbols only this phase).
+- **lines effect / moving-dot animation** — the animated moving-dot along each line.
+- **lines large / progressive draw path** — the large-mode / progressive rendering.
+- **lines geo / polar coord paths** — the geo and polar coordinate-system code paths.
+- Interaction / decoration (emphasis/states, enter/update animation) deferred, as in prior chart phases.
+
+### Faithfulness reviews
+All four review verdicts were **FAITHFUL** with **0 findings**; no CRITICAL issues, nothing to fix:
+- `chart/effectScatter/EffectScatterView.swift` — **FAITHFUL** (0 findings).
+- `chart/lines/LinesView.swift` — **FAITHFUL** (0 findings).
+- `chart/lines/linesLayout.swift` — **FAITHFUL** (0 findings).
+- `chart/lines/LinesSeries.swift` — **FAITHFUL** (0 findings).
+
+`buildGreen = true`. This lands the **17th and 18th chart types** ported end-to-end.
 
 ---
 
