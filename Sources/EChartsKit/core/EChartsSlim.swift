@@ -311,6 +311,14 @@ public final class EChartsSlim: EChartsType {
         //   surface); actual wiring lives here per the boxplotInstall/parallelInstall convention.
         ComponentModel.registerClass(EffectScatterSeriesModel.self)
 
+        // -- chart/heatmap/install.ts (minimal) -- registerSeriesModel(HeatmapSeriesModel) +
+        //   registerChartView(HeatmapView) (view keyed by subType 'heatmap' below). Heatmap renders ONLY on
+        //   cartesian2d in the port (one colored Rect per cell); geo/calendar/matrix coord paths are
+        //   PORT-TODO. Cell fill comes from the per-datum color the visualMap ENCODING wrote, so a
+        //   `visualMap` component MUST be present for cells to be colored. heatmapInstall.swift is
+        //   commented-only (diffable surface); actual wiring lives here per the effectScatterInstall convention.
+        ComponentModel.registerClass(HeatmapSeriesModel.self)
+
         // -- chart/pie/install.ts (minimal) -- registerSeriesModel(PieSeries) + registerChartView(PieView) +
         //   registerLayout(pieLayout). Pie has NO cartesian coord (coordinateSystemUsage:"box"); PieView reads
         //   its geometry from `data.getItemLayout` populated by the pie layout stage (run in `render`).
@@ -600,6 +608,9 @@ public final class EChartsSlim: EChartsType {
         // EffectScatter chart view (static base symbols; ripple DEFERRED). Registered under series subType
         //   'effectScatter' (upstream chart/effectScatter/install.ts `registerChartView(EffectScatterView)`).
         "effectScatter": { EffectScatterView() },
+        // Heatmap chart view (cartesian2d colored-Rect path; geo/calendar/matrix DEFERRED). Registered under
+        //   series subType 'heatmap' (upstream chart/heatmap/install.ts `registerChartView(HeatmapView)`).
+        "heatmap": { HeatmapView() },
         "pie": { PieView() },
         "funnel": { FunnelView() },
         "candlestick": { CandlestickView() },

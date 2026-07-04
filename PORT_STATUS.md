@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 22 (HEATMAP chart — the 20th chart type wired end-to-end in `EChartsSlim`, on cartesian, colored by the Phase-21 `visualMap` encoding; geo/large-blur `HeatmapLayer` + calendar paths DEFERRED): the `heatmap` chart registers end-to-end and is **the payoff of Phase 21** — the visualMap value→visual encoding unlocks it. Registered: `HeatmapSeriesModel` (via `ComponentModel.registerClass`) + the `"heatmap"` view factory (`HeatmapView`). On a cartesian grid `HeatmapView` draws one colored `Rect` **cell** per datum, sized to the axis band and **colored from `getItemVisual("color")`** — the per-datum color stamped by the Phase-21 `visualEncoding` stage (the visualMap encoder). Files added: `chart/heatmap/HeatmapSeries.swift` (`HeatmapSeriesModel`), `chart/heatmap/HeatmapView.swift` (the cartesian colored-Rect cell render), `chart/heatmap/heatmapInstall.swift`; demo `heatmap-basic` + `HeatmapRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 247 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 246 + 1 new `HeatmapRenderTests` test; no regressions. Deferred PORT-TODOs per CONVENTIONS §5: the geo-coordinate blurred `HeatmapLayer` (the gradient/large-blur pixel path), the large/progressive draw path, and the calendar-coordinate branch (heatmap-on-calendar) — all DEFERRED; this phase lands the cartesian colored-cell heatmap only. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/heatmap/HeatmapView.swift` (FAITHFUL/0), `chart/heatmap/HeatmapSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **20 chart types** ported end-to-end. See §53.**
 **Phase 21 (visualMap ENCODING CORE — the value→visual encoder + models + the `visualEncoding` VISUAL stage; the interactive control WIDGET DEFERRED): the value→visual encoding half of `visualMap` registers end-to-end in `EChartsSlim` — enough to map data values to visual channels (color/opacity/symbolSize/…), but NOT the on-screen draggable control (that interactive widget is DEFERRED). Registered: `ContinuousVisualMapModel` + `PiecewiseVisualMapModel` (via `ComponentModel.registerClass`), the `visualMap` sub-type typeDefaulter (`continuous`/`piecewise`), the `visualMapPreprocessor`, the `visualEncoding` **VISUAL stage** (the `seriesVisualMap`/`visualMapVisual` value→visual pipeline that stamps each datum's visual from the model's `VisualMapping`), and a **minimal `VisualMapView`** (registration placeholder — the interactive control render is DEFERRED). The core encoder is `visual/VisualMapping.swift` — the faithful value→visual mapper (piecewise/category/linear mapping methods). **This UNLOCKS the heatmap chart (next phase), whose color comes from a visualMap.** Files added: `visual/VisualMapping.swift` (the encoder) + `visual/{visualDefault,visualSolution}.swift`; the whole `component/visualMap/` vertical — `VisualMapModel.swift` (base) + `ContinuousModel.swift` + `PiecewiseModel.swift` + `typeDefaulter.swift` + `visualMapPreprocessor.swift` + `visualEncoding.swift` + `visualMapHelper.swift` + `installCommon.swift` + the minimal `VisualMapView.swift`/`ContinuousView.swift`/`PiecewiseView.swift` + `visualMapAction.swift`; demo `visualmap-basic` + `VisualMapEncodingTests`. Clean build `buildGreen = true`; `swift test` **246 executed / 0 failures / 58 skipped** (baseline 244 preserved + 2 new `VisualMapEncodingTests`); zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: the interactive control WIDGET — the drag/hover handle, the range indicator, and the hover-highlight/select actions (`visualMapAction` select/highlight, the continuous drag-range interaction, the piecewise item toggle) — all DEFERRED (the models + value→visual encoding + minimal view only). Faithfulness reviews — ALL **FAITHFUL**: `visual/VisualMapping.swift` FAITHFUL (2 findings), `component/visualMap/ContinuousModel.swift` FAITHFUL (0), `component/visualMap/PiecewiseModel.swift` FAITHFUL (0), `component/visualMap/visualEncoding.swift` FAITHFUL (1). No CRITICAL findings; `buildGreen = true`. The 3 MINOR findings are **NOT yet fixed** — to be handled by the main loop post-workflow. See §52.**
 **Phase 20 (CALENDAR coordinate system — the 6th coord system + its component view; integrated MANUALLY after the workflow hit a session limit): the `calendar` coordinate system registers end-to-end in `EChartsSlim` — a grid of day cells keyed by DATE (after cartesian/radar/polar/single/parallel). Registered: `CalendarCoordinateSystemCreator` (forwards to `Calendar.create` / `Calendar.dimensions` `["time","value"]`) via `CoordinateSystemManager.register("calendar", …)` + `ComponentModel.registerClass(CalendarModel)` + the `"calendar"` component view factory (`CalendarView`, drawing the month/day-cell grid outline Polylines + day-rect + day/week/month/year labels from the `Calendar` cell geometry). Files added: `coord/calendar/{Calendar,CalendarModel,calendarPrepareCustom}.swift`, `component/calendar/CalendarView.swift`, and a NEW `util/graphic.swift` (partial — `expandOrShrinkRect`/`expandRectOnOneDimension`, the rect expand/shrink helper the calendar outline needs; Grid references it too); demo `calendar-basic` + `CalendarRenderTests`. Clean build `buildGreen = true` (0 product warnings); `swift test` **244 executed / 0 failures / 58 skipped** (baseline 243; +1 `CalendarRenderTests`). Manual-integration fixes: (1) `Calendar` (the coord class) SHADOWS `Foundation.Calendar` module-wide — qualified the Foundation uses in `util/{format,time,number}.swift` + `time.calendar(_:) -> Foundation.Calendar` + the creator's `EChartsKit.Calendar`; (2) the two date-modeling agents disagreed (coord `JSDate` reference wrapper vs view `Foundation.Date`) → `CalendarView` now mutates the `JSDate` in place (`setMonth`) like upstream; (3) landed `expandOrShrinkRect`; (4) RUNTIME CRASH (index-out-of-range in `_renderMonthText`/`_renderWeekText`): the not-yet-ported locale model supplies no `time.monthAbbr`/`dayOfWeekAbbr`, so the label `nameMap[i]` index blew up — added EN-locale fallbacks (documented locale-not-ported bridge). Faithfulness review (run after the limit reset): `Calendar.swift` date math **FAITHFUL** (0 findings) — getDateInfo day-of-week, _getRangeInfo weeks/nthWeek, getDateByWeeksAndDay/getNextNDay advancement, dataToPoint/dataToRect cell mapping + orient swap all match upstream, and the `JSDate` setDate/setMonth rollover was empirically confirmed against JS `Date` semantics. DEFERRED: scatter/heatmap-on-calendar (ScatterView calendar branch). This makes **6 coordinate systems**. See §51.**
 **Phase 19 (CHORD circular flow chart — COORDLESS: the 19th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the chord (circular flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge, sankey, and the tree-family). Registered: `ChordSeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"chord"` view factory (`ChordView`) + the `chordCircularLayout` overall stage. `ChordView` draws the node **arc `Sector`s** (`ChordPiece`) laid around the circle + the bezier-ribbon edge **`Path`s** (`ChordEdge` — the curved flow ribbons between node arcs). Files added: `chart/chord/ChordSeries.swift` (`ChordSeriesModel`), `chart/chord/ChordView.swift` (node arc Sectors + bezier-ribbon edge Paths), `chart/chord/ChordPiece.swift` (the node arc Sector piece), `chart/chord/ChordEdge.swift` (the bezier-ribbon edge path), `chart/chord/chordLayout.swift` (`chordCircularLayout`), `chart/chord/chordInstall.swift`; demo `chord-basic` + a chord render test. Clean build `buildGreen = true`; `swift test` **Executed 243 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 242/0/58; +1 is the new `ChordRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews: `chart/chord/chordLayout.swift` **MINOR-ISSUES** (1 finding); `chart/chord/ChordEdge.swift` (FAITHFUL/0), `chart/chord/ChordView.swift` (FAITHFUL/0), `chart/chord/ChordSeries.swift` (FAITHFUL/0). No CRITICAL findings; build is green. **The 1 MINOR finding is FIXED post-workflow**: `chordLayout` read `nodeValues[i] ?? 0` (nil-only) where upstream is JS `nodeValues[i] || 0` (also sheds NaN) — a value-less link makes an accumulator NaN and `?? 0` propagated it into `nodeValueSum` → `unitAngle` NaN → the whole chord failed to render; replaced the 6 `nodeValues` reads with an `orZero` (nil/NaN→0) helper. This makes **19 chart types** ported end-to-end. See §50.**
@@ -2173,6 +2174,52 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 53. Phase 22 — Heatmap chart (the 20th chart type; on cartesian, colored by the Phase-21 visualMap encoding; geo/large-blur + calendar paths DEFERRED)
+
+**Goal (met):** land the `heatmap` chart end-to-end in `EChartsSlim`, on the **cartesian** coordinate
+system, with each cell **colored by the Phase-21 `visualMap` encoding**. This is **the payoff of
+Phase 21** — Phase 21 landed the value→visual encoder precisely so that heatmap's per-cell color has
+a source; the `visualEncoding` stage stamps each datum's color and the heatmap view reads it back.
+**Clean build `buildGreen = true`; `swift test` — Executed 247 tests, with 58 tests skipped and 0
+failures (0 unexpected)** — baseline 246 + 1 new `HeatmapRenderTests` test; no regressions. This
+makes **20 chart types** ported end-to-end.
+
+### What registered end-to-end in `EChartsSlim`
+- **`HeatmapSeriesModel`** — the heatmap series component model, registered via
+  `ComponentModel.registerClass`.
+- **The `"heatmap"` view factory (`HeatmapView`)** — the render layer.
+
+### The render: cartesian colored-Rect cells
+On a cartesian grid, `HeatmapView` draws one `Rect` **cell** per datum, sized to the x/y axis band,
+and **colored from `getItemVisual("color")`** — the per-datum color stamped by the Phase-21
+`visualEncoding` VISUAL stage (the `VisualMapping` value→visual encoder). No color computation lives
+in the view; the visualMap encoding produces the color and the heatmap simply consumes it. This is
+the direct payoff of the Phase-21 groundwork.
+
+### Files added
+- `chart/heatmap/HeatmapSeries.swift` — `HeatmapSeriesModel`.
+- `chart/heatmap/HeatmapView.swift` — the cartesian colored-Rect cell render (color from `getItemVisual`).
+- `chart/heatmap/heatmapInstall.swift` — the registration wiring.
+- Demo: `Sources/EChartsDemoGallery/Demos/heatmap-basic.swift`.
+- Tests: `Tests/EChartsKitTests/HeatmapRenderTests.swift` (the +1 over the 246 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **The geo-coordinate blurred `HeatmapLayer`** — the gradient / large-blur pixel path (the
+  smooth-heatmap-on-geo render) is DEFERRED.
+- **The large / progressive draw path** — DEFERRED.
+- **The calendar-coordinate branch** (heatmap-on-calendar) — DEFERRED.
+
+This phase lands the **cartesian colored-cell heatmap only**.
+
+### Faithfulness reviews
+- `chart/heatmap/HeatmapView.swift` — **FAITHFUL** (0 findings).
+- `chart/heatmap/HeatmapSeries.swift` — **FAITHFUL** (0 findings).
+
+No CRITICAL findings; `buildGreen = true`; nothing to fix. This lands the 20th chart type and
+realizes the payoff of the Phase-21 visualMap encoding core.
 
 ---
 
