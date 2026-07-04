@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 21 (visualMap ENCODING CORE — the value→visual encoder + models + the `visualEncoding` VISUAL stage; the interactive control WIDGET DEFERRED): the value→visual encoding half of `visualMap` registers end-to-end in `EChartsSlim` — enough to map data values to visual channels (color/opacity/symbolSize/…), but NOT the on-screen draggable control (that interactive widget is DEFERRED). Registered: `ContinuousVisualMapModel` + `PiecewiseVisualMapModel` (via `ComponentModel.registerClass`), the `visualMap` sub-type typeDefaulter (`continuous`/`piecewise`), the `visualMapPreprocessor`, the `visualEncoding` **VISUAL stage** (the `seriesVisualMap`/`visualMapVisual` value→visual pipeline that stamps each datum's visual from the model's `VisualMapping`), and a **minimal `VisualMapView`** (registration placeholder — the interactive control render is DEFERRED). The core encoder is `visual/VisualMapping.swift` — the faithful value→visual mapper (piecewise/category/linear mapping methods). **This UNLOCKS the heatmap chart (next phase), whose color comes from a visualMap.** Files added: `visual/VisualMapping.swift` (the encoder) + `visual/{visualDefault,visualSolution}.swift`; the whole `component/visualMap/` vertical — `VisualMapModel.swift` (base) + `ContinuousModel.swift` + `PiecewiseModel.swift` + `typeDefaulter.swift` + `visualMapPreprocessor.swift` + `visualEncoding.swift` + `visualMapHelper.swift` + `installCommon.swift` + the minimal `VisualMapView.swift`/`ContinuousView.swift`/`PiecewiseView.swift` + `visualMapAction.swift`; demo `visualmap-basic` + `VisualMapEncodingTests`. Clean build `buildGreen = true`; `swift test` **246 executed / 0 failures / 58 skipped** (baseline 244 preserved + 2 new `VisualMapEncodingTests`); zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: the interactive control WIDGET — the drag/hover handle, the range indicator, and the hover-highlight/select actions (`visualMapAction` select/highlight, the continuous drag-range interaction, the piecewise item toggle) — all DEFERRED (the models + value→visual encoding + minimal view only). Faithfulness reviews — ALL **FAITHFUL**: `visual/VisualMapping.swift` FAITHFUL (2 findings), `component/visualMap/ContinuousModel.swift` FAITHFUL (0), `component/visualMap/PiecewiseModel.swift` FAITHFUL (0), `component/visualMap/visualEncoding.swift` FAITHFUL (1). No CRITICAL findings; `buildGreen = true`. The 3 MINOR findings are **NOT yet fixed** — to be handled by the main loop post-workflow. See §52.**
 **Phase 20 (CALENDAR coordinate system — the 6th coord system + its component view; integrated MANUALLY after the workflow hit a session limit): the `calendar` coordinate system registers end-to-end in `EChartsSlim` — a grid of day cells keyed by DATE (after cartesian/radar/polar/single/parallel). Registered: `CalendarCoordinateSystemCreator` (forwards to `Calendar.create` / `Calendar.dimensions` `["time","value"]`) via `CoordinateSystemManager.register("calendar", …)` + `ComponentModel.registerClass(CalendarModel)` + the `"calendar"` component view factory (`CalendarView`, drawing the month/day-cell grid outline Polylines + day-rect + day/week/month/year labels from the `Calendar` cell geometry). Files added: `coord/calendar/{Calendar,CalendarModel,calendarPrepareCustom}.swift`, `component/calendar/CalendarView.swift`, and a NEW `util/graphic.swift` (partial — `expandOrShrinkRect`/`expandRectOnOneDimension`, the rect expand/shrink helper the calendar outline needs; Grid references it too); demo `calendar-basic` + `CalendarRenderTests`. Clean build `buildGreen = true` (0 product warnings); `swift test` **244 executed / 0 failures / 58 skipped** (baseline 243; +1 `CalendarRenderTests`). Manual-integration fixes: (1) `Calendar` (the coord class) SHADOWS `Foundation.Calendar` module-wide — qualified the Foundation uses in `util/{format,time,number}.swift` + `time.calendar(_:) -> Foundation.Calendar` + the creator's `EChartsKit.Calendar`; (2) the two date-modeling agents disagreed (coord `JSDate` reference wrapper vs view `Foundation.Date`) → `CalendarView` now mutates the `JSDate` in place (`setMonth`) like upstream; (3) landed `expandOrShrinkRect`; (4) RUNTIME CRASH (index-out-of-range in `_renderMonthText`/`_renderWeekText`): the not-yet-ported locale model supplies no `time.monthAbbr`/`dayOfWeekAbbr`, so the label `nameMap[i]` index blew up — added EN-locale fallbacks (documented locale-not-ported bridge). Faithfulness review (run after the limit reset): `Calendar.swift` date math **FAITHFUL** (0 findings) — getDateInfo day-of-week, _getRangeInfo weeks/nthWeek, getDateByWeeksAndDay/getNextNDay advancement, dataToPoint/dataToRect cell mapping + orient swap all match upstream, and the `JSDate` setDate/setMonth rollover was empirically confirmed against JS `Date` semantics. DEFERRED: scatter/heatmap-on-calendar (ScatterView calendar branch). This makes **6 coordinate systems**. See §51.**
 **Phase 19 (CHORD circular flow chart — COORDLESS: the 19th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the chord (circular flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge, sankey, and the tree-family). Registered: `ChordSeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"chord"` view factory (`ChordView`) + the `chordCircularLayout` overall stage. `ChordView` draws the node **arc `Sector`s** (`ChordPiece`) laid around the circle + the bezier-ribbon edge **`Path`s** (`ChordEdge` — the curved flow ribbons between node arcs). Files added: `chart/chord/ChordSeries.swift` (`ChordSeriesModel`), `chart/chord/ChordView.swift` (node arc Sectors + bezier-ribbon edge Paths), `chart/chord/ChordPiece.swift` (the node arc Sector piece), `chart/chord/ChordEdge.swift` (the bezier-ribbon edge path), `chart/chord/chordLayout.swift` (`chordCircularLayout`), `chart/chord/chordInstall.swift`; demo `chord-basic` + a chord render test. Clean build `buildGreen = true`; `swift test` **Executed 243 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 242/0/58; +1 is the new `ChordRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews: `chart/chord/chordLayout.swift` **MINOR-ISSUES** (1 finding); `chart/chord/ChordEdge.swift` (FAITHFUL/0), `chart/chord/ChordView.swift` (FAITHFUL/0), `chart/chord/ChordSeries.swift` (FAITHFUL/0). No CRITICAL findings; build is green. **The 1 MINOR finding is FIXED post-workflow**: `chordLayout` read `nodeValues[i] ?? 0` (nil-only) where upstream is JS `nodeValues[i] || 0` (also sheds NaN) — a value-less link makes an accumulator NaN and `?? 0` propagated it into `nodeValueSum` → `unitAngle` NaN → the whole chord failed to render; replaced the 6 `nodeValues` reads with an `orZero` (nil/NaN→0) helper. This makes **19 chart types** ported end-to-end. See §50.**
 **Phase 18 (effectScatter + lines charts — the 17th & 18th chart types wired end-to-end in `EChartsSlim`, reusing existing coord systems; effect/ripple/large animations DEFERRED): both `effectScatter` and `lines` register end-to-end. `effectScatter` reuses the existing coord systems and renders as **static symbols** (the animated ripple effect DEFERRED). `lines` draws **straight / bezier-curve / polyline segments between coords** (one `Path` per line datum: straight two-point, curved single-bezier, or a multi-point polyline). Registered: `EffectScatterSeriesModel` + the `"effectScatter"` view factory (`EffectScatterView`); `LinesSeriesModel` + the `"lines"` view factory (`LinesView`) + the `linesLayout` stage. Files added: `chart/effectScatter/{EffectScatterSeries,EffectScatterView,effectScatterInstall}.swift`, `chart/lines/{LinesSeries,LinesView,linesLayout,linesInstall}.swift`; demos `effectscatter-basic` + `lines-basic` + 2 new render tests. Clean build `buildGreen = true`; `swift test` — **242 executed / 0 failures / 58 skipped (baseline 240; +2 new render tests)**, zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: effectScatter ripple (animated effect symbols); lines effect / moving-dot animation + large/progressive draw path + geo/polar coord paths; interaction/decoration (emphasis/states, enter/update animation) as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/effectScatter/EffectScatterView.swift` (FAITHFUL/0), `chart/lines/LinesView.swift` (FAITHFUL/0), `chart/lines/linesLayout.swift` (FAITHFUL/0), `chart/lines/LinesSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **18 chart types** ported end-to-end. See §49.**
@@ -2172,6 +2173,70 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 52. Phase 21 — visualMap encoding core (the value→visual encoder + models + `visualEncoding` stage; the interactive control WIDGET DEFERRED)
+
+> Insertion note: the Phase 20 banner references a `## 51. Phase 20` detail section that was
+> never written (Phase 20 was integrated manually and lives as a top-of-file banner only). This
+> Phase 21 section is therefore placed at the top of the detail stack, immediately before
+> `## 50. Phase 19` — i.e. exactly where `## 51. Phase 20` would sit.
+
+**Goal (met):** land the **value→visual encoding half** of `visualMap` end-to-end in `EChartsSlim` —
+the machinery that maps a data value to a visual channel (color / opacity / symbolSize / …) — while
+**DEFERRING the interactive control widget** (the on-screen draggable range/handle). This is the
+groundwork that **UNLOCKS the heatmap chart (next phase)**, whose per-cell color is produced by a
+visualMap. **Clean build `buildGreen = true`; `swift test` — 246 executed / 0 failures / 58 skipped**
+(baseline 244 preserved + 2 new `VisualMapEncodingTests`); zero regressions.
+
+### What registered end-to-end in `EChartsSlim`
+- **`ContinuousVisualMapModel` + `PiecewiseVisualMapModel`** — the two visualMap component models,
+  registered via `ComponentModel.registerClass` (on the shared `VisualMapModel` base).
+- **The `visualMap` sub-type typeDefaulter** — resolves the bare `visualMap` type to
+  `continuous` / `piecewise` (`typeDefaulter.swift`).
+- **The `visualMapPreprocessor`** — the option preprocessor (normalizes the visualMap option).
+- **The `visualEncoding` VISUAL stage** — the value→visual pipeline (`seriesVisualMap` /
+  `visualMapVisual`) that stamps each datum's visual from the model's `VisualMapping`.
+- **A minimal `VisualMapView`** — a registration placeholder only; the interactive control render
+  is DEFERRED.
+
+### The encoder: `visual/VisualMapping.swift`
+`VisualMapping` is the faithful value→visual mapper — the piecewise / category / linear mapping
+methods that turn a normalized data value into a visual-channel value (color, opacity, symbolSize,
+…). It is what the `visualEncoding` stage drives per datum, and what the heatmap will read next phase.
+
+### Files added
+- `visual/VisualMapping.swift` — the value→visual encoder (the core).
+- `visual/visualDefault.swift`, `visual/visualSolution.swift` — the visual defaulting / solution helpers.
+- `component/visualMap/VisualMapModel.swift` — the shared base model.
+- `component/visualMap/ContinuousModel.swift` — `ContinuousVisualMapModel`.
+- `component/visualMap/PiecewiseModel.swift` — `PiecewiseVisualMapModel`.
+- `component/visualMap/typeDefaulter.swift` — the `continuous`/`piecewise` sub-type defaulter.
+- `component/visualMap/visualMapPreprocessor.swift` — the option preprocessor.
+- `component/visualMap/visualEncoding.swift` — the `visualEncoding` VISUAL stage.
+- `component/visualMap/visualMapHelper.swift`, `component/visualMap/installCommon.swift` — shared wiring.
+- `component/visualMap/{VisualMapView,ContinuousView,PiecewiseView}.swift` — the minimal view
+  (registration placeholder; interactive control render DEFERRED).
+- `component/visualMap/visualMapAction.swift` — the action stubs (interactions DEFERRED).
+- Demo: `Sources/EChartsDemoGallery/Demos/visualmap-basic.swift`.
+- Tests: `Tests/EChartsKitTests/VisualMapEncodingTests.swift` (the +2 over the 244 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **The interactive control WIDGET is DEFERRED** — the draggable range handle + the range indicator
+  + the hover-highlight/select interactions (`visualMapAction` select/highlight, the continuous
+  drag-range interaction, the piecewise item toggle). This phase lands the models + the value→visual
+  encoding + a minimal (placeholder) view only.
+
+### Faithfulness reviews
+- `visual/VisualMapping.swift` — **FAITHFUL** (2 findings).
+- `component/visualMap/ContinuousModel.swift` — **FAITHFUL** (0 findings).
+- `component/visualMap/PiecewiseModel.swift` — **FAITHFUL** (0 findings).
+- `component/visualMap/visualEncoding.swift` — **FAITHFUL** (1 finding).
+
+No CRITICAL findings; `buildGreen = true`. The 3 MINOR findings (2 in `VisualMapping.swift`, 1 in
+`visualEncoding.swift`) are **NOT yet fixed** — they are to be handled by the main loop
+post-workflow. This lands the visualMap **encoding core** that unlocks the heatmap chart next phase.
 
 ---
 

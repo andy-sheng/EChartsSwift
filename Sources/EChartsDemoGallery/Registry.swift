@@ -25,5 +25,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_themeriver_basic,  // ThemeRiver
         EChartsDemoRegistry.demo_parallel_basic,    // Parallel
         EChartsDemoRegistry.demo_calendar_basic,    // Calendar
+        EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
     ]
 }

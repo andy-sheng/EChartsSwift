@@ -520,6 +520,19 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(LegendModel.self)
         ComponentModel.registerSubTypeDefaulter("legend", { _ in "plain" })
 
+        // -- component/visualMap/installCommon.ts + typeDefaulter.ts + preprocessor.ts + visualEncoding.ts --
+        //   registerComponentModel(ContinuousModel/PiecewiseModel) + registerComponentView(ContinuousView/
+        //   PiecewiseVisualMapView) + registerSubTypeDefaulter('visualMap', continuous|piecewise) +
+        //   registerVisual(PRIORITY.VISUAL.COMPONENT, visualMapEncodingHandlers) + registerPreprocessor +
+        //   registerAction('selectDataRange'). VisualMapModel is the ABSTRACT base and is NOT registered; the
+        //   two concrete subtypes are. The subtype defaulter resolves a bare `visualMap: {...}` option
+        //   (mainType 'visualMap', no subtype) to 'continuous' | 'piecewise' (ec2-compat splitNumber/pieces/
+        //   calculable heuristic). The value->visual ENCODING runs in the visual stage (performVisualStage →
+        //   performVisualMapStage) AFTER each series' own visual stage, so it overwrites the palette color.
+        ComponentModel.registerClass(ContinuousModel.self)                 // registerComponentModel(ContinuousModel)
+        ComponentModel.registerClass(PiecewiseModel.self)                  // registerComponentModel(PiecewiseModel)
+        registerVisualMapSubTypeDefaulter()                                // registerSubTypeDefaulter('visualMap', ...)
+
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
         //   whose render path depends on deep deps that are still stubbed in this phase:
@@ -571,7 +584,14 @@ public final class EChartsSlim: EChartsType {
         "parallelAxis": { ParallelAxisView() },
         "parallel": { ParallelComponentView() },
         // calendar coord backdrop (grid + split lines + day/week/month/year labels).
-        "calendar": { CalendarView() }
+        "calendar": { CalendarView() },
+        // visualMap control widget. Keyed by FULL type (subtype dispatch) — the doPrepare lookup tries
+        //   `model.type` before `model.mainType`, so continuous vs piecewise resolve to distinct views.
+        //   ContinuousView draws the static gradient bar; PiecewiseVisualMapView draws the per-piece swatch
+        //   list. The value->visual ENCODING is independent of these views (it is a visual STAGE); the
+        //   widget is the secondary deliverable (upstream `registerComponentView(ContinuousView/PiecewiseView)`).
+        "visualMap.continuous": { ContinuousView() },
+        "visualMap.piecewise": { PiecewiseVisualMapView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -645,6 +665,10 @@ public final class EChartsSlim: EChartsType {
         //   place (inout write-back; ECUnitOption == [String: Any], so `&opt` binds directly — the bespoke
         //   `inout ECUnitOption` signature is the same value type, no adapter needed).
         parallelPreprocessor(&opt)
+        // Preprocessor from component/visualMap/preprocessor.ts (registerPreprocessor(visualMapPreprocessor)):
+        //   array-normalize the `visualMap` option, split ec2 `splitList` into `pieces`, and migrate each
+        //   piece's `start`/`end` → `min`/`max`. Mutates option.visualMap in place (inout ECUnitOption).
+        visualMapPreprocessor(&opt)
 
         let ecModel = GlobalModel()
         let om = OptionManager(_api)
@@ -705,6 +729,13 @@ public final class EChartsSlim: EChartsType {
         //     stage handlers directly (visual/style.swift), in upstream registration order.
         performVisualStage(ecModel, api)
 
+        // VISUAL (component) — visualMap value->visual encoding. Registered upstream at
+        //   PRIORITY.VISUAL.COMPONENT (registerVisual(visualMapEncodingHandlers)), i.e. AFTER each series'
+        //   own visual stage above, so the per-datum encoded color OVERWRITES the palette color. Handler #1
+        //   walks each target series' data and `setItemVisual`s the mapped color/opacity/symbol; handler #2
+        //   emits the `visualMeta` gradient stops (consumed by heatmap/tooltip). This is the KEY deliverable.
+        performVisualMapStage(ecModel, api)
+
         // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-TODO: the driver exposes a
         //     bare Group; background is a host concern.
 
@@ -729,6 +760,52 @@ public final class EChartsSlim: EChartsType {
     /// Run an OVERALL_STAGE_TASK handler (has `overallReset`).
     private func runOverallStageHandler(_ handler: StageHandler, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         handler.overallReset?(ecModel, api, nil)
+    }
+
+    // ------------------------------------------------------------------------
+    // VISUAL (component) stage — run the `visualMapEncodingHandlers`. Each is a `createOnAllSeries` reset
+    // task whose reset returns EITHER a single `StageHandlerProgressExecutor` OR an ARRAY of them
+    // (handler #1 pushes one executor per matching visualMap component). Upstream the Scheduler pipes each
+    // returned executor's `progress` over the data chunks; here it is a single synchronous full-range pass.
+    // Handler #2's reset does its work inline (setVisual('visualMeta', ...)) and returns nil.
+    // ------------------------------------------------------------------------
+    private func performVisualMapStage(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        for handler in visualMapEncodingHandlers {
+            guard let reset = handler.reset else { continue }
+            ecModel.eachSeries { seriesModel, _ in
+                let result = reset(seriesModel, ecModel, api, nil)
+                // Normalize the reset result to a list of executors.
+                var executors: [StageHandlerProgressExecutor] = []
+                if let one = result as? StageHandlerProgressExecutor {
+                    executors = [one]
+                }
+                else if let many = result as? [StageHandlerProgressExecutor] {
+                    executors = many
+                }
+                guard !executors.isEmpty else { return }
+
+                let data = seriesModel.getData()
+                let count = data.count()
+                for executor in executors {
+                    if let dataEach = executor.dataEach {
+                        for i in 0..<count { dataEach(data, Double(i)) }
+                    }
+                    else if let progress = executor.progress {
+                        var cursor = 0
+                        let next: TaskDataIteratorNext = {
+                            if cursor < count {
+                                let v = Double(cursor); cursor += 1; return v
+                            }
+                            return nil
+                        }
+                        let params = StageHandlerProgressParams(
+                            start: 0, end: Double(count), count: Double(count), next: next
+                        )
+                        progress(params, data)
+                    }
+                }
+            }
+        }
     }
 
     /// Run a SERIES_STAGE_TASK handler (`reset` per series, then drive its returned executor over the
@@ -937,8 +1014,11 @@ public final class EChartsSlim: EChartsType {
             let viewId = "_ec_\(model.componentIndex)_\(model.type)"
             if isComponent {
                 let view = _componentsMap[viewId] ?? {
-                    // getClass(classType.main, classType.sub) → factory keyed by mainType.
-                    guard let factory = _componentViewFactories[model.mainType] else {
+                    // getClass(classType.main, classType.sub) → factory keyed by FULL type first (subtype
+                    //   dispatch, e.g. 'visualMap.continuous'), then by mainType (e.g. 'legend' whose full
+                    //   type is 'legend.plain'). Most components have full type == mainType, so the fallback
+                    //   is what they resolve through.
+                    guard let factory = _componentViewFactories[model.type] ?? _componentViewFactories[model.mainType] else {
                         // PORT-TODO: no component view registered for this mainType (out of bar scope).
                         return nil as ComponentView?
                     }
