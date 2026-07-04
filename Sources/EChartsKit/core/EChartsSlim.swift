@@ -317,6 +317,17 @@ public final class EChartsSlim: EChartsType {
         //   data-processor stage. All run in `render`/`update` below.
         ComponentModel.registerClass(GraphSeriesModel.self)
 
+        // -- chart/sankey/install.ts (minimal) -- registerSeriesModel(SankeySeries) +
+        //   registerChartView(SankeyView) + registerLayout(sankeyLayoutStageHandler) +
+        //   registerVisual(sankeyVisualStageHandler). Sankey is a COORDLESS flow chart (box usage, no
+        //   cartesian coord; reuses the ported Graph + createGraphFromNodeEdge exactly like GraphSeries).
+        //   SankeyView reads each node's rect {x,y,dx,dy} + each edge's ribbon {sy,ty,dy} from the box
+        //   layout stage (sankeyLayout), and each node's fill from the visual stage (sankeyVisual). The
+        //   visual reads `node.getLayout().value` written by the layout, so the layout MUST run first;
+        //   both run in `render`/`update` below. The `dragNode` action + roam are DEFERRED (roamHelper
+        //   not ported); see chart/sankey/sankeyInstall.swift.
+        ComponentModel.registerClass(SankeySeriesModel.self)
+
         // -- chart/gauge/install.ts (minimal) -- registerSeriesModel(GaugeSeries) + registerChartView(GaugeView).
         //   Gauge is COORDLESS (no coordinate system, no layout/visual stage): center/radius/startAngle/endAngle
         //   drive geometry directly, and GaugeView computes the axis arc bands, ticks, split lines, pointer,
@@ -427,6 +438,10 @@ public final class EChartsSlim: EChartsType {
         "treemap": { TreemapView() },
         "tree": { TreeView() },
         "graph": { GraphView() },
+        // Sankey chart view (coordless flow): node Rects + edge ribbon SankeyPaths + node/edge labels;
+        //   geometry from the sankey box layout stage. Registered under series subType 'sankey'
+        //   (upstream chart/sankey/install.ts `registerChartView(SankeyView)`).
+        "sankey": { SankeyView() },
         // Gauge chart view (coordless): axis arc color bands, split lines + ticks, tick labels, pointer
         //   needle, anchor, and title/detail text — all computed in render. Registered under series subType
         //   'gauge' (upstream chart/gauge/install.ts `registerChartView(GaugeView)`).
@@ -679,6 +694,17 @@ public final class EChartsSlim: EChartsType {
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
         graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT + VISUAL — sankey. Upstream registers `sankeyLayoutStageHandler` (an OVERALL box-layout
+        //   stage that computes each node's {x,y,dx,dy} column/height + each edge's {sy,ty,dy} ribbon
+        //   offsets, and sets `seriesModel.layoutInfo`) and `sankeyVisualStageHandler` (an OVERALL stage
+        //   that colors each node FROM `node.getLayout().value`, and each edge from its lineStyle). Sankey
+        //   is coordless (box usage, no cartesian coord); SankeyView reads the per-node/per-edge layout
+        //   back. The visual READS the value written by the layout, so — like candlestick/treemap — the
+        //   layout MUST run first. `sankeyLayout` is a bare 2-arg fn (like graph/funnel layout); the
+        //   visual is an OVERALL stage handler.
+        sankeyLayout(ecModel, api)
+        sankeyVisualStageHandler.overallReset?(ecModel, api, nil)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
         //   (non-cartesian) coordinate system, already built + updated by `_coordSysMgr.create`/`.update`

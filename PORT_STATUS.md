@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 15 (SANKEY FLOW CHART — COORDLESS: the 14th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the sankey (flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge and the tree-family). Registered: `SankeySeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"sankey"` view factory (`SankeyView`) + the `sankeyLayout`/`sankeyVisual` overall stages. `SankeyView` draws the node **`Rect`s** + the bezier-ribbon edge **`Path`s** (the curved flow ribbons between nodes). Files added: `chart/sankey/SankeySeries.swift` (`SankeySeriesModel`), `chart/sankey/SankeyView.swift` (node Rects + bezier-ribbon edge Paths), `chart/sankey/sankeyLayout.swift`, `chart/sankey/sankeyVisual.swift`, `chart/sankey/sankeyInstall.swift`; demo `sankey-basic` + a sankey render test. Clean build `buildGreen = true`; `swift test` **Executed 238 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 237/0/58; +1 is the new `SankeyRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/sankey/sankeyLayout.swift` (FAITHFUL/0), `chart/sankey/SankeyView.swift` (FAITHFUL/0), `chart/sankey/SankeySeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **14 chart types** ported end-to-end. See §46.**
 **Phase 14 (GAUGE CHART — COORDLESS: the 13th chart type wired end-to-end in `EChartsSlim`): the gauge chart registers coordless (box/view usage, like pie/funnel/the tree-family — no coordinate system). Registered: `GaugeSeriesModel` + the `"gauge"` view factory (`GaugeView`). `GaugeView` draws the entire gauge directly (no separate axis component) — the axis arc (colored segments), split-lines, ticks, tick labels, the pointer/needle, the anchor, the progress arc, and the title + detail text blocks are all built inside the view. A custom needle shape `PointerPath` (in `PointerPath.swift`) supplies the pointer geometry. Files added: `chart/gauge/GaugeSeries.swift` (`GaugeSeriesModel`), `chart/gauge/GaugeView.swift` (the whole render), `chart/gauge/PointerPath.swift` (the custom pointer/needle path); demo `gauge-basic` + a gauge render test. Clean build `buildGreen = true`; `swift test` **Executed 237 tests, with 58 tests skipped and 0 failures (0 unexpected) in 0.285s** (baseline 236 + 1 new gauge render test). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/gauge/GaugeView.swift` (reviewed twice, FAITHFUL/0 both), `chart/gauge/PointerPath.swift` (FAITHFUL/0), `chart/gauge/GaugeSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **13 chart types** ported end-to-end. See §45.**
 **Phase 13 (POLAR COORDINATE SYSTEM + angle/radius axis component views — the SECOND non-cartesian coord system): the `polar` coordinate system registers end-to-end in `EChartsSlim` — after Phase 12's `radar`, this is the port's SECOND non-cartesian coord system. Registered: the polar coord-system creator (`CoordinateSystemManager.register("polar", ...)` → `polarCreator` injecting the coord sys + associating the angle/radius axes for scale extents) + `PolarModel`/`angleAxis`/`radiusAxis` component models + the two axis component views (`AngleAxisView` + `RadiusAxisView`). `ScatterView` was made polar-aware — `ScatterView.render` now branches by coord type: the existing Cartesian2D path is unchanged, and a NEW Polar branch maps data dims by coord dim name (radius=dim0, angle=dim1 per `polarDimensions`) and places each datum via `Polar.dataToPoint([radiusVal, angleVal])` — the faithful inline of upstream `layout/points.ts`'s generic `map(coordSys.dimensions, data.mapDimension)` + `dataToPoint`. Point computation was factored into a per-index closure so the symbol-build/color/add loop is shared. The e2e render test asserts all 10 polar data points produce finite-positioned symbol `Path`s (name `"item"`), confirming `dataToPoint` works; series must set `coordinateSystem:"polar"` (scatter defaults to cartesian2d). `swift test` **236 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 235 + 1 new polar render test; clean rebuild, 0 warnings, `buildGreen = true`). Demo `polar-basic` + the polar render test added. Deferred PORT-TODOs per CONVENTIONS §5. Faithfulness reviews: `coord/polar/Polar.swift` **FAITHFUL** (0), `coord/polar/polarCreator.swift` **FAITHFUL** (0), `component/axis/AngleAxisView.swift` **MINOR-ISSUES** (2), `component/axis/RadiusAxisView.swift` **MINOR-ISSUES** (1). No CRITICAL findings. **All 3 MINOR findings FIXED post-workflow** (+ a 4th same-class bug the review missed in RadiusAxisView): (a) two `lineCount % lineColors.count` / `% areaColors.count` splitLine/splitArea CRASHES on an explicit empty `color: []` (Swift `%` by zero traps where JS yields NaN → draws nothing) — guarded with `if …isEmpty { return }` in BOTH AngleAxisView and RadiusAxisView; (b) the shared `pathStyleFromDict` style bridge dropped Int-boxed numerics (`lineWidth`/`opacity`/`shadow*`/… `as? Double` → nil) — replaced with a `styleNum` Int→Double coercion across all three copies (Angle/Radius/RadarComponentView). See §44.**
 **Phase 12 (RADAR CHART + RADAR COORDINATE SYSTEM — the FIRST non-cartesian coordinate system wired end-to-end): the radar chart registers end-to-end in `EChartsSlim`. This is a milestone — until now every wired coord system was cartesian (`grid`/`cartesian2d`); Phase 12 lands the first polar-style/non-cartesian coord system. The `Radar` coordinate system + its `IndicatorAxis` + `RadarModel` are registered via `CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator())` (a thin creator mirroring `GridCoordinateSystemCreator`, forwarding to `Radar.create`/`Radar.dimensions`), alongside the whole `chart/radar/` vertical — `RadarSeriesModel` + `"radar"` view factory (`RadarView`) + the `radarLayout` stage + the `backwardCompat` preprocessor — and the `component/radar/` component (`RadarModel` + `RadarComponentView` drawing the indicator axes/split-lines/split-areas/name labels). Radar series read each data item's per-indicator points back from the `Radar` coord system (`dataToPoint` over the N indicator axes). `swift test` **235 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 233; +2 = the radar end-to-end render test + a new `RadarCoordTests` coord oracle). Clean build `buildGreen = true`, 0 warnings. Demo `radar-basic` + both tests added. Deferred PORT-TODOs per CONVENTIONS §5: `SymbolDraw` draw-helper infra, emphasis/states + labels + enter/update animation, and roam. Faithfulness reviews: `coord/radar/Radar.swift` CRITICAL-ISSUES (3) + `coord/radar/RadarModel.swift` MINOR-ISSUES (2) — **all 5 findings FIXED post-workflow**: every one was the same recurring Int-vs-Double option-read trap (`get(...) as? Double` returns nil on the Int literals `[String: Any]` defaultOptions use, e.g. `startAngle: 90`), silently dropping the value. The CRITICAL one rotated the whole radar 90° (`startAngle` → 0 rad); fixed with a `radarNumOpt` Int→Double coercion at every option-number read (startAngle/splitNumber/radarIndex/indicator min-max), and locked by `RadarCoordTests` asserting `axis[0].angle == π/2`. `chart/radar/RadarView.swift` + `component/radar/RadarComponentView.swift` **FAITHFUL** (0). See §43.**
@@ -2168,6 +2169,51 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 46. Phase 15 — Sankey flow chart (coordless — the 14th chart type, reusing Graph + createGraphFromNodeEdge)
+
+**Goal (met):** land the `sankey` (flow) chart end-to-end in `EChartsSlim`. Sankey is **coordless**
+(box/view usage — no coordinate system, like `pie`/`funnel`/`gauge` and the tree-family charts): the
+view lays out its own node/edge geometry from the series data rather than reading points back from a
+coord system. It **reuses the Phase 11 `Graph` port + `createGraphFromNodeEdge`** to build its
+node/edge graph from the node+edge data. **Clean build `buildGreen = true`; `swift test` — Executed 238
+tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 237/0/58; +1 = the new
+`SankeyRenderTests`).
+
+### What registered end-to-end in `EChartsSlim`
+- **`SankeySeriesModel`** — the `sankey` series component model. It **reuses `createGraphFromNodeEdge`**
+  (the Phase 11 helper) to build its node/edge `Graph` from the series' node + edge data — no new graph
+  data structure was needed.
+- **The `"sankey"` view factory** → `SankeyView`. Sankey registers **coordless** (no coordinate-system
+  usage registration) — the view computes its own node/edge layout.
+- **The `sankeyLayout` + `sankeyVisual` overall stages** — the layout stage positions the nodes/edges;
+  the visual stage assigns node/edge colors.
+
+### SankeyView draws node Rects + bezier-ribbon edge Paths
+`SankeyView` builds the sankey directly: each node becomes a **`Rect`**, and each edge becomes a
+**bezier-ribbon `Path`** (the curved flow ribbon connecting the source node's right edge to the target
+node's left edge, its band width proportional to the edge value).
+
+### Files added
+- `chart/sankey/SankeySeries.swift` — `SankeySeriesModel` (reusing `createGraphFromNodeEdge`).
+- `chart/sankey/SankeyView.swift` — the sankey render (node `Rect`s + bezier-ribbon edge `Path`s).
+- `chart/sankey/sankeyLayout.swift` — the node/edge layout stage.
+- `chart/sankey/sankeyVisual.swift` — the node/edge visual (color) stage.
+- `chart/sankey/sankeyInstall.swift` — the registration wiring.
+- Demo: `Sources/EChartsDemoGallery/Demos/sankey-basic.swift` (registered in `Registry.swift`).
+- Test: a new sankey end-to-end render test — `SankeyRenderTests` (the +1 over the 237 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static sankey render only)
+- Interaction / decoration (emphasis/states, enter/update animation, label-layout niceties, node
+  drag/roam) deferred, as in prior chart phases.
+
+### Faithfulness reviews
+All three review verdicts were **FAITHFUL** with **0 findings**; no CRITICAL issues, nothing to fix:
+- `chart/sankey/sankeyLayout.swift` — **FAITHFUL** (0 findings).
+- `chart/sankey/SankeyView.swift` — **FAITHFUL** (0 findings).
+- `chart/sankey/SankeySeries.swift` — **FAITHFUL** (0 findings).
+
+`buildGreen = true`. This is the **14th chart type** ported end-to-end.
 
 ## 45. Phase 14 — Gauge chart (coordless — the 13th chart type)
 
