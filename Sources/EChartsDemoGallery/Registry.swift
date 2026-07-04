@@ -21,6 +21,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_polar_basic,       // Polar
         EChartsDemoRegistry.demo_gauge_basic,       // Gauge
         EChartsDemoRegistry.demo_sankey_basic,      // Sankey
+        EChartsDemoRegistry.demo_chord_basic,       // Chord
         EChartsDemoRegistry.demo_themeriver_basic,  // ThemeRiver
         EChartsDemoRegistry.demo_parallel_basic,    // Parallel
     ]

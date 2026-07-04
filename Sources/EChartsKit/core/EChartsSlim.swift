@@ -369,6 +369,18 @@ public final class EChartsSlim: EChartsType {
         //   not ported); see chart/sankey/sankeyInstall.swift.
         ComponentModel.registerClass(SankeySeriesModel.self)
 
+        // -- chart/chord/install.ts (minimal) -- registerSeriesModel(ChordSeriesModel) +
+        //   registerChartView(ChordView) + registerLayout(PRIORITY.VISUAL.POST_CHART_LAYOUT,
+        //   chordCircularLayoutStageHandler) + registerProcessor(dataFilter('chord')). Chord is a
+        //   COORDLESS circular flow chart (box usage, no cartesian coord; reuses the ported Graph +
+        //   createGraphFromNodeEdge exactly like Sankey/Graph). ChordView reads each node's arc
+        //   {cx,cy,r0,r,startAngle,endAngle,clockwise} + each edge's ribbon (s1/s2/t1/t2/angles) from the
+        //   circular layout stage (chordCircularLayout). getDataParams/formatTooltip read
+        //   `node.getLayout().value` written by the layout, so the layout MUST run first; it runs in
+        //   `render`/`update` below. The `dataFilter('chord')` processor is a no-op in this slim path
+        //   (no legend-select provider ported) — PORT-TODO; see chart/chord/chordInstall.swift.
+        ComponentModel.registerClass(ChordSeriesModel.self)
+
         // -- chart/lines/install.ts (minimal) -- registerChartView(LinesView) +
         //   registerSeriesModel(LinesSeries) + registerLayout(linesLayout) + registerVisual(linesVisual).
         //   Lines is a coord-space series (default coord 'geo'; ONLY cartesian2d is rendered by the ported
@@ -557,6 +569,10 @@ public final class EChartsSlim: EChartsType {
         //   geometry from the sankey box layout stage. Registered under series subType 'sankey'
         //   (upstream chart/sankey/install.ts `registerChartView(SankeyView)`).
         "sankey": { SankeyView() },
+        // Chord chart view (coordless circular flow): node arc Sectors + edge ribbon ChordPaths + node
+        //   labels; geometry from the chord circular layout stage. Registered under series subType 'chord'
+        //   (upstream chart/chord/install.ts `registerChartView(ChordView)`).
+        "chord": { ChordView() },
         // Lines chart view (one Line/BezierCurve per two-point line, or one Polyline per polyline line);
         //   geometry inlined via coord.dataToPoint + the curveness control-point formula (the layout STAGE
         //   is registered/run but the view projects coords itself, like ScatterView/LineView). Registered
@@ -839,6 +855,17 @@ public final class EChartsSlim: EChartsType {
         //   visual is an OVERALL stage handler.
         sankeyLayout(ecModel, api)
         sankeyVisualStageHandler.overallReset?(ecModel, api, nil)
+
+        // LAYOUT — chord circular arc layout (upstream `registerLayout(PRIORITY.VISUAL.POST_CHART_LAYOUT,
+        //   chordCircularLayoutStageHandler)`). Chord is coordless (box usage, no cartesian coord; reuses
+        //   the ported Graph + createGraphFromNodeEdge like Sankey/Graph). This OVERALL stage computes each
+        //   node's arc {cx,cy,r0,r,startAngle,endAngle,clockwise,value,ratio,angle} + each edge's ribbon
+        //   {s1,s2,t1,t2,sStartAngle,sEndAngle,tStartAngle,tEndAngle,cx,cy,r,clockwise,value} via
+        //   getCircleLayout, storing them on node/edge getLayout(). ChordView reads the per-node/per-edge
+        //   layout back; getDataParams reads `node.getLayout().value`. `chordCircularLayout` is a bare
+        //   2-arg fn (like graph/sankey layout); the stage-handler wrapper exists for the upstream registrar
+        //   but the slim driver invokes it directly (mirrors sankeyLayout).
+        chordCircularLayout(ecModel, api)
 
         // LAYOUT — lines per-item point projection (upstream `registerLayout(linesLayout)`). A
         //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset`→`progress` maps each line's data-space

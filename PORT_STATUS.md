@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 19 (CHORD circular flow chart — COORDLESS: the 19th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the chord (circular flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge, sankey, and the tree-family). Registered: `ChordSeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"chord"` view factory (`ChordView`) + the `chordCircularLayout` overall stage. `ChordView` draws the node **arc `Sector`s** (`ChordPiece`) laid around the circle + the bezier-ribbon edge **`Path`s** (`ChordEdge` — the curved flow ribbons between node arcs). Files added: `chart/chord/ChordSeries.swift` (`ChordSeriesModel`), `chart/chord/ChordView.swift` (node arc Sectors + bezier-ribbon edge Paths), `chart/chord/ChordPiece.swift` (the node arc Sector piece), `chart/chord/ChordEdge.swift` (the bezier-ribbon edge path), `chart/chord/chordLayout.swift` (`chordCircularLayout`), `chart/chord/chordInstall.swift`; demo `chord-basic` + a chord render test. Clean build `buildGreen = true`; `swift test` **Executed 243 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 242/0/58; +1 is the new `ChordRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews: `chart/chord/chordLayout.swift` **MINOR-ISSUES** (1 finding); `chart/chord/ChordEdge.swift` (FAITHFUL/0), `chart/chord/ChordView.swift` (FAITHFUL/0), `chart/chord/ChordSeries.swift` (FAITHFUL/0). No CRITICAL findings; build is green. **The 1 MINOR finding is FIXED post-workflow**: `chordLayout` read `nodeValues[i] ?? 0` (nil-only) where upstream is JS `nodeValues[i] || 0` (also sheds NaN) — a value-less link makes an accumulator NaN and `?? 0` propagated it into `nodeValueSum` → `unitAngle` NaN → the whole chord failed to render; replaced the 6 `nodeValues` reads with an `orZero` (nil/NaN→0) helper. This makes **19 chart types** ported end-to-end. See §50.**
 **Phase 18 (effectScatter + lines charts — the 17th & 18th chart types wired end-to-end in `EChartsSlim`, reusing existing coord systems; effect/ripple/large animations DEFERRED): both `effectScatter` and `lines` register end-to-end. `effectScatter` reuses the existing coord systems and renders as **static symbols** (the animated ripple effect DEFERRED). `lines` draws **straight / bezier-curve / polyline segments between coords** (one `Path` per line datum: straight two-point, curved single-bezier, or a multi-point polyline). Registered: `EffectScatterSeriesModel` + the `"effectScatter"` view factory (`EffectScatterView`); `LinesSeriesModel` + the `"lines"` view factory (`LinesView`) + the `linesLayout` stage. Files added: `chart/effectScatter/{EffectScatterSeries,EffectScatterView,effectScatterInstall}.swift`, `chart/lines/{LinesSeries,LinesView,linesLayout,linesInstall}.swift`; demos `effectscatter-basic` + `lines-basic` + 2 new render tests. Clean build `buildGreen = true`; `swift test` — **242 executed / 0 failures / 58 skipped (baseline 240; +2 new render tests)**, zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: effectScatter ripple (animated effect symbols); lines effect / moving-dot animation + large/progressive draw path + geo/polar coord paths; interaction/decoration (emphasis/states, enter/update animation) as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/effectScatter/EffectScatterView.swift` (FAITHFUL/0), `chart/lines/LinesView.swift` (FAITHFUL/0), `chart/lines/linesLayout.swift` (FAITHFUL/0), `chart/lines/LinesSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **18 chart types** ported end-to-end. See §49.**
 **Phase 17 (PARALLEL COORDINATE SYSTEM — the 5th coord system — + the PARALLEL chart; brush/axis-drag interaction DEFERRED): the `parallel` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, and `single`, this is the port's **5th coordinate system** (a set of N parallel axes; each data item is a polyline threading all axes). Registered: the `parallel` coord-system creator (`CoordinateSystemManager.register("parallel", ...)` → `parallelCreator`) + the `ParallelModel` + `ParallelAxisModel` components + the `ParallelComponentView` component view (draws the parallel axes), alongside the whole `chart/parallel/` vertical — `ParallelSeriesModel` + the `"parallel"` view factory (`ParallelView`) + the `parallelVisual` stage + the `parallelPreprocessor`. `ParallelView` draws one **polyline `Path` per data item** threading all the parallel axes; `ParallelComponentView` draws the N axes laid out by the coord system. Files added: `coord/parallel/{Parallel,ParallelAxis,ParallelAxisModel,parallelCreator,ParallelModel,parallelPreprocessor}.swift`, `component/parallel/ParallelComponentView.swift`, `chart/parallel/{ParallelSeries,ParallelView,parallelVisual,parallelInstall}.swift`; demo `parallel-basic` + a new Parallel render test. Clean build `buildGreen = true`; `swift test` — **Executed 240 tests, with 58 tests skipped and 0 failures (0 unexpected)** — up from a 239-test baseline (+1 new `ParallelRenderTests`), zero regressions. Deferred PORT-TODOs per CONVENTIONS §5: brush / areaSelect / axis-drag / roam interaction deferred (static parallel render only), as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/parallel/Parallel.swift` (FAITHFUL/0), `chart/parallel/ParallelView.swift` (FAITHFUL/0), `component/parallel/ParallelComponentView.swift` (FAITHFUL/0), `coord/parallel/ParallelModel.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **16 chart types** and **5 coordinate systems** ported end-to-end. See §48.**
 **Phase 16 (SINGLE COORDINATE SYSTEM — the 4th coord system — + the THEMERIVER streamgraph chart): the `single` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, and `polar`, this is the port's **4th coordinate system** (a single one-dimensional axis, used by ThemeRiver). Registered: the `single` coord-system creator (`CoordinateSystemManager.register("single", ...)` → `singleCreator`) + the `SingleAxisModel` component + the `SingleAxisView` axis component view, alongside the whole `chart/themeRiver/` vertical — `ThemeRiverSeriesModel` + the `"themeRiver"` view factory (`ThemeRiverView`) + the `themeRiverLayout` overall stage. ThemeRiver is a streamgraph — `ThemeRiverView` draws the stacked, smoothed river bands (one smooth `Polygon`/`Path` band per series layer) laid out along the single axis by `themeRiverLayout`. Files added: `coord/single/{Single,SingleAxis,SingleAxisModel,singleCreator,singleAxisHelper,singlePrepareCustom}.swift`, `component/axis/SingleAxisView.swift`, `chart/themeRiver/{ThemeRiverSeries,ThemeRiverView,themeRiverLayout,themeRiverInstall}.swift`; demo `themeriver-basic` + a new ThemeRiver render test. Clean build `buildGreen = true`; `swift test` — **Executed 239 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline 238 + 1 new `ThemeRiverRenderTests`; no regressions). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/single/Single.swift` (FAITHFUL/0), `chart/themeRiver/themeRiverLayout.swift` (FAITHFUL/0), `chart/themeRiver/ThemeRiverView.swift` (FAITHFUL/0), `component/axis/SingleAxisView.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **15 chart types** and **4 coordinate systems** ported end-to-end. See §47.**
@@ -2170,6 +2171,53 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 50. Phase 19 — Chord circular flow chart (COORDLESS: the 19th chart type; reuses the ported Graph + createGraphFromNodeEdge)
+
+**Goal (met):** land the `chord` (circular flow) chart end-to-end in `EChartsSlim`, **coordless**
+(box/view usage — no coordinate system, like pie/funnel/gauge, sankey, and the tree-family),
+**reusing the ported `Graph` + Phase 11 `createGraphFromNodeEdge`** to build its node/edge graph.
+Chord lays nodes as arcs around a circle and connects them with bezier-ribbon flow paths.
+**Clean build `buildGreen = true`; `swift test` — Executed 243 tests, with 58 tests skipped and
+0 failures (0 unexpected)** — up from a 242-test baseline (+1 = the new `ChordRenderTests`);
+zero regressions. This makes **19 chart types** ported end-to-end.
+
+### What registered end-to-end in `EChartsSlim`
+- **`ChordSeriesModel`** — the `chord` series component model, **reusing the Phase 11
+  `createGraphFromNodeEdge`** to build its node/edge `Graph`.
+- **The `"chord"` view factory** → `ChordView` (coordless — no coordinate system).
+- **The `chordCircularLayout` stage** — the overall chord circular layout (places node arcs around
+  the circle and resolves the edge ribbon geometry).
+
+### chord = node arc Sectors + bezier-ribbon edge Paths
+`ChordView` draws the node **arc `Sector`s** (`ChordPiece`) laid around the circle, plus the
+bezier-ribbon edge **`Path`s** (`ChordEdge`) — the curved flow ribbons connecting the node arcs.
+
+### Files added
+- `chart/chord/ChordSeries.swift` — `ChordSeriesModel` (reuses `createGraphFromNodeEdge`).
+- `chart/chord/ChordView.swift` — the chord view factory / render (node Sectors + edge Paths).
+- `chart/chord/ChordPiece.swift` — the node arc `Sector` piece.
+- `chart/chord/ChordEdge.swift` — the bezier-ribbon edge `Path`.
+- `chart/chord/chordLayout.swift` — the `chordCircularLayout` overall stage.
+- `chart/chord/chordInstall.swift` — the registration wiring.
+- Demo: `Sources/EChartsDemoGallery/Demos/chord-basic.swift`.
+- Test: a new `ChordRenderTests` end-to-end render test (the +1 over the 242 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- Interaction / decoration (emphasis/states, enter/update animation, label-layout niceties,
+  drag/roam) deferred, as in prior chart phases.
+
+### Faithfulness reviews
+- `chart/chord/chordLayout.swift` — **MINOR-ISSUES** (1 finding). FIXED (`nodeValues[i] ?? 0` → `orZero` for JS `|| 0` NaN-shedding; NaN in a value-less link no longer collapses the whole chord).
+- `chart/chord/ChordEdge.swift` — **FAITHFUL** (0 findings).
+- `chart/chord/ChordView.swift` — **FAITHFUL** (0 findings).
+- `chart/chord/ChordSeries.swift` — **FAITHFUL** (0 findings).
+
+No CRITICAL findings; `buildGreen = true`. The 1 MINOR finding in `chordLayout.swift` is **NOT yet
+fixed** — it is to be handled by the main loop post-workflow. This lands the **19th chart type**
+ported end-to-end.
 
 ---
 
