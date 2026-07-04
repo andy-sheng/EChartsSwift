@@ -317,6 +317,13 @@ public final class EChartsSlim: EChartsType {
         //   data-processor stage. All run in `render`/`update` below.
         ComponentModel.registerClass(GraphSeriesModel.self)
 
+        // -- chart/gauge/install.ts (minimal) -- registerSeriesModel(GaugeSeries) + registerChartView(GaugeView).
+        //   Gauge is COORDLESS (no coordinate system, no layout/visual stage): center/radius/startAngle/endAngle
+        //   drive geometry directly, and GaugeView computes the axis arc bands, ticks, split lines, pointer,
+        //   anchor and title/detail text in `render`. Mirrors how pie/funnel register their series model here
+        //   (view keyed by subType in `_chartViewFactories` below); no coord-sys and no separate layout stage.
+        ComponentModel.registerClass(GaugeSeriesModel.self)
+
         // -- component/radar/install.ts + chart/radar/install.ts (radar coordinate system) --
         //   registerCoordinateSystem('radar', Radar) + registerComponentModel(RadarModel) +
         //   registerComponentView(RadarComponentView) + registerSeriesModel(RadarSeriesModel) +
@@ -420,6 +427,10 @@ public final class EChartsSlim: EChartsType {
         "treemap": { TreemapView() },
         "tree": { TreeView() },
         "graph": { GraphView() },
+        // Gauge chart view (coordless): axis arc color bands, split lines + ticks, tick labels, pointer
+        //   needle, anchor, and title/detail text — all computed in render. Registered under series subType
+        //   'gauge' (upstream chart/gauge/install.ts `registerChartView(GaugeView)`).
+        "gauge": { GaugeView() },
         // Radar chart view (per-item polyline outline + polygon area + vertex symbols); registered under
         //   series subType 'radar' (upstream install.ts `registerChartView(RadarView)`).
         "radar": { RadarView() }
