@@ -133,6 +133,20 @@ struct ParallelCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// calendar coord system is the SIXTH coordinate system wired here. Upstream registers the `Calendar`
+// class itself as the creator (`registerCoordinateSystem('calendar', Calendar)`); the ported registry
+// wants a `CoordinateSystemCreator` value, so this thin struct forwards to `Calendar.create` /
+// `Calendar.dimensions` (["time","value"]), mirroring GridCoordinateSystemCreator.
+// ============================================================================
+struct CalendarCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        return EChartsKit.Calendar.create(ecModel, api).map { $0 as CoordinateSystemMaster }
+    }
+    var dimensions: [DimensionName]? { EChartsKit.Calendar.dimensions }        // static dimensions = ["time","value"].
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { nil } // Calendar has no dimensionsInfo hook.
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -484,6 +498,13 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(ParallelAxisModel.self)                        // registerComponentModel(ParallelAxisModel) + axisModelCreator(..,'parallel',..)
         ComponentModel.registerClass(ParallelSeriesModel.self)                      // registerSeriesModel(ParallelSeries)
 
+        // -- coord/calendar/install.ts (calendar coordinate system, the SIXTH) --
+        //   registerCoordinateSystem('calendar', Calendar) + registerComponentModel(CalendarModel) +
+        //   registerComponentView(CalendarView). The calendar coord maps a DATE to a day-cell; CalendarView
+        //   draws the grid/split-line backdrop + day/week/month/year labels.
+        CoordinateSystemManager.register("calendar", CalendarCoordinateSystemCreator()) // registerCoordinateSystem('calendar', Calendar)
+        ComponentModel.registerClass(CalendarModel.self)                            // registerComponentModel(CalendarModel)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -548,7 +569,9 @@ public final class EChartsSlim: EChartsType {
         //   'parallel' (upstream component/parallel/install.ts registerComponentView(ParallelAxisView) /
         //   registerComponentView(ParallelView)).
         "parallelAxis": { ParallelAxisView() },
-        "parallel": { ParallelComponentView() }
+        "parallel": { ParallelComponentView() },
+        // calendar coord backdrop (grid + split lines + day/week/month/year labels).
+        "calendar": { CalendarView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },

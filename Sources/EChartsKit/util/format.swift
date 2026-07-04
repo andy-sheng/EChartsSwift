@@ -356,7 +356,7 @@ public enum format {
         let date = number.parseDate(value)
         // upstream uses `date['getUTC'+...]()` / `date['get'+...]()`. Modeled via Calendar in the
         //   matching time zone. `getMonth()+1` -> Swift `.month` is already 1-based.
-        var cal = Calendar(identifier: .gregorian)
+        var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = (isUTC == true) ? TimeZone(identifier: "UTC")! : TimeZone.current
         // PORT-TODO: an invalid Date (NaN) is guarded to epoch to avoid a Calendar trap; upstream would
         //   emit NaN-derived strings here. `formatTime` is deprecated, so this edge is tolerated.

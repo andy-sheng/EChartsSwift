@@ -636,7 +636,7 @@ public enum number {
         _ second: Double,
         _ millisecond: Double
     ) -> Date {
-        var cal = Calendar(identifier: .gregorian)
+        var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         var comps = DateComponents()
         comps.year = Int(year)

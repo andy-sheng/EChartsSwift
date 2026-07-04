@@ -602,8 +602,8 @@ public enum time {
     //   * `'' + x` / `String.prototype.replace(/.../g, ...)` numeric/string ops used by `format`.
     // ---------------------------------------------------------------------------------------------
 
-    static func calendar(_ isUTC: Bool) -> Calendar {
-        var cal = Calendar(identifier: .gregorian)
+    static func calendar(_ isUTC: Bool) -> Foundation.Calendar {
+        var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = isUTC ? TimeZone(identifier: "UTC")! : TimeZone.current
         return cal
     }
