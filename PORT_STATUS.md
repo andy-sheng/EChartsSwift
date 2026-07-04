@@ -1,5 +1,6 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 16 (SINGLE COORDINATE SYSTEM — the 4th coord system — + the THEMERIVER streamgraph chart): the `single` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, and `polar`, this is the port's **4th coordinate system** (a single one-dimensional axis, used by ThemeRiver). Registered: the `single` coord-system creator (`CoordinateSystemManager.register("single", ...)` → `singleCreator`) + the `SingleAxisModel` component + the `SingleAxisView` axis component view, alongside the whole `chart/themeRiver/` vertical — `ThemeRiverSeriesModel` + the `"themeRiver"` view factory (`ThemeRiverView`) + the `themeRiverLayout` overall stage. ThemeRiver is a streamgraph — `ThemeRiverView` draws the stacked, smoothed river bands (one smooth `Polygon`/`Path` band per series layer) laid out along the single axis by `themeRiverLayout`. Files added: `coord/single/{Single,SingleAxis,SingleAxisModel,singleCreator,singleAxisHelper,singlePrepareCustom}.swift`, `component/axis/SingleAxisView.swift`, `chart/themeRiver/{ThemeRiverSeries,ThemeRiverView,themeRiverLayout,themeRiverInstall}.swift`; demo `themeriver-basic` + a new ThemeRiver render test. Clean build `buildGreen = true`; `swift test` — **Executed 239 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline 238 + 1 new `ThemeRiverRenderTests`; no regressions). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `coord/single/Single.swift` (FAITHFUL/0), `chart/themeRiver/themeRiverLayout.swift` (FAITHFUL/0), `chart/themeRiver/ThemeRiverView.swift` (FAITHFUL/0), `component/axis/SingleAxisView.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **15 chart types** and **4 coordinate systems** ported end-to-end. See §47.**
 **Phase 15 (SANKEY FLOW CHART — COORDLESS: the 14th chart type wired end-to-end in `EChartsSlim`, reusing the ported `Graph` + `createGraphFromNodeEdge`): the sankey (flow) chart registers coordless (box/view usage — no coordinate system, like pie/funnel/gauge and the tree-family). Registered: `SankeySeriesModel` (reusing the Phase 11 `createGraphFromNodeEdge` to build its node/edge `Graph`) + the `"sankey"` view factory (`SankeyView`) + the `sankeyLayout`/`sankeyVisual` overall stages. `SankeyView` draws the node **`Rect`s** + the bezier-ribbon edge **`Path`s** (the curved flow ribbons between nodes). Files added: `chart/sankey/SankeySeries.swift` (`SankeySeriesModel`), `chart/sankey/SankeyView.swift` (node Rects + bezier-ribbon edge Paths), `chart/sankey/sankeyLayout.swift`, `chart/sankey/sankeyVisual.swift`, `chart/sankey/sankeyInstall.swift`; demo `sankey-basic` + a sankey render test. Clean build `buildGreen = true`; `swift test` **Executed 238 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 237/0/58; +1 is the new `SankeyRenderTests`). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties, drag/roam) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/sankey/sankeyLayout.swift` (FAITHFUL/0), `chart/sankey/SankeyView.swift` (FAITHFUL/0), `chart/sankey/SankeySeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **14 chart types** ported end-to-end. See §46.**
 **Phase 14 (GAUGE CHART — COORDLESS: the 13th chart type wired end-to-end in `EChartsSlim`): the gauge chart registers coordless (box/view usage, like pie/funnel/the tree-family — no coordinate system). Registered: `GaugeSeriesModel` + the `"gauge"` view factory (`GaugeView`). `GaugeView` draws the entire gauge directly (no separate axis component) — the axis arc (colored segments), split-lines, ticks, tick labels, the pointer/needle, the anchor, the progress arc, and the title + detail text blocks are all built inside the view. A custom needle shape `PointerPath` (in `PointerPath.swift`) supplies the pointer geometry. Files added: `chart/gauge/GaugeSeries.swift` (`GaugeSeriesModel`), `chart/gauge/GaugeView.swift` (the whole render), `chart/gauge/PointerPath.swift` (the custom pointer/needle path); demo `gauge-basic` + a gauge render test. Clean build `buildGreen = true`; `swift test` **Executed 237 tests, with 58 tests skipped and 0 failures (0 unexpected) in 0.285s** (baseline 236 + 1 new gauge render test). Deferred PORT-TODOs per CONVENTIONS §5: interaction/decoration (emphasis/states, enter/update animation, label-layout niceties) deferred as in prior chart phases. Faithfulness reviews — ALL **FAITHFUL** (0 findings each): `chart/gauge/GaugeView.swift` (reviewed twice, FAITHFUL/0 both), `chart/gauge/PointerPath.swift` (FAITHFUL/0), `chart/gauge/GaugeSeries.swift` (FAITHFUL/0). No CRITICAL findings; nothing to fix. This makes **13 chart types** ported end-to-end. See §45.**
 **Phase 13 (POLAR COORDINATE SYSTEM + angle/radius axis component views — the SECOND non-cartesian coord system): the `polar` coordinate system registers end-to-end in `EChartsSlim` — after Phase 12's `radar`, this is the port's SECOND non-cartesian coord system. Registered: the polar coord-system creator (`CoordinateSystemManager.register("polar", ...)` → `polarCreator` injecting the coord sys + associating the angle/radius axes for scale extents) + `PolarModel`/`angleAxis`/`radiusAxis` component models + the two axis component views (`AngleAxisView` + `RadiusAxisView`). `ScatterView` was made polar-aware — `ScatterView.render` now branches by coord type: the existing Cartesian2D path is unchanged, and a NEW Polar branch maps data dims by coord dim name (radius=dim0, angle=dim1 per `polarDimensions`) and places each datum via `Polar.dataToPoint([radiusVal, angleVal])` — the faithful inline of upstream `layout/points.ts`'s generic `map(coordSys.dimensions, data.mapDimension)` + `dataToPoint`. Point computation was factored into a per-index closure so the symbol-build/color/add loop is shared. The e2e render test asserts all 10 polar data points produce finite-positioned symbol `Path`s (name `"item"`), confirming `dataToPoint` works; series must set `coordinateSystem:"polar"` (scatter defaults to cartesian2d). `swift test` **236 executed / 0 failures (0 unexpected) / 58 skipped** (baseline 235 + 1 new polar render test; clean rebuild, 0 warnings, `buildGreen = true`). Demo `polar-basic` + the polar render test added. Deferred PORT-TODOs per CONVENTIONS §5. Faithfulness reviews: `coord/polar/Polar.swift` **FAITHFUL** (0), `coord/polar/polarCreator.swift` **FAITHFUL** (0), `component/axis/AngleAxisView.swift` **MINOR-ISSUES** (2), `component/axis/RadiusAxisView.swift` **MINOR-ISSUES** (1). No CRITICAL findings. **All 3 MINOR findings FIXED post-workflow** (+ a 4th same-class bug the review missed in RadiusAxisView): (a) two `lineCount % lineColors.count` / `% areaColors.count` splitLine/splitArea CRASHES on an explicit empty `color: []` (Swift `%` by zero traps where JS yields NaN → draws nothing) — guarded with `if …isEmpty { return }` in BOTH AngleAxisView and RadiusAxisView; (b) the shared `pathStyleFromDict` style bridge dropped Int-boxed numerics (`lineWidth`/`opacity`/`shadow*`/… `as? Double` → nil) — replaced with a `styleNum` Int→Double coercion across all three copies (Angle/Radius/RadarComponentView). See §44.**
@@ -2167,6 +2168,62 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 47. Phase 16 — Single coordinate system (the 4th coord system) + ThemeRiver streamgraph chart
+
+**Goal (met):** land the `single` coordinate system + the `themeRiver` (streamgraph) chart end-to-end
+in `EChartsSlim`. `single` is the port's **4th coordinate system** — after `cartesian2d` (grid),
+`radar`, and `polar`. It is a **single one-dimensional axis** (upstream `coord/single/`), the coord
+system ThemeRiver lays its stacked river bands along. **Clean build `buildGreen = true`; `swift test` —
+Executed 239 tests, with 58 tests skipped and 0 failures (0 unexpected)** (baseline was 238/0/58; +1 =
+the new `ThemeRiverRenderTests`; no regressions).
+
+### What registered end-to-end in `EChartsSlim`
+- **The `single` coord-system creator** — `CoordinateSystemManager.register("single", ...)` → the
+  `singleCreator`, injecting the single coord system (a single one-dimensional axis). This is the
+  **4th coordinate system** wired end-to-end (after `cartesian2d`, `radar`, `polar`).
+- **`SingleAxisModel`** — the single-axis component model.
+- **`SingleAxisView`** — the single-axis component view (draws the axis line / ticks / labels).
+- **`ThemeRiverSeriesModel`** — the `themeRiver` series component model.
+- **The `"themeRiver"` view factory** → `ThemeRiverView`.
+- **The `themeRiverLayout` overall (layout) stage** — positions the stacked river bands along the
+  single axis.
+
+### ThemeRiver draws smooth stacked river bands (streamgraph)
+`ThemeRiverView` renders a **streamgraph**: `themeRiverLayout` stacks each series layer and computes its
+band boundary along the single axis; the view draws one smooth band per layer (the classic river/stream
+shape), each band's thickness proportional to its value.
+
+### Files added
+- `coord/single/Single.swift` — the single coordinate system.
+- `coord/single/SingleAxis.swift` — the single axis.
+- `coord/single/SingleAxisModel.swift` — the single-axis component model.
+- `coord/single/singleCreator.swift` — the coord-system creator/registration.
+- `coord/single/singleAxisHelper.swift` — the single-axis helper.
+- `coord/single/singlePrepareCustom.swift` — custom-series prepare hook.
+- `component/axis/SingleAxisView.swift` — the single-axis component view.
+- `chart/themeRiver/ThemeRiverSeries.swift` — `ThemeRiverSeriesModel`.
+- `chart/themeRiver/ThemeRiverView.swift` — the streamgraph river-band render.
+- `chart/themeRiver/themeRiverLayout.swift` — the stacked-band layout stage.
+- `chart/themeRiver/themeRiverInstall.swift` — the registration wiring.
+- Demo: `Sources/EChartsDemoGallery/Demos/themeriver-basic.swift`.
+- Test: a new ThemeRiver end-to-end render test — `ThemeRiverRenderTests` (the +1 over the 238 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5 — static themeRiver render only)
+- Interaction / decoration (emphasis/states, enter/update animation, label-layout niceties) deferred,
+  as in prior chart phases.
+
+### Faithfulness reviews
+All four review verdicts were **FAITHFUL** with **0 findings**; no CRITICAL issues, nothing to fix:
+- `coord/single/Single.swift` — **FAITHFUL** (0 findings).
+- `chart/themeRiver/themeRiverLayout.swift` — **FAITHFUL** (0 findings).
+- `chart/themeRiver/ThemeRiverView.swift` — **FAITHFUL** (0 findings).
+- `component/axis/SingleAxisView.swift` — **FAITHFUL** (0 findings).
+
+`buildGreen = true`. This lands the **4th coordinate system** and the **15th chart type** ported
+end-to-end.
 
 ---
 

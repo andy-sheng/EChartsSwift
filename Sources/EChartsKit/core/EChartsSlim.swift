@@ -101,6 +101,22 @@ struct PolarCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// single coord system is the FOURTH coordinate system wired here (after cartesian2d / radar / polar);
+// the shape mirrors PolarCoordinateSystemCreator exactly. Upstream registers the caseless-namespace
+// `singleCreator` (`registerCoordinateSystem('single', singleCreator)`); the ported registry wants a
+// `CoordinateSystemCreator` value, so this thin struct forwards to it.
+// singleCreator.dimensions is the static `singleDimensions` (["single"]).
+// ============================================================================
+struct SingleCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        // singleCreator.create returns [Single]; Single conforms to CoordinateSystemMaster.
+        return singleCreator.create(ecModel, api).map { $0 as CoordinateSystemMaster }
+    }
+    var dimensions: [DimensionName]? { singleCreator.dimensions }  // static dimensions = singleDimensions.
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { nil } // Single has no dimensionsInfo hook.
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -335,6 +351,16 @@ public final class EChartsSlim: EChartsType {
         //   (view keyed by subType in `_chartViewFactories` below); no coord-sys and no separate layout stage.
         ComponentModel.registerClass(GaugeSeriesModel.self)
 
+        // -- chart/themeRiver/install.ts (minimal) -- registerChartView(ThemeRiverView) +
+        //   registerSeriesModel(ThemeRiverSeriesModel) + registerLayout(themeRiverLayout) +
+        //   registerProcessor(dataFilter('themeRiver')). ThemeRiver is a streamgraph on the SINGLE
+        //   coordinate system (dependencies ["singleAxis"]); its layout stage reads the Single coord rect +
+        //   axis orient and writes each datum's {layerIndex,x,y0,y} band point, which ThemeRiverView reads
+        //   back to draw one Polygon per layer. themeRiverLayout runs in render()/update() AFTER the coord
+        //   create/update (it casts seriesModel.coordinateSystem to Single). The dataFilter processor is a
+        //   no-op in this slim path (no legend-select provider); see themeRiverInstall.swift.
+        ComponentModel.registerClass(ThemeRiverSeriesModel.self)                   // registerSeriesModel(ThemeRiverSeries)
+
         // -- component/radar/install.ts + chart/radar/install.ts (radar coordinate system) --
         //   registerCoordinateSystem('radar', Radar) + registerComponentModel(RadarModel) +
         //   registerComponentView(RadarComponentView) + registerSeriesModel(RadarSeriesModel) +
@@ -371,6 +397,20 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(PolarModel.self)                             // registerComponentModel(PolarModel)
         ComponentModel.registerClass(AngleAxisModel.self)                         // axisModelCreator(..,'angle',..)
         ComponentModel.registerClass(RadiusAxisModel.self)                        // axisModelCreator(..,'radius',..)
+
+        // -- coord/single/install.ts (single coordinate system) --
+        //   registerComponentModel(SingleAxisModel) + axisModelCreator(registers, 'single', SingleAxisModel,
+        //   SingleAxisModel.defaultOption) + registerCoordinateSystem('single', singleCreator) +
+        //   registerComponentView(SingleAxisView) [in component/axis/install.ts].
+        //   Single is the FOURTH coordinate system wired: the coord-sys register mirrors the polar register
+        //   above (a CoordinateSystemCreator forwarding to singleCreator.create). SingleAxisModel is the
+        //   coord-sys HOST component AND the axis model at once (getCoordSysModel() returns self); like the
+        //   polar axis models it is registered directly (this port has no runtime axisModelCreator — the
+        //   per-type value/category/time/log subclasses it would generate are collapsed into the one model,
+        //   same deviation as the polar axis models). `_coordSysMgr.create`/`.update` build + update each
+        //   Single; SingleAxisView draws the axis backdrop + splitLine grid.
+        CoordinateSystemManager.register("single", SingleCoordinateSystemCreator()) // registerCoordinateSystem('single', singleCreator)
+        ComponentModel.registerClass(SingleAxisModel.self)                          // registerComponentModel(SingleAxisModel)
 
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
@@ -424,7 +464,11 @@ public final class EChartsSlim: EChartsType {
         //   axis line + ticks + split lines. Registered under mainType 'angleAxis'/'radiusAxis' (upstream
         //   install.ts `registerComponentView(AngleAxisView)` / `registerComponentView(RadiusAxisView)`).
         "angleAxis": { AngleAxisView() },
-        "radiusAxis": { RadiusAxisView() }
+        "radiusAxis": { RadiusAxisView() },
+        // Single coord-sys component view (draws the single axis line + ticks + labels + splitLine grid
+        //   across the coord rect). Registered under mainType 'singleAxis' (upstream component/axis/install.ts
+        //   `registerComponentView(SingleAxisView)`).
+        "singleAxis": { SingleAxisView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -448,7 +492,11 @@ public final class EChartsSlim: EChartsType {
         "gauge": { GaugeView() },
         // Radar chart view (per-item polyline outline + polygon area + vertex symbols); registered under
         //   series subType 'radar' (upstream install.ts `registerChartView(RadarView)`).
-        "radar": { RadarView() }
+        "radar": { RadarView() },
+        // ThemeRiver streamgraph view (one Polygon band per layer, on the single coord); geometry from the
+        //   themeRiverLayout stage. Registered under series subType 'themeRiver'
+        //   (upstream chart/themeRiver/install.ts `registerChartView(ThemeRiverView)`).
+        "themeRiver": { ThemeRiverView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -714,6 +762,16 @@ public final class EChartsSlim: EChartsType {
         //   (like boxplotLayout); the radarLayoutStageHandler wrapper exists for the upstream registrar,
         //   but the slim driver invokes `radarLayout(ecModel)` directly (mirrors pieLayout).
         radarLayout(ecModel)
+
+        // LAYOUT — themeRiver stream bands (upstream `registerLayout(themeRiverLayoutStageHandler)`).
+        //   ThemeRiver HAS a (non-cartesian) single coordinate system, already built + updated by
+        //   `_coordSysMgr.create`/`.update` (update() stages 3/5). This OVERALL stage reads the Single coord
+        //   rect + axis orient and writes each datum's {layerIndex,x,y0,y} band point (+ a "layoutInfo" rect/
+        //   boundaryGap) via `data.setItemLayout`/`data.setLayout`, which `ThemeRiverView.render` reads back
+        //   to draw one Polygon per layer. Run AFTER the coord update (it casts seriesModel.coordinateSystem
+        //   to Single). `themeRiverLayoutStageHandler` wraps this for the upstream registrar, but the slim
+        //   driver invokes `themeRiverLayout(ecModel, api)` directly (mirrors sankeyLayout / radarLayout).
+        themeRiverLayout(ecModel, api)
 
         renderSeries(ecModel, api)
     }

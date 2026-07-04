@@ -293,9 +293,21 @@ public func createDimNameMap(_ dimsDef: [DimensionDefinitionLoose]?) -> HashMap<
     for i in 0..<dimsDef.count {
         let dimDefItemRaw = dimsDef[i]
         // isObject(dimDefItemRaw) ? dimDefItemRaw.name : dimDefItemRaw
-        let userDimName: DimensionName? = util.isObject(dimDefItemRaw)
-            ? (dimDefItemRaw as? DimensionDefinition)?.name
-            : (dimDefItemRaw as? DimensionName)
+        //   The ported `DimensionDefinition` is a Swift STRUCT (value type); `util.isObject` only reports
+        //   true for arrays/dicts/functions/class instances, so it returns false for the struct and the
+        //   `.name` would be missed. Match the struct explicitly (mirroring getResultItem in
+        //   createDimensions.swift, which downcasts `as? DimensionDefinition` directly) so a
+        //   dimensionsDefine of `[DimensionDefinition]` registers its names (e.g. themeRiver's 'name' dim).
+        let userDimName: DimensionName?
+        if let dimDef = dimDefItemRaw as? DimensionDefinition {
+            userDimName = dimDef.name
+        }
+        else if util.isObject(dimDefItemRaw) {
+            userDimName = nil   // some other object shape without a mappable name
+        }
+        else {
+            userDimName = dimDefItemRaw as? DimensionName
+        }
         if userDimName != nil && dataDimNameMap.get(userDimName) == nil {
             dataDimNameMap.set(userDimName, DimensionIndex(i))
         }
