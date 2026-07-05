@@ -44,8 +44,8 @@ import ZRenderKit
 public final class GlobalModelCachePerECFullUpdate { public init() {} }    // PORT-TODO
 public final class GlobalModelCachePerECPrepare { public init() {} }       // PORT-TODO
 private final class CycleCacheHolderStub {                                 // PORT-TODO
-    let fullUpdate = GlobalModelCachePerECFullUpdate()
-    let prepare = GlobalModelCachePerECPrepare()
+    var fullUpdate = GlobalModelCachePerECFullUpdate()
+    var prepare = GlobalModelCachePerECPrepare()
 }
 private let _cycleCacheInnerStub: (GlobalModel) -> CycleCacheHolderStub    // PORT-TODO
     = model.makeInner { CycleCacheHolderStub() }
@@ -54,6 +54,18 @@ public func getCachePerECFullUpdate(_ ecModel: GlobalModel) -> GlobalModelCacheP
 }
 public func getCachePerECPrepare(_ ecModel: GlobalModel) -> GlobalModelCachePerECPrepare {       // PORT-TODO
     return _cycleCacheInnerStub(ecModel).prepare
+}
+// upstream: `resetCachePerECFullUpdate(ecModel)` is called at the START of every `updateMethods.update`
+// (echarts.ts:1892) so per-full-update state (the <axis,series> association maps + the DEV
+// duplicate-pair check) starts empty each cycle. Swapping in a fresh cache host drops the makeInner
+// records keyed off the old host. WITHOUT this, a second `update()` on the same GlobalModel (i.e. any
+// `dispatchAction`-driven re-render) re-associates the same <axis,series> pairs and trips the DEV
+// duplicate-pair assert in `associateSeriesWithAxis`.
+public func resetCachePerECFullUpdate(_ ecModel: GlobalModel) {
+    _cycleCacheInnerStub(ecModel).fullUpdate = GlobalModelCachePerECFullUpdate()
+}
+public func resetCachePerECPrepare(_ ecModel: GlobalModel) {
+    _cycleCacheInnerStub(ecModel).prepare = GlobalModelCachePerECPrepare()
 }
 
 // '../extension' — EChartsExtensionInstallRegisters (processor registrar). Phase 6b.

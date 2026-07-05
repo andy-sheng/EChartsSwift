@@ -239,6 +239,46 @@ final class SlimInstallRegisters: EChartsExtensionInstallRegisters {
 }
 
 // ============================================================================
+// dispatchAction option. Upstream `dispatchAction(payload, opt?)` where
+//   `opt?: boolean | { silent?: boolean, flush?: boolean | undefined }`.
+//   Swift has no union type; the object form is modeled as this struct, and the bare-boolean
+//   convenience (`dispatchAction(payload, DispatchActionOpt(true))`) mirrors upstream's
+//   `if (!isObject(opt)) opt = {silent: !!opt}`.
+// ============================================================================
+public struct DispatchActionOpt {
+    public var silent: Bool
+    public var flush: Bool?
+    public init(silent: Bool = false, flush: Bool? = nil) {
+        self.silent = silent
+        self.flush = flush
+    }
+    /// Convenience for the upstream bare-boolean form (`dispatchAction(payload, true)` == silent).
+    public init(_ silent: Bool) {
+        self.silent = silent
+        self.flush = nil
+    }
+}
+
+// ============================================================================
+// Stand-ins for `util/states.ts` payload-type predicates (that file is DEFERRED to Phase 30).
+// `doDispatchAction` routes highlight/downplay + select/unselect/toggleSelect payloads into the
+// light-update branch (a documented no-op this phase) instead of the full re-render branch; these
+// predicates reproduce that routing WITHOUT pulling in the (unported) states machinery.
+//   - HIGHLIGHT_ACTION_TYPE/DOWNPLAY_ACTION_TYPE (states.ts:88-89) → isHighDownPayloadSlim
+//   - SELECT/UNSELECT/TOGGLE_SELECT_ACTION_TYPE (states.ts:91-93) → isSelectChangePayloadSlim
+// PORT-TODO (Phase 30): replace with the real `isHighDownPayload`/`isSelectChangePayload` once
+//   util/states.ts lands (they carry `payload is HighlightPayload | DownplayPayload` type guards).
+// ============================================================================
+private func isHighDownPayloadSlim(_ payload: Payload) -> Bool {
+    let t = payload.type
+    return t == "highlight" || t == "downplay"                 // HIGHLIGHT_ACTION_TYPE / DOWNPLAY_ACTION_TYPE
+}
+private func isSelectChangePayloadSlim(_ payload: Payload) -> Bool {
+    let t = payload.type
+    return t == "select" || t == "unselect" || t == "toggleSelect" // SELECT / UNSELECT / TOGGLE_SELECT
+}
+
+// ============================================================================
 // The slim ECharts driver.
 // ============================================================================
 public final class EChartsSlim: EChartsType {
@@ -264,6 +304,14 @@ public final class EChartsSlim: EChartsType {
     // model-identity → view (for `api.getViewOfComponentModel`/`getViewOfSeriesModel`).
     private var _componentViewByModel: [ObjectIdentifier: ComponentView] = [:]
     private var _chartViewByModel: [ObjectIdentifier: ChartView] = [:]
+
+    // ---- action-dispatch state (mirrors upstream `ECharts` action fields) ----
+    /// Actions dispatched WHILE a render/update cycle is in progress are queued here and drained
+    /// after it finishes (upstream: `private _pendingActions: Payload[] = []`).
+    private var _pendingActions: [Payload] = []
+    /// Re-entrancy guard: true while inside the update cycle (`doDispatchAction`). Upstream stores this
+    /// under the symbol-ish key `IN_EC_CYCLE_KEY` (`'__flagInMainProcess'`).
+    private var _inEcCycle = false
 
     public init(width: Double, height: Double) {
         self._width = width
@@ -810,6 +858,13 @@ public final class EChartsSlim: EChartsType {
         guard let ecModel = _model else { return }          // upstream: if (!ecModel) return;
         let api = _api!
 
+        // (0) resetCachePerECFullUpdate — upstream `updateMethods.update` (echarts.ts:1892) clears the
+        //     per-full-update cache at the start of EVERY update cycle. Required for idempotency: a
+        //     `dispatchAction`-driven re-render runs update() a 2nd time on the same GlobalModel, and
+        //     without this the axis-statistics <axis,series> association maps (+ the DEV duplicate-pair
+        //     check in associateSeriesWithAxis) carry stale state and trip an assert.
+        resetCachePerECFullUpdate(ecModel)
+
         // (1) restoreData — re-derive component/series state (upstream: scheduler.restoreData).
         ecModel.restoreData()
 
@@ -1232,6 +1287,189 @@ public final class EChartsSlim: EChartsType {
         }
     }
 
+    // ========================================================================
+    // ACTION DISPATCH ROUND-TRIP — ported from echarts.ts `dispatchAction` (1574) +
+    // `doDispatchAction` (2148) + `flushPendingActions`/`triggerUpdatedEvent` (2274).
+    // Phase 29 substrate: run an action programmatically and drive a re-render through the EXISTING
+    // update() pipeline. HEADLESS — no live zrender, no pointer/gesture events, no message center yet.
+    // ========================================================================
+
+    /// Ported from `ECharts.dispatchAction` (echarts.ts:1574-1624).
+    public func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
+        // if (this._disposed) { disposedWarning(this.id); return; }
+        //   PORT-TODO: the slim driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
+
+        // if (!isObject(opt)) { opt = {silent: !!opt}; }
+        //   The `boolean | {silent,flush}` normalization is absorbed by `DispatchActionOpt` (nil → silent:false;
+        //   the bare-boolean form is `DispatchActionOpt(true)`).
+        let opt = opt ?? DispatchActionOpt(silent: false)
+
+        // if (!actions[payload.type]) { return; }  — unregistered action type is a silent no-op.
+        //   `lookupAction` is the action-registry accessor from TASK 1 (integrator reconciles the name).
+        guard lookupAction(payload.type) != nil else {
+            return
+        }
+
+        // Avoid dispatch action before setOption. Especially in `connect`.
+        // if (!this._model) { return; }
+        guard _model != nil else {
+            return
+        }
+
+        // May dispatchAction in rendering procedure → queue it and drain after the cycle.
+        // if (this[IN_EC_CYCLE_KEY]) { this._pendingActions.push(payload); return; }
+        if _inEcCycle {
+            _pendingActions.append(payload)
+            return
+        }
+
+        let silent = opt.silent
+        doDispatchAction(payload, silent)
+
+        let flush = opt.flush
+        if flush == true {
+            // upstream: this._zr.flush();
+            // PORT-TODO: forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
+            //   this phase, and the slim driver's `update()` ALREADY renders synchronously inside
+            //   doDispatchAction, so there is no pending frame to flush → no-op.
+        }
+        else if flush != false {
+            // upstream: `else if (flush !== false && env.browser.weChat) this._throttledZrFlush();`
+            // PORT-TODO: the WeChat throttled-flush workaround is N/A (no browser env / live zr).
+        }
+
+        flushPendingActions(silent)
+
+        triggerUpdatedEvent(silent)
+    }
+
+    /// Ported from `doDispatchAction` (echarts.ts:2148-2272).
+    private func doDispatchAction(_ payload: Payload, _ silent: Bool) {
+        let ecModel = getModel()!                 // guarded non-nil by dispatchAction (`_model` check).
+        let api = _api!
+        let payloadType = payload.type
+        let escapeConnect = payload.escapeConnect
+        let actionInfo = lookupAction(payloadType)!   // guaranteed by the dispatchAction registry guard.
+
+        // const cptTypeTmp = (actionInfo.update || 'update').split(':');
+        // const updateMethod = cptTypeTmp.pop();
+        // const cptType = cptTypeTmp[0] != null && parseClassType(cptTypeTmp[0]);
+        var cptTypeTmp = (actionInfo.update ?? "update").components(separatedBy: ":")
+        let updateMethod = cptTypeTmp.removeLast()     // pop() — the trailing update-method name.
+        let cptType: ComponentTypeInfo? = cptTypeTmp.first != nil
+            ? clazz.parseClassType(cptTypeTmp[0]) : nil   // only set when the update spec had a "cpt:method" prefix.
+
+        _inEcCycle = true
+        // updateECUpdateCycleVersion(this);
+        //   PORT-TODO: no EC update-cycle version counter tracked in the slim driver (used only by the
+        //   deferred emphasis/blur state machine — util/states, Phase 30).
+
+        // Batch action → one payload per batch item (`defaults(extend({}, item), payload); item.batch = null`).
+        var payloads: [Payload] = [payload]
+        var batched = false
+        if let batch = payload.batch {
+            batched = true
+            payloads = batch.map { item in
+                // extend({}, item) then defaults(..., payload): item's fields win, payload fills the gaps.
+                var p = Payload(type: payload.type)         // type comes from payload (PayloadItem has none).
+                p.escapeConnect = payload.escapeConnect     // escapeConnect only on payload.
+                p.animation = item.animation ?? payload.animation
+                p.excludeSeriesId = item.excludeSeriesId ?? payload.excludeSeriesId
+                var bag = payload.other                     // payload defaults …
+                for (k, v) in item.other { bag[k] = v }     // … overlaid by the item (item wins).
+                p.other = bag
+                p.batch = nil                               // item.batch = null
+                return p
+            }
+        }
+
+        var eventObjBatch: [ECActionEvent] = []
+        var eventObj: ECActionEvent?
+        // actionInfo.nonRefinedEventType is computed by registerAction (TASK 1).
+        let nonRefinedEventType = actionInfo.nonRefinedEventType
+
+        let isSelectChange = isSelectChangePayloadSlim(payload)
+        let isHighDown = isHighDownPayloadSlim(payload)
+
+        // if (isHighDown) { allLeaveBlur(this._api); }
+        //   PORT-TODO (Phase 30): util/states `allLeaveBlur` — DEFERRED (do NOT call the abstract
+        //   ExtensionAPI blur/emphasis methods, which `fatalError`).
+
+        for batchItem in payloads {
+            // The ONE thing an ActionHandler is designed to do: modify the models. Runs for every payload.
+            let actionResult: ECEventData? = actionInfo.action?(batchItem, ecModel, api)
+            // refineEvent path (actionInfo.refineEvent) is DEFERRED (Phase 30). Non-refined event replicates
+            //   the payload: eventObj = actionResult || extend({}, batchItem); eventObj.type = nonRefinedEventType.
+            var e = ECActionEvent(type: nonRefinedEventType)
+            if let ar = actionResult { e.eventData = ar }
+            e.escapeConnect = batchItem.escapeConnect
+            eventObj = e
+            eventObjBatch.append(e)
+
+            // light update does not perform data process, layout and visual.
+            // PORT-TODO (Phase 30): emphasis/select light-update needs util/states.ts + `updateDirectly`.
+            //   Deliberately a NO-OP this phase — the highlight/downplay/select/unselect and the
+            //   component (`cptType`) light-update branches are accepted but drive no re-render, and we do
+            //   NOT call the abstract enterEmphasis/leaveBlur (would fatalError). Their `markStatusToUpdate`
+            //   status flag is likewise not tracked yet.
+            if isHighDown {
+                // updateDirectly(this, updateMethod, batchItem, componentMainType); markStatusToUpdate(this);
+            }
+            else if isSelectChange {
+                // updateDirectly(this, updateMethod, batchItem, 'series'); markStatusToUpdate(this);
+            }
+            else if cptType != nil {
+                // updateDirectly(this, updateMethod, batchItem, cptType.main, cptType.sub);
+            }
+        }
+
+        if updateMethod != "none" && !isHighDown && !isSelectChange && cptType == nil {
+            // upstream: if (this[PENDING_UPDATE]) { prepare(this); updateMethods.update…; } else
+            //   updateMethods[updateMethod].call(this, payload);
+            //   PENDING_UPDATE (a still-dirty setOption awaiting flush) is not tracked in the slim driver,
+            //   so there is only the else-branch.
+            // PORT-TODO: partial-update — updateView/updateLayout/updateVisual/updateTransform/
+            //   prepareAndUpdate (echarts.ts:1868 updateMethods) all COLLAPSE to the full update() this
+            //   phase (the scheduler-driven fast paths are unported). 'update' & 'prepareAndUpdate' are
+            //   already a full pipeline pass, so this is exact for them and an over-render for the rest.
+            self.update()
+        }
+
+        // Follow the rule of action batch (build the outer event object; kept for structural fidelity).
+        if batched {
+            var e = ECActionEvent(type: nonRefinedEventType)
+            e.escapeConnect = escapeConnect
+            e.batch = eventObjBatch.map { $0.eventData }
+            eventObj = e
+        }
+        // else: eventObj is the single per-item event built above (upstream: eventObjBatch[0]).
+
+        _inEcCycle = false
+
+        // if (!silent) { … messageCenter.trigger(eventObj.type, eventObj); … }
+        //   PORT-TODO: the message center / user event listeners + refineEvent are not wired yet
+        //   (Phase 30+). eventObj is fully built above to preserve the round-trip structure; emission
+        //   is the documented no-op.
+        _ = eventObj
+        _ = silent
+    }
+
+    /// Ported from `flushPendingActions` (echarts.ts:2274-2280). Drain + re-dispatch queued actions.
+    private func flushPendingActions(_ silent: Bool) {
+        while !_pendingActions.isEmpty {
+            let payload = _pendingActions.removeFirst()   // pendingActions.shift()
+            doDispatchAction(payload, silent)
+        }
+    }
+
+    /// Ported from `triggerUpdatedEvent` (echarts.ts:2282-2284).
+    private func triggerUpdatedEvent(_ silent: Bool) {
+        // upstream: !silent && this.trigger('updated');
+        if !silent {
+            // PORT-TODO: no event-listener registry / `trigger` wired yet (Phase 30+). Structure preserved.
+        }
+    }
+
     // ------------------------------------------------------------------------
     // Public accessors for the host / tests.
     // ------------------------------------------------------------------------
@@ -1273,5 +1511,10 @@ final class SlimExtensionAPI: ExtensionAPI {
     }
     override func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
         return ec.viewOfSeriesModel(seriesModel)!
+    }
+    // upstream: `dispatchAction` is bound onto the api from `ecInstance` (availableMethods). Forward to
+    //   the driver's ported round-trip (an action/view handler calls `api.dispatchAction(...)`).
+    override func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
+        ec.dispatchAction(payload, opt)
     }
 }

@@ -125,6 +125,16 @@ open class ExtensionAPI {
     open func getHeight() -> Double {
         fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-TODO: abstract
     }
+
+    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (see init note). Upstream
+    //   `ExtensionAPI.dispatchAction` is `zrUtil.bind(ecInstance.dispatchAction, ecInstance)`. Declared
+    //   here as a faithful-signature abstract member so the action round-trip (a view/action handler
+    //   calling `api.dispatchAction(...)`) type-checks; the concrete `SlimExtensionAPI` forwards it to
+    //   the driver's `EChartsSlim.dispatchAction`. `opt` models the upstream `boolean | {silent,flush}`
+    //   (see `DispatchActionOpt` in core/EChartsSlim.swift).
+    open func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
+        fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-TODO: abstract
+    }
 }
 
 // upstream return type: `ChartView | ComponentView`. Swift has no union types; the two view
