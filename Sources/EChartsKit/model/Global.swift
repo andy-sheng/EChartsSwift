@@ -702,7 +702,11 @@ open class GlobalModel: Model, PaletteMixin {
 
         if index != nil {
             var res: [ComponentModel] = []
-            let idxArr: [Double] = model.normalizeToArray(index)
+            // Int-vs-Double option-read trap: an option index written as a Swift Int literal
+            // (e.g. `datasetIndex: 1`, `xAxisIndex: 0`) does NOT satisfy `as? Double`, so a naive
+            // `normalizeToArray<Double>(index)` would drop it and silently resolve to no component.
+            // Coerce each element (Int/Double/NSNumber) to Double, honoring both scalar and array forms.
+            let idxArr: [Double] = queryComponentsIndexToDoubles(index)
             util.each(idxArr) { idx, _ in
                 let i = Int(idx)
                 if i >= 0 && i < cmpts.count, let c = cmpts[i] {
@@ -723,6 +727,27 @@ open class GlobalModel: Model, PaletteMixin {
         }
 
         return filterBySubType(result, condition)
+    }
+
+    // Coerce a query `index` (JS `number | number[]`) to `[Double]`, tolerating Int/NSNumber boxing.
+    // Mirrors `model.normalizeToArray` but with numeric coercion so Int-literal option indices survive.
+    private func queryComponentsIndexToDoubles(_ value: Any?) -> [Double] {
+        func toDouble(_ v: Any?) -> Double? {
+            switch v {
+            case let d as Double: return d
+            case let i as Int: return Double(i)
+            case let n as NSNumber: return n.doubleValue
+            default: return nil
+            }
+        }
+        if value == nil { return [] }
+        if let arr = value as? [Any] {
+            return arr.compactMap { toDouble($0) }
+        }
+        if let d = toDouble(value) {
+            return [d]
+        }
+        return []
     }
 
     /**

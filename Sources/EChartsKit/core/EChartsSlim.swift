@@ -310,6 +310,15 @@ public final class EChartsSlim: EChartsType {
         if _installed { return }
         _installed = true
 
+        // -- component/dataset/install.ts -- registerComponentModel(DatasetModel) +
+        //   registerComponentView(DatasetView). Must be registered so a `dataset: [...]` option
+        //   instantiates a `DatasetModelImpl` (its `init` builds a SourceManager); series then query
+        //   it via `querySeriesUpstreamDatasetModel`. `datasetInstall` registers the model in the
+        //   `ComponentModel` registry (the path GlobalModel reads) and the view in the `ComponentView`
+        //   registry; the slim path resolves the (no-op) DatasetView via the `_componentViewFactories`
+        //   entry below (upstream `DatasetView` renders nothing).
+        datasetInstall(EChartsSlim._registers)
+
         // -- component/grid/installSimple.ts + coord/cartesian --
         ComponentModel.registerClass(GridModel.self)                       // registerComponentModel(GridModel)
         ComponentModel.registerClass(SlimXAxisModel.self)                  // axisModelCreator(..,'x',..)  (stand-in)
@@ -643,6 +652,10 @@ public final class EChartsSlim: EChartsType {
         "grid": { GridView() },
         "xAxis": { CartesianXAxisView() },
         "yAxis": { CartesianYAxisView() },
+        // dataset component view — a no-op backdrop (upstream `DatasetView` has no render/lifecycle
+        //   overrides; it exists only so `getClass('dataset')` succeeds). Registered under mainType
+        //   'dataset' (upstream component/dataset/install.ts `registerComponentView(DatasetView)`).
+        "dataset": { DatasetView() },
         // Phase 7 static components (keyed by mainType; legend's subtype 'plain' is resolved by the
         //   registerSubTypeDefaulter above, but the VIEW is still looked up by mainType 'legend').
         "title": { TitleView() },

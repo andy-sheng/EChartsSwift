@@ -38,18 +38,30 @@ import Foundation
 import ZRenderKit
 
 // ============================================================================
-// PORT-TODO: FORWARD-REFERENCE PLACEHOLDER
-// `DatasetModel` is imported by upstream from `../../component/dataset/install`,
-// which is NOT ported in this phase (component layer). It is declared here as a
-// minimal placeholder so this file compiles. The agent that ports
-// `component/dataset/install` MUST remove this placeholder and replace it with
-// the real, fully-ported type. Only `uid` is exercised by live code here; the
-// rest of the DatasetModel surface (`get`, `ecModel`, `transform`,
-// `fromTransformResult`, …) is referenced only inside the faithful bodies that
-// are stubbed/commented until the model layer lands (Phase 5c).
+// DATASET MODEL REFERENCE PROTOCOL
+// Upstream imports the concrete `DatasetModel` class from
+// `../../component/dataset/install`. The concrete class is now ported as
+// `DatasetModelImpl` (component/dataset/datasetInstall.swift), which conforms to
+// this protocol. The protocol is RETAINED (not removed) as the reference type
+// used by sourceManager/sourceHelper so those data-layer files need not depend
+// on the component layer directly — this mirrors the upstream host typing
+// `DatasetModel | SeriesModel` (a `SeriesModel` reaches the data layer the same
+// way, via the `SourceManagerHost` marker in sourceManager.swift).
+//
+// The members below are exactly the DatasetModel surface the (mostly still
+// commented) faithful sourceManager/sourceHelper bodies call on a dataset host.
+// All are witnessed by `ComponentModel`/`Model` inheritance on `DatasetModelImpl`
+// except `getSourceManager()`, which the concrete class implements. Only `uid` is
+// exercised by live code today (makeSeriesEncodeForAxisCoordSys); the rest unlock
+// the commented dataset-host branches once the transform pipeline lands (Phase 5c).
 // ============================================================================
-public protocol DatasetModel: AnyObject {                                  // PORT-TODO: belongs to component/dataset/install
-    var uid: String { get }
+public protocol DatasetModel: AnyObject {
+    var uid: String { get }                                             // ComponentModel.uid
+    var ecModel: GlobalModel? { get }                                   // Model.ecModel
+    var componentIndex: Double { get }                                  // ComponentModel.componentIndex
+    var option: ModelOption? { get }                                    // Model.option (disableTransformOptionMerge)
+    func get(_ path: String, _ ignoreParent: Bool?) -> ModelOption?     // Model.get(path, ignoreParent)
+    func getSourceManager() -> SourceManager                            // DatasetModelImpl.getSourceManager()
 }
 
 // upstream: type BeOrdinalValue = (typeof BE_ORDINAL)[keyof typeof BE_ORDINAL]
@@ -359,25 +371,24 @@ public enum sourceHelper {
         // and at the beginning `setOption({series: { noData })` (just prepare other
         // option but no data), then `setOption({series: {data: [...]}); In this case,
         // the user should set an empty array to avoid that dataset is used by default.
-        //
-        // PORT-TODO (Phase 5c): requires `SeriesModel.get(...)` and
-        //   `model.queryReferringComponents` wiring against a real `GlobalModel`
-        //   (the model layer is not yet ported). Returns nil meanwhile, so the encode
-        //   defaulters fall back to the "no dataset" path. Faithful body preserved below:
-        //
         // const thisData = seriesModel.get('data', true);
-        // if (!thisData) {
-        //     return queryReferringComponents(
-        //         seriesModel.ecModel,
-        //         'dataset',
-        //         {
-        //             index: seriesModel.get('datasetIndex', true),
-        //             id: seriesModel.get('datasetId', true)
-        //         },
-        //         SINGLE_REFERRING
-        //     ).models[0] as DatasetModel;
-        // }
-        _ = seriesModel
+        let thisData = seriesModel.get("data", true)
+        if !jsTruthy(thisData) {
+            // return queryReferringComponents(seriesModel.ecModel, 'dataset',
+            //     { index: seriesModel.get('datasetIndex', true), id: seriesModel.get('datasetId', true) },
+            //     SINGLE_REFERRING).models[0] as DatasetModel;
+            var userOption = QueryReferringUserOption()
+            userOption.index = seriesModel.get("datasetIndex", true)
+            userOption.id = seriesModel.get("datasetId", true)
+            return model.queryReferringComponents(
+                // upstream `seriesModel.ecModel` is non-null; `Model.ecModel` is Optional in the port.
+                seriesModel.ecModel!,
+                "dataset",
+                userOption,
+                model.SINGLE_REFERRING
+            ).models.first as? DatasetModel   // `.models[0]` -> nil when empty
+        }
+        // upstream: implicit `return undefined` when `thisData` is truthy.
         return nil
     }
 
@@ -389,27 +400,29 @@ public enum sourceHelper {
     ) -> [DatasetModel] {
         // Only these attributes declared, we by default reference to `datasetIndex: 0`.
         // Otherwise, no reference.
-        //
-        // PORT-TODO (Phase 5c): requires `DatasetModel.get(...)` and
-        //   `model.queryReferringComponents` against a real `GlobalModel`. Returns []
-        //   meanwhile. Faithful body preserved below:
-        //
-        // if (!datasetModel.get('transform', true)
-        //     && !datasetModel.get('fromTransformResult', true)
-        // ) {
+        // if (!datasetModel.get('transform', true) && !datasetModel.get('fromTransformResult', true)) {
         //     return [];
         // }
-        // return queryReferringComponents(
-        //     datasetModel.ecModel,
-        //     'dataset',
-        //     {
-        //         index: datasetModel.get('fromDatasetIndex', true),
-        //         id: datasetModel.get('fromDatasetId', true)
-        //     },
-        //     SINGLE_REFERRING
-        // ).models as DatasetModel[];
-        _ = datasetModel
-        return []
+        if !jsTruthy(datasetModel.get("transform", true))
+            && !jsTruthy(datasetModel.get("fromTransformResult", true))
+        {
+            return []
+        }
+
+        // return queryReferringComponents(datasetModel.ecModel, 'dataset',
+        //     { index: datasetModel.get('fromDatasetIndex', true), id: datasetModel.get('fromDatasetId', true) },
+        //     SINGLE_REFERRING).models as DatasetModel[];
+        var userOption = QueryReferringUserOption()
+        userOption.index = datasetModel.get("fromDatasetIndex", true)
+        userOption.id = datasetModel.get("fromDatasetId", true)
+        let result = model.queryReferringComponents(
+            datasetModel.ecModel!,
+            "dataset",
+            userOption,
+            model.SINGLE_REFERRING
+        )
+        // `.models as DatasetModel[]` — every queried 'dataset' component is a DatasetModelImpl.
+        return result.models.compactMap { $0 as? DatasetModel }
     }
 
     /**
@@ -584,4 +597,16 @@ public enum sourceHelper {
         default: return Double.nan
         }
     }
+}
+
+// JS truthiness for an arbitrary option value (used for `!thisData` / `!datasetModel.get(...)`).
+// Note: arrays and objects (dictionaries) are TRUTHY in JS — a series `data: []` is truthy, so
+// `!thisData` is false and the dataset is not used by default. (Local shim; mirrors data/Source.swift.)
+private func jsTruthy(_ v: Any?) -> Bool {   // PORT-TODO: JS truthiness shim
+    guard let v = v, !(v is NSNull) else { return false }
+    if let b = v as? Bool { return b }
+    if let d = v as? Double { return d != 0 && !d.isNaN }
+    if let i = v as? Int { return i != 0 }
+    if let s = v as? String { return !s.isEmpty }
+    return true
 }

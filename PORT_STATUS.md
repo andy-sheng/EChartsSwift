@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 27 (DATASET component + TRANSFORM pipeline — the data-layer of the remaining component surface; NOT §5-interaction-deferred): the `dataset` component registers end-to-end in `EChartsSlim`, and the external data-transform pipeline lands. This wires `option.dataset` / `datasetIndex` / `datasetId` / `seriesLayoutBy` / `sourceHeader` / `transform` / `fromDatasetIndex` / `fromTransformResult` so a series with NO own `data` reads its rows from a dataset's `source`, and a `{ transform: … }` dataset produces a derived source consumed downstream. Registered: `DatasetModelImpl` (concrete `ComponentModel`, type `dataset`, conforming to the data-layer `DatasetModel` protocol) + `DatasetView` (static shell) via `datasetInstall`, called first in `installOnce` so datasets exist before series query them. The previously-stubbed dataset branches in `data/helper/sourceManager.swift` are now fully un-stubbed and wired: `_getUpstreamSourceManagers` (series→dataset via `querySeriesUpstreamDatasetModel`; dataset→dataset via `queryDatasetUpstreamDatasetModels`), the `_createSource` dataset host branch (root dataset reads `source`; non-root applies transform), `_applyTransform` (piped vs single, the `fromTransformResult` single-upstream guard), the `_getSourceMetaRawOption` dataset branch, and `disableTransformOptionMerge`. `data/helper/sourceHelper.swift`'s `querySeriesUpstreamDatasetModel` / `queryDatasetUpstreamDatasetModels` are ported (from stubs). Files added: `component/dataset/datasetInstall.swift` (`DatasetModelImpl` + `DatasetView` + `datasetInstall`), `data/helper/transform.swift` (the full external-transform pipeline: `DataTransformOption`/`PipedDataTransformOption`/`ExternalDataTransform`, `externalTransformMap` + `registerExternalTransform`, `applyDataTransform`/`applySingleDataTransform`, and the `ExternalSource` wrapper with getRawData/getRawDataItem/count/getDimensionInfo/retrieveValue/cloneRawData). Files edited: `sourceManager.swift`, `sourceHelper.swift`, `core/EChartsSlim.swift` (register dataset), and `model/Global.swift` (see CRITICAL fix). **Clean build `buildGreen = true` (0 warnings); `swift test` — 256 executed / 0 failures / 58 skipped** (baseline was 254/0/58; +2 = new `ZZDatasetProbeTests`: dataset→series source read, and a filter-transform chain). Faithfulness reviews: `datasetInstall.swift`+`transform.swift` **FAITHFUL** (0 CRITICAL; every `applyDataTransform` branch + `ExternalSource` verified, Int-vs-Double & `|| 0` traps defended); `sourceManager.swift` dataset branches **MINOR-ISSUES** (stale \"unreachable\" comments — **FIXED post-workflow**; series source path unchanged/faithful); `sourceHelper.swift`+`EChartsSlim` registration **CRITICAL-ISSUES** (1) — **FIXED post-workflow**: an explicit Int-literal `datasetIndex`/`fromDatasetIndex` (e.g. `datasetIndex: 1`) boxed as Swift `Int` failed `normalizeToArray<Double>`'s `as? Double`, so `queryComponents` resolved to NO dataset → the series rendered empty (the documented Int-vs-Double option-read trap). Fixed at the shared choke point `GlobalModel.queryComponents` (`Global.swift`) with an Int/Double/NSNumber index coercion — this ALSO repairs every other explicit-index component ref (`xAxisIndex`/`polarIndex`/`gridIndex`/…) that flowed through the same path; locked by the `ZZDatasetProbeTests` transform test now using an `Int` literal `datasetIndex`. Deferred per CONVENTIONS §5: `DatasetView` is a static shell (no interaction); non-built-in external transforms' object-row cast is a project-wide `Any?`-bridging concern. This lands the dataset/transform DATA path end-to-end. See §58.**
+
 **Phase 26 (CUSTOM series / `renderItem` — the 22nd and LAST chart type; this ports ALL 22 upstream chart types; transition/animation/morph/states DEFERRED): the `custom` series registers end-to-end in `EChartsSlim` — `CustomSeriesModel` (type `series.custom`) + the `custom` view (`CustomView`). Custom is the user-programmable series: the option supplies a **`renderItem` Swift-closure** that, per data item, returns a graphic-element spec; `CustomView` dispatches that closure and builds the returned elements (`group`/`rect`/`circle`/`sector`/`polygon`/`polyline`/`line`/`bezierCurve`/`arc`/`image`/`text` …) into real `ZRenderKit` shapes, positioned through the ported coordinate systems — the **static element builders** run across the ported coord systems (cartesian, polar, geo, calendar, …) via the coord-provided `api` (coordSys/value/size helpers). This lands the port's **22nd chart type**, which makes **ALL 22 upstream chart types ported** end-to-end. Files added: `chart/custom/{CustomSeries,CustomView,customInstall,customSeriesRegister}.swift`; demo `custom-basic` + `CustomRenderTests`. **Clean build `buildGreen = true`; `swift test` — 254 executed / 0 failures / 58 skipped** (baseline was 253/0/58; +1 = new `CustomRenderTests`). No regressions. Deferred PORT-TODOs per CONVENTIONS §5: the `transition`/animation/**morph** paths, the enter/update/leave **diff** (elements are rebuilt from scratch, not diffed), `states`/emphasis, and the legacy-compat (`renderItem` legacy element) shims — all DEFERRED. Faithfulness reviews: `chart/custom/CustomView.swift` **CRITICAL-ISSUES** (2 findings) — **both FIXED post-workflow**: (1) `api.coord`/`api.size` hard-cast the prepareCustom closures to the exact cartesian signature, so on single/calendar/matrix (whose prepareCustom closures have different Swift signatures) the cast yielded nil and `api.coord` returned `[]` (every element at the origin) — `coord()` now falls back to the generic `CoordinateSystem.dataToPoint` when the closure is nil, so custom projects on ALL coord systems; (2) `api.visual` used wrong maps — corrected to upstream's `STYLE_VISUAL_TYPE = {color:'fill', borderColor:'stroke'}` + `NON_STYLE_VISUAL_PROPS = {symbol, symbolSize, symbolKeepAspect, legendIcon, visualMeta, liftZ, decal}`. `chart/custom/CustomSeries.swift` **MINOR-ISSUES** (1 — `currentZLevel` defaults 0 vs upstream `undefined`; low, documented). This makes **ALL 22 upstream chart types** ported end-to-end. See §57.**
 
 **Phase 25 (MATRIX COORDINATE SYSTEM — the 8th and LAST coordinate system: a table/grid coord; interaction DEFERRED): the `matrix` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, `single`, `parallel`, `calendar`, and `geo`, this is the port's **8th coordinate system** and completes **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). Unlike the others it is a **table/grid**: two dimensions (x/y) whose values are header cells arranged in a (possibly nested) header tree, and a body region of value cells at the row×column intersections. Registered: the `matrix` coord-system creator (`CoordinateSystemManager.register("matrix", …)` → `matrixCoordHelper`, forwarding to `Matrix.create` / `Matrix.dimensions`) + `MatrixModel` (via `ComponentModel.registerClass`) + the `"matrix"` component view factory (`MatrixView`, drawing the header-cell + body-cell + corner `Rect`s and their divider `Line`s + cell labels). The table pipeline: `Matrix` builds the two `MatrixDim` header dimensions (x and y), each `MatrixDim` resolving its (possibly nested) header-cell tree — leaf/non-leaf cell spans, depth, and per-cell pixel rects — and `MatrixBodyCorner` supplies the body value-cell and top-left corner-cell geometry; `dataToPoint`/`dataToLayout` map a `[xValue,yValue]` cell coordinate to its pixel rect via the two dims. Files added: `coord/matrix/{Matrix,MatrixDim,MatrixBodyCorner,MatrixModel,matrixCoordHelper,matrixPrepareCustom}.swift`, `component/matrix/MatrixView.swift`; demo `matrix-basic` + `MatrixRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 253 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 251 + 2 new `MatrixRenderTests`; no regression. Deferred PORT-TODOs per CONVENTIONS §5: all matrix INTERACTION — cell select/highlight, roam pan/zoom, and the tooltip/emphasis paths — DEFERRED (static table render only). Faithfulness reviews: `coord/matrix/Matrix.swift` **FAITHFUL** (0 findings), `coord/matrix/MatrixDim.swift` **MINOR-ISSUES** (2 findings), `coord/matrix/matrixCoordHelper.swift` **FAITHFUL** (0 findings), `component/matrix/MatrixView.swift` **MINOR-ISSUES** (2 findings). No CRITICAL findings; `buildGreen = true`. This makes **8 coordinate systems** ported end-to-end — **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). See §56.**
@@ -2183,6 +2185,60 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      (static-render common case). (GraphicView.ts:133-141)
 
 ---
+
+## 58. Phase 27 — Dataset component + transform pipeline (the data-layer of the remaining component surface; NOT §5-interaction-deferred)
+
+**Goal (met):** land the `dataset` component and the external data-transform pipeline end-to-end, so
+`option.dataset` / `datasetIndex` / `datasetId` / `seriesLayoutBy` / `sourceHeader` / `transform` /
+`fromDatasetIndex` / `fromTransformResult` all work: a series with **no own `data`** reads its rows
+from a dataset's `source`, and a `{ transform: … }` dataset produces a derived source consumed
+downstream. **Clean build `buildGreen = true` (0 warnings); `swift test` — 256 executed / 0 failures /
+58 skipped** — baseline was 254/0/58; +2 = the new `ZZDatasetProbeTests`. This is a **data-layer**
+component (unlike tooltip/dataZoom/toolbox/brush/timeline it is not gated behind CONVENTIONS §5
+interaction), so it is fully in-scope and actually functional.
+
+### What registered end-to-end in `EChartsSlim`
+- **`DatasetModelImpl`** — the concrete dataset `ComponentModel` (type `dataset`), conforming to the
+  data-layer `DatasetModel` protocol (the forward-reference used by `sourceManager`/`sourceHelper`).
+  `init` builds its own `SourceManager(self)` then `disableTransformOptionMerge(self)`;
+  `optionUpdated` dirties the SourceManager — mirroring upstream lifecycle order exactly.
+- **`DatasetView`** — a static shell (type `dataset`, no behavior), registered via `datasetInstall`,
+  which is called **first** in `installOnce` so datasets exist before series query them.
+
+### The transform pipeline (`data/helper/transform.swift`, NEW)
+- Types `DataTransformOption` / `PipedDataTransformOption` / `ExternalDataTransform` /
+  `ExternalDataTransformResultItem` / `ExternalDimensionDefinition`; the `externalTransformMap`
+  registry + `registerExternalTransform`.
+- `applyDataTransform` / `applySingleDataTransform` — validates the type, splits piped vs single,
+  resolves upstream `Source`s, builds the `ExternalSource` wrapper
+  (getRawData/getRawDataItem/count/getDimensionInfo/retrieveValue/cloneRawData), invokes the external
+  transform, and wraps each result back into a `Source`. The header-concat + metaRawOption-inheritance
+  branch and the number-like-string dimension resolution are ported line-for-line.
+
+### Un-stubbed dataset branches (previously `fatalError`/PORT-TODO)
+- `sourceManager.swift`: `_getUpstreamSourceManagers` (series→dataset + dataset→dataset upstream),
+  `_createSource` dataset host branch (root reads `source`; non-root applies transform),
+  `_applyTransform` (piped vs single + the `fromTransformResult` single-upstream guard),
+  `_getSourceMetaRawOption` dataset branch, and `disableTransformOptionMerge`. **The series source
+  path is unchanged and faithful (no regression).**
+- `sourceHelper.swift`: `querySeriesUpstreamDatasetModel` / `queryDatasetUpstreamDatasetModels`.
+
+### CRITICAL found + FIXED post-workflow — Int-boxed index option-read trap
+- An explicit Int-literal `datasetIndex`/`fromDatasetIndex` (e.g. `series: [{ datasetIndex: 1 }]`)
+  boxes as Swift `Int`; `GlobalModel.queryComponents` resolved it via `normalizeToArray<Double>`,
+  whose `value as? Double` returns nil on an `Int` → **empty index array → no dataset resolved → the
+  series rendered empty**. This is the documented Int-vs-Double option-read trap (same class as the
+  Phase-12 radar 90° bug). **Fixed at the shared choke point `GlobalModel.queryComponents`
+  (`model/Global.swift`)** with an Int/Double/NSNumber coercion of the query index — which also
+  repairs **every other explicit-index component ref** (`xAxisIndex`/`polarIndex`/`gridIndex`/…) that
+  flows through the same path. Locked by `ZZDatasetProbeTests` now asserting an `Int`-literal
+  `datasetIndex: 1` transform chain resolves (would fail pre-fix). MINOR: stale "unreachable" comments
+  in `sourceManager.swift` corrected post-workflow.
+
+### Deferred per CONVENTIONS §5 / documented
+- `DatasetView` is a static shell (no interaction). Non-built-in external transforms' object-row cast
+  is a project-wide `Any?`-bridging concern (not new here). `setAsPrimitive` (used by
+  `disableTransformOptionMerge`) is a no-op bridge as before.
 
 ## 57. Phase 26 — Custom series / `renderItem` (the 22nd and LAST chart type; ports ALL 22 upstream chart types; transition/animation/morph/states DEFERRED)
 

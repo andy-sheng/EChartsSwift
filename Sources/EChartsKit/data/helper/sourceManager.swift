@@ -19,9 +19,9 @@
 */
 
 // import { DatasetModel } from '../../component/dataset/install';
-//   -> PORT-TODO: component/dataset/install not ported. A minimal `protocol DatasetModel`
-//      placeholder lives in sourceHelper.swift (only `uid`). The dataset host path here is
-//      unreachable this phase (see `_getUpstreamSourceManagers`).
+//   -> component/dataset/datasetInstall.swift (Phase 27). `DatasetModel` is a protocol (data-layer
+//      forward reference in sourceHelper.swift); `DatasetModelImpl` is the concrete ComponentModel.
+//      The dataset host path here is now fully wired (see `_getUpstreamSourceManagers`).
 // import SeriesModel from '../../model/Series';                       -> SeriesModel (model/Series.swift)
 // import { setAsPrimitive, map, isTypedArray, assert, each, retrieve2 } from 'zrender/src/core/util';
 //   -> ZRenderKit `util.*` (map/isTypedArray/assert/each/retrieve2). `setAsPrimitive` is NOT
@@ -34,7 +34,7 @@
 // import { querySeriesUpstreamDatasetModel, queryDatasetUpstreamDatasetModels } from './sourceHelper';
 //   -> sourceHelper.swift (namespace enum `sourceHelper`).
 // import { applyDataTransform } from './transform';
-//   -> PORT-TODO: data/helper/transform.ts not ported. Used only by `_applyTransform` (dataset).
+//   -> data/helper/transform.swift (Phase 27). Used by `_applyTransform` (dataset transform).
 // import DataStore, { DataStoreDimensionDefine } from '../DataStore';  -> data/DataStore.swift.
 // import { DefaultDataProvider } from './dataProvider';               -> data/helper/dataProvider.swift.
 // import { SeriesDataSchema } from './SeriesDataSchema';              -> data/helper/SeriesDataSchema.swift.
@@ -47,7 +47,7 @@ public typealias DataStoreMap = [String: DataStore]
 
 // Host of a SourceManager. Upstream typing is `DatasetModel | SeriesModel`; modeled here as a
 // marker protocol both host kinds conform to (SeriesModel via the extension below;
-// DatasetModel conformance is deferred — see PORT-TODO in `_getUpstreamSourceManagers`).
+// DatasetModelImpl conforms directly — see component/dataset/datasetInstall.swift, Phase 27).
 // Only `uid` is required by SourceManager itself.
 public protocol SourceManagerHost: AnyObject {
     var uid: String { get }
@@ -223,28 +223,27 @@ public final class SourceManager {
             )] : []
         }
         else {
-            // PORT-TODO (sourceManager.ts:249-268): dataset source host branch.
-            //   Requires DatasetModel.get('source', true) and the transform pipeline
-            //   (`_applyTransform`), neither ported (component/dataset/install + data/helper/transform).
-            //   Unreachable this phase: only a series constructs a SourceManager, and
-            //   `_getUpstreamSourceManagers()` returns [] for datasets, so this branch is never
-            //   entered. Faithful body preserved for the porter:
-            //
-            //   let datasetModel = sourceHost as! DatasetModel
-            //   // Has upstream dataset.
-            //   if hasUpstream {
-            //       let result = self._applyTransform(upSourceMgrList)
-            //       resultSourceList = result.sourceList
-            //       upstreamSignList = result.upstreamSignList
-            //   }
-            //   // Is root dataset.
-            //   else {
-            //       let sourceData = datasetModel.get("source", true)
-            //       resultSourceList = [createSource(sourceData, self._getSourceMetaRawOption(), nil)]
-            //       upstreamSignList = []
-            //   }
-            _ = hasUpstream
-            fatalError("PORT-TODO: dataset SourceManager host not ported (sourceManager.ts:249-268)")
+            let datasetModel = sourceHost as! DatasetModel
+
+            // Has upstream dataset.
+            if hasUpstream {
+                // const result = this._applyTransform(upSourceMgrList);
+                let result = self._applyTransform(upSourceMgrList)
+                resultSourceList = result.sourceList
+                upstreamSignList = result.upstreamSignList
+            }
+            // Is root dataset.
+            else {
+                // const sourceData = datasetModel.get('source', true);
+                let sourceData = datasetModel.get("source", true)
+                // resultSourceList = [createSource(sourceData, this._getSourceMetaRawOption(), null)];
+                resultSourceList = [createSource(
+                    sourceData,
+                    self._getSourceMetaRawOption(),
+                    nil
+                )]
+                upstreamSignList = []
+            }
         }
 
         if __DEV__ {
@@ -254,46 +253,80 @@ public final class SourceManager {
         self._setLocalSource(resultSourceList, upstreamSignList)
     }
 
-    // PORT-TODO (sourceManager.ts:277-330): dataset transform pipeline.
-    //   Requires DatasetModel.get('transform'/'fromTransformResult'), `componentIndex`, and
-    //   `applyDataTransform` (data/helper/transform.ts) — none ported (component layer).
-    //   Unreachable this phase: only a series host constructs a SourceManager and
-    //   `_getUpstreamSourceManagers()` returns [] for it, so `_createSource` never reaches the
-    //   dataset host branch that calls this. Faithful body preserved for the porter:
-    //
-    //   let datasetModel = self._sourceHost as! DatasetModel
-    //   let transformOption = datasetModel.get("transform", true)
-    //   let fromTransformResult = datasetModel.get("fromTransformResult", true)
-    //   if __DEV__ { assert(fromTransformResult != nil || transformOption != nil) }
-    //   if fromTransformResult != nil {
-    //       var errMsg = ""
-    //       if upMgrList.count != 1 {
-    //           if __DEV__ { errMsg = "When using `fromTransformResult`, there should be only one upstream dataset" }
-    //           doThrow(errMsg)
-    //       }
-    //   }
-    //   var sourceList: [Source]!
-    //   var upSourceList: [Source] = []
-    //   var upstreamSignList: [String] = []
-    //   util.each(upMgrList) { upMgr, _ in
-    //       upMgr.prepareSource()
-    //       let upSource = upMgr.getSource(fromTransformResult || 0)
-    //       var errMsg = ""
-    //       if fromTransformResult != nil && upSource == nil {
-    //           if __DEV__ { errMsg = "Can not retrieve result by `fromTransformResult`: " + fromTransformResult }
-    //           doThrow(errMsg)
-    //       }
-    //       upSourceList.append(upSource)
-    //       upstreamSignList.append(upMgr._getVersionSign())
-    //   }
-    //   if transformOption { sourceList = applyDataTransform(transformOption, upSourceList, { datasetIndex: datasetModel.componentIndex }) }
-    //   else if fromTransformResult != nil { sourceList = [cloneSourceShallow(upSourceList[0])] }
-    //   return (sourceList, upstreamSignList)
     private func _applyTransform(
         _ upMgrList: [SourceManager]
     ) -> (sourceList: [Source], upstreamSignList: [String]) {
-        _ = upMgrList
-        fatalError("PORT-TODO: dataset transform not ported (sourceManager.ts:277-330)")
+        // const datasetModel = this._sourceHost as DatasetModel;
+        let datasetModel = self._sourceHost as! DatasetModel
+        // const transformOption = datasetModel.get('transform', true);
+        let transformOption = datasetModel.get("transform", true)
+        // const fromTransformResult = datasetModel.get('fromTransformResult', true);
+        let fromTransformResult = datasetModel.get("fromTransformResult", true)
+
+        if __DEV__ {
+            // assert(fromTransformResult != null || transformOption != null);
+            util.assert(!isNullish(fromTransformResult) || !isNullish(transformOption))
+        }
+
+        if !isNullish(fromTransformResult) {
+            var errMsg = ""
+            if upMgrList.count != 1 {
+                if __DEV__ {
+                    errMsg = "When using `fromTransformResult`, there should be only one upstream dataset"
+                }
+                doThrow(errMsg)
+            }
+        }
+
+        // let sourceList: Source[];
+        var sourceList: [Source]!
+        var upSourceList: [Source] = []
+        var upstreamSignList: [String] = []
+        util.each(upMgrList) { upMgr, _ in
+            upMgr.prepareSource()
+            // const upSource = upMgr.getSource(fromTransformResult || 0);
+            let upSource = upMgr.getSource(optNumberOrZero(fromTransformResult))
+            var errMsg = ""
+            // if (fromTransformResult != null && !upSource) { ... doThrow ... }
+            if !isNullish(fromTransformResult) && upSource == nil {
+                if __DEV__ {
+                    errMsg = "Can not retrieve result by `fromTransformResult`: " + jsAnyString(fromTransformResult)
+                }
+                doThrow(errMsg)
+            }
+            // upstream pushes the (possibly undefined) upSource; here upSource is non-nil on the
+            // reachable path (fromTransformResult nil -> getSource(0) always yields the main source).
+            upSourceList.append(upSource!)
+            upstreamSignList.append(upMgr._getVersionSign())
+        }
+
+        if jsTruthy(transformOption) {
+            // sourceList = applyDataTransform(transformOption, upSourceList, { datasetIndex: datasetModel.componentIndex });
+            //   `applyDataTransform` is `throws` in the port (upstream `throwError` throws a JS Error
+            //   that bubbles through `prepareSource`); route a bad-transform error to `doThrow`
+            //   (fatalError) to keep the `prepareSource` chain non-throwing, matching the existing
+            //   `doThrow` convention in this file for option-level transform errors.
+            do {
+                sourceList = try applyDataTransform(
+                    transformOption!,
+                    upSourceList,
+                    DataTransformInfoForPrint(datasetIndex: datasetModel.componentIndex)
+                )
+            }
+            catch let err as EChartsError {
+                doThrow(err.message ?? "")
+            }
+            catch {
+                doThrow("\(error)")
+            }
+        }
+        else if !isNullish(fromTransformResult) {
+            // sourceList = [cloneSourceShallow(upSourceList[0])];
+            sourceList = [cloneSourceShallow(upSourceList[0])]
+        }
+
+        // return { sourceList, upstreamSignList };
+        return (sourceList, upstreamSignList)
     }
 
     private func _isDirty() -> Bool {
@@ -406,23 +439,20 @@ public final class SourceManager {
         let sourceHost = self._sourceHost
 
         if isSeries(sourceHost) {
-            // upstream: `return !datasetModel ? [] : [datasetModel.getSourceManager()];`
-            guard sourceHelper.querySeriesUpstreamDatasetModel(sourceHost as! SeriesModel) != nil else {
+            // const datasetModel = querySeriesUpstreamDatasetModel(sourceHost);
+            // return !datasetModel ? [] : [datasetModel.getSourceManager()];
+            let datasetModel = sourceHelper.querySeriesUpstreamDatasetModel(sourceHost as! SeriesModel)
+            guard let datasetModel = datasetModel else {
                 return []
             }
-            // PORT-TODO (sourceManager.ts:437): DatasetModel.getSourceManager() not ported
-            //   (component/dataset/install). Unreachable this phase — querySeriesUpstreamDatasetModel
-            //   always returns nil, so this branch is never taken. Faithful body:
-            //   `return [datasetModel.getSourceManager()]`
-            return []
+            return [datasetModel.getSourceManager()]
         }
         else {
-            // PORT-TODO (sourceManager.ts:439-444): dataset upstream managers.
-            //   `queryDatasetUpstreamDatasetModels` returns [] and DatasetModel.getSourceManager()
-            //   is not ported. Faithful body:
-            //   `return util.map(queryDatasetUpstreamDatasetModels(sourceHost as! DatasetModel),
-            //                    { datasetModel, _ in datasetModel.getSourceManager() })`
-            return []
+            // return map(queryDatasetUpstreamDatasetModels(sourceHost as DatasetModel),
+            //     datasetModel => datasetModel.getSourceManager());
+            return util.map(
+                sourceHelper.queryDatasetUpstreamDatasetModels(sourceHost as! DatasetModel)
+            ) { datasetModel, _ in datasetModel.getSourceManager() }
         }
     }
 
@@ -439,12 +469,14 @@ public final class SourceManager {
         }
         // See [REQUIREMENT_MEMO], `non-root-dataset` do not support them.
         else if self._getUpstreamSourceManagers().isEmpty {
-            // PORT-TODO (sourceManager.ts:458-463): DatasetModel.get(...) not ported
-            //   (component/dataset/install). Unreachable this phase. Faithful body:
-            //   let model = sourceHost as! DatasetModel
-            //   seriesLayoutBy = model.get("seriesLayoutBy", true)
-            //   sourceHeader = model.get("sourceHeader", true)
-            //   dimensions = model.get("dimensions", true)
+            // const model = sourceHost as DatasetModel;
+            // seriesLayoutBy = model.get('seriesLayoutBy', true);
+            // sourceHeader = model.get('sourceHeader', true);
+            // dimensions = model.get('dimensions', true);
+            let datasetModel = sourceHost as! DatasetModel
+            seriesLayoutBy = datasetModel.get("seriesLayoutBy", true) as? SeriesLayoutBy
+            sourceHeader = datasetModel.get("sourceHeader", true)
+            dimensions = datasetModel.get("dimensions", true) as? [DimensionDefinitionLoose]
         }
         return SourceMetaRawOption(seriesLayoutBy: seriesLayoutBy, sourceHeader: sourceHeader, dimensions: dimensions)
     }
@@ -453,12 +485,21 @@ public final class SourceManager {
 
 // Call this method after `super.init` and `super.mergeOption` to
 // disable the transform merge, but do not disable transform clone from rawOption.
-// PORT-TODO (sourceManager.ts:471-474): dataset-only; requires `setAsPrimitive` (zrUtil, not
-//   ported) and `DatasetModel.option`. Unreachable this phase (no dataset model). Faithful body:
-//   let transformOption = datasetModel.option.transform
-//   if transformOption { setAsPrimitive(datasetModel.option.transform) }
+// upstream:
+//   const transformOption = datasetModel.option.transform;
+//   transformOption && setAsPrimitive(datasetModel.option.transform);
 public func disableTransformOptionMerge(_ datasetModel: DatasetModel) {
-    _ = datasetModel
+    // const transformOption = datasetModel.option.transform;
+    let transformOption = (datasetModel.option as? [String: Any])?["transform"]
+    if jsTruthy(transformOption) {
+        // transformOption && setAsPrimitive(datasetModel.option.transform);
+        // PORT-TODO (zrender util.setAsPrimitive not ported — util.swift:474): `setAsPrimitive`
+        //   tags the transform option object with a hidden key so the option-merge pass replaces
+        //   it wholesale instead of deep-merging it. Only affects a *second* `setOption` re-merge;
+        //   the static single-setOption transform data path is unaffected. Wire once
+        //   `setAsPrimitive` lands.
+        _ = transformOption
+    }
 }
 
 // upstream: `sourceHost is SeriesEncodableModel` type guard, checking `mainType === 'series'`.
@@ -471,9 +512,38 @@ func isSeries(_ sourceHost: SourceManagerHost) -> Bool {
 }
 
 // upstream: `function doThrow(errMsg) { throw new Error(errMsg); }`.
-// Used only in the (unreachable) dataset transform path.
+// Fires on invalid dataset transform config (a dev/authoring error); maps a JS throw to the
+// port's established fatalError-on-dev-error pattern, consistent with the __DEV__ asserts above.
 func doThrow(_ errMsg: String) -> Never {
     fatalError(errMsg)
+}
+
+// JS `x == null` (null or undefined). NSNull models an explicit JS `null`.
+private func isNullish(_ v: Any?) -> Bool {
+    return v == nil || v is NSNull
+}
+
+// JS `x || 0` for an option value that should be a number index (used for `getSource(fromTransformResult || 0)`).
+// Coerces Int/Double/NSNumber/number-like-String to Double; nil / non-truthy (0/NaN) -> 0.
+private func optNumberOrZero(_ v: Any?) -> Double {
+    switch v {
+    case let d as Double: return (d != 0 && !d.isNaN) ? d : 0
+    case let i as Int: return i != 0 ? Double(i) : 0
+    case let n as NSNumber: let d = n.doubleValue; return (d != 0 && !d.isNaN) ? d : 0
+    case let s as String:
+        if let d = Double(s.trimmingCharacters(in: .whitespacesAndNewlines)), d != 0, !d.isNaN { return d }
+        return 0
+    default: return 0
+    }
+}
+
+// JS `'' + value` for an arbitrary option value (used only in a dev error message).
+private func jsAnyString(_ v: Any?) -> String {
+    guard let v = v, !(v is NSNull) else { return "" }
+    if let d = v as? Double { return jsNumberStr(d) }
+    if let i = v as? Int { return String(i) }
+    if let s = v as? String { return s }
+    return "\(v)"
 }
 
 // JS `Number.prototype.toString` for a Double (integral values print without a fraction).
