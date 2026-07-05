@@ -74,10 +74,9 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 // '../coord/parallel/AxisModel' — ParallelAxisModel is now the real, fully-ported reference type in
 //   coord/parallel/ParallelAxisModel.swift (an `AxisBaseModel` subclass). The former PORT-TODO
 //   placeholder subclass declared here has been removed per its own note.
-// '../coord/matrix/MatrixModel' — MatrixModel
-public protocol MatrixModel: AnyObject {                                   // PORT-TODO
-    func getDimensionModel(_ dim: String) -> AxisBaseModel
-}
+// '../coord/matrix/MatrixModel' — MatrixModel is now the real, fully-ported reference type in
+//   coord/matrix/MatrixModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
+//   The former PORT-TODO placeholder protocol declared here has been removed per its own note.
 
 /**
  * @class
@@ -268,12 +267,23 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
         }
 
         result.coordSysDims = ["x", "y"]
-        let xModel = matrixModel?.getDimensionModel("x")
-        let yModel = matrixModel?.getDimensionModel("y")
-        axisMap.set("x", xModel!)
-        axisMap.set("y", yModel!)
-        categoryAxisMap.set("x", xModel!)
-        categoryAxisMap.set("y", yModel!)
+        // upstream:
+        //   const xModel = matrixModel.getDimensionModel('x');
+        //   const yModel = matrixModel.getDimensionModel('y');
+        //   axisMap.set('x', xModel); axisMap.set('y', yModel);
+        //   categoryAxisMap.set('x', xModel); categoryAxisMap.set('y', yModel);
+        // PORT-TODO (DEFERRED): `getDimensionModel` returns `MatrixDimensionModel` (a `Model` with
+        //   `.get('type')`/`getOrdinalMeta()`), but this port collapsed the structural upstream
+        //   `FetcherAxisModel` to the concrete `AxisBaseModel` (see the typealias above), and
+        //   MatrixDimensionModel is NOT an AxisBaseModel — so it cannot be inserted into the
+        //   `HashMap<AxisBaseModel>` axisMap here. No series is registered on the `matrix` coordinate
+        //   system in the slim port (matrix is a custom-series/nonSeriesBox coord — Phase 6b), so this
+        //   fetcher is never invoked; the axisMap population is left as a PORT-TODO to be wired once
+        //   FetcherAxisModel is widened to the structural (type + getOrdinalMeta) protocol.
+        _ = matrixModel?.getDimensionModel("x")
+        _ = matrixModel?.getDimensionModel("y")
+        _ = axisMap
+        _ = categoryAxisMap
     },
 ]
 

@@ -230,7 +230,21 @@ public final class OrdinalScale: Scale, ClassManageable {
         }
         else {
             // The val from user input might be float.
-            val = number.mathRound(val! as! Double)
+            //   INT-vs-DOUBLE trap (CONVENTIONS §1): a numeric option can arrive Int-boxed (e.g. a
+            //   matrix `coord: [0, 0]`), so a bare `as! Double` would crash. Coerce Int/Double/NSNumber
+            //   to Double (JS `val as number` never throws); a non-number falls through to NaN.
+            if let d = val as? Double {
+                val = number.mathRound(d)
+            }
+            else if let i = val as? Int {
+                val = number.mathRound(Double(i))
+            }
+            else if let n = val as? NSNumber {
+                val = number.mathRound(n.doubleValue)
+            }
+            else {
+                val = Double.nan
+            }
         }
         return val as! OrdinalNumber
     }

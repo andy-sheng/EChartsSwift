@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 25 (MATRIX COORDINATE SYSTEM — the 8th and LAST coordinate system: a table/grid coord; interaction DEFERRED): the `matrix` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, `single`, `parallel`, `calendar`, and `geo`, this is the port's **8th coordinate system** and completes **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). Unlike the others it is a **table/grid**: two dimensions (x/y) whose values are header cells arranged in a (possibly nested) header tree, and a body region of value cells at the row×column intersections. Registered: the `matrix` coord-system creator (`CoordinateSystemManager.register("matrix", …)` → `matrixCoordHelper`, forwarding to `Matrix.create` / `Matrix.dimensions`) + `MatrixModel` (via `ComponentModel.registerClass`) + the `"matrix"` component view factory (`MatrixView`, drawing the header-cell + body-cell + corner `Rect`s and their divider `Line`s + cell labels). The table pipeline: `Matrix` builds the two `MatrixDim` header dimensions (x and y), each `MatrixDim` resolving its (possibly nested) header-cell tree — leaf/non-leaf cell spans, depth, and per-cell pixel rects — and `MatrixBodyCorner` supplies the body value-cell and top-left corner-cell geometry; `dataToPoint`/`dataToLayout` map a `[xValue,yValue]` cell coordinate to its pixel rect via the two dims. Files added: `coord/matrix/{Matrix,MatrixDim,MatrixBodyCorner,MatrixModel,matrixCoordHelper,matrixPrepareCustom}.swift`, `component/matrix/MatrixView.swift`; demo `matrix-basic` + `MatrixRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 253 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 251 + 2 new `MatrixRenderTests`; no regression. Deferred PORT-TODOs per CONVENTIONS §5: all matrix INTERACTION — cell select/highlight, roam pan/zoom, and the tooltip/emphasis paths — DEFERRED (static table render only). Faithfulness reviews: `coord/matrix/Matrix.swift` **FAITHFUL** (0 findings), `coord/matrix/MatrixDim.swift` **MINOR-ISSUES** (2 findings), `coord/matrix/matrixCoordHelper.swift` **FAITHFUL** (0 findings), `component/matrix/MatrixView.swift` **MINOR-ISSUES** (2 findings). No CRITICAL findings; `buildGreen = true`. This makes **8 coordinate systems** ported end-to-end — **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). See §56.**
+
 **Phase 24 (MAP CHART on the geo coord — the 21st chart type; integrated MANUALLY after the workflow hit a session limit): the `map` chart registers end-to-end in `EChartsSlim`, reusing the Phase-23 `geo` coordinate system + `registerMap`. `MapSeriesModel` (type `series.map`, coordinateSystem `geo`) builds `{name,value}` region data via `createSeriesDataSimply`; `MapView` draws each geo **Region** as a filled `Polygon`/`Path` at the projected rings (`Geo.dataToPoint`) — the region fill is the per-region series-data item visual (region name → `data.indexOfName` → item style, the visualMap `style.fill` override when visual-encoded, else the region `itemStyle`/`areaColor`), plus the region name label and (via `mapSymbolLayout`) the region symbol markers; `mapDataStatistic` computes the shared-map data min/max. Files added: `chart/map/{MapSeries,MapView,mapSymbolLayout,mapDataStatistic,mapInstall}.swift`; demo `map-basic` (registerMap a toy 3-region GeoJSON + a `type:"map"` series with per-region data) + `MapRenderTests`. Clean build `buildGreen = true` (0 product warnings); `swift test` **251 executed / 0 failures / 58 skipped** (baseline 249 + 2 new `MapRenderTests`). The 2 translate agents finished; the integrate agent completed the wiring + build-fix (register `MapSeriesModel` + `"map"` view + wire the real `MapSeries` type into `geoCreator`'s map-series-geo path) but died on the session limit before returning, so registration + demo + test were already in place. Faithfulness reviews (run after the limit reset): `chart/map/MapView.swift` **FAITHFUL** (0), `chart/map/MapSeries.swift` **MINOR-ISSUES** (1 — the `properties.echartsStyle` merge onto an EXISTING data item is deferred, already a source PORT-TODO; rare, and regions absent from `data` are handled). DEFERRED per CONVENTIONS §5: roam pan/zoom, the effect/large draw paths, `MapDraw`/state (emphasis/select) infra. This makes **21 chart types**. See §55.**
 
 **Phase 23 (GEO COORDINATE SYSTEM + GeoJSON — the 7th coordinate system wired end-to-end in `EChartsSlim`; SVG-map + roam pan/zoom DEFERRED): the `geo` coordinate system registers end-to-end — after `cartesian2d` (grid), `radar`, `polar`, `single`, `parallel`, and `calendar`, this is the port's **7th coordinate system** (a GeoJSON-backed map projection). Registered in `EChartsSlim`: the `geo` coord-system creator (`CoordinateSystemManager.register("geo", …)` → `geoCreator`, which reads registered map JSON and builds `Geo` instances) + the `registerMap` API (the map-registry entry point that parses + stores GeoJSON by name) + `GeoModel` (via `ComponentModel.registerClass`) + the `"geo"` component view factory (`GeoView`, drawing each region's boundary `Polygon`/`Path`s + region name labels). The GeoJSON pipeline: `parseGeoJSON` decodes a GeoJSON FeatureCollection into `Region`s (each region = a named set of polygon/hole rings + a precomputed bounding rect + label center); `Geo` holds the region list and a projection (`dataToPoint`/`pointToData` map lon/lat ↔ pixel via the geo-rect → view-rect linear transform, y-flipped). **This UNLOCKS the map chart (next phase)** — the map series will render its shapes on this geo coord system. Files added: `coord/geo/{Geo,Region,geoCreator,GeoModel,geoJSONLoader,parseGeoJSON}.swift` (map-registry + GeoJSON parse + Region + Geo projection), `component/geo/GeoView.swift`; demo `geo-basic` + `GeoRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 249 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 247 + 2 new `GeoRenderTests`; no regressions. Deferred PORT-TODOs per CONVENTIONS §5: the `GeoSVGResource` (SVG-map source), roam pan/zoom (the `RoamController` interaction), the pluggable `projection` object (only the default linear lon/lat projection lands), and geo `specialAreas` — all DEFERRED. Faithfulness reviews: `coord/geo/Region.swift` **MINOR-ISSUES** (2 findings), `coord/geo/Geo.swift` **FAITHFUL** (0), `coord/geo/geoCreator.swift` **MINOR-ISSUES** (3 findings), `component/geo/GeoView.swift` **FAITHFUL** (0). No CRITICAL findings; `buildGreen = true`. **3 of the 5 MINOR findings FIXED post-workflow** — the two crash-on-malformed-input cases (parseGeoJson odd-length encoded string → bounded the pair loop; geoCreator short `boundingCoords` inner array → NaN-guarded so the existing isFinite check skips it, both matching upstream's graceful no-throw) and the `layoutSize` falsy guard (geoCreator `centerOption && sizeOption` now uses JS-truthy `geoOptTruthy`, so a boxed `0`/`""` layoutSize no longer collapses the geo to size 0). The 2 remaining MINOR are latent edge cases left documented (Region.transformTo double-transform on a cloned/aliased region; geoCreator merging two same-named source regions) — neither is reachable on the common GeoJSON path. This makes **7 coordinate systems** ported end-to-end. See §54.**
@@ -2177,6 +2179,63 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 56. Phase 25 — Matrix coordinate system (the 8th and LAST coord system: a table/grid coord; header-tree + body/corner cell pipeline; interaction DEFERRED)
+
+**Goal (met):** land the `matrix` coordinate system end-to-end in `EChartsSlim` — the port's **8th
+coordinate system** (after `cartesian2d`/grid, `radar`, `polar`, `single`, `parallel`, `calendar`,
+and `geo`), and the **last** one: this completes **ALL of upstream's coordinate systems**
+(cartesian/radar/polar/single/parallel/calendar/geo/matrix). Unlike the others, `matrix` is a
+**table/grid** — two dimensions (x/y) whose values are header cells arranged in a (possibly nested)
+header tree, plus a body region of value cells at the row×column intersections, and a top-left
+corner. A `Matrix` builds the two header dimensions and projects a `[xValue,yValue]` cell coordinate
+to its pixel rect; the `MatrixView` component view draws the table. **Clean build `buildGreen =
+true`; `swift test` — Executed 253 tests, with 58 tests skipped and 0 failures (0 unexpected)** —
+baseline 251 + 2 new `MatrixRenderTests`; no regression. This makes **8 coordinate systems** ported
+end-to-end — **ALL of upstream's coordinate systems**.
+
+### What registered end-to-end in `EChartsSlim`
+- **The `matrix` coord-system creator** — `CoordinateSystemManager.register("matrix", …)` →
+  `matrixCoordHelper`, which forwards to `Matrix.create` / `Matrix.dimensions` and lays the table
+  out into the view box.
+- **`MatrixModel`** — the matrix component model, registered via `ComponentModel.registerClass`.
+- **The `"matrix"` component view factory (`MatrixView`)** — draws the header-cell + body-cell +
+  corner `Rect`s and their divider `Line`s + the per-cell labels from the `Matrix` geometry.
+
+### The table / header-tree / cell pipeline
+- **`Matrix`** holds the two `MatrixDim` header dimensions (x and y) and the body/corner geometry;
+  `dataToPoint`/`dataToLayout` map a `[xValue,yValue]` cell coordinate to its pixel rect by resolving
+  each dimension's header cell.
+- **`MatrixDim`** resolves one dimension's (possibly nested) header-cell tree: leaf/non-leaf cell
+  spans, per-cell depth, and each header cell's pixel rect along that axis.
+- **`MatrixBodyCorner`** supplies the body value-cell geometry (the row×column intersection rects)
+  and the top-left corner cell.
+
+### Files added
+- `coord/matrix/Matrix.swift` — the `Matrix` coord system (two header dims + body/corner + `dataToPoint`/`dataToLayout`).
+- `coord/matrix/MatrixDim.swift` — one header dimension's cell tree (spans, depth, per-cell rects).
+- `coord/matrix/MatrixBodyCorner.swift` — the body value-cell + top-left corner geometry.
+- `coord/matrix/MatrixModel.swift` — `MatrixModel`.
+- `coord/matrix/matrixCoordHelper.swift` — the `matrix` coord-system creator (build + layout).
+- `coord/matrix/matrixPrepareCustom.swift` — the custom-series prepare hook for the matrix coord.
+- `component/matrix/MatrixView.swift` — the header/body/corner cell + divider + label render.
+- Demo: `Sources/EChartsDemoGallery/Demos/matrix-basic.swift`.
+- Tests: `Tests/EChartsKitTests/MatrixRenderTests.swift` (the +2 over the 251 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **All matrix interaction** — cell select/highlight, roam pan/zoom, and the tooltip/emphasis paths
+  — DEFERRED (static table render only this phase).
+
+### Faithfulness reviews
+- `coord/matrix/Matrix.swift` — **FAITHFUL** (0 findings).
+- `coord/matrix/MatrixDim.swift` — **MINOR-ISSUES** (2 findings).
+- `coord/matrix/matrixCoordHelper.swift` — **FAITHFUL** (0 findings).
+- `component/matrix/MatrixView.swift` — **MINOR-ISSUES** (2 findings).
+
+No CRITICAL findings; `buildGreen = true`. This lands the 8th and final coordinate system —
+completing **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix).
 
 ---
 

@@ -147,6 +147,21 @@ struct CalendarCoordinateSystemCreator: CoordinateSystemCreator {
 }
 
 // ============================================================================
+// matrix coord system is the EIGHTH coordinate system wired here. Upstream registers the `Matrix`
+// class itself as the creator (`registerCoordinateSystem('matrix', Matrix)`); the ported registry
+// wants a `CoordinateSystemCreator` value, so this thin struct forwards to `Matrix.create` /
+// `Matrix.dimensions` (["x","y","value"]) / `Matrix.getDimensionsInfo`, mirroring
+// CalendarCoordinateSystemCreator.
+// ============================================================================
+struct MatrixCoordinateSystemCreator: CoordinateSystemCreator {
+    func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
+        return Matrix.create(ecModel, api).map { $0 as CoordinateSystemMaster }
+    }
+    var dimensions: [DimensionName]? { Matrix.dimensions }                     // static dimensions = ["x","y","value"].
+    func getDimensionsInfo() -> [DimensionDefinitionLoose]? { Matrix.getDimensionsInfo() }
+}
+
+// ============================================================================
 // Stand-in axis models (see the axisModelCreator NOTE in the file header).
 // These are the documented equivalent of the classes `axisModelCreator` would generate for
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
@@ -532,6 +547,15 @@ public final class EChartsSlim: EChartsType {
         CoordinateSystemManager.register("calendar", CalendarCoordinateSystemCreator()) // registerCoordinateSystem('calendar', Calendar)
         ComponentModel.registerClass(CalendarModel.self)                            // registerComponentModel(CalendarModel)
 
+        // -- component/matrix/install.ts (matrix coordinate system, the EIGHTH) --
+        //   registerCoordinateSystem('matrix', Matrix) + registerComponentModel(MatrixModel) +
+        //   registerComponentView(MatrixView). The matrix coord maps an (x,y) header/body cell to a rect;
+        //   MatrixView draws the table backdrop (header + body cell rects + header text labels).
+        //   PORT-TODO: matrixPrepareCustom (custom-series coord hook) is unregistered — same as
+        //   calendarPrepareCustom (no prepareCustom registry yet). Cell interaction is // PORT-TODO in MatrixView.
+        CoordinateSystemManager.register("matrix", MatrixCoordinateSystemCreator()) // registerCoordinateSystem('matrix', Matrix)
+        ComponentModel.registerClass(MatrixModel.self)                              // registerComponentModel(MatrixModel)
+
         // -- component/geo/install.ts (geo coordinate system, the SEVENTH) --
         //   registerCoordinateSystem('geo', geoCreator) + registerComponentModel(GeoModel) +
         //   registerComponentView(GeoView) (factory above) + registerMap/getMap (geoSourceManager).
@@ -637,6 +661,9 @@ public final class EChartsSlim: EChartsType {
         "parallel": { ParallelComponentView() },
         // calendar coord backdrop (grid + split lines + day/week/month/year labels).
         "calendar": { CalendarView() },
+        // matrix coord backdrop (header + body cell rects + header text labels). Registered under mainType
+        //   'matrix' (upstream component/matrix/install.ts `registerComponentView(MatrixView)`).
+        "matrix": { MatrixView() },
         // geo coord-sys component view (draws the static GeoJSON region outlines + labels backdrop).
         //   Registered under mainType 'geo' (upstream component/geo/install.ts `registerComponentView(GeoView)`).
         "geo": { GeoView() },
