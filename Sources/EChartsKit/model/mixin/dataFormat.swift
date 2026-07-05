@@ -40,7 +40,11 @@ public struct GetFormattedLabelExtendParams {
 //     implementations). A conforming `ComponentModel`/`SeriesModel` inherits the method set
 //     exactly as `zrUtil.mixin` would graft it. `extends DataHost` -> protocol refinement.
 public protocol DataFormatMixin: DataHost, AnyObject {
-    var ecModel: GlobalModel { get }
+    // PORT: upstream declares `ecModel: GlobalModel` (non-optional). `Model.ecModel` is `GlobalModel?`
+    //   (the Model port chose optional), and a subclass cannot re-type an inherited stored property, so
+    //   the requirement is relaxed to `GlobalModel?` to let `SeriesModel` (and `ComponentModel`) conform.
+    //   Neither extension method below reads `ecModel`, so the optionality is inert here.
+    var ecModel: GlobalModel? { get }
     var mainType: ComponentMainType { get }
     var subType: ComponentSubType { get }
     var componentIndex: Double { get }
@@ -50,6 +54,10 @@ public protocol DataFormatMixin: DataHost, AnyObject {
 }
 
 extension DataFormatMixin {
+
+    // PORT: upstream `animatedValue` is host-supplied state (only read by the animation/universal-transition
+    //   path, which is deferred). Default to `[]` so a conforming model need not store it until that lands.
+    public var animatedValue: [OptionDataValue] { return [] }
 
     // upstream accesses `(this as any).seriesIndex` in `getDataParams`. `seriesIndex` is only
     // defined on `SeriesModel`, not on the `DataFormatMixin` contract, so upstream reaches it

@@ -245,16 +245,16 @@ func resizeGeo(_ geo: Geo, _ geoModel: MapOrGeoModel, _ api: ExtensionAPI) {
 // Back compat for ECharts2, where the coord map is set on map series:
 // {type: 'map', geoCoord: {'cityA': [116.46,39.92], 'cityA': [119.12,24.61]}},
 // function setGeoCoords(geo: Geo, model: MapSeries)
-// PORT-TODO: `MapSeries` (chart/map/MapSeries.ts) is NOT yet ported. `setGeoCoords` is only reachable
-//   from the map-series branch in `create` (also stubbed below); wire it when MapSeries lands:
-//     private func setGeoCoords(_ geo: Geo, _ model: MapSeries) {
-//         // zrUtil.each(model.get('geoCoord'), (geoCoord, name) => geo.addGeoCoord(name, geoCoord));
-//         if let geoCoords = model.get("geoCoord") as? [String: Any] {
-//             for (name, geoCoordAny) in geoCoords {
-//                 if let geoCoord = asCoordPair(geoCoordAny) { geo.addGeoCoord(name, geoCoord) }
-//             }
-//         }
-//     }
+private func setGeoCoords(_ geo: Geo, _ model: MapSeriesModel) {
+    // zrUtil.each(model.get('geoCoord'), function (geoCoord, name) { geo.addGeoCoord(name, geoCoord); });
+    if let geoCoords = model.get("geoCoord") as? [String: Any] {
+        for (name, geoCoordAny) in geoCoords {
+            if let geoCoord = asCoordPair(geoCoordAny) {
+                geo.addGeoCoord(name, geoCoord)
+            }
+        }
+    }
+}
 
 // class GeoCreator implements CoordinateSystemCreator
 public final class GeoCreator: CoordinateSystemCreator {
@@ -342,15 +342,15 @@ public final class GeoCreator: CoordinateSystemCreator {
                     // const geoModel = seriesModel.subType === SERIES_TYPE_MAP
                     //     ? (seriesModel as MapSeries).getHostGeoModel()
                     //     : seriesModel.getReferringComponents('geo', SINGLE_REFERRING).models[0] as GeoModel;
-                    // PORT-TODO: the `subType === SERIES_TYPE_MAP` branch uses `MapSeries` (not yet ported);
-                    //   only the geo-referring branch (`getReferringComponents('geo', ...)`) is wired here.
-                    //   Restore the map branch when MapSeries lands:
-                    //     if seriesModel.subType == SERIES_TYPE_MAP {
-                    //         geoModel = (seriesModel as? MapSeries)?.getHostGeoModel()
-                    //     } else { ... }
-                    let geoModel = seriesModel.getReferringComponents(
-                        "geo", model.SINGLE_REFERRING
-                    ).models.first as? GeoModel
+                    let geoModel: GeoModel?
+                    if seriesModel.subType == SERIES_TYPE_MAP {
+                        geoModel = (seriesModel as? MapSeriesModel)?.getHostGeoModel()
+                    }
+                    else {
+                        geoModel = seriesModel.getReferringComponents(
+                            "geo", model.SINGLE_REFERRING
+                        ).models.first as? GeoModel
+                    }
                     // return geoModel && geoModel.coordinateSystem;
                     return geoModel?.coordinateSystem as? CoordinateSystem
                 },
@@ -360,11 +360,6 @@ public final class GeoCreator: CoordinateSystemCreator {
 
         // If has map series
         // zrUtil.each(buildAllMapSeriesGroups(ecModel, true), function (mapSeriesGroup, groupKey) { ... });
-        // PORT-TODO: the entire map-series-group path depends on `MapSeries` + `buildAllMapSeriesGroups`
-        //   + `mapSeriesGroupHasOwnGeo` + `SERIES_TYPE_MAP` (chart/map/MapSeries.ts), which are NOT yet
-        //   ported. The faithful translation is preserved below as a reference block; un-stub it when
-        //   MapSeries lands. (Also relies on `setGeoCoords`, stubbed above, and `geo.resize`/GeoConstructorOption.)
-        /*
         for (groupKey, mapSeriesGroup) in buildAllMapSeriesGroups(ecModel, true) {
             // NOTE: Swift Dictionary order is unspecified (upstream iterates object insertion order);
             //   the per-group work is independent so ordering does not affect the created geos.
@@ -422,7 +417,6 @@ public final class GeoCreator: CoordinateSystemCreator {
                 setGeoCoords(geo, mapSeries)
             }
         }
-        */
 
         // return geoList;
         return geoList.map { $0 as CoordinateSystemMaster }

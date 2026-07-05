@@ -544,6 +544,19 @@ public final class EChartsSlim: EChartsType {
         CoordinateSystemManager.register("geo", geoCreator)                         // registerCoordinateSystem('geo', geoCreator)
         ComponentModel.registerClass(GeoModel.self)                                // registerComponentModel(GeoModel)
 
+        // -- chart/map/install.ts (minimal) -- use(installGeo) [geo coord above] +
+        //   registerSeriesModel(MapSeries) + registerChartView(MapView) + registerLayout(mapSymbolLayoutStageHandler)
+        //   + registerProcessor(PRIORITY.PROCESSOR.STATISTIC, mapDataStatisticStageHandler). Map is a series on
+        //   the GEO coordinate system (dependencies ["geo"]); geoCreator's map-series-group path builds an
+        //   exclusive Geo for a `series.map` (with `map:<name>`) and injects it as `seriesModel.coordinateSystem`.
+        //   The STATISTIC processor (mapDataStatistic) runs in the data-processor stage (stage 4) to merge
+        //   multi-series region values + stamp each series' `originalData`/`seriesGroup`; the mapSymbolLayout
+        //   stage (run in render) places the per-region legend symbols. MapView draws one CompoundPath per
+        //   region, filled by the datum value (visualMap/itemStyle). createLegacyDataSelectAction('map', ...) is
+        //   DEFERRED (legacy/dataSelectAction.ts not ported); roam/select actions DEFERRED. mapInstall.swift is
+        //   commented-only (diffable surface); actual wiring lives here per the geo/heatmap install convention.
+        ComponentModel.registerClass(MapSeriesModel.self)                          // registerSeriesModel(MapSeries)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -680,7 +693,11 @@ public final class EChartsSlim: EChartsType {
         // Parallel chart view (one Polyline per data item across the N axes); geometry from
         //   coord.dataToPoint per dimension. Registered under series subType 'parallel'
         //   (upstream chart/parallel/install.ts `registerChartView(ParallelView)`).
-        "parallel": { ParallelView() }
+        "parallel": { ParallelView() },
+        // Map chart view (one CompoundPath per GeoJSON region, filled by the datum value + per-region
+        //   legend symbols/labels); geometry from the injected Geo coord + the mapSymbolLayout stage.
+        //   Registered under series subType 'map' (upstream chart/map/install.ts `registerChartView(MapView)`).
+        "map": { MapView() }
     ]
 
     // ------------------------------------------------------------------------
@@ -762,6 +779,14 @@ public final class EChartsSlim: EChartsType {
         //   present. Must run BEFORE the graph layout stage (layout reads the filtered data), so it lives
         //   in the data-processor stage like upstream. OVERALL handler — invoke its overallReset directly.
         graphCategoryFilterStageHandler.overallReset?(ecModel, api, nil)
+
+        // PROCESSOR (STATISTIC) — map data statistic (upstream `registerProcessor(PROCESSOR.STATISTIC,
+        //   mapDataStatisticStageHandler)`). For each map-series group it merges the per-region values across
+        //   the sibling series (sum/average/min/max per `mapValueCalculation`), stamps each series'
+        //   `seriesGroup` + `originalData`, and replaces `getData()` with the shared/merged statistic data.
+        //   MUST run in the data-processor stage (before coord update + visual), so mapSymbolLayout/MapView see
+        //   the merged data + `originalData`. OVERALL handler — invoke its overallReset directly.
+        mapDataStatisticStageHandler.overallReset?(ecModel, api, nil)
 
         // updateStreamModes(...) — PORT-TODO skip (progressive/stream rendering out of scope).
 
@@ -1039,6 +1064,16 @@ public final class EChartsSlim: EChartsType {
         //   to Single). `themeRiverLayoutStageHandler` wraps this for the upstream registrar, but the slim
         //   driver invokes `themeRiverLayout(ecModel, api)` directly (mirrors sankeyLayout / radarLayout).
         themeRiverLayout(ecModel, api)
+
+        // LAYOUT — map region-center symbols (upstream `registerLayout(mapSymbolLayoutStageHandler)`). For
+        //   each map-series group with its own geo, this OVERALL stage projects each region center through
+        //   the injected Geo (`geo.dataToPoint(region.getCenter())`) and stores `{point, offset}` on the
+        //   per-series `originalData` item layout (the legend symbol positions), then stamps `showLabel` on
+        //   the main series' data so label-less regions still get a name label. Reads `originalData` (set by
+        //   the mapDataStatistic processor in stage 4) + the Geo coord (set by geoCreator in stage 3), so it
+        //   runs here after both. `mapSymbolLayoutStageHandler` wraps this for the upstream registrar, but the
+        //   slim driver invokes `mapSymbolLayout(ecModel)` directly (mirrors sankeyLayout / radarLayout).
+        mapSymbolLayout(ecModel)
 
         // VISUAL — parallel per-line opacity (upstream `registerVisual(PRIORITY.VISUAL.BRUSH, parallelVisual)`).
         //   Parallel HAS a coordinate system, already built + updated by `_coordSysMgr.create`/`.update`

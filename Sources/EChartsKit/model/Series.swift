@@ -100,16 +100,14 @@ public let SERIES_UNIVERSAL_TRANSITION_PROP = "__universalTransitionEnabled"
 //   The two upstream `zrUtil.mixin(...)` grafts are ported as protocol conformances (CONVENTIONS §2):
 //     - `mixin(SeriesModel, PaletteMixin)` -> `: PaletteMixin` (its `getColorFromPalette`/
 //       `clearColorPalette` extension methods are inherited; the `get` requirement is satisfied below).
-//     - `mixin(SeriesModel, DataFormatMixin)` is NOT expressed as a conformance: `DataFormatMixin`
-//       requires a *non-optional* `ecModel: GlobalModel` (and `animatedValue`), but `Model.ecModel`
-//       is `GlobalModel?` (the Model port chose optional). A subclass cannot re-type an inherited
-//       stored property, so the conformance is blocked by that impedance.
-//       PORT-TODO: declare `: DataFormatMixin` once `Model.ecModel` is reconciled to non-optional
-//       (or `DataFormatMixin.ecModel` to optional). Until then `getDataParams`/`getFormattedLabel`/
-//       `getRawValue` from the mixin are unavailable on `SeriesModel`; `formatTooltip` is overridden
-//       directly below.
+//     - `mixin(SeriesModel, DataFormatMixin)` -> `: DataFormatMixin`. The impedance that once blocked
+//       this (the mixin required a *non-optional* `ecModel: GlobalModel`, but `Model.ecModel` is
+//       `GlobalModel?`) is resolved by relaxing the mixin's `ecModel` requirement to `GlobalModel?`
+//       (neither extension method reads it) and defaulting `animatedValue` in the extension. So
+//       `getDataParams`/`getFormattedLabel`/`getRawValue` are now inherited from the mixin; the
+//       `formatTooltip` override below wins over the extension's empty default (as upstream).
 //   `DataHost` (the `getData` contract `DataFormatMixin` refines) is conformed directly.
-open class SeriesModel: ComponentModel, PaletteMixin, DataHost {
+open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin {
 
     // [Caution]: Because this class or desecendants can be used as `XXX.extend(subProto)`,
     // the class members must not be initialized in constructor or declaration place.
