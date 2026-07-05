@@ -287,9 +287,13 @@ private func elSetState(_ el: Element?, _ state: DisplayState, _ highlightDigit:
     //   if (el && isHighDownDispatcher(el)) {
     //       (state === 'emphasis' ? enterEmphasis : leaveEmphasis)(el, highlightDigit);
     //   }
-    // PORT-TODO: util/states.ts (isHighDownDispatcher/enterEmphasis/leaveEmphasis) not yet ported
-    //   (states/emphasis prerequisite). Body preserved above; wired when util/states lands.
-    _ = (el, state, highlightDigit)
+    if let el = el, states.isHighDownDispatcher(el) {
+        if state == .emphasis {
+            states.enterEmphasis(el, highlightDigit)
+        } else {
+            states.leaveEmphasis(el, highlightDigit)
+        }
+    }
 }
 
 private func toggleHighlight(_ data: SeriesData, _ payload: Payload, _ state: DisplayState) {
@@ -298,8 +302,14 @@ private func toggleHighlight(_ data: SeriesData, _ payload: Payload, _ state: Di
     // upstream:
     //   const highlightDigit = (payload && payload.highlightKey != null)
     //       ? getHighlightDigit(payload.highlightKey) : null;
-    // PORT-TODO: util/states.getHighlightDigit not yet ported; `highlightKey` is a dynamic payload key.
-    let highlightDigit: Double? = nil
+    //   `highlightKey` is a dynamic payload key (carried in `.other`), a numeric key.
+    let highlightKeyRaw = payload.other["highlightKey"]
+    let highlightDigit: Double?
+    if let hk = (highlightKeyRaw as? Int) ?? (highlightKeyRaw as? Double).map({ Int($0) }) {
+        highlightDigit = states.getHighlightDigit(hk)
+    } else {
+        highlightDigit = nil
+    }
 
     if let dataIndex = dataIndex, !(dataIndex is NSNull) {
         util.each(model.normalizeToArray(dataIndex) as [Any]) { dataIdx, _ in

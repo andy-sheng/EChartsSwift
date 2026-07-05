@@ -92,7 +92,11 @@ open class ExtensionAPI {
         fatalError("abstract method ExtensionAPI.leaveBlur must be overridden") // PORT-TODO: abstract
     }
     // These methods are not planned to be exposed to outside.
-    open func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView {
+    // Optional: upstream `getViewOfComponentModel` can return `undefined` for a component whose
+    //   mainType has no registered ComponentView (e.g. `polar`). Callers (states.ts allLeaveBlur/
+    //   blurSeries) guard with `if (view && view.toggleBlurSeries)`. Force-unwrapping here crashes on
+    //   any such viewless component during a highlight/blur dispatch.
+    open func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {
         fatalError("abstract method ExtensionAPI.getViewOfComponentModel must be overridden") // PORT-TODO: abstract
     }
     open func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
@@ -143,7 +147,7 @@ open class ExtensionAPI {
 public func getViewOfComponentOrSeries(
     _ api: ExtensionAPI,
     _ componentOrSeries: ComponentModel
-) -> AnyObject { // upstream: ChartView | ComponentView
+) -> AnyObject? { // upstream: ChartView | ComponentView (may be undefined for a viewless component)
     return componentOrSeries.mainType == COMPONENT_MAIN_TYPE_SERIES
         ? api.getViewOfSeriesModel(componentOrSeries as! SeriesModel)
         : api.getViewOfComponentModel(componentOrSeries)

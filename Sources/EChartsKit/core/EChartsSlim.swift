@@ -259,24 +259,9 @@ public struct DispatchActionOpt {
     }
 }
 
-// ============================================================================
-// Stand-ins for `util/states.ts` payload-type predicates (that file is DEFERRED to Phase 30).
-// `doDispatchAction` routes highlight/downplay + select/unselect/toggleSelect payloads into the
-// light-update branch (a documented no-op this phase) instead of the full re-render branch; these
-// predicates reproduce that routing WITHOUT pulling in the (unported) states machinery.
-//   - HIGHLIGHT_ACTION_TYPE/DOWNPLAY_ACTION_TYPE (states.ts:88-89) → isHighDownPayloadSlim
-//   - SELECT/UNSELECT/TOGGLE_SELECT_ACTION_TYPE (states.ts:91-93) → isSelectChangePayloadSlim
-// PORT-TODO (Phase 30): replace with the real `isHighDownPayload`/`isSelectChangePayload` once
-//   util/states.ts lands (they carry `payload is HighlightPayload | DownplayPayload` type guards).
-// ============================================================================
-private func isHighDownPayloadSlim(_ payload: Payload) -> Bool {
-    let t = payload.type
-    return t == "highlight" || t == "downplay"                 // HIGHLIGHT_ACTION_TYPE / DOWNPLAY_ACTION_TYPE
-}
-private func isSelectChangePayloadSlim(_ payload: Payload) -> Bool {
-    let t = payload.type
-    return t == "select" || t == "unselect" || t == "toggleSelect" // SELECT / UNSELECT / TOGGLE_SELECT
-}
+// Phase-30 note: the former `isHighDownPayloadSlim`/`isSelectChangePayloadSlim` stand-ins have been
+// removed — `doDispatchAction` now uses the real `isHighDownPayload`/`isSelectChangePayload` from
+// util/statesPayload.swift (which also drive the ported `updateDirectly` light update).
 
 // ============================================================================
 // The slim ECharts driver.
@@ -695,6 +680,11 @@ public final class EChartsSlim: EChartsType {
         //   `dataset: { transform: { type: "filter" | "sort", config: {...} } }` resolves WITHOUT the
         //   user pre-registering. The "echarts:" namespace makes them callable via the bare "filter"/"sort".
         transformInstall(EChartsSlim._registers)
+
+        // -- core/echarts.ts `Default actions` (echarts.ts:3373-3411) -- highlight/downplay/select/
+        //   unselect/toggleSelect. Upstream registers these at module load; the slim driver has no
+        //   module-load side effects, so it happens here (see core/actionRegister.swift).
+        registerBuiltinActions()
 
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
@@ -1274,6 +1264,10 @@ public final class EChartsSlim: EChartsType {
         for componentView in _componentsViews {
             guard let model = componentView.__model else { continue }
             componentView.render(model, ecModel, api, payload)
+            // upstream (echarts.ts renderComponents): a rendered view is marked alive so the
+            //   `updateDirectly` light-update path (callView's `view.__alive` guard) can dispatch
+            //   highlight/downplay/updateView to it. Without this, all light-update dispatch no-ops.
+            componentView.__alive = true
         }
     }
 
@@ -1284,6 +1278,9 @@ public final class EChartsSlim: EChartsType {
         ecModel.eachSeries { seriesModel, _ in
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
             chartView.render(seriesModel, ecModel, api, payload)
+            // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
+            //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
+            chartView.__alive = true
         }
     }
 
@@ -1388,12 +1385,14 @@ public final class EChartsSlim: EChartsType {
         // actionInfo.nonRefinedEventType is computed by registerAction (TASK 1).
         let nonRefinedEventType = actionInfo.nonRefinedEventType
 
-        let isSelectChange = isSelectChangePayloadSlim(payload)
-        let isHighDown = isHighDownPayloadSlim(payload)
+        let isSelectChange = states.isSelectChangePayload(payload)
+        let isHighDown = states.isHighDownPayload(payload)
 
+        // Only leave blur once if there are multiple batches.
         // if (isHighDown) { allLeaveBlur(this._api); }
-        //   PORT-TODO (Phase 30): util/states `allLeaveBlur` — DEFERRED (do NOT call the abstract
-        //   ExtensionAPI blur/emphasis methods, which `fatalError`).
+        if isHighDown {
+            states.allLeaveBlur(_api)
+        }
 
         for batchItem in payloads {
             // The ONE thing an ActionHandler is designed to do: modify the models. Runs for every payload.
@@ -1407,19 +1406,27 @@ public final class EChartsSlim: EChartsType {
             eventObjBatch.append(e)
 
             // light update does not perform data process, layout and visual.
-            // PORT-TODO (Phase 30): emphasis/select light-update needs util/states.ts + `updateDirectly`.
-            //   Deliberately a NO-OP this phase — the highlight/downplay/select/unselect and the
-            //   component (`cptType`) light-update branches are accepted but drive no re-render, and we do
-            //   NOT call the abstract enterEmphasis/leaveBlur (would fatalError). Their `markStatusToUpdate`
-            //   status flag is likewise not tracked yet.
             if isHighDown {
-                // updateDirectly(this, updateMethod, batchItem, componentMainType); markStatusToUpdate(this);
+                // const { queryOptionMap, mainTypeSpecified } = modelUtil.preParseFinder(payload);
+                // const componentMainType = mainTypeSpecified ? queryOptionMap.keys()[0] : 'series';
+                //   Upstream inspects the OUTER `payload` (not the batch item). The finder keys
+                //   (seriesIndex/xAxisIndex/…) live in `payload.other` in this port, so the dynamic bag IS
+                //   the ModelFinderObject preParseFinder inspects.
+                let pre = model.preParseFinder(payload.other as ModelFinder)
+                let componentMainType = pre.mainTypeSpecified
+                    ? (pre.queryOptionMap.keys().first ?? "series")
+                    : "series"
+                updateDirectly(updateMethod, batchItem, componentMainType)
+                // markStatusToUpdate(this); — PORT-TODO: no status-needs-update flag tracked in the slim
+                //   driver; the dispatch caller repaints via the full `update()` when needed.
             }
             else if isSelectChange {
-                // updateDirectly(this, updateMethod, batchItem, 'series'); markStatusToUpdate(this);
+                // At present `dispatchAction({ type: 'select', ... })` is not supported on components.
+                // geo still uses 'geoselect'.
+                updateDirectly(updateMethod, batchItem, "series")
             }
             else if cptType != nil {
-                // updateDirectly(this, updateMethod, batchItem, cptType.main, cptType.sub);
+                updateDirectly(updateMethod, batchItem, cptType!.main, cptType!.sub)
             }
         }
 
@@ -1471,6 +1478,124 @@ public final class EChartsSlim: EChartsType {
     }
 
     // ------------------------------------------------------------------------
+    // updateDirectly — ported from the module-local `updateDirectly` (echarts.ts:1772-1866).
+    //   The LIGHT UPDATE: resolve the payload-targeted series/component models, apply the
+    //   blur/emphasis/select state in pass 1, then call the view's `method` (highlight/downplay/
+    //   updateView/…) in pass 2. Performs NO data-process / layout / visual pass.
+    // Upstream is a closure over the `ECharts` instance; here it is a private method (has `_model`,
+    //   `_api`, and the view maps in scope).
+    // ------------------------------------------------------------------------
+    private func updateDirectly(
+        _ method: String,
+        _ payload: Payload,
+        _ mainType: ComponentMainType,
+        _ subType: ComponentSubType? = nil
+    ) {
+        guard let ecModel = _model else { return }   // upstream: `ecModel && ecModel.eachComponent(...)`
+        let api = _api!
+
+        ecModel.setUpdatePayload(payload)
+
+        // if (!mainType) { broadcast to all views; return; }
+        //   PORT-TODO: the empty-mainType broadcast branch (`:updateAxisPointer`) is unreachable from the
+        //   ported call sites (doDispatchAction always passes a concrete mainType), so it is elided.
+
+        let condition = model.makeQueryConditionKindA(payload, mainType, subType)
+
+        // const excludeSeriesId = payload.excludeSeriesId; → Set<String> of resolved ids.
+        var excludeSeriesIdSet: Set<String>? = nil
+        if let excludeSeriesId = payload.excludeSeriesId {
+            var set = Set<String>()
+            let ids: [Any] = model.normalizeToArray(excludeSeriesId)
+            for id in ids {
+                if let modelId = model.convertOptionIdName(id, nil) {
+                    set.insert(modelId)
+                }
+            }
+            excludeSeriesIdSet = set
+        }
+        func isExcluded(_ m: ComponentModel) -> Bool {
+            return excludeSeriesIdSet?.contains(m.id) ?? false
+        }
+
+        // ---- pass 1: mutate models / apply blur + emphasis + select state ----
+        ecModel.eachComponent(condition, { m, _ in
+            if isExcluded(m) { return }
+
+            if states.isHighDownPayload(payload) {
+                if let seriesModel = m as? SeriesModel {
+                    let notBlur = (payload.other["notBlur"] as? Bool) ?? false
+                    // `!model.get(['emphasis','disabled'])` — `disabled` is a boolean option (JS truthiness
+                    //   reduces to the bool here).
+                    let disabled = (seriesModel.get(["emphasis", "disabled"]) as? Bool) ?? false
+                    if payload.type == states.HIGHLIGHT_ACTION_TYPE && !notBlur && !disabled {
+                        states.blurSeriesFromHighlightPayload(seriesModel, payload, api)
+                    }
+                }
+                else {
+                    // Component (non-series) high-down dispatch.
+                    // PORT-TODO (Phase 30, DEFERRED — needs the live pointer/dispatcher host):
+                    //   `findComponentHighDownDispatchers` reads `ComponentView.findHighDownDispatchers`,
+                    //   which is not wired yet, so the component enterEmphasis/blurComponent path is a
+                    //   no-op. The upstream body is preserved here for the re-sync; the SERIES high-down
+                    //   path (the primary target of this phase) is fully applied above.
+                    //     const { focusSelf, dispatchers } = findComponentHighDownDispatchers(
+                    //         m.mainType, m.componentIndex, payload.name, api);
+                    //     if (type === HIGHLIGHT && focusSelf && !notBlur)
+                    //         blurComponent(m.mainType, m.componentIndex, api);
+                    //     if (dispatchers) each(dispatchers, d =>
+                    //         type === HIGHLIGHT ? enterEmphasis(d) : leaveEmphasis(d));
+                }
+            }
+            else if states.isSelectChangePayload(payload) {
+                // TODO geo
+                if let seriesModel = m as? SeriesModel {
+                    states.toggleSelectionFromPayload(seriesModel, payload, api)
+                    states.updateSeriesElementSelection(seriesModel)
+                    // markStatusToUpdate(ecIns);  — PORT-TODO: no status-needs-update flag tracked in the
+                    //   slim driver (upstream sets it so a later flush repaints; here the caller repaints).
+                }
+            }
+        })
+
+        // ---- pass 2: light update on each affected view (upstream `callView(ecIns[map][__viewId])`) ----
+        ecModel.eachComponent(condition, { m, _ in
+            if isExcluded(m) { return }
+            self.callViewMethod(m, method, payload, ecModel, api)
+        })
+    }
+
+    // Upstream `callView(view)` = `view && view.__alive && view[method] && view[method](model, ecModel,
+    //   api, payload)`. Swift has no string-keyed method dispatch, so the `view[method]` lookup is a switch
+    //   over the ported view methods; an unmapped `method` (e.g. 'select'/'unselect'/'toggleSelect', which
+    //   no view implements) is a no-op — exactly matching the upstream `view[method] &&` short-circuit.
+    private func callViewMethod(
+        _ m: ComponentModel, _ method: String, _ payload: Payload, _ ecModel: GlobalModel, _ api: ExtensionAPI
+    ) {
+        if let seriesModel = m as? SeriesModel {
+            guard let view = viewOfSeriesModel(seriesModel), view.__alive else { return }
+            switch method {
+            case "highlight":    view.highlight(seriesModel, ecModel, api, payload)
+            case "downplay":     view.downplay(seriesModel, ecModel, api, payload)
+            case "updateView":   view.updateView(seriesModel, ecModel, api, payload)
+            case "updateVisual": view.updateVisual(seriesModel, ecModel, api, payload)
+            case "render":       view.render(seriesModel, ecModel, api, payload)
+            default: break
+            }
+        }
+        else {
+            guard let view = viewOfComponentModel(m), (view.__alive ?? false) else { return }
+            switch method {
+            case "updateView":   view.updateView(m, ecModel, api, payload)
+            case "updateLayout": view.updateLayout(m, ecModel, api, payload)
+            case "updateVisual": view.updateVisual(m, ecModel, api, payload)
+            case "render":       view.render(m, ecModel, api, payload)
+            default: break
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // Public accessors for the host / tests.
     // ------------------------------------------------------------------------
     public func getRoot() -> Group { return root }
@@ -1506,8 +1631,8 @@ final class SlimExtensionAPI: ExtensionAPI {
     override func getHeight() -> Double { ec.getHeight() }
     override func getModel() -> GlobalModel { ec.getModel()! }
     override func getCoordinateSystems() -> [CoordinateSystemMaster] { ec.coordinateSystems() }
-    override func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView {
-        return ec.viewOfComponentModel(componentModel)!
+    override func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {
+        return ec.viewOfComponentModel(componentModel)   // may be nil: viewless component (e.g. polar)
     }
     override func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
         return ec.viewOfSeriesModel(seriesModel)!
@@ -1516,5 +1641,28 @@ final class SlimExtensionAPI: ExtensionAPI {
     //   the driver's ported round-trip (an action/view handler calls `api.dispatchAction(...)`).
     override func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         ec.dispatchAction(payload, opt)
+    }
+
+    // upstream: the api's emphasis seam (`availableMethods`) binds `enterEmphasis`/`leaveEmphasis`/
+    //   `enterBlur`/`leaveBlur`/`enterSelect`/`leaveSelect` to the module-level `util/states` functions.
+    //   These forward to the ported `states.*` element-state helpers (TASK 1). Views + the payload-driven
+    //   `updateDirectly` reach element state through these methods (echarts.ts `availableMethods`).
+    override func enterEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
+        states.enterEmphasis(el, highlightDigit)
+    }
+    override func leaveEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
+        states.leaveEmphasis(el, highlightDigit)
+    }
+    override func enterBlur(_ el: Element) {
+        states.enterBlur(el)
+    }
+    override func leaveBlur(_ el: Element) {
+        states.leaveBlur(el)
+    }
+    override func enterSelect(_ el: Element) {
+        states.enterSelect(el)
+    }
+    override func leaveSelect(_ el: Element) {
+        states.leaveSelect(el)
     }
 }
