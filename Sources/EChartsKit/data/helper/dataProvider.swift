@@ -22,6 +22,7 @@
 // ??? refactor? check the outer usage of data provider.
 // merge with defaultDimValueGetter?
 
+import Foundation
 import ZRenderKit
 // import {isTypedArray, extend, assert, each, isObject, bind, isArray} from 'zrender/src/core/util';
 // import {getDataItemValue} from '../../util/model';      -> model.getDataItemValue (EChartsKit)
@@ -554,16 +555,16 @@ public func retrieveRawValue(
         return nil
     }
 
-    // PORT-TODO: `SeriesData` is an empty protocol stub and `DataStore` is not yet ported.
-    // Body preserved verbatim below; re-enable once `SeriesData.getRawDataItem/getStore/
-    // getDimensionIndex` and `DataStore.getSource/getDimensionProperty` land.
-    _ = data
-    return nil
-    /*
+    // (Phase 31: un-stubbed. `SeriesData.getRawDataItem/getStore/getDimensionIndex` and
+    //  `DataStore.getSource/getDimensionProperty` + `model.getDataItemValue` + the
+    //  `getRawSourceValueGetter` map have all landed, so the faithful body is enabled — the tooltip
+    //  content model reads the raw value through this.)
     // Consider data may be not persistent.
-    let dataItem = data.getRawDataItem(dataIndex)
+    let dataItem = data.getRawDataItem(Int(dataIndex))
 
-    if dataItem == nil {
+    // upstream: `if (dataItem == null) { return; }` — `getRawDataItem` returns `OptionDataItem`
+    //   (= Any); an out-of-range/absent item comes back nullish (nil or NSNull).
+    if retrieveRawValueIsNullish(dataItem) {
         return nil
     }
 
@@ -572,18 +573,25 @@ public func retrieveRawValue(
 
     if dim != nil {
         let dimIndex = data.getDimensionIndex(dim!)
-        let property = store.getDimensionProperty(dimIndex)
+        // upstream `getDimensionProperty` returns a `string`; the Swift port returns `String?`
+        //   (only the object-rows getter reads it, keyed by property name). Coerce nil to "".
+        let property = store.getDimensionProperty(dimIndex) ?? ""
 
-        return getRawSourceValueGetter(sourceFormat)(dataItem as Any, dimIndex, property)
+        return getRawSourceValueGetter(sourceFormat)(dataItem, dimIndex, property)
     }
     else {
-        var result = dataItem
+        var result: Any? = dataItem
         if sourceFormat == SOURCE_FORMAT_ORIGINAL {
-            result = model.getDataItemValue(dataItem as Any)
+            result = model.getDataItemValue(dataItem)
         }
         return result
     }
-    */
+}
+
+// upstream JS `dataItem == null` on a value typed `OptionDataItem` (= Any here).
+private func retrieveRawValueIsNullish(_ v: Any?) -> Bool {
+    guard let v = v else { return true }
+    return v is NSNull
 }
 
 

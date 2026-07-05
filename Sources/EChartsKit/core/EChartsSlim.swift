@@ -661,6 +661,14 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(PiecewiseModel.self)                  // registerComponentModel(PiecewiseModel)
         registerVisualMapSubTypeDefaulter()                                // registerSubTypeDefaulter('visualMap', ...)
 
+        // -- component/tooltip/install.ts -- registerComponentModel(TooltipModel) +
+        //   registerComponentView(TooltipView) + ... . Phase 31 ports ONLY the host-independent
+        //   tooltip CONTENT model (formatTooltip → markup → html/richText string). The on-screen
+        //   TooltipView + the hover TRIGGER are DEFERRED (need the live-view host — a later phase),
+        //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; the
+        //   axisPointer model itself is a `[String: Any]` stub (see TooltipModel.swift PORT-TODO).
+        ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
+
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
         //   whose render path depends on deep deps that are still stubbed in this phase:

@@ -558,11 +558,14 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         _ multipleSeries: Bool? = nil,
         _ dataType: SeriesDataType? = nil
     ) -> TooltipFormatResult? {
-        // return defaultSeriesFormatTooltip({ series: this, dataIndex, multipleSeries });
-        // PORT-TODO: component/tooltip/seriesFormatTooltip.ts not ported — returns nil until the
-        //   tooltip component lands.
-        _ = (dataIndex, multipleSeries, dataType)
-        return nil
+        // upstream: return defaultSeriesFormatTooltip({ series: this, dataIndex, multipleSeries });
+        //   `multipleSeries` may be undefined upstream (falsy) -> `?? false`.
+        _ = dataType
+        return defaultSeriesFormatTooltip(
+            series: self,
+            dataIndex: dataIndex,
+            multipleSeries: multipleSeries ?? false
+        )
     }
 
     open override func isAnimationEnabled() -> Bool? {

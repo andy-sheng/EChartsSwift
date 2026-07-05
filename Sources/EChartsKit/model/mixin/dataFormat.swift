@@ -14,10 +14,9 @@ import ZRenderKit
 // const DIMENSION_LABEL_REG = /\{@(.+?)\}/g;
 private let DIMENSION_LABEL_REG = try! NSRegularExpression(pattern: "\\{@(.+?)\\}")
 
-// PORT-TODO: `component/tooltip/tooltipMarkup` is not yet ported. `TooltipMarkupBlockFragment`
-//   is a dynamic markup-block object whose `.type` discriminator is read in
-//   `normalizeTooltipFormatResult`. Modeled as `Any` until the tooltip component lands.
-public typealias TooltipMarkupBlockFragment = Any
+// `TooltipMarkupBlockFragment` is now the real ported type — see
+//   component/tooltip/tooltipMarkup.swift (base class `TooltipMarkupBlock`, discriminated by `.type`).
+//   `normalizeTooltipFormatResult` below reads that `.type` via an `as?` downcast to the class.
 
 // PORT-TODO: upstream uses an inline anonymous object type
 //   `{ interpolatedValue: InterpolatableValue }` for `getFormattedLabel`'s `extendParams`.
@@ -309,9 +308,9 @@ public func normalizeTooltipFormatResult(_ result: TooltipFormatResult?) -> (
     var markupFragment: TooltipMarkupBlockFragment?
     if util.isObject(result) {
         // upstream: if ((result as TooltipMarkupBlockFragment).type)
-        // PORT-TODO: `TooltipMarkupBlockFragment.type` existence check on the dynamic bag.
-        if let dict = result as? [String: Any], dict["type"] != nil {
-            markupFragment = result
+        //   The ported fragment is a `TooltipMarkupBlock` (always carries `.type`).
+        if let frag = result as? TooltipMarkupBlockFragment {
+            markupFragment = frag
         }
         else {
             if __DEV__ {
