@@ -661,6 +661,19 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(PiecewiseModel.self)                  // registerComponentModel(PiecewiseModel)
         registerVisualMapSubTypeDefaulter()                                // registerSubTypeDefaulter('visualMap', ...)
 
+        // -- component/dataZoom/install.ts (installDataZoomInside + installDataZoomSlider + installCommon) --
+        //   registerComponentModel(InsideZoomModel / SliderZoomModel) + registerComponentView(...) [DEFERRED
+        //   view] + registerProcessor(PRIORITY.PROCESSOR.FILTER, dataZoomProcessor) + installDataZoomAction +
+        //   registerSubTypeDefaulter('dataZoom', () => 'slider'). Like visualMap, the ABSTRACT base
+        //   `DataZoomModel` is NOT registered; only the two concrete subtypes are. The subtype defaulter
+        //   resolves a bare `dataZoom: [{start, end}]` (mainType 'dataZoom', no subtype) to 'slider'.
+        //   The DATA core (window calc + axis reset + series-data filter) runs from `dataZoomProcessor` in
+        //   `update()`; the slider/inside VIEWS + roam/drag are DEFERRED (need a live-view host).
+        ComponentModel.registerClass(InsideZoomModel.self)                 // registerComponentModel(InsideZoomModel)
+        ComponentModel.registerClass(SliderZoomModel.self)                 // registerComponentModel(SliderZoomModel)
+        ComponentModel.registerSubTypeDefaulter("dataZoom", { _ in "slider" })
+        installDataZoomAction(EChartsSlim._registers)                      // registerAction('dataZoom', ...)
+
         // -- component/tooltip/install.ts -- registerComponentModel(TooltipModel) +
         //   registerComponentView(TooltipView) + ... . Phase 31 ports ONLY the host-independent
         //   tooltip CONTENT model (formatTooltip → markup → html/richText string). The on-screen
@@ -881,9 +894,22 @@ public final class EChartsSlim: EChartsType {
         // lifecycle.trigger('coordsys:aftercreate', ...) — PORT-TODO: lifecycle not ported (no listeners
         //     needed for a bar chart).
 
+        // PROCESSOR (FILTER) — dataZoom (upstream `registerProcessor(PRIORITY.PROCESSOR.FILTER,
+        //   dataZoomProcessor)`). Calculates each dataZoom's window, resets the target axes' raw-extent
+        //   zoom bounds, and FILTERS each target series' data to the window. Runs at FILTER priority, i.e.
+        //   BEFORE the STATISTIC processors below and BEFORE `coordSysMgr.update` reads the (now filtered)
+        //   series-data extents, so the axes rescale to the zoomed subset. Self-gates to a no-op when there
+        //   is no `dataZoom` component (it iterates `ecModel.eachComponent("dataZoom")`).
+        //   `getTargetSeries` must run FIRST: upstream the scheduler calls it during pipeline setup, and it
+        //   carries the side-effect of CREATING each `AxisProxy` and stashing it via `setAxisProxyToModel`
+        //   (per-ec-prepare cache). `overallReset` then looks those proxies up via `getAxisProxy`. Without
+        //   this call the proxies never exist and `overallReset` filters nothing.
+        _ = dataZoomProcessor.getTargetSeries?(ecModel, api)
+        dataZoomProcessor.overallReset?(ecModel, api, nil)
+
         // (4) performDataProcessorTasks — the processor subset a bar needs = axis STATISTICS (feeds the
-        //     cross-series bar layout). Data-stack / filter (dataZoom) / sample processors are PORT-TODO
-        //     skips (single unstacked series, no dataZoom). Run the captured processor overallResets.
+        //     cross-series bar layout). Data-stack / sample processors are PORT-TODO skips (single
+        //     unstacked series). Run the captured processor overallResets.
         for processor in EChartsSlim._registers.capturedProcessors {
             processor(ecModel)
         }
