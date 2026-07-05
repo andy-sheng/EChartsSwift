@@ -641,6 +641,13 @@ public final class EChartsSlim: EChartsType {
         //   markPoint/markLine/markArea preprocessors) is deferred until those deps land.
         //     ComponentModel.registerClass(MarkPointModel.self) / MarkLineModel / MarkAreaModel
 
+        // -- component/transform/install.ts -- registers.registerTransform(filterTransform) +
+        //   registers.registerTransform(sortTransform). Built-in data transforms live in the Phase-27
+        //   registry (data/helper/transform.swift); `transformInstall` registers both against it so a
+        //   `dataset: { transform: { type: "filter" | "sort", config: {...} } }` resolves WITHOUT the
+        //   user pre-registering. The "echarts:" namespace makes them callable via the bare "filter"/"sort".
+        transformInstall(EChartsSlim._registers)
+
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
         // These are file-scope closures, assigned lazily on first `install`.
