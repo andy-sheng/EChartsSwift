@@ -18,9 +18,9 @@ import ZRenderKit
 // import { RectLike } from 'zrender/src/core/BoundingRect';          -> RectLike (ZRenderKit)
 // import type { PrepareCustomInfo } from '../chart/custom/CustomSeries';
 
-// PORT-TODO: PrepareCustomInfo (chart/custom/CustomSeries.ts) is a chart-view function type that
-//   lands in Phase 6b. Minimal placeholder so `prepareCustoms` type-checks until CustomSeries is ported.
-public typealias PrepareCustomInfo = Any
+// PrepareCustomInfo (chart/custom/CustomSeries.ts) is a chart-view function type. The real typealias
+//   now lives in chart/custom/CustomSeries.swift (Phase 26). The `prepareCustoms` property below is
+//   typed against that function type.
 
 
 public protocol CoordinateSystemCreator {

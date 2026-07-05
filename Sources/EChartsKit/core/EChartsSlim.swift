@@ -581,6 +581,16 @@ public final class EChartsSlim: EChartsType {
         //   commented-only (diffable surface); actual wiring lives here per the geo/heatmap install convention.
         ComponentModel.registerClass(MapSeriesModel.self)                          // registerSeriesModel(MapSeries)
 
+        // -- chart/custom/install.ts (minimal) -- registerSeriesModel(CustomSeries) +
+        //   registerChartView(CustomChartView) (view keyed by subType 'custom' below). The `renderItem`
+        //   Swift closure is carried on the series option under key "renderItem" typed EXACTLY as
+        //   CustomSeriesRenderItem (CustomSeriesModel.getRenderItem() casts it) OR registered globally via
+        //   registerCustomSeries(subType, renderItem). CustomChartView resolves it as
+        //   `series.getRenderItem() ?? getCustomSeries(subType)`. cartesian2d prepareCustom supplies
+        //   api.coord/api.size. transitions/morph/states are PORT-TODO. customInstall.swift is commented-only
+        //   (diffable surface); actual wiring lives here per the boxplot/heatmap install convention.
+        ComponentModel.registerClass(CustomSeriesModel.self)                        // registerSeriesModel(CustomSeries)
+
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
@@ -724,7 +734,11 @@ public final class EChartsSlim: EChartsType {
         // Map chart view (one CompoundPath per GeoJSON region, filled by the datum value + per-region
         //   legend symbols/labels); geometry from the injected Geo coord + the mapSymbolLayout stage.
         //   Registered under series subType 'map' (upstream chart/map/install.ts `registerChartView(MapView)`).
-        "map": { MapView() }
+        "map": { MapView() },
+        // Custom chart view (renderItem-driven): builds the scene graph from the user's renderItem closure
+        //   return specs (rect/circle/sector/polygon/polyline/line/text/group). Registered under series
+        //   subType 'custom' (upstream chart/custom/install.ts `registerChartView(CustomChartView)`).
+        "custom": { CustomChartView() }
     ]
 
     // ------------------------------------------------------------------------

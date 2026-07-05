@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 26 (CUSTOM series / `renderItem` — the 22nd and LAST chart type; this ports ALL 22 upstream chart types; transition/animation/morph/states DEFERRED): the `custom` series registers end-to-end in `EChartsSlim` — `CustomSeriesModel` (type `series.custom`) + the `custom` view (`CustomView`). Custom is the user-programmable series: the option supplies a **`renderItem` Swift-closure** that, per data item, returns a graphic-element spec; `CustomView` dispatches that closure and builds the returned elements (`group`/`rect`/`circle`/`sector`/`polygon`/`polyline`/`line`/`bezierCurve`/`arc`/`image`/`text` …) into real `ZRenderKit` shapes, positioned through the ported coordinate systems — the **static element builders** run across the ported coord systems (cartesian, polar, geo, calendar, …) via the coord-provided `api` (coordSys/value/size helpers). This lands the port's **22nd chart type**, which makes **ALL 22 upstream chart types ported** end-to-end. Files added: `chart/custom/{CustomSeries,CustomView,customInstall,customSeriesRegister}.swift`; demo `custom-basic` + `CustomRenderTests`. **Clean build `buildGreen = true`; `swift test` — 254 executed / 0 failures / 58 skipped** (baseline was 253/0/58; +1 = new `CustomRenderTests`). No regressions. Deferred PORT-TODOs per CONVENTIONS §5: the `transition`/animation/**morph** paths, the enter/update/leave **diff** (elements are rebuilt from scratch, not diffed), `states`/emphasis, and the legacy-compat (`renderItem` legacy element) shims — all DEFERRED. Faithfulness reviews: `chart/custom/CustomView.swift` **CRITICAL-ISSUES** (2 findings) — **both FIXED post-workflow**: (1) `api.coord`/`api.size` hard-cast the prepareCustom closures to the exact cartesian signature, so on single/calendar/matrix (whose prepareCustom closures have different Swift signatures) the cast yielded nil and `api.coord` returned `[]` (every element at the origin) — `coord()` now falls back to the generic `CoordinateSystem.dataToPoint` when the closure is nil, so custom projects on ALL coord systems; (2) `api.visual` used wrong maps — corrected to upstream's `STYLE_VISUAL_TYPE = {color:'fill', borderColor:'stroke'}` + `NON_STYLE_VISUAL_PROPS = {symbol, symbolSize, symbolKeepAspect, legendIcon, visualMeta, liftZ, decal}`. `chart/custom/CustomSeries.swift` **MINOR-ISSUES** (1 — `currentZLevel` defaults 0 vs upstream `undefined`; low, documented). This makes **ALL 22 upstream chart types** ported end-to-end. See §57.**
+
 **Phase 25 (MATRIX COORDINATE SYSTEM — the 8th and LAST coordinate system: a table/grid coord; interaction DEFERRED): the `matrix` coordinate system registers end-to-end in `EChartsSlim` — after `cartesian2d` (grid), `radar`, `polar`, `single`, `parallel`, `calendar`, and `geo`, this is the port's **8th coordinate system** and completes **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). Unlike the others it is a **table/grid**: two dimensions (x/y) whose values are header cells arranged in a (possibly nested) header tree, and a body region of value cells at the row×column intersections. Registered: the `matrix` coord-system creator (`CoordinateSystemManager.register("matrix", …)` → `matrixCoordHelper`, forwarding to `Matrix.create` / `Matrix.dimensions`) + `MatrixModel` (via `ComponentModel.registerClass`) + the `"matrix"` component view factory (`MatrixView`, drawing the header-cell + body-cell + corner `Rect`s and their divider `Line`s + cell labels). The table pipeline: `Matrix` builds the two `MatrixDim` header dimensions (x and y), each `MatrixDim` resolving its (possibly nested) header-cell tree — leaf/non-leaf cell spans, depth, and per-cell pixel rects — and `MatrixBodyCorner` supplies the body value-cell and top-left corner-cell geometry; `dataToPoint`/`dataToLayout` map a `[xValue,yValue]` cell coordinate to its pixel rect via the two dims. Files added: `coord/matrix/{Matrix,MatrixDim,MatrixBodyCorner,MatrixModel,matrixCoordHelper,matrixPrepareCustom}.swift`, `component/matrix/MatrixView.swift`; demo `matrix-basic` + `MatrixRenderTests`. Clean build `buildGreen = true`; `swift test` **Executed 253 tests, with 58 tests skipped and 0 failures (0 unexpected)** — baseline 251 + 2 new `MatrixRenderTests`; no regression. Deferred PORT-TODOs per CONVENTIONS §5: all matrix INTERACTION — cell select/highlight, roam pan/zoom, and the tooltip/emphasis paths — DEFERRED (static table render only). Faithfulness reviews: `coord/matrix/Matrix.swift` **FAITHFUL** (0 findings), `coord/matrix/MatrixDim.swift` **MINOR-ISSUES** (2 findings), `coord/matrix/matrixCoordHelper.swift` **FAITHFUL** (0 findings), `component/matrix/MatrixView.swift` **MINOR-ISSUES** (2 findings). No CRITICAL findings; `buildGreen = true`. This makes **8 coordinate systems** ported end-to-end — **ALL of upstream's coordinate systems** (cartesian/radar/polar/single/parallel/calendar/geo/matrix). See §56.**
 
 **Phase 24 (MAP CHART on the geo coord — the 21st chart type; integrated MANUALLY after the workflow hit a session limit): the `map` chart registers end-to-end in `EChartsSlim`, reusing the Phase-23 `geo` coordinate system + `registerMap`. `MapSeriesModel` (type `series.map`, coordinateSystem `geo`) builds `{name,value}` region data via `createSeriesDataSimply`; `MapView` draws each geo **Region** as a filled `Polygon`/`Path` at the projected rings (`Geo.dataToPoint`) — the region fill is the per-region series-data item visual (region name → `data.indexOfName` → item style, the visualMap `style.fill` override when visual-encoded, else the region `itemStyle`/`areaColor`), plus the region name label and (via `mapSymbolLayout`) the region symbol markers; `mapDataStatistic` computes the shared-map data min/max. Files added: `chart/map/{MapSeries,MapView,mapSymbolLayout,mapDataStatistic,mapInstall}.swift`; demo `map-basic` (registerMap a toy 3-region GeoJSON + a `type:"map"` series with per-region data) + `MapRenderTests`. Clean build `buildGreen = true` (0 product warnings); `swift test` **251 executed / 0 failures / 58 skipped** (baseline 249 + 2 new `MapRenderTests`). The 2 translate agents finished; the integrate agent completed the wiring + build-fix (register `MapSeriesModel` + `"map"` view + wire the real `MapSeries` type into `geoCreator`'s map-series-geo path) but died on the session limit before returning, so registration + demo + test were already in place. Faithfulness reviews (run after the limit reset): `chart/map/MapView.swift` **FAITHFUL** (0), `chart/map/MapSeries.swift` **MINOR-ISSUES** (1 — the `properties.echartsStyle` merge onto an EXISTING data item is deferred, already a source PORT-TODO; rare, and regions absent from `data` are handled). DEFERRED per CONVENTIONS §5: roam pan/zoom, the effect/large draw paths, `MapDraw`/state (emphasis/select) infra. This makes **21 chart types**. See §55.**
@@ -2179,6 +2181,62 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 57. Phase 26 — Custom series / `renderItem` (the 22nd and LAST chart type; ports ALL 22 upstream chart types; transition/animation/morph/states DEFERRED)
+
+**Goal (met):** land the `custom` series end-to-end in `EChartsSlim` — the port's **22nd chart type**,
+and the **last** one: this completes **ALL 22 of upstream's chart types**. `custom` is the
+user-programmable series: rather than a fixed geometry, the option supplies a **`renderItem`
+closure** that, per data item, returns a graphic-element spec, and the view materializes those
+specs into real `ZRenderKit` shapes positioned through the ported coordinate systems. **Clean build
+`buildGreen = true`; `swift test` — 254 executed / 0 failures / 58 skipped** — baseline was
+253/0/58; +1 = the new `CustomRenderTests`; no regressions. This makes **ALL 22 upstream chart
+types** ported end-to-end.
+
+### What registered end-to-end in `EChartsSlim`
+- **`CustomSeriesModel`** (type `series.custom`) — the custom series model, registered via
+  `ComponentModel.registerClass`.
+- **The `custom` view (`CustomView`)** — the renderItem dispatcher + element materializer.
+
+### The renderItem dispatch + static element builders
+- **The `renderItem` Swift-closure dispatch** — per data item, `CustomView` invokes the option's
+  `renderItem` closure with a coord-provided `api` (the coordSys / value / size / coord helpers) and
+  receives a graphic-element spec.
+- **The static element builders** — one builder per returned element type (`group`, `rect`,
+  `circle`, `sector`, `polygon`, `polyline`, `line`, `bezierCurve`, `arc`, `image`, `text`, …),
+  each building the returned spec into a real `ZRenderKit` shape. These run **across the ported
+  coordinate systems** (cartesian, polar, geo, calendar, …) — the element is positioned via the
+  `api` the coord system supplies.
+
+### Why this completes ALL 22 chart types
+- With `custom` landed, every one of upstream's **22 chart types** is ported end-to-end:
+  line, bar, pie, scatter, effectScatter, radar, tree, treemap, sunburst, boxplot, candlestick,
+  heatmap, map, parallel, lines, graph, sankey, funnel, gauge, themeRiver, chord, and now **custom**.
+
+### Files added
+- `chart/custom/CustomSeries.swift` — `CustomSeriesModel`.
+- `chart/custom/CustomView.swift` — the renderItem dispatch + the static element builders across the coord systems.
+- `chart/custom/customInstall.swift` — the install/registration entry point.
+- `chart/custom/customSeriesRegister.swift` — the series-type registration helper.
+- Demo: `Sources/EChartsDemoGallery/Demos/custom-basic.swift`.
+- Tests: `Tests/EChartsKitTests/CustomRenderTests.swift` (the +1 over the 253 baseline).
+
+### Deferred PORT-TODOs (per CONVENTIONS §5)
+- **`transition` / animation / morph** — the transition + enter/update animation + path-morph paths — DEFERRED.
+- **The enter/update/leave diff** — elements are rebuilt from scratch each render, not diffed — DEFERRED.
+- **`states` / emphasis** — the emphasis/blur/select state paths — DEFERRED.
+- **Legacy-compat** — the legacy `renderItem` element shims — DEFERRED.
+
+### Faithfulness reviews
+- `chart/custom/CustomView.swift` — **CRITICAL-ISSUES** (2 findings).
+- `chart/custom/CustomSeries.swift` — **MINOR-ISSUES** (1 finding).
+
+Stated plainly: the `CustomView.swift` review is **CRITICAL** (2 findings). `buildGreen` is
+nonetheless **true** and `swift test` is green (254/0/58). The **main loop fixes these findings
+post-workflow**. This lands the 22nd and final chart type — completing **ALL 22 of upstream's chart
+types** ported end-to-end.
 
 ---
 

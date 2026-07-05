@@ -30,5 +30,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_map_basic,         // Map (choropleth — toy GeoJSON regions filled by value)
         EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
         EChartsDemoRegistry.demo_heatmap_basic,     // Heatmap (cartesian, cells colored by value via visualMap)
+        EChartsDemoRegistry.demo_custom_basic,      // Custom (cartesian, renderItem hand-rolls one rect bar per datum)
     ]
 }
