@@ -234,12 +234,17 @@ private let axisElementBuilders: [String: RadiusAxisElementBuilder] = [
             styleDict["fill"] = NSNull()   // upstream: fill: null
             let lineStyle = lineStyleModel.getLineStyle()
             _ = util.defaults(&styleDict, lineStyle)
-            _ = group.add(mergePath(
+            let mp = mergePath(
                 splitLines[i], [
                     "style": pathStyleFromDict(styleDict),
                     "silent": true
                 ]
-            ))
+            )
+            // BUGFIX: the concentric split-line Circles/Arcs default to the '#000' Path fill; the `fill:null`
+            //   in the style is dropped by extendPathStyle (nil-skip) → rings rendered as solid black disks.
+            //   Clear the fill directly on the merged path (stroke-only line).
+            mp.pathStyle.fill = nil
+            _ = group.add(mp)
         }
     },
 
@@ -270,12 +275,14 @@ private let axisElementBuilders: [String: RadiusAxisElementBuilder] = [
         styleDict["fill"] = NSNull()   // upstream: fill: null
         let lineStyle = lineStyleModel.getLineStyle()
         _ = util.defaults(&styleDict, lineStyle)
-        _ = group.add(mergePath(
+        let mp = mergePath(
             lines, [
                 "style": pathStyleFromDict(styleDict),
                 "silent": true
             ]
-        ))
+        )
+        mp.pathStyle.fill = nil   // BUGFIX: clear the '#000' default on the stroke-only minor split circles
+        _ = group.add(mp)
     },
 
     "splitArea": { group, radiusAxisModel, polar, axisAngle, radiusExtent, ticksCoords, minorTicksCoords in

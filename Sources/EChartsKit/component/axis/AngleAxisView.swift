@@ -268,6 +268,11 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
                 "silent": true
             ])
         }
+        // BUGFIX (visual-parity): upstream sets `shape.style.fill = null` to unset the '#000' Path default,
+        //   but `extendPathStyle` (applied when the shape's `style` prop merges) SKIPS a nil `fill`, so the
+        //   Circle/Arc/Ring kept the default BLACK fill → the whole polar disk rendered solid black. Assign
+        //   the fill directly on the built shape to actually clear it (bypassing the nil-skipping merge).
+        shape.pathStyle.fill = nil
         _ = group.add(shape)
     },
 
