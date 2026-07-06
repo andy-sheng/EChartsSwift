@@ -155,7 +155,7 @@ open class FunnelView: ChartView {
             _ = group.add(polygon)
 
             // this._updateLabel(data, idx);  — draws the plain label Text attached to the polygon.
-            funnelUpdateLabel(polygon, data, idx, layout)
+            funnelUpdateLabel(polygon, data, idx, layout, group)
         }
 
         self._data = data
@@ -180,7 +180,7 @@ open class FunnelView: ChartView {
 //     - rotation/originX/originY/z2 = labelLayout.rotation / x / y / 10
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
 private func funnelUpdateLabel(
-    _ polygon: Polygon, _ data: SeriesData, _ idx: Int, _ layout: [String: Any]
+    _ polygon: Polygon, _ data: SeriesData, _ idx: Int, _ layout: [String: Any], _ group: Group
 ) {
     // const labelText = polygon.getTextContent();  — created here (upstream: in the FunnelPiece ctor).
     let itemModel = data.getItemModel(idx)
@@ -253,9 +253,24 @@ private func funnelUpdateLabel(
     textConfig.outsideFill = overrideColor
     polygon.setTextConfig(textConfig)
 
-    // PORT-TODO (DEFERRED, labelLine): the guide-line Polyline + `textGuideLineConfig.anchor` +
-    //   `setLabelLineStyle(polygon, getLabelLineStatesModels(itemModel), { stroke: visualColor })`
-    //   (label/labelGuideHelper). `labelLayout.linePoints` is computed by funnelLayout but not consumed.
+    // labelLine (leader) — funnelLayout already computed `linePoints`; draw them as a Polyline stroked
+    //   in the item color (the label-guide states/anchor machinery is deferred). Only for outside labels.
+    let labelLineModel = itemModel.getModel("labelLine")
+    let isInside = (labelLayout["inside"] as? Bool) ?? false
+    if !isInside,
+       (labelLineModel.get("show") as? Bool) != false,
+       let linePoints = labelLayout["linePoints"] as? [[Double]], linePoints.count >= 2 {
+        var lineShape = PolylineShape()
+        lineShape.points = linePoints.map { VectorArray($0[0], $0[1]) }
+        let line = Polyline()
+        line.setShape(lineShape)
+        var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
+        if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
+        line.useStyle(lstyle)
+        line.pathStyle.fill = nil   // class-1 guard: a stroke-only polyline must not keep the black default
+        line.z2 = 10
+        _ = group.add(line)
+    }
 }
 
 // upstream `const visualColor = style.fill as ColorString`. Extracts the solid-color fill string from

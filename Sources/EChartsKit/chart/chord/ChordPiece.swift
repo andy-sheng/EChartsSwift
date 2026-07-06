@@ -292,6 +292,7 @@ func chordNum(_ v: Any?) -> Double? {
 func chordColorString(_ v: Any?) -> String? {
     if let str = v as? String { return str }
     if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
+    if let zr = v as? ZRenderKit.ZRColor, case let .string(str) = zr { return str }
     return nil
 }
 
