@@ -252,6 +252,10 @@ private func updateElCommon(
     var style = barStyleFromDict(data.getItemVisual(dataIndex, "style"))
     style.fill = nil
     el.useStyle(style)
+    // `useStyle`→createStyle lays the style over DEFAULT_PATH_STYLE (fill '#000') and SKIPS the nil
+    // `fill`, so `el.style.fill = null` is dropped and each polyline fills as a solid black polygon
+    // (visual-parity trap class 1). Clear it directly so parallel lines render as thin strokes.
+    el.pathStyle.fill = nil
 
     // el.setShape('smooth', seriesScope.smooth);
     //   The generic `Path.setShape(key, value)` is inert for typed shapes (see Path.swift), so set the

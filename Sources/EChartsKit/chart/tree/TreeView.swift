@@ -462,6 +462,10 @@ private func drawEdge(
     if let edge = edge, !(edgeShape == "polyline" && !node.isExpand) {
         // edge.useStyle(zrUtil.defaults({ strokeNoScale: true, fill: null }, lineStyle));
         edge.useStyle(treeEdgeStyle(lineStyle))
+        // `useStyle` runs createStyle, which lays the style over DEFAULT_PATH_STYLE (fill '#000') and
+        // SKIPS the nil `fill` — so the intended `fill: null` is dropped and the edge curve/fork fills
+        // solid black (visual-parity trap class 1). Clear it directly to keep edges as thin strokes.
+        edge.pathStyle.fill = nil
 
         // Phase 45: attach the emphasis-state lineStyle (upstream TreeView.ts drawEdge
         //   setStatesStylesFromModel(edge, itemModel, 'lineStyle')). The edge is not itself a highDown
