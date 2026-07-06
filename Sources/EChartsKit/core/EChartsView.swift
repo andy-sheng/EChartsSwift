@@ -91,6 +91,32 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     public private(set) var tooltipView: TooltipView?
 
+    // ------------------------------------------------------------------------
+    // Phase 36 — the visual axisPointer CROSSHAIR. WIRING APPROACH (documented deviation):
+    //   Upstream, `AxisView._doUpdateAxisPointerClass` instantiates a per-axis `CartesianAxisPointer`
+    //   (registered via `AxisView.registerAxisPointerClass`) and the `updateAxisPointer` action routes
+    //   each axis' render. In THIS slim port there is no live per-axis `AxisView` hosting a zr at render
+    //   time (EChartsSlim is zr-less), so — exactly like the Phase-34/35 tooltip — `EChartsView` OWNS the
+    //   pointer managers and drives them DIRECTLY on hover, PARALLEL to the axis tooltip.
+    //
+    //   `axisTrigger` (run on every hover mousemove in `_bindAxisPointerListeners`) already computes and
+    //   writes each axisPointer model's `status`/`value`/`seriesDataIndices` (via `updateModelActually`).
+    //   So after `axisTrigger` returns, `_updateAxisPointers` walks the collected `CollectionResult`,
+    //   and for each CARTESIAN axis renders its `CartesianAxisPointer` (reading value/status straight off
+    //   the just-updated model — the exact path upstream's `BaseAxisPointer.render` reads). Each pointer's
+    //   crosshair `Group` is hosted on the LIVE `zr` via the `hostAdd`/`hostRemove` seam (floats above
+    //   `ec.getRoot()`, `silent=true` so it never blocks findHover — same rationale as the tooltip). A
+    //   `status:"hide"` (off-grid / leave) makes `render` call `group.hide()`.
+    //
+    //   Pointer managers are keyed by axis key (`makeKey(axis.model)`) so their `group`/`_lastGraphicKey`
+    //   persist across hovers. PORT-TODO: polar/single crosshairs (non-Axis2D) are deferred; move
+    //   animation / drag handle / lineDash(dashed→solid) are deferred inside BaseAxisPointer/viewHelper.
+    //   PORT-TODO: `axisPointer:{show:true}` WITHOUT a tooltip trigger:"axis" is not yet wired (the hover
+    //   path is gated on `_isAxisTrigger`; enabling axisPointer-only needs the mousemove→hideTip guard
+    //   reworked so it does not fight the trigger:"item" tooltip — see `_bindAxisPointerListeners`).
+    // ------------------------------------------------------------------------
+    private var _axisPointers: [String: CartesianAxisPointer] = [:]
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -238,7 +264,46 @@ public final class EChartsView {
             // Route showTip/hideTip THROUGH the merge stage (globalListener pendings), not directly.
             payload.other["dispatchAction"] = dispatchAction
             axisTrigger(payload, ecModel, self.ec.api)
+            // Phase 36: axisTrigger has just written each axisPointer model's status/value; render the
+            //   visual crosshair(s) from those models, PARALLEL to the axis tooltip.
+            self._updateAxisPointers(ecModel)
         })
+    }
+
+    // ------------------------------------------------------------------------
+    // _updateAxisPointers — Phase 36. After `axisTrigger` writes the per-axis axisPointer model status/
+    //   value, render the visual crosshair for each CARTESIAN axis (upstream: `AxisView` +
+    //   `updateAxisPointer` → `CartesianAxisPointer.render`; here driven directly — see the `_axisPointers`
+    //   note). `BaseAxisPointer.render` itself reads `value`/`status` off the model and self-hides on
+    //   `status:"hide"`, so a single unconditional `render` per axis handles both show and off-grid hide.
+    // ------------------------------------------------------------------------
+    private func _updateAxisPointers(_ ecModel: GlobalModel) {
+        guard let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel,
+              let result = apModel.coordSysAxesInfo as? CollectionResult else { return }
+        let api = ec.api
+        for (key, axisInfo) in result.axesInfo {
+            // Only cartesian (Axis2D) axes get a Line/shadow crosshair (polar/single deferred).
+            guard axisInfo.axis is Axis2D else { continue }
+            let axisModelOpt: AxisBaseModel? = axisInfo.axis.model
+            guard let axisModel = axisModelOpt else { continue }
+
+            let pointer: CartesianAxisPointer
+            if let existing = _axisPointers[key] {
+                pointer = existing
+            }
+            else {
+                let p = CartesianAxisPointer()
+                // HOST SEAM (see BaseAxisPointer): host the crosshair group on the LIVE zr — floats above
+                //   ec.getRoot() so a re-render does not wipe it (silent=true → never blocks findHover).
+                //   [weak self] + no self capture in ctx (Phase-33 retain-cycle rule).
+                p.hostAdd = { [weak self] g in self?.zr.add(g) }
+                p.hostRemove = { [weak self] g in self?.zr.remove(g) }
+                _axisPointers[key] = p
+                pointer = p
+            }
+            pointer.render(axisModel, axisInfo.axisPointerModel, api, false)
+        }
+        zr.refresh()
     }
 
     /// Whether the current ec model asks for the trigger:"axis" combined tooltip (upstream: the tooltip
