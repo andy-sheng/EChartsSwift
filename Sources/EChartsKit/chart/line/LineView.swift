@@ -149,6 +149,7 @@ open class LineView: ChartView {
         st.stroke = .string(stroke)
         st.fill = .string("none")
         st.lineWidth = 2
+        applyLineStyleOption(&st, seriesModel)
         polyline.useStyle(st)
 
         _ = group.add(polyline)
@@ -262,6 +263,7 @@ open class LineView: ChartView {
         st.stroke = .string(stroke)
         st.fill = .string("none")
         st.lineWidth = 2
+        applyLineStyleOption(&st, seriesModel)
         polyline.useStyle(st)
         _ = group.add(polyline)
 
@@ -328,4 +330,31 @@ private func lineToNumber(_ v: Any?) -> Double {
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     return Double.nan
+}
+
+// upstream: `lineGroup.setStyle(lineStyleModel.getLineStyle())` — the series `lineStyle` option overrides
+//   the polyline width / dash type / color. We read the raw option bag (the static port has no
+//   Model.getLineStyle) and apply the common keys onto the polyline style. `color: 'inherit'`/nil leaves
+//   the visual stroke in place; an explicit color wins (line-item-color). `type: 'dashed' | 'dotted' |
+//   number[]` maps to LineDash (line-dashed).
+private func applyLineStyleOption(_ st: inout PathStyleProps, _ seriesModel: SeriesModel) {
+    guard let ls = seriesModel.get("lineStyle") as? [String: Any] else { return }
+    if let w = ls["width"] as? Double { st.lineWidth = w }
+    else if let wi = ls["width"] as? Int { st.lineWidth = Double(wi) }
+    if let c = ls["color"] as? String, c != "inherit", c != "auto", !c.isEmpty {
+        st.stroke = .string(c)
+    }
+    if let op = ls["opacity"] as? Double { st.strokeOpacity = op }
+    switch ls["type"] {
+    case let s as String:
+        if s == "dashed" { st.lineDash = .dashed }
+        else if s == "dotted" { st.lineDash = .dotted }
+        else if s == "solid" { st.lineDash = .solid }
+    case let arr as [Double]:
+        st.lineDash = .values(arr)
+    case let arri as [Int]:
+        st.lineDash = .values(arri.map { Double($0) })
+    default:
+        break
+    }
 }
