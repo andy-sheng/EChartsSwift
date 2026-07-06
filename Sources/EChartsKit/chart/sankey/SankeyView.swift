@@ -330,14 +330,25 @@ open class SankeyView: ChartView {
             let defaultEdgeLabelText = sankeyStringify(edgeModel.get("value"))
             sankeySetLabel(curve, edgeModel.getModel("edgeLabel"), defaultEdgeLabelText, "inside")
 
-            // const emphasisModel = edgeModel.getModel('emphasis');
-            // setStatesStylesFromModel(curve, edgeModel, 'lineStyle', ...);  — PORT-TODO: states DEFERRED.
+            // Phase 45: edge emphasis + topology focus (upstream SankeyView.ts:158-161 + 265-273). The curve
+            //   is a highDown dispatcher carrying its emphasis-state lineStyle; `focus:'adjacency'`/
+            //   `'trajectory'` resolve to the edge's index set (its own edge + the two endpoint nodes, or the
+            //   whole up/downstream trajectory) so a hover keeps that subgraph bright and blurs the rest.
+            //   The `ecData.dataType = 'edge'` tag is REQUIRED so `blurSeries`'s object-focus branch resolves
+            //   this element against `getData(.edge)`.
+            let edgeEmphasis = edgeModel.getModel(["emphasis"])
+            let edgeFocusRaw: InnerFocus? = edgeEmphasis.get("focus")
+            let edgeFocus: InnerFocus? = sankeyResolveEdgeFocus(edgeFocusRaw, edge)
+            let edgeBlurScope = (edgeEmphasis.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(curve, edgeFocus, edgeBlurScope, edgeDisabled)
+            states.setStatesStylesFromModel(curve, edgeModel, "lineStyle")
 
             _ = mainGroup.add(curve)
-
             edgeData.setItemGraphicEl(edge.dataIndex, curve)
-
-            // toggleHoverEmphasis(curve, focus === 'adjacency' ? ... : ..., ...);  — PORT-TODO: DEFERRED.
+            let ecEdge = innerStore.getECData(curve)
+            ecEdge.dataType = .edge
+            ecEdge.dataIndex = Double(edge.dataIndex)
         })
 
         // Generate a rect for each node
@@ -391,7 +402,8 @@ open class SankeyView: ChartView {
             //   getTrajectoryDataIndices) — the graph-topology focus that also blurs unrelated
             //   nodes/edges — is DEFERRED (raw focus passed through).
             let emphasisModel = itemModel.getModel(["emphasis"])
-            let focus: InnerFocus? = emphasisModel.get("focus")
+            let focusRaw: InnerFocus? = emphasisModel.get("focus")
+            let focus: InnerFocus? = sankeyResolveNodeFocus(focusRaw, node)   // Phase 45: adjacency/trajectory
             let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
             let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(rect, focus, blurScope, isDisabled)
@@ -401,8 +413,9 @@ open class SankeyView: ChartView {
             _ = mainGroup.add(rect)
 
             nodeData.setItemGraphicEl(node.dataIndex, rect)
-
-            // getECData(rect).dataType = 'node';  — PORT-TODO: innerStore DEFERRED.
+            let ecNode = innerStore.getECData(rect)     // Phase 45: dataType tag → blurSeries getData(.node)
+            ecNode.dataType = .node
+            ecNode.dataIndex = Double(node.dataIndex)
         })
 
         // nodeData.eachItemGraphicEl(...) draggable → el.drift / api.dispatchAction('dragNode') ...
@@ -483,6 +496,27 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
 
 // Node/edge layouts are stored by sankeyLayout as a `[String: Any]` dict ({x,y,dx,dy} / {sy,ty,dy}).
 //   `getLayout()` returns `Any?`; coerce to the dict (empty when absent, matching JS `undefined` reads → NaN-safe defaults).
+// Phase 45: resolve a sankey node/edge `emphasis.focus` string to the topology index set, bridged to the
+//   `{node:[…], edge:[…]}` dict form `states.blurSeries`'s object branch consumes. Non-topology focus
+//   values ('self'/'series'/indices/nil) pass through unchanged.
+private func sankeyFocusDict(_ ix: GraphDataIndices) -> [String: Any] {
+    return ["node": ix.node, "edge": ix.edge]
+}
+private func sankeyResolveNodeFocus(_ focus: InnerFocus?, _ node: GraphNode) -> InnerFocus? {
+    switch focus as? String {
+    case "adjacency":  return sankeyFocusDict(node.getAdjacentDataIndices())
+    case "trajectory": return sankeyFocusDict(node.getTrajectoryDataIndices())
+    default:           return focus
+    }
+}
+private func sankeyResolveEdgeFocus(_ focus: InnerFocus?, _ edge: GraphEdge) -> InnerFocus? {
+    switch focus as? String {
+    case "adjacency":  return sankeyFocusDict(edge.getAdjacentDataIndices())
+    case "trajectory": return sankeyFocusDict(edge.getTrajectoryDataIndices())
+    default:           return focus
+    }
+}
+
 private func sankeyLayoutDict(_ v: Any?) -> [String: Any] {
     return (v as? [String: Any]) ?? [:]
 }

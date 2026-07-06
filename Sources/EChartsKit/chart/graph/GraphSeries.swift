@@ -252,6 +252,14 @@ open class GraphSeriesModel: SeriesModel {
         return self.getGraph().edgeData
     }
 
+    // Phase 45: route `getData(.edge)` to the edge data (upstream `data.getLinkedData(dataType)`), so the
+    //   states engine's object-focus branch (`{node:[…], edge:[…]}`) resolves edge dispatchers against the
+    //   EDGE data, not the node data. The base `getData()` returns the node (main) data.
+    open override func getData(_ dataType: SeriesDataType? = nil) -> SeriesData {
+        if dataType == .edge { return getEdgeData() }
+        return super.getData(dataType)
+    }
+
     // getCategoriesData(): SeriesData { return this._categoriesData; }
     open func getCategoriesData() -> SeriesData {
         return self._categoriesData

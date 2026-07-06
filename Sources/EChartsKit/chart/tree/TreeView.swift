@@ -351,6 +351,15 @@ private func updateNode(
         // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
         _ = group.add(path)
         data.setItemGraphicEl(dataIndex, path)
+
+        // Phase 45: `emphasis.focus:'relative'|'ancestor'|'descendant'` (upstream TreeView.ts:447-456).
+        //   Overwrite the node symbol's `ecData.focus` with the topology index SET (ancestors and/or
+        //   descendants — all node dataIndices), so hovering the node keeps that lineage bright and blurs
+        //   the rest. The value is a plain `[Int]` (the ARRAY-focus form `states.blurSeries` consumes; tree
+        //   edges are anonymous children with no edge-data, so there is no edge dataType).
+        if let resolved = treeResolveFocus(focus, node) {
+            innerStore.getECData(path).focus = resolved
+        }
     }
 
     // Radial label position/rotation block — PORT-TODO: DEFERRED (SymbolClz text content + setTextConfig
@@ -437,8 +446,15 @@ private func drawEdge(
         // edge.useStyle(zrUtil.defaults({ strokeNoScale: true, fill: null }, lineStyle));
         edge.useStyle(treeEdgeStyle(lineStyle))
 
-        // setStatesStylesFromModel(edge, itemModel, 'lineStyle'); setDefaultStateProxy(edge);
-        //   PORT-TODO: DEFERRED (util/states not ported).
+        // Phase 45: attach the emphasis-state lineStyle (upstream TreeView.ts drawEdge
+        //   setStatesStylesFromModel(edge, itemModel, 'lineStyle')). The edge is not itself a highDown
+        //   dispatcher (tree edges are anonymous children, not in edge-data), so this state only takes
+        //   effect via the node symbol's blur-propagation hook — DEFERRED (needs TreeSymbol.__edge + the
+        //   symbol's onHoverStateChange forwarder, TreeView.ts:464-477). Adding the state styles now keeps
+        //   the edge faithful for when that hook lands.
+        if let itemModel = itemModel {
+            states.setStatesStylesFromModel(edge, itemModel, "lineStyle")
+        }
 
         _ = group.add(edge)
     }
@@ -531,6 +547,18 @@ func getEdgeShape(
 
 // Reads the `{ x, y, rawX, rawY }` layout bag stored by treeLayout (setItemLayout) into a
 //   TreeNodeLayout. Returns nil when there is no layout (upstream `getLayout() == null`).
+// Phase 45: resolve a tree node `emphasis.focus` string to its lineage index set (upstream
+//   TreeView.ts:447-456). 'relative' = ancestors ∪ descendants, 'ancestor' / 'descendant' = one side.
+//   Non-topology focus ('self'/'series'/indices/nil) passes through unchanged.
+private func treeResolveFocus(_ focus: InnerFocus?, _ node: TreeNode) -> InnerFocus? {
+    switch focus as? String {
+    case "relative":   return node.getAncestorsIndices() + node.getDescendantIndices()
+    case "ancestor":   return node.getAncestorsIndices()
+    case "descendant": return node.getDescendantIndices()
+    default:           return focus
+    }
+}
+
 private func treeNodeLayout(_ v: Any?) -> TreeNodeLayout? {
     guard let d = v as? [String: Any] else { return nil }
     return TreeNodeLayout(

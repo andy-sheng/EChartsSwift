@@ -244,11 +244,44 @@ open class GraphView: ChartView {
 
             edge.name = "edge"
             edge.useStyle(edgeStyle)
-            // setStatesStylesFromModel / setDefaultStateProxy — PORT-TODO: DEFERRED (util/states not ported).
+            // Phase 45: edge emphasis (upstream chart/helper/Line.ts:336). The edge is a highDown dispatcher
+            //   carrying its emphasis-state lineStyle, so a hover restyles it. `focus` is resolved to the
+            //   adjacency set in the post-loop below (raw value stored here; overwritten there).
+            let edgeEmphasis = edgeItemModel.getModel(["emphasis"])
+            let edgeFocus: InnerFocus? = edgeEmphasis.get("focus")
+            let edgeBlurScope = (edgeEmphasis.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(edge, edgeFocus, edgeBlurScope, edgeDisabled)
+            states.setStatesStylesFromModel(edge, edgeItemModel, "lineStyle")
             // fromSymbol / toSymbol arrow markers (ECLinePath.setLinePoints + Symbol) — PORT-TODO: DEFERRED.
             _ = group.add(edge)
             edgeData.setItemGraphicEl(i, edge)
         }
+
+        // Phase 45: `emphasis.focus:'adjacency'` — after all node/edge elements exist, overwrite each
+        //   dispatcher's `ecData.focus` with the ADJACENCY index set (nodes + their edges), so hovering a
+        //   node/edge keeps its neighbourhood bright and blurs the rest (upstream GraphView.ts:204-225).
+        //   The focus is stored as a `{node:[…], edge:[…]}` dict — the object form `states.blurSeries`
+        //   consumes (its dataType keys resolve `getData(.node)` / `getData(.edge)`).
+        let graph = seriesModel.getGraph()
+        graph.eachNode({ node, _ in
+            guard node.dataIndex >= 0, let el = node.getGraphicEl() else { return }
+            let f = data.getItemModel(node.dataIndex).getModel(["emphasis"]).get("focus")
+            if (f as? String) == "adjacency" {
+                innerStore.getECData(el).focus = graphFocusDict(node.getAdjacentDataIndices())
+            }
+        })
+        graph.eachEdge({ edge, _ in
+            guard edge.dataIndex >= 0, let el = edge.getGraphicEl() else { return }
+            let f = edgeData.getItemModel(edge.dataIndex).getModel(["emphasis"]).get("focus")
+            if (f as? String) == "adjacency" {
+                // Upstream uses the inline {edge:[self], node:[n1,n2]} (NOT getAdjacentDataIndices).
+                innerStore.getECData(el).focus = [
+                    "edge": [edge.dataIndex],
+                    "node": [edge.node1.dataIndex, edge.node2.dataIndex]
+                ] as [String: Any]
+            }
+        })
 
         // this._updateNodeAndLinkScale();  — PORT-TODO: setSymbolScale (roam) DEFERRED.
         // updateRoamControllerSimply(...);  — PORT-TODO: roam DEFERRED.
@@ -300,6 +333,12 @@ private struct GraphPoint {
 private func graphPointFromLayout(_ v: Any?) -> GraphPoint? {
     guard let arr = graphNumberArray(v), arr.count >= 2 else { return nil }
     return GraphPoint(x: arr[0], y: arr[1])
+}
+
+// Bridge the data-layer `GraphDataIndices` struct → the `{node:[…], edge:[…]}` dict form that
+//   `states.blurSeries`'s object-focus branch consumes (its keys map to `getData(.node)`/`getData(.edge)`).
+private func graphFocusDict(_ ix: GraphDataIndices) -> [String: Any] {
+    return ["node": ix.node, "edge": ix.edge]
 }
 
 // `edge.setLayout(points)` stores `[[x1, y1], [x2, y2]]` (straight) or appends a third `[cpx, cpy]`
