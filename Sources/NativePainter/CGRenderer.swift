@@ -295,8 +295,13 @@ public final class CGRenderer: Renderer {
         if text.isEmpty { return }
 
         let font = style.makeCTFont()
+        // `kCTForegroundColorFromContextAttributeName` makes CTLineDraw honor the context's fill/stroke
+        //   color (set below via setFillColor/setStrokeColor). Without it, Core Text bakes in its default
+        //   BLACK foreground and ignores the context color — every glyph would render black regardless of
+        //   `style.fill`. (Was the cause of all text — pie inside labels, axis labels — rendering black.)
         let attr = NSAttributedString(string: text, attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): font
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true
         ])
         let line = CTLineCreateWithAttributedString(attr)
 

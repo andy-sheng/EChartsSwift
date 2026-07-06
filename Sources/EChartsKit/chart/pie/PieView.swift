@@ -257,7 +257,14 @@ open class PieView: ChartView {
             style.x = cx + lr * cos(midAngle)
             style.y = cy + lr * sin(midAngle)
             style.align = .center
-            style.fill = labelModel.getTextColor() ?? "#fff"
+            // Inside labels default to white (upstream `inheritColor` resolves to a contrasting light
+            //   text over the sector fill). `getTextColor()` returns the generic dark default, so only
+            //   honour a color the user set EXPLICITLY; otherwise use white.
+            if let explicit = labelModel.get("color") as? String, explicit != "inherit", explicit != "auto" {
+                style.fill = explicit
+            } else {
+                style.fill = "#ffffff"
+            }
         }
         else {
             let dxu = cos(midAngle), dyu = sin(midAngle)
