@@ -93,6 +93,16 @@ private func getCoordSysDimDefs(
             if let axisModel = axisModel {
                 let axisType = (axisModel.get("type") as? String) ?? ""
                 dimInfo.type = getDimensionTypeByAxis(axisType)
+                // BUGFIX (dataset category axis): a CATEGORY axis' series dimension must SHARE the axis'
+                //   `OrdinalMeta` so that building the series data (`parseAndCollect`) populates the axis'
+                //   category registry. Without this, a dataset-sourced category axis with no explicit
+                //   `xAxis.data` collected NO categories → empty scale extent → no bars/points rendered.
+                //   `createScaleByModel` reads the SAME `getOrdinalMeta()` for the axis scale, so assigning
+                //   it here shares one object between the axis and the series dimension (upstream does the
+                //   equivalent via the axis-model ordinalMeta the dimension picks up).
+                if axisType == "category" {
+                    dimInfo.ordinalMeta = (axisModel as? AxisModelExtendedInCreator)?.getOrdinalMeta()
+                }
             }
             return dimInfo
         }

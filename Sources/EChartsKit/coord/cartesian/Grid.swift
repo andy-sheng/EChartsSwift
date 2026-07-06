@@ -221,6 +221,9 @@ public final class Grid: CoordinateSystemMaster {
             if helper.isOrdinalScale(scale) {
                 // upstream: scale.setSortInfo(axis.model.get('categorySortInfo'))
                 (scale as! OrdinalScale).setSortInfo(axis.model.get("categorySortInfo") as? OrdinalSortInfo)
+                // BUGFIX (dataset category axis): re-derive the extent if it froze blank at init before the
+                //   ordinalMeta collected its categories (see OrdinalScale.recomputeExtentFromOrdinalMetaIfBlank).
+                (scale as! OrdinalScale).recomputeExtentFromOrdinalMetaIfBlank()
             }
         }
 

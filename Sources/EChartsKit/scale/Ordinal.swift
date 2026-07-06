@@ -440,6 +440,22 @@ public final class OrdinalScale: Scale, ClassManageable {
         return self._ordinalMeta
     }
 
+    // BUGFIX (dataset category axis): the scale extent is baked into the frozen `_mapper` at INIT time as
+    //   `[0, ordinalMeta.categories.count - 1]`. For a `needCollect` axis (a dataset-sourced category axis
+    //   with no explicit `data`), the ordinalMeta is EMPTY at init — its categories are collected LATER,
+    //   during series-data build — so the mapper extent froze at `[0, -1]`, making `dataToCoord` return NaN
+    //   (bars/points get `x: nan` and never draw). Rebuild the mapper from the (now-collected) category
+    //   count. Called from `Grid.update` ONLY when the current extent is INVALID (`[1] < [0]`) so a valid
+    //   extent — including a dataZoom sub-window or a user-set extent — is never disturbed.
+    public func recomputeExtentFromOrdinalMetaIfBlank() {
+        let cur = getScaleExtentForTickUnsafe(self._mapper)
+        guard cur[1] < cur[0] else { return }   // extent is valid → leave it alone (dataZoom/custom safe)
+        let n = self._ordinalMeta.categories.count
+        let res = initBreakOrLinearMapper(nil, nil, [0, Double(n) - 1])
+        self._mapper = res.mapper
+        enableScaleMapperFreeze(self, res.mapper)
+    }
+
 }
 
 // upstream: Scale.registerClass(OrdinalScale);
