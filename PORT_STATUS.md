@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 50 (BRUSH polygon — the last brush type; COMPLETES the brush selector set rect/lineX/lineY/polygon): the brush now supports `brushType:'polygon'` (a free-form outline). Files edited: `component/brush/brushVisual.swift` — added the `polygon` case to `makeBrushCommonSelectorForSeries` (point selector = boundingRect.contain AND `ZRenderKit.polygon.contain` ray-cast point-in-polygon; rect selector = any bar corner in the polygon, OR a polygon vertex in the bar, OR a bar edge crossing a polygon edge via a ported `linePolygonIntersect`/`brushSegIntersect`), a `polygon` boundingRect builder (bounding box over the point list), and `brushPolygonPoints` returning `[VectorArray]` (SIMD2) so it feeds `polygon.contain` directly. **Clean build (0 warnings); `swift test` — 306 / 0 failures / 58 skipped** (baseline 305; +1 `ZZBrushTests.testPolygonBrushSelects`: a quadrilateral outline enclosing bars 0-1 keeps them at palette fill + dims bars 2-4). Demos 113/113. Done directly in the main loop (used ZRenderKit's `polygon.contain`; ported the segment-intersect). The brush feature's selector core is now COMPLETE for all four types. DEFERRED (documented): the live polygon DRAG (click-to-add-vertex UI — the current live drag produces rect/lineX/lineY; polygon is dispatch-only), coordRange persistence for lineX/lineY/polygon, the toolbox brush button. See §81.**
+
 **Phase 49 (TOOLBOX action core — `restore` + `magicType`; the first slice of the toolbox component): the toolbox component now exists and its two option-expressible features are FUNCTIONAL. Files added: `component/toolbox/ToolboxModel.swift` (the `toolbox` ComponentModel + defaultOption `feature` bag), `component/toolbox/toolboxAction.swift` (`installToolboxActions` → registerAction `restore` (`ecModel.resetOption("recreate")` — re-mounts the OptionManager base-option backup, discarding interactive changes) + `changeMagicType` (`ecModel.mergeOption(payload.newOption)`); + `computeMagicTypeOption(ecModel, target)` porting MagicType.onclick's line↔bar series-swap option). Registered `ToolboxModel` + `installToolboxActions` in EChartsSlim. KEY: both features use ALREADY-PORTED GlobalModel methods (`resetOption`/`mergeOption`) on the persisted `_model` — no OptionManager changes needed. `mergeOption` with a changed series `type` correctly RE-INSTANTIATES the series model to the new subtype (verified). **Clean build (0 warnings); `swift test` — 304 / 0 failures / 58 skipped** (baseline 302; +2 `ZZToolboxTests`: `changeMagicType('bar')` swaps a line series → bar; `restore` after a swap resets it → line). Demos 113/113. Done directly in the main loop. DEFERRED (documented): the on-canvas toolbox icon VIEW + click wiring; the host-dependent features (saveAsImage → canvas export, dataView → HTML overlay); the dataZoom-select + toolbox brush-button features; magicType 'stack'/'tiled' + markPoint/markLine carry-over. See §80.**
 
 **Phase 48 (TREE `__edge` blur propagation — in-lineage tree edges dim/brighten with their node; completes tree topology-focus): tree edges are anonymous children (not in edge-data), so the `blurSeries` group-traverse blurs them but the focus index set never un-blurs them. Ported the upstream `symbolEl.__edge` + `onHoverStateChange` forwarder (TreeView.ts:464-477): `drawEdge` now RETURNS the created edge `Path?`, and the caller wires the node symbol's `onHoverStateChange` so that when the node enters a NON-blur state (emphasis/normal) its edge un-blurs too — UNLESS the parent node is blurred (an edge into a blurred subtree stays dim). Uses the ported `states.getHighDownInner(el).onHoverStateChange` hook + `leaveBlur` (applies immediately in this port). `[weak edgeEl]` capture (retain-cycle rule). **Clean build (0 warnings); `swift test` — 302 / 0 failures / 58 skipped** (extended `testTreeDescendantFocusBlursOtherSubtree`: after a 'descendant' highlight, walk the display list — some tree edges [BezierCurve/TreePath] are bright, some blurred; without the hook ALL would be blurred). Demos: 101/101 render. Done directly in the main loop. See §79.**
@@ -2227,6 +2229,19 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 81. Phase 50 — Brush polygon (last brush type; completes rect/lineX/lineY/polygon)
+
+**Goal (met):** the brush supports `brushType:'polygon'`. **Clean build (0 warnings); `swift test` — 306 / 0
+/ 58** (baseline 305; +1). Demos 113/113.
+
+`brushVisual.swift`: polygon point selector (boundingRect + `ZRenderKit.polygon.contain` ray-cast); polygon
+rect selector (corner-in-polygon ∪ vertex-in-bar ∪ edge-crossing via ported `linePolygonIntersect`/
+`brushSegIntersect`); polygon boundingRect builder; `brushPolygonPoints` → `[VectorArray]`. The selector core
+is now complete for all four brush types. Deferred: the live polygon drag UI (polygon is dispatch-only),
+lineX/lineY/polygon coordRange persistence, the toolbox brush button.
 
 ---
 

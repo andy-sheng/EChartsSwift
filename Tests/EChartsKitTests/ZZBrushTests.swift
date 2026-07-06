@@ -146,6 +146,31 @@ final class ZZBrushTests: XCTestCase {
         XCTAssertEqual(fill(data, 4), dim, "bar 4 dimmed")
     }
 
+    // ---- (1d) a polygon brush selects the bars whose rect its outline encloses ----
+    func testPolygonBrushSelects() {
+        let view = makeBrushBarChart()
+        guard let data0 = seriesData(view) else { XCTFail("no bar series"); return }
+        guard let b0 = barX(data0, 0), let b1 = barX(data0, 1), let b2 = barX(data0, 2) else {
+            XCTFail("bar layout"); return
+        }
+        let cut = (b1.x + b1.width + b2.x) / 2.0
+        let paletteFill = fill(data0, 0)
+
+        // A polygon (a quadrilateral) enclosing the x-range of bars 0 & 1 over the full plot height.
+        var bp = Payload(type: "brush")
+        bp.other["areas"] = [["brushType": "polygon",
+                              "range": [[b0.x - 5.0, 0.0], [cut, 0.0], [cut, 260.0], [b0.x - 5.0, 260.0]]
+                             ] as [String: Any]]
+        view.ec.dispatchAction(bp)
+
+        guard let data = seriesData(view) else { XCTFail("no series after dispatch"); return }
+        XCTAssertEqual(fill(data, 0), paletteFill, "bar 0 inside the polygon keeps its fill")
+        XCTAssertEqual(fill(data, 1), paletteFill, "bar 1 inside the polygon keeps its fill")
+        let dim = fill(data, 2)
+        XCTAssertNotEqual(dim, paletteFill, "bar 2 outside the polygon must be dimmed")
+        XCTAssertEqual(fill(data, 4), dim, "bar 4 dimmed")
+    }
+
     // ---- (2) empty brush (areas: []) leaves every bar at the palette fill (no dim) ----
     func testEmptyBrushLeavesAllNormal() {
         let view = makeBrushBarChart()

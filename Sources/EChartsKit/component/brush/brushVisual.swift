@@ -142,11 +142,75 @@ func makeBrushCommonSelectorForSeries(_ area: BrushSelectableArea) -> BrushCommo
                 return r[0] <= rl.y + rl.height && rl.y <= r[1]
             }
         )
+    case "polygon":
+        // selector.ts polygon: point-in-polygon (ray casting) within the area's boundingRect.
+        let points = brushPolygonPoints(area.area["range"])
+        return BrushCommonSelectorsForSeries(
+            // point: boundingRect.contain(x,y) && polygonContain.contain(range, x, y)
+            point: { itemLayout in
+                guard let p = itemLayout, p.count >= 2, let br = area.boundingRect, let pts = points else { return false }
+                return br.contain(p[0], p[1]) && ZRenderKit.polygon.contain(pts, p[0], p[1])
+            },
+            // rect: any bar corner inside the polygon, OR a polygon vertex inside the bar, OR a bar edge
+            //   crossing a polygon edge (upstream selector.ts polygon.rect).
+            rect: { itemLayout in
+                guard let rl = itemLayout, let pts = points, pts.count > 1 else { return false }
+                let x = rl.x, y = rl.y, w = rl.width, h = rl.height
+                if ZRenderKit.polygon.contain(pts, x, y) || ZRenderKit.polygon.contain(pts, x + w, y)
+                    || ZRenderKit.polygon.contain(pts, x, y + h) || ZRenderKit.polygon.contain(pts, x + w, y + h) {
+                    return true
+                }
+                // a polygon vertex inside the bar rect
+                if let first = pts.first, BoundingRect.contain(rl, first[0], first[1]) { return true }
+                // a bar edge crossing any polygon edge
+                return linePolygonIntersect(x, y, x + w, y, pts)
+                    || linePolygonIntersect(x, y, x, y + h, pts)
+                    || linePolygonIntersect(x + w, y, x + w, y + h, pts)
+                    || linePolygonIntersect(x, y + h, x + w, y + h, pts)
+            }
+        )
     default:
-        // PORT-TODO: polygon selectors (concave/convex point-in-polygon) are deferred. Any
-        //   unsupported area selects nothing (matches "no supported brush → original state").
         return BrushCommonSelectorsForSeries(point: { _ in false }, rect: { _ in false })
     }
+}
+
+// A polygon area's `range` is a point list `[[x0,y0], [x1,y1], …]` (pixel). Returned as `VectorArray`
+//   (SIMD2<Double>) so it feeds `ZRenderKit.polygon.contain` directly; `p[0]`/`p[1]` still subscript it.
+private func brushPolygonPoints(_ v: Any?) -> [VectorArray]? {
+    guard let arr = v as? [Any] else { return nil }
+    let pts = arr.compactMap { row -> VectorArray? in
+        if let r = row as? [Double], r.count >= 2 { return VectorArray(r[0], r[1]) }
+        if let r = row as? [Any] {
+            let d = r.compactMap { coerceDouble($0) }
+            if d.count >= 2 { return VectorArray(d[0], d[1]) }
+        }
+        return nil
+    }
+    return pts.count >= 2 ? pts : nil
+}
+
+// linePolygonIntersect(a1x, a1y, a2x, a2y, points): true if segment (a1→a2) crosses any polygon edge.
+private func linePolygonIntersect(_ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
+                                  _ points: [VectorArray]) -> Bool {
+    let n = points.count
+    for i in 0..<n {
+        let p1 = points[i], p2 = points[(i + 1) % n]
+        if brushSegIntersect(a1x, a1y, a2x, a2y, p1[0], p1[1], p2[0], p2[1]) { return true }
+    }
+    return false
+}
+
+// Standard orientation-based segment intersection (proper crossings; collinear-overlap edge cases elided).
+private func brushSegIntersect(_ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
+                               _ b1x: Double, _ b1y: Double, _ b2x: Double, _ b2y: Double) -> Bool {
+    func cross(_ ox: Double, _ oy: Double, _ ax: Double, _ ay: Double, _ bx: Double, _ by: Double) -> Double {
+        return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox)
+    }
+    let d1 = cross(b1x, b1y, b2x, b2y, a1x, a1y)
+    let d2 = cross(b1x, b1y, b2x, b2y, a2x, a2y)
+    let d3 = cross(a1x, a1y, a2x, a2y, b1x, b1y)
+    let d4 = cross(a1x, a1y, a2x, a2y, b2x, b2y)
+    return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0))
 }
 
 // A lineX/lineY area's `range` is a 1-D `[min, max]` pixel band (NOT the rect `[[x0,x1],[y0,y1]]`).
@@ -165,8 +229,17 @@ private let boundingRectBuilders: [String: ([String: Any]) -> BoundingRect?] = [
     "rect": { area in
         guard let range = brushRangeMinMax(area["range"]) else { return nil }
         return getBoundingRectFromMinMax(range)
+    },
+    // polygon: the bounding box (min/max union) over the range's point list.
+    "polygon": { area in
+        guard let pts = brushPolygonPoints(area["range"]) else { return nil }
+        var minX = pts[0][0], maxX = pts[0][0], minY = pts[0][1], maxY = pts[0][1]
+        for p in pts {
+            minX = Swift.min(minX, p[0]); maxX = Swift.max(maxX, p[0])
+            minY = Swift.min(minY, p[1]); maxY = Swift.max(maxY, p[1])
+        }
+        return BoundingRect(minX, minY, maxX - minX, maxY - minY)
     }
-    // PORT-TODO: "polygon" builder (min/max union over range points) deferred.
 ]
 
 // function getBoundingRectFromMinMax(minMax): BoundingRect
