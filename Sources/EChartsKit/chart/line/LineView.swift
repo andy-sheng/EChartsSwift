@@ -102,9 +102,14 @@ open class LineView: ChartView {
             var baselinePts: [VectorArray] = []
             for i in 0..<data.count() {
                 let baseVal = lineToNumber(store.get(baseDimIdx, i))
-                let baselineVal: Double = (stacked && stackedOverDimIdx != nil)
-                    ? lineToNumber(store.get(stackedOverDimIdx!, i))
-                    : origin
+                // The bottom series of a stack has a NaN `stackedOver` (nothing below it); upstream
+                //   `getStackedOnPoints` renders those points on the value-axis start, so fall back to
+                //   `origin` when the stacked baseline is non-finite.
+                var baselineVal: Double = origin
+                if stacked, let soIdx = stackedOverDimIdx {
+                    let sv = lineToNumber(store.get(soIdx, i))
+                    if sv.isFinite { baselineVal = sv }
+                }
                 let bp = isValueAxisH ? coord.dataToPoint([baselineVal, baseVal]) : coord.dataToPoint([baseVal, baselineVal])
                 if bp.count >= 2 && bp[0].isFinite && bp[1].isFinite {
                     baselinePts.append(VectorArray(bp[0], bp[1]))
