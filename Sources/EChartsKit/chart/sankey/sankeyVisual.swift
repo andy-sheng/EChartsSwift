@@ -130,7 +130,31 @@ private func sankeyLayoutValue(_ layout: Any?) -> Double {
 //   .mapValueToVisual(value)`. visual/VisualMapping.ts NOT ported, so the linear palette interpolation is
 //   DEFERRED and this returns nil (a node with no explicit itemStyle.color gets no computed fill yet).
 //   The signature carries the exact upstream inputs so the body can be filled in once VisualMapping lands.
+// Faithful stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})`
+//   `.mapValueToVisual(value)`: normalize `value` into [0,1] over `dataExtent`, then linear-interpolate
+//   across the palette color list (zrColor.lerp). The full VisualMapping subsystem is deferred; this is
+//   the one mapping sankey needs (without it every node fell to the default black fill).
 private func sankeyMapValueToColor(_ dataExtent: [Double], _ visual: Any?, _ value: Double) -> Any? {
-    _ = (dataExtent, visual, value)
-    return nil
+    let colors = sankeyNormalizePalette(visual)
+    guard !colors.isEmpty else { return nil }
+    if colors.count == 1 { return colors[0] }
+    let lo = dataExtent[0], hi = dataExtent[1]
+    var t = hi > lo ? (value - lo) / (hi - lo) : 0.0
+    if !t.isFinite { t = 0 }
+    t = Swift.min(Swift.max(t, 0), 1)
+    if case let .color(c)? = ZRenderKit.color.lerp(t, colors) { return c }
+    return colors[0]
+}
+
+// Coerce a dynamic `color` palette option (String / [String] / [ZRColor] / mixed) into `[String]`.
+private func sankeyNormalizePalette(_ visual: Any?) -> [String] {
+    func one(_ v: Any?) -> String? {
+        if let s = v as? String { return s }
+        if let z = v as? EChartsKit.ZRColor, case let .color(s) = z { return s }
+        if let z = v as? ZRenderKit.ZRColor, case let .string(s) = z { return s }
+        return nil
+    }
+    if let arr = visual as? [Any] { return arr.compactMap(one) }
+    if let s = one(visual) { return [s] }
+    return []
 }

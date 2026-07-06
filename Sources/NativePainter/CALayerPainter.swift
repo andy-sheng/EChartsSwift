@@ -54,6 +54,14 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         else if let d = el as? Displayable {
             collected.append(d)
         }
+        // Attached text content (`setTextContent` + `textConfig`) — its transform was just computed by
+        // `el.update()` → `updateInnerText`. zrender's Storage._updateAndAddDisplayable adds the host's
+        // `textContent` to the display list right after the host; it is NOT part of `activeChildrenRef()`
+        // (the child list), so walk it explicitly. Without this, every label attached via setTextContent
+        // (sankey / treemap / tree / sunburst / graph node labels, etc.) is silently dropped.
+        if let textEl = el.getTextContent(), !textEl.ignore {
+            walk(textEl)
+        }
     }
     walk(root)
 
