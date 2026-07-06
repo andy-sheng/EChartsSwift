@@ -109,5 +109,18 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_pie_selected,          // Pie (fixed center)
         EChartsDemoRegistry.demo_bar_multi_grid,        // Bar (two series + axis names)
         EChartsDemoRegistry.demo_line_step,             // Line (step)
+        // gallery-batch7 — item-style + edge-shape + per-indicator variations (goal clause 2).
+        EChartsDemoRegistry.demo_bar_item_color,        // Bar (itemStyle color)
+        EChartsDemoRegistry.demo_line_item_color,       // Line (lineStyle color)
+        EChartsDemoRegistry.demo_scatter_series_color,  // Scatter (per-series color)
+        EChartsDemoRegistry.demo_pie_colored,           // Pie (per-slice color)
+        EChartsDemoRegistry.demo_tree_polyline,         // Tree (polyline edges)
+        EChartsDemoRegistry.demo_graph_grid,            // Graph (3×3 grid)
+        EChartsDemoRegistry.demo_sankey_branch,         // Sankey (branching)
+        EChartsDemoRegistry.demo_radar_varied_max,      // Radar (varied max)
+        EChartsDemoRegistry.demo_heatmap_piecewise,     // Heatmap (piecewise)
+        EChartsDemoRegistry.demo_line_boundary_gap,     // Line (boundaryGap false)
+        EChartsDemoRegistry.demo_themeriver_three,      // ThemeRiver (3 series)
+        EChartsDemoRegistry.demo_boxplot_single,        // Boxplot (single)
     ]
 }
