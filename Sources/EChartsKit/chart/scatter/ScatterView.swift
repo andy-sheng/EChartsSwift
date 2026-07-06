@@ -139,6 +139,21 @@ open class ScatterView: ChartView {
             )
             if let path = el as? Path {
                 path.name = "item"
+
+                // upstream (SymbolDraw/Symbol._updateCommon → chart/helper/Symbol.ts): each symbol is
+                //   marked a highDown dispatcher carrying its emphasis-state itemStyle, so a hover
+                //   (enterEmphasisWhenMouseOver) restyles it. Mirror BarView.updateStyle's block.
+                let itemModel = data.getItemModel(i)
+                let emphasisModel = itemModel.getModel(["emphasis"])
+                let focus: InnerFocus? = emphasisModel.get("focus")
+                let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
+                states.setStatesStylesFromModel(path, itemModel)
+
+                // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
+                //   Handler hit-test / tooltip can resolve the per-point element from the series data.
+                data.setItemGraphicEl(i, path)
                 _ = group.add(path)
             }
         }

@@ -173,6 +173,18 @@ open class PieView: ChartView {
             //   leaves it unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
             sector.name = "item"
 
+            // upstream (PiePiece.updateData, PieView.ts): the sector is marked a highDown dispatcher
+            //   carrying its emphasis-state itemStyle so a hover restyles it. Mirror BarView.updateStyle.
+            //   PORT-TODO (still deferred): the select-state `selectedOffset` dx/dy offset and blur focus
+            //   fan-out (upstream computes them in PiePiece) are not applied.
+            let itemModel = data.getItemModel(idx)
+            let emphasisModel = itemModel.getModel(["emphasis"])
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
+            states.setStatesStylesFromModel(sector, itemModel)
+
             data.setItemGraphicEl(idx, sector)
             _ = group.add(sector)
         }

@@ -108,6 +108,23 @@ open class LineView: ChartView {
                 let el = symbol.createSymbol(symbolType, p[0] - w / 2, p[1] - h / 2, w, h, ZRenderKit.ZRColor.string(stroke))
                 if let element = el as? Path {
                     element.name = "symbol"
+
+                    // upstream (SymbolDraw/Symbol._updateCommon): each data-point symbol is marked a
+                    //   highDown dispatcher carrying its emphasis-state itemStyle, so a hover restyles
+                    //   it. Mirror BarView.updateStyle's block. PORT-TODO: the line PATH itself also gets
+                    //   line-emphasis upstream (LineView emphasis lineStyle) — deferred; only the
+                    //   data-point symbols are dispatchers here.
+                    let itemModel = data.getItemModel(i)
+                    let emphasisModel = itemModel.getModel(["emphasis"])
+                    let focus: InnerFocus? = emphasisModel.get("focus")
+                    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                    states.toggleHoverEmphasis(element, focus, blurScope, isDisabled)
+                    states.setStatesStylesFromModel(element, itemModel)
+
+                    // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the
+                    //   live Handler hit-test / tooltip can resolve the per-point element.
+                    data.setItemGraphicEl(i, element)
                     _ = group.add(element)   // added AFTER the polyline so symbols sit on top
                 }
             }
