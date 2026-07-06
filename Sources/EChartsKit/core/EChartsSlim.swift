@@ -281,7 +281,8 @@ public final class EChartsSlim: EChartsType {
     public let root = Group()
 
     // View registries. Upstream: `_componentsViews`/`_componentsMap`/`_chartsViews`/`_chartsMap`.
-    private var _componentsViews: [ComponentView] = []
+    // (`_componentsViews` internal — reachable from @testable tests to assert a rendered view's state.)
+    var _componentsViews: [ComponentView] = []
     private var _chartsViews: [ChartView] = []
     // viewId → view (upstream keyed by `'_ec_' + model.id + '_' + model.type`).
     private var _componentsMap: [String: ComponentView] = [:]
@@ -772,7 +773,11 @@ public final class EChartsSlim: EChartsType {
         //   list. The value->visual ENCODING is independent of these views (it is a visual STAGE); the
         //   widget is the secondary deliverable (upstream `registerComponentView(ContinuousView/PiecewiseView)`).
         "visualMap.continuous": { ContinuousView() },
-        "visualMap.piecewise": { PiecewiseVisualMapView() }
+        "visualMap.piecewise": { PiecewiseVisualMapView() },
+        // dataZoom slider widget (the on-screen bar with two draggable handles + the selected band).
+        //   Keyed by FULL type 'dataZoom.slider' (subtype dispatch — the inside dataZoom has no view).
+        //   Registered under upstream `registerComponentView(SliderZoomView)`.
+        "dataZoom.slider": { SliderZoomView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },

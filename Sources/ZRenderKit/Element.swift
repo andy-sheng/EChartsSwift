@@ -277,6 +277,15 @@ open class Element: Transformable, AnimationTarget {
     /// Whether is it dragging.
     public var dragging: Bool = false
 
+    // upstream zrender exposes `drift` as an assignable *property* (`Element.prototype.drift`), so
+    //   consumers can override the default translate-in-place behavior by writing `el.drift = customFn`
+    //   (e.g. echarts `SliderZoomView` sets `handle.attr({ drift: bind(this._onDragMove, ...) })` so the
+    //   handle does NOT move itself — the view repositions everything from absolute coords). Swift makes
+    //   `drift` a method, which is not reassignable, so this optional closure is the faithful seam: when
+    //   set, `drift(dx,dy,e)` calls it *instead of* the default translate (upstream's assigned fn fully
+    //   replaces the method). Set to `nil` to restore the default drag-translate behavior.
+    public var driftHandler: ((Double, Double, ElementEvent?) -> Void)?
+
     // upstream: parent: Group
     // PORT-TODO: upstream narrows `parent` to `Group`; we inherit `Transformable.parent`
     //   (typed `Transformable?`) and cast to `Element`/`Group` at use sites.
@@ -381,6 +390,12 @@ open class Element: Transformable, AnimationTarget {
     /// - dx: dx on the global space
     /// - dy: dy on the global space
     public func drift(_ dx: Double, _ dy: Double, _ e: ElementEvent? = nil) {
+        // upstream: an assigned `el.drift = fn` fully replaces the default method body. When a
+        //   `driftHandler` is set, delegate to it and skip the built-in translate.
+        if let driftHandler = self.driftHandler {
+            driftHandler(dx, dy, e)
+            return
+        }
         var dx = dx
         var dy = dy
         switch self.draggable {
