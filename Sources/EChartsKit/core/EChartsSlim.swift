@@ -703,6 +703,13 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(BrushModel.self)                       // registerComponentModel(BrushModel)
         installBrushAction(EChartsSlim._registers)                          // registerAction('brush'/'brushSelect'/'brushEnd')
 
+        // -- component/toolbox/install.ts (Phase 49, ACTION core) -- registerComponentModel(ToolboxModel) +
+        //   the `restore` (ecModel.resetOption('recreate')) + `changeMagicType` (ecModel.mergeOption) action
+        //   handlers. The on-canvas icon VIEW + host-dependent features (saveAsImage/dataView/dataZoom-select/
+        //   brush button) are DEFERRED; the option-expressible feature DATA cores are wired.
+        ComponentModel.registerClass(ToolboxModel.self)                     // registerComponentModel(ToolboxModel)
+        installToolboxActions(EChartsSlim._registers)                       // registerAction('restore'/'changeMagicType')
+
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
         //   whose render path depends on deep deps that are still stubbed in this phase:

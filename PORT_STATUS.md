@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 49 (TOOLBOX action core — `restore` + `magicType`; the first slice of the toolbox component): the toolbox component now exists and its two option-expressible features are FUNCTIONAL. Files added: `component/toolbox/ToolboxModel.swift` (the `toolbox` ComponentModel + defaultOption `feature` bag), `component/toolbox/toolboxAction.swift` (`installToolboxActions` → registerAction `restore` (`ecModel.resetOption("recreate")` — re-mounts the OptionManager base-option backup, discarding interactive changes) + `changeMagicType` (`ecModel.mergeOption(payload.newOption)`); + `computeMagicTypeOption(ecModel, target)` porting MagicType.onclick's line↔bar series-swap option). Registered `ToolboxModel` + `installToolboxActions` in EChartsSlim. KEY: both features use ALREADY-PORTED GlobalModel methods (`resetOption`/`mergeOption`) on the persisted `_model` — no OptionManager changes needed. `mergeOption` with a changed series `type` correctly RE-INSTANTIATES the series model to the new subtype (verified). **Clean build (0 warnings); `swift test` — 304 / 0 failures / 58 skipped** (baseline 302; +2 `ZZToolboxTests`: `changeMagicType('bar')` swaps a line series → bar; `restore` after a swap resets it → line). Demos 113/113. Done directly in the main loop. DEFERRED (documented): the on-canvas toolbox icon VIEW + click wiring; the host-dependent features (saveAsImage → canvas export, dataView → HTML overlay); the dataZoom-select + toolbox brush-button features; magicType 'stack'/'tiled' + markPoint/markLine carry-over. See §80.**
+
 **Phase 48 (TREE `__edge` blur propagation — in-lineage tree edges dim/brighten with their node; completes tree topology-focus): tree edges are anonymous children (not in edge-data), so the `blurSeries` group-traverse blurs them but the focus index set never un-blurs them. Ported the upstream `symbolEl.__edge` + `onHoverStateChange` forwarder (TreeView.ts:464-477): `drawEdge` now RETURNS the created edge `Path?`, and the caller wires the node symbol's `onHoverStateChange` so that when the node enters a NON-blur state (emphasis/normal) its edge un-blurs too — UNLESS the parent node is blurred (an edge into a blurred subtree stays dim). Uses the ported `states.getHighDownInner(el).onHoverStateChange` hook + `leaveBlur` (applies immediately in this port). `[weak edgeEl]` capture (retain-cycle rule). **Clean build (0 warnings); `swift test` — 302 / 0 failures / 58 skipped** (extended `testTreeDescendantFocusBlursOtherSubtree`: after a 'descendant' highlight, walk the display list — some tree edges [BezierCurve/TreePath] are bright, some blurred; without the hook ALL would be blurred). Demos: 101/101 render. Done directly in the main loop. See §79.**
 
 **Phase 47 (BRUSH lineX / lineY — 1-D band brush types; extends the Phase-44 rect brush): the brush now supports `brushType:'lineX'` (a vertical x-band) and `'lineY'` (a horizontal y-band) in addition to `'rect'`. Files edited: `component/brush/brushVisual.swift` (added the `lineX`/`lineY` cases to `makeBrushCommonSelectorForSeries` — the point selector tests the datum coordinate against the 1-D `[min,max]` band, the rect selector tests x/y OVERLAP; + `brushRange1D` to read the 1-D pixel range, which — unlike rect's `[[x0,x1],[y0,y1]]` — is a flat `[min,max]`, no 2-D boundingRect needed), `core/EChartsView.swift` (`_finishBrushDrag` reads the brush component's `brushType` option — a stand-in for the toolbox-armed cursor — and dispatches a lineX/lineY 1-D range or the rect 2-D range accordingly). **Clean build (0 warnings); `swift test` — 302 / 0 failures / 58 skipped** (baseline 301; +1 `ZZBrushTests.testLineXBrushSelectsColumn`: a lineX band over the first 2 of 5 bars keeps them at palette fill + dims bars 2-4, selecting by x-overlap only). Demos: 101/101 render. Done directly in the main loop (extends the brush I built in Phase 44). DEFERRED (documented): polygon brush (point-in-polygon), coordRange persistence for lineX/lineY across dataZoom, the toolbox brush button that arms each type. See §78.**
@@ -2225,6 +2227,20 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 80. Phase 49 — Toolbox action core: restore + magicType (first toolbox slice)
+
+**Goal (met):** the toolbox component exists and its two option-expressible features work. **Clean build
+(0 warnings); `swift test` — 304 / 0 / 58** (baseline 302; +2). Demos 113/113.
+
+`ToolboxModel` (component) + `toolboxAction.swift`: `restore` action → `ecModel.resetOption("recreate")`
+(re-mounts the OptionManager base backup); `changeMagicType` action → `ecModel.mergeOption(newOption)`;
+`computeMagicTypeOption(ecModel, target)` ports MagicType.onclick's line↔bar series swap. Both features run
+on ALREADY-PORTED GlobalModel methods over the persisted `_model` — `mergeOption` correctly re-instantiates
+a series to its new subtype. Tests: magicType swaps line→bar; restore resets it. Deferred: the icon VIEW +
+click wiring, saveAsImage/dataView/dataZoom-select/brush-button, magicType stack/tiled.
 
 ---
 
