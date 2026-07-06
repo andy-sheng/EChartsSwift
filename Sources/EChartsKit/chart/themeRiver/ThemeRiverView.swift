@@ -163,13 +163,17 @@ open class ThemeRiverView: ChartView {
             //   smooth: 0.4, stackedOnSmooth: 0.4, smoothConstraint: false }, z2: 0 });
             //   STATIC reproduction: a plain Polygon whose ring is the top edge forward + the bottom
             //   edge reversed (the closed area ECPolygon fills; smoothing deferred).
-            var polygonShape = PolygonShape()
-            polygonShape.points = points0 + points1.reversed()
-            // upstream ECPolygon uses smooth 0.4 / stackedOnSmooth 0.4 for the spline bands. A single
-            //   Polygon ring approximates that; the two near-vertical end caps are short so the extra
-            //   rounding there is negligible.
-            polygonShape.smooth = 0.4
-            let polygon = Polygon(["shape": polygonShape as PathShape])
+            // upstream ECPolygon smooths the top edge (points0) and the bottom edge (stackedOnPoints)
+            //   as SEPARATE open splines joined by straight end caps. A single closed Polygon ring with
+            //   `smooth` instead rounds the caps into bulbous blobs AND makes each band's shared boundary
+            //   diverge from its neighbour's (white gaps), because the same edge is smoothed in two
+            //   different ring contexts. The `ThemeRiverBand` path below reproduces ECPolygon's dual-edge
+            //   smoothing so adjacent bands share an identical boundary curve (contiguous stream).
+            var bandShape = ThemeRiverBandShape()
+            bandShape.upperPoints = points1   // (x, y0 + y) — the band's far edge
+            bandShape.lowerPoints = points0   // (x, y0)     — the band's near edge (== the band below's far edge)
+            bandShape.smooth = 0.4
+            let polygon = ThemeRiverBand(["shape": bandShape as PathShape])
             polygon.z2 = 0
 
             // polygon.useStyle(style);
@@ -238,6 +242,69 @@ open class ThemeRiverView: ChartView {
 //   builds a `graphic.Rect` clip that expands (width 0 → rect.width + 100) via `graphic.initProps` for
 //   the grid-reveal entrance, removing itself on complete. Reproduce alongside the initProps/updateProps
 //   animation port.
+
+// A minimal port of echarts `ECPolygon` (chart/line/poly.ts) specialised for theme-river bands: the
+//   upper edge and lower edge are each smoothed as an OPEN Bézier spline (endpoints anchored) and joined
+//   by straight vertical caps. Because each edge is smoothed independently of the other, a band's upper
+//   edge and the next band's lower edge (the same points) trace an identical curve → the stacked stream
+//   is contiguous with no gaps and no rounded end-cap blobs (the single-Polygon-ring artifact).
+struct ThemeRiverBandShape: PathShape {
+    // Both edges in ascending-x (left→right) order, one point per time sample.
+    var upperPoints: [VectorArray] = []
+    var lowerPoints: [VectorArray] = []
+    var smooth: Double = 0.4
+}
+
+final class ThemeRiverBand: Path {
+    public override init(_ opts: ElementProps? = nil) {
+        super.init(opts)
+        self.type = "themeRiverBand"
+    }
+
+    public override func getDefaultShape() -> PathShape {
+        return ThemeRiverBandShape()
+    }
+
+    public override func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {
+        let s = shape as! ThemeRiverBandShape
+        let upper = s.upperPoints
+        let lower = s.lowerPoints
+        guard upper.count >= 2, lower.count == upper.count else {
+            // Degenerate (single sample or mismatched edges): fall back to a straight closed ring.
+            let ring = upper + lower.reversed()
+            guard ring.count >= 2 else { return }
+            _ = ctx.moveTo(ring[0][0], ring[0][1])
+            for i in 1..<ring.count { _ = ctx.lineTo(ring[i][0], ring[i][1]) }
+            _ = ctx.closePath()
+            return
+        }
+
+        // Upper edge, left→right, smoothed as an open spline.
+        drawSmoothOpen(ctx, upper, s.smooth, moveToFirst: true)
+        // Right cap: straight down to the lower edge.
+        let lowerRev = Array(lower.reversed())   // right→left
+        _ = ctx.lineTo(lowerRev[0][0], lowerRev[0][1])
+        // Lower edge, right→left, smoothed as an open spline (same geometry as the band below's upper edge).
+        drawSmoothOpen(ctx, lowerRev, s.smooth, moveToFirst: false)
+        // Left cap + close.
+        _ = ctx.closePath()
+    }
+
+    private func drawSmoothOpen(_ ctx: PathProxy, _ pts: [VectorArray], _ smooth: Double, moveToFirst: Bool) {
+        if moveToFirst { _ = ctx.moveTo(pts[0][0], pts[0][1]) }
+        if smooth != 0 && !smooth.isNaN && pts.count >= 2 {
+            let cps = smoothBezier(pts, smooth, false, nil)
+            for i in 0..<(pts.count - 1) {
+                let cp1 = cps[i * 2]
+                let cp2 = cps[i * 2 + 1]
+                let p = pts[i + 1]
+                _ = ctx.bezierCurveTo(cp1[0], cp1[1], cp2[0], cp2[1], p[0], p[1])
+            }
+        } else {
+            for i in 1..<pts.count { _ = ctx.lineTo(pts[i][0], pts[i][1]) }
+        }
+    }
+}
 
 // export default ThemeRiverView;  -> `open class ThemeRiverView` above.
 
