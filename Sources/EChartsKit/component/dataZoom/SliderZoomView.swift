@@ -170,7 +170,7 @@ open class SliderZoomView: ComponentView {
 
         self._renderHandle()
 
-        // this._renderDataShadow();  — DEFERRED (data shadow; SliderZoomView.ts ~360-489).
+        self._renderDataShadow()
 
         _ = thisGroup.add(barGroup)
 
@@ -454,6 +454,92 @@ open class SliderZoomView: ComponentView {
         //   drift + listeners are TASK 2. `draggable`/`cursor` set above (moveZone when brushSelect, else filler).
     }
 
+    // upstream: _prepareDataShadowInfo() — pick the first target series (of a shadow-able type) whose
+    //   value dimension will be previewed inside the slider track. Minimal port: no `showDataShadow`
+    //   per-series override handling beyond the false short-circuit; returns (series, otherDim).
+    private func _prepareDataShadowInfo() -> (series: SeriesModel, otherDim: String)? {
+        let dataZoomModel = self.dataZoomModel!
+        // showDataShadow === false disables the preview entirely.
+        if (dataZoomModel.get("showDataShadow") as? Bool) == false { return nil }
+        let showDataShadowForced = (dataZoomModel.get("showDataShadow") as? Bool) == true
+        let shadowTypes: Set<String> = ["line", "bar", "candlestick", "scatter"]
+
+        var result: (series: SeriesModel, otherDim: String)? = nil
+        dataZoomModel.eachTargetAxis { axisDim, axisIndex in
+            if result != nil { return }
+            guard let proxy = dataZoomModel.getAxisProxy(axisDim, axisIndex) else { return }
+            for seriesModel in proxy.getTargetSeriesModels() {
+                if result != nil { break }
+                if !showDataShadowForced && !shadowTypes.contains(seriesModel.subType) { continue }
+                // getOtherDim: 'x'↔'y' (the value dimension previewed against the zoomed axis).
+                let otherDimName = axisDim == "x" ? "y" : (axisDim == "y" ? "x" : "")
+                guard !otherDimName.isEmpty,
+                      let mapped = seriesModel.getData().mapDimension(otherDimName) else { continue }
+                result = (seriesModel, mapped)
+            }
+        }
+        return result
+    }
+
+    // upstream: _renderDataShadow(info) — draw a faint area+line preview of the target series' values
+    //   across the slider track. The "selected" (clipped, darker) overlay is DEFERRED.
+    private func _renderDataShadow() {
+        guard let info = self._prepareDataShadowInfo() else { return }
+        let dataZoomModel = self.dataZoomModel!
+        let sliderGroup = self._displayables.sliderGroup!
+        let size = self._size
+        let data = info.series.getRawData()
+        let otherDim = info.otherDim
+        let n = data.count()
+        if n < 2 { return }
+
+        // Pad the value extent by 30% (upstream) so the preview never touches the track edges.
+        var otherDataExtent = data.getDataExtent(otherDim)
+        let otherOffset = (otherDataExtent[1] - otherDataExtent[0]) * 0.3
+        otherDataExtent = [otherDataExtent[0] - otherOffset, otherDataExtent[1] + otherOffset]
+        let otherShadowExtent = [0.0, size[1]]
+
+        let step = size[0] / Double(n - 1)
+        var thisCoord = 0.0
+        var areaPoints: [VectorArray] = [VectorArray(size[0], 0), VectorArray(0, 0)]
+        var linePoints: [VectorArray] = []
+        for i in 0..<n {
+            let raw = data.get(otherDim, i)
+            let value = shadowNumber(raw)
+            let otherCoord = value.isNaN
+                ? 0
+                : number.linearMap(value, otherDataExtent, otherShadowExtent, true)
+            areaPoints.append(VectorArray(thisCoord, otherCoord))
+            linePoints.append(VectorArray(thisCoord, otherCoord))
+            thisCoord += step
+        }
+
+        let dataBackgroundModel = dataZoomModel.getModel("dataBackground")
+        // Area polygon (dataBackground.areaStyle — read color/opacity directly so the fill is never the
+        //   spurious black DEFAULT_PATH_STYLE default).
+        let areaStyleModel = dataBackgroundModel.getModel("areaStyle")
+        var areaShape = PolygonShape()
+        areaShape.points = areaPoints
+        let area = Polygon(["shape": areaShape as PathShape])
+        area.silent = true
+        area.pathStyle.fill = dzColor(areaStyleModel.get("color"))
+        area.pathStyle.opacity = dzNum(areaStyleModel.get("opacity"))
+        area.pathStyle.stroke = nil
+        area.z2 = -20
+        _ = sliderGroup.add(area)
+        // Line polyline (dataBackground.lineStyle).
+        let lineStyleModel = dataBackgroundModel.getModel("lineStyle")
+        var lineShape = PolylineShape()
+        lineShape.points = linePoints
+        let line = Polyline(["shape": lineShape as PathShape])
+        line.silent = true
+        line.pathStyle.stroke = dzColor(lineStyleModel.get("color"))
+        line.pathStyle.lineWidth = dzNum(lineStyleModel.get("width")) ?? 0.5
+        line.pathStyle.fill = nil
+        line.z2 = -19
+        _ = sliderGroup.add(line)
+    }
+
     private func _resetInterval() {
         // const range = this._range = this.dataZoomModel.getPercentRange();
         let range = self.dataZoomModel.getPercentRange() ?? [0, 100]
@@ -656,6 +742,15 @@ private func dzNum(_ value: Any?) -> Double? {
     if let i = value as? Int { return Double(i) }
     if let f = value as? Float { return Double(f) }
     return nil
+}
+
+// Coerce a data-store cell to a Double (NaN for null / non-numeric) for the data-shadow preview.
+private func shadowNumber(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    if let s = v as? String, let d = Double(s) { return d }
+    return Double.nan
 }
 
 // `layout.getLayoutParams` placeholder value is the string 'ph' (see SliderZoomModel.defaultOption).
