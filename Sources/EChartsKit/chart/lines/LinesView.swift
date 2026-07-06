@@ -202,6 +202,10 @@ open class LinesView: ChartView {
 
             el.name = "line"
             el.useStyle(style)
+            // A Polyline/BezierCurve closes visually into a fillable path; `useStyle`→createStyle lays the
+            // style over DEFAULT_PATH_STYLE (fill '#000') and SKIPS the nil `fill`, so the intended
+            // fill:null is dropped and the line fills solid black (visual-parity trap class 1). Clear it.
+            el.pathStyle.fill = nil
             // PORT-TODO: fromSymbol/toSymbol arrow markers (ECLinePath.setLinePoints + Symbol),
             //   per-line label, and setStatesStylesFromModel/emphasis/blur — DEFERRED (states/label,
             //   helper/LinePath, helper/Symbol not ported).
