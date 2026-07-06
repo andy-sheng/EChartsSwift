@@ -514,34 +514,63 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
      *         the same value, they are put to the result.
      */
     open func indicesOfNearest(_ axisDim: DimensionName, _ dim: DimensionLoose, _ value: Double, _ maxDistance: Double? = nil) -> [Double] {
-        // PORT-TODO: depends on coord/CoordinateSystem + coord/Axis (`coordSys.getAxis`/
-        //   `axis.dataToCoord`), not ported. Faithful body preserved in comments; returns [] until
-        //   the coordinate-system layer lands.
         // const data = this.getData();
+        let data = self.getData()
         // const coordSys = this.coordinateSystem;
         // const axis = coordSys && coordSys.getAxis(axisDim);
-        // if (!coordSys || !axis) { return []; }
+        //   PROTOCOL-WITNESS: `coordinateSystem.getAxis(axisDim)` through the erased `CoordinateSystem`
+        //   existential dispatches the nil-returning protocol default (Cartesian2D's non-optional-param
+        //   `getAxis(_:)` does not witness `getAxis(_ dim: DimensionName?) -> Axis?`). Narrow to the
+        //   concrete `Cartesian2D` (as findPointFromSeries / modelHelper do). Polar/single are out of scope.
+        guard let coordSys = self.coordinateSystem as? Cartesian2D,
+              let axis = coordSys.getAxis(axisDim) else {
+            return []
+        }
         // const targetCoord = axis.dataToCoord(value);
+        let targetCoord = axis.dataToCoord(value)
         // if (maxDistance == null) { maxDistance = Infinity; }
-        // const nearestIndices = []; let minDist = Infinity; let minDiff = -1; let nearestIndicesLen = 0;
+        let maxDist = maxDistance ?? Double.greatestFiniteMagnitude
+
+        var nearestIndices: [Double] = []
+        var minDist = Double.greatestFiniteMagnitude
+        var minDiff: Double = -1
+        var nearestIndicesLen = 0
+
         // const dimIdx = data.getDimensionIndex(dim);
+        let dimIdx = data.getDimensionIndex(dim)
+        if dimIdx < 0 { return [] }   // dimension not found (getDimensionIndex returns -1)
         // const store = data.getStore();
-        // for (let idx = 0, len = store.count(); idx < len; idx++) {
-        //     const dimValue = store.get(dimIdx, idx);
-        //     const dataCoord = axis.dataToCoord(dimValue);
-        //     const diff = targetCoord - dataCoord;
-        //     const dist = Math.abs(diff);
-        //     if (dist <= maxDistance) {
-        //         if (dist < minDist || (dist === minDist && diff >= 0 && minDiff < 0)) {
-        //             minDist = dist; minDiff = diff; nearestIndicesLen = 0;
-        //         }
-        //         if (diff === minDiff) { nearestIndices[nearestIndicesLen++] = idx; }
-        //     }
-        // }
+        let store = data.getStore()
+        let len = store.count()
+        for idx in 0..<len {
+            // const dimValue = store.get(dimIdx, idx);
+            let dimValue = store.get(dimIdx, idx)
+            // const dataCoord = axis.dataToCoord(dimValue);
+            let dataCoord = axis.dataToCoord(dimValue)
+            let diff = targetCoord - dataCoord
+            let dist = abs(diff)
+            if dist <= maxDist {
+                if dist < minDist || (dist == minDist && diff >= 0 && minDiff < 0) {
+                    minDist = dist
+                    minDiff = diff
+                    nearestIndicesLen = 0
+                }
+                if diff == minDiff {
+                    // nearestIndices[nearestIndicesLen++] = idx;
+                    if nearestIndicesLen < nearestIndices.count {
+                        nearestIndices[nearestIndicesLen] = Double(idx)
+                    } else {
+                        nearestIndices.append(Double(idx))
+                    }
+                    nearestIndicesLen += 1
+                }
+            }
+        }
         // nearestIndices.length = nearestIndicesLen;
-        // return nearestIndices;
-        _ = (axisDim, dim, value, maxDistance)
-        return []
+        if nearestIndicesLen < nearestIndices.count {
+            nearestIndices.removeLast(nearestIndices.count - nearestIndicesLen)
+        }
+        return nearestIndices
     }
 
     /**

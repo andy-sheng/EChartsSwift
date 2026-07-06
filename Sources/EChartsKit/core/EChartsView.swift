@@ -199,11 +199,79 @@ public final class EChartsView {
             return nil
         }, nil)   // ctx nil (NOT self) — see the mouseover note: avoids the zr↔handler↔eventful↔self cycle.
 
-        // PORT-TODO (DEFERRED — later phase): the `mousemove` → axisPointer/tooltip `axisTrigger` → showTip
-        //   path (upstream tooltip/axisPointer views bind their own zr `mousemove` listener). Not wired here.
+        // Phase 35: the `mousemove` → axisPointer/tooltip `axisTrigger` → showTip path. Binds the ported
+        //   globalListener zr listeners (click/mousemove/mousewheel/globalout) whose fan-out drives
+        //   `axisTrigger` for the tooltip trigger:"axis" combined tooltip (see `_bindAxisPointerListeners`).
+        _bindAxisPointerListeners()
+
         // PORT-TODO (DEFERRED): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
         //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + a message bus.
         // PORT-TODO (DEFERRED): `globalout` (no `e.target`) → `allLeaveBlur` / leave-emphasis reset.
+    }
+
+    // ------------------------------------------------------------------------
+    // _bindAxisPointerListeners — Phase 35. Wire the tooltip trigger:"axis" chain end-to-end through the
+    //   ported `globalListener` (component/axisPointer/globalListener.swift), exactly as that file
+    //   documents. `globalListener.register` binds ONE set of zr listeners (click/mousemove/mousewheel/
+    //   globalout); its fan-out calls our `handler(currTrigger, event, dispatchAction)`, which builds the
+    //   axisTrigger payload (currTrigger + pointer x/y) and runs the ported `axisTrigger(payload, ecModel,
+    //   api)`. axisTrigger computes `dataByCoordSys` and dispatches showTip/hideTip through the FORWARDED
+    //   `dispatchAction` (so they flow through globalListener's pend/merge "final stage"); the merged action
+    //   is then handed to our `realDispatch` (`_realDispatchAxisPointer`), which shows/hides THIS view's
+    //   owned TooltipView via `_showAxisTooltip`/`hide` (upstream `api.dispatchAction` → the tooltip view).
+    //   ctx is `nil` + `[weak self]` (Phase-33 retain-cycle rule: zr→handler→eventful is owned by self).
+    // ------------------------------------------------------------------------
+    private func _bindAxisPointerListeners() {
+        globalListener.register("axisPointer", zr, realDispatch: { [weak self] payload in
+            self?._realDispatchAxisPointer(payload)
+        }, handler: { [weak self] currTrigger, event, dispatchAction in
+            guard let self = self, let ecModel = self.ec.getModel() else { return }
+            // Only drive the axis path when a tooltip with trigger:"axis" is configured; otherwise every
+            //   mousemove would dispatch hideTip and fight the trigger:"item" hover tooltip (Phase 34).
+            guard self._isAxisTrigger(ecModel) else { return }
+            var payload = Payload(type: "axisTrigger")
+            payload.other["currTrigger"] = currTrigger
+            if let e = event {
+                payload.other["x"] = e.offsetX
+                payload.other["y"] = e.offsetY
+            }
+            // Route showTip/hideTip THROUGH the merge stage (globalListener pendings), not directly.
+            payload.other["dispatchAction"] = dispatchAction
+            axisTrigger(payload, ecModel, self.ec.api)
+        })
+    }
+
+    /// Whether the current ec model asks for the trigger:"axis" combined tooltip (upstream: the tooltip
+    /// `trigger` option). axisPointer-only (crosshair without tooltip) is DEFERRED (Phase 36 view).
+    private func _isAxisTrigger(_ ecModel: GlobalModel) -> Bool {
+        if let tooltip = ecModel.getComponent("tooltip"),
+           (tooltip.get("trigger") as? String) == "axis" {
+            return true
+        }
+        return false
+    }
+
+    /// The `realDispatch` seam handed to `globalListener.register`: the merged showTip/hideTip (and any
+    /// other action) that survived the pend/merge stage. showTip carrying `dataByCoordSys` shows the axis
+    /// tooltip in THIS view's TooltipView; hideTip hides it; anything else forwards to the driver.
+    private func _realDispatchAxisPointer(_ payload: Payload) {
+        switch payload.type {
+        case "showTip":
+            // Only the trigger:"axis" showTip carries `dataByCoordSys` (built by axisTrigger). A bare
+            //   data-driven showTip (item path) is not routed through this seam.
+            guard let list = payload.other["dataByCoordSys"] as? [DataByCoordSys] else { return }
+            let x = _viewAsDouble(payload.other["x"]) ?? 0
+            let y = _viewAsDouble(payload.other["y"]) ?? 0
+            _ensureTooltipView()?._showAxisTooltip(list, x: x, y: y)
+            zr.refresh()
+        case "hideTip":
+            tooltipView?.hide()
+            zr.refresh()
+        default:
+            // highlight/downplay from axisTrigger's high-down fan-out already go to the real api directly
+            //   (dispatchHighDownActually uses api.dispatchAction); forward any other merged action too.
+            ec.dispatchAction(payload)
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -305,6 +373,13 @@ public final class EChartsView {
         case "mouseup":   zr.handler.mouseup(raw)
         default:          zr.handler.mousemove(raw)
         }
+    }
+
+    /// Coerce a JS-number-ish payload value (Int or Double) to Double (small numbers box as `Int`).
+    private func _viewAsDouble(_ v: Any?) -> Double? {
+        if let d = v as? Double { return d }
+        if let i = v as? Int { return Double(i) }
+        return nil
     }
 
     /// Dispose the live zr (releases the animation clock + input proxy + removes it from the module-global

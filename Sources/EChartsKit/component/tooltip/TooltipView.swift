@@ -212,6 +212,125 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
+    // _showAxisTooltip — ported from upstream `_showAxisTooltip` (TooltipView.ts:532). The trigger:"axis"
+    //   path: given the `dataByCoordSys` tree built by `axisTrigger` (component/axisPointer/axisTrigger.swift),
+    //   assemble ONE combined tooltip listing every series' value at the hovered axis value. Iterate
+    //   `dataByCoordSys -> dataByAxis`; each axis becomes a `section` whose HEADER is the axis value label
+    //   (e.g. the hovered category "B") and whose blocks are each series' `formatTooltip(dataIndex,
+    //   /*multipleSeries*/ true)` fragment (e.g. "seriesName 20"). The sections are collected into one
+    //   article section, built to a markup string, and shown in the SAME box on the live zr near the pointer.
+    //
+    //   DEFERRED (faithful PORT-TODOs):
+    //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
+    //       label here is the slim `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
+    //       `label.formatter` override is not applied.
+    //     - `cbParams`/`getDataParams` marker pre-creation (only needed once a `formatter` override lands).
+    //     - `_showOrMove` (showDelay) + `_updateContentNotChangedOnAxis` (no-change position-only update) —
+    //       shown synchronously here.
+    //     - `e.tooltipOption`/`buildTooltipModel([e.tooltipOption], ...)` — the per-dispatch tooltip option
+    //       override; the global tooltip model is used directly.
+    // ------------------------------------------------------------------------
+    public func _showAxisTooltip(_ dataByCoordSys: [DataByCoordSys], x: Double, y: Double) {
+        guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
+            return
+        }
+        let renderMode = self._renderMode
+        let markupStyleCreator = TooltipMarkupStyleCreator()
+        // upstream: buildTooltipModel([e.tooltipOption], globalTooltipModel). Slim: the global model.
+        let singleTooltipModel: Model = globalTooltipModel
+
+        // upstream: const articleMarkup = createTooltipMarkup('section', { blocks: [], noHeader: true });
+        let articleMarkup = createTooltipMarkup("section", TooltipMarkupSection(noHeader: true, blocks: []))
+        // Only for legacy: `Series['formatTooltip']` returns a string.
+        var markupTextArrLegacy: [String] = []
+
+        for itemCoordSys in dataByCoordSys {
+            for axisItem in itemCoordSys.dataByAxis {
+                // upstream: ecModel.getComponent(axisItem.axisDim + 'Axis', axisItem.axisIndex) as AxisBaseModel
+                let axisModel = ecModel.getComponent(axisItem.axisDim + "Axis", axisItem.axisIndex) as? AxisBaseModel
+                let axisValue = axisItem.value
+                // upstream: if (!axisModel || axisValue == null) return;
+                guard let axisModel = axisModel, axisValue != nil, !(axisValue is NSNull) else {
+                    continue
+                }
+                let axis = axisModel.axis as? Axis2D
+
+                // upstream: axisValueLabel = axisPointerViewHelper.getValueLabel(...). Slim: scale label.
+                let axisValueLabel = _axisValueLabel(axisValue, axis, axisItem.valueLabelPrecision)
+                let axisSectionMarkup = createTooltipMarkup("section", TooltipMarkupSection(
+                    header: axisValueLabel,
+                    noHeader: axisValueLabel.trimmingCharacters(in: .whitespaces).isEmpty,
+                    blocks: [],
+                    sortBlocks: true
+                ))
+                articleMarkup.blocks?.append(axisSectionMarkup)
+
+                for idxItem in axisItem.seriesDataIndices {
+                    guard let series = ecModel.getSeriesByIndex(idxItem.seriesIndex) else { continue }
+                    let dataIndex = idxItem.dataIndexInside
+                    // upstream: series.formatTooltip(dataIndex, /*multipleSeries*/ true, null)
+                    let seriesTooltipResult = normalizeTooltipFormatResult(
+                        series.formatTooltip(dataIndex, true, nil)
+                    )
+                    if let frag = seriesTooltipResult.frag {
+                        // PORT-TODO (DEFERRED): upstream wraps the frag with `{ valueFormatter }` from
+                        //   buildTooltipModel([series], globalTooltipModel).get('valueFormatter').
+                        axisSectionMarkup.blocks?.append(frag)
+                    }
+                    if let text = seriesTooltipResult.text {
+                        markupTextArrLegacy.append(text)
+                    }
+                }
+            }
+        }
+
+        // In most cases, the second axis is displayed upper on the first one. So we reverse it to look better.
+        articleMarkup.blocks?.reverse()
+        markupTextArrLegacy.reverse()
+
+        let orderMode = (singleTooltipModel.get("order") as? String).flatMap(TooltipOrderMode.init(rawValue:))
+        let useUTC = (ecModel.get("useUTC") as? Bool) ?? false
+        let textStyle = (singleTooltipModel.get("textStyle") as? TooltipTextStyleOption) ?? [:]
+
+        let builtMarkupText = buildTooltipMarkup(
+            articleMarkup, markupStyleCreator, renderMode, orderMode, useUTC, textStyle
+        )
+        if let bmt = builtMarkupText, !bmt.isEmpty {
+            markupTextArrLegacy.insert(bmt, at: 0)
+        }
+        let blockBreak = renderMode == .richText ? "\n\n" : "<br/>"
+        let allMarkupText = markupTextArrLegacy.joined(separator: blockBreak)
+
+        // upstream: this._showOrMove(...) → this._showTooltipContent(...). Slim: shown synchronously.
+        _showTooltipContent(
+            tooltipModel: singleTooltipModel,
+            markupText: allMarkupText,
+            markupStyleCreator: markupStyleCreator,
+            seriesModel: nil,   // axis tooltip has no single series (multiple series listed)
+            x: x,
+            y: y
+        )
+    }
+
+    // Slim `axisPointerViewHelper.getValueLabel` (viewHelper.ts:147 — the crosshair VIEW helper is Phase
+    //   36): parse the axis value and format it with the axis scale's label. For a category axis (Ordinal
+    //   scale) this yields the category name (e.g. "B"); for a value axis (Interval scale) the numeric
+    //   label (honouring the axisPointer `label.precision`). The `label.formatter` callback is DEFERRED.
+    private func _axisValueLabel(_ value: Any?, _ axis: Axis2D?, _ precision: Any?) -> String {
+        guard let axis = axis, let value = value, !(value is NSNull) else {
+            return value.map { "\($0)" } ?? ""
+        }
+        let parsed = axis.scale.parse(value)
+        let tick = ScaleTick(value: parsed)
+        if let interval = axis.scale as? IntervalScale {
+            var opt = IntervalScaleGetLabelOpt()
+            if let p = precision, !(p is NSNull) { opt.precision = p }
+            return interval.getLabel(tick, opt)
+        }
+        return axis.scale.getLabel(tick)
+    }
+
+    // ------------------------------------------------------------------------
     // _showTooltipContent — upstream (TooltipView.ts:812). The `formatter` (string/function) override,
     //   the async ticket, and `enterable` timers are DEFERRED; the default markup is shown synchronously.
     // ------------------------------------------------------------------------
@@ -219,7 +338,7 @@ public final class TooltipView {
         tooltipModel: Model,
         markupText: String,
         markupStyleCreator: TooltipMarkupStyleCreator,
-        seriesModel: SeriesModel,
+        seriesModel: SeriesModel?,
         x: Double,
         y: Double
     ) {

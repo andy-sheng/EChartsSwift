@@ -159,7 +159,23 @@ public final class Grid: CoordinateSystemMaster {
     private var _rect: LayoutRect!
 
     // upstream: readonly model: GridModel;
-    public let model: GridModel
+    //   PROTOCOL-WITNESS FIX: a stored `let model: GridModel` does NOT witness the protocol requirement
+    //   `CoordinateSystemMaster.model: ComponentModel? { get set }` (narrower type + `let` vs settable
+    //   `var`), so `coordSys.model` dispatched through the `CoordinateSystemMaster` existential would hit
+    //   the nil-returning default extension — which silently broke axisPointer `modelHelper.collect`
+    //   (`guard let coordSysModel = coordSys.model` always failed → empty `coordSysAxesInfo` → no axis
+    //   tooltip). Mirror Cartesian2D: store the concrete GridModel privately and expose a settable
+    //   `var model: ComponentModel?` that actually witnesses the requirement (`gridModel` keeps the
+    //   concrete accessor for internal use — resize etc.). Upstream `model` is readonly; the protocol
+    //   setter is a no-op.
+    private let _gridModel: GridModel
+    public var model: ComponentModel? {
+        get { return _gridModel }
+        set { }
+    }
+    /// Concrete GridModel accessor (upstream `this.model`). Internal callers that need GridModel-specific
+    /// surface use this rather than the erased protocol `model`.
+    public var gridModel: GridModel { return _gridModel }
     // upstream: readonly axisPointerEnabled = true;
     //   Witnesses the optional `CoordinateSystemMaster.axisPointerEnabled: Bool?`.
     public var axisPointerEnabled: Bool? { return true }
@@ -181,7 +197,7 @@ public final class Grid: CoordinateSystemMaster {
 
     // upstream: constructor(gridModel: GridModel, ecModel: GlobalModel, api: ExtensionAPI)
     public init(_ gridModel: GridModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        self.model = gridModel
+        self._gridModel = gridModel
         self._initCartesian(gridModel, ecModel, api)
         // upstream sets `this.model = gridModel` after `_initCartesian`; Swift requires all stored
         // properties initialized before calling instance methods, so `model` is set first.
@@ -253,7 +269,7 @@ public final class Grid: CoordinateSystemMaster {
 
         // Resize again if containLabel is enabled
         // FIXME It may cause getting wrong grid size in data processing stage
-        self.resize(self.model, api)
+        self.resize(self._gridModel, api)
     }
 
     /**

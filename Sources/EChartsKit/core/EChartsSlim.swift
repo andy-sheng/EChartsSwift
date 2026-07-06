@@ -683,6 +683,15 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
         installTooltipActions(EChartsSlim._registers)                      // registerAction('showTip'/'hideTip', noop)
 
+        // -- component/axisPointer/install.ts (Phase 35) -- registerComponentModel(AxisPointerModel) +
+        //   registerPreprocessor (ensure a global axisPointer option always exists — done in setOption) +
+        //   registerProcessor(PRIORITY.PROCESSOR.STATISTIC, { overallReset: coordSysAxesInfo = collect(...) })
+        //   + registerAction('updateAxisPointer', axisTrigger). The axisPointer VIEW (the drawn crosshair)
+        //   is DEFERRED (Phase 36) — no view factory is registered, so the component renders nothing; only
+        //   the DATA core (collect → coordSysAxesInfo, consumed by axisTrigger for the tooltip trigger:"axis"
+        //   path) is wired. The `collect` run itself lives in `update()` (statistic stage), see below.
+        ComponentModel.registerClass(AxisPointerModel.self)                 // registerComponentModel(AxisPointerModel)
+
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
         //   whose render path depends on deep deps that are still stubbed in this phase:
@@ -852,6 +861,15 @@ public final class EChartsSlim: EChartsType {
         //   array-normalize the `visualMap` option, split ec2 `splitList` into `pieces`, and migrate each
         //   piece's `start`/`end` → `min`/`max`. Mutates option.visualMap in place (inout ECUnitOption).
         visualMapPreprocessor(&opt)
+        // Preprocessor from component/axisPointer/install.ts (registerPreprocessor): always ensure a
+        //   global axisPointer option exists (for default settings). tooltip `dependencies:['axisPointer']`
+        //   and the axis-tooltip DATA core (modelHelper.collect) both need the AxisPointerModel component
+        //   to be instantiated. Upstream forces `option.axisPointer = {}` unconditionally; mirror that.
+        //   (The `link` normalization to array is out of the bar/tooltip scope — link-groups are DEFERRED.)
+        if opt["axisPointer"] == nil
+            || ((opt["axisPointer"] as? [Any])?.isEmpty ?? false) {
+            opt["axisPointer"] = [String: Any]()
+        }
 
         let ecModel = GlobalModel()
         let om = OptionManager(_api)
@@ -928,6 +946,17 @@ public final class EChartsSlim: EChartsType {
         //   MUST run in the data-processor stage (before coord update + visual), so mapSymbolLayout/MapView see
         //   the merged data + `originalData`. OVERALL handler — invoke its overallReset directly.
         mapDataStatisticStageHandler.overallReset?(ecModel, api, nil)
+
+        // PROCESSOR (STATISTIC) — axisPointer coordSysAxesInfo (upstream component/axisPointer/install.ts
+        //   `registerProcessor(PRIORITY.PROCESSOR.STATISTIC, { overallReset(ecModel, api) {
+        //     (ecModel.getComponent('axisPointer')).coordSysAxesInfo = collect(ecModel, api); } })`).
+        //   Builds the axisPointerModel/axis/coordSys/series association tree that axisTrigger consumes for
+        //   the tooltip trigger:"axis" path. Must run after coord systems are created (stage 3) and series
+        //   data processed (stage 2/4). Self-gates: `collect` returns an (empty) result when no axisPointer
+        //   component exists; the stash is a no-op when the component is absent.
+        if let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel {
+            apModel.coordSysAxesInfo = collect(ecModel, api)
+        }
 
         // updateStreamModes(...) — PORT-TODO skip (progressive/stream rendering out of scope).
 
@@ -1636,6 +1665,9 @@ public final class EChartsSlim: EChartsType {
     public func getRoot() -> Group { return root }
     public func getStorage() -> Storage { return storage }
     public func getModel() -> GlobalModel? { return _model }
+    /// The ExtensionAPI bound to this driver (upstream `this._api`). Exposed so the live-view host
+    /// (`EChartsView`) can drive the ported axisPointer `axisTrigger(payload, ecModel, api)` on hover.
+    public var api: ExtensionAPI { return _api }
     public func getWidth() -> Double { return _width }
     public func getHeight() -> Double { return _height }
 
