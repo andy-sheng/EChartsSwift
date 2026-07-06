@@ -141,6 +141,11 @@ open class RadarView: ChartView {
             var polylineStyle = barStyleFromDict(lineStyleDict)
             polylineStyle.fill = nil   // upstream default `fill: 'none'`
             polyline.useStyle(polylineStyle)
+            // The Polyline vertices close into a pentagon; `useStyle` runs `createStyle` which lays the
+            // style over DEFAULT_PATH_STYLE (fill '#000') via `extendPathStyle`, and that helper SKIPS a
+            // nil `fill` — so the intended `fill: 'none'` is dropped and the outline fills solid black
+            // UNDER the area polygon (visual-parity trap class 1). Clear it directly to bypass the merge.
+            polyline.pathStyle.fill = nil
 
             // setStatesStylesFromModel(polyline, itemModel, 'lineStyle');
             // setStatesStylesFromModel(polygon, itemModel, 'areaStyle');
@@ -168,6 +173,9 @@ open class RadarView: ChartView {
             if areaStyleDict["fill"] == nil, let color = color { areaStyleDict["fill"] = color }
             if areaStyleDict["opacity"] == nil { areaStyleDict["opacity"] = 0.7 }
             polygon.useStyle(barStyleFromDict(areaStyleDict))
+            // Same class-1 guard: when the area has no explicit fill (and no series color), don't let the
+            // default black survive the createStyle merge.
+            if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
 
             // itemGroup.add(polyline);  itemGroup.add(polygon);  itemGroup.add(symbolGroup);
             //   (upstream child order: polyline=childAt(0), polygon=childAt(1), symbolGroup=childAt(2)).
