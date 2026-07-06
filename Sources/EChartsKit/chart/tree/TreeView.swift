@@ -369,15 +369,32 @@ private func updateNode(
     //   PORT-TODO: DEFERRED (util/innerStore + states not ported).
 
     // drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout, sourceLayout, targetLayout, group);
-    drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group)
+    let edgeEl = drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group)
 
-    // symbolEl.__edge onHoverStateChange (blur propagation) — PORT-TODO: DEFERRED (states not ported).
+    // Phase 48: `symbolEl.__edge` blur propagation (upstream TreeView.ts:464-477). Tree edges are anonymous
+    //   children (not in edge-data), so they are blurred by the blurSeries group-traverse but never
+    //   un-blurred by the focus index set. Mirror upstream: when the node symbol's hover state changes to a
+    //   NON-blur state (emphasis/normal), forward it to the edge — UNLESS the parent node is itself blurred
+    //   (so an edge into a blurred subtree stays dim). This makes an in-lineage edge brighten with its node
+    //   under `focus:'ancestor'|'descendant'|'relative'`.
+    if let edgeEl = edgeEl, let symbolPath = symbolEl as? Path {
+        states.getHighDownInner(symbolPath).onHoverStateChange = { [weak edgeEl] toState in
+            guard let edgeEl = edgeEl, toState != .blur else { return }
+            let parentEl = node.parentNode.flatMap { data.getItemGraphicEl($0.dataIndex) }
+            let parentBlurred = parentEl.map { states.getHighDownInner($0).hoverState == states.HOVER_STATE_BLUR } ?? false
+            if !parentBlurred {
+                // toState is emphasis or normal → clear the edge's blur so it follows its node.
+                states.leaveBlur(edgeEl)
+            }
+        }
+    }
 }
 
 // upstream: function drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout,
 //     sourceLayout, targetLayout, group)
 //   STATIC form: no `symbolEl.__edge` cache / animation. `sourceOldLayout` (the pre-animation snapshot,
 //   used only to init the edge before `updateProps`) is dropped; the edge is built at its final shape.
+@discardableResult
 private func drawEdge(
     _ seriesModel: TreeSeriesModel,
     _ node: TreeNode,
@@ -385,7 +402,7 @@ private func drawEdge(
     _ sourceLayout: TreeNodeLayout?,
     _ targetLayout: TreeNodeLayout,
     _ group: Group
-) {
+) -> Path? {
     let itemModel = node.getModel()
     // const edgeShape = seriesModel.get('edgeShape');
     let edgeShape = (seriesModel.get("edgeShape", false) as? String) ?? "curve"
@@ -457,7 +474,9 @@ private func drawEdge(
         }
 
         _ = group.add(edge)
+        return edge
     }
+    return nil
 }
 
 // PORT-TODO: function removeNodeEdge / getSourceNode / removeNode — the enter/update/remove ANIMATION

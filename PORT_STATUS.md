@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 48 (TREE `__edge` blur propagation — in-lineage tree edges dim/brighten with their node; completes tree topology-focus): tree edges are anonymous children (not in edge-data), so the `blurSeries` group-traverse blurs them but the focus index set never un-blurs them. Ported the upstream `symbolEl.__edge` + `onHoverStateChange` forwarder (TreeView.ts:464-477): `drawEdge` now RETURNS the created edge `Path?`, and the caller wires the node symbol's `onHoverStateChange` so that when the node enters a NON-blur state (emphasis/normal) its edge un-blurs too — UNLESS the parent node is blurred (an edge into a blurred subtree stays dim). Uses the ported `states.getHighDownInner(el).onHoverStateChange` hook + `leaveBlur` (applies immediately in this port). `[weak edgeEl]` capture (retain-cycle rule). **Clean build (0 warnings); `swift test` — 302 / 0 failures / 58 skipped** (extended `testTreeDescendantFocusBlursOtherSubtree`: after a 'descendant' highlight, walk the display list — some tree edges [BezierCurve/TreePath] are bright, some blurred; without the hook ALL would be blurred). Demos: 101/101 render. Done directly in the main loop. See §79.**
+
 **Phase 47 (BRUSH lineX / lineY — 1-D band brush types; extends the Phase-44 rect brush): the brush now supports `brushType:'lineX'` (a vertical x-band) and `'lineY'` (a horizontal y-band) in addition to `'rect'`. Files edited: `component/brush/brushVisual.swift` (added the `lineX`/`lineY` cases to `makeBrushCommonSelectorForSeries` — the point selector tests the datum coordinate against the 1-D `[min,max]` band, the rect selector tests x/y OVERLAP; + `brushRange1D` to read the 1-D pixel range, which — unlike rect's `[[x0,x1],[y0,y1]]` — is a flat `[min,max]`, no 2-D boundingRect needed), `core/EChartsView.swift` (`_finishBrushDrag` reads the brush component's `brushType` option — a stand-in for the toolbox-armed cursor — and dispatches a lineX/lineY 1-D range or the rect 2-D range accordingly). **Clean build (0 warnings); `swift test` — 302 / 0 failures / 58 skipped** (baseline 301; +1 `ZZBrushTests.testLineXBrushSelectsColumn`: a lineX band over the first 2 of 5 bars keeps them at palette fill + dims bars 2-4, selecting by x-overlap only). Demos: 101/101 render. Done directly in the main loop (extends the brush I built in Phase 44). DEFERRED (documented): polygon brush (point-in-polygon), coordRange persistence for lineX/lineY across dataZoom, the toolbox brush button that arms each type. See §78.**
 
 **Phase 46 (CHORD hover-emphasis + `focus:'adjacency'`; 17th interaction-layer phase; completes the node/edge hover story — chord was the LAST node/edge chart without hover): applied the node+edge emphasis block to `ChordPiece` (Sector, per-node) and `ChordEdge` (Path, per-ribbon) — both were already `setItemGraphicEl`-registered + `ecData.dataType`-tagged, so this adds `toggleHoverEmphasis` (with `focus:'adjacency'` → `getAdjacentDataIndices()` bridged to the `{node,edge}` dict via `chordFocusDict`) + `setStatesStylesFromModel` (itemStyle for pieces, lineStyle for ribbons) + the `ecData.dataIndex` tag. `ChordSeriesModel` got the `getData(.edge)→getEdgeData()` override (the [[getdata-datatype-ignored-trap]], same as graph/sankey). TRAP hit + fixed: inside a `Sector`/`Path` subclass the bare `states` resolves to `self.states` (the element's ZR state dict), NOT the `states` enum — qualified as `EChartsKit.states`. **Clean build (0 warnings); `swift test` — 301 / 0 failures / 58 skipped** (baseline 300; +1 `ZZTopologyFocusTests.testChordAdjacencyFocusBlursUnrelated`: highlight chord node a → unrelated node c blurs, a + adjacent b stay bright). Demos: 47/47 render. Done directly in the main loop. Hover-highlight + topology-focus now works for ALL node/edge charts (graph, tree, sankey, chord). DEFERRED (documented): tree `__edge` blur propagation; the live mouseover focus fan-out (Phase 33). See §77.**
@@ -2223,6 +2225,18 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 79. Phase 48 — Tree __edge blur propagation (in-lineage edges dim with their node)
+
+**Goal (met):** tree edges now follow their node's blur state under `focus:'ancestor'|'descendant'|'relative'`.
+**Clean build (0 warnings); `swift test` — 302 / 0 / 58.** Demos 101/101.
+
+`drawEdge` returns the edge `Path?`; the caller wires the node symbol's `onHoverStateChange` (ported
+`states.getHighDownInner(el).onHoverStateChange`) to `leaveBlur` the edge when the node enters a non-blur
+state — unless the parent node is blurred. `[weak edgeEl]` capture. Test walks the display list to confirm
+a mix of bright + blurred tree edges after a 'descendant' highlight.
 
 ---
 

@@ -106,6 +106,20 @@ final class ZZTopologyFocusTests: XCTestCase {
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(aIdx)), "highlighted node A must not be blurred")
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(a1)), "A's descendant A1 must stay bright")
         XCTAssertTrue(isBlurred(data.getItemGraphicEl(bIdx)), "sibling subtree node B must be blurred")
+
+        // Phase 48: the edge blur-propagation hook. Tree edges (BezierCurve/TreePath — NOT "item"-named
+        //   node symbols) are blurred by the group traverse; the in-lineage ones un-blur with their node.
+        //   Without the hook every edge would stay blurred; with it, some are bright and some blurred.
+        _ = view.zr.storage.getDisplayList(true)
+        var edgesBlurred = 0, edgesBright = 0
+        for el in view.zr.storage.getDisplayList(false) {
+            if el.name == "item" { continue }                 // node symbol, not an edge
+            if el is BezierCurve || el is TreePath {
+                if el.currentStates.contains("blur") { edgesBlurred += 1 } else { edgesBright += 1 }
+            }
+        }
+        XCTAssertGreaterThan(edgesBright, 0, "at least one in-lineage tree edge must un-blur with its node")
+        XCTAssertGreaterThan(edgesBlurred, 0, "at least one out-of-lineage tree edge must stay blurred")
     }
 
     // MARK: - Sankey focus:'adjacency' — highlight a source node → its direct edge/target stay bright,
