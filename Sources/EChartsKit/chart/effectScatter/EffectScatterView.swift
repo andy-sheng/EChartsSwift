@@ -137,10 +137,43 @@ open class EffectScatterView: ChartView {
                 fill = .string(cs)
             }
 
+            // Static RIPPLE approximation. The animated EffectSymbol shows `number` expanding rings
+            //   between scale 1 and `scale`; a single (static) frame is those rings frozen at evenly
+            //   spaced scales, fading outward, drawn BEHIND the base symbol. brushType 'fill' fills each
+            //   ring, 'stroke' outlines it. (The true animation is deferred with the SymbolDraw helper.)
+            let rippleModel = seriesModel.getModel("rippleEffect")
+            let rScale = (rippleModel.get("scale") as? Double) ?? 2.5
+            let rNumber = Int((rippleModel.get("number") as? Double) ?? 3)
+            let rBrush = (rippleModel.get("brushType") as? String) ?? "fill"
+            if rScale > 1, rNumber > 0, let cs = colorString(itemStyle?["fill"]) {
+                let baseR = Swift.max(sizeW, sizeH) / 2
+                for k in 0..<rNumber {
+                    let t = Double(k + 1) / Double(rNumber)          // 1/n … 1
+                    let ringScale = 1 + (rScale - 1) * t
+                    var circShape = CircleShape()
+                    circShape.cx = point[0]
+                    circShape.cy = point[1]
+                    circShape.r = baseR * ringScale
+                    let circle = Circle(["shape": circShape as PathShape])
+                    var cstyle = PathStyleProps()
+                    if rBrush == "stroke" {
+                        cstyle.stroke = .string(cs); cstyle.lineWidth = 1
+                    } else {
+                        cstyle.fill = .string(cs)
+                    }
+                    cstyle.opacity = 0.35 * (1 - t) + 0.05           // fade outward
+                    circle.useStyle(cstyle)
+                    // Class-1 guard: a stroke-only ring must not keep the default black fill.
+                    if rBrush == "stroke" { circle.pathStyle.fill = nil }
+                    circle.z2 = -1
+                    _ = group.add(circle)
+                }
+            }
+
             // upstream (inside SymbolDraw(EffectSymbol)): createSymbol places the base symbol centered on the
             //   point (`x - size/2`, `y - size/2`, size, size); EffectSymbol wraps that with the animated
-            //   ripple rings. PORT-TODO: the RIPPLE (rippleEffect) + symbolRotate/symbolOffset/
-            //   symbolKeepAspect + emphasis scale not applied (EffectSymbol / SymbolDraw states deferred).
+            //   ripple rings. PORT-TODO: symbolRotate/symbolOffset/symbolKeepAspect + emphasis scale not
+            //   applied (EffectSymbol / SymbolDraw states deferred).
             let el = symbol.createSymbol(
                 symbolType, point[0] - sizeW / 2, point[1] - sizeH / 2, sizeW, sizeH, fill
             )
