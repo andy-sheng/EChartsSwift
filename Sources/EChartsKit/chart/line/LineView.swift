@@ -24,8 +24,15 @@ open class LineView: ChartView {
         let baseAxis = coord.getBaseAxis()
         let valueAxis = coord.getOtherAxis(baseAxis)
         // PORT-TODO: `mapDimension` is force-unwrapped — a line's base/value dims are always present.
-        let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
-        let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
+        let baseDimName = data.mapDimension(baseAxis.dim)!
+        let valueDimName = data.mapDimension(valueAxis.dim)!
+        let baseDimIdx = data.getDimensionIndex(baseDimName)
+        // For a `stack`ed line the point follows the cumulative stack result dimension (getStackedDimension
+        //   returns valueDimName unchanged when the series is not stacked). Without this the stacked lines
+        //   render at their raw values instead of the accumulated totals.
+        let stacked = isDimensionStacked(data, valueDimName)
+        let lineValueDimName = getStackedDimension(data, valueDimName)
+        let valueDimIdx = data.getDimensionIndex(lineValueDimName)
         let store = data.getStore()
 
         // Build the polyline points: one per datum, via the cartesian `dataToPoint`. `isHorizontal`
@@ -45,12 +52,6 @@ open class LineView: ChartView {
         group.removeAll()
         if points.count < 2 { self._data = data; return }
 
-        var shape = PolylineShape()
-        shape.points = points
-        let polyline = Polyline()
-        polyline.setShape(shape)
-        polyline.name = "line"
-
         // Color: the visual/style stage stored the palette color in the series' visual `style` bag
         //   (colorKey 'fill' for a basic line — see visual/style.swift). The value is an EChartsKit
         //   `ZRColor.color(String)` (or a raw String); extract the solid color and use it as the LINE
@@ -65,6 +66,57 @@ open class LineView: ChartView {
             if let s = colorString(style["stroke"]) { stroke = s }
             else if let f = colorString(style["fill"]) { stroke = f }
         }
+
+        // ── areaStyle pass ──────────────────────────────────────────────────────────────────────
+        // upstream LineView builds an `ECPolygon` between the line points and `stackedOnPoints`
+        //   (the baseline). Minimal port: a Polygon whose ring is the line points followed by the
+        //   reversed baseline points. Baseline = the stackedOver value per datum for a stacked area,
+        //   else the value-axis origin (0 clamped into the scale extent). Added BEFORE the polyline so
+        //   it sits underneath. PORT-TODO: `origin` option ('start'/'end'/number), gradient decal.
+        let areaStyleModel = seriesModel.getModel("areaStyle")
+        if !areaStyleModel.isEmpty() {
+            let sExtent = valueAxis.scale.getExtent()
+            let origin = Swift.min(Swift.max(0, sExtent[0]), sExtent[1])
+            let stackedOverDimName = data.getCalculationInfo("stackedOverDimension") as? String
+            let stackedOverDimIdx = stackedOverDimName.map { data.getDimensionIndex($0) }
+            var baselinePts: [VectorArray] = []
+            for i in 0..<data.count() {
+                let baseVal = lineToNumber(store.get(baseDimIdx, i))
+                let baselineVal: Double = (stacked && stackedOverDimIdx != nil)
+                    ? lineToNumber(store.get(stackedOverDimIdx!, i))
+                    : origin
+                let bp = isValueAxisH ? coord.dataToPoint([baselineVal, baseVal]) : coord.dataToPoint([baseVal, baselineVal])
+                if bp.count >= 2 && bp[0].isFinite && bp[1].isFinite {
+                    baselinePts.append(VectorArray(bp[0], bp[1]))
+                }
+            }
+            if baselinePts.count == points.count {
+                var polyPts = points
+                polyPts.append(contentsOf: baselinePts.reversed())
+                var pShape = PolygonShape()
+                pShape.points = polyPts
+                let areaPoly = Polygon()
+                areaPoly.setShape(pShape)
+                areaPoly.name = "area"
+                var areaDict = areaStyleModel.getAreaStyle()
+                if areaDict["opacity"] == nil { areaDict["opacity"] = 0.7 }
+                var aStyle = barStyleFromDict(areaDict)
+                // Fill defaults to the series color; gradient/pattern area fills (not bridged) also fall
+                //   back to the solid series color so the area is never the spurious black default.
+                if aStyle.fill == nil { aStyle.fill = .string(stroke) }
+                aStyle.stroke = nil
+                areaPoly.useStyle(aStyle)
+                areaPoly.pathStyle.stroke = nil
+                _ = group.add(areaPoly)
+            }
+        }
+
+        var shape = PolylineShape()
+        shape.points = points
+        let polyline = Polyline()
+        polyline.setShape(shape)
+        polyline.name = "line"
+
         var st = PathStyleProps()
         st.stroke = .string(stroke)
         st.fill = .string("none")
