@@ -221,7 +221,14 @@ open class GraphView: ChartView {
                         // Inside labels sit centered on the (dark) symbol with a contrasting white fill
                         //   (echarts' inheritColor auto-contrast); outside labels use the label color.
                         if position == "inside" {
-                            ts.fill = (labelModel.getShallow("color") as? String) ?? "#fff"
+                            ts.fill = (labelModel.getShallow("color") as? String) ?? "#ffffff"
+                            // Auto-stroke matching the node fill so a white label stays legible where it
+                            //   overflows the symbol onto the canvas (echarts getInsideTextStroke). The
+                            //   TSpan draws stroke-first, so the fill still paints over it.
+                            if let cs = graphColorString(itemStyle?["fill"]) {
+                                ts.stroke = cs
+                                ts.lineWidth = 2
+                            }
                             ts.align = .center
                             ts.verticalAlign = .middle
                         } else {

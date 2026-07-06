@@ -92,8 +92,19 @@ open class ScatterView: ChartView {
                 return coord.dataToPoint([radiusVal, angleVal])
             }
         }
+        else if let geo = seriesModel.coordinateSystem as? Geo {
+            // Geo scatter: each datum is [lng, lat]; project via geo.dataToPoint (projection + view
+            //   transform). The geo coord dims are ["lng", "lat"]; fall back to the first two store dims.
+            let lngIdx = data.mapDimension("lng").map { data.getDimensionIndex($0) } ?? 0
+            let latIdx = data.mapDimension("lat").map { data.getDimensionIndex($0) } ?? 1
+            pointAt = { i in
+                let lng = scatterToNumber(store.get(lngIdx, i))
+                let lat = scatterToNumber(store.get(latIdx, i))
+                return geo.dataToPoint([lng, lat], false) ?? [Double.nan, Double.nan]
+            }
+        }
         else {
-            // PORT-TODO: geo/singleAxis/calendar/matrix scatter deferred.
+            // PORT-TODO: singleAxis/calendar/matrix scatter deferred.
             return
         }
 
