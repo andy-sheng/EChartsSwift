@@ -1034,8 +1034,11 @@ func createOrUpdateAxesView(
             cartesianAxisHelper.updateCartesianAxisViewCommonPartBuilder(
                 axis.axisBuilder, gridRect, axis.model as! CartesianAxisModel
             )
+            // The determine pass is the final layout, so also build the axis NAME into the shared
+            //   builder group here (CartesianAxisView adds that group). Without "axisName" the axis
+            //   `name` option (e.g. 'count'/'day'/'vol'/'rate') never produced a text element.
             _ = axis.axisBuilder.build(
-                isDetermine ? ["axisTickLabelDetermine": true] : ["axisTickLabelEstimate": true],
+                isDetermine ? ["axisTickLabelDetermine": true, "axisName": true] : ["axisTickLabelEstimate": true],
                 AxisBuilderBuildExtraParams(noPxChange: noPxChange)
             )
         }
