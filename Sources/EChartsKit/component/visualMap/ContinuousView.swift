@@ -154,10 +154,11 @@ public final class ContinuousView: VisualMapView {
         }
         else if self._useHandle {
             // A `calculable` visualMap without an explicit `text` shows its range-handle VALUES at the ends
-            //   (high at endsIndex 0, low at 1) — the '100'/'0' endpoint labels. Positioned here (in the
-            //   unflipped outer group) so they escape the bar group's scaleY:-1 mirror.
+            //   — the '100'/'0' endpoint labels. `_applyTransform` runs the end point through the bar
+            //   group's scaleY:-1 transform, so endsIndex 0 lands at the VISUAL BOTTOM (low value) and
+            //   endsIndex 1 at the top (high value).
             let vExtent = visualMapModel.getExtent()
-            let value = endsIndex == 0 ? Swift.max(vExtent[0], vExtent[1]) : Swift.min(vExtent[0], vExtent[1])
+            let value = endsIndex == 0 ? Swift.min(vExtent[0], vExtent[1]) : Swift.max(vExtent[0], vExtent[1])
             text = visualMapModel.formatValueText(value)
         }
         else {

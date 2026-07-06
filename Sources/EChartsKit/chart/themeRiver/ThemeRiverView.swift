@@ -191,7 +191,9 @@ open class ThemeRiverView: ChartView {
                     labelText.useStyle(ts)
                     polygon.setTextContent(labelText)
                     var tc = ElementTextConfig()
-                    tc.position = "left"
+                    // Place the name just INSIDE the band's left edge (not 'left', which pushes it off the
+                    //   left canvas edge where the bands begin).
+                    tc.position = "insideLeft"
                     tc.distance = 4
                     polygon.setTextConfig(tc)
                 }
