@@ -249,14 +249,22 @@ public final class ChordEdge: Path {
             _ = el.setShape(shape)
         }
 
-        // toggleHoverEmphasis(this, focus === 'adjacency' ? edge.getAdjacentDataIndices() : focus, ...);
-        // PORT-TODO: emphasis focus (adjacency data-indices) + toggleHoverEmphasis DEFERRED (util/states).
-
-        // setStatesStylesFromModel(el, edgeModel, 'lineStyle');
-        // PORT-TODO: per-state lineStyle (emphasis/blur/select) DEFERRED (util/states not ported).
+        // Phase 46: edge emphasis + `focus:'adjacency'` (upstream ChordEdge.updateData). The ribbon is a
+        //   highDown dispatcher; adjacency resolves to the edge's index set (bridged to the {node,edge}
+        //   dict). `states` is qualified — inside a Path subclass the bare name resolves to `self.states`.
+        let emphasisModel = edgeModel.getModel("emphasis")
+        let focusRaw: InnerFocus? = emphasisModel.get("focus")
+        let focus: InnerFocus? = (focusRaw as? String) == "adjacency"
+            ? chordFocusDict(edge.getAdjacentDataIndices())
+            : focusRaw
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        EChartsKit.states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+        EChartsKit.states.setStatesStylesFromModel(el, edgeModel, "lineStyle")
 
         // edgeData.setItemGraphicEl(edge.dataIndex, el);
         edgeData.setItemGraphicEl(edge.dataIndex, el)
+        innerStore.getECData(el).dataIndex = Double(edge.dataIndex)
 
         _ = seriesModel   // consumed by the DEFERRED updateProps transition (see above).
     }

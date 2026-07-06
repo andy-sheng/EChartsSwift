@@ -18,6 +18,7 @@ final class ZZTopologyFocusTests: XCTestCase {
         ComponentModel.registerClass(GraphSeriesModel.self)
         ComponentModel.registerClass(TreeSeriesModel.self)
         ComponentModel.registerClass(SankeySeriesModel.self)
+        ComponentModel.registerClass(ChordSeriesModel.self)
     }
 
     private func highlightNode(_ view: EChartsView, seriesIndex: Int, dataIndex: Int) {
@@ -131,6 +132,39 @@ final class ZZTopologyFocusTests: XCTestCase {
         }
         guard let a = idx(of: "a"), let b = idx(of: "b"), let c = idx(of: "c") else {
             XCTFail("sankey must build named nodes"); return
+        }
+
+        highlightNode(view, seriesIndex: 0, dataIndex: a)   // a's adjacency = {a, b} + their edge
+
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(a)), "highlighted node a must not be blurred")
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(b)), "adjacent target b must stay bright")
+        XCTAssertTrue(isBlurred(data.getItemGraphicEl(c)), "unrelated node c must be blurred")
+    }
+
+    // MARK: - Chord focus:'adjacency' — highlight a source node → its edge/target stay bright, an
+    //   unrelated node blurs (chord reuses the shared Graph like sankey).
+    func testChordAdjacencyFocusBlursUnrelated() {
+        let view = EChartsView(width: 460, height: 380)
+        view.setOption([
+            "series": [["type": "chord",
+                        "emphasis": ["focus": "adjacency"] as [String: Any],
+                        "data": [
+                            ["name": "a"] as [String: Any], ["name": "b"] as [String: Any],
+                            ["name": "c"] as [String: Any], ["name": "d"] as [String: Any]
+                        ],
+                        "links": [
+                            ["source": "a", "target": "b", "value": 5.0] as [String: Any],
+                            ["source": "c", "target": "d", "value": 3.0] as [String: Any]
+                        ]] as [String: Any]]
+        ])
+        let series = view.ec.getModel()!.getSeriesByIndex(0)!
+        let data = series.getData()
+        func idx(of name: String) -> Int? {
+            for i in 0..<data.count() where (data.getName(i) == name) { return i }
+            return nil
+        }
+        guard let a = idx(of: "a"), let b = idx(of: "b"), let c = idx(of: "c") else {
+            XCTFail("chord must build named nodes"); return
         }
 
         highlightNode(view, seriesIndex: 0, dataIndex: a)   // a's adjacency = {a, b} + their edge

@@ -139,14 +139,22 @@ open class ChordPiece: Sector {
 
         // data.setItemGraphicEl(idx, el);
         data.setItemGraphicEl(idx, el)
-        // setStatesStylesFromModel(el, itemModel, 'itemStyle');
-        // PORT-TODO: DEFERRED (util/states not ported).
+        // Also tag the element's ecData dataIndex (needed for blurSeries's getData(dataType) lookup).
+        innerStore.getECData(el).dataIndex = Double(idx)
 
-        // Add focus/blur states handling
-        // const focus = emphasisModel.get('focus');
-        // toggleHoverEmphasis(this, focus === 'adjacency' ? node.getAdjacentDataIndices() : focus, ...);
-        // PORT-TODO: emphasis focus (adjacency data-indices) + toggleHoverEmphasis DEFERRED
-        //   (util/states not ported).
+        // Phase 46: setStatesStylesFromModel(el, itemModel, 'itemStyle') + the emphasis focus handling
+        //   (upstream ChordPiece.updateData). The node sector is a highDown dispatcher; `focus:'adjacency'`
+        //   resolves to the node's adjacency index set (bridged to the `{node,edge}` dict blurSeries reads).
+        let emphasisModel = itemModel.getModel("emphasis")
+        let focusRaw: InnerFocus? = emphasisModel.get("focus")
+        let focus: InnerFocus? = (focusRaw as? String) == "adjacency"
+            ? chordFocusDict(node.getAdjacentDataIndices())
+            : focusRaw
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        // Qualify the `states` enum — inside a Sector subclass the bare name resolves to `self.states`.
+        EChartsKit.states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+        EChartsKit.states.setStatesStylesFromModel(el, itemModel)
     }
 
     // upstream: protected _updateLabel(seriesModel, itemModel, node)
@@ -254,6 +262,12 @@ open class ChordPiece: Sector {
 //   (cx/cy/r0/r/startAngle/endAngle/clockwise). `getItemLayout`/`getLayout` return `Any?`.
 func chordLayoutDict(_ v: Any?) -> [String: Any] {
     return (v as? [String: Any]) ?? [:]
+}
+
+// Phase 46: bridge the chord node/edge `GraphDataIndices` → the `{node:[…], edge:[…]}` dict form that
+//   `states.blurSeries`'s object-focus branch consumes (chord uses the shared Graph like sankey).
+func chordFocusDict(_ ix: GraphDataIndices) -> [String: Any] {
+    return ["node": ix.node, "edge": ix.edge]
 }
 
 // TRAP #1 GUARD: `[String: Any]` layout/option values store numbers as bare `Int` OR `Double` OR

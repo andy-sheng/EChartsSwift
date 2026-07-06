@@ -150,6 +150,14 @@ open class ChordSeriesModel: SeriesModel {
         return self.getGraph().edgeData
     }
 
+    // Phase 46: route `getData(.edge)` to the edge data (upstream `data.getLinkedData(dataType)`), so the
+    //   states engine's object-focus branch resolves edge dispatchers against the EDGE data (see [[getdata
+    //   -datatype-ignored-trap]] — the base ignores dataType). Matches Graph/SankeySeriesModel.
+    open override func getData(_ dataType: SeriesDataType? = nil) -> SeriesData {
+        if dataType == .edge { return getEdgeData() }
+        return super.getData(dataType)
+    }
+
     // formatTooltip(dataIndex, multipleSeries, dataType) { ... }
     open override func formatTooltip(
         _ dataIndex: Double,
