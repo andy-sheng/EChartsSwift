@@ -53,6 +53,20 @@ final class ZZMarkerTests: XCTestCase {
         XCTAssertGreaterThan(xSpan, 100.0, "the markLine spans across the grid width")
     }
 
+    // ---- a STATISTIC markLine (type:'average') renders at the computed average value ----
+    func testAverageMarkLineRenders() {
+        // data [5,9,7,12,6] → average = 7.8. Line pixel y ≈ 20 + (1 - 7.8/20)*240 ≈ 166.4.
+        let view = makeChart(["data": [["type": "average"] as [String: Any]]])
+        let lines = polylines(view)
+        XCTAssertGreaterThanOrEqual(lines.count, 1, "a type:'average' markLine must render a reference line")
+        guard let shape = lines.first?.shape as? PolylineShape, let pts = shape.points, pts.count >= 2 else {
+            XCTFail("average markLine must carry a 2-point shape"); return
+        }
+        let y0 = pts[0][1], y1 = pts[pts.count - 1][1]
+        XCTAssertEqual(y0, y1, accuracy: 1.0, "an average markLine is horizontal")
+        XCTAssertEqual(y0, 166.4, accuracy: 12.0, "the line sits at the pixel for the average value 7.8")
+    }
+
     // ---- no markLine option → no markLine component, no reference Polyline ----
     func testNoMarkLineNoComponent() {
         let view = makeChart([String: Any]())   // empty markLine → no data → submodel skipped

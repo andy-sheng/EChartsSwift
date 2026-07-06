@@ -2245,7 +2245,7 @@ Registered `MarkPoint/MarkLine/MarkAreaModel` + the three auto-enable preprocess
 factories in EChartsSlim (added `installMarkLine.swift` for the missing `markLinePreprocessor`). The
 per-series inner-marker-model machinery was already ported; Phase 51's axis witnesses were the gate. Test:
 `markLine:{data:[{yAxis:8}]}` renders a horizontal Polyline at the exact pixel for value 8. Deferred:
-statistic markers approximate their anchor dataIndex (stubbed `indicesOfNearest`; the value is exact),
+statistic markers (min/max/average/median) also render at the correct value (indicesOfNearest is implemented),
 markPoint/markArea styling edge cases, marker animations.
 
 ---
