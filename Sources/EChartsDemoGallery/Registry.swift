@@ -71,5 +71,18 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_treemap_levels,        // Treemap (nested)
         EChartsDemoRegistry.demo_tree_right,            // Tree (LR)
         EChartsDemoRegistry.demo_line_negative,         // Line (negative)
+        // gallery-batch4 — component + coordinate scenarios (goal clause 2).
+        EChartsDemoRegistry.demo_datazoom_inside,       // DataZoom (inside)
+        EChartsDemoRegistry.demo_tooltip_axis,          // Component (tooltip trigger axis)
+        EChartsDemoRegistry.demo_visualmap_piecewise,   // VisualMap (piecewise)
+        EChartsDemoRegistry.demo_calendar_heatmap,      // Calendar (heatmap)
+        EChartsDemoRegistry.demo_polar_line,            // Polar (line)
+        EChartsDemoRegistry.demo_dataset_bar,           // Dataset (bar)
+        EChartsDemoRegistry.demo_lines_grid,            // Lines (cartesian segments)
+        EChartsDemoRegistry.demo_effectscatter_grid,    // EffectScatter (grid)
+        EChartsDemoRegistry.demo_pie_nest,              // Pie (nested rings)
+        EChartsDemoRegistry.demo_themeriver_stream,     // ThemeRiver (stream)
+        EChartsDemoRegistry.demo_dataset_scatter,       // Dataset (scatter)
+        EChartsDemoRegistry.demo_bar_two_yaxis,         // Bar (two y-axes)
     ]
 }
