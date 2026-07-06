@@ -420,7 +420,34 @@ public enum time {
             }
         }
 
-        return format(Date(timeIntervalSince1970: tick.value / 1000), template, isUTC, lang)
+        // The default time templates wrap the primary unit in rich-text markup (`{primary|...}`) so it can
+        //   be styled bold. The port's axis text does not render rich text, so it would show the raw
+        //   `{primary|8}` markup. Strip the wrapper down to its plain content (non-nested, matching the
+        //   upstream note that nested rich tags are unsupported).
+        return stripTimeRichText(format(Date(timeIntervalSince1970: tick.value / 1000), template, isUTC, lang))
+    }
+
+    // `{tag|content}` → `content` (and `{content}` → `content`). Non-nested only.
+    private static func stripTimeRichText(_ s: String) -> String {
+        guard s.contains("{") else { return s }
+        var result = ""
+        var i = s.startIndex
+        while i < s.endIndex {
+            if s[i] == "{", let close = s[i...].firstIndex(of: "}") {
+                let inner = s[s.index(after: i)..<close]
+                if let bar = inner.firstIndex(of: "|") {
+                    result += inner[inner.index(after: bar)...]
+                }
+                else {
+                    result += inner
+                }
+                i = s.index(after: close)
+                continue
+            }
+            result.append(s[i])
+            i = s.index(after: i)
+        }
+        return result
     }
 
     public static func getUnitFromValue(
