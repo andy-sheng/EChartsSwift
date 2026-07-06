@@ -97,5 +97,17 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_sunburst_ring,         // Sunburst (inner hole)
         EChartsDemoRegistry.demo_boxplot_wide,          // Boxplot (7 categories)
         EChartsDemoRegistry.demo_funnel_wide,           // Funnel (6 stages)
+        // gallery-batch6 — coordinate-system + visual variations (goal clause 2).
+        EChartsDemoRegistry.demo_visualmap_continuous_bar, // VisualMap (continuous, bar)
+        EChartsDemoRegistry.demo_heatmap_small,         // Heatmap (5×5)
+        EChartsDemoRegistry.demo_geo_scatter,           // Geo (scatter over geo)
+        EChartsDemoRegistry.demo_gauge_progress,        // Gauge (progress arc)
+        EChartsDemoRegistry.demo_gauge_two,             // Gauge (two)
+        EChartsDemoRegistry.demo_line_area_gradient,    // Line (smooth area)
+        EChartsDemoRegistry.demo_bar_polar_radial,      // Polar (bar)
+        EChartsDemoRegistry.demo_scatter_polar,         // Polar (scatter)
+        EChartsDemoRegistry.demo_pie_selected,          // Pie (fixed center)
+        EChartsDemoRegistry.demo_bar_multi_grid,        // Bar (two series + axis names)
+        EChartsDemoRegistry.demo_line_step,             // Line (step)
     ]
 }
