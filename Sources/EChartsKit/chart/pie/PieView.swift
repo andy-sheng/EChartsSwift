@@ -187,10 +187,15 @@ open class PieView: ChartView {
 
             data.setItemGraphicEl(idx, sector)
             _ = group.add(sector)
+
+            // MINIMAL pie label (name text + leader line). The full label subsystem (setLabelStyle /
+            //   labelLayout collision avoidance / rich labelLine) is DEFERRED; this renders the datum name
+            //   at the sector's mid-angle so pie demos match ECharts' default `label:{show:true}` output.
+            renderPieLabel(seriesModel, data, idx, layout, group)
         }
 
         // labelLayout(seriesModel);
-        // PORT-TODO: chart/pie/labelLayout.ts NOT ported (label placement deferred).
+        // PORT-TODO: chart/pie/labelLayout.ts NOT ported (full label placement/collision deferred).
 
         // Always use initial animation.
         // upstream: if (seriesModel.get('animationTypeUpdate') !== 'expansion') { this._data = data; }
@@ -219,6 +224,78 @@ open class PieView: ChartView {
         // upstream returns `undefined` (falsy) when there is no item layout.
         return false
     }
+
+    // MINIMAL pie label: the datum name at the sector's mid-angle. `position:'inside'` centers it in the
+    //   sector (white); the default `'outside'` places it beyond the rim with a straight leader line in the
+    //   sector colour. Full labelLayout collision-avoidance + rich formatter are DEFERRED.
+    private func renderPieLabel(
+        _ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int, _ layout: [String: Any], _ group: Group
+    ) {
+        let labelModel = seriesModel.getModel("label")
+        guard ((labelModel.get("show") as? Bool) ?? true) else { return }
+        let cx = (layout["cx"] as? Double) ?? 0
+        let cy = (layout["cy"] as? Double) ?? 0
+        let r = (layout["r"] as? Double) ?? 0
+        let startAngle = (layout["startAngle"] as? Double) ?? 0
+        let endAngle = (layout["endAngle"] as? Double) ?? 0
+        let midAngle = (startAngle + endAngle) / 2
+        let name = data.getName(idx)
+        if name.isEmpty { return }
+
+        let position = (labelModel.get("position") as? String) ?? "outside"
+        // The sector's own fill, as a colour STRING (outside label text + leader-line colour).
+        let sectorFill: String? = (data.getItemVisual(idx, "style") as? [String: Any])
+            .flatMap { pieFillToString($0["fill"]) }
+
+        var style = TextStyleProps()
+        style.text = name
+        style.font = labelModel.getFont()
+        style.verticalAlign = .middle
+
+        if position == "inside" || position == "inner" || position == "center" {
+            let lr = (r) * 0.6
+            style.x = cx + lr * cos(midAngle)
+            style.y = cy + lr * sin(midAngle)
+            style.align = .center
+            style.fill = labelModel.getTextColor() ?? "#fff"
+        }
+        else {
+            let dxu = cos(midAngle), dyu = sin(midAngle)
+            let isRight = dxu >= 0
+            let edgeX = cx + r * dxu, edgeY = cy + r * dyu
+            let bendX = cx + (r + 15) * dxu, bendY = cy + (r + 15) * dyu
+            let textX = bendX + (isRight ? 12 : -12)
+            style.x = textX
+            style.y = bendY
+            style.align = isRight ? .left : .right
+            let fill: String = labelModel.getTextColor() ?? sectorFill ?? "#54555a"
+            style.fill = fill
+            // Leader line: sector edge → bend → short horizontal toward the text.
+            var lineShape = PolylineShape()
+            lineShape.points = [
+                VectorArray(edgeX, edgeY),
+                VectorArray(bendX, bendY),
+                VectorArray(textX + (isRight ? -3 : 3), bendY)
+            ]
+            let line = Polyline(["shape": lineShape as PathShape, "silent": true, "z2": 9.0])
+            var ls = PathStyleProps()
+            ls.stroke = .string(fill)
+            line.useStyle(ls)
+            line.pathStyle.fill = nil   // stroke-only (see visual-parity: clear the black default)
+            _ = group.add(line)
+        }
+        let textEl = ZRText(["z2": 10.0, "silent": true])
+        textEl.useStyle(style)
+        _ = group.add(textEl)
+    }
+}
+
+// Bridge an item-visual `fill` (ZRColor / String / palette ZRColor) to a colour STRING for the pie label.
+private func pieFillToString(_ v: Any?) -> String? {
+    if let s = v as? String { return s }
+    // The item-visual palette fill is an EChartsKit.ZRColor `.color(String)`.
+    if let z = v as? EChartsKit.ZRColor, case let .color(s) = z { return s }
+    return nil
 }
 
 // Models upstream `isNaN(shape && shape.startAngle)`: a nil (falsy) shape yields `isNaN(undefined)`
