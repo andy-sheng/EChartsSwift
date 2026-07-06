@@ -117,6 +117,17 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     private var _axisPointers: [String: CartesianAxisPointer] = [:]
 
+    // ------------------------------------------------------------------------
+    // Phase 39 — inside-dataZoom PAN (drag-to-roam). Mirrors `RoamController._dragging` + `_x`/`_y`.
+    //   `nil` when no drag is in progress; otherwise the last pointer position (the pan anchor advanced
+    //   on every mousemove, exactly like `RoamController._mousemoveHandler` writes `this._x = x`). A drag
+    //   begins on a `mousedown` over a coord system that hosts an inside dataZoom with `moveOnMouseMove`,
+    //   and ends on `mouseup`/`globalout`. While non-nil, hover-emphasis + tooltip + axisTrigger are
+    //   SUPPRESSED (upstream `preventDefaultMouseMove` / roam consuming the move — see the mouseover/
+    //   mouseout/globalListener drag gates).
+    // ------------------------------------------------------------------------
+    private var _insideZoomDrag: (lastX: Double, lastY: Double)?
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -190,6 +201,10 @@ public final class EChartsView {
         //   whole chart graph). The closures already `[weak self]`; `Handler.on` defaults ctx to the handler.
         _ = zr.on("mouseover", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            // Phase 39: while an inside-dataZoom DRAG (roam/pan) is in progress, suppress hover-emphasis +
+            //   tooltip (upstream `preventDefaultMouseMove` / `__ecRoamConsumed` consumes the move so the
+            //   hover path does not fire during a drag).
+            if self._insideZoomDrag != nil { return nil }
             // upstream binds `findEventDispatcher(el, isHighDownDispatcher)` WITHOUT returnFirstMatch →
             //   the OUTERMOST matching ancestor is emphasized (matters for nested dispatchers).
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
@@ -206,6 +221,8 @@ public final class EChartsView {
         // mouseout: leave emphasis on the nearest highDown dispatcher.
         _ = zr.on("mouseout", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            // Phase 39: suppress the leave-emphasis/tooltip-hide while dragging (see the mouseover gate).
+            if self._insideZoomDrag != nil { return nil }
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
                 states.leaveEmphasisWhenMouseOut(dispatcher, e)
                 self.zr.refresh()
@@ -233,6 +250,9 @@ public final class EChartsView {
         // Phase 38: the mouse-wheel → inside-dataZoom interactive zoom (see `_bindInsideZoom`).
         _bindInsideZoom()
 
+        // Phase 39: the drag (mousedown→mousemove→mouseup) → inside-dataZoom PAN/roam (see `_bindInsidePan`).
+        _bindInsidePan()
+
         // PORT-TODO (DEFERRED): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
         //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + a message bus.
         // PORT-TODO (DEFERRED): `globalout` (no `e.target`) → `allLeaveBlur` / leave-emphasis reset.
@@ -255,6 +275,9 @@ public final class EChartsView {
             self?._realDispatchAxisPointer(payload)
         }, handler: { [weak self] currTrigger, event, dispatchAction in
             guard let self = self, let ecModel = self.ec.getModel() else { return }
+            // Phase 39: suppress the axisPointer/tooltip axisTrigger while an inside-dataZoom drag is in
+            //   progress (roam consumes the move — see `_insideZoomDrag`).
+            guard self._insideZoomDrag == nil else { return }
             // Only drive the axis path when a tooltip with trigger:"axis" is configured; otherwise every
             //   mousemove would dispatch hideTip and fight the trigger:"item" hover tooltip (Phase 34).
             guard self._isAxisTrigger(ecModel) else { return }
@@ -381,6 +404,64 @@ public final class EChartsView {
         originY: Double,
         scale: Double
     ) -> [Double]? {
+        guard let g = _resolveInsideZoomGeom(dzModel) else { return nil }
+
+        // containPoint gate — upstream `roams.containsPoint` = `coordSysModel.coordinateSystem.containPoint`.
+        //   Narrowed to the CONCRETE Cartesian2D that hosts this axis (see the geom resolver).
+        guard g.cart.containPoint([originX, originY]) else { return nil }
+
+        // `this.range` — the current [start, end] percents (upstream saves it in `render`; here read live).
+        guard let lastRange = dzModel.getPercentRange(), lastRange.count == 2 else { return nil }
+        var range = lastRange
+
+        // getDirectionInfo['grid'] (roams.ts) with oldPoint = [0, 0], newPoint = [originX, originY].
+        let pixel = g.isX ? originX : originY     // newPoint[dim] - oldPoint[dim] (oldPoint = 0)
+
+        // The cursor as a PERCENT anchor within the current window (upstream `percentPoint`).
+        let percentPoint = (
+            g.signal > 0
+                ? (g.pixelStart + g.pixelLength - pixel)
+                : (pixel - g.pixelStart)
+            ) / g.pixelLength * (range[1] - range[0]) + range[0]
+
+        // Zoom around the anchor: `scale = Math.max(1 / e.scale, 0)`.
+        let zoomScale = Swift.max(1 / scale, 0)
+        range[0] = (range[0] - percentPoint) * zoomScale + percentPoint
+        range[1] = (range[1] - percentPoint) * zoomScale + percentPoint
+
+        // Restrict range (min/maxSpan) — upstream `findRepresentativeAxisProxy().getMinMaxSpan()`.
+        let minMaxSpan = g.proxy.getMinMaxSpan()
+        sliderMove(0, &range, [0, 100], .at(0), minMaxSpan.minSpan, minMaxSpan.maxSpan)
+
+        // Only emit when the window actually changed (upstream returns `undefined` otherwise).
+        if lastRange[0] != range[0] || lastRange[1] != range[1] {
+            return range
+        }
+        return nil
+    }
+
+    // ------------------------------------------------------------------------
+    // _resolveInsideZoomGeom — the SHARED cartesian direction context for an inside dataZoom, factored out
+    //   of the wheel-zoom + pan paths. Faithful to `roams.getDirectionInfo.grid` (InsideZoomView.ts): the
+    //   grid rect + the axis dim/inverse fix `pixelLength`/`pixelStart`/`signal`; NO cursor is baked in, so
+    //   both the zoom (anchor point) and pan (drag delta) callers supply their own `pixel`. Returns `nil`
+    //   for a non-cartesian (polar/single) axis — PORT-TODO, deferred.
+    //
+    //   DEVIATION (same as the wheel path): upstream drives the recompute off `coordSysInfo.axisModels[0]`
+    //   (from `collectReferCoordSysModelInfo`); in this slim port the stand-in axis models don't carry the
+    //   model-level grid referring link, so we resolve the target axis via the dataZoom's REPRESENTATIVE
+    //   axis proxy (the same path `dataZoomProcessor` uses). PORT-TODO: multi-axis-per-grid grouping.
+    // ------------------------------------------------------------------------
+    private struct InsideZoomGeom {
+        let isX: Bool
+        let pixelLength: Double
+        let pixelStart: Double
+        let signal: Double
+        let cart: Cartesian2D
+        let proxy: AxisProxy
+    }
+
+    private func _resolveInsideZoomGeom(_ dzModel: InsideZoomModel) -> InsideZoomGeom? {
         guard let proxy = dzModel.findRepresentativeAxisProxy() else { return nil }
         let axisModel = proxy.getAxisModel()
         // Narrow to the CONCRETE Axis2D (protocol-witness trap): `.dim`/`.inverse`/`.grid`/`.index`.
@@ -389,56 +470,143 @@ public final class EChartsView {
             return nil
         }
         let grid = axis.grid!
-
-        // containPoint gate — upstream `roams.containsPoint` = `coordSysModel.coordinateSystem.containPoint`.
-        //   Narrow to the CONCRETE Cartesian2D that hosts this axis.
+        // Narrow to the CONCRETE Cartesian2D that hosts this axis (containPoint / coord system).
         let cartesian = (axis.dim == "x"
             ? grid.getCartesian(axis.index, nil)
             : grid.getCartesian(nil, axis.index)) ?? grid.getCartesians().first
-        guard let cart = cartesian, cart.containPoint([originX, originY]) else {
+        guard let cart = cartesian else { return nil }
+
+        let rect = grid.getRect()
+        let isX = axis.dim == "x"
+        let pixelLength = isX ? rect.width : rect.height
+        let pixelStart = isX ? rect.x : rect.y
+        let signal: Double = isX ? (axis.inverse ? 1 : -1) : (axis.inverse ? -1 : 1)
+        return InsideZoomGeom(
+            isX: isX, pixelLength: pixelLength, pixelStart: pixelStart,
+            signal: signal, cart: cart, proxy: proxy
+        )
+    }
+
+    // ------------------------------------------------------------------------
+    // _bindInsidePan — Phase 39. Wire the drag (mousedown → mousemove → mouseup) → inside-dataZoom PAN.
+    //   Mirrors `RoamController`'s `_mousedownHandler`/`_mousemoveHandler`/`_mouseupHandler` state machine
+    //   (the `pan` branch), reusing the same Phase-32 `{type:'dataZoom', batch}` action as the wheel-zoom.
+    //   Binding APPROACH is identical to Phase-38 (`EChartsView` owns the zr binding; no live per-component
+    //   `InsideZoomView`). ctx `nil` + `[weak self]` (Phase-33 retain-cycle rule).
+    //
+    //   PORT-TODO (DEFERRED): cursor style (`cursorGrab`/`cursorGrabbing`), the interactionMutex globalPan,
+    //     `draggable` element opt-out, middle/right-button guard, throttle + the animated dataZoom tween,
+    //     modifier-key gating of `moveOnMouseMove: 'ctrl'|'shift'|'alt'`, polar/single roam.
+    // ------------------------------------------------------------------------
+    private func _bindInsidePan() {
+        _ = zr.on("mousedown", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            self._handleInsidePanDown(e)
             return nil
+        }, nil)
+        _ = zr.on("mousemove", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            self._handleInsidePanMove(e)
+            return nil
+        }, nil)
+        _ = zr.on("mouseup", { [weak self] _, _ in
+            self?._insideZoomDrag = nil            // upstream `_mouseupHandler`: `this._dragging = false`.
+            return nil
+        }, nil)
+        _ = zr.on("globalout", { [weak self] _, _ in
+            self?._insideZoomDrag = nil            // leaving the canvas ends the drag.
+            return nil
+        }, nil)
+    }
+
+    /// mousedown — begin a drag iff the cursor is over a coord system hosting an inside dataZoom that
+    /// permits `moveOnMouseMove` (upstream `_mousedownHandler` → `_checkPointer` containsPoint, then
+    /// `_dragging = true` with `_x`/`_y` = the down point).
+    private func _handleInsidePanDown(_ e: ElementEvent) {
+        guard let ecModel = ec.getModel() else { return }
+        let x = e.offsetX
+        let y = e.offsetY
+        var eligible = false
+        ecModel.eachComponent("dataZoom") { modelItem, _ in
+            guard let dzModel = modelItem as? InsideZoomModel else { return }
+            // Behavior gate — upstream `event.isAvailableBehavior('moveOnMouseMove', ...)` +
+            //   `!dzInfo.model.get('disabled', true)`. `moveOnMouseMove === false` disables pan; any other
+            //   value (true / 'ctrl' / 'shift' / …) enables (modifier-key gating DEFERRED). Note zoomLock
+            //   maps to controlType 'move' upstream, i.e. it disables ZOOM not PAN — so it is NOT checked.
+            if (dzModel.get("disabled", true) as? Bool) == true { return }
+            if (dzModel.get("moveOnMouseMove", true) as? Bool) == false { return }
+            if dzModel.noTarget() { return }
+            guard let g = self._resolveInsideZoomGeom(dzModel) else { return }
+            if g.cart.containPoint([x, y]) { eligible = true }
+        }
+        if eligible {
+            _insideZoomDrag = (lastX: x, lastY: y)
+        }
+    }
+
+    /// mousemove WHILE dragging — shift every eligible inside dataZoom's window by the drag delta, dispatch
+    /// ONE `dataZoom` batch, and advance the drag anchor (upstream `_mousemoveHandler` writes `_x = x`).
+    /// A no-op when not dragging, so a plain hover mousemove behaves exactly as before Phase 39.
+    private func _handleInsidePanMove(_ e: ElementEvent) {
+        guard let drag = _insideZoomDrag, let ecModel = ec.getModel() else { return }
+        let newX = e.offsetX
+        let newY = e.offsetY
+        let oldX = drag.lastX
+        let oldY = drag.lastY
+
+        var batch: [PayloadItem] = []
+        ecModel.eachComponent("dataZoom") { modelItem, _ in
+            guard let dzModel = modelItem as? InsideZoomModel else { return }
+            if (dzModel.get("disabled", true) as? Bool) == true { return }
+            if (dzModel.get("moveOnMouseMove", true) as? Bool) == false { return }
+            if dzModel.noTarget() { return }
+            guard let newRange = self._computeInsidePanRange(
+                dzModel, oldX: oldX, oldY: oldY, newX: newX, newY: newY
+            ) else { return }
+            var item = PayloadItem()
+            item.other["dataZoomId"] = dzModel.id
+            item.other["start"] = newRange[0]
+            item.other["end"] = newRange[1]
+            batch.append(item)
         }
 
-        // `this.range` — the current [start, end] percents (upstream saves it in `render`; here read live).
+        // Advance the anchor every move (upstream sets `_x = x; _y = y` before triggering 'pan'), even when
+        //   the window was clamped and produced no batch — so the NEXT delta is measured from here.
+        _insideZoomDrag = (lastX: newX, lastY: newY)
+
+        if !batch.isEmpty {
+            var payload = Payload(type: "dataZoom")
+            payload.batch = batch
+            ec.dispatchAction(payload)
+            _ = zr.storage.getDisplayList(true)
+            zr.refresh()
+        }
+    }
+
+    /// Compute the pan-shifted [start, end] window for ONE inside-dataZoom, or `nil` if unchanged. Faithful
+    /// port of `InsideZoomView.getRangeHandlers.pan` (`makeMover`) + `roams.getDirectionInfo.grid`: the
+    /// percent delta = `signal * (range[1]-range[0]) * pixel / pixelLength` (pixel = the drag delta along
+    /// the axis dim), then `sliderMove(percentDelta, range, [0,100], 'all')` moves the WHOLE window (both
+    /// handles), clamped into [0,100] with the span preserved. NO containPoint gate here — upstream's pan
+    /// handler does not re-check contains during a drag (the mouse may leave the target while moving).
+    private func _computeInsidePanRange(
+        _ dzModel: InsideZoomModel,
+        oldX: Double,
+        oldY: Double,
+        newX: Double,
+        newY: Double
+    ) -> [Double]? {
+        guard let g = _resolveInsideZoomGeom(dzModel) else { return nil }
         guard let lastRange = dzModel.getPercentRange(), lastRange.count == 2 else { return nil }
         var range = lastRange
 
-        // getDirectionInfo['grid'] (roams.ts) with oldPoint = [0, 0], newPoint = [originX, originY].
-        let rect = grid.getRect()
-        let pixel: Double
-        let pixelLength: Double
-        let pixelStart: Double
-        let signal: Double
-        if axis.dim == "x" {
-            pixel = originX                       // newPoint[0] - oldPoint[0]
-            pixelLength = rect.width
-            pixelStart = rect.x
-            signal = axis.inverse ? 1 : -1
-        }
-        else { // axis.dim === 'y'
-            pixel = originY                       // newPoint[1] - oldPoint[1]
-            pixelLength = rect.height
-            pixelStart = rect.y
-            signal = axis.inverse ? -1 : 1
-        }
+        // getDirectionInfo['grid'] with oldPoint = [oldX, oldY], newPoint = [newX, newY].
+        let pixel = g.isX ? (newX - oldX) : (newY - oldY)
 
-        // The cursor as a PERCENT anchor within the current window (upstream `percentPoint`).
-        let percentPoint = (
-            signal > 0
-                ? (pixelStart + pixelLength - pixel)
-                : (pixel - pixelStart)
-            ) / pixelLength * (range[1] - range[0]) + range[0]
+        // makeMover's percentDelta, then sliderMove('all') = move both handles (whole window).
+        let percentDelta = g.signal * (range[1] - range[0]) * pixel / g.pixelLength
+        sliderMove(percentDelta, &range, [0, 100], .all)
 
-        // Zoom around the anchor: `scale = Math.max(1 / e.scale, 0)`.
-        let zoomScale = Swift.max(1 / scale, 0)
-        range[0] = (range[0] - percentPoint) * zoomScale + percentPoint
-        range[1] = (range[1] - percentPoint) * zoomScale + percentPoint
-
-        // Restrict range (min/maxSpan) — upstream `findRepresentativeAxisProxy().getMinMaxSpan()`.
-        let minMaxSpan = proxy.getMinMaxSpan()
-        sliderMove(0, &range, [0, 100], .at(0), minMaxSpan.minSpan, minMaxSpan.maxSpan)
-
-        // Only emit when the window actually changed (upstream returns `undefined` otherwise).
         if lastRange[0] != range[0] || lastRange[1] != range[1] {
             return range
         }
