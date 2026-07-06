@@ -681,6 +681,7 @@ public final class EChartsSlim: EChartsType {
         //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; the
         //   axisPointer model itself is a `[String: Any]` stub (see TooltipModel.swift PORT-TODO).
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
+        installTooltipActions(EChartsSlim._registers)                      // registerAction('showTip'/'hideTip', noop)
 
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models

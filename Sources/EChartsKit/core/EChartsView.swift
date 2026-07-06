@@ -81,6 +81,33 @@ public final class EChartsView {
     private var _rootAdded = false
 
     // ------------------------------------------------------------------------
+    // tooltipView — Phase 34. `EChartsView` OWNS the (slim, trigger:'item') `TooltipView`; upstream a
+    //   `ComponentView` reaches the live zr via `api.getZr()`, but `EChartsSlim` has no live zr, so the
+    //   view is constructed over THIS view's live `zr` and its `TooltipRichContent` ZRText floats above
+    //   `ec.getRoot()` (added to `zr` directly, NOT the ec render group — so a re-render does not wipe it
+    //   and `findHover` still hit-tests the chart bars beneath). Built lazily on first hover (the global
+    //   `TooltipModel` may not exist until `setOption` has run). Public so a headless test can assert the
+    //   tooltip appeared (`view.tooltipView`).
+    // ------------------------------------------------------------------------
+    public private(set) var tooltipView: TooltipView?
+
+    /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
+    private func _ensureTooltipView() -> TooltipView? {
+        guard let ecModel = ec.getModel() else { return nil }
+        let view: TooltipView
+        if let existing = tooltipView {
+            view = existing
+        }
+        else {
+            view = TooltipView(zr: zr, ecModel: ecModel)
+            tooltipView = view
+        }
+        // Rebind (idempotent) so a rebuilt model / late `setOption` refreshes the merge base.
+        view.setModel(ecModel)
+        return view
+    }
+
+    // ------------------------------------------------------------------------
     // init. Upstream `new ECharts(dom, theme, opts)` builds `this._zr = zrender.init(dom, {...})` then
     //   `this._initEvents()`. Here the `ZRender` is built via the ported `zrender.init(...)` helper with
     //   an INJECTED painter (headless by default), and `ec.getRoot()` is synced into the zr so the zr
@@ -143,6 +170,10 @@ public final class EChartsView {
                 states.enterEmphasisWhenMouseOver(dispatcher, e)
                 self.zr.refresh()
             }
+            // Phase 34: ALSO drive the tooltip. Independent of the emphasis dispatcher walk (upstream the
+            //   tooltip trigger reads the hovered element's ECData directly), so a hover fires BOTH the
+            //   emphasis highlight AND the tooltip-on-hover.
+            self._showTooltipForHover(e)
             return nil
         }, nil)
 
@@ -153,6 +184,9 @@ public final class EChartsView {
                 states.leaveEmphasisWhenMouseOut(dispatcher, e)
                 self.zr.refresh()
             }
+            // Phase 34: hide the tooltip when the pointer leaves the element (upstream `_hide`).
+            self.tooltipView?.hide()
+            self.zr.refresh()
             return nil
         }, nil)
 
@@ -191,6 +225,34 @@ public final class EChartsView {
             cur = el.__hostTarget ?? (el.parent as? Element)
         }
         return found
+    }
+
+    // ------------------------------------------------------------------------
+    // _showTooltipForHover — Phase 34. Walk up from the hovered element to the nearest ancestor carrying
+    //   ECData with a seriesIndex + dataIndex (mirrors upstream `_tryShow`'s dispatcher det), resolve the
+    //   `seriesModel`, and drive `TooltipView.tryShow` with the pointer (`e.offsetX/offsetY` are the zr
+    //   coords — see Handler.makeEventPacket). No ECData → nothing to show (bail).
+    // ------------------------------------------------------------------------
+    private func _showTooltipForHover(_ e: ElementEvent) {
+        guard let ecModel = ec.getModel() else { return }
+        var cur: Element? = e.target
+        while let el = cur {
+            let ecData = innerStore.getECData(el)
+            if let dataIndex = ecData.dataIndex, let seriesIndex = ecData.seriesIndex,
+               let seriesModel = ecModel.getSeriesByIndex(seriesIndex),
+               let tooltip = _ensureTooltipView() {
+                tooltip.tryShow(
+                    event: e,
+                    seriesModel: seriesModel,
+                    dataIndex: dataIndex,
+                    dataType: ecData.dataType,
+                    point: [e.offsetX, e.offsetY]
+                )
+                zr.refresh()
+                return
+            }
+            cur = el.__hostTarget ?? (el.parent as? Element)
+        }
     }
 
     // ------------------------------------------------------------------------
