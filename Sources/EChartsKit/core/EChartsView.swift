@@ -230,6 +230,9 @@ public final class EChartsView {
         //   `axisTrigger` for the tooltip trigger:"axis" combined tooltip (see `_bindAxisPointerListeners`).
         _bindAxisPointerListeners()
 
+        // Phase 38: the mouse-wheel → inside-dataZoom interactive zoom (see `_bindInsideZoom`).
+        _bindInsideZoom()
+
         // PORT-TODO (DEFERRED): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
         //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + a message bus.
         // PORT-TODO (DEFERRED): `globalout` (no `e.target`) → `allLeaveBlur` / leave-emphasis reset.
@@ -268,6 +271,178 @@ public final class EChartsView {
             //   visual crosshair(s) from those models, PARALLEL to the axis tooltip.
             self._updateAxisPointers(ecModel)
         })
+    }
+
+    // ------------------------------------------------------------------------
+    // _bindInsideZoom — Phase 38. Wire the mouse WHEEL → inside-dataZoom interactive zoom.
+    //
+    //   WIRING APPROACH (documented deviation): upstream, `InsideZoomView.render` calls
+    //   `roams.setViewInfoToCoordSysRecord`, and `roams.installDataZoomRoamProcessor` builds a
+    //   `RoamController` PER coordinate system (`RoamController(api.getZr())`) that binds
+    //   `zr.on('mousewheel')` and, on a wheel, computes each inside-dataZoom's new range via
+    //   `getRangeHandlers.zoom` (InsideZoomView.ts) and dispatches ONE throttled `{type:'dataZoom', batch}`.
+    //   In THIS slim port there is no live per-component `InsideZoomView` hosting a zr at render time
+    //   (EChartsSlim is zr-less), so — exactly like the Phase-34/35 tooltip & Phase-36 axisPointer —
+    //   `EChartsView` OWNS the wheel binding and reproduces the zoom MATH directly against the live `zr`.
+    //
+    //   FAITHFULNESS: the scale factor (`RoamController._mousewheelHandler`) and the range recompute
+    //   (`InsideZoomView.getRangeHandlers.zoom` + `roams.getDirectionInfo.grid`) are ported exactly; the
+    //   emitted action mirrors `roams.dispatchAction` (`{type:'dataZoom', batch:[{dataZoomId,start,end}]}`).
+    //
+    //   PORT-TODO (DEFERRED, mirroring upstream `RoamController`/`roams`):
+    //     - pan/drag (`moveOnMouseMove` → getRangeHandlers.pan) and wheel-scroll-move (`moveOnMouseWheel`
+    //       → getRangeHandlers.scrollMove); pinch/touch zoom (`_pinchHandler`).
+    //     - the full `RoamController` state machine + `throttleUtil.createOrUpdate` throttle + the
+    //       `{easing:'cubicOut', duration:100}` animated dataZoom transition (the slim driver renders the
+    //       new window synchronously, so no animated tween yet).
+    //     - polar / singleAxis coord systems (`getDirectionInfo.polar` / `.singleAxis`): only the grid
+    //       (cartesian) direction info is ported here.
+    //     - the SliderZoomView on-screen slider widget.
+    //   ctx is `nil` + `[weak self]` (Phase-33 retain-cycle rule: zr→handler→eventful is owned by self).
+    // ------------------------------------------------------------------------
+    private func _bindInsideZoom() {
+        _ = zr.on("mousewheel", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            self._handleInsideZoomWheel(e)
+            return nil
+        }, nil)
+    }
+
+    /// The wheel handler proper. Mirrors `RoamController._mousewheelHandler` (the zoom branch) + the
+    /// `roams.createCoordSysRecord` fan-out that builds the `dataZoom` action batch.
+    private func _handleInsideZoomWheel(_ e: ElementEvent) {
+        guard let ecModel = ec.getModel() else { return }
+
+        // upstream `RoamController._mousewheelHandler`: `e.wheelDelta` is the zr-normalized wheel delta
+        //   (Handler.makeEventPacket sets `packet.wheelDelta = event.zrDelta`). `wheelDelta === 0` → no-op.
+        let wheelDelta = e.wheelDelta ?? 0
+        if wheelDelta == 0 { return }
+        let originX = e.offsetX
+        let originY = e.offsetY
+
+        // factor / scale exactly as `RoamController._mousewheelHandler` (zoom branch): bigger |delta|
+        //   (mouse wheel vs. touchpad) → stronger zoom. wheelDelta > 0 → zoom IN (scale > 1).
+        let absWheelDelta = abs(wheelDelta)
+        let factor: Double = absWheelDelta > 3 ? 1.4 : absWheelDelta > 1 ? 1.2 : 1.1
+        let scale = wheelDelta > 0 ? factor : 1 / factor
+
+        // Collect one batch item per affected inside-dataZoom (upstream `roams`' per-coordSys batch),
+        //   then dispatch ONCE after the walk so the mid-iteration `update()` cannot invalidate the models
+        //   we are still iterating.
+        var batch: [PayloadItem] = []
+
+        ecModel.eachComponent("dataZoom") { modelItem, _ in
+            guard let dzModel = modelItem as? InsideZoomModel else { return }
+            // Behavior gate — upstream `event.isAvailableBehavior(dzInfo.model.option)` (zoomOnMouseWheel)
+            //   + `!dzInfo.model.get('disabled', true)`. Treat `zoomOnMouseWheel === false` as disabled;
+            //   any other value (true / 'ctrl' / 'shift' / …) enables (modifier-key gating is DEFERRED).
+            if (dzModel.get("disabled", true) as? Bool) == true { return }
+            if (dzModel.get("zoomOnMouseWheel", true) as? Bool) == false { return }
+            if dzModel.noTarget() { return }
+
+            guard let newRange = self._computeInsideZoomRange(
+                dzModel, originX: originX, originY: originY, scale: scale
+            ) else { return }
+            var item = PayloadItem()
+            item.other["dataZoomId"] = dzModel.id
+            item.other["start"] = newRange[0]
+            item.other["end"] = newRange[1]
+            batch.append(item)
+        }
+
+        if !batch.isEmpty {
+            // upstream `roams.dispatchAction`: `{type:'dataZoom', animation:{easing:'cubicOut',
+            //   duration:100}, batch}`. The slim driver renders the new window synchronously (no animated
+            //   dataZoom tween yet — PORT-TODO), so the animation part is omitted; the batch is faithful.
+            var payload = Payload(type: "dataZoom")
+            payload.batch = batch
+            ec.dispatchAction(payload)
+            // A re-render rebuilt `ec.getRoot()`'s children (stable Group identity); re-flatten the zr
+            //   display list + repaint so the live zr reflects the new (shrunk/grown) data window.
+            _ = zr.storage.getDisplayList(true)
+            zr.refresh()
+        }
+    }
+
+    /// Compute the new [start, end] percent window for ONE inside-dataZoom, or `nil` if the cursor is
+    /// outside its coord system or the window would not change. Faithful port of
+    /// `InsideZoomView.getRangeHandlers.zoom` + `roams.getDirectionInfo.grid` (cartesian only).
+    ///
+    /// DEVIATION: upstream drives the recompute off `coordSysInfo.axisModels[0]` (from
+    /// `collectReferCoordSysModelInfo`, which resolves the coord-sys via the axis model's
+    /// `getReferringComponents('grid')`). In this slim port the stand-in axis models don't carry a
+    /// model-level grid referring link, so `collectReferCoordSysModelInfo` yields no coord systems — we
+    /// instead resolve the target axis via the dataZoom's REPRESENTATIVE axis proxy (the same path
+    /// `dataZoomProcessor` uses). For a single-axis inside dataZoom (the common cartesian case) this IS
+    /// `axisModels[0]`. PORT-TODO: multi-axis-per-grid grouping + polar/single coord systems.
+    private func _computeInsideZoomRange(
+        _ dzModel: InsideZoomModel,
+        originX: Double,
+        originY: Double,
+        scale: Double
+    ) -> [Double]? {
+        guard let proxy = dzModel.findRepresentativeAxisProxy() else { return nil }
+        let axisModel = proxy.getAxisModel()
+        // Narrow to the CONCRETE Axis2D (protocol-witness trap): `.dim`/`.inverse`/`.grid`/`.index`.
+        guard let axis = axisModel.axis as? Axis2D else {
+            // PORT-TODO: polar (RadiusAxis/AngleAxis) & singleAxis direction info deferred.
+            return nil
+        }
+        let grid = axis.grid!
+
+        // containPoint gate — upstream `roams.containsPoint` = `coordSysModel.coordinateSystem.containPoint`.
+        //   Narrow to the CONCRETE Cartesian2D that hosts this axis.
+        let cartesian = (axis.dim == "x"
+            ? grid.getCartesian(axis.index, nil)
+            : grid.getCartesian(nil, axis.index)) ?? grid.getCartesians().first
+        guard let cart = cartesian, cart.containPoint([originX, originY]) else {
+            return nil
+        }
+
+        // `this.range` — the current [start, end] percents (upstream saves it in `render`; here read live).
+        guard let lastRange = dzModel.getPercentRange(), lastRange.count == 2 else { return nil }
+        var range = lastRange
+
+        // getDirectionInfo['grid'] (roams.ts) with oldPoint = [0, 0], newPoint = [originX, originY].
+        let rect = grid.getRect()
+        let pixel: Double
+        let pixelLength: Double
+        let pixelStart: Double
+        let signal: Double
+        if axis.dim == "x" {
+            pixel = originX                       // newPoint[0] - oldPoint[0]
+            pixelLength = rect.width
+            pixelStart = rect.x
+            signal = axis.inverse ? 1 : -1
+        }
+        else { // axis.dim === 'y'
+            pixel = originY                       // newPoint[1] - oldPoint[1]
+            pixelLength = rect.height
+            pixelStart = rect.y
+            signal = axis.inverse ? -1 : 1
+        }
+
+        // The cursor as a PERCENT anchor within the current window (upstream `percentPoint`).
+        let percentPoint = (
+            signal > 0
+                ? (pixelStart + pixelLength - pixel)
+                : (pixel - pixelStart)
+            ) / pixelLength * (range[1] - range[0]) + range[0]
+
+        // Zoom around the anchor: `scale = Math.max(1 / e.scale, 0)`.
+        let zoomScale = Swift.max(1 / scale, 0)
+        range[0] = (range[0] - percentPoint) * zoomScale + percentPoint
+        range[1] = (range[1] - percentPoint) * zoomScale + percentPoint
+
+        // Restrict range (min/maxSpan) — upstream `findRepresentativeAxisProxy().getMinMaxSpan()`.
+        let minMaxSpan = proxy.getMinMaxSpan()
+        sliderMove(0, &range, [0, 100], .at(0), minMaxSpan.minSpan, minMaxSpan.maxSpan)
+
+        // Only emit when the window actually changed (upstream returns `undefined` otherwise).
+        if lastRange[0] != range[0] || lastRange[1] != range[1] {
+            return range
+        }
+        return nil
     }
 
     // ------------------------------------------------------------------------
@@ -436,8 +611,26 @@ public final class EChartsView {
         case "click":     zr.handler.click(raw)
         case "mousedown": zr.handler.mousedown(raw)
         case "mouseup":   zr.handler.mouseup(raw)
+        case "mousewheel", "wheel": zr.handler.mousewheel(raw)
         default:          zr.handler.mousemove(raw)
         }
+    }
+
+    // ------------------------------------------------------------------------
+    // _injectWheelForTest — headless WHEEL input hook (Phase 38). Builds a synthetic zr "mousewheel"
+    //   `ZRRawEvent` carrying `zrDelta` (Handler.makeEventPacket maps it to `ElementEvent.wheelDelta`,
+    //   which `_handleInsideZoomWheel` reads) + the cursor pixel, and forwards it through the live
+    //   `zr.handler` — so a test can drive the inside-dataZoom wheel-zoom without a native input bridge.
+    //   `zrDelta > 0` zooms IN (window shrinks), `< 0` zooms OUT.
+    // ------------------------------------------------------------------------
+    public func _injectWheelForTest(zrDelta: Double, zrX: Double, zrY: Double) {
+        let raw = ZRRawEvent()
+        raw.type = "mousewheel"
+        raw.zrX = zrX
+        raw.zrY = zrY
+        raw.zrDelta = zrDelta
+        raw.which = 1
+        zr.handler.mousewheel(raw)
     }
 
     /// Coerce a JS-number-ish payload value (Int or Double) to Double (small numbers box as `Int`).
