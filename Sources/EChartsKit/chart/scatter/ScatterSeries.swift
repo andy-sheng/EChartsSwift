@@ -92,6 +92,38 @@ open class ScatterSeriesModel: SeriesModel {
         self.hasSymbolVisual = true
     }
 
+    // Scatter's legend swatch is its data symbol (a circle by default), not the default filled rect.
+    //   Build a single symbol tinted with the series color; hollow variants ('emptyCircle') stroke +
+    //   white-fill like the chart symbols.
+    open override func getLegendIcon(_ opt: LegendIconParams) -> Element? {
+        let seriesColor: String? = {
+            guard let s = self.getData().getVisual("style") as? [String: Any] else { return nil }
+            for key in ["fill", "stroke"] {
+                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return c }
+                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return str }
+            }
+            return nil
+        }()
+        let colorZR: ZRenderKit.ZRColor? = seriesColor.map { .string($0) }
+
+        let visualType = (self.getData().getVisual("symbol") as? String) ?? (self.get("symbol", false) as? String)
+        let symbolType = (visualType == nil || visualType == "none") ? "circle" : visualType!
+        let size = opt.itemHeight
+        guard let sym = symbol.createSymbol(
+            symbolType, (opt.itemWidth - size) / 2, 0, size, size, colorZR
+        ) as? Path else { return nil }
+        if symbolType.contains("empty") {
+            sym.pathStyle.stroke = colorZR
+            sym.pathStyle.fill = .string("#fff")
+            sym.pathStyle.lineWidth = 2
+        } else {
+            sym.pathStyle.fill = colorZR
+        }
+        let group = Group()
+        _ = group.add(sym)
+        return group
+    }
+
     // upstream: getInitialData(option, ecModel): SeriesData {
     //     return createSeriesData(null, this, { useEncodeDefaulter: true });
     // }
