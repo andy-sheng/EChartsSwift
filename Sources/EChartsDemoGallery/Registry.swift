@@ -122,5 +122,18 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_line_boundary_gap,     // Line (boundaryGap false)
         EChartsDemoRegistry.demo_themeriver_three,      // ThemeRiver (3 series)
         EChartsDemoRegistry.demo_boxplot_single,        // Boxplot (single)
+        // gallery-batch8 — label / symbol / split-area / depth variations (goal clause 2).
+        EChartsDemoRegistry.demo_bar_label_top,         // Bar (top labels)
+        EChartsDemoRegistry.demo_line_no_symbol,        // Line (no symbols)
+        EChartsDemoRegistry.demo_pie_label_inside,      // Pie (inside labels)
+        EChartsDemoRegistry.demo_scatter_dense,         // Scatter (60 points)
+        EChartsDemoRegistry.demo_radar_split_area,      // Radar (split area)
+        EChartsDemoRegistry.demo_graph_labeled,         // Graph (labels)
+        EChartsDemoRegistry.demo_sankey_labeled,        // Sankey (labels)
+        EChartsDemoRegistry.demo_tree_top_bottom,       // Tree (TB orient)
+        EChartsDemoRegistry.demo_treemap_three,         // Treemap (three branch)
+        EChartsDemoRegistry.demo_sunburst_labeled,      // Sunburst (labels)
+        EChartsDemoRegistry.demo_bar_min_height,        // Bar (barMinHeight)
+        EChartsDemoRegistry.demo_line_two_smooth,       // Line (two smooth)
     ]
 }
