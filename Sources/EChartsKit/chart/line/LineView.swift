@@ -118,13 +118,17 @@ open class LineView: ChartView {
             if baselinePts.count == points.count {
                 // Area top edge follows the same step staircase as the line (when stepped).
                 let topPts = steppedPoints ?? points
-                var polyPts = topPts
-                polyPts.append(contentsOf: baselinePts.reversed())
-                var pShape = PolygonShape()
-                pShape.points = polyPts
-                if steppedPoints == nil { pShape.smooth = smoothVal }
-                let areaPoly = Polygon()
-                areaPoly.setShape(pShape)
+                // Use the ECPolygon-style band (see ThemeRiverView): the top edge is smoothed while the
+                //   baseline edge and the vertical end caps stay straight. A single closed Polygon ring
+                //   with `smooth` instead rounds the bottom corners into blobs that bulge below the
+                //   baseline at the first/last points (the line-area-gradient artifact). Step areas keep
+                //   smooth 0 (staircase). The degenerate branch of ThemeRiverBand also covers the stepped
+                //   case where the top edge has more points than the baseline.
+                var bandShape = ThemeRiverBandShape()
+                bandShape.upperPoints = topPts
+                bandShape.lowerPoints = baselinePts
+                bandShape.smooth = steppedPoints == nil ? smoothVal : 0
+                let areaPoly = ThemeRiverBand(["shape": bandShape as PathShape])
                 areaPoly.name = "area"
                 var areaDict = areaStyleModel.getAreaStyle()
                 if areaDict["opacity"] == nil { areaDict["opacity"] = 0.7 }
