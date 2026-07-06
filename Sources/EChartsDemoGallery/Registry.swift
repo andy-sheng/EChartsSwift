@@ -42,5 +42,14 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_pie_rose,              // Pie (nightingale rose)
         EChartsDemoRegistry.demo_scatter_multi,         // Scatter (multi-series)
         EChartsDemoRegistry.demo_bar_datazoom_slider,   // DataZoom (slider + axis tooltip)
+        // gallery-batch2 — more echarts test/ scenarios (goal clause 2).
+        EChartsDemoRegistry.demo_bar_multi3,            // Bar (3 grouped series)
+        EChartsDemoRegistry.demo_line_dashed,           // Line (dashed lineStyle)
+        EChartsDemoRegistry.demo_scatter_large,         // Scatter (80-point cloud)
+        EChartsDemoRegistry.demo_pie_labeled,           // Pie (labels + label lines)
+        EChartsDemoRegistry.demo_radar_multi,           // Radar (3 overlaid series)
+        EChartsDemoRegistry.demo_line_multi5,           // Line (5 series)
+        EChartsDemoRegistry.demo_mix_bar_line,          // Bar+Line (mixed on one grid)
+        EChartsDemoRegistry.demo_area_two,              // Line (two area series)
     ]
 }
