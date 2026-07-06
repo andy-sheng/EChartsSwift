@@ -311,16 +311,25 @@ open class LegendView: ComponentView {
                         return
                     }
 
-                    // if (seriesModel.legendVisualProvider) { ... }
-                    if seriesModel.legendVisualProvider != nil {
-                        // PORT-TODO: DEFERRED — `visual/LegendVisualProvider` is NOT ported and
-                        //   `seriesModel.legendVisualProvider` is never assigned in this port (typed `Any?`;
-                        //   see LegendModel PORT-TODO + PieSeries). The provider branch resolves
-                        //   `provider.containName / indexOfName / getItemVisual('style'|'legendIcon')`, the
-                        //   transparent→0.2 alpha fix-up (`color.parse`/`color.stringify`), then calls
-                        //   `_createItem(..., {}, style, legendIcon, ...)` + click/hover wiring. Ported once
-                        //   the provider lands; today this branch is unreachable (provider == nil), so pie/
-                        //   funnel legend items are not drawn (consistent with current pie state).
+                    // if (seriesModel.legendVisualProvider) { ... }  — legend controls each DATA item
+                    //   (pie/radar/funnel): read the item's encoded style + legendIcon from the provider
+                    //   and build a legend item for it.
+                    if let provider = seriesModel.legendVisualProvider as? LegendVisualProviderLike {
+                        guard let name = name, provider.containName(name) else { return }
+                        let dataIdx = provider.indexOfName(name)
+                        let style = (provider.getItemVisual(dataIdx, "style") as? [String: Any]) ?? [:]
+                        let legendIcon = provider.getItemVisual(dataIdx, "legendIcon") as? String
+
+                        // PORT-TODO: the transparent-fill → 0.2-alpha fix-up (color.parse/stringify) and the
+                        //   click/mouseover/mouseout dispatch wiring are DEFERRED (interaction). The visible
+                        //   normal-state legend item is built faithfully.
+                        _ = self._createItem(
+                            seriesModel, name, Double(dataIndex),
+                            legendItemModel, legendModel, itemAlign,
+                            [:], style, legendIcon, selectMode, api
+                        )
+
+                        legendDrawnMap.set(name, true)
                     }
                 }
             }

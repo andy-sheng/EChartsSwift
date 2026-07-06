@@ -50,9 +50,8 @@ import ZRenderKit
 //   typed `Any?` on SeriesModel and is currently never assigned (see PieSeries PORT-TODO). This is
 //   the minimal shape `_updateData` consumes; nothing conforms yet, so the provider branch is
 //   effectively `isPotential = true` (safe fallback). Integrate: conform the real provider to this.
-public protocol LegendVisualProviderLike {
-    func getAllNames() -> [String]
-}
+// `LegendVisualProviderLike` is declared in visual/LegendVisualProvider.swift (the full surface:
+//   getAllNames / containName / indexOfName / getItemVisual).
 
 // type LegendDefaultSelectorOptionsProps = { type: string; title: string; };
 // const getDefaultSelectorOptions = function (ecModel: GlobalModel, type: string): LegendDefaultSelectorOptionsProps

@@ -104,13 +104,11 @@ open class RadarSeriesModel: SeriesModel {
 
         self.hasSymbolVisual = true
 
-        // Enable legend selection for each data item
-        // Use a function instead of direct access because data reference may changed
-        // this.legendVisualProvider = new LegendVisualProvider(
-        //     zrUtil.bind(this.getData, this), zrUtil.bind(this.getRawData, this)
-        // );
-        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend component deferred). Restore this
-        //   assignment once LegendVisualProvider lands; the two accessors bind to `getData`/`getRawData`.
+        // Enable legend selection for each data item (each radar polygon is a legend entry).
+        self.legendVisualProvider = LegendVisualProvider(
+            { [unowned self] in self.getData() },
+            { [unowned self] in self.getRawData() }
+        )
     }
 
     // upstream: getInitialData(option: RadarSeriesOption, ecModel: GlobalModel): SeriesData { ... }
