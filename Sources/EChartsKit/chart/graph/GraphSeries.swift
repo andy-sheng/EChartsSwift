@@ -413,8 +413,11 @@ open class GraphSeriesModel: SeriesModel {
             "top": "center",
             // right: null,
             // bottom: null,
-            // width: '80%',
-            // height: '80%',
+            // The graph view rect is inset to 80% of the container (centered) so the node symbols keep a
+            //   margin from the canvas edge after the bounding-box→viewRect fit (GraphViewCoordSys); an
+            //   un-inset full-canvas rect would clip the extreme nodes.
+            "width": "80%",
+            "height": "80%",
 
             "symbol": "circle",
             "symbolSize": 10.0,

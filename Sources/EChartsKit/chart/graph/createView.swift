@@ -67,20 +67,44 @@ public final class GraphViewCoordSys: CoordinateSystem {
 
     // Pixel view rect (the box the graph is laid out within). See DEVIATION note above.
     private let rect: BoundingRect
+    // The node bounding box (data space) that `dataToPoint` maps onto `rect`. `getViewRect` already
+    //   sized `rect` to the box's aspect ratio, so a plain box→rect stretch preserves the aspect
+    //   (this is the roam-less View transform: scale + translate, zoom = 1, no pan).
+    private let boxX: Double
+    private let boxY: Double
+    private let boxW: Double
+    private let boxH: Double
 
-    public init(_ viewRect: BoundingRect) {
+    public convenience init(_ viewRect: BoundingRect) {
+        // Identity box (box == viewRect) → dataToPoint is a pass-through. Kept for call sites that do not
+        //   yet have the node bounding box.
+        self.init(viewRect, viewRect.x, viewRect.y, viewRect.width, viewRect.height)
+    }
+
+    public init(_ viewRect: BoundingRect, _ boxX: Double, _ boxY: Double, _ boxW: Double, _ boxH: Double) {
         self.rect = BoundingRect(viewRect.x, viewRect.y, viewRect.width, viewRect.height)
+        self.boxX = boxX
+        self.boxY = boxY
+        self.boxW = boxW > 0 ? boxW : 1
+        self.boxH = boxH > 0 ? boxH : 1
     }
 
     public func getBoundingRect() -> BoundingRect? { return rect.clone() }
     public func getViewRect() -> BoundingRect? { return rect.clone() }
 
-    // PORT-TODO: real View applies the roam transform. Not exercised by the static render (see note);
-    //   identity stand-in returns the point/data unchanged so the faithful call shape is preserved.
+    // The roam-less View transform: map the node bounding box (data space) onto the pixel view rect.
+    //   Upstream builds this via `View.setBoundingRect` + `setViewRect` (createViewCoordSysSimply).
     public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double] {
-        if let p = data as? [Double] { return p }
-        if let p = data as? [Any] { return p.map { ($0 as? Double) ?? Double(($0 as? Int) ?? 0) } }
-        return [Double.nan, Double.nan]
+        var px = Double.nan, py = Double.nan
+        if let p = data as? [Double], p.count >= 2 { px = p[0]; py = p[1] }
+        else if let p = data as? [Any], p.count >= 2 {
+            px = (p[0] as? Double) ?? Double((p[0] as? Int) ?? 0)
+            py = (p[1] as? Double) ?? Double((p[1] as? Int) ?? 0)
+        } else { return [Double.nan, Double.nan] }
+        return [
+            (px - boxX) / boxW * rect.width + rect.x,
+            (py - boxY) / boxH * rect.height + rect.y
+        ]
     }
 
     public func pointToData(_ point: [Double], _ opt: Any?) -> Any? { return point }
@@ -183,7 +207,7 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
         // PORT-TODO(injectCoordSysByOption + real View deferred): assign the stand-in view coord sys onto
         //   the series so the layout stages (circular/simple) can read `type`/`getBoundingRect()`. Upstream
         //   assigns the coord sys through the CoordinateSystemManager pipeline; here we set it directly.
-        seriesModel.coordinateSystem = GraphViewCoordSys(viewRect)
+        seriesModel.coordinateSystem = GraphViewCoordSys(viewRect, min[0], min[1], bbWidth, bbHeight)
 
         viewList.append(viewCoordSys)
     }

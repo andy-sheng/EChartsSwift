@@ -151,9 +151,21 @@ open class GraphView: ChartView {
         //   `style` bag; item-level visuals override it when present).
         let seriesNodeStyle = data.getVisual("style") as? [String: Any]
 
+        // The node/edge layouts are in the graph's DATA space; the View coord maps them onto the pixel
+        //   view rect (fit-to-fill). Apply it here so `layout:'none'` graphs (raw x/y) fill the view like
+        //   upstream, instead of rendering at their raw coordinates. `fitPoint` is identity when there is
+        //   no view coord.
+        let viewCoord = seriesModel.coordinateSystem as? GraphViewCoordSys
+        func fitPoint(_ p: GraphPoint) -> GraphPoint {
+            guard let vc = viewCoord else { return p }
+            let m = vc.dataToPoint([p.x, p.y], nil)
+            return GraphPoint(x: m[0], y: m[1])
+        }
+
         for i in 0..<data.count() {
             // const layout = data.getItemLayout(i);  → `[x, y]` (node.setLayout([x, y])).
-            guard let pos = graphPointFromLayout(data.getItemLayout(i)) else { continue }
+            guard let raw = graphPointFromLayout(data.getItemLayout(i)) else { continue }
+            let pos = fitPoint(raw)
             if !pos.x.isFinite || !pos.y.isFinite { continue }
 
             let symbolType = (data.getItemVisual(i, "symbol") as? String)
@@ -239,8 +251,9 @@ open class GraphView: ChartView {
 
         for i in 0..<edgeData.count() {
             guard let pts = graphEdgePoints(edgeData.getItemLayout(i)) else { continue }
-            let p1 = pts.0
-            let p2 = pts.1
+            let p1 = fitPoint(pts.0)
+            let p2 = fitPoint(pts.1)
+            let cp = pts.2.map { fitPoint($0) }
             if !p1.x.isFinite || !p1.y.isFinite || !p2.x.isFinite || !p2.y.isFinite { continue }
 
             // const lineStyle = edgeItemModel.getModel('lineStyle').getLineStyle();
@@ -254,7 +267,7 @@ open class GraphView: ChartView {
             if let cs = graphColorString(edgeItemStyle?["stroke"]) { edgeStyle.stroke = .string(cs) }
 
             let edge: Path
-            if let cp = pts.2 {
+            if let cp = cp {
                 // BezierCurve — quadratic (single control point cpx1/cpy1; cpx2/cpy2 unset).
                 var shape = BezierCurveShape()
                 shape.x1 = p1.x
