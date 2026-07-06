@@ -144,17 +144,26 @@ public final class ContinuousView: VisualMapView {
     }
 
     private func _renderEndsText(_ group: Group, _ dataRangeText: [Any]?, _ endsIndex: Int) {
-        // if (!dataRangeText) { return; }
-        guard let dataRangeText = dataRangeText else {
+        let visualMapModel = self.visualMapModel!
+
+        // Compatible with ec2, text[0] maps to the high value, text[1] to the low value.
+        let text: String
+        if let dataRangeText = dataRangeText {
+            let rawText = dataRangeText.indices.contains(1 - endsIndex) ? dataRangeText[1 - endsIndex] : nil
+            text = rawText != nil ? stringifyAny(rawText) : ""
+        }
+        else if self._useHandle {
+            // A `calculable` visualMap without an explicit `text` shows its range-handle VALUES at the ends
+            //   (high at endsIndex 0, low at 1) — the '100'/'0' endpoint labels. Positioned here (in the
+            //   unflipped outer group) so they escape the bar group's scaleY:-1 mirror.
+            let vExtent = visualMapModel.getExtent()
+            let value = endsIndex == 0 ? Swift.max(vExtent[0], vExtent[1]) : Swift.min(vExtent[0], vExtent[1])
+            text = visualMapModel.formatValueText(value)
+        }
+        else {
             return
         }
 
-        // Compatible with ec2, text[0] map to high value, text[1] map low value.
-        // let text = dataRangeText[1 - endsIndex]; text = text != null ? text + '' : '';
-        let rawText = dataRangeText.indices.contains(1 - endsIndex) ? dataRangeText[1 - endsIndex] : nil
-        let text = rawText != nil ? stringifyAny(rawText) : ""
-
-        let visualMapModel = self.visualMapModel!
         let textGap = visualMapAsDouble(visualMapModel.get("textGap")) ?? 0
         let itemSize = visualMapModel.itemSize
 
@@ -232,9 +241,44 @@ public final class ContinuousView: VisualMapView {
         clipShape.r = .number(3)
         gradientBarGroup.setClipPath(Rect(["shape": clipShape as PathShape]))
 
-        // PORT-TODO: DEFERRED — handle thumbs/labels (`_createHandle` ×2) and the hover `_createIndicator`
-        //   (drag + indicator interaction). Their `textStyleModel.getTextRect('国')` sizing and `useHandle`
-        //   branch are part of the deferred widget.
+        // Calculable handles — STATIC form. The full drag/indicator widget is deferred, but a `calculable`
+        //   visualMap must still show the two range handles + their value labels (echarts draws them at the
+        //   current window ends; static = the full data extent). For a vertical bar the TOP handle marks the
+        //   high value, the BOTTOM the low (matching `_renderEndsText`'s high→low mapping). Each handle is a
+        //   thin bar tinted with that end's mapped color, with the formatted value beside it.
+        if self._useHandle {
+            let vExtent = visualMapModel.getExtent()
+            let highVal = Swift.max(vExtent[0], vExtent[1])
+            let lowVal = Swift.min(vExtent[0], vExtent[1])
+            // The gradient bar renders colorStops along y=0→1 (top→bottom); its top end is the high value,
+            //   so the top handle uses colorStops.first, the bottom colorStops.last (matching the bar).
+            let highColor = colorStops.first?.color ?? "#000"
+            let lowColor = colorStops.last?.color ?? "#000"
+            let textStyleModel = visualMapModel.textStyleModel
+            let isVertical = self._orient != "horizontal"
+            for endsIndex in 0..<2 {
+                let isHighEnd = endsIndex == 0
+                let value = isHighEnd ? highVal : lowVal
+                let color = isHighEnd ? highColor : lowColor
+
+                var hShape = RectShape()
+                if isVertical {
+                    let y = isHighEnd ? 0.0 : itemSize[1]
+                    hShape.x = -1; hShape.y = y - 2; hShape.width = itemSize[0] + 2; hShape.height = 4
+                } else {
+                    let x = isHighEnd ? itemSize[0] : 0.0
+                    hShape.x = x - 2; hShape.y = -1; hShape.width = 4; hShape.height = itemSize[1] + 2
+                }
+                let handle = Rect(["shape": hShape as PathShape])
+                handle.pathStyle.fill = .string(color)
+                handle.pathStyle.stroke = .string("#fff")
+                handle.pathStyle.lineWidth = 1
+                _ = mainGroup.add(handle)
+                // The value labels are drawn by `_renderEndsText` (in the UNFLIPPED outer group via
+                //   _applyTransform) so they are not mirrored by this group's scaleY:-1 transform.
+                _ = (value, textStyleModel, isVertical)
+            }
+        }
 
         _ = targetGroup.add(mainGroup)
     }
