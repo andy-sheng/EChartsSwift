@@ -429,33 +429,36 @@ open class LegendView: ComponentView {
 
         let textStyleModel = legendItemModel.getModel("textStyle")
 
-        // if (zrUtil.isFunction(seriesModel.getLegendIcon) && (!legendIconType || legendIconType === 'inherit')) {
-        //   // Series has specific way to define legend icon
-        //   itemGroup.add(seriesModel.getLegendIcon({...}));
-        // }
-        // PORT-TODO: `SeriesModel.getLegendIcon` is NOT ported on the base `SeriesModel` (it exists only
-        //   on line/scatter etc. subclasses that override the default icon). The `isFunction(...)` guard
-        //   is therefore always false in this port, so every series takes the default-icon `else` branch
-        //   below. Wire the series-specific branch when the subclass override lands.
-        // else { Use default legend icon policy for most series
-        let rotate: Any?
-        if legendIconType == "inherit" && legendJsTruthy(seriesModel.getData().getVisual("symbol")) {
-            rotate = (legendIsInherit(iconRotate))
-                ? seriesModel.getData().getVisual("symbolRotate")
-                : iconRotate
-        }
-        else {
-            rotate = 0.0   // No rotation for no icon
-        }
-        _ = itemGroup.add(getDefaultLegendIcon(LegendIconParams(
+        let iconParams = LegendIconParams(
             itemWidth: itemWidth,
             itemHeight: itemHeight,
             icon: legendIcon,
-            iconRotate: rotate,
+            iconRotate: 0.0,
             itemStyle: style.itemStyle,
             lineStyle: style.lineStyle,
             symbolKeepAspect: symbolKeepAspect
-        )) as? Element)
+        )
+
+        // if (isFunction(seriesModel.getLegendIcon) && (!legendIconType || legendIconType === 'inherit')) {
+        //   // Series has a specific way to define its legend icon (line → line+symbol, scatter → symbol).
+        //   itemGroup.add(seriesModel.getLegendIcon(iconParams));
+        // } else { default icon }
+        //   `getLegendIcon` is now ported on the base (returns nil) + overridden by line/scatter, so the
+        //   guard becomes: no explicit legend `icon` (or 'inherit') AND the series supplies a custom icon.
+        if (!legendJsTruthy(legendIconType) || legendIconType == "inherit"),
+           let custom = seriesModel.getLegendIcon(iconParams) {
+            _ = itemGroup.add(custom)
+        }
+        else {
+            // Use default legend icon policy for most series.
+            var params = iconParams
+            if legendIconType == "inherit" && legendJsTruthy(seriesModel.getData().getVisual("symbol")) {
+                params.iconRotate = legendIsInherit(iconRotate)
+                    ? seriesModel.getData().getVisual("symbolRotate")
+                    : iconRotate
+            }
+            _ = itemGroup.add(getDefaultLegendIcon(params) as? Element)
+        }
 
         let textX = itemAlign == "left" ? itemWidth + 5 : -5
         let textAlign = (itemAlign).flatMap { TextAlign(rawValue: $0) }

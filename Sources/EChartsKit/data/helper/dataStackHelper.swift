@@ -142,7 +142,7 @@ public func enableDataStack(
     // compatible: when `stack` is set as '', do not stack.
     // PORT-TODO: `seriesModel.get('stack')` — model layer (Phase 5c). JS `!!` truthiness on
     // the returned option (a string); '' counts as false.
-    let mayStack = jsTruthy((seriesModel as? DataStackSeriesModel)?.get("stack"))
+    let mayStack = jsTruthy((seriesModel as DataStackSeriesModel).get("stack"))
     var stackedByDimInfo: SeriesDimensionDefine?
     var stackedDimInfo: SeriesDimensionDefine?
     var stackResultDimension: String?
@@ -212,7 +212,7 @@ public func enableDataStack(
         // Also need to use seriesModel.id as postfix because different
         // series may share same data store. The stack dimension needs to be distinguished.
         // PORT-TODO: `seriesModel.id` — model layer (Phase 5c).
-        let seriesId = (seriesModel as? DataStackSeriesModel)?.id ?? ""
+        let seriesId = (seriesModel as DataStackSeriesModel).id
         stackResultDimension = "__\u{0}ecstackresult_" + seriesId
         stackedOverDimension = "__\u{0}ecstackedover_" + seriesId
 

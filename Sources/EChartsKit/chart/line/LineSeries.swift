@@ -51,4 +51,54 @@ open class LineSeriesModel: SeriesModel {
             "showSymbol": true
         ] as [String: Any]
     }
+
+    // upstream LineSeriesModel.getLegendIcon: a Group holding a horizontal 'line' symbol plus the series'
+    //   data symbol (default 'circle'), so the legend swatch reads as a line series rather than the
+    //   default filled rect. Faithful reduction (emphasis rotate/inherit kept minimal).
+    open override func getLegendIcon(_ opt: LegendIconParams) -> Element? {
+        let group = Group()
+
+        // The passed `opt` lineStyle/itemStyle can still carry unresolved 'inherit'/'auto' placeholders
+        //   (this port does not set the `legendLineStyle` visual). Resolve the series color from its data
+        //   visual `style` directly (stroke for the line color, else fill), so the icon is correctly tinted.
+        let seriesColor: String? = {
+            guard let s = self.getData().getVisual("style") as? [String: Any] else { return nil }
+            for key in ["stroke", "fill"] {
+                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return c }
+                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return str }
+            }
+            return nil
+        }()
+        let colorZR: ZRenderKit.ZRColor? = seriesColor.map { .string($0) }
+
+        // Horizontal line spanning the swatch, vertically centered.
+        let line = symbol.createSymbol("line", 0, opt.itemHeight / 2, opt.itemWidth, 0, nil, false)
+        if let linePath = line as? Path {
+            linePath.pathStyle.stroke = colorZR
+            linePath.pathStyle.lineWidth = 2
+            linePath.pathStyle.fill = nil
+            _ = group.add(linePath)
+        }
+
+        // The series' data symbol (default 'emptyCircle' → hollow) centered on the line, at 80% height.
+        //   Fall back to the series `symbol` option when the series-level visual is unset.
+        let visualType = (self.getData().getVisual("symbol") as? String) ?? (self.get("symbol", false) as? String)
+        let symbolType = (visualType == nil || visualType == "none") ? "circle" : visualType!
+        let size = opt.itemHeight * 0.8
+        let sym = symbol.createSymbol(
+            symbolType, (opt.itemWidth - size) / 2, (opt.itemHeight - size) / 2, size, size, colorZR
+        )
+        if let symPath = sym as? Path {
+            if symbolType.contains("empty") {
+                symPath.pathStyle.stroke = colorZR
+                symPath.pathStyle.fill = .string("#fff")
+                symPath.pathStyle.lineWidth = 2
+            } else {
+                symPath.pathStyle.fill = colorZR
+            }
+            _ = group.add(symPath)
+        }
+
+        return group
+    }
 }

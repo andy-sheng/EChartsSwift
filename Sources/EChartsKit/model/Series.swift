@@ -386,6 +386,11 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         }
     }
 
+    // Some series (line/scatter) draw a bespoke legend icon (a line + symbol marker, a bare symbol, …)
+    //   rather than the default 'roundRect' swatch. LegendView calls this when no explicit legend `icon`
+    //   is configured; the base returns nil so the default icon is used.
+    open func getLegendIcon(_ opt: LegendIconParams) -> Element? { return nil }
+
     open func getAllData() -> [(data: SeriesData, type: SeriesDataType?)] {
         let mainData = self.getData()
         // upstream: (mainData && mainData.getLinkedDataAll) ? mainData.getLinkedDataAll() : [{ data: mainData }];
