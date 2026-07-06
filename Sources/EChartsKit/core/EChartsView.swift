@@ -128,6 +128,21 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     private var _insideZoomDrag: (lastX: Double, lastY: Double)?
 
+    // ------------------------------------------------------------------------
+    // Phase 44 — RECT brush drag (mousedown → mousemove → mouseup draws a selection rectangle).
+    //   `nil` when no brush drag is in progress; otherwise the down point (the rect origin) — the rect is
+    //   the box from this origin to the current pointer. A brush drag begins on a `mousedown` while a
+    //   `brush` component is present (minimal gate; upstream begins only when the brush cursor mode is
+    //   active via the toolbox brush button / `takeGlobalCursor`, which is DEFERRED). On `mouseup` the
+    //   pixel rect is dispatched as a `{type:'brush', areas:[{brushType:'rect', range:[[x0,x1],[y0,y1]]}]}`
+    //   action → brushVisual dims the unselected. While non-nil the same hover/tooltip suppression as an
+    //   inside-pan drag applies (guarded alongside `_insideZoomDrag`).
+    //   PORT-TODO (DEFERRED): the live rubber-band cover rectangle, the full BrushController
+    //     (polygon/lineX/lineY, transformable covers, removeOnClick), coordRange persistence across
+    //     dataZoom, and the toolbox brush button that arms the cursor.
+    // ------------------------------------------------------------------------
+    private var _brushDrag: (startX: Double, startY: Double)?
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -204,7 +219,7 @@ public final class EChartsView {
             // Phase 39: while an inside-dataZoom DRAG (roam/pan) is in progress, suppress hover-emphasis +
             //   tooltip (upstream `preventDefaultMouseMove` / `__ecRoamConsumed` consumes the move so the
             //   hover path does not fire during a drag).
-            if self._insideZoomDrag != nil { return nil }
+            if self._insideZoomDrag != nil || self._brushDrag != nil { return nil }
             // upstream binds `findEventDispatcher(el, isHighDownDispatcher)` WITHOUT returnFirstMatch →
             //   the OUTERMOST matching ancestor is emphasized (matters for nested dispatchers).
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
@@ -222,7 +237,7 @@ public final class EChartsView {
         _ = zr.on("mouseout", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
             // Phase 39: suppress the leave-emphasis/tooltip-hide while dragging (see the mouseover gate).
-            if self._insideZoomDrag != nil { return nil }
+            if self._insideZoomDrag != nil || self._brushDrag != nil { return nil }
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
                 states.leaveEmphasisWhenMouseOut(dispatcher, e)
                 self.zr.refresh()
@@ -253,6 +268,9 @@ public final class EChartsView {
         // Phase 39: the drag (mousedown→mousemove→mouseup) → inside-dataZoom PAN/roam (see `_bindInsidePan`).
         _bindInsidePan()
 
+        // Phase 44: the drag (mousedown→mousemove→mouseup) → RECT brush selection (see `_bindBrush`).
+        _bindBrush()
+
         // PORT-TODO (DEFERRED): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
         //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + a message bus.
         // PORT-TODO (DEFERRED): `globalout` (no `e.target`) → `allLeaveBlur` / leave-emphasis reset.
@@ -277,7 +295,7 @@ public final class EChartsView {
             guard let self = self, let ecModel = self.ec.getModel() else { return }
             // Phase 39: suppress the axisPointer/tooltip axisTrigger while an inside-dataZoom drag is in
             //   progress (roam consumes the move — see `_insideZoomDrag`).
-            guard self._insideZoomDrag == nil else { return }
+            guard self._insideZoomDrag == nil, self._brushDrag == nil else { return }
             // Only drive the axis path when a tooltip with trigger:"axis" is configured; otherwise every
             //   mousemove would dispatch hideTip and fight the trigger:"item" hover tooltip (Phase 34).
             guard self._isAxisTrigger(ecModel) else { return }
@@ -517,6 +535,61 @@ public final class EChartsView {
             self?._insideZoomDrag = nil            // leaving the canvas ends the drag.
             return nil
         }, nil)
+    }
+
+    // ------------------------------------------------------------------------
+    // _bindBrush — Phase 44. Wire the drag (mousedown → mousemove → mouseup) → RECT brush selection.
+    //   A minimal stand-in for the toolbox-armed `BrushController` cover-drag: while a `brush` component
+    //   is present, a mousedown records the rect origin and a mouseup dispatches the dragged pixel box as
+    //   a `{type:'brush', areas:[{brushType:'rect', range:[[x0,x1],[y0,y1]]}]}` action, which runs the
+    //   Phase-44 `brushVisual` (dim the unselected). ctx `nil` + `[weak self]` (Phase-33 retain-cycle rule).
+    //
+    //   PORT-TODO (DEFERRED): the live rubber-band cover rectangle drawn during the drag, brushType
+    //     polygon/lineX/lineY, the full `BrushController` (transformable/removeOnClick covers), coordRange
+    //     persistence across dataZoom, and the toolbox brush button that arms/disarms the brush cursor.
+    // ------------------------------------------------------------------------
+    private func _bindBrush() {
+        _ = zr.on("mousedown", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            // Only arm a brush drag when a brush component exists (minimal cursor-mode stand-in).
+            guard self.ec.getModel()?.getComponent("brush") != nil else { return nil }
+            self._brushDrag = (startX: e.offsetX, startY: e.offsetY)
+            return nil
+        }, nil)
+        _ = zr.on("mouseup", { [weak self] _, args in
+            guard let self = self, let start = self._brushDrag else { return nil }
+            self._brushDrag = nil
+            guard let e = args.first as? ElementEvent else { return nil }
+            self._finishBrushDrag(startX: start.startX, startY: start.startY, endX: e.offsetX, endY: e.offsetY)
+            return nil
+        }, nil)
+        _ = zr.on("globalout", { [weak self] _, _ in
+            self?._brushDrag = nil                 // leaving the canvas cancels the brush drag.
+            return nil
+        }, nil)
+    }
+
+    /// mouseup — turn the dragged pixel box into a `brush` action. A drag that barely moved (< 2px in both
+    /// axes) is treated as a click and dispatches an EMPTY brush (clears any current selection), mirroring
+    /// upstream `removeOnClick`; a real drag dispatches the rect area.
+    private func _finishBrushDrag(startX: Double, startY: Double, endX: Double, endY: Double) {
+        let dx = abs(endX - startX)
+        let dy = abs(endY - startY)
+        var bp = Payload(type: "brush")
+        if dx < 2.0 && dy < 2.0 {
+            bp.other["areas"] = [[String: Any]]()   // click → clear selection.
+        }
+        else {
+            let x0 = min(startX, endX), x1 = max(startX, endX)
+            let y0 = min(startY, endY), y1 = max(startY, endY)
+            bp.other["areas"] = [[
+                "brushType": "rect",
+                "range": [[x0, x1], [y0, y1]]
+            ] as [String: Any]]
+        }
+        ec.dispatchAction(bp)
+        _ = zr.storage.getDisplayList(true)
+        zr.refresh()
     }
 
     /// mousedown — begin a drag iff the cursor is over a coord system hosting an inside dataZoom that

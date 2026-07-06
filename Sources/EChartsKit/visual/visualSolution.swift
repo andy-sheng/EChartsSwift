@@ -122,6 +122,72 @@ enum visualSolution {
         }
     }
 
+    // export function applyVisual(stateList, visualMappings, data, getValueState, scope?, dimension?)
+    //   Non-incremental sibling of `incrementalApplyVisual`: walks the whole `data` once and, for each
+    //   datum, resolves its visual state via `getValueState`, then applies every visualType's mapping
+    //   for that state (color/opacity/colorAlpha/symbol/...). Used by the brush visual encoder.
+    //   `getValueState` receives `valueOrIndex`: when `dimension == nil` it is the dataIndex; when a
+    //   dimension is given it is that dimension's parsed value. (The `scope` bind arg is dropped —
+    //   Swift closures capture their own context.)
+    static func applyVisual(
+        _ stateList: [String],
+        _ visualMappings: VisualMappingCollection,
+        _ data: SeriesData,
+        _ getValueState: @escaping (Any?) -> String,
+        _ dimension: DimensionLoose? = nil
+    ) {
+        // const visualTypesMap = {}; each(stateList, (state) => visualTypesMap[state] = prepareVisualTypes(...));
+        var visualTypesMap: [String: [String]] = [:]
+        util.each(stateList) { state, _ in
+            visualTypesMap[state] = VisualMapping.prepareVisualTypes(visualMappings[state])
+        }
+
+        // Closure-captured `dataIndex` mirrors upstream's outer `let dataIndex` shared by getVisual/setVisual.
+        var dataIndex: Int = 0
+        func getVisual(_ key: String) -> Any? { getItemVisualFromData(data, dataIndex, key) }
+        func setVisual(_ key: String, _ value: Any?) { setItemVisualFromData(data, dataIndex, key, value) }
+
+        // function eachItem(valueOrIndex, index?) { dataIndex = dimension == null ? valueOrIndex : index; ... }
+        //   The store's EachCb passes `[Double(i)]` (no-dim) or `[value..., Double(i)]` (with dims); the
+        //   trailing element is always the index. `valueOrIndex` = args[0].
+        let eachItem: EachCb = { args in
+            let valueOrIndex: Any? = args.first
+            if dimension == nil {
+                dataIndex = Int((args.first as? Double) ?? 0)
+            }
+            else {
+                dataIndex = Int((args.last as? Double) ?? 0)
+            }
+
+            // if (rawDataItem && rawDataItem.visualMap === false) { return; }
+            let rawDataItem = data.getRawDataItem(dataIndex)
+            if let rawDict = rawDataItem as? [String: Any],
+               let vm = rawDict["visualMap"] as? Bool, vm == false {
+                return
+            }
+
+            // const valueState = getValueState.call(scope, valueOrIndex);
+            let valueState = getValueState(valueOrIndex)
+            let mappings = visualMappings[valueState]
+            let visualTypes = visualTypesMap[valueState] ?? []
+
+            for type in visualTypes {
+                // mappings[type] && mappings[type].applyVisual(valueOrIndex, getVisual, setVisual);
+                if let mapping = mappings?[type] {
+                    mapping.applyVisual(valueOrIndex as Any, getVisual, setVisual)
+                }
+            }
+        }
+
+        // if (dimension == null) { data.each(eachItem); } else { data.each([dimension], eachItem); }
+        if let dimension = dimension {
+            data.each([dimension], eachItem)
+        }
+        else {
+            data.each(eachItem)
+        }
+    }
+
     // export function incrementalApplyVisual(stateList, visualMappings, getValueState, dim?)
     //   Returns a StageHandlerProgressExecutor whose `progress` walks the data range and, for each datum,
     //   runs each visualType's mapping.applyVisual to write the mapped color/opacity/symbol/... visual.

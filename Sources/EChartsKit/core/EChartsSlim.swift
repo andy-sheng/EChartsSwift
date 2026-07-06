@@ -693,6 +693,16 @@ public final class EChartsSlim: EChartsType {
         //   path) is wired. The `collect` run itself lives in `update()` (statistic stage), see below.
         ComponentModel.registerClass(AxisPointerModel.self)                 // registerComponentModel(AxisPointerModel)
 
+        // -- component/brush/install.ts (Phase 44, RECT core) -- registerComponentModel(BrushModel) +
+        //   registerVisual(PRIORITY.VISUAL.BRUSH, { seriesTypes: '', reset: ...brushVisual }) +
+        //   installBrushAction (registerAction 'brush'/'brushSelect'/'brushEnd'). The brush VIEW +
+        //   toolbox button + BrushController (polygon/lineX/lineY drag UI) are DEFERRED; only the DATA
+        //   core runs: `layoutCovers` (build per-area boundingRects) + `brushVisual` (in→inBrush /
+        //   out→outOfBrush → dim unselected via blur) execute in `update()`'s visual stage below, and
+        //   a minimal rect-drag in EChartsView dispatches `type:"brush"` with the dragged coordRange.
+        ComponentModel.registerClass(BrushModel.self)                       // registerComponentModel(BrushModel)
+        installBrushAction(EChartsSlim._registers)                          // registerAction('brush'/'brushSelect'/'brushEnd')
+
         // -- component/marker/installMark{Point,Line,Area}.ts --
         //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
         //   whose render path depends on deep deps that are still stubbed in this phase:
@@ -981,6 +991,12 @@ public final class EChartsSlim: EChartsType {
         //   emits the `visualMeta` gradient stops (consumed by heatmap/tooltip). This is the KEY deliverable.
         performVisualMapStage(ecModel, api)
 
+        // NOTE (brush): upstream runs the brush visual at PRIORITY.VISUAL.BRUSH (5000) — AFTER the LAYOUT
+        //   stages (1000–4600). The brush rect selector reads each datum's `getItemLayout` (pixel geometry),
+        //   which the slim driver only populates inside `render()`'s layout stages (bar/scatter/etc.). So the
+        //   brush visual CANNOT run here (item layout is still nil at this point); it runs at the end of
+        //   `render()`, right before `renderSeries` — see the `brushVisual(...)` call there.
+
         // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-TODO: the driver exposes a
         //     bare Group; background is a host concern.
 
@@ -1257,6 +1273,15 @@ public final class EChartsSlim: EChartsType {
         //   polyline the `lineStyle.opacity`. ParallelView.render reads that item-visual style back. Run
         //   AFTER the generic performVisualStage (it only extends `opacity` onto the existing style bag).
         runSeriesStageHandler(parallelVisual, ecModel, api)
+
+        // VISUAL (brush) — upstream PRIORITY.VISUAL.BRUSH (5000), the same priority as parallelVisual above,
+        //   i.e. AFTER every layout stage (so each datum's `getItemLayout` pixel geometry exists for the rect
+        //   selector) and BEFORE `renderSeries` draws (so the in/out-of-brush item-visual color the encoder
+        //   writes is picked up by the draw). `brushVisual` self-gates (eachComponent("brush") → no-op when
+        //   absent), rebuilds each area's pixel range from its coordRange (layoutCovers), tests every series
+        //   datum against the rect selector, and marks inBrush/outOfBrush — recoloring the unselected to the
+        //   `outOfBrush` color (dim). This is the Phase-44 KEY deliverable (rect select + dim unselected).
+        brushVisual(ecModel, api, nil)
 
         renderSeries(ecModel, api)
     }

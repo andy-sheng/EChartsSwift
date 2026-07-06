@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 44 (RECT BRUSH — drag-select a rectangle over a cartesian chart to DIM the unselected; 15th interaction-layer phase): `component/brush` RECT core now runs end-to-end. Files added: `component/brush/BrushModel.swift` (the `brush` component model + `setAreas`/`generateBrushOption`/default `outOfBrush:{color:disabled}`), `component/brush/brushVisual.swift` (the port of `visualEncoding.ts` + `selector.ts`: `BrushTargetManagerLite` grid/rect target match + `setInputRanges` coordRange→pixel, the RECT `BrushCommonSelectorsForSeries` (point-in-rect / rect-intersect), Step A `controlSeries` + Step B `applyVisual` in/out-of-brush → recolor the unselected via `visualSolution.applyVisual`), `component/brush/brushAction.swift` (`installBrushAction` → registerAction `brush`(updateVisual)/`brushSelect`/`brushEnd`). Files edited: `visual/visualSolution.swift` (added the non-incremental `applyVisual(stateList,mappings,data,getValueState,dim?)` — additive), `core/EChartsSlim.swift` (registered `BrushModel` + `installBrushAction`; hooked `brushVisual(ecModel,api,nil)` at PRIORITY.VISUAL.BRUSH — placed at the END of `render()` right before `renderSeries`, NOT in the `update()` visual stage, because the rect selector reads each datum's `getItemLayout` which the slim driver only populates in `render()`'s layout stages), `core/EChartsView.swift` (`_bindBrush` + `_brushDrag` state machine: mousedown→mouseup drags a rect → dispatch `{type:'brush', areas:[{brushType:'rect', range}]}`; a <2px drag clears the selection — a `removeOnClick` stand-in; hover suppressed while brushing, alongside `_insideZoomDrag`). **Clean build (0 warnings); `swift test` — 297 / 0 failures / 58 skipped** (baseline 294; +3 `ZZBrushTests`: a rect brush over the first 2 of 5 bars keeps them at palette fill + dims bars 2-4 to the outOfBrush color; the same via a LIVE injected mousedown→mouseup drag; an empty-areas brush leaves all normal). INTEGRATED MANUALLY: the workflow finished translation but both verify agents reported CRITICAL-ISSUES (integrator died) — a dead duplicate `selector.swift` (colliding top-level decls; deleted, its logic already lived in `brushVisual.swift`), `BrushModel` lacked the `BrushModelLike` conformance the runtime `as?` casts need (added `extension BrushModel: BrushModelLike {}`), and the EChartsView drag + test were absent (both added). ALSO fixed a real render-ORDER bug found while wiring: brushVisual first placed in the update() visual stage saw nil item layouts → selected nothing; moved to end-of-render() (matches upstream priority 5000 running after the layout stages). DEFERRED (documented): brushType polygon/lineX/lineY, the full `BrushController` (transformable covers, live rubber-band, removeOnClick covers), coordRange persistence across dataZoom, the toolbox brush button, `brushLink`/parallel `stepAParallel`, throttle. See §75.**
+
 **Phase 43 (HOVER-EMPHASIS for graph / tree / sankey; 14th interaction-layer phase): applied the emphasis-enable block to the NODE elements of the node/edge charts — `GraphView` (node symbols), `TreeView` (node symbols, in `updateNode`), `SankeyView` (node rects) — each mirroring its upstream call site (graph/tree via SymbolDraw→Symbol.ts:357; sankey SankeyView.ts:315/323). Elements were already `setItemGraphicEl`-registered. **Clean build (0 warnings); `swift test` — 294 / 0 failures / 58 skipped** (baseline 291; +3 `ZZHoverBreadth3Tests`, each hovering a node → emphasis through the real Handler chain). Hover-highlight now works for **11 chart types** (bar, scatter, line, pie, candlestick, boxplot, funnel, radar, graph, tree, sankey). DEFERRED (documented): topology focus (graph `focus:'adjacency'`, tree `relative/ancestor/descendant`, sankey `adjacency/trajectory`); edge/link emphasis (graph edges, tree curves, sankey ribbons); select/blur label niceties. See §74.**
 
 **Phase 42 (DEMO-TRACK batch 1 — 10 echarts test-case demos; goal clause 2 "在demo中实现echart test中所有用例"): added 10 option-expressible demos derived from canonical echarts `test/` scenarios to `EChartsDemoGallery` (bar-stack/bar-negative/bar-horizontal, line-area/line-smooth/line-stack, pie-doughnut/pie-rose, scatter-multi, bar-datazoom-slider), each exercising a ported feature. Verified via `swift run EChartsDemoGallery --render-all` → **39 / 39 demos render headlessly, 0 failed** (29 existing + 10 new). EChartsKit + its 291 tests unaffected (the gallery is a separate executable target). This begins the demo-corpus track; the gallery already covered the core chart types (39 demos across bar/line/scatter/pie/radar/funnel/gauge/candlestick/boxplot/sunburst/treemap/themeRiver/tree/graph/sankey/chord/heatmap/map/geo/calendar/matrix/parallel/custom/visualMap). See §73.**
@@ -2215,6 +2217,41 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 75. Phase 44 — Rect brush: drag-select + dim unselected (15th interaction-layer phase)
+
+**Goal (met):** dragging a rectangle over a cartesian chart (with a `brush` component) SELECTS the in-rect
+data and DIMS the rest (recolors the unselected to the brush `outOfBrush` color). **Clean build (0 warnings);
+`swift test` — 297 / 0 / 58** (baseline 294; +3 `ZZBrushTests`).
+
+**Files added:** `component/brush/BrushModel.swift` (model + `setAreas` + default `outOfBrush:{color:disabled}`;
+`extension BrushModel: BrushModelLike {}`), `component/brush/brushVisual.swift` (port of `visualEncoding.ts`
++ `selector.ts`: `BrushTargetManagerLite` grid/rect target match + `setInputRanges` coordRange→pixel, the RECT
+selector (point-in-rect / rect-intersect), Step A `controlSeries` + Step B `applyVisual`), `component/brush/
+brushAction.swift` (`installBrushAction` → `brush`(updateVisual)/`brushSelect`/`brushEnd`).
+
+**Files edited:** `visual/visualSolution.swift` (added non-incremental `applyVisual(...)` — additive),
+`core/EChartsSlim.swift` (register `BrushModel` + `installBrushAction`; call `brushVisual(ecModel,api,nil)` at
+the END of `render()`, right before `renderSeries` — NOT the update() visual stage), `core/EChartsView.swift`
+(`_bindBrush` + `_brushDrag` mousedown→mouseup rect drag → dispatch `brush`; <2px drag clears; hover suppressed
+during a brush drag).
+
+**Key detail (render order):** the rect selector reads each datum's `getItemLayout` (pixel geometry). The slim
+driver only populates that in `render()`'s per-series layout stages (bar's progressive layout etc.), which run
+AFTER `update()`'s generic visual stage. So brushVisual MUST run at end-of-render() (upstream PRIORITY.VISUAL.BRUSH
+= 5000, after the layout stages) — a first placement in the update() visual stage saw nil layouts and selected
+nothing. Uses BAR to exercise the selector end-to-end (scatter sets no item layout in this port).
+
+**Integrated MANUALLY** (workflow verify agents reported CRITICAL-ISSUES; integrator died): deleted a dead
+duplicate `selector.swift` (colliding top-level decls — logic already in brushVisual.swift), added the missing
+`BrushModelLike` conformance (runtime `as?` casts were silently nil → no-op), added the EChartsView drag + the
+tests, and fixed the render-order bug above.
+
+**Deferred (documented):** brushType polygon/lineX/lineY, the full `BrushController` (transformable covers,
+live rubber-band, removeOnClick covers), coordRange persistence across dataZoom, the toolbox brush button,
+`brushLink` / parallel `stepAParallel`, throttle.
 
 ---
 
