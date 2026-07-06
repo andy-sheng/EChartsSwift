@@ -31,5 +31,16 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
         EChartsDemoRegistry.demo_heatmap_basic,     // Heatmap (cartesian, cells colored by value via visualMap)
         EChartsDemoRegistry.demo_custom_basic,      // Custom (cartesian, renderItem hand-rolls one rect bar per datum)
+        // gallery-batch1 — echarts test/ scenarios (goal clause 2).
+        EChartsDemoRegistry.demo_bar_stack,             // Bar (stacked)
+        EChartsDemoRegistry.demo_bar_negative,          // Bar (negative values)
+        EChartsDemoRegistry.demo_bar_horizontal,        // Bar (horizontal / yAxis category)
+        EChartsDemoRegistry.demo_line_area,             // Line (areaStyle)
+        EChartsDemoRegistry.demo_line_smooth,           // Line (smooth, multi-series)
+        EChartsDemoRegistry.demo_line_stack,            // Line (stacked areas)
+        EChartsDemoRegistry.demo_pie_doughnut,          // Pie (doughnut)
+        EChartsDemoRegistry.demo_pie_rose,              // Pie (nightingale rose)
+        EChartsDemoRegistry.demo_scatter_multi,         // Scatter (multi-series)
+        EChartsDemoRegistry.demo_bar_datazoom_slider,   // DataZoom (slider + axis tooltip)
     ]
 }
