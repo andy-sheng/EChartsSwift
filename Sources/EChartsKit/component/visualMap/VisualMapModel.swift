@@ -536,8 +536,15 @@ open class VisualMapModel: ComponentModel {
         // constant DEFAULT_COLOR.
         // If user do not want the default color, set inRange: {color: null}.
         // base.inRange = base.inRange || {color: ecModel.get('gradientColor')};
+        //   BUGFIX (visual-parity): when a visualMap omits `inRange.color`, upstream falls back to the
+        //   global `gradientColor` default so the map still colors (a blue→light gradient). In the slim
+        //   driver `self.ecModel` may not be injected when `completeVisualOption` runs during
+        //   `optionUpdated`, so `ecModel?.get(...)` returned nil → `inRange.color = nil` → the heatmap
+        //   cells + the visualMap bar rendered SOLID BLACK. Fall back to `globalDefault.option.gradientColor`
+        //   directly (the same 2-color default) so the default path is robust regardless of ecModel timing.
         if base["inRange"] == nil {
             let gradientColor = ecModel?.get("gradientColor", false)
+                ?? globalDefault.option["gradientColor"]
             base["inRange"] = ["color": gradientColor as Any] as [String: Any]
         }
     }
