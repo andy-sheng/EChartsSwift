@@ -348,6 +348,27 @@ private func updateNode(
         states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
         states.setStatesStylesFromModel(path, itemModel)
 
+        // Node name label (SymbolClz `useNameLabel`, DEFERRED). Minimal NORMAL-state reproduction:
+        //   attach the node name as text content, positioned outward from the symbol. Orthogonal trees
+        //   label internal nodes on the inner side and leaves on the outer side; default to
+        //   left-of-symbol for nodes with children, right-of-symbol for leaves (matches the common
+        //   horizontal LR tree). Rendered now that the painter walks attached textContent.
+        let labelModel = itemModel.getModel("label")
+        if (labelModel.get("show") as? Bool) != false && !node.name.isEmpty {
+            var ts = TextStyleProps()
+            ts.text = node.name
+            ts.font = labelModel.getFont()
+            if let c = labelModel.getTextColor() { ts.fill = c }
+            let labelText = ZRText()
+            labelText.useStyle(ts)
+            path.setTextContent(labelText)
+            var tc = ElementTextConfig()
+            tc.position = (labelModel.get("position") as? String)
+                ?? (node.children.isEmpty ? "right" : "left")
+            tc.distance = (labelModel.get("distance") as? Double) ?? 5
+            path.setTextConfig(tc)
+        }
+
         // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
         _ = group.add(path)
         data.setItemGraphicEl(dataIndex, path)
