@@ -270,8 +270,29 @@ open class SunburstPiece: Sector {
         label.x = r * dx + cx
         label.y = r * dy + cy
 
-        // state.rotation = normalizeRadian(rotate);
-        // PORT-TODO: label rotation DEFERRED (radial/tangential/needsFlip) — leave unrotated.
+        // Label rotation (sunburst default 'radial'). 'radial' aligns the text with the radius,
+        //   'tangential' perpendicular; a number is degrees. The extra ±PI flips keep the text upright.
+        //   (Same `dx=cos(midAngle)`/`dy=sin(midAngle)` convention as upstream, so this ports verbatim.)
+        let rotateType = normalLabelModel.get("rotate")
+        var rotate = 0.0
+        if let s = rotateType as? String {
+            if s == "radial" {
+                rotate = -midAngle
+                if rotate < -Double.pi / 2 { rotate += Double.pi }
+            }
+            else if s == "tangential" {
+                rotate = Double.pi / 2 - midAngle
+                if rotate > Double.pi / 2 { rotate -= Double.pi }
+                if rotate < -Double.pi / 2 { rotate += Double.pi }
+            }
+        }
+        else if let n = rotateType as? Double {
+            rotate = n * Double.pi / 180
+        }
+        else if let n = rotateType as? Int {
+            rotate = Double(n) * Double.pi / 180
+        }
+        label.rotation = containUtil.normalizeRadian(rotate)
 
         // label.dirtyStyle();
         label.dirtyStyle()
