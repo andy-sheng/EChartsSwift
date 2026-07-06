@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 52 (MARKERS wired — coordinate markLine RENDERS; markPoint/markArea registered; unblocked by Phase 51): the marker components are now REGISTERED and rendering. Files added: `component/marker/installMarkLine.swift` (`markLinePreprocessor`). Files edited: `core/EChartsSlim.swift` — registered `MarkPointModel`/`MarkLineModel`/`MarkAreaModel`, called `markPointPreprocessor`/`markLinePreprocessor`/`markAreaPreprocessor` in setOption (auto-enable the master marker component when any series declares one), added `"markPoint"→MarkPointView`/`"markLine"→MarkLineView`/`"markArea"→MarkAreaView` view factories. The full per-series inner-marker-model machinery (master model `_mergeOption` creating submodels via `createMarkerModelFromSeries`, `MarkerView` iterating series + `dataTransform`→`dataToPoint`) was ALREADY ported — Phase 51's `getAxis`/`getOtherAxis` witnesses were the missing gate. **Clean build (0 warnings); `swift test` — 309 / 0 failures / 58 skipped** (baseline 307; +2 `ZZMarkerTests`: a `markLine:{data:[{yAxis:8}]}` on a bar chart renders one HORIZONTAL reference `Polyline` at the exact pixel for value 8 (y≈164 of the [0,20] axis over the 240px plot), spanning the grid width; an empty markLine draws nothing). Demos: 125/125 render (markers only activate when a series declares them). DEFERRED (documented): statistic markers (min/max/average/median) approximate their anchor `dataIndex` via the stubbed `indicesOfNearest` (the VALUE is exact via `numCalculate`, the anchor index is not); markPoint symbol niceties + markArea rect styling edge cases; the marker enter/update animations. Coordinate markers (`{yAxis:v}`/`{xAxis:v}`/`{coord:[x,y]}`) are exact. See §83.**
+
 **Phase 51 (COORDINATE-SYSTEM axis witnesses — fixes the recurring protocol-witness trap for Cartesian2D.getAxis/getOtherAxis; UNBLOCKS the marker path): `CoordinateSystem` requires `getAxis(_ dim: DimensionName?) -> Axis?` + `getOtherAxis(_ baseAxis: Axis) -> Axis?`, but Cartesian2D's concrete methods took the NARROWER `Axis2D` param/return and so did NOT witness them — a call through a `CoordinateSystem`-typed reference silently hit the nil-returning DEFAULT (the documented [[swift-protocol-witness-trap]]), which blocked `markerHelper` (it reads `coordSys.getAxis`/`getOtherAxis` for markLine/markPoint coordinate + statistic resolution). Added the two delegating protocol-witness overloads to `Cartesian2D` (guard-unwrap → call the concrete `Axis2D` version); concrete callers still bind the exact-match narrow overloads, so no behavior change for existing code. **Clean build (0 warnings); `swift test` — 307 / 0 failures / 58 skipped** (baseline 306; +1 `ZZCoordWitnessTests`: through a `CoordinateSystem`-typed ref, `getAxis("x"/"y")` + `getOtherAxis(xAxis)` now resolve non-nil, `getOtherAxis(x)→y`). No regression (306 pre-existing pass). This is the infra prerequisite for markPoint/markLine/markArea; the per-series inner-marker-model instantiation + MarkerView render wiring is the remaining step (next). See §82.**
 
 **Phase 50 (BRUSH polygon — the last brush type; COMPLETES the brush selector set rect/lineX/lineY/polygon): the brush now supports `brushType:'polygon'` (a free-form outline). Files edited: `component/brush/brushVisual.swift` — added the `polygon` case to `makeBrushCommonSelectorForSeries` (point selector = boundingRect.contain AND `ZRenderKit.polygon.contain` ray-cast point-in-polygon; rect selector = any bar corner in the polygon, OR a polygon vertex in the bar, OR a bar edge crossing a polygon edge via a ported `linePolygonIntersect`/`brushSegIntersect`), a `polygon` boundingRect builder (bounding box over the point list), and `brushPolygonPoints` returning `[VectorArray]` (SIMD2) so it feeds `polygon.contain` directly. **Clean build (0 warnings); `swift test` — 306 / 0 failures / 58 skipped** (baseline 305; +1 `ZZBrushTests.testPolygonBrushSelects`: a quadrilateral outline enclosing bars 0-1 keeps them at palette fill + dims bars 2-4). Demos 113/113. Done directly in the main loop (used ZRenderKit's `polygon.contain`; ported the segment-intersect). The brush feature's selector core is now COMPLETE for all four types. DEFERRED (documented): the live polygon DRAG (click-to-add-vertex UI — the current live drag produces rect/lineX/lineY; polygon is dispatch-only), coordRange persistence for lineX/lineY/polygon, the toolbox brush button. See §81.**
@@ -2231,6 +2233,20 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 83. Phase 52 — Markers wired: coordinate markLine renders (markPoint/markArea registered)
+
+**Goal (met):** the marker components render. **Clean build; `swift test` — 309 / 0 / 58** (baseline 307; +2).
+Demos 125/125.
+
+Registered `MarkPoint/MarkLine/MarkAreaModel` + the three auto-enable preprocessors + the three view
+factories in EChartsSlim (added `installMarkLine.swift` for the missing `markLinePreprocessor`). The
+per-series inner-marker-model machinery was already ported; Phase 51's axis witnesses were the gate. Test:
+`markLine:{data:[{yAxis:8}]}` renders a horizontal Polyline at the exact pixel for value 8. Deferred:
+statistic markers approximate their anchor dataIndex (stubbed `indicesOfNearest`; the value is exact),
+markPoint/markArea styling edge cases, marker animations.
 
 ---
 

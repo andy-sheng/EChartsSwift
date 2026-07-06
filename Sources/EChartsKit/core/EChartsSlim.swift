@@ -710,18 +710,17 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(ToolboxModel.self)                     // registerComponentModel(ToolboxModel)
         installToolboxActions(EChartsSlim._registers)                       // registerAction('restore'/'changeMagicType')
 
-        // -- component/marker/installMark{Point,Line,Area}.ts --
-        //   PORT-TODO (BLOCKED, left UNREGISTERED): the marker components render per-series inner models
-        //   whose render path depends on deep deps that are still stubbed in this phase:
-        //     - CoordinateSystem.getAxis/getOtherAxis dispatch the nil-returning protocol defaults
-        //       (Cartesian2D's specialized signatures do not witness them) → statistic (min/max/average/
-        //       median) and single-axis (Infinity) markers cannot resolve axes/containData.
-        //     - SeriesModel.indicesOfNearest is stubbed to [] (statistic coord resolution).
-        //     - SymbolDraw/LineDraw are replaced by MarkerSymbolDraw/local stand-ins; util/states
-        //       enterBlur/leaveBlur and util/graphic traverseUpdateZ/retrieveZInfo are no-op stubs.
-        //   The files COMPILE and are kept in place; wiring (registerClass + view factory + the
-        //   markPoint/markLine/markArea preprocessors) is deferred until those deps land.
-        //     ComponentModel.registerClass(MarkPointModel.self) / MarkLineModel / MarkAreaModel
+        // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
+        //   registerComponentModel(MarkPointModel/MarkLineModel/MarkAreaModel) + the auto-enable
+        //   preprocessors (called in setOption). The COORDINATE markers now render: the Phase-51 axis
+        //   witnesses fixed `coordSys.getAxis/getOtherAxis`, so the master marker model's per-series
+        //   submodel creation + the MarkerView `dataTransform`/`dataToPoint` path resolve. The STATISTIC
+        //   markers (type:'min'/'max'/'average'/'median') still depend on `SeriesModel.indicesOfNearest`
+        //   (stubbed → dataIndex 0) — the value is computed by `numCalculate` but the anchor index is
+        //   approximate; the coordinate-value markers (`{yAxis:v}` / `{xAxis:v}` / `{coord:[x,y]}`) are exact.
+        ComponentModel.registerClass(MarkPointModel.self)                  // registerComponentModel(MarkPointModel)
+        ComponentModel.registerClass(MarkLineModel.self)                   // registerComponentModel(MarkLineModel)
+        ComponentModel.registerClass(MarkAreaModel.self)                   // registerComponentModel(MarkAreaModel)
 
         // -- component/transform/install.ts -- registers.registerTransform(filterTransform) +
         //   registers.registerTransform(sortTransform). Built-in data transforms live in the Phase-27
@@ -794,7 +793,12 @@ public final class EChartsSlim: EChartsType {
         // dataZoom slider widget (the on-screen bar with two draggable handles + the selected band).
         //   Keyed by FULL type 'dataZoom.slider' (subtype dispatch — the inside dataZoom has no view).
         //   Registered under upstream `registerComponentView(SliderZoomView)`.
-        "dataZoom.slider": { SliderZoomView() }
+        "dataZoom.slider": { SliderZoomView() },
+        // Phase 52: the per-series marker component views (keyed by mainType). Each iterates the series,
+        //   looks up its per-series marker submodel, and draws the points/lines/areas.
+        "markPoint": { MarkPointView() },
+        "markLine": { MarkLineView() },
+        "markArea": { MarkAreaView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -883,6 +887,12 @@ public final class EChartsSlim: EChartsType {
         //   array-normalize the `visualMap` option, split ec2 `splitList` into `pieces`, and migrate each
         //   piece's `start`/`end` → `min`/`max`. Mutates option.visualMap in place (inout ECUnitOption).
         visualMapPreprocessor(&opt)
+        // Preprocessors from component/marker/installMark{Point,Line,Area}.ts (Phase 52): auto-enable the
+        //   master marker component when ANY series declares markPoint/markLine/markArea, so the per-series
+        //   inner submodels get instantiated during component build.
+        markPointPreprocessor(&opt)
+        markLinePreprocessor(&opt)
+        markAreaPreprocessor(&opt)
         // Preprocessor from component/axisPointer/install.ts (registerPreprocessor): always ensure a
         //   global axisPointer option exists (for default settings). tooltip `dependencies:['axisPointer']`
         //   and the axis-tooltip DATA core (modelHelper.collect) both need the AxisPointerModel component
