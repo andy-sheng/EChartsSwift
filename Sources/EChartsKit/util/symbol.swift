@@ -436,6 +436,27 @@ public final class SymbolPath: Path, ECSymbol {
     }
 }
 
+// A `path://` symbol is built as a ZRenderKit `SVGPath` (util/symbol.createSymbol → ToolPath.makePath).
+//   `createSymbol` returns an `ECSymbol`, so `SVGPath` conforms here. `__isEmptyBrush` is stored on the
+//   ZRenderKit class (extensions cannot add stored properties); `setColor`/`getColor` mirror SymbolPath.
+extension ZRenderKit.SVGPath: ECSymbol {
+    public func setColor(_ color: ZRenderKit.ZRColor, _ innerColor: ZRenderKit.ZRColor? = nil) {
+        if self.type == "image" { return }
+        if self.__isEmptyBrush {
+            self.pathStyle.stroke = color
+            self.pathStyle.fill = innerColor ?? .string(tokensColorNeutral00)
+            self.pathStyle.lineWidth = 2
+        } else {
+            self.pathStyle.fill = color
+        }
+        self.markRedraw()
+    }
+
+    public func getColor() -> ZRenderKit.ZRColor {
+        return self.pathStyle.fill ?? self.pathStyle.stroke ?? .string(tokensColorNeutral00)
+    }
+}
+
 // upstream: free-function exports (createSymbol / normalizeSymbolSize / normalizeSymbolOffset /
 //   symbolBuildProxies). Per CONVENTIONS §2 a free-function module maps to a caseless `enum`
 //   namespace named after the file (`symbol`). The shape subclasses above are exported class-likes,
@@ -604,10 +625,13 @@ public enum symbol {
             symbolPath = makeFallbackSymbol(symbolType, x, y, w, h)
         }
         else if symbolType.hasPrefix("path://") {
-            // PORT-TODO: `graphic.makePath(symbolType.slice(7), {}, new BoundingRect(x,y,w,h),
-            //   keepAspect ? 'center' : 'cover')` — makePath (SVG path parsing) not ported (deferred).
-            _ = keepAspect
-            symbolPath = makeFallbackSymbol(symbolType, x, y, w, h)
+            // upstream: `graphic.makePath(symbolType.slice(7), {}, new BoundingRect(x,y,w,h),
+            //   keepAspect ? 'center' : 'cover')`. The SVG parser + resize live in ZRenderKit
+            //   (ToolPath.makePath); the returned SVGPath conforms to ECSymbol via the extension below.
+            let pathData = String(symbolType.dropFirst("path://".count))
+            symbolPath = ZRenderKit.makePath(
+                pathData, nil, BoundingRect(x, y, w, h), (keepAspect ?? false) ? "center" : "cover"
+            )
         }
         else {
             var shape = SymbolShape()

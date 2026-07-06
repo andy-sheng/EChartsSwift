@@ -392,6 +392,12 @@ public final class SVGPath: Path {
     fileprivate var __buildPathClosure: ((PathProxy) -> Void)?
     fileprivate var __applyTransformClosure: ((SVGPath, MatrixArray) -> Void)?
 
+    // Stored slot so an `ECSymbol` conformance (declared in EChartsKit — see util/symbol.swift) can be
+    //   satisfied by this property when a `path://` symbol is built as an `SVGPath` (createSymbol). The
+    //   protocol itself lives in EChartsKit, which cannot add a stored property via extension, so the
+    //   storage lives here (mirrors SymbolPath.__isEmptyBrush).
+    public var __isEmptyBrush: Bool = false
+
     public override func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {
         // upstream SVGPath.buildPath signature is (path: PathProxy | CanvasRenderingContext2D);
         //   here the renderer seam (CONVENTIONS §9) routes a PathProxy.
@@ -456,6 +462,48 @@ public func createFromString(_ str: String?, _ opts: SVGPathOption? = nil) -> SV
     svgPath.__buildPathClosure = innerOpts.buildPath
     svgPath.__applyTransformClosure = innerOpts.applyTransform
     return svgPath
+}
+
+// upstream: resizePath(path, rect) — bake a transform into the SVG path's baked commands so its
+//   bounding rect fits `rect`.
+public func resizePath(_ path: SVGPath, _ rect: RectLike) {
+    guard let pathRect = path.getBoundingRect() else { return }
+    let m = pathRect.calculateTransform(rect)
+    path.applyTransform(m)
+}
+
+// upstream: `centerGraphic` — shrink `rect` to the aspect ratio of `boundingRect`, centered inside it
+//   (the `layout === 'center'` / keep-aspect case of makePath).
+private func centerRectToAspect(_ rect: RectLike, _ boundingRect: BoundingRect) -> BoundingRect {
+    let aspect = boundingRect.width / boundingRect.height
+    var width = rect.height * aspect
+    var height: Double
+    if width <= rect.width {
+        height = rect.height
+    } else {
+        width = rect.width
+        height = width / aspect
+    }
+    let cx = rect.x + rect.width / 2
+    let cy = rect.y + rect.height / 2
+    return BoundingRect(cx - width / 2, cy - height / 2, width, height)
+}
+
+// upstream: makePath(pathData, opts, rect, layout) — parse an SVG path string and (optionally) resize
+//   its baked commands to fit `rect`. `layout === 'center'` keeps the path's aspect ratio (centered);
+//   otherwise the path is stretched to fill `rect` ('cover').
+public func makePath(
+    _ pathData: String?, _ opts: SVGPathOption?, _ rect: RectLike?, _ layout: String? = nil
+) -> SVGPath {
+    let path = createFromString(pathData, opts)
+    if let rect = rect {
+        var target: RectLike = rect
+        if layout == "center", let br = path.getBoundingRect() {
+            target = centerRectToAspect(rect, br)
+        }
+        resizePath(path, target)
+    }
+    return path
 }
 
 /**
