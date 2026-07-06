@@ -196,8 +196,11 @@ open class ChordPiece: Sector {
         let style = node.getVisual("style") as? [String: Any] ?? [:]
 
         var textStyle = TextStyleProps()
-        // defaultText: node.dataIndex + ''
-        textStyle.text = String(node.dataIndex)
+        // Upstream `setLabelStyle` resolves the text through the labelFetcher (the node NAME) and only
+        //   falls back to `node.dataIndex + ''` when that is empty. The formatter chain is deferred, so
+        //   use the node id (== the node name for chord data, e.g. a/b/c/d) directly, falling back to the
+        //   data-index string. Without this the sectors were labelled 0/1/2/3 instead of the names.
+        textStyle.text = node.id.isEmpty ? String(node.dataIndex) : node.id
         // inheritColor: style.fill  (bridge the visual fill color to the text fill).
         if let fill = chordColorString(style["fill"]) {
             textStyle.fill = fill

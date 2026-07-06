@@ -188,6 +188,36 @@ open class GraphView: ChartView {
                 states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
                 states.setStatesStylesFromModel(path, itemModel)
 
+                // Node name label (SymbolClz `useNameLabel`, DEFERRED). Minimal NORMAL-state label,
+                //   gated on label.show (graph default is false). Graph node labels default to 'inside'
+                //   the symbol with a contrasting (white) fill; rendered via the textContent painter walk.
+                let labelModel = itemModel.getModel("label")
+                if (labelModel.get("show") as? Bool) == true {
+                    let nm = data.getName(i)
+                    if !nm.isEmpty {
+                        let position = (labelModel.get("position") as? String) ?? "inside"
+                        var ts = TextStyleProps()
+                        ts.text = nm
+                        ts.font = labelModel.getFont()
+                        // Inside labels sit centered on the (dark) symbol with a contrasting white fill
+                        //   (echarts' inheritColor auto-contrast); outside labels use the label color.
+                        if position == "inside" {
+                            ts.fill = (labelModel.getShallow("color") as? String) ?? "#fff"
+                            ts.align = .center
+                            ts.verticalAlign = .middle
+                        } else {
+                            ts.fill = labelModel.getTextColor()
+                        }
+                        let labelText = ZRText()
+                        labelText.useStyle(ts)
+                        path.setTextContent(labelText)
+                        var tc = ElementTextConfig()
+                        tc.position = position
+                        if position != "inside" { tc.distance = (labelModel.get("distance") as? Double) ?? 5 }
+                        path.setTextConfig(tc)
+                    }
+                }
+
                 _ = group.add(path)
                 data.setItemGraphicEl(i, path)
             }
