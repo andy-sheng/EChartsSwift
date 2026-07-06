@@ -64,7 +64,27 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
 //   compute the merge option. Returns `{ series: [...perSeriesOverride], xAxis?: [...], yAxis?: [...] }`.
 //   PORT SCOPE: line ↔ bar only ('stack'/'tiled' modifiers deferred). markPoint/markLine carry-over
 //   (getFeatureMarkerOpts) is deferred. The axis `boundaryGap` is flipped to match (bar → true).
+// A shared stack key the 'stack' magicType assigns so every convertible series stacks together (upstream
+//   `INNER_STACK_KEYWORD`). 'tiled' clears it.
+public let TOOLBOX_MAGIC_STACK_KEYWORD = "__ec_magicType_stack__"
+
 public func computeMagicTypeOption(_ ecModel: GlobalModel, _ targetType: String) -> [String: Any] {
+    // 'stack' / 'tiled' are MODIFIERS (they toggle each line/bar series' `stack`), not a type swap.
+    if targetType == "stack" || targetType == "tiled" {
+        var seriesOverrides: [[String: Any]] = []
+        ecModel.eachSeries { seriesModel, _ in
+            let sub = seriesModel.subType
+            if sub == "line" || sub == "bar" {
+                seriesOverrides.append([
+                    "id": seriesModel.id,
+                    // stack → the shared keyword; tiled → NSNull() clears it.
+                    "stack": targetType == "stack" ? TOOLBOX_MAGIC_STACK_KEYWORD : NSNull()
+                ])
+            }
+        }
+        return ["series": seriesOverrides]
+    }
+
     var seriesOverrides: [[String: Any]] = []
     var touchedCartesian = false
 

@@ -47,6 +47,27 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertEqual(seriesType(view), "bar", "changeMagicType('bar') must merge the series to type:'bar'")
     }
 
+    // ---- (1b) magicType 'stack' sets each series' stack, 'tiled' clears it ----
+    func testMagicTypeStackAndTiled() {
+        let view = makeChart()
+        func stackOf(_ v: EChartsView) -> String? {
+            var s: String?
+            v.ec.getModel()?.eachSeries { m, _ in if s == nil { s = m.get("stack") as? String } }
+            return s
+        }
+        XCTAssertNil(stackOf(view), "no stack initially")
+
+        var stackP = Payload(type: "changeMagicType")
+        stackP.other["newOption"] = computeMagicTypeOption(view.ec.getModel()!, "stack")
+        view.ec.dispatchAction(stackP)
+        XCTAssertEqual(stackOf(view), TOOLBOX_MAGIC_STACK_KEYWORD, "magicType('stack') sets the shared stack key")
+
+        var tiledP = Payload(type: "changeMagicType")
+        tiledP.other["newOption"] = computeMagicTypeOption(view.ec.getModel()!, "tiled")
+        view.ec.dispatchAction(tiledP)
+        XCTAssertNil(stackOf(view), "magicType('tiled') clears the stack")
+    }
+
     // ---- (2) restore resets a magicType swap back to the original option ----
     func testRestoreResetsMagicType() {
         let view = makeChart()
