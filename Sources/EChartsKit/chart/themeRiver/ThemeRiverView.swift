@@ -165,13 +165,37 @@ open class ThemeRiverView: ChartView {
             //   edge reversed (the closed area ECPolygon fills; smoothing deferred).
             var polygonShape = PolygonShape()
             polygonShape.points = points0 + points1.reversed()
-            polygonShape.smooth = 0
+            // upstream ECPolygon uses smooth 0.4 / stackedOnSmooth 0.4 for the spline bands. A single
+            //   Polygon ring approximates that; the two near-vertical end caps are short so the extra
+            //   rounding there is negligible.
+            polygonShape.smooth = 0.4
             let polygon = Polygon(["shape": polygonShape as PathShape])
             polygon.z2 = 0
 
             // polygon.useStyle(style);
             //   The item visual 'style' bag → typed `PathStyleProps` via the shared bridge (BarView).
             polygon.useStyle(barStyleFromDict(styleBag))
+
+            // Per-layer label (DEFERRED setLabelStyle). Minimal reproduction: the layer/series name at the
+            //   left edge of the band, vertically centered, rendered via the textContent painter walk.
+            let labelModel = seriesModel.getModel("label")
+            if (labelModel.get("show") as? Bool) != false, let last = indices.last {
+                let nm = data.getName(last)
+                if !nm.isEmpty {
+                    var ts = TextStyleProps()
+                    ts.text = nm
+                    ts.font = labelModel.getFont()
+                    ts.fill = labelModel.getTextColor()
+                    ts.verticalAlign = .middle
+                    let labelText = ZRText()
+                    labelText.useStyle(ts)
+                    polygon.setTextContent(labelText)
+                    var tc = ElementTextConfig()
+                    tc.position = "left"
+                    tc.distance = 4
+                    polygon.setTextConfig(tc)
+                }
+            }
 
             // Name the band 'item' (per-datum element name, matching FunnelView/PieView; upstream leaves
             //   it unset — harmless, for hit-testing/debug parity).
