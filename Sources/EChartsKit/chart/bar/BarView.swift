@@ -237,11 +237,14 @@ open class BarView: ChartView {
         let oldData = self._data
 
         // upstream: const coord = seriesModel.coordinateSystem; ... branch on coord.type.
-        // PORT-TODO: polar bar is deferred (coord/polar not ported). Only `cartesian2d` is handled;
-        //   a non-cartesian coordinate system short-circuits (the `polar` branch of `render` above
-        //   still routes here, but there is no polar coordinate system to downcast to yet).
+        // Polar bar → radial Sectors (a minimal static reproduction of layout/barPolar + the polar
+        //   branch of BarView; the full bar width/offset sharing, stacking, and background are deferred).
+        if let polar = seriesModel.coordinateSystem as? Polar {
+            self._renderPolarBars(seriesModel, polar, group)
+            self._data = data
+            return
+        }
         guard let coord = seriesModel.coordinateSystem as? Cartesian2D else {
-            // PORT-TODO: polar `_renderNormal` deferred.
             return
         }
         let baseAxis = coord.getBaseAxis()
@@ -1008,6 +1011,15 @@ func getLabelPositionForVertical(_ layout: RectLayout, _ coordSys: CoordSysOfBar
 //   `getItemStyle()` are `[String: Any]` bags; ZRenderKit `Path.useStyle` takes a typed
 //   `PathStyleProps`. This maps the common paint keys so bars/backgrounds are actually colored.
 //   Gradient/pattern fills, decal, and lineDash are not bridged yet.
+// Coerce a data-store cell to a Double (NaN for non-numeric / null), mirroring scatterToNumber.
+func barToNumber(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let f = v as? Float { return Double(f) }
+    if let s = v as? String, let d = Double(s) { return d }
+    return Double.nan
+}
+
 func barStyleFromDict(_ style: Any?) -> PathStyleProps {
     var s = PathStyleProps()
     guard let d = style as? [String: Any] else { return s }
@@ -1036,3 +1048,62 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
 }
 
 // export default BarView;  -> `open class BarView` above.
+
+extension BarView {
+    // Minimal polar-bar port (mirrors echarts src/layout/barPolar.ts, radial-bar branch).
+    // The gallery `bar-polar-radial` demo uses a category angleAxis + value radiusAxis, so
+    // baseAxis.dim === 'angle' and each bar is a Sector spanning one angular band, extending
+    // radially from r0 (value 0) to r (the datum value). Tangential bars (baseAxis.dim ===
+    // 'radius') are out of scope for the current gallery.
+    func _renderPolarBars(_ seriesModel: BarSeriesModel, _ polar: Polar, _ group: Group) {
+        let data = seriesModel.getData()
+        let angleAxis = polar.getAngleAxis()
+        let radiusAxis = polar.getRadiusAxis()
+        let RADIAN = Double.pi / 180
+
+        // Radial bars only when the angle axis is the base (category) axis.
+        guard angleAxis.type == "category" else { return }
+
+        guard let angleDimName = data.mapDimension("angle"),
+              let radiusDimName = data.mapDimension("radius") else { return }
+        let angleDimIdx = data.getDimensionIndex(angleDimName)
+        let radiusDimIdx = data.getDimensionIndex(radiusDimName)
+        let store = data.getStore()
+
+        // Band width (degrees) of one category slot on the angle axis; single series occupies
+        //   ~80% (default barCategoryGap '20%'), centered on the category angle.
+        let bandDeg = angleAxis.getBandWidth()
+        let halfW = abs(bandDeg) * 0.4
+
+        var radiusExtent = radiusAxis.getExtent()
+        if radiusExtent[0] > radiusExtent[1] { radiusExtent.reverse() }
+        let r0 = radiusAxis.dataToRadius(0)
+
+        let count = data.count()
+        for i in 0..<count {
+            let value = barToNumber(store.get(radiusDimIdx, i))
+            if value.isNaN { continue }
+            let angleVal = barToNumber(store.get(angleDimIdx, i))
+            let centerDeg = angleAxis.dataToAngle(angleVal)
+            let r = radiusAxis.dataToRadius(value)
+
+            var shape = SectorShape()
+            shape.cx = polar.cx
+            shape.cy = polar.cy
+            shape.r0 = r0
+            shape.r = r
+            // Degrees → radians with the polar sign convention (see Polar.getArea): -deg * RADIAN.
+            // With the -deg*RADIAN mapping, the band's near edge (centerDeg - halfW) yields the larger
+            //   (less-negative) angle, so it is the startAngle and clockwise:true sweeps the short band arc
+            //   (same convention pieLayout uses: start > end, clockwise → small positive sweep).
+            shape.startAngle = -(centerDeg - halfW) * RADIAN
+            shape.endAngle = -(centerDeg + halfW) * RADIAN
+            shape.clockwise = !angleAxis.inverse
+
+            let sector = Sector(["shape": shape as PathShape])
+            sector.useStyle(barStyleFromDict(data.getItemVisual(i, "style")))
+            group.add(sector)
+        }
+        self._data = data
+    }
+}
