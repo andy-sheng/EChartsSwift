@@ -245,7 +245,13 @@ public final class ScaleRawExtentInfo {
             // FIXME: there is a flaw here: if there is no "block" data processor like `dataZoom`,
             // and progressive rendering is using, here the category result might just only contain
             // the processed chunk rather than the entire result.
-            ? Double(model.getCategories()?.count ?? 0)
+            // BUGFIX (dataset category axis): `model.getCategories()` reads only the axis `data` OPTION,
+            //   which is absent for a dataset-sourced category axis — so the axis was flagged `isBlank`
+            //   (label suppression) + got a NaN extent. Fall back to the scale's `OrdinalMeta` category
+            //   count, which reflects the categories COLLECTED from the series' category dimension.
+            ? Double(model.getCategories()?.count
+                     ?? (scale as? OrdinalScale)?.getOrdinalMeta().categories.count
+                     ?? 0)
             : nil
 
         // [CATEGORY_AXIS_MODEL_DATA_IS_EMPTY_ARRAY]:

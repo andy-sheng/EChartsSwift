@@ -419,9 +419,10 @@ public final class OrdinalScale: Scale, ClassManageable {
                 ? categories[Int(ordinalNumber)] : nil
             // Note that if no data, ordinalMeta.categories is an empty array.
             // Return empty if it's not exist.
-            // PORT-TODO: `category + ''` uses Swift string interpolation; numeric→string formatting
-            //   may differ from JS for non-string categories (rare for a category axis).
-            return category == nil ? "" : "\(category!)"
+            // BUGFIX: a collected category (from a dataset source) can be a BOXED Swift Optional
+            //   (`Any` wrapping `String?`), so plain interpolation printed `Optional("Matcha")`.
+            //   Unwrap any nested optional before stringifying.
+            return category == nil ? "" : "\(ordinalUnwrapAny(category!))"
         }
         // PORT-TODO: upstream returns `undefined` when blank; base `getLabel` is non-optional `String`.
         return ""
@@ -472,3 +473,15 @@ extension OrdinalScale {
 }
 
 // upstream: export default OrdinalScale;  -> `public final class OrdinalScale` above.
+
+// Unwrap a value that may be a BOXED Swift Optional (`Any` wrapping `T?`), recursively, so that
+//   string interpolation of a collected ordinal category prints `Matcha` rather than `Optional("Matcha")`.
+//   A non-optional value is returned unchanged.
+func ordinalUnwrapAny(_ v: Any) -> Any {
+    let m = Mirror(reflecting: v)
+    if m.displayStyle == .optional {
+        if let first = m.children.first { return ordinalUnwrapAny(first.value) }
+        return v   // .none — keep as-is (renders "nil")
+    }
+    return v
+}
