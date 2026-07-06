@@ -156,9 +156,16 @@ open class GraphView: ChartView {
             guard let pos = graphPointFromLayout(data.getItemLayout(i)) else { continue }
             if !pos.x.isFinite || !pos.y.isFinite { continue }
 
-            let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol
+            let symbolType = (data.getItemVisual(i, "symbol") as? String)
+                ?? (data.getItemModel(i).get("symbol") as? String)
+                ?? seriesSymbol
+            // The per-node `symbolSize` is authored on the data item; the symbol visual stage does not
+            //   populate it for graph nodes, so fall back to the item model (matches getSymbolSize, which
+            //   adjustEdge already relies on) before the series default.
             let (sizeW, sizeH) = symbol.normalizeSymbolSize(
-                data.getItemVisual(i, "symbolSize") ?? seriesSymbolSize
+                data.getItemVisual(i, "symbolSize")
+                    ?? data.getItemModel(i).get("symbolSize")
+                    ?? seriesSymbolSize
             )
 
             // Resolve fill: item visual style first, then the series visual style.
