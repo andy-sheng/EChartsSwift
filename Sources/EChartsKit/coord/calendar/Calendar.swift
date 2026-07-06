@@ -113,7 +113,14 @@ public struct CalendarCellRect {
 //   (`dataToPoint(data, opt?)`, `pointToData(point, opt?)`, `dataToLayout(data, opt?)`). Those
 //   converters are therefore plain concrete methods; `CoordinateSystemMaster` is what the coord-sys
 //   registry / convert* pipeline need.
-public final class Calendar: CoordinateSystemMaster {
+public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
+    // upstream `class Calendar implements CoordinateSystem, CoordinateSystemMaster`. The port had dropped
+    //   the `CoordinateSystem` conformance, but the coord-injection provider casts a model's
+    //   `coordinateSystem` to `CoordinateSystem` (`simpleCoordSysInjectionProvider`) — so WITHOUT it a
+    //   `coordinateSystem:'calendar'` series never gets its coord injected (calendar heatmap/scatter drew
+    //   nothing). Most CoordinateSystem requirements resolve to the protocol-extension nil defaults; only
+    //   the generic `dataToPoint(_:_:)` witness (below) needs bridging to the concrete date method. `type`
+    //   / `dimensions` are already present.
 
     // upstream: static readonly dimensions = ['time', 'value'];
     public static let dimensions: [DimensionName] = ["time", "value"]
@@ -131,6 +138,21 @@ public final class Calendar: CoordinateSystemMaster {
     // upstream: readonly dimensions = Calendar.dimensions;
     //   Upstream is readonly; `CoordinateSystemMaster.dimensions` requires `{ get set }`, so `var`.
     public var dimensions: [DimensionName] = Calendar.dimensions
+
+    // CoordinateSystem.dataToPoint witness — the protocol's generic `(CoordinateSystemDataCoord, Any?)`
+    //   signature does not match the concrete date-typed `dataToPoint(_:clampArg:)`, so bridge it here.
+    public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double] {
+        return self.dataToPoint(data as OptionDataValueDate?, nil as Bool?)
+    }
+
+    // Concrete implementations for the members BOTH CoordinateSystemMaster and CoordinateSystem declare
+    //   with a protocol-extension default — needed to disambiguate the two defaults now that Calendar
+    //   conforms to both (Calendar has no axes; it exposes its CalendarModel as `model`).
+    public var model: ComponentModel? {
+        get { self._model }
+        set { if let m = newValue as? CalendarModel { self._model = m } }
+    }
+    public func getAxes() -> [Axis]? { nil }
 
     // upstream: private _model: CalendarModel;
     private var _model: CalendarModel!

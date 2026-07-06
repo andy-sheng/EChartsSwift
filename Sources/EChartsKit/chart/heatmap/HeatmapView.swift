@@ -124,10 +124,45 @@ open class HeatmapView: ChartView {
         if seriesModel.coordinateSystem is Cartesian2D {
             self._renderOnGridLike(seriesModel, api, 0, seriesModel.getData().count(), false)
         }
+        else if let calendar = seriesModel.coordinateSystem as? Calendar {
+            self._renderOnCalendar(seriesModel, calendar)
+        }
         else {
-            // PORT-TODO: matrix/calendar `_renderOnGridLike` branches and the geo `_renderOnGeo`
-            //   (blurred `HeatmapLayer`) path are deferred (those coord systems are not wired for
-            //   heatmap yet; the canvas-blur layer is not ported).
+            // PORT-TODO: matrix `_renderOnGridLike` branch and the geo `_renderOnGeo` (blurred
+            //   `HeatmapLayer`) path are deferred.
+        }
+    }
+
+    // Calendar heatmap: one visualMap-colored cell Rect per datum, sized to the calendar cell and
+    //   centered on `calendar.dataToPoint(date)`. (The cartesian _renderOnGridLike equivalent for the
+    //   calendar coord — the day cell replaces the x/y band cell.)
+    private func _renderOnCalendar(_ seriesModel: SeriesModel, _ calendar: Calendar) {
+        let group = self.group
+        let data = seriesModel.getData()
+        let cw = calendar.getCellWidth()
+        let ch = calendar.getCellHeight()
+        let dateDim = data.getDimension(0)   // dim 0 = the date/time value
+        var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
+
+        for idx in 0..<data.count() {
+            let point = calendar.dataToPoint(data.get(dateDim, idx))
+            guard point.count >= 2, point[0].isFinite, point[1].isFinite else { continue }
+
+            if data.hasItemOption {
+                borderRadius = data.getItemModel(idx).get(["itemStyle", "borderRadius"])
+            }
+
+            var shape = RectShape()
+            shape.x = point[0] - cw / 2
+            shape.y = point[1] - ch / 2
+            shape.width = cw
+            shape.height = ch
+            if let r = heatmapRectRadius(borderRadius) { shape.r = r }
+
+            let rect = Rect(["shape": shape as PathShape])
+            rect.useStyle(heatmapStyleFromDict(data.getItemVisual(idx, "style")))
+            _ = group.add(rect)
+            data.setItemGraphicEl(idx, rect)
         }
     }
 
