@@ -38,8 +38,9 @@ import ZRenderKit
 //        chart/helper/createClipPathFromCoordSys.swift.
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//     -> PORT-TODO: `util/states` NOT ported (states/emphasis prerequisite); the states block in
-//        `updateStyle` is deferred.
+//     -> `states.setStatesStylesFromModel` / `states.toggleHoverEmphasis` (util/states.swift). APPLIED
+//        in `updateStyle` (Phase 33): each bar Rect becomes a highDown dispatcher with its emphasis
+//        itemStyle so hover highlights it end-to-end.
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
 //     -> PORT-TODO: `label/labelStyle` NOT ported; the label block in `updateStyle` is deferred.
@@ -866,15 +867,29 @@ func updateStyle(
         _ = el.attr("cursor", cursorStyle)
     }
 
-    // upstream: label position + setLabelStyle + label value animation + emphasis/blur + statesStyles.
-    // PORT-TODO: the label + states blocks are deferred — `label/labelStyle` (setLabelStyle,
-    //   getLabelStatesModels, setLabelValueAnimation), `chart/helper/labelHelper` (getDefaultLabel,
-    //   getDefaultInterpolatedLabel), and `util/states` (toggleHoverEmphasis, setStatesStylesFromModel)
-    //   are not ported. The `getLabelPositionForHorizontal`/`getLabelPositionForVertical` helpers below
-    //   are ported for the eventual label block. `isZeroOnPolar` no-fill fix is polar-only (deferred).
+    // upstream: label position + setLabelStyle + label value animation.
+    // PORT-TODO: the label block is deferred — `label/labelStyle` (setLabelStyle, getLabelStatesModels,
+    //   setLabelValueAnimation) and `chart/helper/labelHelper` (getDefaultLabel,
+    //   getDefaultInterpolatedLabel) are not ported. The `getLabelPositionForHorizontal`/
+    //   `getLabelPositionForVertical` helpers below are ported for the eventual label block.
     _ = isHorizontalOrRadial
     _ = seriesModel
     _ = layout
+
+    // upstream (BarView.ts:1062-1064):
+    //   const emphasisModel = itemModel.getModel(['emphasis']);
+    //   toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
+    //   setStatesStylesFromModel(el, itemModel);
+    // Marks each bar `Rect` a highDown dispatcher carrying its emphasis-state itemStyle, so a hover
+    // (enterEmphasisWhenMouseOver) restyles it end-to-end.
+    let emphasisModel = itemModel.getModel(["emphasis"])
+    let focus: InnerFocus? = emphasisModel.get("focus")
+    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+    states.setStatesStylesFromModel(el, itemModel)
+    // PORT-TODO: upstream's `isZeroOnPolar(layout)` no-fill state fix-up (BarView.ts:1066-1074) is
+    //   polar-only; deferred (polar not ported).
 }
 
 // In case width or height are too small.

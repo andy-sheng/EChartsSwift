@@ -8,11 +8,11 @@
 //       emphasis state on the targeted data element, and `downplay` returns it to normal.
 //
 // NOTE on the dispatcher gate: `elSetState` only enters/leaves emphasis when the target element is a
-// highDown DISPATCHER (`states.isHighDownDispatcher(el)`). Upstream marks each bar slice a dispatcher
-// inside `BarView.updateStyle` via `toggleHoverEmphasis`, but that states-block is a documented
-// PORT-TODO in BarView (label/states subsystem deferred). So the test marks the target element a
-// dispatcher explicitly (`states.setAsHighDownDispatcher(el, true)`) — exactly what the deferred bar
-// wiring will do — then drives the real dispatch round-trip end to end.
+// highDown DISPATCHER (`states.isHighDownDispatcher(el)`). As of Phase 33, `BarView.updateStyle` marks
+// EVERY bar slice a dispatcher via `toggleHoverEmphasis` (the previously-deferred states-block is now
+// wired), so both `target` and `other` come out of the bar render already dispatchers. What isolates
+// the highlight to index 0 is the dispatch's data-index finder, not the dispatcher flag — the round-trip
+// below drives that end to end.
 import XCTest
 import ZRenderKit
 @testable import EChartsKit
@@ -77,10 +77,10 @@ final class ZZEmphasisTests: XCTestCase {
         XCTAssertNotNil(target, "bar render must have populated the data element for index 0")
         XCTAssertNotNil(other, "bar render must have populated the data element for index 1")
 
-        // Mark ONLY index 0 a highDown dispatcher (what BarView.updateStyle's deferred states-block does).
-        states.setAsHighDownDispatcher(target!, true)
+        // As of Phase 33, BarView.updateStyle marks every bar a highDown dispatcher via toggleHoverEmphasis,
+        // so both index 0 and index 1 are already dispatchers straight out of the render.
         XCTAssertTrue(states.isHighDownDispatcher(target!))
-        XCTAssertFalse(states.isHighDownDispatcher(other!))
+        XCTAssertTrue(states.isHighDownDispatcher(other!))
 
         XCTAssertTrue(target!.currentStates.isEmpty, "no emphasis before highlight")
 
@@ -93,9 +93,10 @@ final class ZZEmphasisTests: XCTestCase {
         XCTAssertTrue(target!.currentStates.contains("emphasis"),
                       "dispatch highlight must enter the emphasis state on the targeted dispatcher element")
         XCTAssertTrue(target!.hasState())
-        // A non-dispatcher sibling is untouched by elSetState (isHighDownDispatcher gate).
+        // The sibling (index 1) is a dispatcher too, but the highlight's data-index finder targets only
+        // index 0, so index 1 is never reached by elSetState.
         XCTAssertTrue(other!.currentStates.isEmpty,
-                      "non-dispatcher sibling must NOT enter emphasis")
+                      "sibling at a different dataIndex must NOT enter emphasis")
 
         // dispatchAction(downplay) returns it to normal.
         var dp = Payload(type: "downplay")

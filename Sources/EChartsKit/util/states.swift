@@ -364,11 +364,28 @@ public enum states {
 
     // ───────────────────────────── public enter/leave primitives ─────────────────────────────
     //
-    // PORT-TODO: `enterEmphasisWhenMouseOver` / `leaveEmphasisWhenMouseOut` (states.ts:360-372) and the
-    //   `handleGlobalMouseOver/OutForHighDown` (states.ts:638-695) need a live `Handler` host + the
-    //   `ElementEvent` touch fields (`shouldSilent`) — DEFERRED to the event-binding phase (per the
-    //   Phase-30 brief). The state math they call (`enter/leaveEmphasis`, `blurSeries`, `blurComponent`,
-    //   `allLeaveBlur`) is all ported below, so wiring them later is mechanical.
+    // Phase 33: `enterEmphasisWhenMouseOver` / `leaveEmphasisWhenMouseOut` (states.ts:360-372) are now
+    //   LIVE — the mouse-driven emphasis entry points bound by `EChartsView._initEvents`. They gate on
+    //   `shouldSilent` (touch-silent) and on `__highByOuter` (an "emphasis" event highlight, set by
+    //   `enterEmphasis`, has higher priority than a mouse hover), then apply/clear the single emphasis
+    //   flag via `traverseUpdateState`. PORT-TODO (still deferred): `handleGlobalMouseOver/OutForHighDown`
+    //   (states.ts:638-695) — the global-out blur/focus fan-out.
+
+    // upstream: `enterEmphasisWhenMouseOver(el, e)` (states.ts:360). Mouse-over emphasis entry.
+    //   `!shouldSilent(el, e) && !el.__highByOuter && traverseUpdateState(el, singleEnterEmphasis)`.
+    public static func enterEmphasisWhenMouseOver(_ el: Element, _ e: ZRenderKit.ElementEvent) {
+        if !shouldSilent(el, e) && getHighDownInner(el).__highByOuter == 0 {
+            traverseUpdateState(el, singleEnterEmphasis)
+        }
+    }
+
+    // upstream: `leaveEmphasisWhenMouseOut(el, e)` (states.ts:366). Mouse-out emphasis exit.
+    //   `!shouldSilent(el, e) && !el.__highByOuter && traverseUpdateState(el, singleLeaveEmphasis)`.
+    public static func leaveEmphasisWhenMouseOut(_ el: Element, _ e: ZRenderKit.ElementEvent) {
+        if !shouldSilent(el, e) && getHighDownInner(el).__highByOuter == 0 {
+            traverseUpdateState(el, singleLeaveEmphasis)
+        }
+    }
 
     // upstream: `enterEmphasis(el, highlightDigit?)` (states.ts:374).
     public static func enterEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
@@ -647,6 +664,45 @@ public enum states {
             }
         }
         return ret
+    }
+
+    // ───────────────────────────── states-from-model ─────────────────────────────
+
+    // upstream: `OTHER_STATES` (states.ts:797) — `['emphasis', 'blur', 'select']` (== `SPECIAL_STATES`).
+    // upstream: `defaultStyleGetterMap` (states.ts:798) — styleType → Model getter. Swift has no
+    //   dynamic `model[getterName]()` dispatch, so it is a `switch` on `styleType` below.
+    //
+    // upstream: `setStatesStylesFromModel(el, itemModel, styleType?, getter?)` (states.ts:806).
+    //   Reads the model's `emphasis` / `blur` / `select` sub-models' `[styleType]` (default `itemStyle`)
+    //   and stores the resulting style bag onto the element's `emphasis`/`blur`/`select` state, so that
+    //   activating a state (via `useState`) restyles the element. Faithful: `el.ensureState(name).style`.
+    public static func setStatesStylesFromModel(
+        _ el: Displayable,
+        _ itemModel: Model,
+        _ styleType: String? = nil,     // default itemStyle
+        _ getter: ((Model) -> Dictionary<Any>)? = nil
+    ) {
+        let styleType = styleType ?? "itemStyle"
+        for stateName in SPECIAL_STATES {   // upstream OTHER_STATES
+            let model = itemModel.getModel([stateName, styleType])
+            let state = el.ensureState(stateName)
+            // upstream: `state.style = getter ? getter(model) : model[defaultStyleGetterMap[styleType]]()`
+            if let getter = getter {
+                state.style = getter(model)
+            }
+            else {
+                switch styleType {
+                case "itemStyle": state.style = model.getItemStyle()
+                case "lineStyle": state.style = model.getLineStyle()
+                case "areaStyle": state.style = model.getAreaStyle()
+                default:
+                    // PORT-TODO: upstream `defaultStyleGetterMap[styleType]` is undefined for other
+                    //   styleTypes and would throw ("Let it throw error if getterType is not found");
+                    //   we fall back to `getItemStyle` rather than trap.
+                    state.style = model.getItemStyle()
+                }
+            }
+        }
     }
 
     // ───────────────────────────── highDown dispatcher / hover enable ─────────────────────────────
