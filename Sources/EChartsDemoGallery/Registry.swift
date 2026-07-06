@@ -84,5 +84,18 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_themeriver_stream,     // ThemeRiver (stream)
         EChartsDemoRegistry.demo_dataset_scatter,       // Dataset (scatter)
         EChartsDemoRegistry.demo_bar_two_yaxis,         // Bar (two y-axes)
+        // gallery-batch5 — more configuration variations (goal clause 2).
+        EChartsDemoRegistry.demo_bar_horizontal_stack,  // Bar (horizontal stack)
+        EChartsDemoRegistry.demo_line_multi_axis,       // Line (two y-axes)
+        EChartsDemoRegistry.demo_scatter_two_axis,      // Scatter (fixed axis range)
+        EChartsDemoRegistry.demo_pie_ring_label,        // Pie (ring + labels)
+        EChartsDemoRegistry.demo_radar_two,             // Radar (two series)
+        EChartsDemoRegistry.demo_graph_symbol,          // Graph (per-node symbolSize)
+        EChartsDemoRegistry.demo_sankey_multi,          // Sankey (three column)
+        EChartsDemoRegistry.demo_tree_deep,             // Tree (deeper)
+        EChartsDemoRegistry.demo_treemap_flat,          // Treemap (flat)
+        EChartsDemoRegistry.demo_sunburst_ring,         // Sunburst (inner hole)
+        EChartsDemoRegistry.demo_boxplot_wide,          // Boxplot (7 categories)
+        EChartsDemoRegistry.demo_funnel_wide,           // Funnel (6 stages)
     ]
 }
