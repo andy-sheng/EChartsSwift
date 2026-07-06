@@ -29,10 +29,10 @@ final class ThemeRiverRenderTests: XCTestCase {
         ])
 
         var axisLines = 0        // singleAxis backdrop: axisLine / tick / splitLine Line elements
-        var bands: [ZRenderKit.Polygon] = [] // one filled band Polygon per layer (named "item")
+        var bands: [ThemeRiverBand] = [] // one ECPolygon-style band per layer (named "item")
         _ = ec.getRoot().traverse { el in
-            if el.name == "item", let poly = el as? ZRenderKit.Polygon {
-                bands.append(poly)
+            if el.name == "item", let band = el as? ThemeRiverBand {
+                bands.append(band)
             }
             else if el is ZRenderKit.Line {
                 axisLines += 1
@@ -43,22 +43,22 @@ final class ThemeRiverRenderTests: XCTestCase {
         // Backdrop: the singleAxis reaches the scene graph as at least one Line (axisLine + ticks).
         XCTAssertGreaterThan(axisLines, 0, "singleAxis backdrop → axis Line(s)")
 
-        // One band Polygon per named layer (3 layers: Alpha/Beta/Gamma).
-        XCTAssertEqual(bands.count, 3, "themeRiver → one Polygon band per layer")
+        // One band per named layer (3 layers: Alpha/Beta/Gamma).
+        XCTAssertEqual(bands.count, 3, "themeRiver → one band per layer")
 
-        // GEOMETRY GUARD: every band has a non-empty, finite point ring. Each of the 5 time points
-        // contributes a top vertex (points0, forward) + a bottom vertex (points1, reversed) → 10 vertices.
-        // The `x` of each vertex comes straight from Single.dataToPoint, so it must land inside the coord
-        // rect's horizontal span [0, width]; the `y0`/`y0+y` values are group-local (the series group is
-        // translated by group.y = rect.y + boundaryGap), so only finiteness + within-height are checked
-        // after adding the group's y offset.
+        // GEOMETRY GUARD: every band has non-empty, finite upper/lower edges. Each of the 5 time points
+        // contributes one upper vertex (points1) and one lower vertex (points0). The `x` of each vertex
+        // comes straight from Single.dataToPoint, so it must land inside the coord rect's horizontal span
+        // [0, width]; the `y0`/`y0+y` values are group-local (the series group is translated by
+        // group.y = rect.y + boundaryGap), so only finiteness + within-height are checked after adding the
+        // group's y offset.
         for band in bands {
-            guard let shape = band.shape as? ZRenderKit.PolygonShape,
-                  let points = shape.points else {
-                return XCTFail("band Polygon must carry a ZRenderKit.PolygonShape with points")
+            guard let shape = band.shape as? ThemeRiverBandShape else {
+                return XCTFail("band must carry a ThemeRiverBandShape")
             }
-            XCTAssertGreaterThan(points.count, 0, "band ring must be non-empty")
-            XCTAssertEqual(points.count, 10, "5 time points → 10-vertex band ring (top + bottom)")
+            let points = shape.upperPoints + shape.lowerPoints
+            XCTAssertEqual(shape.upperPoints.count, 5, "5 time points → 5 upper-edge vertices")
+            XCTAssertEqual(shape.lowerPoints.count, 5, "5 time points → 5 lower-edge vertices")
             // The series group carries the vertical offset; walk up the parent chain to accumulate it.
             var groupY = 0.0
             var node: Transformable? = band.parent
