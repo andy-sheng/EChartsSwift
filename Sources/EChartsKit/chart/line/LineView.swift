@@ -52,6 +52,19 @@ open class LineView: ChartView {
         group.removeAll()
         if points.count < 2 { self._data = data; return }
 
+        // smooth: a truthy `smooth` renders the line/area as a spline. echarts maps `true` → 0.5 and
+        //   uses a number directly. `step` (below) takes precedence and disables smoothing.
+        let smoothVal: Double = {
+            let s = seriesModel.get("smooth")
+            if let b = s as? Bool { return b ? 0.5 : 0 }
+            if let d = s as? Double { return d }
+            if let i = s as? Int { return Double(i) }
+            return 0
+        }()
+        // step: staircase point list ('start'|'middle'|'end', or true→'start'). Applied to the line
+        //   (and area top edge) point list before shaping.
+        let steppedPoints = lineStepPoints(points, seriesModel.get("step"), isValueAxisH)
+
         // Color: the visual/style stage stored the palette color in the series' visual `style` bag
         //   (colorKey 'fill' for a basic line — see visual/style.swift). The value is an EChartsKit
         //   `ZRColor.color(String)` (or a raw String); extract the solid color and use it as the LINE
@@ -91,10 +104,13 @@ open class LineView: ChartView {
                 }
             }
             if baselinePts.count == points.count {
-                var polyPts = points
+                // Area top edge follows the same step staircase as the line (when stepped).
+                let topPts = steppedPoints ?? points
+                var polyPts = topPts
                 polyPts.append(contentsOf: baselinePts.reversed())
                 var pShape = PolygonShape()
                 pShape.points = polyPts
+                if steppedPoints == nil { pShape.smooth = smoothVal }
                 let areaPoly = Polygon()
                 areaPoly.setShape(pShape)
                 areaPoly.name = "area"
@@ -112,7 +128,12 @@ open class LineView: ChartView {
         }
 
         var shape = PolylineShape()
-        shape.points = points
+        if let steppedPoints = steppedPoints {
+            shape.points = steppedPoints   // step overrides smooth
+        } else {
+            shape.points = points
+            shape.smooth = smoothVal
+        }
         let polyline = Polyline()
         polyline.setShape(shape)
         polyline.name = "line"
@@ -184,6 +205,42 @@ open class LineView: ChartView {
 
         self._data = data
     }
+}
+
+// Turn a point list into a step (staircase) path — a faithful reduction of echarts' turnPointsIntoStep.
+//   `stepOpt` is 'start' | 'middle'/'center' | 'end' (or `true` → 'start'). `isValueAxisH` selects the
+//   base axis: when the value axis is horizontal the base (category) axis is Y (index 1), else X (0).
+//   Returns nil when no step is requested.
+private func lineStepPoints(_ points: [VectorArray], _ stepOpt: Any?, _ isValueAxisH: Bool) -> [VectorArray]? {
+    let step: String
+    if let s = stepOpt as? String, !s.isEmpty { step = s }
+    else if let b = stepOpt as? Bool, b { step = "start" }
+    else { return nil }
+    if points.count < 2 { return nil }
+
+    let bi = isValueAxisH ? 1 : 0   // base (category) axis index
+    let vi = 1 - bi                 // value axis index
+    func comp(_ p: VectorArray, _ idx: Int) -> Double { idx == 0 ? p.x : p.y }
+    func make(_ base: Double, _ value: Double) -> VectorArray { bi == 0 ? VectorArray(base, value) : VectorArray(value, base) }
+
+    var out: [VectorArray] = [points[0]]
+    for i in 1..<points.count {
+        let prev = points[i - 1]
+        let cur = points[i]
+        switch step {
+        case "end":
+            // horizontal to the next base coord at the previous value, then vertical to the next point.
+            out.append(make(comp(cur, bi), comp(prev, vi)))
+        case "middle", "center":
+            let mid = (comp(prev, bi) + comp(cur, bi)) / 2
+            out.append(make(mid, comp(prev, vi)))
+            out.append(make(mid, comp(cur, vi)))
+        default: // "start"
+            out.append(make(comp(prev, bi), comp(cur, vi)))
+        }
+        out.append(cur)
+    }
+    return out
 }
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric series data is stored as `Double`. Mirrors the
