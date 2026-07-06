@@ -174,6 +174,20 @@ open class GraphView: ChartView {
             )
             if let path = el as? Path {
                 path.name = "node"
+
+                // upstream (SymbolDraw → chart/helper/Symbol._updateCommon, Symbol.ts:357): each node
+                //   symbol is marked a highDown dispatcher carrying its emphasis-state itemStyle, so a
+                //   hover restyles it. Mirror ScatterView.render's block.
+                //   PORT-TODO: `focus === 'adjacency'` (getAdjacentDataIndices) — the adjacency focus that
+                //   also blurs non-neighbour nodes/edges — is DEFERRED (raw focus passed through).
+                let itemModel = data.getItemModel(i)
+                let emphasisModel = itemModel.getModel(["emphasis"])
+                let focus: InnerFocus? = emphasisModel.get("focus")
+                let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
+                states.setStatesStylesFromModel(path, itemModel)
+
                 _ = group.add(path)
                 data.setItemGraphicEl(i, path)
             }

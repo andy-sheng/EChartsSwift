@@ -333,6 +333,21 @@ private func updateNode(
     )
     if let path = symbolEl as? Path {
         path.name = "item"
+
+        // upstream (SymbolClz → chart/helper/Symbol._updateCommon, Symbol.ts:357): the node symbol is
+        //   marked a highDown dispatcher carrying its emphasis-state itemStyle, so a hover restyles it.
+        //   Mirror ScatterView.render's block.
+        //   PORT-TODO: `focus === 'relative'|'ancestor'|'descendant'` (getAncestorsIndices /
+        //   getDescendantIndices, TreeView.ts:447-456) — the tree-topology focus that also blurs
+        //   unrelated nodes — is DEFERRED (raw focus passed through).
+        let itemModel = data.getItemModel(dataIndex)
+        let emphasisModel = itemModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
+        states.setStatesStylesFromModel(path, itemModel)
+
         // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
         _ = group.add(path)
         data.setItemGraphicEl(dataIndex, path)

@@ -384,7 +384,18 @@ open class SankeyView: ChartView {
             // rect.setStyle('decal', node.getVisual('style').decal);
             //   PORT-TODO: node decal (Pattern) not bridged (decal out of the static-render scope).
 
-            // setStatesStylesFromModel(rect, itemModel);  — PORT-TODO: states DEFERRED.
+            // upstream (SankeyView.ts:315): setStatesStylesFromModel(rect, itemModel); + (323-332)
+            //   toggleHoverEmphasis. The node rect is marked a highDown dispatcher carrying its
+            //   emphasis-state itemStyle, so a hover restyles it. Mirror ScatterView.render's block.
+            //   PORT-TODO: `focus === 'adjacency'|'trajectory'` (getAdjacentDataIndices /
+            //   getTrajectoryDataIndices) — the graph-topology focus that also blurs unrelated
+            //   nodes/edges — is DEFERRED (raw focus passed through).
+            let emphasisModel = itemModel.getModel(["emphasis"])
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(rect, focus, blurScope, isDisabled)
+            states.setStatesStylesFromModel(rect, itemModel)
 
             rect.name = "node"
             _ = mainGroup.add(rect)
@@ -392,7 +403,6 @@ open class SankeyView: ChartView {
             nodeData.setItemGraphicEl(node.dataIndex, rect)
 
             // getECData(rect).dataType = 'node';  — PORT-TODO: innerStore DEFERRED.
-            // toggleHoverEmphasis(rect, focus === 'adjacency' ? ... : ..., ...);  — PORT-TODO: DEFERRED.
         })
 
         // nodeData.eachItemGraphicEl(...) draggable → el.drift / api.dispatchAction('dragNode') ...
