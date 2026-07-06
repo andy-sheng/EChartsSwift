@@ -1024,3 +1024,17 @@ private func jsTruthy(_ v: Any?) -> Bool {
     if let s = v as? String { return !s.isEmpty }
     return true
 }
+
+// ---------------------------------------------------------------------------
+// dataStackHelper.DataStackSeriesModel conformance.
+// `enableDataStack` (data/helper/dataStackHelper.swift) casts the series to `DataStackSeriesModel`
+// to read `get('stack')` + `id`. Without this conformance the `as?` cast silently fails → `mayStack`
+// is always false → the stack calculation dimensions are never created → stacked bar/line series
+// render overlaid at the shared baseline (the classic protocol-witness trap). `id` is inherited from
+// ComponentModel; the single-arg `get(_:)` witness dispatches to the two-arg option reader.
+// ---------------------------------------------------------------------------
+extension SeriesModel: DataStackSeriesModel {
+    public func get(_ key: String) -> Any? {
+        return self.get(key as Any?, false)
+    }
+}

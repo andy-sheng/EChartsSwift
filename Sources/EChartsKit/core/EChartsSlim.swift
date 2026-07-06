@@ -959,8 +959,14 @@ public final class EChartsSlim: EChartsType {
         dataZoomProcessor.overallReset?(ecModel, api, nil)
 
         // (4) performDataProcessorTasks — the processor subset a bar needs = axis STATISTICS (feeds the
-        //     cross-series bar layout). Data-stack / sample processors are PORT-TODO skips (single
-        //     unstacked series). Run the captured processor overallResets.
+        //     cross-series bar layout). Run the captured processor overallResets.
+        // PROCESSOR (dataStack) — upstream `registerProcessor(PRIORITY.PROCESSOR.STATISTIC, dataStackStageHandler)`.
+        //   Computes the cumulative `stackResultDimension` / `stackedOverDimension` values for `stack`-grouped
+        //   series. MUST run BEFORE the axis-statistics processors + coord update (axis extent reads the
+        //   stacked totals) and before the cross-series bar layout (reads the stacked base). Without this,
+        //   stacked bar/line series render overlaid at the shared baseline instead of stacked.
+        dataStack(ecModel)
+
         for processor in EChartsSlim._registers.capturedProcessors {
             processor(ecModel)
         }
