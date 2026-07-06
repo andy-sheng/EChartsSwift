@@ -257,13 +257,13 @@ open class PieView: ChartView {
             style.x = cx + lr * cos(midAngle)
             style.y = cy + lr * sin(midAngle)
             style.align = .center
-            // Inside labels default to white (upstream `inheritColor` resolves to a contrasting light
-            //   text over the sector fill). `getTextColor()` returns the generic dark default, so only
-            //   honour a color the user set EXPLICITLY; otherwise use white.
+            // Inside labels default to an AUTO-CONTRAST colour over the sector fill (upstream
+            //   `inheritColor` + the inside-text contrast rule): white text on a dark slice, dark text on
+            //   a light slice. Only a colour the user set EXPLICITLY overrides it.
             if let explicit = labelModel.get("color") as? String, explicit != "inherit", explicit != "auto" {
                 style.fill = explicit
             } else {
-                style.fill = "#ffffff"
+                style.fill = insideAutoTextColor(sectorFill)
             }
         }
         else {
@@ -299,6 +299,15 @@ open class PieView: ChartView {
         textEl.useStyle(style)
         _ = group.add(textEl)
     }
+}
+
+// Auto-contrast colour for a label drawn INSIDE a filled element (pie sector / graph node / sunburst
+//   sector): white text over a dark fill, dark text over a light fill — the upstream inside-label
+//   contrast rule. `color.lum` returns luminance in 0…1 (higher = lighter). Module-internal so the
+//   graph/sunburst inside labels can share it.
+func insideAutoTextColor(_ fill: String?) -> String {
+    guard let fill = fill else { return "#ffffff" }
+    return ZRenderKit.color.lum(fill, 0) > 0.5 ? "#333333" : "#ffffff"
 }
 
 // Bridge an item-visual `fill` (ZRColor / String / palette ZRColor) to a colour STRING for the pie label.

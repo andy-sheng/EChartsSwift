@@ -221,7 +221,8 @@ open class GraphView: ChartView {
                         // Inside labels sit centered on the (dark) symbol with a contrasting white fill
                         //   (echarts' inheritColor auto-contrast); outside labels use the label color.
                         if position == "inside" {
-                            ts.fill = (labelModel.getShallow("color") as? String) ?? "#ffffff"
+                            ts.fill = (labelModel.getShallow("color") as? String)
+                                ?? insideAutoTextColor(graphColorString(itemStyle?["fill"]))
                             // Auto-stroke matching the node fill so a white label stays legible where it
                             //   overflows the symbol onto the canvas (echarts getInsideTextStroke). The
                             //   TSpan draws stroke-first, so the fill still paints over it.
