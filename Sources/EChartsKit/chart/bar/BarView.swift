@@ -345,6 +345,7 @@ open class BarView: ChartView {
                 data.setItemGraphicEl(dataIndex, el)
 
                 _ = group.add(el)
+                renderCartesianBarLabel(seriesModel, data, dataIndex, layout, group)
                 el.ignore = isClipped
             })
             .update({ newIndex, oldIndex in
@@ -443,6 +444,7 @@ open class BarView: ChartView {
                 data.setItemGraphicEl(newIndex, el!)
                 el!.ignore = isClipped
                 _ = group.add(el!)
+                renderCartesianBarLabel(seriesModel, data, newIndex, layout, group)
             })
             .remove({ dataIndex in
                 let el = oldData?.getItemGraphicEl(dataIndex) as? Path
@@ -795,6 +797,44 @@ func isValidLayoutCartesian2D(_ layout: RectLayout) -> Bool {
 }
 
 // ================================================================================================
+// MINIMAL cartesian bar label (the full `label/labelStyle` block in updateStyle is deferred). Renders the
+//   datum VALUE as text at the bar, gated on `label.show` (default false for bar — only shown when the user
+//   sets `label:{show:true}`). Positions: 'top' (above the bar rim, default), 'inside'/'middle' (centered),
+//   'bottom' (below). Bars have a NEGATIVE-height layout (rect extends up from the baseline), so top/bottom
+//   are derived via min/max. Full formatter/rich-label/rotation deferred.
+func renderCartesianBarLabel(_ seriesModel: SeriesModel, _ data: SeriesData, _ dataIndex: Int, _ layout: RectShape, _ group: Group) {
+    let itemModel = data.getItemModel(dataIndex)
+    let labelModel = itemModel.getModel("label")
+    guard (labelModel.get("show") as? Bool) ?? false else { return }
+    let valueDim = data.mapDimension("y") ?? data.mapDimension("x") ?? ""
+    guard let v = (data.get(valueDim, dataIndex) as? Double), v.isFinite else { return }
+    let text = (v == v.rounded()) ? String(Int(v)) : String(v)
+    guard layout.x.isFinite, layout.y.isFinite else { return }
+
+    let barTop = Swift.min(layout.y, layout.y + layout.height)
+    let barBottom = Swift.max(layout.y, layout.y + layout.height)
+    let cx = layout.x + layout.width / 2
+    let position = (labelModel.get("position") as? String) ?? "top"
+
+    var style = TextStyleProps()
+    style.text = text
+    style.font = labelModel.getFont()
+    style.fill = labelModel.getTextColor() ?? "#54555a"
+    style.align = .center
+    style.x = cx
+    switch position {
+    case "inside", "middle", "insideTop", "insideBottom", "insideMiddle":
+        style.y = (barTop + barBottom) / 2; style.verticalAlign = .middle
+    case "bottom", "insideBottomEdge":
+        style.y = barBottom + 4; style.verticalAlign = .top
+    default: // "top"
+        style.y = barTop - 4; style.verticalAlign = .bottom
+    }
+    let textEl = ZRText(["z2": 10.0, "silent": true])
+    textEl.useStyle(style)
+    _ = group.add(textEl)
+}
+
 // upstream: `interface GetLayout` + `const getLayout: { [key in 'cartesian2d' | 'polar']: GetLayout }`.
 //   Only the cartesian2d entry is ported (polar deferred → free function; see the `clip` note).
 //   `data.getItemLayout(dataIndex)` returns the layout bag stored by layout/barGrid.swift
