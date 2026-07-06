@@ -137,6 +137,20 @@ open class FunnelView: ChartView {
             //   unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
             polygon.name = "item"
 
+            // upstream (FunnelPiece.updateData):
+            //   const emphasisModel = itemModel.getModel('emphasis');
+            //   setStatesStylesFromModel(polygon, itemModel);
+            //   toggleHoverEmphasis(polygon, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
+            //       emphasisModel.get('disabled'));
+            //   Marks each piece a highDown dispatcher carrying its emphasis-state itemStyle so a hover
+            //   (enterEmphasisWhenMouseOver) restyles it.
+            let emphasisModel = itemModel.getModel(["emphasis"])
+            states.setStatesStylesFromModel(polygon, itemModel)
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
+
             data.setItemGraphicEl(idx, polygon)
             _ = group.add(polygon)
 

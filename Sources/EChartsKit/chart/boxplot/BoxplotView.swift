@@ -231,7 +231,14 @@ private func updateNormalBoxData(
     //   const emphasisModel = itemModel.getModel('emphasis');
     //   setStatesStylesFromModel(el, itemModel);
     //   toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
-    // PORT-TODO: emphasis/hover state styling DEFERRED per task scope.
+    //   Marks `el` a highDown dispatcher carrying its emphasis-state itemStyle so a hover restyles it.
+    let itemModel = data.getItemModel(dataIndex)
+    let emphasisModel = itemModel.getModel(["emphasis"])
+    states.setStatesStylesFromModel(el, itemModel)
+    let focus: InnerFocus? = emphasisModel.get("focus")
+    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
 }
 
 // upstream: function transInit(points: number[][], dim: number, itemLayout: BoxplotItemLayout)

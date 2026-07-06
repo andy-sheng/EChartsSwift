@@ -395,13 +395,44 @@ private func setBoxCommon(_ el: NormalBoxPath, _ data: SeriesData, _ dataIndex: 
 
     el.__simpleBox = isSimpleBox
 
-    // PORT-TODO: states/emphasis block deferred (`util/states` NOT ported):
-    //   setStatesStylesFromModel(el, itemModel);
-    //   zrUtil.each(el.states, (state, stateName) => { ... getColor/getBorderColor per state ... });
+    // upstream: setStatesStylesFromModel(el, itemModel);
+    //   Populates el.states.emphasis/blur/select with each state's `itemStyle` and marks `el` a highDown
+    //   dispatcher below, so a hover (enterEmphasisWhenMouseOver) restyles the box.
+    states.setStatesStylesFromModel(el, itemModel)
+
+    // upstream:
+    //   const sign = data.getItemLayout(dataIndex).sign;
+    //   zrUtil.each(el.states, (state, stateName) => {
+    //       const stateModel = itemModel.getModel(stateName);
+    //       const color = getColor(sign, stateModel);
+    //       const borderColor = getBorderColor(sign, stateModel) || color;
+    //       const stateStyle = state.style || (state.style = {});
+    //       color && (stateStyle.fill = color);
+    //       borderColor && (stateStyle.stroke = borderColor);
+    //   });
+    //   Overrides each state's fill/stroke with the sign-specific bull/bear color from that state's model.
+    let sign = (data.getItemLayout(dataIndex) as? CandlestickItemLayout)?.sign ?? 0
+    for (stateName, state) in el.states {
+        let stateModel = itemModel.getModel([stateName])
+        let color = getColor(sign, stateModel)
+        let borderColor = candlestickViewTruthy(getBorderColor(sign, stateModel))
+            ? getBorderColor(sign, stateModel) : color
+        var stateStyle = state.style ?? [:]
+        if candlestickViewTruthy(color) { stateStyle["fill"] = color }
+        if candlestickViewTruthy(borderColor) { stateStyle["stroke"] = borderColor }
+        state.style = stateStyle
+    }
+
+    // upstream:
     //   const emphasisModel = itemModel.getModel('emphasis');
     //   toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
     //       emphasisModel.get('disabled'));
-    // The static render only needs the normal-state fill/stroke (already applied via useStyle above).
+    let emphasisModel = itemModel.getModel(["emphasis"])
+    let focus: InnerFocus? = emphasisModel.get("focus")
+    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+
     _ = SKIP_PROPS
 }
 

@@ -144,7 +144,10 @@ open class RadarView: ChartView {
 
             // setStatesStylesFromModel(polyline, itemModel, 'lineStyle');
             // setStatesStylesFromModel(polygon, itemModel, 'areaStyle');
-            //   PORT-TODO: emphasis/select/blur state styles DEFERRED (util/states not ported).
+            //   Populate each shape's emphasis/blur/select state styles from the item's lineStyle/areaStyle
+            //   models. The hover dispatcher (toggleHoverEmphasis on itemGroup below) then restyles them.
+            states.setStatesStylesFromModel(polyline, itemModel, "lineStyle")
+            states.setStatesStylesFromModel(polygon, itemModel, "areaStyle")
 
             // const areaStyleModel = itemModel.getModel('areaStyle');
             // const polygonIgnore = areaStyleModel.isEmpty() && areaStyleModel.parentModel.isEmpty();
@@ -204,8 +207,17 @@ open class RadarView: ChartView {
             }
 
             // const emphasisModel = itemModel.getModel('emphasis');
-            // toggleHoverEmphasis(itemGroup, emphasisModel.get('focus'), …);
-            //   PORT-TODO: hover emphasis dispatcher DEFERRED (util/states not ported).
+            // toggleHoverEmphasis(itemGroup, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
+            //     emphasisModel.get('disabled'));
+            //   Marks the whole itemGroup (line + area + vertex symbols) a highDown dispatcher; a hover
+            //   over any child resolves up to this group and drives the series row into emphasis.
+            //   PORT-TODO: the per-state symbol itemStyle clone (symbolPath.ensureState(...).style) and the
+            //   per-state polygon.ignore toggle are still deferred (styling niceties, not the dispatcher).
+            let emphasisModel = itemModel.getModel(["emphasis"])
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(itemGroup, focus, blurScope, isDisabled)
 
             // group.add(itemGroup);  data.setItemGraphicEl(idx, itemGroup);
             _ = group.add(itemGroup)
