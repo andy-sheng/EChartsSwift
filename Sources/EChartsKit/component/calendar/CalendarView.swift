@@ -275,6 +275,10 @@ public final class CalendarView: ComponentView {
         shape.points = pointsToVector(points)
         let poyline = Polyline(["shape": shape as PathShape, "z2": 20.0])
         poyline.useStyle(lineStyle)
+        // BUGFIX (visual-parity): the split-line Polyline is stroke-only, but a nil `fill` in `lineStyle`
+        //   can't clear the '#000' Path default via the merge (extendPathStyle skips nil) → the calendar
+        //   month-boundary edges rendered as solid BLACK wedges. Clear the fill directly.
+        poyline.pathStyle.fill = nil
 
         _ = group.add(poyline)
     }
