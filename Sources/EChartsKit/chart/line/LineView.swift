@@ -17,7 +17,14 @@ open class LineView: ChartView {
     open override func render(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
-        // PORT-TODO: polar line deferred (coord/polar not ported). Only cartesian2d is handled.
+        // Polar line: project each datum via the polar coord and draw a polyline + symbols (no
+        //   areaStyle/step/stacking on polar — those stay cartesian-only for now).
+        if let polar = seriesModel.coordinateSystem as? Polar {
+            self.renderPolarLine(seriesModel, polar)
+            self._data = seriesModel.getData()
+            return
+        }
+        // PORT-TODO: only cartesian2d + polar are handled (geo/single/calendar line deferred).
         guard let coord = seriesModel.coordinateSystem as? Cartesian2D else { return }
 
         let data = seriesModel.getData()
@@ -204,6 +211,77 @@ open class LineView: ChartView {
         }
 
         self._data = data
+    }
+
+    // Minimal polar line: project each datum through the polar coord (radius/angle dims, like
+    //   ScatterView's polar branch) and stroke a polyline through the points, then place the data
+    //   symbols. areaStyle/step/stacking + line emphasis are deferred on polar.
+    private func renderPolarLine(_ seriesModel: SeriesModel, _ coord: Polar) {
+        let data = seriesModel.getData()
+        let store = data.getStore()
+        let group = self.group
+        group.removeAll()
+
+        guard let radiusDimName = data.mapDimension("radius"),
+              let angleDimName = data.mapDimension("angle") else { return }
+        let radiusDimIdx = data.getDimensionIndex(radiusDimName)
+        let angleDimIdx = data.getDimensionIndex(angleDimName)
+
+        func pointAt(_ i: Int) -> [Double] {
+            let radiusVal = lineToNumber(store.get(radiusDimIdx, i))
+            let angleVal = lineToNumber(store.get(angleDimIdx, i))
+            return coord.dataToPoint([radiusVal, angleVal])
+        }
+
+        var points: [VectorArray] = []
+        for i in 0..<data.count() {
+            let p = pointAt(i)
+            if p.count >= 2 && p[0].isFinite && p[1].isFinite { points.append(VectorArray(p[0], p[1])) }
+        }
+        if points.count < 2 { return }
+
+        func colorString(_ v: Any?) -> String? {
+            if let str = v as? String { return str }
+            if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
+            return nil
+        }
+        var stroke = "#000"
+        if let style = data.getVisual("style") as? [String: Any] {
+            if let s = colorString(style["stroke"]) { stroke = s }
+            else if let f = colorString(style["fill"]) { stroke = f }
+        }
+
+        var shape = PolylineShape()
+        shape.points = points
+        let smoothVal = (seriesModel.get("smooth") as? Bool) == true ? 0.5 : ((seriesModel.get("smooth") as? Double) ?? 0)
+        shape.smooth = smoothVal
+        let polyline = Polyline()
+        polyline.setShape(shape)
+        polyline.name = "line"
+        var st = PathStyleProps()
+        st.stroke = .string(stroke)
+        st.fill = .string("none")
+        st.lineWidth = 2
+        polyline.useStyle(st)
+        _ = group.add(polyline)
+
+        // Symbols (unless showSymbol:false / symbol:'none').
+        if (seriesModel.get("showSymbol") as? Bool) != false {
+            let seriesSymbol = (seriesModel.get("symbol") as? String) ?? "emptyCircle"
+            let seriesSymbolSize: Any = seriesModel.get("symbolSize") ?? 4.0
+            for i in 0..<data.count() {
+                let p = pointAt(i)
+                if !(p.count >= 2 && p[0].isFinite && p[1].isFinite) { continue }
+                let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol
+                if symbolType == "none" { continue }
+                let (w, h) = symbol.normalizeSymbolSize(data.getItemVisual(i, "symbolSize") ?? seriesSymbolSize)
+                if let el = symbol.createSymbol(symbolType, p[0] - w / 2, p[1] - h / 2, w, h, ZRenderKit.ZRColor.string(stroke)) as? Path {
+                    el.name = "symbol"
+                    data.setItemGraphicEl(i, el)
+                    _ = group.add(el)
+                }
+            }
+        }
     }
 }
 
