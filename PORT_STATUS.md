@@ -1,5 +1,7 @@
 # PORT_STATUS.md — ECharts/ZRender → Swift port
 
+**Phase 51 (COORDINATE-SYSTEM axis witnesses — fixes the recurring protocol-witness trap for Cartesian2D.getAxis/getOtherAxis; UNBLOCKS the marker path): `CoordinateSystem` requires `getAxis(_ dim: DimensionName?) -> Axis?` + `getOtherAxis(_ baseAxis: Axis) -> Axis?`, but Cartesian2D's concrete methods took the NARROWER `Axis2D` param/return and so did NOT witness them — a call through a `CoordinateSystem`-typed reference silently hit the nil-returning DEFAULT (the documented [[swift-protocol-witness-trap]]), which blocked `markerHelper` (it reads `coordSys.getAxis`/`getOtherAxis` for markLine/markPoint coordinate + statistic resolution). Added the two delegating protocol-witness overloads to `Cartesian2D` (guard-unwrap → call the concrete `Axis2D` version); concrete callers still bind the exact-match narrow overloads, so no behavior change for existing code. **Clean build (0 warnings); `swift test` — 307 / 0 failures / 58 skipped** (baseline 306; +1 `ZZCoordWitnessTests`: through a `CoordinateSystem`-typed ref, `getAxis("x"/"y")` + `getOtherAxis(xAxis)` now resolve non-nil, `getOtherAxis(x)→y`). No regression (306 pre-existing pass). This is the infra prerequisite for markPoint/markLine/markArea; the per-series inner-marker-model instantiation + MarkerView render wiring is the remaining step (next). See §82.**
+
 **Phase 50 (BRUSH polygon — the last brush type; COMPLETES the brush selector set rect/lineX/lineY/polygon): the brush now supports `brushType:'polygon'` (a free-form outline). Files edited: `component/brush/brushVisual.swift` — added the `polygon` case to `makeBrushCommonSelectorForSeries` (point selector = boundingRect.contain AND `ZRenderKit.polygon.contain` ray-cast point-in-polygon; rect selector = any bar corner in the polygon, OR a polygon vertex in the bar, OR a bar edge crossing a polygon edge via a ported `linePolygonIntersect`/`brushSegIntersect`), a `polygon` boundingRect builder (bounding box over the point list), and `brushPolygonPoints` returning `[VectorArray]` (SIMD2) so it feeds `polygon.contain` directly. **Clean build (0 warnings); `swift test` — 306 / 0 failures / 58 skipped** (baseline 305; +1 `ZZBrushTests.testPolygonBrushSelects`: a quadrilateral outline enclosing bars 0-1 keeps them at palette fill + dims bars 2-4). Demos 113/113. Done directly in the main loop (used ZRenderKit's `polygon.contain`; ported the segment-intersect). The brush feature's selector core is now COMPLETE for all four types. DEFERRED (documented): the live polygon DRAG (click-to-add-vertex UI — the current live drag produces rect/lineX/lineY; polygon is dispatch-only), coordRange persistence for lineX/lineY/polygon, the toolbox brush button. See §81.**
 
 **Phase 49 (TOOLBOX action core — `restore` + `magicType`; the first slice of the toolbox component): the toolbox component now exists and its two option-expressible features are FUNCTIONAL. Files added: `component/toolbox/ToolboxModel.swift` (the `toolbox` ComponentModel + defaultOption `feature` bag), `component/toolbox/toolboxAction.swift` (`installToolboxActions` → registerAction `restore` (`ecModel.resetOption("recreate")` — re-mounts the OptionManager base-option backup, discarding interactive changes) + `changeMagicType` (`ecModel.mergeOption(payload.newOption)`); + `computeMagicTypeOption(ecModel, target)` porting MagicType.onclick's line↔bar series-swap option). Registered `ToolboxModel` + `installToolboxActions` in EChartsSlim. KEY: both features use ALREADY-PORTED GlobalModel methods (`resetOption`/`mergeOption`) on the persisted `_model` — no OptionManager changes needed. `mergeOption` with a changed series `type` correctly RE-INSTANTIATES the series model to the new subtype (verified). **Clean build (0 warnings); `swift test` — 304 / 0 failures / 58 skipped** (baseline 302; +2 `ZZToolboxTests`: `changeMagicType('bar')` swaps a line series → bar; `restore` after a swap resets it → line). Demos 113/113. Done directly in the main loop. DEFERRED (documented): the on-canvas toolbox icon VIEW + click wiring; the host-dependent features (saveAsImage → canvas export, dataView → HTML overlay); the dataZoom-select + toolbox brush-button features; magicType 'stack'/'tiled' + markPoint/markLine carry-over. See §80.**
@@ -2229,6 +2231,19 @@ falls back to index 0; sparse `ParsedValue[]` pre-sized to 2; `toFixed` replicat
      rather than upstream's explicit `null` assignment; on a merge onto an existing text element with
      align/verticalAlign set, the stale value is not actively cleared. No effect for freshly created text
      (static-render common case). (GraphicView.ts:133-141)
+
+---
+
+## 82. Phase 51 — CoordinateSystem axis witnesses (unblocks markers)
+
+**Goal (met):** `Cartesian2D.getAxis`/`getOtherAxis` now witness the `CoordinateSystem` protocol, so
+`markerHelper`'s `coordSys.getAxis`/`getOtherAxis` reads resolve. **Clean build; `swift test` — 307 / 0 / 58.**
+
+Added two delegating overloads (`getAxis(_ dim: DimensionName?) -> Axis?`, `getOtherAxis(_ baseAxis: Axis)
+-> Axis?`) to Cartesian2D — the concrete narrow-typed methods didn't witness the protocol (the recurring
+[[swift-protocol-witness-trap]]) so protocol dispatch hit the nil default, blocking markers. Exact-match
+narrow overloads still bind for concrete callers → no behavior change. Test proves protocol dispatch resolves.
+Remaining for markPoint/markLine/markArea: the per-series inner-marker-model instantiation + MarkerView wiring.
 
 ---
 

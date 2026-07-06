@@ -249,6 +249,22 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
         return self.getAxis(axis.dim == "x" ? "y" : "x")!
     }
 
+    // Phase 51: the PROTOCOL-WITNESSING overloads for `CoordinateSystem.getAxis(_:)` / `getOtherAxis(_:)`.
+    //   The concrete methods above take the NARROWER `Axis2D` (param/return), which does NOT witness the
+    //   protocol requirements (`getAxis(_ dim: DimensionName?) -> Axis?`, `getOtherAxis(_ baseAxis: Axis)
+    //   -> Axis?`) — so a call through a `CoordinateSystem`-typed reference hit the nil-returning DEFAULT
+    //   (the [[swift-protocol-witness-trap]]), silently blocking markers (markerHelper reads
+    //   `coordSys.getAxis`/`getOtherAxis`). These delegating overloads satisfy the protocol; concrete
+    //   callers still bind the exact-match `Axis2D` versions above.
+    public func getAxis(_ dim: DimensionName?) -> Axis? {
+        guard let dim = dim else { return nil }
+        return self.getAxis(dim) as Axis?
+    }
+    public func getOtherAxis(_ baseAxis: Axis) -> Axis? {
+        guard let a = baseAxis as? Axis2D else { return nil }
+        return self.getOtherAxis(a) as Axis?
+    }
+
     /**
      * Get rect area of cartesian.
      * Area will have a contain function to determine if a point is in the coordinate system.
