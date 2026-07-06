@@ -582,10 +582,17 @@ public final class EChartsView {
         else {
             let x0 = min(startX, endX), x1 = max(startX, endX)
             let y0 = min(startY, endY), y1 = max(startY, endY)
-            bp.other["areas"] = [[
-                "brushType": "rect",
-                "range": [[x0, x1], [y0, y1]]
-            ] as [String: Any]]
+            // The active brush type (a stand-in for the toolbox-armed cursor mode): read the brush
+            //   component's `brushType` option (default 'rect'). lineX/lineY dispatch a 1-D band range.
+            let brushType = (ec.getModel()?.getComponent("brush")?.get("brushType") as? String) ?? "rect"
+            switch brushType {
+            case "lineX":
+                bp.other["areas"] = [["brushType": "lineX", "range": [x0, x1]] as [String: Any]]
+            case "lineY":
+                bp.other["areas"] = [["brushType": "lineY", "range": [y0, y1]] as [String: Any]]
+            default:
+                bp.other["areas"] = [["brushType": "rect", "range": [[x0, x1], [y0, y1]]] as [String: Any]]
+            }
         }
         ec.dispatchAction(bp)
         _ = zr.storage.getDisplayList(true)

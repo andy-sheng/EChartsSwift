@@ -122,6 +122,30 @@ final class ZZBrushTests: XCTestCase {
         XCTAssertEqual(fill(data, 4), dim, "bar 4 dimmed")
     }
 
+    // ---- (1c) a lineX brush (1-D x-band) selects a column of bars, dims the rest ----
+    func testLineXBrushSelectsColumn() {
+        let view = makeBrushBarChart()
+        guard let data0 = seriesData(view) else { XCTFail("no bar series"); return }
+        guard let b0 = barX(data0, 0), let b1 = barX(data0, 1), let b2 = barX(data0, 2) else {
+            XCTFail("bar layout"); return
+        }
+        let cut = (b1.x + b1.width + b2.x) / 2.0
+        let paletteFill = fill(data0, 0)
+
+        // A lineX area is a 1-D pixel band [x0, x1] — no y bounds. Bars whose x falls in the band select.
+        var bp = Payload(type: "brush")
+        bp.other["areas"] = [["brushType": "lineX", "range": [b0.x - 5.0, cut]] as [String: Any]]
+        view.ec.dispatchAction(bp)
+
+        guard let data = seriesData(view) else { XCTFail("no series after dispatch"); return }
+        XCTAssertEqual(fill(data, 0), paletteFill, "in-band bar 0 keeps its fill")
+        XCTAssertEqual(fill(data, 1), paletteFill, "in-band bar 1 keeps its fill")
+        let dim = fill(data, 2)
+        XCTAssertNotEqual(dim, paletteFill, "out-of-band bar 2 must be dimmed")
+        XCTAssertEqual(fill(data, 3), dim, "bar 3 dimmed")
+        XCTAssertEqual(fill(data, 4), dim, "bar 4 dimmed")
+    }
+
     // ---- (2) empty brush (areas: []) leaves every bar at the palette fill (no dim) ----
     func testEmptyBrushLeavesAllNormal() {
         let view = makeBrushBarChart()

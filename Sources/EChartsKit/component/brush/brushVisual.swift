@@ -112,11 +112,51 @@ func makeBrushCommonSelectorForSeries(_ area: BrushSelectableArea) -> BrushCommo
                 return br.intersect(rl)
             }
         )
+    case "lineX":
+        // getLineSelectors(0): area.range is the 1D pixel band [x0, x1] on the X dim.
+        let range = brushRange1D(area.area["range"])
+        return BrushCommonSelectorsForSeries(
+            // point: range[0] <= itemLayout[0] <= range[1]
+            point: { itemLayout in
+                guard let p = itemLayout, p.count >= 1, let r = range else { return false }
+                return r[0] <= p[0] && p[0] <= r[1]
+            },
+            // rect: range[0] <= x+width && x <= range[1] (x-overlap)
+            rect: { itemLayout in
+                guard let rl = itemLayout, let r = range else { return false }
+                return r[0] <= rl.x + rl.width && rl.x <= r[1]
+            }
+        )
+    case "lineY":
+        // getLineSelectors(1): area.range is the 1D pixel band [y0, y1] on the Y dim.
+        let range = brushRange1D(area.area["range"])
+        return BrushCommonSelectorsForSeries(
+            // point: range[0] <= itemLayout[1] <= range[1]
+            point: { itemLayout in
+                guard let p = itemLayout, p.count >= 2, let r = range else { return false }
+                return r[0] <= p[1] && p[1] <= r[1]
+            },
+            // rect: range[0] <= y+height && y <= range[1] (y-overlap)
+            rect: { itemLayout in
+                guard let rl = itemLayout, let r = range else { return false }
+                return r[0] <= rl.y + rl.height && rl.y <= r[1]
+            }
+        )
     default:
-        // PORT-TODO: lineX / lineY (getLineSelectors) + polygon selectors are deferred. Any
-        //   non-rect area selects nothing (matches "no supported brush → original state").
+        // PORT-TODO: polygon selectors (concave/convex point-in-polygon) are deferred. Any
+        //   unsupported area selects nothing (matches "no supported brush → original state").
         return BrushCommonSelectorsForSeries(point: { _ in false }, rect: { _ in false })
     }
+}
+
+// A lineX/lineY area's `range` is a 1-D `[min, max]` pixel band (NOT the rect `[[x0,x1],[y0,y1]]`).
+private func brushRange1D(_ v: Any?) -> [Double]? {
+    if let a = v as? [Double], a.count >= 2 { return [Swift.min(a[0], a[1]), Swift.max(a[0], a[1])] }
+    if let a = v as? [Any] {
+        let d = a.compactMap { coerceDouble($0) }
+        if d.count >= 2 { return [Swift.min(d[0], d[1]), Swift.max(d[0], d[1])] }
+    }
+    return nil
 }
 
 // const boundingRectBuilders: Partial<Record<BrushType, AreaBoundingRectBuilder>>
