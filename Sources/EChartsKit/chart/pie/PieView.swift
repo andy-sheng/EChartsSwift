@@ -275,8 +275,12 @@ open class PieView: ChartView {
             style.x = textX
             style.y = bendY
             style.align = isRight ? .left : .right
-            let fill: String = labelModel.getTextColor() ?? sectorFill ?? "#54555a"
-            style.fill = fill
+            // Outside label TEXT defaults to the neutral dark label color (echarts draws the text dark, not
+            //   in the sector colour); only the leader LINE adopts the sector colour. Honour an explicit
+            //   user color if set.
+            let textFill: String = labelModel.getTextColor() ?? "#54555a"
+            style.fill = textFill
+            let lineColor: String = sectorFill ?? textFill
             // Leader line: sector edge → bend → short horizontal toward the text.
             var lineShape = PolylineShape()
             lineShape.points = [
@@ -286,7 +290,7 @@ open class PieView: ChartView {
             ]
             let line = Polyline(["shape": lineShape as PathShape, "silent": true, "z2": 9.0])
             var ls = PathStyleProps()
-            ls.stroke = .string(fill)
+            ls.stroke = .string(lineColor)
             line.useStyle(ls)
             line.pathStyle.fill = nil   // stroke-only (see visual-parity: clear the black default)
             _ = group.add(line)
