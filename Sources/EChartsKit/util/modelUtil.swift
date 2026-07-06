@@ -921,13 +921,14 @@ public enum model {
     }
 
     public static func isNameSpecified(_ componentModel: ComponentModel) -> Bool {
-        // PORT-TODO: ComponentModel placeholder (util/types.swift) has no `name`; cannot read
-        //   componentModel.name yet. Faithful body preserved below.
-        // const name = componentModel.name;
-        // // Is specified when `indexOf` get -1 or > 0.
+        let name = componentModel.name
+        // Is specified when `indexOf` get -1 or > 0.
         // return !!(name && name.indexOf(DUMMY_COMPONENT_NAME_PREFIX));
-        _ = componentModel
-        return false
+        //   JS: `name.indexOf(prefix)` is 0 only when the auto-generated dummy prefix sits at the
+        //   very start (an unspecified name); -1 (not found) and >0 are both truthy. So a name is
+        //   "specified" iff it is non-empty AND does not begin with DUMMY_COMPONENT_NAME_PREFIX.
+        if name.isEmpty { return false }
+        return !name.hasPrefix(DUMMY_COMPONENT_NAME_PREFIX)
     }
 
     /**
