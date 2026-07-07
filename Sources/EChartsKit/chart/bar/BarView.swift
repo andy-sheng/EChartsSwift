@@ -31,11 +31,8 @@ import ZRenderKit
 //   import { Rect, Sector, updateProps, initProps, removeElementWithFadeOut, traverseElements }
 //       from '../../util/graphic';
 //     -> `Rect` is the ZRenderKit shape (graphic re-exports it). `Sector` (polar) is deferred.
-//        PORT-TODO: `util/graphic` is NOT ported yet; `updateProps` / `initProps` (== re-exports of
-//        `animation/basicTransition`), `removeElementWithFadeOut`, and `traverseElements` are
-//        reproduced by the local no-animation shims below (`initProps`/`updateProps`/
-//        `removeElementWithFadeOut`) and `Group.traverse` — same deviation as
-//        chart/helper/createClipPathFromCoordSys.swift.
+//        `updateProps` / `initProps` / `removeElementWithFadeOut` now resolve to the real ported
+//        `animation/basicTransition.swift` (module-level, animated). `traverseElements` == `Group.traverse`.
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //     -> `states.setStatesStylesFromModel` / `states.toggleHoverEmphasis` (util/states.swift). APPLIED
@@ -70,7 +67,7 @@ import ZRenderKit
 //   import { warn } from '../../util/log';                           -> `log.warn`.
 //   import {createSectorCalculateTextPosition, SectorTextPosition, setSectorTextRotation}
 //       from '../../label/sectorLabel';                              -> PORT-TODO: polar/label deferred.
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> PORT-TODO: NOT ported (local no-op shim).
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (still a no-op stub; see Task 1 PORT-TODO).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-TODO: polar deferred.
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
