@@ -36,10 +36,6 @@ final class EChartsHostView: NSView {
     private let proxy: NativeHandlerProxy
     private let animationLoop: AnimationLoop
 
-    /// Latest un-dispatched pointer move, coalesced to the frame clock (mirrors ZRenderView's
-    /// `pendingMove` — see NativePainter/ZRenderView.swift:325-331 for the rationale).
-    private var pendingMove: ZRRawEvent?
-
     init(frame: CGRect, dpr: Double? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: NSColor.white.cgColor)
@@ -97,9 +93,7 @@ final class EChartsHostView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        // Coalesce to the frame clock (browser-like); flushed once per frame in the animation loop
-        // callback below would be ideal, but for A1 a direct forward on mouseUp/Down ordering is kept
-        // simple: dispatch immediately (matches the brief's "direct forward is acceptable" allowance).
+        // Pointer moves are forwarded directly; ZRenderView's per-frame coalescing is not ported here.
         proxy.mousemove(makeMouseEvent("mousemove", event, which: 0))
     }
 
