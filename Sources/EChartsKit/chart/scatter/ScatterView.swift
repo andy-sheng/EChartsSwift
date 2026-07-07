@@ -165,6 +165,17 @@ open class ScatterView: ChartView {
                 // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
                 //   Handler hit-test / tooltip can resolve the per-point element from the series data.
                 data.setItemGraphicEl(i, path)
+
+                // Entrance: scale the symbol in from 0 about the point (upstream Symbol.ts first-create:
+                //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
+                //   The port's createSymbol sizes via the shape (normal scale 1), so animate 0 → 1 with the
+                //   transform origin at the point so it grows from the datum.
+                path.originX = point[0]
+                path.originY = point[1]
+                path.scaleX = 0
+                path.scaleY = 0
+                initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
+
                 _ = group.add(path)
             }
         }
