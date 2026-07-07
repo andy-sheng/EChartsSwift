@@ -137,37 +137,55 @@ open class EffectScatterView: ChartView {
                 fill = .string(cs)
             }
 
-            // Static RIPPLE approximation. The animated EffectSymbol shows `number` expanding rings
-            //   between scale 1 and `scale`; a single (static) frame is those rings frozen at evenly
-            //   spaced scales, fading outward, drawn BEHIND the base symbol. brushType 'fill' fills each
-            //   ring, 'stroke' outlines it. (The true animation is deferred with the SymbolDraw helper.)
+            // Faithful port of EffectSymbol.startEffectAnimation (chart/helper/EffectSymbol.ts).
+            //   A per-point group is translated to the data point; a rippleGroup scaled to symbolSize
+            //   holds `number` ripple symbols, each a 2x2 unit symbol (see upstream #4136) at scaleX/Y
+            //   0.5, LOOPING-animated to rippleScale/2 with a staggered delay, fading opacity → 0.
             let rippleModel = seriesModel.getModel("rippleEffect")
             let rScale = (rippleModel.get("scale") as? Double) ?? 2.5
             let rNumber = Int((rippleModel.get("number") as? Double) ?? 3)
             let rBrush = (rippleModel.get("brushType") as? String) ?? "fill"
-            if rScale > 1, rNumber > 0, let cs = colorString(itemStyle?["fill"]) {
-                let baseR = Swift.max(sizeW, sizeH) / 2
+            let rPeriod = ((rippleModel.get("period") as? Double) ?? 4) * 1000    // seconds → ms
+            let showOn = (seriesModel.get("showEffectOn") as? String) ?? "render"
+            if rScale > 1, rNumber > 0, showOn == "render", let cs = colorString(itemStyle?["fill"]) {
+                // Per-point group at the data point; rippleGroup scaled to the symbol size.
+                let pointGroup = Group()
+                pointGroup.x = point[0]
+                pointGroup.y = point[1]
+                let rippleGroup = Group()
+                rippleGroup.scaleX = sizeW
+                rippleGroup.scaleY = sizeH
+                let effectOffset = Double(i) / Double(Swift.max(1, data.count()))
                 for k in 0..<rNumber {
-                    let t = Double(k + 1) / Double(rNumber)          // 1/n … 1
-                    let ringScale = 1 + (rScale - 1) * t
-                    var circShape = CircleShape()
-                    circShape.cx = point[0]
-                    circShape.cy = point[1]
-                    circShape.r = baseR * ringScale
-                    let circle = Circle(["shape": circShape as PathShape])
-                    var cstyle = PathStyleProps()
+                    // 2x2 unit symbol centered at local origin (upstream -1,-1,2,2 / #4136).
+                    guard let el = symbol.createSymbol(symbolType, -1, -1, 2, 2, .string(cs)) as? Path
+                    else { continue }
+                    el.name = "ripple"
+                    var rstyle = PathStyleProps()
                     if rBrush == "stroke" {
-                        cstyle.stroke = .string(cs); cstyle.lineWidth = 1
+                        rstyle.stroke = .string(cs); rstyle.lineWidth = 1; rstyle.fill = nil
                     } else {
-                        cstyle.fill = .string(cs)
+                        rstyle.fill = .string(cs)
                     }
-                    cstyle.opacity = 0.35 * (1 - t) + 0.05           // fade outward
-                    circle.useStyle(cstyle)
-                    // Class-1 guard: a stroke-only ring must not keep the default black fill.
-                    if rBrush == "stroke" { circle.pathStyle.fill = nil }
-                    circle.z2 = -1
-                    _ = group.add(circle)
+                    rstyle.opacity = 1
+                    el.useStyle(rstyle)
+                    if rBrush == "stroke" { el.pathStyle.fill = nil }   // Class-1 guard (no black fill)
+                    el.scaleX = 0.5
+                    el.scaleY = 0.5
+                    el.z2 = 99
+                    let delay = -Double(k) / Double(rNumber) * rPeriod + effectOffset
+                    _ = el.animate("", true)
+                        .when(rPeriod, ["scaleX": rScale / 2, "scaleY": rScale / 2])
+                        .delay(delay)
+                        .start()
+                    _ = el.animate("style", true)
+                        .when(rPeriod, ["opacity": 0.0])
+                        .delay(delay)
+                        .start()
+                    _ = rippleGroup.add(el)
                 }
+                _ = pointGroup.add(rippleGroup)
+                _ = group.add(pointGroup)
             }
 
             // upstream (inside SymbolDraw(EffectSymbol)): createSymbol places the base symbol centered on the
