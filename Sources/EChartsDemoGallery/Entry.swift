@@ -96,7 +96,7 @@ func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
 final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     private let table = NSTableView()
-    private let nativeImageView = NSImageView()
+    private var nativeHostView: EChartsHostView?
     private let webView = WKWebView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let demos = EChartsDemoRegistry.everything
@@ -131,13 +131,14 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
             v.translatesAutoresizingMaskIntoConstraints = false
         }
         let nativeHost = NSView(); card(nativeHost)
-        nativeImageView.imageScaling = .scaleProportionallyUpOrDown
-        nativeImageView.translatesAutoresizingMaskIntoConstraints = false
-        nativeHost.addSubview(nativeImageView)
+        let hostView = EChartsHostView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), dpr: 2.0)
+        hostView.translatesAutoresizingMaskIntoConstraints = false
+        nativeHost.addSubview(hostView)
+        self.nativeHostView = hostView
         let webHost = NSView(); card(webHost)
         webView.translatesAutoresizingMaskIntoConstraints = false
         webHost.addSubview(webView)
-        pin(nativeImageView, to: nativeHost, inset: 8); pin(webView, to: webHost, inset: 0)
+        pin(hostView, to: nativeHost, inset: 8); pin(webView, to: webHost, inset: 0)
 
         let nativeCap = caption("Native · EChartsKit + NativePainter")
         let webCap = caption("Real · echarts.js 6.1.0 (WKWebView)")
@@ -190,10 +191,8 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
     private func show(_ demo: EChartsDemo) {
         titleLabel.stringValue = "\(demo.name)  —  \(demo.summary)"
         // Native pane
-        if demo.nativeSupported, let cg = renderNativeImage(demo) {
-            nativeImageView.image = NSImage(cgImage: cg, size: NSSize(width: demo.width, height: demo.height))
-        } else {
-            nativeImageView.image = nil
+        if demo.nativeSupported {
+            nativeHostView?.setOption(demo.option)
         }
         // HTML pane
         if let page = echartsHTMLPage(demo) {
