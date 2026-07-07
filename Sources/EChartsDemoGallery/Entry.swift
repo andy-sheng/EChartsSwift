@@ -56,8 +56,10 @@ private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1
 /// data double is registered anymore.
 @MainActor
 func renderNativeGroup(_ demo: EChartsDemo) -> Group {
+    var opt = demo.option
+    opt["animation"] = false
     let ec = EChartsSlim(width: demo.width, height: demo.height)
-    ec.setOption(demo.option)
+    ec.setOption(opt)
     let root = ec.getRoot()
     advanceAnimationsForStaticFrame(root)
     return root
@@ -120,6 +122,8 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
     private let webView = WKWebView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let demos = EChartsDemoRegistry.everything
+    private let animSwitch = NSSwitch()
+    private var currentDemo: EChartsDemo?
 
     override init() {
         window = NSWindow(
@@ -165,8 +169,14 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        let animLabel = caption("Native 动画")
+        animSwitch.translatesAutoresizingMaskIntoConstraints = false
+        animSwitch.state = .off
+        animSwitch.target = self
+        animSwitch.action = #selector(toggleAnim)
+
         let root = window.contentView!
-        [sidebar, titleLabel, nativeCap, webCap, nativeHost, webHost].forEach { root.addSubview($0) }
+        [sidebar, titleLabel, nativeCap, webCap, nativeHost, webHost, animLabel, animSwitch].forEach { root.addSubview($0) }
         NSLayoutConstraint.activate([
             sidebar.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
@@ -180,6 +190,11 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
             nativeCap.leadingAnchor.constraint(equalTo: nativeHost.leadingAnchor, constant: 2),
             webCap.topAnchor.constraint(equalTo: nativeCap.topAnchor),
             webCap.leadingAnchor.constraint(equalTo: webHost.leadingAnchor, constant: 2),
+
+            animSwitch.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
+            animSwitch.trailingAnchor.constraint(equalTo: nativeHost.trailingAnchor, constant: -2),
+            animLabel.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
+            animLabel.trailingAnchor.constraint(equalTo: animSwitch.leadingAnchor, constant: -6),
 
             nativeHost.topAnchor.constraint(equalTo: nativeCap.bottomAnchor, constant: 6),
             nativeHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 16),
@@ -209,10 +224,13 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
     }
 
     private func show(_ demo: EChartsDemo) {
+        currentDemo = demo
         titleLabel.stringValue = "\(demo.name)  —  \(demo.summary)"
         // Native pane
         if demo.nativeSupported {
-            nativeHostView?.setOption(demo.option)
+            var opt = demo.option
+            if animSwitch.state == .off { opt["animation"] = false }   // ON → leave echarts default (animate)
+            nativeHostView?.setOption(opt)
         } else {
             // Blank the pane so a prior demo's chart doesn't linger under an "N/A" native case.
             nativeHostView?.setOption([:])
@@ -221,6 +239,10 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
         if let page = echartsHTMLPage(demo) {
             webView.loadHTMLString(page, baseURL: nil)
         }
+    }
+
+    @objc private func toggleAnim() {
+        if let d = currentDemo { show(d) }
     }
 
     // Table data source / delegate
