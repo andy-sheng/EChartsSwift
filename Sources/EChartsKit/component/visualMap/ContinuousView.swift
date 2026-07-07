@@ -169,25 +169,38 @@ public final class ContinuousView: VisualMapView {
         let itemSize = visualMapModel.itemSize
 
         let barGroup = self._shapes.mainGroup!
-        // const position = this._applyTransform([itemSize[0]/2, endsIndex===0 ? -textGap : itemSize[1]+textGap], barGroup);
-        let position = self._applyTransform(
-            [
-                itemSize[0] / 2,
-                endsIndex == 0 ? -textGap : itemSize[1] + textGap
-            ],
-            barGroup
-        )
-        // const align = this._applyTransform(endsIndex===0 ? 'bottom' : 'top', barGroup);
-        let align = self._applyTransform(endsIndex == 0 ? "bottom" : "top", barGroup)
         let orient = self._orient
         let textStyleModel = visualMapModel.textStyleModel
 
-        // verticalAlign: textStyleModel.get('verticalAlign') || (orient==='horizontal' ? 'middle' : align)
-        let vAlignStr = (textStyleModel.get("verticalAlign") as? String)
-            ?? (orient == "horizontal" ? "middle" : align)
-        // align: textStyleModel.get('align') || (orient==='horizontal' ? align : 'center')
-        let alignStr = (textStyleModel.get("align") as? String)
-            ?? (orient == "horizontal" ? align : "center")
+        let position: [Double]
+        let vAlignStr: String
+        let alignStr: String
+
+        // A `calculable` visualMap shows its range values BESIDE the handles: upstream draws them as the
+        //   handleLabels (handle-label subsystem, DEFERRED here) at `[itemSize[0] + gap, handleY]`, to the
+        //   RIGHT of a vertical bar rather than centered above/below it. Place the synthetic handle values
+        //   there so they clear the y-axis instead of overlapping it (visualmap-basic / heatmap-basic).
+        if dataRangeText == nil && self._useHandle && orient != "horizontal" {
+            // endsIndex 0 = low = visual bottom (bar-group scaleY:-1); endsIndex 1 = high = visual top.
+            position = self._applyTransform(
+                [itemSize[0] + textGap, endsIndex == 0 ? 0 : itemSize[1]],
+                barGroup
+            )
+            vAlignStr = (textStyleModel.get("verticalAlign") as? String) ?? "middle"
+            alignStr = (textStyleModel.get("align") as? String) ?? "left"
+        } else {
+            // upstream: position = this._applyTransform([itemSize[0]/2, endsIndex===0 ? -textGap :
+            //   itemSize[1]+textGap], barGroup); align = _applyTransform(endsIndex===0 ? 'bottom':'top').
+            position = self._applyTransform(
+                [itemSize[0] / 2, endsIndex == 0 ? -textGap : itemSize[1] + textGap],
+                barGroup
+            )
+            let align = self._applyTransform(endsIndex == 0 ? "bottom" : "top", barGroup)
+            vAlignStr = (textStyleModel.get("verticalAlign") as? String)
+                ?? (orient == "horizontal" ? "middle" : align)
+            alignStr = (textStyleModel.get("align") as? String)
+                ?? (orient == "horizontal" ? align : "center")
+        }
 
         // this.group.add(new graphic.Text({ style: createTextStyle(textStyleModel, {x, y, verticalAlign, align, text}) }));
         var style = createTextStyle(
