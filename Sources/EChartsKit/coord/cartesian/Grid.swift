@@ -1034,13 +1034,20 @@ func createOrUpdateAxesView(
             cartesianAxisHelper.updateCartesianAxisViewCommonPartBuilder(
                 axis.axisBuilder, gridRect, axis.model as! CartesianAxisModel
             )
-            // The determine pass is the final layout, so also build the axis NAME into the shared
-            //   builder group here (CartesianAxisView adds that group). Without "axisName" the axis
-            //   `name` option (e.g. 'count'/'day'/'vol'/'rate') never produced a text element.
+            // upstream grid.ts builds the tick/label part first, then — in a second pass over all axes —
+            //   the axis NAME and axis LINE (determine pass only). Merging axisName/axisLine into the first
+            //   build is close enough for the static render (no cross-axis name-overlap nudging), but both
+            //   MUST be built: without "axisLine" the cartesian axis line never renders (e.g. the onZero
+            //   baseline for a zero-crossing value axis — line-negative), and without "axisName" the axis
+            //   `name` option produces no text.
             _ = axis.axisBuilder.build(
-                isDetermine ? ["axisTickLabelDetermine": true, "axisName": true] : ["axisTickLabelEstimate": true],
+                isDetermine ? ["axisTickLabelDetermine": true] : ["axisTickLabelEstimate": true],
                 AxisBuilderBuildExtraParams(noPxChange: noPxChange)
             )
+            if isDetermine {
+                _ = axis.axisBuilder.build(["axisName": true], AxisBuilderBuildExtraParams(noPxChange: noPxChange))
+                _ = axis.axisBuilder.build(["axisLine": true], AxisBuilderBuildExtraParams(noPxChange: noPxChange))
+            }
         }
     }
     axesMap.x.each { axis, _ in buildFor(axis) }
