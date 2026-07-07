@@ -165,6 +165,22 @@ final class PathUnitTests: XCTestCase {
             + "test_Path_setStyle_should_merge_style_properly. (Path.swift)")
     }
 
+    // Regression: `attr(["shape": ["height": 100]])` with an Int-literal value must not be silently
+    // dropped. Each *Shape's `animationSet` only accepts `Double` (e.g. RectShape's `guard let v =
+    // value as? Double`); the partial-shape merge branch in Path.attrKV must coerce Int/NSNumber to
+    // Double before calling it (the known Int-vs-Double option-read trap).
+    func test_attrKV_partial_shape_merge_coerces_Int_literal() throws {
+        var shape = RectShape()
+        shape.x = 0; shape.y = 0; shape.width = 10; shape.height = 0
+        let rect = Rect(["shape": shape])
+        _ = rect.attr(["shape": ["height": 100] as [String: Any]])
+        let rectShape = rect.shape as! RectShape
+        XCTAssertEqual(rectShape.height, 100.0, accuracy: 1e-9,
+                       "Int-literal height must coerce to Double, not be dropped")
+        // Unspecified keys (x/y/width) must be left untouched by the partial merge.
+        XCTAssertEqual(rectShape.width, 10)
+    }
+
     // upstream helper: createRectForStateTest()
     private func createRectForStateTest() -> Rect {
         var shape = RectShape()

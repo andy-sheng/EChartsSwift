@@ -875,8 +875,12 @@ open class Path: Displayable {
                 // upstream: `extend(this.shape, obj)` — merge only the given keys into the existing
                 //   shape (basicTransition's disabled-animation instant-set path calls
                 //   `el.attr(["shape": ["height": 100.0]])` with a partial dict, not a full `PathShape`).
+                // Coerce Int/NSNumber → Double before handing to animationSet: each *Shape's
+                //   `animationSet` only accepts `Double` (e.g. RectShape's `guard let v = value as?
+                //   Double`), so an Int-boxed literal (e.g. `["height": 100]`) would otherwise be
+                //   silently dropped — the known Int-vs-Double option-read trap.
                 for (innerKey, innerValue) in partial {
-                    s.animationSet(innerKey, innerValue)
+                    s.animationSet(innerKey, coerceToDouble(innerValue) ?? innerValue)
                 }
                 self.shape = s
                 self.dirtyShape()
@@ -1012,6 +1016,15 @@ private func isNoneColor(_ c: ZRColor?) -> Bool {
         return true
     }
     return false
+}
+
+// Int/NSNumber → Double coercion helper for the `attrKV` partial-shape merge (see the Int-vs-Double
+//   option-read trap: `value as? Double` returns nil on an Int-boxed literal, silently dropping it).
+private func coerceToDouble(_ value: Any?) -> Double? {
+    if let d = value as? Double { return d }
+    if let i = value as? Int { return Double(i) }
+    if let n = value as? NSNumber { return n.doubleValue }
+    return nil
 }
 
 // extend(target, source) over PathStyleProps' known fields (value-copy of non-nil fields).

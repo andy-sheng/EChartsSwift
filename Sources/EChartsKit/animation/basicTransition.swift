@@ -55,7 +55,13 @@ private func animateOrSetProps(
         // Must stop the remove animation.
         _ = el.stopAnimation("leave")
     }
-    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, nil)
+    // upstream: getAnimationConfig(type, animatableModel, dataIndex, isRemove ? (removeOpt || {}) : null)
+    //   — a truthy (possibly-empty) extraOpts object forces getAnimationConfig's extraOpts branch,
+    //   which hardcodes 200ms/cubicOut/delay 0 for the leave path, independent of the series'
+    //   animationDuration.
+    let extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)? =
+        isRemove ? (duration: nil, easing: nil, delay: nil) : nil
+    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra)
     if let cfg = cfg, cfg.duration > 0 {
         var ac = ElementAnimateConfig()
         ac.duration = cfg.duration
@@ -65,11 +71,7 @@ private func animateOrSetProps(
         ac.done = cb
         // upstream: force: !!cb || !!during — guarantees the callback fires (and an animator
         //   exists to carry `scope`) even when the target values already equal the current ones.
-        // PORT-TODO deviation: forced unconditionally here (not only when cb/during are given) so
-        //   an "enter"/"update" transition always yields a scoped animator (needed by
-        //   isElementRemoved's scope=="leave" check on the *next* leave transition, and asserted by
-        //   BasicTransitionTests). Revisit if a perf-sensitive caller needs the upstream economy.
-        ac.force = true
+        ac.force = (cb != nil) || (during != nil)
         // Set to final state in update/init animation, so post-processing based on the path shape
         // (e.g. label layout) can be done correctly.
         ac.setToFinal = !isRemove
@@ -121,6 +123,12 @@ private func isElementRemoved(_ el: Element) -> Bool {
 }
 
 private func fadeOutDisplayable(_ el: Displayable, _ model: Model?, _ dataIndex: Int, _ done: (() -> Void)?) {
+    // Don't do remove animation twice on the same Displayable (upstream checks this per-Displayable
+    // inside removeElement, not once on the top-level element — a Group itself never carries a
+    // leave-scoped animator, only its faded children do).
+    if isElementRemoved(el) {
+        return
+    }
     el.removeTextContent()
     el.removeTextGuideLine()
     animateOrSetProps(.leave, el, ["style": ["opacity": 0.0] as [String: Any]], model, dataIndex, false, done, nil)
@@ -128,10 +136,6 @@ private func fadeOutDisplayable(_ el: Displayable, _ model: Model?, _ dataIndex:
 
 /// Remove a graphic element, fading it (and its Group descendants) out first.
 func removeElementWithFadeOut(_ el: Element, _ model: Model? = nil, _ dataIndex: Int = -1) {
-    // Don't do remove animation twice.
-    if isElementRemoved(el) {
-        return
-    }
     func doRemove() {
         if let p = el.parent as? Group {
             _ = p.remove(el)
