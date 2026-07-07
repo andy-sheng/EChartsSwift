@@ -193,6 +193,11 @@ open class GraphView: ChartView {
             )
             if let path = el as? Path {
                 path.name = "node"
+                // upstream chart/helper/Symbol z2 default is 100 (Symbol.ts:85 `retrieve2(z2, 100)`), while
+                //   edges (chart/helper/Line) default z2 0 — so nodes draw OVER the edges. The port adds the
+                //   node loop before the edge loop, so without this the edges win the insertion tiebreak and
+                //   cross over the nodes (graph-grid).
+                path.z2 = 100
 
                 // upstream (SymbolDraw → chart/helper/Symbol._updateCommon, Symbol.ts:357): each node
                 //   symbol is marked a highDown dispatcher carrying its emphasis-state itemStyle, so a

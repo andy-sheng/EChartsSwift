@@ -369,6 +369,9 @@ private func updateNode(
             path.setTextConfig(tc)
         }
 
+        // upstream chart/helper/Symbol z2 default 100; tree edges (Bezier) default z2 0. The node loop
+        //   adds a node then its edge, so without this the edges cross OVER the node symbols.
+        path.z2 = 100
         // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
         _ = group.add(path)
         data.setItemGraphicEl(dataIndex, path)
