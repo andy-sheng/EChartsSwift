@@ -1,4 +1,4 @@
-// EChartsDemo.swift — shared scaffolding for the ECharts demo gallery.
+// EChartsDemo.swift — shared scaffolding for the ECharts demo galleries.
 //
 // The ECharts analog of Sources/DemoGallery (which compares the ported ZRenderKit against zrender's
 // test/*.html). Here each demo is a REAL ECharts `option`, rendered two ways for a direct visual diff:
@@ -8,7 +8,9 @@
 //              running in a WKWebView.
 //
 // Structure mirrors DemoGallery 1:1: an `EChartsDemo` value type, a `Demos/<name>.swift` file per
-// case, a generated `Registry.swift` index, and an AppKit `Entry.swift` GUI + CLI.
+// case, and a generated `Registry.swift` index. This module (EChartsDemoCore) is the shared demo
+// registry consumed by BOTH gallery front-ends: the macOS one (Sources/EChartsDemoGallery — AppKit
+// GUI + headless CLI) and the iOS one (Sources/EChartsDemoGalleryiOS — UIKit app, simulator-only).
 //
 // PHASE-6b LIMITATION (documented, not a workaround): the native pane currently renders only the
 // cartesian `bar` series. The real `BarSeriesModel.getInitialData → SourceManager.getSource()` is a

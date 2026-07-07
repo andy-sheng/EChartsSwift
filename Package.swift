@@ -58,6 +58,14 @@ let package = Package(
             dependencies: ["ZRenderKit", "NativePainter"],
             path: "Sources/DemoGallery"
         ),
+        // Shared ECharts demo definitions (EChartsDemo value type + Demos/<name>.swift registry +
+        // the echarts.js web-pane page builder) — consumed by BOTH the macOS and iOS galleries,
+        // which SwiftPM forbids from sharing a source directory. Platform-independent (Foundation).
+        .target(
+            name: "EChartsDemoCore",
+            dependencies: ["ZRenderKit", "EChartsKit"],
+            path: "Sources/EChartsDemoCore"
+        ),
         // macOS ECharts demo gallery — the echarts analog of DemoGallery. Renders each demo `option`
         // two ways side-by-side: NATIVE (EChartsKit → EChartsSlim → ZRenderKit → NativePainter) and
         // the REAL echarts.js (upstream/echarts/dist) in a WKWebView. A public-API consumer only.
@@ -66,8 +74,18 @@ let package = Package(
         //   swift run EChartsDemoGallery --compare bar-basic <dir>   # native + web PNGs
         .executableTarget(
             name: "EChartsDemoGallery",
-            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit"],
+            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit", "EChartsDemoCore"],
             path: "Sources/EChartsDemoGallery"
+        ),
+        // iOS ECharts demo gallery — the same gallery as a UIKit app (UISplitViewController: demo
+        // list + native | echarts.js panes). Same demo registry via EChartsDemoCore. Built for the
+        // iOS SIMULATOR and staged as a .app by scripts/build-echarts-gallery-ios.sh (the web pane
+        // reads upstream/echarts/dist off the host filesystem, which only the simulator can).
+        // Compiles to a stub `exit(1)` main on non-UIKit platforms so `swift build` stays green.
+        .executableTarget(
+            name: "EChartsDemoGalleryiOS",
+            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit", "EChartsDemoCore"],
+            path: "Sources/EChartsDemoGalleryiOS"
         )
     ]
 )

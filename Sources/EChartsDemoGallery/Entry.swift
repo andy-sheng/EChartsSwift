@@ -16,18 +16,11 @@ import CoreGraphics
 import ZRenderKit
 import EChartsKit
 import NativePainter
+import EChartsDemoCore
 
-// ---------------------------------------------------------------------------
-// upstream echarts UMD dist (the REAL echarts 6.1.0), baked in via #filePath — the same trick
-// DemoGallery uses for the zrender test dir. Entry.swift lives at <repo>/Sources/EChartsDemoGallery/.
-// ---------------------------------------------------------------------------
-enum Upstream {
-    static let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()   // EChartsDemoGallery
-        .deletingLastPathComponent()   // Sources
-        .deletingLastPathComponent()   // repo root
-    static let echartsDistJS = repoRoot.appendingPathComponent("upstream/echarts/dist/echarts.js")
-}
+// NOTE: the demo definitions (`EChartsDemo`, `EChartsDemoRegistry`, `Demos/*.swift`), the `Upstream`
+// dist locator and the `echartsHTMLPage(_:)` web-pane builder all live in EChartsDemoCore, shared
+// with the iOS gallery (EChartsDemoGalleryiOS).
 
 // ---------------------------------------------------------------------------
 // NATIVE render: EChartsKit → EChartsSlim → ZRenderKit Group → NativePainter → CGImage.
@@ -83,91 +76,300 @@ func writeNativePNG(_ demo: EChartsDemo, to url: URL) -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// HTML render: the SAME option fed to the REAL echarts in a self-contained page (dist inlined).
+// GUI — standard macOS chrome (Notes-style), aligned 1:1 with DemoGallery's:
+// NSSplitViewController with a source-list sidebar + unified toolbar. On
+// macOS 26 (Tahoe) these system components render with Liquid Glass
+// automatically; the content header also uses an explicit NSGlassEffectView
+// where available.
 // ---------------------------------------------------------------------------
 
-/// A self-contained page: inline the echarts UMD bundle (global `echarts`), a `#main` div at the
-/// demo's logical size, then `echarts.init(...).setOption(option)` with animation forced off so the
-/// snapshot is the final, deterministic frame — matching the static native render.
-func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
-    guard let dist = try? String(contentsOf: Upstream.echartsDistJS, encoding: .utf8) else { return nil }
-    guard let optionData = try? JSONSerialization.data(withJSONObject: demo.option, options: []),
-          let optionJSON = String(data: optionData, encoding: .utf8) else { return nil }
-    // Guard against a stray `</script>` inside the bundle closing the tag early.
-    let safeDist = dist.replacingOccurrences(of: "</script", with: "<\\/script")
-    return """
-    <!DOCTYPE html><html><head><meta charset="utf-8">
-    <script>\(safeDist)</script>
-    </head><body style="margin:0;background:#fff">
-    <div id="main" style="width:\(Int(demo.width))px;height:\(Int(demo.height))px"></div>
-    <script>
-      var opt = \(optionJSON);
-      opt.animation = false;
-      var chart = echarts.init(document.getElementById('main'), null, { renderer: 'canvas' });
-      chart.setOption(opt);
-    </script>
-    </body></html>
-    """
+/// Demos grouped by category, in first-seen order (drives the source list sections).
+struct DemoSection { let title: String; let demos: [EChartsDemo] }
+
+func demoSections() -> [DemoSection] {
+    var order: [String] = []
+    var byCat: [String: [EChartsDemo]] = [:]
+    for d in EChartsDemoRegistry.everything {
+        if byCat[d.category] == nil { order.append(d.category) }
+        byCat[d.category, default: []].append(d)
+    }
+    return order.map { DemoSection(title: $0, demos: byCat[$0]!) }
 }
 
-// ---------------------------------------------------------------------------
-// GUI: sidebar (demo list) + Native | echarts.js side-by-side panes.
-// ---------------------------------------------------------------------------
+func symbol(for category: String) -> String {
+    switch category {
+    case "Bar":           return "chart.bar"
+    case "Line":          return "chart.xyaxis.line"
+    case "Scatter":       return "circle.grid.3x3"
+    case "EffectScatter": return "dot.radiowaves.left.and.right"
+    case "Lines":         return "scribble"
+    case "Pie":           return "chart.pie"
+    case "Component":     return "slider.horizontal.3"
+    case "Funnel":        return "arrowtriangle.down"
+    case "Candlestick":   return "chart.bar.xaxis"
+    case "Boxplot":       return "square.split.2x1"
+    case "Sunburst":      return "sun.max"
+    case "Treemap":       return "square.grid.2x2"
+    case "Tree":          return "arrow.triangle.branch"
+    case "Graph":         return "point.3.connected.trianglepath.dotted"
+    case "Radar":         return "hexagon"
+    case "Polar":         return "circle.circle"
+    case "Gauge":         return "gauge"
+    case "Sankey":        return "arrow.triangle.merge"
+    case "Chord":         return "circle.hexagonpath"
+    case "ThemeRiver":    return "waveform.path"
+    case "Parallel":      return "line.3.horizontal"
+    case "Calendar":      return "calendar"
+    case "Matrix":        return "tablecells"
+    case "Geo":           return "map"
+    case "Map":           return "map.fill"
+    case "VisualMap":     return "slider.horizontal.below.rectangle"
+    case "Heatmap":       return "square.grid.3x3.fill"
+    case "DataZoom":      return "magnifyingglass"
+    case "Dataset":       return "tablecells.badge.ellipsis"
+    case "Custom":        return "wrench.and.screwdriver"
+    default:              return "chart.bar"
+    }
+}
 
-@MainActor
-final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    let window: NSWindow
-    private let table = NSTableView()
-    private var nativeHostView: EChartsHostView?
-    private let webView = WKWebView()
+// MARK: - Sidebar (NSOutlineView, source-list style)
+
+/// Outline view that copies the selected demo's name on ⌘C (the app has no menu bar to route copy:).
+final class DemoOutlineView: NSOutlineView {
+    var onCopy: (() -> Void)?
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "c" {
+            onCopy?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuItemValidation {
+    let sections = demoSections()
+    var onSelect: ((EChartsDemo) -> Void)?
+    private let outline = DemoOutlineView()
+
+    override func loadView() {
+        outline.headerView = nil
+        outline.style = .sourceList
+        outline.indentationPerLevel = 6
+        outline.allowsEmptySelection = false
+        outline.autoresizesOutlineColumn = false
+        let col = NSTableColumn(identifier: .init("main"))
+        outline.addTableColumn(col)
+        outline.outlineTableColumn = col
+        outline.dataSource = self
+        outline.delegate = self
+
+        // Copy a demo's name: right-click → Copy, or ⌘C on the selected row. Handy for noting a
+        // problem case's exact id (e.g. for --render / --compare).
+        let menu = NSMenu()
+        let copyName = NSMenuItem(title: "Copy Name", action: #selector(copyClickedDemoName(_:)), keyEquivalent: "")
+        let copyNameCat = NSMenuItem(title: "Copy Name & Category", action: #selector(copyClickedDemoNameCategory(_:)), keyEquivalent: "")
+        for it in [copyName, copyNameCat] { it.target = self; menu.addItem(it) }
+        outline.menu = menu
+        outline.onCopy = { [weak self] in self?.copySelectedDemoName() }
+
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.documentView = outline
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView()
+        container.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: container.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        self.view = container
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        outline.expandItem(nil, expandChildren: true)
+        for r in 0..<outline.numberOfRows where outline.item(atRow: r) is EChartsDemo {
+            outline.selectRowIndexes(IndexSet(integer: r), byExtendingSelection: false)
+            break
+        }
+    }
+
+    // MARK: Copy demo name
+
+    private func demo(atRow row: Int) -> EChartsDemo? {
+        guard row >= 0, row < outline.numberOfRows else { return nil }
+        return outline.item(atRow: row) as? EChartsDemo
+    }
+
+    private func copyToPasteboard(_ s: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+    }
+
+    @objc private func copyClickedDemoName(_ sender: Any?) {
+        if let d = demo(atRow: outline.clickedRow) { copyToPasteboard(d.name) }
+    }
+
+    @objc private func copyClickedDemoNameCategory(_ sender: Any?) {
+        if let d = demo(atRow: outline.clickedRow) { copyToPasteboard("\(d.name) [\(d.category)]") }
+    }
+
+    private func copySelectedDemoName() {
+        if let d = demo(atRow: outline.selectedRow) { copyToPasteboard(d.name) }
+    }
+
+    // Disable the context-menu items when the right-clicked row isn't a demo (e.g. a section header).
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        return demo(atRow: outline.clickedRow) != nil
+    }
+
+    // Data source
+    func outlineView(_ ov: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        if item == nil { return sections.count }
+        if let s = item as? DemoSection { return s.demos.count }
+        return 0
+    }
+    func outlineView(_ ov: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if item == nil { return sections[index] }
+        return (item as! DemoSection).demos[index]
+    }
+    func outlineView(_ ov: NSOutlineView, isItemExpandable item: Any) -> Bool { item is DemoSection }
+
+    // Delegate
+    func outlineView(_ ov: NSOutlineView, isGroupItem item: Any) -> Bool { item is DemoSection }
+    func outlineView(_ ov: NSOutlineView, shouldSelectItem item: Any) -> Bool { item is EChartsDemo }
+
+    func outlineView(_ ov: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        if let s = item as? DemoSection {
+            let id = NSUserInterfaceItemIdentifier("group")
+            let tf = (ov.makeView(withIdentifier: id, owner: self) as? NSTextField)
+                ?? { let t = NSTextField(labelWithString: ""); t.identifier = id; return t }()
+            tf.stringValue = s.title
+            return tf
+        }
+        let d = item as! EChartsDemo
+        let id = NSUserInterfaceItemIdentifier("cell")
+        let cell = (ov.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? Self.makeCell(id)
+        cell.textField?.stringValue = d.name
+        cell.textField?.textColor = d.nativeSupported ? .labelColor : .secondaryLabelColor
+        cell.toolTip = d.nativeSupported ? d.summary : d.summary + " (native N/A)"
+        cell.imageView?.image = NSImage(systemSymbolName: symbol(for: d.category),
+                                        accessibilityDescription: d.category)
+        return cell
+    }
+
+    private static func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+        let c = NSTableCellView()
+        let iv = NSImageView()
+        let tf = NSTextField(labelWithString: "")
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        tf.translatesAutoresizingMaskIntoConstraints = false
+        c.addSubview(iv); c.addSubview(tf)
+        c.imageView = iv; c.textField = tf
+        c.identifier = id
+        NSLayoutConstraint.activate([
+            iv.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 2),
+            iv.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+            iv.widthAnchor.constraint(equalToConstant: 18),
+            tf.leadingAnchor.constraint(equalTo: iv.trailingAnchor, constant: 6),
+            tf.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -4),
+            tf.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+        ])
+        return c
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        if let d = outline.item(atRow: outline.selectedRow) as? EChartsDemo { onSelect?(d) }
+    }
+}
+
+// MARK: - Content (render area): glass header pill + native | echarts.js cards
+
+final class ContentViewController: NSViewController {
     private let titleLabel = NSTextField(labelWithString: "")
-    private let demos = EChartsDemoRegistry.everything
+    private let subtitleLabel = NSTextField(labelWithString: "")
+    private let nativeHost = NSView()
+    // Live native render: the chart lays out at the demo's LOGICAL size (EChartsSlim has no resize
+    // hook), so host a fresh EChartsHostView at that size inside a scroll view and fit-scale it via
+    // `magnification` — the same trick DemoGallery uses for its 1000px zrender canvases.
+    private let liveScroll = NSScrollView()
+    private var currentHostView: EChartsHostView?
+    private let webHost = NSView()
+    private let webView = WKWebView()
     private let animSwitch = NSSwitch()
     private var currentDemo: EChartsDemo?
 
-    override init() {
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered, defer: false)
-        super.init()
-        window.title = "ECharts Demo Gallery — Native (EChartsKit) vs echarts.js"
-        window.center()
-        buildUI()
-        if !demos.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false); show(demos[0]) }
-    }
+    override func loadView() {
+        let root = NSView()
 
-    private func buildUI() {
-        // Sidebar
-        let col = NSTableColumn(identifier: .init("name")); col.width = 220
-        table.addTableColumn(col)
-        table.headerView = nil
-        table.dataSource = self; table.delegate = self
-        table.rowHeight = 40
-        let sidebar = NSScrollView(); sidebar.documentView = table
-        sidebar.hasVerticalScroller = true; sidebar.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        subtitleLabel.font = .systemFont(ofSize: 12)
+        subtitleLabel.textColor = .secondaryLabelColor
+        let labels = NSStackView(views: [titleLabel, subtitleLabel])
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.spacing = 1
+        labels.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
 
-        // Panes
-        func card(_ v: NSView) {
-            v.wantsLayer = true; v.layer?.backgroundColor = NSColor.white.cgColor
-            v.layer?.cornerRadius = 12; v.layer?.masksToBounds = true
-            v.layer?.borderWidth = 0.5; v.layer?.borderColor = NSColor.separatorColor.cgColor
-            v.translatesAutoresizingMaskIntoConstraints = false
+        // Header in Liquid Glass where available; plain otherwise (same as DemoGallery).
+        let header: NSView
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = 12
+            glass.contentView = labels
+            header = glass
+        } else {
+            labels.wantsLayer = true
+            labels.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5).cgColor
+            labels.layer?.cornerRadius = 12
+            header = labels
         }
-        let nativeHost = NSView(); card(nativeHost)
-        let hostView = EChartsHostView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), dpr: 2.0)
-        hostView.translatesAutoresizingMaskIntoConstraints = false
-        nativeHost.addSubview(hostView)
-        self.nativeHostView = hostView
-        let webHost = NSView(); card(webHost)
+        header.translatesAutoresizingMaskIntoConstraints = false
+
+        func card(_ host: NSView) {
+            host.translatesAutoresizingMaskIntoConstraints = false
+            host.wantsLayer = true
+            host.layer?.backgroundColor = NSColor.white.cgColor
+            host.layer?.cornerRadius = 14
+            host.layer?.masksToBounds = true
+            host.layer?.borderWidth = 0.5
+            host.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+        card(nativeHost); card(webHost)
+
+        liveScroll.translatesAutoresizingMaskIntoConstraints = false
+        liveScroll.drawsBackground = false
+        liveScroll.hasVerticalScroller = false
+        liveScroll.hasHorizontalScroller = false
+        liveScroll.borderType = .noBorder
+        liveScroll.allowsMagnification = true
+        liveScroll.verticalScrollElasticity = .none
+        liveScroll.horizontalScrollElasticity = .none
+        nativeHost.addSubview(liveScroll)
+        NSLayoutConstraint.activate([
+            liveScroll.topAnchor.constraint(equalTo: nativeHost.topAnchor, constant: 8),
+            liveScroll.leadingAnchor.constraint(equalTo: nativeHost.leadingAnchor, constant: 8),
+            liveScroll.trailingAnchor.constraint(equalTo: nativeHost.trailingAnchor, constant: -8),
+            liveScroll.bottomAnchor.constraint(equalTo: nativeHost.bottomAnchor, constant: -8),
+        ])
+
         webView.translatesAutoresizingMaskIntoConstraints = false
         webHost.addSubview(webView)
-        pin(hostView, to: nativeHost, inset: 8); pin(webView, to: webHost, inset: 0)
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: webHost.topAnchor),
+            webView.leadingAnchor.constraint(equalTo: webHost.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: webHost.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: webHost.bottomAnchor),
+        ])
 
         let nativeCap = caption("Native · EChartsKit + NativePainter")
         let webCap = caption("Real · echarts.js 6.1.0 (WKWebView)")
-        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let animLabel = caption("Native 动画")
         animSwitch.translatesAutoresizingMaskIntoConstraints = false
@@ -175,18 +377,16 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
         animSwitch.target = self
         animSwitch.action = #selector(toggleAnim)
 
-        let root = window.contentView!
-        [sidebar, titleLabel, nativeCap, webCap, nativeHost, webHost, animLabel, animSwitch].forEach { root.addSubview($0) }
+        [header, nativeCap, webCap, nativeHost, webHost, animLabel, animSwitch].forEach { root.addSubview($0) }
+        // Pin to the SAFE AREA (not raw view): with `.fullSizeContentView` + a unified toolbar
+        // the content extends under the toolbar; safeAreaLayoutGuide.top sits below it.
+        let safe = root.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            sidebar.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
-            sidebar.widthAnchor.constraint(equalToConstant: 230),
+            header.topAnchor.constraint(equalTo: safe.topAnchor, constant: 12),
+            header.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
+            header.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -20),
 
-            titleLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
-            titleLabel.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 16),
-
-            nativeCap.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
+            nativeCap.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             nativeCap.leadingAnchor.constraint(equalTo: nativeHost.leadingAnchor, constant: 2),
             webCap.topAnchor.constraint(equalTo: nativeCap.topAnchor),
             webCap.leadingAnchor.constraint(equalTo: webHost.leadingAnchor, constant: 2),
@@ -197,98 +397,152 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
             animLabel.trailingAnchor.constraint(equalTo: animSwitch.leadingAnchor, constant: -6),
 
             nativeHost.topAnchor.constraint(equalTo: nativeCap.bottomAnchor, constant: 6),
-            nativeHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 16),
-            nativeHost.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
+            nativeHost.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
+            nativeHost.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -20),
 
             webHost.topAnchor.constraint(equalTo: nativeHost.topAnchor),
             webHost.leadingAnchor.constraint(equalTo: nativeHost.trailingAnchor, constant: 16),
-            webHost.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            webHost.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -20),
             webHost.bottomAnchor.constraint(equalTo: nativeHost.bottomAnchor),
             webHost.widthAnchor.constraint(equalTo: nativeHost.widthAnchor),
         ])
+        self.view = root
     }
 
     private func caption(_ s: String) -> NSTextField {
         let c = NSTextField(labelWithString: s)
-        c.font = .systemFont(ofSize: 11, weight: .medium); c.textColor = .secondaryLabelColor
+        c.font = .systemFont(ofSize: 11, weight: .medium)
+        c.textColor = .secondaryLabelColor
         c.translatesAutoresizingMaskIntoConstraints = false
         return c
     }
-    private func pin(_ v: NSView, to host: NSView, inset: CGFloat) {
-        NSLayoutConstraint.activate([
-            v.topAnchor.constraint(equalTo: host.topAnchor, constant: inset),
-            v.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: inset),
-            v.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -inset),
-            v.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -inset),
-        ])
-    }
 
-    private func show(_ demo: EChartsDemo) {
+    func show(_ demo: EChartsDemo) {
         currentDemo = demo
-        titleLabel.stringValue = "\(demo.name)  —  \(demo.summary)"
-        // Native pane
+        titleLabel.stringValue = demo.name
+        subtitleLabel.stringValue = "\(demo.category) · \(demo.summary)"
+
+        // Tear down the previous live chart (dropping the last strong ref deallocates the host,
+        // whose deinit stops its animation clock + disposes its ZRender), then build a FRESH host
+        // at the demo's logical size — the same per-demo lifecycle as DemoGallery's ZRenderView.
+        currentHostView?.removeFromSuperview()
+        currentHostView = nil
+        liveScroll.documentView = nil
         if demo.nativeSupported {
             var opt = demo.option
             if animSwitch.state == .off { opt["animation"] = false }   // ON → leave echarts default (animate)
-            nativeHostView?.setOption(opt)
-        } else {
-            // Blank the pane so a prior demo's chart doesn't linger under an "N/A" native case.
-            nativeHostView?.setOption([:])
+            let host = EChartsHostView(
+                frame: NSRect(x: 0, y: 0, width: demo.width, height: demo.height), dpr: 2.0)
+            host.setOption(opt)
+            liveScroll.documentView = host
+            currentHostView = host
+            fitNativeMagnification()
         }
+
         // HTML pane
         if let page = echartsHTMLPage(demo) {
             webView.loadHTMLString(page, baseURL: nil)
         }
+        fitWebZoom()
+    }
+
+    /// Fit the live chart's logical canvas into the scroll view via `magnification` (aspect-fit).
+    /// Uses the scroll view's OWN bounds, not the clip view's (see DemoGallery for the oscillation
+    /// bug that clip-view bounds cause — they are in already-magnified document coordinates).
+    private func fitNativeMagnification() {
+        guard let doc = currentHostView else { return }
+        let clip = liveScroll.bounds.size
+        let dw = doc.frame.width, dh = doc.frame.height
+        guard clip.width > 0, clip.height > 0, dw > 0, dh > 0 else { return }
+        let s = min(clip.width / dw, clip.height / dh)
+        // Bracket the target so setting `magnification` can't be clamped by stale min/max bounds.
+        liveScroll.minMagnification = min(s, 1)
+        liveScroll.maxMagnification = max(s, 1)
+        if abs(liveScroll.magnification - s) > 1e-4 {
+            liveScroll.magnification = s
+        }
+    }
+
+    /// Match the web pane's zoom to the native fit so both panes show the chart at the same scale
+    /// (macOS WKWebView ignores the page's viewport meta; `pageZoom` is the mac equivalent).
+    private func fitWebZoom() {
+        guard let d = currentDemo, d.width > 0, d.height > 0 else { return }
+        let size = webView.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let s = min(size.width / d.width, size.height / d.height)
+        webView.pageZoom = min(max(s, 0.25), 3)
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        fitNativeMagnification()
+        fitWebZoom()
     }
 
     @objc private func toggleAnim() {
         if let d = currentDemo { show(d) }
     }
+}
 
-    // Table data source / delegate
-    func numberOfRows(in tableView: NSTableView) -> Int { demos.count }
-    func tableView(_ t: NSTableView, viewFor col: NSTableColumn?, row: Int) -> NSView? {
-        let id = NSUserInterfaceItemIdentifier("cell")
-        let cell = (t.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
-            let c = NSTableCellView(); c.identifier = id
-            let tf = NSTextField(labelWithString: ""); tf.translatesAutoresizingMaskIntoConstraints = false
-            c.addSubview(tf); c.textField = tf
-            NSLayoutConstraint.activate([
-                tf.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 8),
-                tf.centerYAnchor.constraint(equalTo: c.centerYAnchor),
-                tf.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -6),
-            ])
-            return c
-        }()
-        let d = demos[row]
-        cell.textField?.attributedStringValue = sidebarLabel(d)
-        return cell
-    }
-    private func sidebarLabel(_ d: EChartsDemo) -> NSAttributedString {
-        let s = NSMutableAttributedString(
-            string: d.name + "\n",
-            attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)])
-        let sub = d.nativeSupported ? d.category : d.category + " · native N/A"
-        s.append(NSAttributedString(string: sub, attributes: [
-            .font: NSFont.systemFont(ofSize: 10),
-            .foregroundColor: NSColor.secondaryLabelColor]))
-        return s
-    }
-    func tableViewSelectionDidChange(_ n: Notification) {
-        let r = table.selectedRow
-        if r >= 0, r < demos.count { show(demos[r]) }
+// MARK: - Split + window + toolbar
+
+final class GallerySplitViewController: NSSplitViewController {
+    let sidebar = SidebarViewController()
+    let content = ContentViewController()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let side = NSSplitViewItem(sidebarWithViewController: sidebar)
+        side.minimumThickness = 210
+        side.maximumThickness = 320
+        side.canCollapse = true
+        addSplitViewItem(side)
+
+        let main = NSSplitViewItem(viewController: content)
+        main.minimumThickness = 500
+        addSplitViewItem(main)
+
+        sidebar.onSelect = { [weak self] demo in self?.content.show(demo) }
     }
 }
 
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    var controller: GalleryWindowController?
-    func applicationDidFinishLaunching(_ n: Notification) {
-        let c = GalleryWindowController(); controller = c
-        c.window.makeKeyAndOrderFront(nil)
+final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
+    var window: NSWindow!
+    private let splitVC = GallerySplitViewController()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false)
+        win.title = "echarts → Swift"
+        win.subtitle = "ECharts Demo Gallery · \(EChartsDemoRegistry.everything.count) demos"
+        win.contentViewController = splitVC
+
+        let toolbar = NSToolbar(identifier: "main")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        win.toolbar = toolbar
+        win.toolbarStyle = .unified
+
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        self.window = win
         NSApp.activate(ignoringOtherApps: true)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+
+    // System-provided items (toggle sidebar + the sidebar/content tracking separator) auto-wire
+    // to the NSSplitViewController; the delegate just lists them.
+    func toolbarDefaultItemIdentifiers(_ tb: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace]
+    }
+    func toolbarAllowedItemIdentifiers(_ tb: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, .space]
+    }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? { nil }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
 // ---------------------------------------------------------------------------
