@@ -1409,12 +1409,18 @@ public final class EChartsSlim: EChartsType {
     private func updateZ(_ model: ComponentModel, _ group: Group, _ defaultZ: Double) {
         let z = zSlimNum(model.get("z")) ?? defaultZ
         let zlevel = zSlimNum(model.get("zlevel")) ?? 0
+        // Set z/zlevel on every displayable, preserving z2 (intra-view order). This is the z-LEVEL part
+        //   of upstream `doUpdateZ` — enough to lift series (z 2/3) above the coordinate grid (z 0).
+        // PORT-NOTE: upstream also lifts each host's attached LABEL to `z2 = subtreeMaxZ2 + 2` (labels
+        //   over glyphs). That is intentionally NOT replicated: it would expose treemap tile labels that
+        //   the port creates but upstream hides (label overflow/visibility not ported), and the labels
+        //   the port DOES want visible (sankey/tree/graph node names) are on hosts with z2 0 and already
+        //   paint over the host via the painter's insertion-order tie-break.
         func apply(_ el: Element) {
             if let d = el as? Displayable {
                 d.z = z
                 d.zlevel = zlevel
             }
-            // Attached label (setTextContent) is not a child, so the traverse below never visits it.
             if let tc = el.getTextContent() as? Displayable {
                 tc.z = z
                 tc.zlevel = zlevel
