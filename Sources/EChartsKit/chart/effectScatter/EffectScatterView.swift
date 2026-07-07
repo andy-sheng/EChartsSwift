@@ -147,6 +147,10 @@ open class EffectScatterView: ChartView {
             let rBrush = (rippleModel.get("brushType") as? String) ?? "fill"
             let rPeriod = ((rippleModel.get("period") as? Double) ?? 4) * 1000    // seconds → ms
             let showOn = (seriesModel.get("showEffectOn") as? String) ?? "render"
+            // PORT-TODO: upstream EffectSymbol.updateData also registers an onHoverStateChange handler
+            //   when showEffectOn !== 'render' (i.e. 'emphasis') that calls startEffectAnimation /
+            //   stopEffectAnimation on hover in/out — the hover-triggered ripple is DEFERRED; this render
+            //   only builds ripples for the (default) 'render' gate.
             if rScale > 1, rNumber > 0, showOn == "render", let cs = colorString(itemStyle?["fill"]) {
                 // Per-point group at the data point; rippleGroup scaled to the symbol size.
                 let pointGroup = Group()
@@ -168,11 +172,17 @@ open class EffectScatterView: ChartView {
                         rstyle.fill = .string(cs)
                     }
                     rstyle.opacity = 1
+                    // upstream: ripplePath.attr({ style: { strokeNoScale: true }, ... }) — keeps the
+                    //   ring's lineWidth constant as the transform scale grows toward rippleScale/2.
+                    rstyle.strokeNoScale = true
                     el.useStyle(rstyle)
                     if rBrush == "stroke" { el.pathStyle.fill = nil }   // Class-1 guard (no black fill)
                     el.scaleX = 0.5
                     el.scaleY = 0.5
                     el.z2 = 99
+                    // upstream: ripplePath.attr({ ..., silent: true }) — the ripple must not intercept
+                    //   hover/hit-testing meant for the base symbol underneath it.
+                    el.silent = true
                     let delay = -Double(k) / Double(rNumber) * rPeriod + effectOffset
                     _ = el.animate("", true)
                         .when(rPeriod, ["scaleX": rScale / 2, "scaleY": rScale / 2])

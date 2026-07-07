@@ -65,4 +65,37 @@ final class EffectScatterAnimationTests: XCTestCase {
         _ = sClip.step(4000, 4000)
         XCTAssertEqual(ripple.pathStyle.opacity ?? -1, 0.0, accuracy: 1e-3, "opacity should tween to 0")
     }
+
+    /// Faithful port of EffectSymbol.startEffectAnimation's `ripplePath.attr({ style: { strokeNoScale:
+    ///   true }, silent: true, ... })` — the ripple must be non-interactive (so hover/click reaches the
+    ///   base symbol, not the z2:99 ring) and must not thicken its stroke as it scales up.
+    func test_ripple_is_silent_and_has_strokeNoScale() throws {
+        let view = makeView()
+        guard let ripple = findRipple(view.ec.getRoot()) else {
+            return XCTFail("no ripple symbol path found (expected name == \"ripple\")")
+        }
+        XCTAssertTrue(ripple.silent, "ripple path must be silent so it doesn't intercept hover/hit-testing")
+        XCTAssertEqual(ripple.pathStyle.strokeNoScale, true, "ripple style must set strokeNoScale to keep lineWidth constant under scale")
+    }
+
+    /// Same assertions for the `brushType: "stroke"` ripple variant.
+    func test_stroke_ripple_is_silent_and_has_strokeNoScale() throws {
+        let option: [String: Any] = [
+            "xAxis": ["type": "value"],
+            "yAxis": ["type": "value"],
+            "series": [[
+                "type": "effectScatter",
+                "symbolSize": 20,
+                "rippleEffect": ["scale": 2.5, "number": 3, "period": 4, "brushType": "stroke"],
+                "data": [[1.0, 1.0]]
+            ]]
+        ]
+        let view = EChartsView(width: 400, height: 300)
+        view.setOption(option)
+        guard let ripple = findRipple(view.ec.getRoot()) else {
+            return XCTFail("no ripple symbol path found (expected name == \"ripple\")")
+        }
+        XCTAssertTrue(ripple.silent, "stroke ripple path must be silent")
+        XCTAssertEqual(ripple.pathStyle.strokeNoScale, true, "stroke ripple style must set strokeNoScale")
+    }
 }
