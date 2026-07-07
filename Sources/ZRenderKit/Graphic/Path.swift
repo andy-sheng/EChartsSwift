@@ -868,9 +868,18 @@ open class Path: Displayable {
     internal override func attrKV(_ key: String, _ value: Any?) {  // upstream: protected
         // FIXME
         if key == "shape" {
-            // PORT-TODO: dict-merge of a partial shape — see `_init`. Only whole `PathShape` setShape.
             if let v = value as? PathShape {
                 _ = self.setShape(v)
+            }
+            else if let partial = value as? [String: Any], var s = self.shape {
+                // upstream: `extend(this.shape, obj)` — merge only the given keys into the existing
+                //   shape (basicTransition's disabled-animation instant-set path calls
+                //   `el.attr(["shape": ["height": 100.0]])` with a partial dict, not a full `PathShape`).
+                for (innerKey, innerValue) in partial {
+                    s.animationSet(innerKey, innerValue)
+                }
+                self.shape = s
+                self.dirtyShape()
             }
         }
         else {
