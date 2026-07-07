@@ -181,6 +181,32 @@ final class PathUnitTests: XCTestCase {
         XCTAssertEqual(rectShape.width, 10)
     }
 
+    // Regression: `attr(["style": ["opacity": 0.5]])` — a partial "style" dict — must merge into
+    // `pathStyle`, not be silently dropped. Mirrors the "shape" partial-dict branch above: unlocks the
+    // animation-OFF `initProps`/`fadeOutDisplayable` path (`el.attr(["style": ["opacity": v]])`), which
+    // previously fell through to `super.attrKV` (typed `CommonStyleProps`, not `PathStyleProps`) and
+    // was dropped — leaving elements (e.g. funnel pieces built with opacity 0 for a fade-in) invisible
+    // when animation is disabled.
+    func test_attrKV_partial_style_merge_sets_opacity() throws {
+        var shape = RectShape()
+        shape.x = 0; shape.y = 0; shape.width = 10; shape.height = 10
+        let rect = Rect(["shape": shape])
+        _ = rect.attr(["style": ["opacity": 0.5] as [String: Any]])
+        XCTAssertEqual(rect.pathStyle.opacity, 0.5, "partial style dict must merge into pathStyle")
+    }
+
+    // Int-vs-Double option-read trap, applied to the "style" branch: an Int-literal opacity (e.g.
+    // `["opacity": 1]`, as produced by an Int-boxed default option) must coerce to Double, not be
+    // dropped by `PathStyleProps.animationSet`'s `value as? Double` guard.
+    func test_attrKV_partial_style_merge_coerces_Int_literal() throws {
+        var shape = RectShape()
+        shape.x = 0; shape.y = 0; shape.width = 10; shape.height = 10
+        var style = PathStyleProps(); style.opacity = 0
+        let rect = Rect(["shape": shape, "style": style])
+        _ = rect.attr(["style": ["opacity": 1] as [String: Any]])
+        XCTAssertEqual(rect.pathStyle.opacity, 1.0, "Int-literal opacity must coerce to Double, not be dropped")
+    }
+
     // upstream helper: createRectForStateTest()
     private func createRectForStateTest() -> Rect {
         var shape = RectShape()

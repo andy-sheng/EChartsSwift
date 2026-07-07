@@ -59,8 +59,9 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 //   - Label EMPHASIS / states: `getLabelStatesModels`, `setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
 //     are deferred; the PLAIN label text (`defaultText = data.getName(idx)`) IS drawn.
-//   - Animation: `graphic.initProps`/`updateProps` (fade-in opacity 0 → opacity), `saveOldStyle` are
-//     deferred with basicTransition.
+//   - Animation: piece fade-in (opacity 0 → opacity) via `initProps` IS wired (see the polygon
+//     creation below); `updateProps`-driven diff-update transitions and `saveOldStyle` remain
+//     deferred with basicTransition (the STATIC render rebuilds the group from scratch each render).
 // ================================================================================================
 
 // upstream: class FunnelView extends ChartView
@@ -128,10 +129,16 @@ open class FunnelView: ChartView {
             //   via `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
             var style = barStyleFromDict(data.getItemVisual(idx, "style"))
             style.lineJoin = "round"
-            // upstream animates opacity 0 → `opacity` via initProps; the static render sets the final
-            //   opacity directly (animation deferred).
-            style.opacity = opacity
+            // upstream FunnelPiece firstCreate: `polygon.style.opacity = 0` then
+            //   `initProps(polygon, {style: {opacity}}, seriesModel, idx)` — pieces fade in from
+            //   invisible to their final opacity. Set the CONSTRUCTION-time opacity to 0, then animate
+            //   (or, with animation off, instantly `attr`) toward the final `opacity` via `initProps`
+            //   (animation/basicTransition.swift). The animation-off path relies on `Path.attrKV`'s
+            //   partial-"style"-dict merge (see the Int-vs-Double-guarded branch there) to actually land
+            //   the final opacity — without it the piece would stay invisible.
+            style.opacity = 0
             polygon.useStyle(style)
+            initProps(polygon, ["style": ["opacity": opacity] as [String: Any]], seriesModel, idx)
 
             // Name the piece 'item' (matches PieView/BarView per-datum element name; upstream leaves it
             //   unset — a harmless, non-load-bearing addition for hit-testing/debug parity).

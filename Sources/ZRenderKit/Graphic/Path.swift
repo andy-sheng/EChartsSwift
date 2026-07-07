@@ -886,11 +886,30 @@ open class Path: Displayable {
                 self.dirtyShape()
             }
         }
+        else if key == "style", let partial = value as? [String: Any], var s = self.pathStyle {
+            // upstream: routes through Displayable's generic `style` handling, which merges a partial
+            //   style object into the existing style (`extend`/`setStyle`). Mirrors the "shape" branch
+            //   above: merge only the given keys into the existing `pathStyle` via the same
+            //   `PathStyleAnimationAccessor`-style per-key setter (`PathStyleProps.animationSet`),
+            //   coercing Int/NSNumber → Double (Int-vs-Double option-read trap — see the "shape"
+            //   branch's comment). This unlocks the animation-OFF `el.attr(["style": ["opacity": v]])`
+            //   path (e.g. `initProps`/`fadeOutDisplayable` when `animationSet(cfg).duration == 0`),
+            //   which previously fell into the `else` below and was silently dropped (a `PathStyleProps`
+            //   cast failure), leaving pieces stuck at their construction-time opacity (e.g. invisible
+            //   funnel pieces built with opacity 0 for the fade-in).
+            for (innerKey, innerValue) in partial {
+                s.animationSet(innerKey, coerceToDouble(innerValue) ?? innerValue)
+            }
+            self.pathStyle = s
+            self.dirtyStyle()
+        }
         else {
             // PORT-TODO: upstream routes the `style` key through `super.attrKV` → Displayable, which
-            //   types the value as CommonStyleProps. A `PathStyleProps` set via `attr('style', …)`
+            //   types the value as CommonStyleProps. A FULL `PathStyleProps` set via `attr('style', …)`
             //   will not round-trip through Displayable's CommonStyleProps handler; style is set via
-            //   `_init` opts on the critical path. Edge case deferred.
+            //   `_init` opts on the critical path. Edge case deferred (no known caller passes a full
+            //   `PathStyleProps` through `attr`/`attrKV` post-construction; only the partial-dict form
+            //   above is exercised).
             super.attrKV(key, value)
         }
     }
