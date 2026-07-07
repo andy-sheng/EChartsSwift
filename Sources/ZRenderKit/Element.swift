@@ -204,6 +204,24 @@ public final class ElementState {
     public var shape: [String: Any]? { get { props["shape"] as? [String: Any] } set { props["shape"] = newValue } }
     /// A partial style override, as style-key → value (e.g. `["fill": ZRColor.string("green")]`).
     public var style: [String: Any]? { get { props["style"] as? [String: Any] } set { props["style"] = newValue } }
+    /// upstream: `Pick<ElementProps, ...>` includes `ignore` — a per-state visibility override
+    /// (e.g. `label/labelStyle.ts` sets `stateObj.ignore = !stateShow`). Stored in `props` like the
+    /// other convenience accessors above.
+    public var ignore: Bool? { get { props["ignore"] as? Bool } set { props["ignore"] = newValue } }
+
+    // ADDITIVE (not in upstream `ElementState`, which is an untyped prop bag): a typed side-channel
+    // for a `ZRText`'s per-state RICH style. Upstream's `state.style` is the SAME untyped bag used for
+    // every Element subclass (Path/Image/...); `ZRText` stores its style in its own `textStyle:
+    // TextStyleProps` property (not the inherited `Displayable.style: CommonStyleProps`, see ZRText's
+    // STYLE DECISION note in Text.swift), and the generic `style: [String: Any]?` accessor above has
+    // no faithful way to carry a typed `TextStyleProps` for `label/labelStyle.swift`'s
+    // `setLabelStyle`/`setLabelText` (`stateObj.style = createTextStyle(...)` upstream). This mirrors
+    // the existing `textConfig: ElementTextConfig?` precedent just above (also a typed field bolted
+    // onto the generic bag for the same reason). The live emphasis/blur/select state-APPLICATION path
+    // for `ZRText` (reading this field back out when `useState`/`useStates` runs) is not wired yet —
+    // see PORT-TODO in `Element.attrKV`/`Displayable.attrKV` — so this is currently a faithful STORE
+    // with an application seam left for the interaction-layer phase that lands it.
+    public var textStyle: TextStyleProps?
 }
 
 // TextPositionCalculationResult is now ported in Contain/text.swift; the opaque stub is removed.

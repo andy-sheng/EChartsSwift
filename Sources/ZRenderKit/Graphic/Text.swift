@@ -271,44 +271,53 @@ public struct TextStyleProps {
 //   Swift has no struct subtyping, so we expose the shared base surface through this protocol; both
 //   structs conform. `width` (which differs: `number | string` vs `number`) is intentionally NOT
 //   part of the protocol.
+//
+// PORT-NOTE (label/labelStyle.swift retrofit): every field below was widened from `{ get }` to
+//   `{ get set }` (originally only `text`/`font`/`align`/`verticalAlign`/`padding` had setters — the
+//   fields the PRE-EXISTING read-oriented helpers below happened to write). `label/labelStyle.ts`'s
+//   `setTokenTextStyle` needs to WRITE nearly every one of these fields generically across BOTH
+//   `TextStyleProps` (plain label) and `TextStylePropsPart` (rich-text token) targets. Both conforming
+//   structs already store these as plain mutable `var`s, so widening the requirement is purely
+//   additive — every existing conformance/call site keeps compiling unchanged; only the requirement's
+//   capability grew.
 public protocol TextStylePropsPartLike {
     var text: String? { get set }
-    var fill: String? { get }
-    var stroke: String? { get }
-    var strokeNoScale: Bool? { get }
-    var opacity: Double? { get }
-    var fillOpacity: Double? { get }
-    var strokeOpacity: Double? { get }
-    var lineWidth: Double? { get }
-    var lineDash: LineDash? { get }
-    var lineDashOffset: Double? { get }
-    var borderDash: LineDash? { get }
-    var borderDashOffset: Double? { get }
+    var fill: String? { get set }
+    var stroke: String? { get set }
+    var strokeNoScale: Bool? { get set }
+    var opacity: Double? { get set }
+    var fillOpacity: Double? { get set }
+    var strokeOpacity: Double? { get set }
+    var lineWidth: Double? { get set }
+    var lineDash: LineDash? { get set }
+    var lineDashOffset: Double? { get set }
+    var borderDash: LineDash? { get set }
+    var borderDashOffset: Double? { get set }
     var font: String? { get set }
-    var textFont: String? { get }
-    var fontStyle: FontStyle? { get }
-    var fontWeight: FontWeight? { get }
-    var fontFamily: String? { get }
-    var fontSize: NumberOrString? { get }
+    var textFont: String? { get set }
+    var fontStyle: FontStyle? { get set }
+    var fontWeight: FontWeight? { get set }
+    var fontFamily: String? { get set }
+    var fontSize: NumberOrString? { get set }
     var align: TextAlign? { get set }
     var verticalAlign: TextVerticalAlign? { get set }
-    var lineHeight: Double? { get }
-    var height: Double? { get }
-    var tag: String? { get }
-    var textShadowColor: String? { get }
-    var textShadowBlur: Double? { get }
-    var textShadowOffsetX: Double? { get }
-    var textShadowOffsetY: Double? { get }
-    var backgroundColor: TextBackgroundColor? { get }
+    var lineHeight: Double? { get set }
+    var height: Double? { get set }
+    var tag: String? { get set }
+    var textShadowColor: String? { get set }
+    var textShadowBlur: Double? { get set }
+    var textShadowOffsetX: Double? { get set }
+    var textShadowOffsetY: Double? { get set }
+    var backgroundColor: TextBackgroundColor? { get set }
     var padding: NumberOrNumberArray? { get set }
-    var margin: NumberOrNumberArray? { get }
-    var borderColor: String? { get }
-    var borderWidth: Double? { get }
-    var borderRadius: NumberOrNumberArray? { get }
-    var shadowColor: String? { get }
-    var shadowBlur: Double? { get }
-    var shadowOffsetX: Double? { get }
-    var shadowOffsetY: Double? { get }
+    var margin: NumberOrNumberArray? { get set }
+    var borderColor: String? { get set }
+    var borderWidth: Double? { get set }
+    var borderRadius: NumberOrNumberArray? { get set }
+    var shadowColor: String? { get set }
+    var shadowBlur: Double? { get set }
+    var shadowOffsetX: Double? { get set }
+    var shadowOffsetY: Double? { get set }
 }
 
 extension TextStylePropsPart: TextStylePropsPartLike {}
@@ -1390,7 +1399,10 @@ func needDrawBackground<U: TextStylePropsPartLike>(_ style: U) -> Bool {
 // extend(target, source) over TextStyleProps' known fields (value-copy of non-nil fields).
 // PORT-TODO: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
 //   fields only. `rich` is copied shallowly (the deep-merge of rich is handled by `_mergeStyle`).
-func extendTextStyle(_ target: inout TextStyleProps, _ source: TextStyleProps) {
+// PORT-NOTE: widened `internal` -> `public` so `label/labelStyle.swift` (EChartsKit module) can reuse
+//   it for `createTextStyle`'s `specifiedTextStyle && extend(textStyle, specifiedTextStyle)` line
+//   instead of re-implementing an equivalent 40-field merge.
+public func extendTextStyle(_ target: inout TextStyleProps, _ source: TextStyleProps) {
     if source.text != nil { target.text = source.text }
     if source.fill != nil { target.fill = source.fill }
     if source.stroke != nil { target.stroke = source.stroke }
