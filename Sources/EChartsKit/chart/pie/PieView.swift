@@ -209,7 +209,10 @@ open class PieView: ChartView {
         }
 
         // labelLayout(seriesModel);
-        // PORT-TODO: chart/pie/labelLayout.ts NOT ported (full label placement/collision deferred).
+        //   L1c: chart/pie/labelLayout.swift places outer labels + leader lines and resolves
+        //   vertical overlap (avoidOverlap → shiftLayoutOnXY). Runs AFTER every sector (and its
+        //   label + labelLine) is built, matching upstream (labelLayout reads the finished shapes).
+        pieLabelLayout(seriesModel)
 
         // Always use initial animation.
         // upstream: if (seriesModel.get('animationTypeUpdate') !== 'expansion') { this._data = data; }
@@ -280,6 +283,23 @@ open class PieView: ChartView {
         // upstream: `labelText.attr({ z2: 10 })`.
         if let labelText = sector.getTextContent() {
             labelText.z2 = 10
+        }
+
+        // Leader-line (labelLine) — L1c. Upstream calls
+        //   `setLabelLineStyle(sector, getLabelLineStatesModels(itemModel), ...)`; that state-driven
+        //   helper is still DEFERRED, so the line style is inlined here (mirrors FunnelView): a
+        //   stroke-only Polyline attached as the sector's textGuideLine. Its POINTS are filled later
+        //   by `pieLabelLayout` (which also flips `ignore` for inside / hidden labels).
+        let labelLineModel = itemModel.getModel("labelLine")
+        if (labelLineModel.get("show") as? Bool) != false {
+            let line = Polyline()
+            var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
+            if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
+            line.useStyle(lstyle)
+            // A stroke-only leader line must not keep the black default fill.
+            line.pathStyle.fill = nil
+            line.z2 = 10
+            sector.setTextGuideLine(line)
         }
     }
 }

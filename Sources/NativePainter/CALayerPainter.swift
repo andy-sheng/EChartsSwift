@@ -54,6 +54,14 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         else if let d = el as? Displayable {
             collected.append(d)
         }
+        // Attached leader line (`setTextGuideLine`) — Storage._updateAndAddDisplayable adds the host's
+        // textGuideLine to the display list right BEFORE its textContent (so the line paints under the
+        // label). Like textContent it is NOT part of `activeChildrenRef()`, so walk it explicitly.
+        // Without this, pie / (future) labelLine leader lines are silently dropped even though their
+        // geometry, stroke and `ignore` are all correct.
+        if let guideEl = el.getTextGuideLine(), !guideEl.ignore {
+            walk(guideEl)
+        }
         // Attached text content (`setTextContent` + `textConfig`) — its transform was just computed by
         // `el.update()` → `updateInnerText`. zrender's Storage._updateAndAddDisplayable adds the host's
         // `textContent` to the display list right after the host; it is NOT part of `activeChildrenRef()`
