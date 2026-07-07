@@ -250,8 +250,20 @@ open class GraphView: ChartView {
                     }
                 }
 
-                _ = group.add(path)
+                // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
+                //   Handler hit-test / tooltip can resolve the per-node element from the series data.
                 data.setItemGraphicEl(i, path)
+
+                // Entrance: scale the symbol in from 0 about the point (upstream Symbol.ts first-create:
+                //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
+                //   Mirror ScatterView.render's identical block so graph nodes grow in from their center.
+                path.originX = pos.x
+                path.originY = pos.y
+                path.scaleX = 0
+                path.scaleY = 0
+                initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
+
+                _ = group.add(path)
             }
         }
 
