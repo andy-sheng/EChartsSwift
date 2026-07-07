@@ -1141,6 +1141,24 @@ public final class EChartsSlim: EChartsType {
     private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // allocateZlevels(ecModel) — PORT-TODO skip (single grid + one series; default z ordering).
 
+        // Reset accumulated views + display before rebuilding. The slim driver rebuilds everything each
+        //   render (no notMerge/replaceMerge reuse, no incremental transitions), and `setOption` installs
+        //   a FRESH GlobalModel — but `root`, the view registries, and `storage` are instance state that
+        //   persists across calls. When ONE instance is reused across successive setOption calls (the live
+        //   EChartsHostView path — switching demos), the previous render's view groups otherwise linger in
+        //   `root` (and `renderComponents` would even re-render a stale component from its old model),
+        //   leaving the prior chart visible under the new one. `root.removeAll()` also unregisters each
+        //   removed child from the live zr (storage + animation). This is the slim stand-in for upstream
+        //   `prepareView`'s dead-view dispose pass (echarts.ts:1687); real view reuse/diff is deferred.
+        _ = root.removeAll()
+        storage.delAllRoots()
+        _componentsViews.removeAll()
+        _chartsViews.removeAll()
+        _componentsMap.removeAll()
+        _chartsMap.removeAll()
+        _componentViewByModel.removeAll()
+        _chartViewByModel.removeAll()
+
         prepareView(isComponent: true, ecModel: ecModel, api: api)
         prepareView(isComponent: false, ecModel: ecModel, api: api)
 
@@ -1421,7 +1439,7 @@ public final class EChartsSlim: EChartsType {
                 d.z = z
                 d.zlevel = zlevel
             }
-            if let tc = el.getTextContent() as? Displayable {
+            if let tc = el.getTextContent() {   // ZRText is a Displayable — no downcast needed.
                 tc.z = z
                 tc.zlevel = zlevel
             }
