@@ -87,6 +87,12 @@ open class LineView: ChartView {
             else if let f = colorString(style["fill"]) { stroke = f }
         }
 
+        // upstream: this._lineGroup — a child Group holding the polyline (and area), clipped by a
+        //   growing Rect so the line "draws on" when animation is enabled (LineView.ts `clip`/
+        //   `createGridClipPath` + `lineGroup.setClipPath`). Symbols are added to `group` directly
+        //   (unclipped) — see the PORT-TODO below.
+        let lineGroup = Group()
+
         // ── areaStyle pass ──────────────────────────────────────────────────────────────────────
         // upstream LineView builds an `ECPolygon` between the line points and `stackedOnPoints`
         //   (the baseline). Minimal port: a Polygon whose ring is the line points followed by the
@@ -139,7 +145,7 @@ open class LineView: ChartView {
                 aStyle.stroke = nil
                 areaPoly.useStyle(aStyle)
                 areaPoly.pathStyle.stroke = nil
-                _ = group.add(areaPoly)
+                _ = lineGroup.add(areaPoly)
             }
         }
 
@@ -162,7 +168,15 @@ open class LineView: ChartView {
         polyline.useStyle(st)
         polyline.z2 = 10   // upstream ECPolyline z2; keeps the line above a co-gridded bar series (z2 1)
 
-        _ = group.add(polyline)
+        _ = lineGroup.add(polyline)
+
+        // upstream: this._lineGroup.setClipPath(createGridClipPath(coordSys, hasAnimation, seriesModel));
+        //   the clip Rect is collapsed along the base axis and, when animation is enabled, grows to full
+        //   size via `initProps` (see createGridClipPath) — the cartesian line "draw on" entrance.
+        let hasAnimation = seriesModel.isAnimationEnabled() ?? false
+        let clipPath = createGridClipPath(coord, hasAnimation, seriesModel)
+        lineGroup.setClipPath(clipPath)
+        _ = group.add(lineGroup)
 
         // ── SymbolDraw pass (statically inlined) ────────────────────────────────────────────────
         // upstream: LineView creates a `SymbolDraw` and calls `symbolDraw.updateData(data, {...})`,
@@ -172,6 +186,9 @@ open class LineView: ChartView {
         // PORT-TODO: SymbolDraw enter/leave animation, symbolRotate/symbolOffset, endLabel, and
         //   showAllSymbol / 'auto' sampling (upstream hides symbols when points are dense) — the
         //   static port always shows them when showSymbol != false. emphasis/label = PORT-TODO.
+        // PORT-TODO: line symbols are added to `group` directly (unclipped, no scale-in) — upstream's
+        //   SymbolDraw enter animation (per-symbol scale from 0) is deferred; only the polyline/area
+        //   draw-on (via lineGroup's clip) is implemented here.
         let showSymbol = seriesModel.get("showSymbol")
         // upstream truthiness: draw unless showSymbol is explicitly false.
         if (showSymbol as? Bool) != false {

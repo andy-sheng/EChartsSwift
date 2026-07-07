@@ -115,22 +115,14 @@ public func createGridClipPath(
         // upstream:
         //   graphic.initProps(clipPath, { shape: { width, height, x, y } }, seriesModel, null, done, duringCb);
         //
-        // PORT-TODO: `graphic.initProps` (== animation/basicTransition.initProps) is not ported yet.
-        //   It derives an animation config from `seriesModel` via `getAnimationConfig` (also unported)
-        //   and, when a positive duration results, calls `clipPath.animateTo({shape: ...}, cfg)`.
-        //   Until that lands we reproduce initProps' NO-ANIMATION branch faithfully: set the element to
-        //   its final ("full") shape immediately, then invoke `during(1)` and `done()` once (matching
-        //   `animateOrSetProps`'s `else` branch: `el.attr(props); during && during(1); cb && cb();`).
-        //   The wipe-reveal animation is therefore skipped (final geometry is correct); restore the real
-        //   call once `util/graphic` + `animation/basicTransition` are ported.
-        var finalShape = clipPath.shape as! RectShape
-        finalShape.width = width
-        finalShape.height = height
-        finalShape.x = x
-        finalShape.y = y
-        clipPath.shape = finalShape
-        duringCb?(1)
-        done?()
+        // Shape props are passed as a DICT (not a RectShape struct) — initProps/animateTo diff against
+        // arbitrary keyed prop bags, and a struct value is opaque to the animator (it would just snap
+        // to the final value instead of interpolating each field).
+        initProps(clipPath,
+                  ["shape": ["width": width, "height": height, "x": x, "y": y] as [String: Any]],
+                  seriesModel, nil,
+                  done,
+                  duringCb)
     }
 
     return clipPath
