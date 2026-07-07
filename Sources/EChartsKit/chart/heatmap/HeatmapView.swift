@@ -160,7 +160,13 @@ open class HeatmapView: ChartView {
             if let r = heatmapRectRadius(borderRadius) { shape.r = r }
 
             let rect = Rect(["shape": shape as PathShape])
-            rect.useStyle(heatmapStyleFromDict(data.getItemVisual(idx, "style")))
+            // Entrance animation (opacity fade-in) — same as the cartesian cell path.
+            var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
+            let finalOpacity = cellStyle.opacity ?? 1
+            cellStyle.opacity = 0
+            rect.useStyle(cellStyle)
+            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
+            rect.name = "item"
             _ = group.add(rect)
             data.setItemGraphicEl(idx, rect)
         }
@@ -320,7 +326,19 @@ open class HeatmapView: ChartView {
             // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
             //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
             //   keys (fill/stroke/lineWidth/opacity/...) — same deviation as BarView.
-            rect.useStyle(heatmapStyleFromDict(style))
+            // Entrance animation (opacity fade-in, mirroring FunnelPiece): construct the cell at opacity 0,
+            //   then `initProps({style:{opacity}})` toward the intended (visualMap-encoded) final opacity.
+            //   With series animation off, `initProps` falls back to an instant `attr` of the partial
+            //   "style" dict (Path.attrKV merge) so the cell lands at its final, VISIBLE opacity.
+            var cellStyle = heatmapStyleFromDict(style)
+            let finalOpacity = cellStyle.opacity ?? 1
+            cellStyle.opacity = 0
+            rect.useStyle(cellStyle)
+            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
+
+            // Name the cell 'item' (matches PieView/BarView/FunnelView per-datum element name; upstream
+            //   leaves it unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
+            rect.name = "item"
 
             // upstream: ensureState('emphasis'|'blur'|'select') + toggleHoverEmphasis + incremental id +
             //   hover layer. PORT-TODO: states/emphasis + incremental id deferred.

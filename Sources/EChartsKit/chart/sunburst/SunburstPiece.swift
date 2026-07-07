@@ -161,9 +161,17 @@ open class SunburstPiece: Sector {
             // sector.setShape(sectorShape);
             // sector.shape.r = layout.r0;
             // graphic.initProps(sector, { shape: { r: layout.r } }, seriesModel, node.dataIndex);
-            // PORT-TODO: animation DEFERRED — upstream sets r=r0 then animates r → layout.r.
-            //   The static result is the final shape, so set the final sectorShape directly.
-            _ = sector.setShape(sectorShape)
+            // Entrance (angle-expansion form, mirroring PieView's PiePiece sweep): create the sector
+            //   collapsed (endAngle == startAngle), then sweep endAngle open to the final layout angle
+            //   via initProps below. Upstream sunburst animates `r` (r0 -> r); we use the angle-expansion
+            //   form shared with pie (SectorShape has per-key animationSet). Shape props MUST be a dict of
+            //   animatable fields (a full SectorShape struct is opaque to the animator). Instant (final
+            //   angle, no animator) when the series' animation is disabled.
+            let finalEndAngle = sectorShape.endAngle
+            var collapsedShape = sectorShape
+            collapsedShape.endAngle = sectorShape.startAngle
+            _ = sector.setShape(collapsedShape)
+            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, node.dataIndex)
         }
         else {
             // graphic.updateProps(sector, { shape: sectorShape }, seriesModel);

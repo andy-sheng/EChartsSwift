@@ -536,7 +536,16 @@ open class TreemapView: ChartView {
                 }
 
                 // bg.setStyle(normalStyle);
-                bg.useStyle(barStyleFromDict(normalStyle))
+                // PORT ADDITION (entrance animation): heatmap-style opacity fade-in. Construct the tile
+                //   at opacity 0, then `initProps({style:{opacity:final}})` — animates toward the final
+                //   opacity when the series has animation on, or (via Path.attrKV's partial-"style" merge)
+                //   lands it instantly when off. Upstream treemap's own rect enter transition (position/size
+                //   morph via util/animation) is DEFERRED; this mirrors the shipped Funnel/heatmap fade.
+                var bgStyle = barStyleFromDict(normalStyle)
+                let bgFinalOpacity = bgStyle.opacity ?? 1
+                bgStyle.opacity = 0
+                bg.useStyle(bgStyle)
+                initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
                 // ensureState('emphasis'|'blur'|'select') + setDefaultStateProxy -> DEFERRED (states not ported).
             }
 
@@ -574,7 +583,12 @@ open class TreemapView: ChartView {
                 prepareText(content, visualColor as? String, nodeStyle["opacity"] as? Double, nil)
 
                 // content.setStyle(normalStyle);
-                content.useStyle(barStyleFromDict(normalStyle))
+                // PORT ADDITION (entrance animation): heatmap-style opacity fade-in (see renderBackground).
+                var contentStyle = barStyleFromDict(normalStyle)
+                let contentFinalOpacity = contentStyle.opacity ?? 1
+                contentStyle.opacity = 0
+                content.useStyle(contentStyle)
+                initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
                 // ensureState(...) + setDefaultStateProxy -> DEFERRED (states not ported).
             }
 

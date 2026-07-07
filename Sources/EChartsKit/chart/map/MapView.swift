@@ -260,7 +260,21 @@ open class MapView: ChartView {
                     pathStyle.fill = nil
                 }
 
+                // ENTRANCE ANIMATION (opacity fade-in): mirror FunnelView's piece fade — set the
+                //   construction-time opacity to 0, then animate (or, with animation OFF, instantly
+                //   `attr`) toward the FINAL opacity via `initProps`. The partial ["style":["opacity":…]]
+                //   dict merges per-key on BOTH the animate and animation-OFF paths (Path.attrKV), so
+                //   the region always ends at its final (visible) opacity. Without capturing the final
+                //   opacity first the region would stay invisible.
+                let finalOpacity = pathStyle.opacity ?? 1.0
+                pathStyle.opacity = 0
                 compoundPath.useStyle(pathStyle)
+                initProps(
+                    compoundPath,
+                    ["style": ["opacity": finalOpacity] as [String: Any]],
+                    mapModel,
+                    dataIdx
+                )
             }
 
             // upstream: createCompoundPath(polygonSubpaths); createCompoundPath(polylineSubpaths, true);
