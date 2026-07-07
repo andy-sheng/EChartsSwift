@@ -193,6 +193,9 @@ final class GalleryWindowController: NSObject, NSTableViewDataSource, NSTableVie
         // Native pane
         if demo.nativeSupported {
             nativeHostView?.setOption(demo.option)
+        } else {
+            // Blank the pane so a prior demo's chart doesn't linger under an "N/A" native case.
+            nativeHostView?.setOption([:])
         }
         // HTML pane
         if let page = echartsHTMLPage(demo) {
