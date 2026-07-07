@@ -238,6 +238,17 @@ open class LineView: ChartView {
                     // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the
                     //   live Handler hit-test / tooltip can resolve the per-point element.
                     data.setItemGraphicEl(i, element)
+
+                    // Entrance: scale the symbol in from 0 about its point (upstream Symbol.ts first-create:
+                    //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
+                    //   createSymbol sizes via the shape (normal scale 1), so animate 0 → 1 with the transform
+                    //   origin at the datum point so it grows from the point. (scatter's scale-in idiom.)
+                    element.originX = p[0]
+                    element.originY = p[1]
+                    element.scaleX = 0
+                    element.scaleY = 0
+                    initProps(element, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
+
                     _ = group.add(element)   // added AFTER the polyline so symbols sit on top
                 }
             }

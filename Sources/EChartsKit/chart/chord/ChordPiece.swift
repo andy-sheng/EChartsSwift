@@ -128,7 +128,23 @@ open class ChordPiece: Sector {
             sectorShape.cornerRadius = cornerRadius
         }
         // sector.setShape(sectorShape);
-        _ = sector.setShape(sectorShape)
+        //   Entrance (angle-expansion form, mirroring PieView's PiePiece / SunburstPiece sweep): upstream
+        //   ChordPiece snaps the shape on first create (`el.setShape(shape)`) and tweens the WHOLE shape via
+        //   `graphic.updateProps` on later updates. Here we ADD a faithful first-render sweep — create the
+        //   sector collapsed (endAngle == startAngle), then tween endAngle open to the final layout angle
+        //   via the shared basicTransition `initProps`. Shape props MUST be a DICT of animatable fields (a
+        //   full SectorShape struct is opaque to the animator — the struct->dict rule). Instant (final
+        //   angle, no animator) when the series' animation is disabled.
+        if firstCreate {
+            let finalEndAngle = sectorShape.endAngle
+            var collapsedShape = sectorShape
+            collapsedShape.endAngle = sectorShape.startAngle
+            _ = sector.setShape(collapsedShape)
+            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
+        }
+        else {
+            _ = sector.setShape(sectorShape)
+        }
         // sector.useStyle(data.getItemVisual(idx, 'style'));
         sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
         // setStatesStylesFromModel(sector, itemModel);

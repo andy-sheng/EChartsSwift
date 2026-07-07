@@ -119,7 +119,7 @@ open class ParallelView: ChartView {
         //   static rebuild replays only the `add` path for every current data item.
         for dataIndex in 0..<data.count() {
             let line = addEl(data, dataGroup, dataIndex, dimensions, coordSys)
-            updateElCommon(line, data, dataIndex, seriesScope)
+            updateElCommon(line, data, dataIndex, seriesScope, seriesModel)
         }
 
         // First create
@@ -245,12 +245,21 @@ private func updateElCommon(
     _ el: Polyline,
     _ data: SeriesData,
     _ dataIndex: Int,
-    _ seriesScope: ParallelDrawSeriesScope
+    _ seriesScope: ParallelDrawSeriesScope,
+    _ seriesModel: ParallelSeriesModel
 ) {
     // el.useStyle(data.getItemVisual(dataIndex, 'style'));
     // el.style.fill = null;
     var style = barStyleFromDict(data.getItemVisual(dataIndex, "style"))
     style.fill = nil
+    // ENTRANCE ANIMATION (port deviation): upstream ParallelView reveals lines via a growing clip-path
+    //   (createGridClipShape + setClipPath, DEFERRED — clip-path animation not ported). Approximate the
+    //   enter with the shared opacity-fade infra (FunnelView/HeatmapView idiom): capture the final opacity
+    //   BEFORE zeroing it (invisible-line guard), build the line at opacity 0, then animate toward the
+    //   final opacity via `initProps` (instant `attr` when animation is off — `Path.attrKV`'s partial
+    //   "style"-dict merge lands the final opacity so the line is never left invisible).
+    let finalOpacity = style.opacity ?? 1.0
+    style.opacity = 0
     el.useStyle(style)
     // `useStyle`→createStyle lays the style over DEFAULT_PATH_STYLE (fill '#000') and SKIPS the nil
     // `fill`, so `el.style.fill = null` is dropped and each polyline fills as a solid black polygon
@@ -271,6 +280,9 @@ private func updateElCommon(
     // toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
     //   PORT-TODO: emphasis/select/blur state styles + hover dispatcher DEFERRED (util/states not ported).
     _ = (data.getItemModel(dataIndex))
+
+    // Enter-fade toward the captured final opacity (see the opacity note above where it was zeroed).
+    initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, dataIndex)
 }
 
 // upstream: function isEmptyValue(val: ParsedValue, axisType: OptionAxisType)

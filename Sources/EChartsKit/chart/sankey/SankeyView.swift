@@ -392,6 +392,17 @@ open class SankeyView: ChartView {
             if let fill = sankeyColor(node.getVisual("color")) {
                 rect.pathStyle.fill = fill
             }
+
+            // ENTRANCE ANIMATION — opacity fade-in (FunnelView pattern). Upstream reveals the whole
+            //   diagram via a first-render grow-in clip (createGridClipShape + initProps), which is
+            //   DEFERRED here (clip-path animation not ported per CONVENTIONS §5). As the closest
+            //   available-infra faithful stand-in, fade each node Rect from invisible to its final
+            //   opacity: capture the final opacity BEFORE zeroing, set the construction-time opacity to
+            //   0, then animate (or, with animation off, instantly `attr` via Path.attrKV's partial
+            //   "style"-dict merge) toward the final opacity via `initProps`.
+            let finalNodeOpacity = rect.pathStyle.opacity ?? 1
+            rect.pathStyle.opacity = 0
+            initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
             // rect.setStyle('decal', node.getVisual('style').decal);
             //   PORT-TODO: node decal (Pattern) not bridged (decal out of the static-render scope).
 

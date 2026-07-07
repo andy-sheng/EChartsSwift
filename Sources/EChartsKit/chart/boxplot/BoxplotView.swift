@@ -221,7 +221,19 @@ private func updateNormalBoxData(
     //   (reusing the bar-render bridge) and set strokeNoScale before useStyle.
     var st = barStyleFromDict(data.getItemVisual(dataIndex, "style"))
     st.strokeNoScale = true
+
+    // PORT DEVIATION (enter animation): upstream animates the box by GROWING its points-array shape from
+    //   the initBaseline (transInit) to the final ends via initProps({shape:{points}}). Points-array
+    //   shape animation is shared-file work (Animator/Path), OUT OF SCOPE here, so the port instead uses
+    //   the closest existing-infra pattern — the OPACITY FADE (FunnelView/HeatmapView): the box fades in
+    //   from invisible to its final opacity. Capture the final opacity BEFORE zeroing, set the
+    //   construction-time opacity to 0, `useStyle`, then `initProps({style:{opacity}})` — which animates
+    //   when the series has animation on, or (via Path.attrKV's partial-"style"-dict merge) instantly
+    //   lands the final opacity when off, so the box is never left invisible.
+    let finalOpacity: Double = st.opacity ?? 1
+    st.opacity = 0
     el.useStyle(st)
+    initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], data.hostModel, dataIndex)
 
     // upstream: el.z2 = 100;
     el.z2 = 100

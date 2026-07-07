@@ -546,9 +546,14 @@ open class GaugeView: ChartView {
 
                 if showProgress {
                     let isClip = jsTruthy(progressModel.get("clip"))
-                    // upstream: createProgress(idx, startAngle) then initProps shape.endAngle to the value angle.
-                    //   Static: create directly at the final endAngle.
-                    let progress = createProgress(idx, number.linearMap(val, valueExtent, angleExtent, isClip))
+                    // upstream: const progress = createProgress(idx, startAngle);
+                    //   graphic.initProps(progress, { shape: { endAngle: linearMap(val, valueExtent, angleExtent, isClip) } }, seriesModel);
+                    //   Create the progress arc collapsed at startAngle (endAngle == startAngle), then sweep
+                    //   shape.endAngle to the value angle via the shared enter transition (instant when
+                    //   animation off). Sector ANGLE-EXPANSION pattern (cf. PieView / SunburstPiece).
+                    let valueEndAngle = number.linearMap(val, valueExtent, angleExtent, isClip)
+                    let progress = createProgress(idx, startAngle)
+                    initProps(progress, ["shape": ["endAngle": valueEndAngle]], seriesModel)
                     _ = group.add(progress)
                     // PORT-TODO: setCommonECData(seriesModel.seriesIndex, data.dataType, idx, progress)
                     //   — inner-store ECData tooltip indexing deferred.

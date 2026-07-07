@@ -372,6 +372,19 @@ private func updateNode(
         // upstream chart/helper/Symbol z2 default 100; tree edges (Bezier) default z2 0. The node loop
         //   adds a node then its edge, so without this the edges cross OVER the node symbols.
         path.z2 = 100
+
+        // Entrance: scale the node symbol in from 0 about its layout point (upstream chart/helper/Symbol.ts
+        //   first-create: symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel,
+        //   idx)). SymbolClz's per-node create/update scale-in is DEFERRED, so reproduce it here with the
+        //   ScatterView idiom: origin at the node point (group-local targetLayout), scale 0 → 1. scaleX/scaleY
+        //   are scalar transform props (no dict). Animates via animateTo when the series has animation on,
+        //   else snaps to full scale instantly.
+        path.originX = targetLayout.x
+        path.originY = targetLayout.y
+        path.scaleX = 0
+        path.scaleY = 0
+        initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, dataIndex)
+
         // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
         _ = group.add(path)
         data.setItemGraphicEl(dataIndex, path)

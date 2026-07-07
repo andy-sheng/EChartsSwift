@@ -98,6 +98,16 @@ open class RadarView: ChartView {
         let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
         let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 4.0
 
+        // ENTRANCE (port stand-in): upstream animates the polyline/polygon `points` from a collapsed ring
+        //   at the radar center (`getInitialPoints` → initProps with the shape). Points animation is NOT
+        //   ported (would need a shared-infra change), so we substitute a SCALE-IN from the radar center
+        //   (cx/cy): the area polygon + line polyline start at scale 0 anchored on the center and grow to
+        //   full size — same visual family (expand-from-center) as the dropped upstream enter. The vertex
+        //   symbols keep their own per-vertex scale-in (B4) and are untouched here.
+        let radarCoord = seriesModel.radarCoordinateSystem
+        let radarCx = radarCoord?.cx ?? 0
+        let radarCy = radarCoord?.cy ?? 0
+
         for idx in 0..<data.count() {
             // const points = data.getItemLayout(idx);  → closed ring `[[x,y], … , [x,y]]` (last == first copy).
             // if (!points) { return; }
@@ -124,6 +134,7 @@ open class RadarView: ChartView {
             var polylineProps: ElementProps = [:]
             polylineProps["shape"] = polylineShape as PathShape
             let polyline = Polyline(polylineProps)
+            polyline.name = "radarPolyline"
 
             // --- polygon: new graphic.Polygon(); shape.points = points --------------------------------
             var polygonShape = PolygonShape()
@@ -131,6 +142,7 @@ open class RadarView: ChartView {
             var polygonProps: ElementProps = [:]
             polygonProps["shape"] = polygonShape as PathShape
             let polygon = Polygon(polygonProps)
+            polygon.name = "radarPolygon"
 
             // polyline.useStyle(zrUtil.defaults(
             //     itemModel.getModel('lineStyle').getLineStyle(), { fill: 'none', stroke: color }));
@@ -176,6 +188,18 @@ open class RadarView: ChartView {
             // Same class-1 guard: when the area has no explicit fill (and no series color), don't let the
             // default black survive the createStyle merge.
             if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
+
+            // ENTRANCE scale-in (port stand-in for upstream points-from-center): anchor both the area
+            //   polygon and the outline polyline on the radar center and grow scale 0→1. Anchoring at the
+            //   center means the shape expands outward from the middle (same visual family as the dropped
+            //   collapse-to-center points enter). When animation is off, initProps snaps scale to 1.
+            for shapeEl in [polyline, polygon] {
+                shapeEl.originX = radarCx
+                shapeEl.originY = radarCy
+                shapeEl.scaleX = 0
+                shapeEl.scaleY = 0
+                initProps(shapeEl, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
+            }
 
             // itemGroup.add(polyline);  itemGroup.add(polygon);  itemGroup.add(symbolGroup);
             //   (upstream child order: polyline=childAt(0), polygon=childAt(1), symbolGroup=childAt(2)).

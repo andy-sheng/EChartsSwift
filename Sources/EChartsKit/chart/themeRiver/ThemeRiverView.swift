@@ -178,7 +178,21 @@ open class ThemeRiverView: ChartView {
 
             // polygon.useStyle(style);
             //   The item visual 'style' bag → typed `PathStyleProps` via the shared bridge (BarView).
-            polygon.useStyle(barStyleFromDict(styleBag))
+            // Entrance animation (OPACITY FADE, mirroring FunnelView/HeatmapView/MapView/TreemapView):
+            //   upstream ThemeRiverView reveals each band via a grid-clip `Rect` that expands under
+            //   `initProps` (createGridClipShape). The grid-clip `Rect` + `updateProps` clip port is
+            //   deferred (see the createGridClipShape PORT-TODO); the closest existing-infra entrance is
+            //   the shared opacity fade — set `style.opacity = 0` before `useStyle`, then animate toward
+            //   the captured final opacity via `initProps({style:{opacity}})`. Capture the final opacity
+            //   BEFORE zeroing so the band lands visible (the animation-off path relies on `Path.attrKV`'s
+            //   partial-"style"-dict merge to actually set it — without it the band would stay invisible).
+            var bandStyle = barStyleFromDict(styleBag)
+            let finalOpacity = bandStyle.opacity ?? 1
+            bandStyle.opacity = 0
+            polygon.useStyle(bandStyle)
+            // Key the fade to the layer's last data index (the same index upstream labels / keys the band
+            //   by — `indices[j - 1]` — used below for the label and setItemGraphicEl).
+            initProps(polygon, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, indices.last)
 
             // Per-layer label (DEFERRED setLabelStyle). Minimal reproduction: the layer/series name at the
             //   left edge of the band, vertically centered, rendered via the textContent painter walk.
