@@ -98,4 +98,23 @@ final class EffectScatterAnimationTests: XCTestCase {
         XCTAssertTrue(ripple.silent, "stroke ripple path must be silent")
         XCTAssertEqual(ripple.pathStyle.strokeNoScale, true, "stroke ripple style must set strokeNoScale")
     }
+
+    /// Characterization guard: `EChartsView._syncRoot` (`zr.add(ec.getRoot())`) must reach every
+    /// descendant of the render tree, including the ripple symbol nested under the effectScatter
+    /// series group — `Group.addSelfToZr` (Group.swift:269) recurses into children, and `Element
+    /// .addSelfToZr` (Element.swift:1289) is what registers each animator with `zr.animation`
+    /// (ZRender.swift:209 `ZRender.add` → `addSelfToZr`). This is the prerequisite the host frame
+    /// loop (CADisplayLink → zr.animation.update) depends on to actually tick the ripple clips.
+    func test_ripple_animators_register_with_zr_animation_on_sync() throws {
+        let view = makeView()               // setOption already ran _syncRoot()
+        guard let ripple = findRipple(view.ec.getRoot()) else {
+            return XCTFail("no ripple symbol path found")
+        }
+        // _syncRoot added ec.getRoot() to view.zr; Group.addSelfToZr recurses to every child,
+        // so each ripple path's __zr must now be the live zr — which is what registered its
+        // animators with zr.animation (the prerequisite for the host frame loop to tick them).
+        XCTAssertTrue(ripple.__zr === view.zr,
+                      "ripple path was not added to the live zr — animators never registered")
+        XCTAssertEqual(ripple.animators.count, 2, "ripple should still carry both animators")
+    }
 }
