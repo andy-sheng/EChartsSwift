@@ -599,10 +599,10 @@ open class TreemapView: ChartView {
         // upstream: processInvisible(element) — DEFERRED (delayed invisible is an animation concern).
 
         // upstream: prepareText(rectEl, visualColor, visualOpacity, upperLabelRect)
-        // PORT-TODO: the full setLabelStyle / getLabelStatesModels path (rich text states, truncation,
-        //   inheritColor, per-state, textConfig layoutRect, beforeUpdate width/height sizing, drillDownIcon)
-        //   is DEFERRED (label/labelStyle + util/states not ported). MINIMAL faithful NORMAL-state label:
-        //   text = node name when the (upper)label model's `show` is set; centered in the rect.
+        // Routes the tile label through the shared label core (labelStyle.setLabelStyle /
+        //   getLabelStatesModels) — the label is ATTACHED as `rectEl`'s textContent and positioned by
+        //   the host's textConfig (createTextConfig writes position "inside" by default), so the view no
+        //   longer builds/positions a ZRText by hand.
         func prepareText(
             _ rectEl: Rect,
             _ visualColor: String?,
@@ -618,38 +618,51 @@ open class TreemapView: ChartView {
             // const isShow = normalLabelModel.getShallow('show');
             let isShow = (normalLabelModel.getShallow("show") as? Bool) ?? false
 
-            // setLabelStyle(...) DEFERRED — build a minimal centered Text when shown, else clear.
-            if !isShow || defaultText == nil {
-                rectEl.removeTextContent()
+            // setLabelStyle(rectEl, getLabelStatesModels(nodeModel, upperLabelRect ? 'upperLabel' : 'label'),
+            //   { defaultText: isShow ? defaultText : null, inheritColor, defaultOpacity, labelFetcher, labelDataIndex });
+            // setLabelStyle owns show/hide (reads the label model `show` — hides when false) and attaches
+            //   the label as `rectEl`'s textContent + textConfig; the painter renders textContent.
+            labelStyle.setLabelStyle(
+                rectEl,
+                labelStyle.getLabelStatesModels(
+                    nodeModel, upperLabelRect != nil ? PATH_UPPERLABEL_NORMAL : PATH_LABEL_NOAMAL
+                ),
+                SetLabelStyleOpt(
+                    inheritColor: visualColor,
+                    defaultOpacity: visualOpacity,
+                    defaultText: isShow ? defaultText : nil,
+                    labelFetcher: seriesModel,
+                    labelDataIndex: Double(thisNode.dataIndex)
+                )
+            )
+
+            // const textEl = rectEl.getTextContent(); if (!textEl) { return; }
+            guard let textEl = rectEl.getTextContent() else {
                 return
             }
 
-            let textEl = ZRText()
-            var textStyle = TextStyleProps()
-            textStyle.text = defaultText
-            // inheritColor: visualColor (upstream uses it as the label inherit color).
-            textStyle.fill = normalLabelModel.get("color") as? String ?? visualColor
-            textStyle.opacity = visualOpacity
-            textStyle.align = .center
-            textStyle.verticalAlign = .middle
-            // textStyle.truncateMinChar = 2; textStyle.lineOverflow = 'truncate'; -> DEFERRED (truncation).
+            if let up = upperLabelRect {
+                // upstream: rectEl.setTextConfig({ layoutRect: upperLabelRect }) — a field MERGE. The
+                //   ported `setTextConfig` REPLACES the config (see Element.swift PORT-NOTE), so mutate
+                //   the existing config to preserve the `position` just written by setLabelStyle.
+                var tc = rectEl.textConfig ?? ElementTextConfig()
+                tc.layoutRect = up
+                rectEl.setTextConfig(tc)
+                // (textEl as ECElement).disableLabelLayout = true -> DEFERRED (no ECElement.disableLabelLayout field).
+            }
+
+            // upstream `textEl.beforeUpdate = function () { ... width/height from rect - padding ... }`
+            //   (per-frame truncation sizing) -> DEFERRED: `Element.beforeUpdate` is a non-settable
+            //   method in the port (no closure hook). The static truncation fields below still apply.
+
+            // textStyle.truncateMinChar = 2; textStyle.lineOverflow = 'truncate';
+            var textStyle = textEl.textStyle ?? TextStyleProps()
+            textStyle.truncateMinChar = 2
+            textStyle.lineOverflow = "truncate"
             textEl.useStyle(textStyle)
 
-            // Place at the rect center (upper label: within the upperLabelRect; else within the content rect).
-            let shape = rectEl.shape as! RectShape
-            if let up = upperLabelRect {
-                rectEl.setTextConfig(makeInsideTextConfig())
-                textEl.x = up.x + up.width / 2
-                textEl.y = up.y + up.height / 2
-            }
-            else {
-                rectEl.setTextConfig(makeInsideTextConfig())
-                textEl.x = shape.x + shape.width / 2
-                textEl.y = shape.y + shape.height / 2
-            }
-            rectEl.setTextContent(textEl)
-
-            // addDrillDownIcon(...) -> DEFERRED (drill icon prepends to the label text on leaf-root).
+            // addDrillDownIcon(...) -> DEFERRED (isLeafRoot drill-icon prefix; also touches the
+            //   emphasis-state label text — a states concern outside this label retrofit).
         }
     }
 }
@@ -693,12 +706,6 @@ private func rectRadiusFromOption(_ r: Any?) -> RectRadius? {
 private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {
     // `RectLike` is a protocol (AnyObject); `BoundingRect` is the concrete conformer.
     return BoundingRect(x, y, width, height)
-}
-
-private func makeInsideTextConfig() -> ElementTextConfig {
-    var cfg = ElementTextConfig()
-    cfg.inside = true
-    return cfg
 }
 
 // export default TreemapView;  -> `open class TreemapView` above.

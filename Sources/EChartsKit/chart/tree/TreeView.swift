@@ -348,25 +348,35 @@ private func updateNode(
         states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
         states.setStatesStylesFromModel(path, itemModel)
 
-        // Node name label (SymbolClz `useNameLabel`, DEFERRED). Minimal NORMAL-state reproduction:
-        //   attach the node name as text content, positioned outward from the symbol. Orthogonal trees
-        //   label internal nodes on the inner side and leaves on the outer side; default to
-        //   left-of-symbol for nodes with children, right-of-symbol for leaves (matches the common
-        //   horizontal LR tree). Rendered now that the painter walks attached textContent.
-        let labelModel = itemModel.getModel("label")
-        if (labelModel.get("show") as? Bool) != false && !node.name.isEmpty {
-            var ts = TextStyleProps()
-            ts.text = node.name
-            ts.font = labelModel.getFont()
-            if let c = labelModel.getTextColor() { ts.fill = c }
-            let labelText = ZRText()
-            labelText.useStyle(ts)
-            path.setTextContent(labelText)
-            var tc = ElementTextConfig()
-            tc.position = (labelModel.get("position") as? String)
-                ?? (node.children.isEmpty ? "right" : "left")
-            tc.distance = (labelModel.get("distance") as? Double) ?? 5
-            path.setTextConfig(tc)
+        // Node name label — routed through the SHARED LABEL CORE (upstream SymbolClz `useNameLabel: true`
+        //   + `setLabelStyle(symbolPath, getLabelStatesModels(itemModel), { labelFetcher: seriesModel,
+        //   labelDataIndex: idx, defaultText: getName(idx), inheritColor: visualColor, ... })`,
+        //   chart/helper/Symbol.ts:257/315). `setLabelStyle` attaches the label as `path`'s textContent
+        //   (+ textConfig) and the painter walks it; the per-state (emphasis/blur/select) label sub-models
+        //   and the formatter chain now come for free from the core. `useNameLabel` → defaultText is the
+        //   node NAME (`data.getName(idx)`), not the value-derived `getDefaultLabel`.
+        let labelModels = labelStyle.getLabelStatesModels(itemModel)
+        var labelOpt = SetLabelStyleOpt()
+        labelOpt.labelFetcher = seriesModel
+        labelOpt.labelDataIndex = Double(dataIndex)
+        labelOpt.defaultText = data.getName(dataIndex)
+        if let cs = visualColor { labelOpt.inheritColor = cs }
+        // Tree's outward side. Upstream overrides `position` to `normalLabelModel.get('position') ||
+        //   (isLeft ? 'left' : 'right')` (TreeView.ts:437, the radial branch); for the orthogonal port the
+        //   side is chosen per orientation — internal nodes label on the inner side, leaves on the outer.
+        let treeOrient = seriesModel.getOrient()
+        let textPosition = treeLabelPosition(treeOrient, isLeaf: node.children.isEmpty)
+        labelOpt.defaultOutsidePosition = textPosition
+        labelStyle.setLabelStyle(path, labelModels, labelOpt)
+
+        // `createTextConfig` defaults the normal position to "inside" when the label model pins none; the
+        //   tree wants its outward side instead (upstream `normalLabelModel.get('position') || textPosition`).
+        //   Only touch it when a label was actually created (normal `show != false`).
+        if let normalModel = labelModels[.normal],
+           (normalModel.getShallow("show") as? Bool) != false {
+            let pinned = normalModel.get("position")
+            if path.textConfig == nil { path.textConfig = ElementTextConfig() }
+            path.textConfig?.position = pinned ?? textPosition
         }
 
         // upstream chart/helper/Symbol z2 default 100; tree edges (Bezier) default z2 0. The node loop
@@ -646,6 +656,20 @@ private func treeEdgeStyle(_ lineStyle: [String: Any]) -> PathStyleProps {
     s.fill = nil            // fill: null
     s.strokeNoScale = true  // strokeNoScale: true
     return s
+}
+
+// The tree label's outward side, per series orientation (upstream chooses 'left'/'right' for the
+//   horizontal orthogonal tree; TreeView.ts:429). Internal nodes (with children) label on the inner
+//   side pointing back toward the root; leaves label on the outer side. Vertical orients map onto
+//   top/bottom analogously.
+private func treeLabelPosition(_ orient: String?, isLeaf: Bool) -> String {
+    switch orient {
+    case "RL": return isLeaf ? "left" : "right"
+    case "TB", "vertical": return isLeaf ? "bottom" : "top"
+    case "BT": return isLeaf ? "top" : "bottom"
+    // "LR" / "horizontal" / nil (default) → the common horizontal tree.
+    default: return isLeaf ? "right" : "left"
+    }
 }
 
 // JS `x || 0` for a Double (0 / NaN are falsy → fall back to `d`).

@@ -226,9 +226,12 @@ open class MapView: ChartView {
             let centerRaw = geo.dataToPoint(gjRegion.getCenter(), false)
 
             // upstream: createCompoundPath(subpaths, isLine?) — one CompoundPath, styled + labelled.
-            func createCompoundPath(_ subpaths: [Path], _ isLine: Bool) {
+            //   Returns the created path plus its resolved solid-fill string (used as the label's
+            //   `inheritColor`), or nil when there are no subpaths.
+            @discardableResult
+            func createCompoundPath(_ subpaths: [Path], _ isLine: Bool) -> (path: CompoundPath, fill: String?)? {
                 if subpaths.isEmpty {
-                    return
+                    return nil
                 }
                 var cpShape = CompoundPathShape()
                 cpShape.paths = subpaths
@@ -275,17 +278,28 @@ open class MapView: ChartView {
                     mapModel,
                     dataIdx
                 )
+
+                // The region's resolved solid fill (polygon) or stroke (line) — the label's
+                //   `inheritColor` so `label.color: 'inherit'` picks up the region colour.
+                let fill = isLine
+                    ? mapColorString(normalStyle["stroke"]) ?? mapColorString(normalStyle["fill"])
+                    : mapColorString(normalStyle["fill"])
+                return (compoundPath, fill)
             }
 
             // upstream: createCompoundPath(polygonSubpaths); createCompoundPath(polylineSubpaths, true);
-            createCompoundPath(polygonSubpaths, false)
-            createCompoundPath(polylineSubpaths, true)
+            let polyResult = createCompoundPath(polygonSubpaths, false)
+            let lineResult = createCompoundPath(polylineSubpaths, true)
 
-            // upstream: resetLabelForRegion(...) is called per compound path (attaching the label as the
-            //   path's textContent). STATIC reproduction: draw ONE standalone `ZRText` at the projected
-            //   centroid per region (mirroring GeoView), under the map-series label condition.
-            if !polygonSubpaths.isEmpty || !polylineSubpaths.isEmpty {
-                self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, centerRaw, regionGroup)
+            // upstream: resetLabelForRegion(...) attaches the region-name label as the compound path's
+            //   textContent (via `setLabelStyle`). Prefer the polygon el; fall back to the polyline el.
+            //   `_ = centerRaw` — with the label attached to the el (default position "inside"), the
+            //   painter centres it in the el's bounding rect, so the explicit centroid is no longer used.
+            _ = centerRaw
+            if let target = polyResult ?? lineResult {
+                self._resetLabelForRegion(
+                    mapModel, data, regionModel, regionName, dataIdx, target.fill, target.path
+                )
             }
         }
     }
@@ -293,14 +307,20 @@ open class MapView: ChartView {
     // upstream: resetLabelForRegion (map-series subset). The region-name label is drawn when
     //   (1) the series data value is NaN, or (2) the region has no legend symbol (mapSymbolLayout stamped
     //   `itemLayout.showLabel`). (Case "geo component" is handled by GeoView, not here.)
+    //
+    // Retrofitted onto the SHARED LABEL CORE (`labelStyle.setLabelStyle`): the label is attached as the
+    //   region compound-path el's `textContent` (via `el.setTextContent` + `el.textConfig`), replacing
+    //   the previous standalone-`ZRText`-at-centroid reproduction. `setLabelStyle` owns text/font/fill/
+    //   position and honours `label.show` (per state) itself — the painter renders `textContent`
+    //   automatically at the configured position (default "inside" → centred in the el's bounding rect).
     private func _resetLabelForRegion(
         _ mapModel: MapSeriesModel,
         _ data: SeriesData,
         _ regionModel: Model,
         _ regionName: String,
         _ dataIdx: Int,
-        _ centerPt: [Double]?,
-        _ regionGroup: Group
+        _ inheritColor: String?,
+        _ el: Element
     ) {
         // upstream: const isDataNaN = data && isNaN(data.get(data.mapDimension('value'), dataIdx) as number);
         let valueDim = data.mapDimension("value")
@@ -312,42 +332,30 @@ open class MapView: ChartView {
         let showLabel = mapJsTruthy(itemLayout?["showLabel"])
 
         // upstream: if ((isGeoModel || isDataNaN) || (itemLayout && itemLayout.showLabel)) { ...draw... }
-        //   isGeoModel is false in this (map series) view.
+        //   isGeoModel is false in this (map series) view. When neither condition holds, remove any label.
         guard isDataNaN || showLabel else {
+            // upstream else-branch: el.removeTextContent(); el.removeTextConfig();
+            el.removeTextContent()
+            el.removeTextConfig()
             return
         }
 
-        let labelModel = regionModel.getModel("label")
-        // STATIC: honor the normal `label.show` flag (label states model DEFERRED).
-        if !mapJsTruthy(labelModel.get("show")) {
-            return
-        }
-        guard let centerPt = centerPt, centerPt.count >= 2 else {
-            return
-        }
-
-        // upstream defaultText: regionName. When the datum exists, the formatter runs against `dataIdx`.
-        //   if (!data || dataIdx >= 0) { labelFetcher = mapOrGeoModel; }
-        var content: String? = nil
+        // upstream: const query = !isGeoModel(...) ? dataIdx : regionName;   (map series → dataIdx)
+        //           if (!data || dataIdx >= 0) { labelFetcher = mapOrGeoModel; }
+        var opt = SetLabelStyleOpt()
+        opt.defaultText = regionName
         if dataIdx >= 0 {
-            content = mapModel.getFormattedLabel(Double(dataIdx), .normal)
+            opt.labelFetcher = mapModel
+            opt.labelDataIndex = Double(dataIdx)
         }
-        let text = content ?? regionName
+        // `label.color: 'inherit'` resolves to the region's fill.
+        opt.inheritColor = inheritColor
 
-        // PORT-TODO: minimal faithful reproduction of `setLabelStyle`'s NORMAL text style (text/font/fill/
-        //   align), mirroring GeoView._resetLabelForRegion. `specifiedTextOpt.normal` centers on labelXY.
-        var style = TextStyleProps()
-        style.text = text
-        style.font = labelModel.getFont()
-        style.fill = labelModel.getTextColor()
-        style.align = .center
-        style.verticalAlign = .middle
-        style.x = centerPt[0]
-        style.y = centerPt[1]
-
-        let textEl = ZRText(["z2": 10.0])
-        textEl.useStyle(style)
-        _ = regionGroup.add(textEl)
+        // upstream: setLabelStyle(el, getLabelStatesModels(regionModel), { labelFetcher, labelDataIndex,
+        //   defaultText: regionName }, specifiedTextOpt). `setLabelStyle` attaches the label as `el`'s
+        //   textContent (default position "inside" via createTextConfig) and honours per-state `show`.
+        let labelStatesModels = labelStyle.getLabelStatesModels(regionModel)
+        labelStyle.setLabelStyle(el, labelStatesModels, opt)
     }
 
     // upstream: private _renderSymbols(mapModel: MapSeries): void
@@ -436,34 +444,31 @@ open class MapView: ChartView {
         //           const labelModel = itemModel.getModel('label');
         let itemModel = originalData.getItemModel(originalDataIndex)
         let labelModel = itemModel.getModel("label")
+        _ = point   // label now positioned relative to the `circle` el, not the raw point.
 
-        // PORT-TODO (DEFERRED — setLabelStyle/states): upstream attaches the label to the circle via
-        //   `setLabelStyle(circle, getLabelStatesModels(itemModel), { labelFetcher, defaultText: name })`
-        //   with the formatter `mapModel.getFormattedLabel(fullIndex, state)`. Reproduced here as a plain
-        //   standalone `ZRText` (default position 'bottom', i.e. below the symbol point) when `label.show`.
-        _ = circle
-        if !mapJsTruthy(labelModel.get("show")) {
-            return
-        }
+        // upstream: setLabelStyle(circle, getLabelStatesModels(itemModel), {
+        //   labelFetcher: { getFormattedLabel(idx, state) { return mapModel.getFormattedLabel(fullIndex, state); } },
+        //   defaultText: name });
+        //   `setLabelStyle` attaches the label as the circle's textContent and honours per-state `show`.
+        //   The labelFetcher wrapper (idx → fullIndex) is achieved here by fetching with mapModel and
+        //   passing `labelDataIndex = fullIndex` (getLabelText calls getFormattedLabel(labelDataIndex, …)).
+        var opt = SetLabelStyleOpt()
+        opt.defaultText = name
+        opt.labelFetcher = mapModel
+        opt.labelDataIndex = Double(fullIndex)
 
-        let content = mapModel.getFormattedLabel(Double(fullIndex), .normal) ?? name
-
-        var style = TextStyleProps()
-        style.text = content
-        style.font = labelModel.getFont()
-        style.fill = labelModel.getTextColor()
-        // upstream: if (!labelModel.get('position')) { circle.setTextConfig({ position: 'bottom' }); }
-        //   → the label sits below the symbol point; center it horizontally on the point.
-        style.align = .center
-        style.verticalAlign = .top
-        style.x = point[0]
-        // upstream circle r == 3; drop the label just under the symbol.
-        style.y = point[1] + 3
-
-        let textEl = ZRText(["z2": 10.0])
-        textEl.useStyle(style)
+        let labelStatesModels = labelStyle.getLabelStatesModels(itemModel)
+        labelStyle.setLabelStyle(circle, labelStatesModels, opt)
         // upstream: (circle as ECElement).disableLabelAnimation = true;  → animation DEFERRED (no-op).
-        _ = self.group.add(textEl)
+
+        // upstream: if (!labelModel.get('position')) { circle.setTextConfig({ position: 'bottom' }); }
+        //   setLabelStyle's createTextConfig defaults position to "inside"; override to "bottom" when the
+        //   label model specifies no position (so the label sits below the symbol point, as upstream).
+        let posOpt = labelModel.get("position")
+        if (posOpt == nil || posOpt is NSNull), var cfg = circle.textConfig {
+            cfg.position = "bottom"
+            circle.textConfig = cfg
+        }
     }
 
     // ------------------------------------------------------------------------------------------------

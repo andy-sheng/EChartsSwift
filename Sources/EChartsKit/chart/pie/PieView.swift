@@ -201,10 +201,11 @@ open class PieView: ChartView {
             data.setItemGraphicEl(idx, sector)
             _ = group.add(sector)
 
-            // MINIMAL pie label (name text + leader line). The full label subsystem (setLabelStyle /
-            //   labelLayout collision avoidance / rich labelLine) is DEFERRED; this renders the datum name
-            //   at the sector's mid-angle so pie demos match ECharts' default `label:{show:true}` output.
-            renderPieLabel(seriesModel, data, idx, layout, group)
+            // Label (upstream PiePiece._updateLabel): retrofit onto the shared label core —
+            //   `labelStyle.setLabelStyle` attaches the label as the sector's textContent and the
+            //   painter renders it. The leader-line (labelLine) + labelLayout collision-avoidance are
+            //   DEFERRED (L1c) — text only for now.
+            _updateLabel(seriesModel, data, idx)
         }
 
         // labelLayout(seriesModel);
@@ -238,79 +239,48 @@ open class PieView: ChartView {
         return false
     }
 
-    // MINIMAL pie label: the datum name at the sector's mid-angle. `position:'inside'` centers it in the
-    //   sector (white); the default `'outside'` places it beyond the rim with a straight leader line in the
-    //   sector colour. Full labelLayout collision-avoidance + rich formatter are DEFERRED.
-    private func renderPieLabel(
-        _ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int, _ layout: [String: Any], _ group: Group
-    ) {
-        let labelModel = seriesModel.getModel("label")
-        guard ((labelModel.get("show") as? Bool) ?? true) else { return }
-        let cx = (layout["cx"] as? Double) ?? 0
-        let cy = (layout["cy"] as? Double) ?? 0
-        let r = (layout["r"] as? Double) ?? 0
-        let startAngle = (layout["startAngle"] as? Double) ?? 0
-        let endAngle = (layout["endAngle"] as? Double) ?? 0
-        let midAngle = (startAngle + endAngle) / 2
-        let name = data.getName(idx)
-        if name.isEmpty { return }
+    // upstream: PiePiece._updateLabel(seriesModel, data, idx) (PieView.ts:173-227).
+    //   Retrofit onto the shared label core: `labelStyle.setLabelStyle` creates/attaches the label as
+    //   the sector's textContent (the painter renders textContent automatically) and stamps the
+    //   sector's textConfig from the label model's `position`/`rotate`/`distance`.
+    //
+    // DEFERRED (L1c, unchanged from upstream's own deferral notes above): the leader-line
+    //   (`setTextGuideLine`/`setLabelLineStyle` Polyline) and `labelLayout` collision-avoidance /
+    //   absolute re-placement are NOT ported — text only for now.
+    //
+    // PORT DEVIATION: upstream follows `setLabelStyle` with
+    //   `sector.setTextConfig({ position: null, rotation: null })`, delegating final placement to
+    //   `labelLayout`. Since `labelLayout` is DEFERRED, that reset would leave the label unpositioned;
+    //   we instead KEEP the textConfig `position` (e.g. pie default `'outer'`) that `createTextConfig`
+    //   derived from the label model, so the painter places the label relative to the sector.
+    private func _updateLabel(_ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int) {
+        let itemModel = data.getItemModel(idx)
 
-        let position = (labelModel.get("position") as? String) ?? "outside"
-        // The sector's own fill, as a colour STRING (outside label text + leader-line colour).
-        let sectorFill: String? = (data.getItemVisual(idx, "style") as? [String: Any])
-            .flatMap { pieFillToString($0["fill"]) }
+        // const style = data.getItemVisual(idx, 'style');
+        // const visualColor = style && style.fill; const visualOpacity = style && style.opacity;
+        let visualStyle = data.getItemVisual(idx, "style") as? [String: Any]
+        let visualColor: ColorString? = pieFillToString(visualStyle?["fill"])
+        let visualOpacity = visualStyle?["opacity"] as? Double
 
-        var style = TextStyleProps()
-        style.text = name
-        style.font = labelModel.getFont()
-        style.verticalAlign = .middle
+        // setLabelStyle(sector, getLabelStatesModels(itemModel), { labelFetcher, labelDataIndex,
+        //   inheritColor, defaultOpacity, defaultText: getFormattedLabel(idx,'normal') || getName(idx) })
+        let sector = data.getItemGraphicEl(idx)!
+        let models = labelStyle.getLabelStatesModels(itemModel)
+        let opt = SetLabelStyleOpt(
+            inheritColor: visualColor,
+            defaultOpacity: visualOpacity,
+            // upstream: `getFormattedLabel(idx, 'normal') || data.getName(idx)` — no formatter yields
+            //   nil, so the datum name is the default label text.
+            defaultText: seriesModel.getFormattedLabel(Double(idx), .normal) ?? data.getName(idx),
+            labelFetcher: seriesModel,
+            labelDataIndex: Double(idx)
+        )
+        labelStyle.setLabelStyle(sector, models, opt)
 
-        if position == "inside" || position == "inner" || position == "center" {
-            let lr = (r) * 0.6
-            style.x = cx + lr * cos(midAngle)
-            style.y = cy + lr * sin(midAngle)
-            style.align = .center
-            // Inside labels default to an AUTO-CONTRAST colour over the sector fill (upstream
-            //   `inheritColor` + the inside-text contrast rule): white text on a dark slice, dark text on
-            //   a light slice. Only a colour the user set EXPLICITLY overrides it.
-            if let explicit = labelModel.get("color") as? String, explicit != "inherit", explicit != "auto" {
-                style.fill = explicit
-            } else {
-                style.fill = insideAutoTextColor(sectorFill)
-            }
+        // upstream: `labelText.attr({ z2: 10 })`.
+        if let labelText = sector.getTextContent() {
+            labelText.z2 = 10
         }
-        else {
-            let dxu = cos(midAngle), dyu = sin(midAngle)
-            let isRight = dxu >= 0
-            let edgeX = cx + r * dxu, edgeY = cy + r * dyu
-            let bendX = cx + (r + 15) * dxu, bendY = cy + (r + 15) * dyu
-            let textX = bendX + (isRight ? 12 : -12)
-            style.x = textX
-            style.y = bendY
-            style.align = isRight ? .left : .right
-            // Outside label TEXT defaults to the neutral dark label color (echarts draws the text dark, not
-            //   in the sector colour); only the leader LINE adopts the sector colour. Honour an explicit
-            //   user color if set.
-            let textFill: String = labelModel.getTextColor() ?? "#54555a"
-            style.fill = textFill
-            let lineColor: String = sectorFill ?? textFill
-            // Leader line: sector edge → bend → short horizontal toward the text.
-            var lineShape = PolylineShape()
-            lineShape.points = [
-                VectorArray(edgeX, edgeY),
-                VectorArray(bendX, bendY),
-                VectorArray(textX + (isRight ? -3 : 3), bendY)
-            ]
-            let line = Polyline(["shape": lineShape as PathShape, "silent": true, "z2": 9.0])
-            var ls = PathStyleProps()
-            ls.stroke = .string(lineColor)
-            line.useStyle(ls)
-            line.pathStyle.fill = nil   // stroke-only (see visual-parity: clear the black default)
-            _ = group.add(line)
-        }
-        let textEl = ZRText(["z2": 10.0, "silent": true])
-        textEl.useStyle(style)
-        _ = group.add(textEl)
     }
 }
 

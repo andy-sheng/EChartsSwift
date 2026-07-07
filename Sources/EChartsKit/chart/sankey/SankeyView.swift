@@ -381,12 +381,29 @@ open class SankeyView: ChartView {
             ])
             rect.useStyle(sankeyStyleFromDict(itemModel.getModel("itemStyle").getItemStyle()))
 
-            // Node label — PLAIN-TEXT subset. Upstream:
-            //   setLabelStyle(rect, getLabelStatesModels(itemModel), { labelFetcher..., defaultText: node.id });
+            // Node label — retrofitted onto the SHARED label core (label/labelStyle.swift). Upstream:
+            //   setLabelStyle(rect, getLabelStatesModels(itemModel), {
+            //     labelFetcher: { getFormattedLabel(dataIndex, stateName) {
+            //       return seriesModel.getFormattedLabel(dataIndex, stateName, 'node'); } },
+            //     labelDataIndex: node.dataIndex, defaultText: node.id });
             //   (rect as ECElement).disableLabelAnimation = true;
-            // PORT-TODO: label/labelStyle + getFormattedLabel + label states + disableLabelAnimation
-            //   DEFERRED; the normal-state node label text/font/fill is reproduced by `sankeySetLabel`.
-            sankeySetLabel(rect, itemModel.getModel("label"), node.id, nil)
+            // `setLabelStyle` ATTACHES the label as the rect's textContent (setTextContent + textConfig
+            //   position — sankey node default 'right') across normal/emphasis/blur/select states, so the
+            //   old inline `sankeySetLabel` node call is removed and the shared core owns the label.
+            // PORT-NOTE: the shared `SetLabelStyleOpt.labelFetcher` (a `DataFormatMixin`) calls
+            //   `getFormattedLabel` with `dataType == nil`; upstream passes 'node'. For the default node
+            //   label (no formatter) this is inert — `getFormattedLabel` returns nil and the core falls
+            //   back to `defaultText` (node.id) — so the resolved text is identical. `inheritColor` is the
+            //   node fill so a color:'inherit' label tracks the node paint.
+            let nodeLabelModels = labelStyle.getLabelStatesModels(itemModel)
+            var nodeLabelOpt = SetLabelStyleOpt()
+            nodeLabelOpt.labelFetcher = seriesModel
+            nodeLabelOpt.labelDataIndex = Double(node.dataIndex)
+            nodeLabelOpt.defaultText = node.id
+            nodeLabelOpt.inheritColor = sankeyColorString(node.getVisual("color"))
+            labelStyle.setLabelStyle(rect, nodeLabelModels, nodeLabelOpt)
+            // PORT-TODO: `(rect as ECElement).disableLabelAnimation = true` — ECElement label-animation
+            //   opt-out not bridged (label value animation is DEFERRED in labelStyle.swift anyway).
 
             // rect.setStyle('fill', node.getVisual('color'));
             if let fill = sankeyColor(node.getVisual("color")) {

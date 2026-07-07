@@ -161,8 +161,8 @@ open class FunnelView: ChartView {
             data.setItemGraphicEl(idx, polygon)
             _ = group.add(polygon)
 
-            // this._updateLabel(data, idx);  — draws the plain label Text attached to the polygon.
-            funnelUpdateLabel(polygon, data, idx, layout, group)
+            // this._updateLabel(data, idx);  — draws the label (via the shared label core) attached to the polygon.
+            funnelUpdateLabel(polygon, seriesModel, data, idx, layout, group)
         }
 
         self._data = data
@@ -179,77 +179,67 @@ open class FunnelView: ChartView {
 }
 
 // upstream: FunnelPiece._updateLabel(data: SeriesData, idx: number)
-//   PLAIN-TEXT subset (label EMPHASIS / states / formatter / labelLine are deferred — see the
-//   FunnelPiece PORT-TODO block). Reproduces the geometry + color of the normal label:
-//     - text        = data.getName(idx)                 (upstream's `defaultText`; formatter deferred)
-//     - align/valign = labelLayout.textAlign / verticalAlign
-//     - x/y          = labelLayout.x / y
+//   Now routed through the SHARED LABEL CORE (`labelStyle.setLabelStyle` / `getLabelStatesModels`),
+//   replacing the previous inline plain-text reproduction. Faithful to upstream's `_updateLabel`:
+//     - setLabelStyle(labelText, getLabelStatesModels(itemModel),
+//         { labelFetcher: seriesModel, labelDataIndex: idx, defaultOpacity: style.opacity,
+//           defaultText: data.getName(idx) },
+//         { normal: { align: labelLayout.textAlign, verticalAlign: labelLayout.verticalAlign } })
+//       — upstream calls it on the ATTACHED `labelText` (a ZRText), i.e. the `isSetOnText` overload:
+//       "position will not be used in setLabelStyle" (funnel places the label by absolute x/y from the
+//       layout, below). This sets the normal text/font/fill AND the emphasis/blur/select per-state
+//       label styles on the ZRText (the previous inline code set only the normal text).
+//     - x/y          = labelLayout.x / y     (set AFTER setLabelStyle, which replaces the style)
 //     - rotation/originX/originY/z2 = labelLayout.rotation / x / y / 10
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
+// PORT-TODO (still deferred): `setLabelLineStyle`/`getLabelLineStatesModels` + `textGuideLineConfig`
+//   (the label-guide anchor machinery) — the leader polyline is still drawn inline at the end.
 private func funnelUpdateLabel(
-    _ polygon: Polygon, _ data: SeriesData, _ idx: Int, _ layout: [String: Any], _ group: Group
+    _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
+    _ layout: [String: Any], _ group: Group
 ) {
-    // const labelText = polygon.getTextContent();  — created here (upstream: in the FunnelPiece ctor).
     let itemModel = data.getItemModel(idx)
     // const labelLayout = layout.label;
     let labelLayout = (layout["label"] as? [String: Any]) ?? [:]
     // const style = data.getItemVisual(idx, 'style'); const visualColor = style.fill as ColorString;
-    let visualColor = funnelVisualFill(data.getItemVisual(idx, "style"))
+    let visualStyle = data.getItemVisual(idx, "style")
+    let visualColor = funnelVisualFill(visualStyle)
+    // `style.opacity` (upstream `defaultOpacity`) read off the item visual 'style' bag.
+    let styleOpacity: Double? = {
+        guard let d = visualStyle as? [String: Any] else { return nil }
+        if let o = d["opacity"] as? Double { return o }
+        if let o = d["opacity"] as? Int { return Double(o) }
+        return nil
+    }()
+
+    // const labelText = polygon.getTextContent();  — created + attached here (upstream: in the ctor).
+    let labelText = ZRText()
+    polygon.setTextContent(labelText)
+
+    // setLabelStyle(labelText, getLabelStatesModels(itemModel), { ... }, { normal: { align, verticalAlign } }).
+    var opt = SetLabelStyleOpt()
+    opt.labelFetcher = seriesModel
+    opt.labelDataIndex = Double(idx)
+    opt.defaultOpacity = styleOpacity
+    // defaultText: data.getName(idx) — upstream uses the datum NAME (not getDefaultLabel).
+    opt.defaultText = data.getName(idx)
+
+    var normalSpecified = TextStyleProps()
+    normalSpecified.align = (labelLayout["textAlign"] as? String).flatMap { TextAlign(rawValue: $0) }
+    normalSpecified.verticalAlign = (labelLayout["verticalAlign"] as? String).flatMap { TextVerticalAlign(rawValue: $0) }
+
+    labelStyle.setLabelStyle(
+        labelText,
+        labelStyle.getLabelStatesModels(itemModel),
+        opt,
+        [.normal: normalSpecified]
+    )
 
     let labelModel = itemModel.getModel("label")
-
-    // setLabelStyle(labelText, ...): PLAIN reproduction — the normal-state label text/font/fill/align.
-    // PORT-TODO: full setLabelStyle (formatter via labelFetcher, states models, defaultOpacity) deferred.
-    var textStyle = TextStyleProps()
-    // defaultText: data.getName(idx) — the plain label (formatter deferred).
-    textStyle.text = data.getName(idx)
-    // font from the label model's textStyle.
-    textStyle.font = labelModel.getFont()
-
     // const labelColor = labelModel.get('color');
     // const overrideColor = labelColor === 'inherit' ? visualColor : null;
     let labelColor = labelModel.get("color")
     let overrideColor: String? = (labelColor as? String) == "inherit" ? visualColor : nil
-
-    // Plain label fill: overrideColor (inherit → item color) else the label model's resolved text color.
-    //   Left nil → Element.updateInnerText auto-resolves inside/outside from the host + textConfig.
-    if let overrideColor = overrideColor {
-        textStyle.fill = overrideColor
-    }
-    else if let c = labelModel.getTextColor() {
-        textStyle.fill = c
-    }
-
-    // { normal: { align: labelLayout.textAlign, verticalAlign: labelLayout.verticalAlign } }
-    textStyle.align = (labelLayout["textAlign"] as? String).flatMap { TextAlign(rawValue: $0) }
-    textStyle.verticalAlign = (labelLayout["verticalAlign"] as? String).flatMap { TextVerticalAlign(rawValue: $0) }
-
-    // graphic.updateProps(labelText, { style: { x: labelLayout.x, y: labelLayout.y } }, ...):
-    //   animation deferred → set the final x/y directly.
-    textStyle.x = labelLayout["x"] as? Double
-    textStyle.y = labelLayout["y"] as? Double
-
-    let labelText = ZRText()
-    labelText.useStyle(textStyle)
-
-    // labelText.attr({ rotation: labelLayout.rotation, originX: labelLayout.x, originY: labelLayout.y, z2: 10 });
-    //   `labelLayout.rotation` is never set by funnelLayout (undefined) → left at the default 0.
-    if let rotation = labelLayout["rotation"] as? Double {
-        labelText.rotation = rotation
-    }
-    if let ox = labelLayout["x"] as? Double { labelText.originX = ox }
-    if let oy = labelLayout["y"] as? Double { labelText.originY = oy }
-    labelText.z2 = 10
-
-    // `label.show === false` hides the label (setLabelStyle sets the text to ignore).
-    // PORT-TODO: upstream drives visibility through the label states model; here the normal `show` flag
-    //   is honored directly.
-    if let show = labelModel.get("show") as? Bool, !show {
-        labelText.ignore = true
-    }
-
-    // polygon.setTextContent(text) (upstream: in the ctor) + setTextConfig({...}).
-    polygon.setTextContent(labelText)
 
     // polygon.setTextConfig({ local: true, inside: !!labelLayout.inside, insideStroke: overrideColor,
     //   outsideFill: overrideColor });
@@ -259,6 +249,21 @@ private func funnelUpdateLabel(
     textConfig.insideStroke = overrideColor
     textConfig.outsideFill = overrideColor
     polygon.setTextConfig(textConfig)
+
+    // "Make sure update style on labelText after setLabelStyle. Because setLabelStyle will replace a
+    //   new style on it." graphic.updateProps(labelText, { style: { x, y } }) — animation deferred →
+    //   set the final x/y directly on the (freshly replaced) style.
+    labelText.textStyle.x = labelLayout["x"] as? Double
+    labelText.textStyle.y = labelLayout["y"] as? Double
+
+    // labelText.attr({ rotation: labelLayout.rotation, originX: labelLayout.x, originY: labelLayout.y, z2: 10 });
+    //   `labelLayout.rotation` is never set by funnelLayout (undefined) → left at the default 0.
+    if let rotation = labelLayout["rotation"] as? Double {
+        labelText.rotation = rotation
+    }
+    if let ox = labelLayout["x"] as? Double { labelText.originX = ox }
+    if let oy = labelLayout["y"] as? Double { labelText.originY = oy }
+    labelText.z2 = 10
 
     // labelLine (leader) — funnelLayout already computed `linePoints`; draw them as a Polyline stroked
     //   in the item color (the label-guide states/anchor machinery is deferred). Only for outside labels.

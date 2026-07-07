@@ -34,7 +34,8 @@ import ZRenderKit
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
 //   import {setLabelStyle, getLabelStatesModels} from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported (the per-layer label is deferred — see block below).
+//       -> `labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels` (SHARED LABEL CORE). The
+//          per-layer band label now routes through the core (see the `setLabelStyle` block in render).
 //   import {bind} from 'zrender/src/core/util';                    -> Swift closures.
 //   import DataDiffer from '../../data/DataDiffer';
 //       -> PORT-TODO: the add/update/remove diff is collapsed into a from-scratch rebuild (STATIC render).
@@ -194,26 +195,62 @@ open class ThemeRiverView: ChartView {
             //   by — `indices[j - 1]` — used below for the label and setItemGraphicEl).
             initProps(polygon, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, indices.last)
 
-            // Per-layer label (DEFERRED setLabelStyle). Minimal reproduction: the layer/series name at the
-            //   left edge of the band, vertically centered, rendered via the textContent painter walk.
+            // Per-layer label via the SHARED LABEL CORE (labelStyle.setLabelStyle), faithful to upstream
+            //   ThemeRiverView: route the layer/series name through the core (it creates/updates the band's
+            //   textContent ZRText and its emphasis/blur/select states, honouring label:{show:false}), then
+            //   override the textConfig with { position: null, local: true } and place the label element
+            //   manually at the band's left-edge vertical center.
+            //   const textLayout = data.getItemLayout(indices[0]);
+            let textLayout = data.getItemLayout(indices[0]) as? [String: Any]
+            //   const labelModel = seriesModel.getModel('label');  const margin = labelModel.get('margin');
             let labelModel = seriesModel.getModel("label")
-            if (labelModel.get("show") as? Bool) != false, let last = indices.last {
-                let nm = data.getName(last)
-                if !nm.isEmpty {
-                    var ts = TextStyleProps()
-                    ts.text = nm
-                    ts.font = labelModel.getFont()
-                    ts.fill = labelModel.getTextColor()
-                    ts.verticalAlign = .middle
-                    let labelText = ZRText()
-                    labelText.useStyle(ts)
-                    polygon.setTextContent(labelText)
-                    var tc = ElementTextConfig()
-                    // Place the name just INSIDE the band's left edge (not 'left', which pushes it off the
-                    //   left canvas edge where the bands begin).
-                    tc.position = "insideLeft"
-                    tc.distance = 4
-                    polygon.setTextConfig(tc)
+            let margin = numOpt(labelModel.get("margin")) ?? 0
+
+            // inheritColor: style.fill — the band's solid fill color as a color string (BarView bridge:
+            //   the visual 'style' bag stores fill as a `ZRColor.color("#…")` or a raw String).
+            let inheritFill: String? = {
+                guard let d = styleBag as? [String: Any] else { return nil }
+                if let str = d["fill"] as? String { return str }
+                if let zr = d["fill"] as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
+                return nil
+            }()
+
+            // upstream keys/labels the band by indices[j - 1] (the layer's LAST data index after the loop);
+            //   the layer name is identical across the layer's indices, so this is the band's series name.
+            if let last = indices.last {
+                // setLabelStyle(polygon, getLabelStatesModels(seriesModel), { labelDataIndex, defaultText,
+                //   inheritColor }, { normal: { verticalAlign: 'middle' } });
+                var opt = SetLabelStyleOpt()
+                opt.labelFetcher = seriesModel
+                opt.labelDataIndex = Double(last)
+                // defaultText: data.getName(indices[j - 1]) — the layer/series name (no label formatter →
+                //   getFormattedLabel returns nil and the core falls back to this default text).
+                opt.defaultText = data.getName(last)
+                opt.inheritColor = inheritFill
+
+                var normalSpec = TextStyleProps()
+                normalSpec.verticalAlign = .middle
+
+                labelStyle.setLabelStyle(
+                    polygon,
+                    labelStyle.getLabelStatesModels(seriesModel),
+                    opt,
+                    [.normal: normalSpec]
+                )
+
+                // polygon.setTextConfig({ position: null, local: true });
+                //   Merge-onto the config setLabelStyle just wrote (createTextConfig set position/distance):
+                //   drop the position so the band positions its label manually, and apply the host transform.
+                var tc = polygon.textConfig ?? ElementTextConfig()
+                tc.position = nil
+                tc.local = true
+                polygon.setTextConfig(tc)
+
+                // const labelEl = polygon.getTextContent();
+                //   labelEl.x = textLayout.x - margin;  labelEl.y = textLayout.y0 + textLayout.y / 2;
+                if let labelEl = polygon.getTextContent(), let tl = textLayout {
+                    labelEl.x = (numOpt(tl["x"]) ?? 0) - margin
+                    labelEl.y = (numOpt(tl["y0"]) ?? 0) + (numOpt(tl["y"]) ?? 0) / 2
                 }
             }
 
@@ -235,10 +272,8 @@ open class ThemeRiverView: ChartView {
             // PORT-TODO (DEFERRED):
             //   - Animation: `polygon.setClipPath(createGridClipShape(...))` grid-reveal + `updateProps`
             //     + `saveOldStyle` (basicTransition / initProps). `createGridClipShape` is NOT ported.
-            //   - Label: `setLabelStyle(polygon, getLabelStatesModels(seriesModel), { labelDataIndex,
-            //     defaultText: data.getName(indices[j-1]), inheritColor: style.fill }, { normal:
-            //     { verticalAlign: 'middle' } })` + `setTextConfig({ position: null, local: true })` +
-            //     positioning the text at `(textLayout.x - margin, textLayout.y0 + textLayout.y / 2)`.
+            //   - Label: DONE — routed through the shared label core above (setLabelStyle + textConfig
+            //     { position: null, local: true } + manual textLayout placement).
             //   - Emphasis / states: `setStatesStylesFromModel(polygon, seriesModel)` +
             //     `toggleHoverEmphasis(polygon, focus, blurScope, disabled)`.
         }

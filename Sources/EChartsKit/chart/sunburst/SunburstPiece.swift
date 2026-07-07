@@ -27,7 +27,9 @@ import ZRenderKit
 //       `graphic.initProps`/`updateProps` are the animation helpers — DEFERRED (see PORT-TODO below).
 //   import { toggleHoverEmphasis, SPECIAL_STATES, DISPLAY_STATES } from '../../util/states';
 //       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
-//   import { createTextStyle } from '../../label/labelStyle';       -> PORT-TODO: label/labelStyle NOT ported.
+//   import { createTextStyle } from '../../label/labelStyle';       -> `labelStyle` (label/labelStyle.swift).
+//       PORT: `_updateLabel` routes text+style through `labelStyle.setLabelStyle` (on the label ZRText,
+//       à la ChordPiece) rather than the upstream inline `createTextStyle` DISPLAY_STATES loop.
 //   import { TreeNode } from '../../data/Tree';                     -> sibling `TreeNode` (data/Tree.swift).
 //   import SunburstSeriesModel, {...} from './SunburstSeries';      -> sibling `SunburstSeriesModel`.
 //   import GlobalModel from '../../model/Global';                   -> `GlobalModel`.
@@ -234,64 +236,112 @@ open class SunburstPiece: Sector {
         // const label = sector.getTextContent();
         guard let label = sector.getTextContent() else { return }
         // const dataIndex = this.node.dataIndex;
+        let dataIndex = self.node.dataIndex
         // const labelMinAngle = normalLabelModel.get('minAngle') / 180 * Math.PI;
         let labelMinAngle = ((normalLabelModel.get("minAngle") as? Double) ?? 0) / 180 * Double.pi
         // const isNormalShown = normalLabelModel.get('show') && !(labelMinAngle != null && Math.abs(angle) < labelMinAngle);
         let showFlag = (normalLabelModel.get("show") as? Bool) ?? false
         let isNormalShown = showFlag && !(Swift.abs(angle) < labelMinAngle)
-        // label.ignore = !isNormalShown;
+
+        // ── Route text + per-state (normal/emphasis/blur/select) label STYLE through the shared label
+        //    core (`labelStyle.setLabelStyle`), replacing the former hand-rolled normal-only text style.
+        //
+        // PORT-NOTE: upstream sunburst still hand-builds styles via `createTextStyle` inside its
+        //   `DISPLAY_STATES` loop (with a standing `// TODO use setLabelStyle`). We take the migrated
+        //   form, following the sibling **ChordPiece** (its radial-sector analog, which DID land on
+        //   `setLabelStyle`): call `setLabelStyle` with the LABEL (the `ZRText` textContent) as the
+        //   target element — NOT the sector — so the core writes the text/style straight onto the label
+        //   and does NOT stamp a `textConfig.position` (which would otherwise force `updateInnerText` to
+        //   re-place the label at the sector's bounding-box centre and clobber the RADIAL x/y/rotation
+        //   computed below). Placement (position/distance/align/rotate + up-side-down flip) and the
+        //   host `textConfig` (inside/outsideFill) stay owned by this method, matching upstream's
+        //   per-state `sectorState.textConfig` + `state.x/y/rotation` writes.
+        //
+        // upstream text: `text = seriesModel.getFormattedLabel(dataIndex, stateName); text = text || node.name`.
+        //   → labelFetcher = seriesModel (SeriesModel : DataFormatMixin), defaultText = node.name.
+        let labelStateModels = labelStyle.getLabelStatesModels(itemModel)
+        let inheritColor = _fillColorString(self.node.getVisual("style"))
+        var opt = SetLabelStyleOpt()
+        opt.labelFetcher = seriesModel
+        opt.labelDataIndex = Double(dataIndex)
+        opt.defaultText = self.node.name
+        opt.inheritColor = inheritColor
+        labelStyle.setLabelStyle(label, labelStateModels, opt)
+
+        // label.ignore = !isNormalShown;  (after setLabelStyle, which sets its own `ignore` from `show`;
+        //   re-apply so the sunburst min-angle guard wins.)
         label.ignore = !isNormalShown
 
-        // TODO use setLabelStyle
-        // zrUtil.each(DISPLAY_STATES, (stateName) => { ... createTextStyle ... rotation flip ... });
-        // PORT-TODO: the full DISPLAY_STATES loop (normal/emphasis/blur/select label styles via
-        //   createTextStyle, outside/inside placement, tangential/radial rotation + up-side-down flip,
-        //   per-state textConfig outsideFill) is DEFERRED (label/labelStyle + util/states not ported).
-        //   Below is a MINIMAL faithful NORMAL-state label: text = formatted label || node.name,
-        //   centered placement, align center / verticalAlign middle (the `!textAlign || 'center'`
-        //   branch of the upstream `else` path with the default distance 0).
+        // ── Placement (upstream NORMAL-state branch of the DISPLAY_STATES loop). ──
+        //   PORT-TODO: per-state placement (emphasis/blur/select can each carry a different position /
+        //   rotate) DEFERRED — the static render applies the NORMAL geometry only (same deviation as the
+        //   former code; setLabelStyle already supplied all four states' text/style above).
+        let labelPosition = _labelAttr(normalLabelModel, "position") as? String
+        let labelPadding = ((_labelAttr(normalLabelModel, "distance") as? Double) ?? 0)
+        var textAlign = _labelAttr(normalLabelModel, "align") as? String
+        let rotateType = _labelAttr(normalLabelModel, "rotate")
 
-        // let text = seriesModel.getFormattedLabel(dataIndex, 'normal'); text = text || this.node.name;
-        // PORT-TODO: seriesModel.getFormattedLabel NOT ported — fall back to node.name.
-        _ = seriesModel
-        let text = self.node.name
+        let flipStartAngle = Double.pi * 0.5
+        let flipEndAngle = Double.pi * 1.5
+        // const midAngleNormal = normalizeRadian(rotateType === 'tangential' ? PI/2 - midAngle : midAngle);
+        let midAngleNormal = containUtil.normalizeRadian(
+            (rotateType as? String) == "tangential" ? (Double.pi / 2 - midAngle) : midAngle
+        )
+        // For text that is up-side down, rotate 180 degrees to make sure it's readable.
+        let needsFlip = midAngleNormal > flipStartAngle
+            && !number.isRadianAroundZero(midAngleNormal - flipStartAngle)
+            && midAngleNormal < flipEndAngle
 
-        var style = TextStyleProps()
-        style.text = text
-
-        // Center placement (upstream `else` branch, textAlign 'center', labelPadding 0):
-        //   if (layout.r0 === 0 && isRadianAroundZero(angle - 2*PI)) { r = 0 } else { r = (r + r0) / 2 }
         var r: Double
-        if r0Layout == 0 && number.isRadianAroundZero(angle - 2 * Double.pi) {
-            r = 0
+        if labelPosition == "outside" {
+            r = rLayout + labelPadding
+            textAlign = needsFlip ? "right" : "left"
         }
         else {
-            r = (rLayout + r0Layout) / 2
+            if textAlign == nil || textAlign == "center" {
+                // Put label in the center if it's a circle.
+                if r0Layout == 0 && number.isRadianAroundZero(angle - 2 * Double.pi) {
+                    r = 0
+                }
+                else {
+                    r = (rLayout + r0Layout) / 2
+                }
+                textAlign = "center"
+            }
+            else if textAlign == "left" {
+                r = r0Layout + labelPadding
+                textAlign = needsFlip ? "right" : "left"
+            }
+            else if textAlign == "right" {
+                r = rLayout - labelPadding
+                textAlign = needsFlip ? "left" : "right"
+            }
+            else {
+                r = (rLayout + r0Layout) / 2
+            }
         }
-        // state.style.align = 'center'; state.style.verticalAlign = 'middle';
-        style.align = .center
-        style.verticalAlign = .middle
 
-        label.useStyle(style)
+        // state.style.align / verticalAlign — merge onto the style setLabelStyle already installed
+        //   (do NOT rebuild the style, or the inheritColor fill / font from the core is lost).
+        var style = label.textStyle ?? TextStyleProps()
+        if let a = textAlign, let ta = TextAlign(rawValue: a) { style.align = ta }
+        let vAlign = (_labelAttr(normalLabelModel, "verticalAlign") as? String) ?? "middle"
+        if let va = TextVerticalAlign(rawValue: vAlign) { style.verticalAlign = va }
+        label.textStyle = style
 
         // state.x = r * dx + layout.cx; state.y = r * dy + layout.cy;
         label.x = r * dx + cx
         label.y = r * dy + cy
 
-        // Label rotation (sunburst default 'radial'). 'radial' aligns the text with the radius,
-        //   'tangential' perpendicular; a number is degrees. The extra ±PI flips keep the text upright.
-        //   (Same `dx=cos(midAngle)`/`dy=sin(midAngle)` convention as upstream, so this ports verbatim.)
-        let rotateType = normalLabelModel.get("rotate")
+        // Rotation (sunburst default 'radial'): 'radial' aligns text with the radius, 'tangential'
+        //   perpendicular; a number is degrees. `needsFlip` adds ±PI so text is never up-side-down.
         var rotate = 0.0
         if let s = rotateType as? String {
             if s == "radial" {
-                rotate = -midAngle
-                if rotate < -Double.pi / 2 { rotate += Double.pi }
+                rotate = containUtil.normalizeRadian(-midAngle) + (needsFlip ? Double.pi : 0)
             }
             else if s == "tangential" {
-                rotate = Double.pi / 2 - midAngle
-                if rotate > Double.pi / 2 { rotate -= Double.pi }
-                if rotate < -Double.pi / 2 { rotate += Double.pi }
+                rotate = containUtil.normalizeRadian(Double.pi / 2 - midAngle) + (needsFlip ? Double.pi : 0)
             }
         }
         else if let n = rotateType as? Double {
@@ -302,9 +352,32 @@ open class SunburstPiece: Sector {
         }
         label.rotation = containUtil.normalizeRadian(rotate)
 
+        // sectorState.textConfig = { outsideFill: color==='inherit' ? fill : null, inside: position !== 'outside' };
+        //   Owns the host transform anchor for the attached text (fill-color side of updateInnerText).
+        var textConfig = self.textConfig ?? ElementTextConfig()
+        textConfig.inside = (labelPosition != "outside")
+        textConfig.outsideFill = ((normalLabelModel.get("color") as? String) == "inherit") ? inheritColor : nil
+        self.textConfig = textConfig
+
         // label.dirtyStyle();
         label.dirtyStyle()
     }
+}
+
+// Extract a solid fill color string from a node's visual `style` dict (fill stored either as a raw
+//   `String` or an EChartsKit `ZRColor.color(...)` by the visual stage). Mirrors BarView's
+//   `barStyleFromDict` color bridging; used as `inheritColor` for the shared label core.
+private func _fillColorString(_ style: Any?) -> ColorString? {
+    guard let d = style as? [String: Any], let f = d["fill"] else { return nil }
+    if let str = f as? String { return str }
+    if let zr = f as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
+    return nil
+}
+
+// upstream nested `getLabelAttr(model, name)`: for the NORMAL state this is just a direct read
+//   (state-attr-with-normal-fallback collapses to the normal model itself).
+private func _labelAttr(_ normalLabelModel: Model, _ name: String) -> Any? {
+    return normalLabelModel.get(name)
 }
 
 // Build a `SectorShape` from the per-node layout dict stored by sunburstLayout

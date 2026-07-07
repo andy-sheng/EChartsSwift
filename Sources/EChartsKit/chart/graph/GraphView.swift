@@ -212,43 +212,26 @@ open class GraphView: ChartView {
                 states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
                 states.setStatesStylesFromModel(path, itemModel)
 
-                // Node name label (SymbolClz `useNameLabel`, DEFERRED). Minimal NORMAL-state label,
-                //   gated on label.show (graph default is false). Graph node labels default to 'inside'
-                //   the symbol with a contrasting (white) fill; rendered via the textContent painter walk.
-                let labelModel = itemModel.getModel("label")
-                if (labelModel.get("show") as? Bool) == true {
-                    let nm = data.getName(i)
-                    if !nm.isEmpty {
-                        let position = (labelModel.get("position") as? String) ?? "inside"
-                        var ts = TextStyleProps()
-                        ts.text = nm
-                        ts.font = labelModel.getFont()
-                        // Inside labels sit centered on the (dark) symbol with a contrasting white fill
-                        //   (echarts' inheritColor auto-contrast); outside labels use the label color.
-                        if position == "inside" {
-                            ts.fill = (labelModel.getShallow("color") as? String)
-                                ?? insideAutoTextColor(graphColorString(itemStyle?["fill"]))
-                            // Auto-stroke matching the node fill so a white label stays legible where it
-                            //   overflows the symbol onto the canvas (echarts getInsideTextStroke). The
-                            //   TSpan draws stroke-first, so the fill still paints over it.
-                            if let cs = graphColorString(itemStyle?["fill"]) {
-                                ts.stroke = cs
-                                ts.lineWidth = 2
-                            }
-                            ts.align = .center
-                            ts.verticalAlign = .middle
-                        } else {
-                            ts.fill = labelModel.getTextColor()
-                        }
-                        let labelText = ZRText()
-                        labelText.useStyle(ts)
-                        path.setTextContent(labelText)
-                        var tc = ElementTextConfig()
-                        tc.position = position
-                        if position != "inside" { tc.distance = (labelModel.get("distance") as? Double) ?? 5 }
-                        path.setTextConfig(tc)
-                    }
+                // Node name label — upstream SymbolClz._updateLabel (chart/helper/Symbol.ts:255-331):
+                //   `getLabelStatesModels(itemModel)` + `setLabelStyle(symbolPath, models, opt)`.
+                //   `setLabelStyle` attaches the label as `path`'s textContent (via setTextContent +
+                //   textConfig position), honours label.show (hides when false — graph default), applies
+                //   the label formatter through `labelFetcher`/`labelDataIndex`, and wires the
+                //   emphasis/blur/select state text. The painter renders the attached textContent, so the
+                //   previous hand-rolled ZRText block is gone. `defaultText` is `getDefaultLabel(data, idx)`
+                //   (graph uses SymbolDraw's default, i.e. NOT `useNameLabel`); `inheritColor` is the node
+                //   fill so an 'inherit'/inside label picks up the symbol color like upstream.
+                let labelStatesModels = labelStyle.getLabelStatesModels(itemModel)
+                var labelOpt = SetLabelStyleOpt()
+                labelOpt.labelFetcher = seriesModel
+                labelOpt.labelDataIndex = Double(i)
+                labelOpt.defaultText = labelHelper.getDefaultLabel(data, Double(i))
+                labelOpt.inheritColor = graphColorString(itemStyle?["fill"])
+                if let opRaw = itemStyle?["opacity"] {
+                    let op = graphToNumber(opRaw)
+                    if op.isFinite { labelOpt.defaultOpacity = op }
                 }
+                labelStyle.setLabelStyle(path, labelStatesModels, labelOpt)
 
                 // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
                 //   Handler hit-test / tooltip can resolve the per-node element from the series data.
