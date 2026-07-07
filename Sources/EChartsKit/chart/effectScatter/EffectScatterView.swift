@@ -141,11 +141,15 @@ open class EffectScatterView: ChartView {
             //   A per-point group is translated to the data point; a rippleGroup scaled to symbolSize
             //   holds `number` ripple symbols, each a 2x2 unit symbol (see upstream #4136) at scaleX/Y
             //   0.5, LOOPING-animated to rippleScale/2 with a staggered delay, fading opacity → 0.
+            // NOTE (int-vs-double option-read trap): `as? Double` returns nil for an INTEGER-literal
+            //   user override (e.g. `rippleEffect: {number: 5, period: 3}`), silently dropping it —
+            //   defaultOptions box numeric literals as Int, not Double. Route through the
+            //   Double/Int/NSNumber coercion helper (already used above for store values).
             let rippleModel = seriesModel.getModel("rippleEffect")
-            let rScale = (rippleModel.get("scale") as? Double) ?? 2.5
-            let rNumber = Int((rippleModel.get("number") as? Double) ?? 3)
+            let rScale = rippleModel.get("scale").map(effectScatterToNumber) ?? 2.5
+            let rNumber = Int(rippleModel.get("number").map(effectScatterToNumber) ?? 3)
             let rBrush = (rippleModel.get("brushType") as? String) ?? "fill"
-            let rPeriod = ((rippleModel.get("period") as? Double) ?? 4) * 1000    // seconds → ms
+            let rPeriod = (rippleModel.get("period").map(effectScatterToNumber) ?? 4) * 1000    // seconds → ms
             let showOn = (seriesModel.get("showEffectOn") as? String) ?? "render"
             // PORT-TODO: upstream EffectSymbol.updateData also registers an onHoverStateChange handler
             //   when showEffectOn !== 'render' (i.e. 'emphasis') that calls startEffectAnimation /

@@ -36,6 +36,15 @@ final class EffectScatterAnimationTests: XCTestCase {
         return nil
     }
 
+    /// Depth-first collect EVERY ripple symbol path (named "ripple") in the ec render tree — one
+    /// effectScatter series with `number: k` builds `k` sibling ripple rings per data point.
+    private func findAllRipples(_ el: Element, into acc: inout [Path]) {
+        if let p = el as? Path, p.name == "ripple" { acc.append(p) }
+        if let g = el as? Group {
+            for c in g.children() { findAllRipples(c, into: &acc) }
+        }
+    }
+
     func test_ripple_has_looping_scale_and_opacity_animators() throws {
         let view = makeView()
         guard let ripple = findRipple(view.ec.getRoot()) else {
@@ -116,5 +125,40 @@ final class EffectScatterAnimationTests: XCTestCase {
         XCTAssertTrue(ripple.__zr === view.zr,
                       "ripple path was not added to the live zr — animators never registered")
         XCTAssertEqual(ripple.animators.count, 2, "ripple should still carry both animators")
+    }
+
+    /// Proves the premise behind EChartsDemoGallery's `advanceAnimationsForStaticFrame`: the headless
+    /// render never ticks the animation loop, so without advancing, every ripple ring in a series
+    /// freezes at its t=0 initial state (scaleX 0.5) — a single opaque disc, not the staggered
+    /// expanding rings echarts paints on first frame. Stepping each ring's transform clip to a common
+    /// wall-clock time realizes the per-ring NEGATIVE delay stagger (`-k/number*period`), producing
+    /// DISTINCT scaleX values across the `number: 3` rings.
+    func test_advancing_ripple_clips_to_common_time_staggers_scaleX() throws {
+        let view = makeView()   // number: 3, period: 4 (seconds → 4000ms)
+        var ripples: [Path] = []
+        findAllRipples(view.ec.getRoot(), into: &ripples)
+        XCTAssertEqual(ripples.count, 3, "expected one ripple ring per `rippleEffect.number`")
+
+        // Before advancing: every ring is frozen at its t=0 baseline — all scaleX 0.5 (one distinct
+        // value). This is the frozen-disc regression the static render path must avoid.
+        let baselineScaleX = Set(ripples.map { $0.scaleX })
+        XCTAssertEqual(baselineScaleX, [0.5], "unadvanced rings should all sit at the t=0 baseline scaleX")
+
+        // Advance every ring's transform clip to the same representative wall-clock time (mirrors
+        // EChartsDemoGallery's advanceAnimationsForStaticFrame: step(0,0) to apply the delay offset,
+        // then step(timeMs,timeMs) to reach the representative frame).
+        let timeMs = 1000.0
+        for ripple in ripples {
+            let transform = ripple.animators.first { ($0.targetName ?? "") == "" }
+            guard let clip = transform?.getClip() else {
+                return XCTFail("ripple missing transform (scale) animator/clip")
+            }
+            _ = clip.step(0, 0)
+            _ = clip.step(timeMs, timeMs)
+        }
+
+        let advancedScaleX = ripples.map { $0.scaleX }
+        XCTAssertGreaterThan(Set(advancedScaleX).count, 1,
+                              "advanced rings should have DISTINCT scaleX (staggered expansion), not one disc: \(advancedScaleX)")
     }
 }

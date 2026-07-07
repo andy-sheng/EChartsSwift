@@ -33,6 +33,24 @@ enum Upstream {
 // NATIVE render: EChartsKit → EChartsSlim → ZRenderKit Group → NativePainter → CGImage.
 // ---------------------------------------------------------------------------
 
+/// The headless render never ticks the animation loop, so looping effects (e.g. effectScatter
+/// ripples) would freeze at their t=0 initial state (all rings overlapping at scaleX 0.5) — a
+/// single opaque disc. Advance every animation clip to a fixed representative time so the static
+/// frame shows the same staggered ripple echarts paints on the first frame (per-ring negative
+/// delays realize the stagger). Generic: currently only effectScatter creates animators.
+private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1000) {
+    func advance(_ el: Element) {
+        for animator in el.animators {
+            if let clip = animator.getClip() {
+                _ = clip.step(0, 0)          // establish baseline / apply delay offsets
+                _ = clip.step(timeMs, timeMs) // advance to the representative frame
+            }
+        }
+    }
+    advance(root)
+    _ = root.traverse { el in advance(el); return false }
+}
+
 /// Drive EChartsSlim with the demo option. Phase 6c: the real SourceManager builds each series' data
 /// from the option's own `series[].data`, so the stock Bar/Line series models render directly — no
 /// data double is registered anymore.
@@ -40,7 +58,9 @@ enum Upstream {
 func renderNativeGroup(_ demo: EChartsDemo) -> Group {
     let ec = EChartsSlim(width: demo.width, height: demo.height)
     ec.setOption(demo.option)
-    return ec.getRoot()
+    let root = ec.getRoot()
+    advanceAnimationsForStaticFrame(root)
+    return root
 }
 
 @MainActor
