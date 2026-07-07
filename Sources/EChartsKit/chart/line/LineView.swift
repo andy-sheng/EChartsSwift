@@ -160,6 +160,7 @@ open class LineView: ChartView {
         st.lineWidth = 2
         applyLineStyleOption(&st, seriesModel)
         polyline.useStyle(st)
+        polyline.z2 = 10   // upstream ECPolyline z2; keeps the line above a co-gridded bar series (z2 1)
 
         _ = group.add(polyline)
 
@@ -198,6 +199,11 @@ open class LineView: ChartView {
                 let el = symbol.createSymbol(symbolType, p[0] - w / 2, p[1] - h / 2, w, h, ZRenderKit.ZRColor.string(stroke))
                 if let element = el as? Path {
                     element.name = "symbol"
+                    // Data-point symbols must sit above a co-gridded bar series (BarView rects use z2 1);
+                    //   without this the symbols where the line dips below a taller bar's top are hidden
+                    //   behind that bar (mix-bar-line). Upstream keeps line symbols above the bars via the
+                    //   series z; a z2 above the bar rects is the static-render equivalent.
+                    element.z2 = 10
 
                     // upstream (SymbolDraw/Symbol._updateCommon): each data-point symbol is marked a
                     //   highDown dispatcher carrying its emphasis-state itemStyle, so a hover restyles
