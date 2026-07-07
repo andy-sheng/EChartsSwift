@@ -81,6 +81,17 @@ import ZRenderKit
 private func mathMax(_ a: Double, _ b: Double) -> Double { Swift.max(a, b) }
 private func mathMin(_ a: Double, _ b: Double) -> Double { Swift.min(a, b) }
 
+// Upstream passes a plain `{x, y, width, height}` object literal into `initProps`/`updateProps`'s
+// `{shape: layout}` — a genuine dictionary, which `animateToShallow` recurses into (per-key tracks,
+// each field animates independently). Our `RectShape` is a typed struct, not a `[String: Any]`, so
+// `util.isObject(targetVal)` on the whole struct is false and the shared helper falls back to
+// treating "shape" as one opaque (non-numeric, non-array) value — which the animation system marks
+// discrete and jumps to instantly, dropping the animator right after `start()` even when animation
+// is enabled. Converting to a partial dict here restores the faithful per-field tween.
+private func rectShapeAnimShape(_ s: RectShape) -> [String: Any] {
+    ["x": s.x, "y": s.y, "width": s.width, "height": s.height]
+}
+
 // upstream:
 //   type CoordSysOfBar = BarSeriesModel['coordinateSystem'];   // Cartesian2D | Polar
 //   type RectShape = Rect['shape'];                            // == ZRenderKit RectShape
@@ -342,7 +353,7 @@ open class BarView: ChartView {
                     )
                 }
                 else {
-                    initProps(el, ["shape": layout as PathShape], seriesModel, dataIndex)
+                    initProps(el, ["shape": rectShapeAnimShape(layout)], seriesModel, dataIndex)
                 }
 
                 data.setItemGraphicEl(dataIndex, el)
@@ -372,7 +383,7 @@ open class BarView: ChartView {
                     let bgLayout = getLayoutCartesian2D(data, newIndex, nil)
                     if let bgEl = bgEl, let bgLayout = bgLayout {
                         let shape = createBackgroundShape(isHorizontalOrRadial, bgLayout, coord)
-                        updateProps(bgEl, ["shape": shape as PathShape], animationModel, newIndex)
+                        updateProps(bgEl, ["shape": rectShapeAnimShape(shape)], animationModel, newIndex)
                     }
                 }
 
@@ -400,7 +411,7 @@ open class BarView: ChartView {
                     && ((elType == "sector" && roundCap) || (elType == "sausage" && !roundCap))
                 if roundCapChanged {
                     // roundCap changed (polar only): remove old and recreate. PORT-TODO (polar deferred).
-                    if let el = el { removeElementWithFadeOut(el, seriesModel, oldIndex, group) }
+                    if let el = el { removeElementWithFadeOut(el, seriesModel, oldIndex) }
                     el = nil
                 }
 
@@ -441,7 +452,7 @@ open class BarView: ChartView {
                     )
                 }
                 else {
-                    updateProps(el!, ["shape": layout as PathShape], seriesModel, newIndex)
+                    updateProps(el!, ["shape": rectShapeAnimShape(layout)], seriesModel, newIndex)
                 }
 
                 data.setItemGraphicEl(newIndex, el!)
@@ -451,7 +462,7 @@ open class BarView: ChartView {
             })
             .remove({ dataIndex in
                 let el = oldData?.getItemGraphicEl(dataIndex) as? Path
-                if let el = el { removeElementWithFadeOut(el, seriesModel, dataIndex, group) }
+                if let el = el { removeElementWithFadeOut(el, seriesModel, dataIndex) }
             })
             .execute()
 
@@ -582,7 +593,7 @@ open class BarView: ChartView {
                 // upstream: removeElementWithFadeOut(el, model, getECData(el).dataIndex);
                 if let el = el as? Path {
                     let dataIndex = innerStore.getECData(el).dataIndex
-                    removeElementWithFadeOut(el, model, dataIndex.map { Int($0) } ?? -1, group)
+                    removeElementWithFadeOut(el, model, dataIndex.map { Int($0) } ?? -1)
                 }
             })
         }
@@ -599,50 +610,6 @@ open class BarView: ChartView {
         }
         self._backgroundGroup = nil
     }
-}
-
-// ================================================================================================
-// PORT-TODO: animation/basicTransition shims — `util/graphic` (which re-exports `initProps` /
-//   `updateProps` from `animation/basicTransition`) and `basicTransition` itself are not ported.
-//   These reproduce the NO-ANIMATION branch faithfully (matching `animateOrSetProps`'s `else`:
-//   `el.attr(props); during && during(1); cb && cb();`) — the element is set to its final shape
-//   immediately, then `during(1)`/`done()` fire once. The wipe/grow transition is skipped (final
-//   geometry is correct). Restore the real calls once `util/graphic` + `basicTransition` land.
-//   Same deviation as chart/helper/createClipPathFromCoordSys.swift.
-// ================================================================================================
-private func initProps(
-    _ el: Path, _ props: [String: Any], _ animatableModel: Any? = nil,
-    _ dataIndex: Int? = nil, _ cb: (() -> Void)? = nil, _ during: ((Double) -> Void)? = nil
-) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-    during?(1)
-    cb?()
-}
-
-private func updateProps(
-    _ el: Path, _ props: [String: Any], _ animatableModel: Any? = nil,
-    _ dataIndex: Int? = nil, _ cb: (() -> Void)? = nil, _ during: ((Double) -> Void)? = nil
-) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-    during?(1)
-    cb?()
-}
-
-// PORT-TODO: `animation/basicTransition.saveOldStyle` not ported; upstream saves the current style
-//   onto the element for the next transition. No-op until basicTransition lands.
-private func saveOldStyle(_ el: Element) {
-    _ = el
-}
-
-// PORT-TODO: `util/graphic.removeElementWithFadeOut` not ported; upstream fades the element out then
-//   removes it from its parent. Reproduce the terminal effect (immediate removal from `group`).
-private func removeElementWithFadeOut(_ el: Element, _ seriesModel: SeriesModel, _ dataIndex: Int, _ group: Group) {
-    _ = (seriesModel, dataIndex)
-    _ = group.remove(el)
 }
 
 // ================================================================================================
