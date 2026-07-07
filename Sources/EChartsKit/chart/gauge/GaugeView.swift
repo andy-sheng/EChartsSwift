@@ -524,18 +524,22 @@ open class GaugeView: ChartView {
 
         // ------------------------------------------------------------------------------------------
         // STATIC render deviation: upstream diffs `oldData` → add/update the pointer + progress with
-        //   `graphic.initProps`/`updateProps` rotation/endAngle tweens. The diff + animation are deferred
-        //   (CONVENTIONS §5); here each datum is built directly at its FINAL angle (the tween end-state),
-        //   then styled in a second pass (mirroring the upstream `data.each`).
+        //   `graphic.initProps`/`updateProps` rotation/endAngle tweens. The full add/update diff is
+        //   deferred (CONVENTIONS §5). The pointer's entrance sweep (rotation from startAngle to the
+        //   value angle) IS wired via the shared `initProps`; the progress sector is still built
+        //   directly at its FINAL endAngle (the tween end-state), then styled in a second pass
+        //   (mirroring the upstream `data.each`).
         // ------------------------------------------------------------------------------------------
         if showProgress || showPointer {
             for idx in 0..<data.count() {
                 let val = asDouble(data.get(valueDim!, idx))
                 if showPointer {
                     // upstream: createPointer(idx, startAngle) then initProps rotation to the value angle.
-                    //   Static: create directly at the final value angle.
+                    //   Create the pointer collapsed at startAngle, then sweep its rotation to the
+                    //   final value angle via the shared enter transition (instant when animation off).
                     let finalAngle = val.isNaN ? angleExtent[0] : number.linearMap(val, valueExtent, angleExtent, true)
-                    let pointer = createPointer(idx, finalAngle)
+                    let pointer = createPointer(idx, startAngle)
+                    initProps(pointer, ["rotation": -(finalAngle + Double.pi / 2)], seriesModel)
                     _ = group.add(pointer)
                     data.setItemGraphicEl(idx, pointer)
                 }
