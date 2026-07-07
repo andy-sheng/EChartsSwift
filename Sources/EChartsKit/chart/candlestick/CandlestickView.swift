@@ -317,8 +317,18 @@ public struct NormalBoxPathShape: PathShape {
 
     public init() {}
 
-    // PORT-TODO: upstream animates `points` via path morphing (dividePath/morphPath); the keyed
-    //   numeric-field animation seam does not cover a `number[][]`. Left inert (no-op default).
+    // `points` is already a `number[][]` — expose it to the keyed animation seam so
+    //   `initProps(["shape": ["points": …]])` interpolates the 8 candle points (the Animator's
+    //   2D-array interpolation, like PolygonShape). animationGet returns the array as-is (already
+    //   `[[Double]]`, the shape the Track's interpolate2DArray expects); animationSet accepts the
+    //   interpolated `[[Double]]` back. (Faithful enough to upstream's path-morph point tween for a
+    //   fixed 8-point box; the point COUNT must match between the collapsed start and final.)
+    public func animationGet(_ key: String) -> Any? {
+        return key == "points" ? points : nil
+    }
+    public mutating func animationSet(_ key: String, _ value: Any?) {
+        if key == "points", let arr = value as? [[Double]] { points = arr }
+    }
 }
 
 // upstream: interface NormalBoxPathProps extends PathProps { shape?: Partial<NormalBoxPathShape> }
