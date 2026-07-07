@@ -25,8 +25,9 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util` (each).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
 //   import * as graphic from '../../util/graphic';                   -> ZRenderKit shapes + graphic shims.
-//     PORT-TODO: `util/graphic` is NOT ported; `initProps` / `updateProps` / `traverseElements` are
-//     reproduced by the local no-animation shims below (same deviation as BarView.swift).
+//     `initProps` / `updateProps` resolve to the shared `animation/basicTransition.swift` module
+//     functions (see PORT-TODO at the call sites re: struct-shape snap-to-final deviation);
+//     `traverseElements` is not used here.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //     -> PORT-TODO: `util/states` NOT ported (states/emphasis prerequisite); the states block in
 //        `setBoxCommon` is deferred (same deviation as BarView.swift `updateStyle`).
@@ -41,7 +42,9 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> `SeriesData`.
 //   import {CandlestickItemLayout} from './candlestickLayout';       -> `CandlestickItemLayout`.
 //   import Model from '../../model/Model';                           -> `Model`.
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> PORT-TODO: NOT ported (local no-op shim).
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> shared module `saveOldStyle`
+//     (`animation/basicTransition.swift`), still a B1 no-op stub (see comment there) but no longer
+//     a local shim.
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getBorderColor, getColor } from './candlestickVisual';  -> sibling `getBorderColor` / `getColor`.
 //   import { resolveNormalBoxClipping } from '../helper/whiskerBoxCommon';
@@ -181,6 +184,13 @@ open class CandlestickView: ChartView {
                     let el = createNormalBox(itemLayout, newIdx, transPointDim, true)
                     var initShape = NormalBoxPathShape()
                     initShape.points = itemLayout.ends
+                    // PORT-TODO: candle entrance-grow deferred. `initProps` treats the whole
+                    //   `NormalBoxPathShape` struct passed under "shape" as one opaque discrete
+                    //   value (no per-field tween), so the box snaps to its final geometry instead
+                    //   of animating in — same end state as before this task's wiring, just now
+                    //   routed through the shared basicTransition infra (enable/disable via
+                    //   getAnimationConfig). A real grow needs per-key `points`-array animation on
+                    //   NormalBoxPathShape, which is not implemented.
                     initProps(el, ["shape": initShape as PathShape], seriesModel, newIdx)
 
                     // When an item is partially inside and partially outside the Cartesian bounding rect,
@@ -219,6 +229,9 @@ open class CandlestickView: ChartView {
                 else {
                     var shape = NormalBoxPathShape()
                     shape.points = itemLayout.ends
+                    // PORT-TODO: same struct-shape snap-to-final deviation as the `initProps` call
+                    //   above — see comment there. Deferred until NormalBoxPathShape supports per-key
+                    //   `points` animation.
                     updateProps(el!, ["shape": shape as PathShape], seriesModel, newIdx)
 
                     saveOldStyle(el!)
@@ -522,28 +535,6 @@ private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) 
 private func resolveNormalBoxClipping(_ clipArea: Any?, _ itemLayout: CandlestickItemLayout) -> ShapeClipKind {
     _ = (clipArea, itemLayout)
     return SHAPE_CLIP_KIND_NOT_CLIPPED
-}
-
-// PORT-TODO: animation/basicTransition shims — `util/graphic` (which re-exports `initProps` /
-//   `updateProps`) and `basicTransition` (`saveOldStyle`) are not ported. These reproduce the
-//   NO-ANIMATION branch: the element is set to its final shape immediately (final geometry correct;
-//   the enter/grow transition is skipped). Same deviation as BarView.swift.
-private func initProps(_ el: Path, _ props: [String: Any], _ animatableModel: Any? = nil, _ dataIndex: Int? = nil) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-}
-
-private func updateProps(_ el: Path, _ props: [String: Any], _ animatableModel: Any? = nil, _ dataIndex: Int? = nil) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-}
-
-// PORT-TODO: `animation/basicTransition.saveOldStyle` not ported; upstream saves the current style
-//   onto the element for the next transition. No-op until basicTransition lands.
-private func saveOldStyle(_ el: Element) {
-    _ = el
 }
 
 // PORT-TODO: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`
