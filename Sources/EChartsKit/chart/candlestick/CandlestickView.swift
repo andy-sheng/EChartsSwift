@@ -182,16 +182,15 @@ open class CandlestickView: ChartView {
                     }
 
                     let el = createNormalBox(itemLayout, newIdx, transPointDim, true)
-                    var initShape = NormalBoxPathShape()
-                    initShape.points = itemLayout.ends
-                    // PORT-TODO: candle entrance-grow deferred. `initProps` treats the whole
-                    //   `NormalBoxPathShape` struct passed under "shape" as one opaque discrete
-                    //   value (no per-field tween), so the box snaps to its final geometry instead
-                    //   of animating in — same end state as before this task's wiring, just now
-                    //   routed through the shared basicTransition infra (enable/disable via
-                    //   getAnimationConfig). A real grow needs per-key `points`-array animation on
-                    //   NormalBoxPathShape, which is not implemented.
-                    initProps(el, ["shape": initShape as PathShape], seriesModel, newIdx)
+                    // Faithful entrance grow: the box is created with COLLAPSED points (every end
+                    //   flattened to itemLayout.initBaseline along the const dim by transInit inside
+                    //   createNormalBox(isInit: true)); animate the `points` array toward the final
+                    //   `itemLayout.ends` via the keyed animation seam (NormalBoxPathShape exposes
+                    //   `points` to animationGet/animationSet), so the Animator's 2D-array
+                    //   interpolation grows the box in. `points` MUST be passed as a DICT value
+                    //   ([[Double]]) — a full shape struct would snap to final. Collapsed start and
+                    //   final share the same point count.
+                    initProps(el, ["shape": ["points": itemLayout.ends] as [String: Any]], seriesModel, newIdx)
 
                     // When an item is partially inside and partially outside the Cartesian bounding rect,
                     // the disappearance of the entire item may confuse users. Therefore, clipping is needed.

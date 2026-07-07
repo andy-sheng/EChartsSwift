@@ -23,9 +23,9 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                 -> `Polyline` / `Polygon` / `Group` (ZRenderKit).
-//       PORT-TODO: graphic.initProps / graphic.updateProps (enter/update animation) NOT ported — the
-//       static render sets final geometry directly (same deviation as FunnelView/PieView/SunburstView/
-//       GraphView/TreeView). `getInitialPoints` (collapse-to-center enter animation) is therefore DROPPED.
+//       graphic.initProps IS wired for the enter animation: `getInitialPoints` (collapse-to-center) is
+//       ported faithfully as a `points`-array grow (see the per-item ENTRANCE block). graphic.updateProps
+//       (update morph) + the data.diff add/update/remove pipeline remain DEFERRED (static rebuild below).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> PORT-TODO: util/states NOT ported — emphasis/select/blur state styles + hover dispatcher
 //       DEFERRED (per CONVENTIONS §5).
@@ -98,12 +98,11 @@ open class RadarView: ChartView {
         let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
         let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 4.0
 
-        // ENTRANCE (port stand-in): upstream animates the polyline/polygon `points` from a collapsed ring
-        //   at the radar center (`getInitialPoints` → initProps with the shape). Points animation is NOT
-        //   ported (would need a shared-infra change), so we substitute a SCALE-IN from the radar center
-        //   (cx/cy): the area polygon + line polyline start at scale 0 anchored on the center and grow to
-        //   full size — same visual family (expand-from-center) as the dropped upstream enter. The vertex
-        //   symbols keep their own per-vertex scale-in (B4) and are untouched here.
+        // ENTRANCE (faithful): upstream animates the polyline/polygon `points` from a ring collapsed at
+        //   the radar center (`getInitialPoints` → initProps with the shape). The keyed points animator
+        //   seam now exists (PolygonShape/PolylineShape expose `points` to animationGet/animationSet), so
+        //   the collapse-to-center points GROW is ported below (see the per-item block). The radar center
+        //   (cx/cy) is the collapsed target. The vertex symbols keep their own per-vertex scale-in (B4).
         let radarCoord = seriesModel.radarCoordinateSystem
         let radarCx = radarCoord?.cx ?? 0
         let radarCy = radarCoord?.cy ?? 0
@@ -189,16 +188,24 @@ open class RadarView: ChartView {
             // default black survive the createStyle merge.
             if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
 
-            // ENTRANCE scale-in (port stand-in for upstream points-from-center): anchor both the area
-            //   polygon and the outline polyline on the radar center and grow scale 0→1. Anchoring at the
-            //   center means the shape expands outward from the middle (same visual family as the dropped
-            //   collapse-to-center points enter). When animation is off, initProps snaps scale to 1.
+            // ENTRANCE points-grow (faithful upstream `getInitialPoints`): collapse the whole point ring
+            //   onto the radar center [cx, cy] as the starting shape, then initProps the shape `points`
+            //   back out to the real vertex ring. The Animator's 2D-array interpolation tweens every point
+            //   from the center to its final position, so the polygon/polyline GROW from the middle (not a
+            //   transform scale). Same point count on both ends (map preserves length). When animation is
+            //   off, initProps snaps the live shape straight to the final ring.
+            //     upstream: polygon.shape.points = getInitialPoints(points);  // map(points, () => [cx, cy])
+            //               polyline.shape.points = getInitialPoints(points);
+            //               initProps(polygon, { shape: { points } }, seriesModel, idx);
+            //               initProps(polyline, { shape: { points } }, seriesModel, idx);
+            let finalPoints: [[Double]] = points.map { [$0.x, $0.y] }
+            let collapsedPoints: [[Double]] = points.map { _ in [radarCx, radarCy] }
             for shapeEl in [polyline, polygon] {
-                shapeEl.originX = radarCx
-                shapeEl.originY = radarCy
-                shapeEl.scaleX = 0
-                shapeEl.scaleY = 0
-                initProps(shapeEl, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
+                // Seed the live shape with the collapsed ring (the animation's "from" state), then grow to
+                //   `finalPoints`. Passing the points as a plain `[[Double]]` under the "shape" sub-bag key
+                //   drives the keyed points animator (a full shape struct would snap to final instead).
+                _ = shapeEl.attr(["shape": ["points": collapsedPoints] as [String: Any]])
+                initProps(shapeEl, ["shape": ["points": finalPoints] as [String: Any]], seriesModel, idx)
             }
 
             // itemGroup.add(polyline);  itemGroup.add(polygon);  itemGroup.add(symbolGroup);

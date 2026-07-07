@@ -211,29 +211,25 @@ private func updateNormalBoxData(
     //   const seriesModel = data.hostModel;
     //   const updateMethod = graphic[isInit ? 'initProps' : 'updateProps'];
     //   updateMethod(el, {shape: {points: itemLayout.ends}}, seriesModel, dataIndex);
-    // PORT-TODO: initProps/updateProps enter/update ANIMATION DEFERRED — set the final shape directly.
-    var shape = BoxPathShape()
-    shape.points = itemLayout.ends
-    el.setShape(shape)
+    //   FAITHFUL POINTS-GROW: `el` was built with the COLLAPSED points (transInit collapses the box ends
+    //   to itemLayout.initBaseline along constDim — see createNormalBox). initProps/updateProps then
+    //   tweens the box's points-array shape from that collapsed start to the final `itemLayout.ends`.
+    //   `points` MUST be passed as the raw [[Double]] dict value (NOT a full BoxPathShape struct — a
+    //   struct snaps to final) so the Animator's 2D-array interpolation carries collapsed → final. When
+    //   the series has animation off, animateOrSetProps assigns the final points instantly (visible box).
+    let pointsProp: [String: Any] = ["shape": ["points": itemLayout.ends] as [String: Any]]
+    if isInit {
+        initProps(el, pointsProp, data.hostModel, dataIndex)
+    } else {
+        updateProps(el, pointsProp, data.hostModel, dataIndex)
+    }
 
     // upstream: el.useStyle(data.getItemVisual(dataIndex, 'style')); el.style.strokeNoScale = true;
     //   The item visual 'style' is a `[String: Any]` bag; bridge it to a typed PathStyleProps
     //   (reusing the bar-render bridge) and set strokeNoScale before useStyle.
     var st = barStyleFromDict(data.getItemVisual(dataIndex, "style"))
     st.strokeNoScale = true
-
-    // PORT DEVIATION (enter animation): upstream animates the box by GROWING its points-array shape from
-    //   the initBaseline (transInit) to the final ends via initProps({shape:{points}}). Points-array
-    //   shape animation is shared-file work (Animator/Path), OUT OF SCOPE here, so the port instead uses
-    //   the closest existing-infra pattern — the OPACITY FADE (FunnelView/HeatmapView): the box fades in
-    //   from invisible to its final opacity. Capture the final opacity BEFORE zeroing, set the
-    //   construction-time opacity to 0, `useStyle`, then `initProps({style:{opacity}})` — which animates
-    //   when the series has animation on, or (via Path.attrKV's partial-"style"-dict merge) instantly
-    //   lands the final opacity when off, so the box is never left invisible.
-    let finalOpacity: Double = st.opacity ?? 1
-    st.opacity = 0
     el.useStyle(st)
-    initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], data.hostModel, dataIndex)
 
     // upstream: el.z2 = 100;
     el.z2 = 100
