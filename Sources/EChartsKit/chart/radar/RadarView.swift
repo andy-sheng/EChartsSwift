@@ -212,6 +212,14 @@ open class RadarView: ChartView {
                         path.z2 = 100
                         // PORT-TODO: symbolPath.style.strokeNoScale = true — not applied (same deviation as
                         //   Scatter/Graph; the symbol style is set inside createSymbol via setColor).
+                        // upstream Symbol.ts first-create: symbolPath.attr({ scaleX: 0, scaleY: 0 });
+                        //   initProps(symbolPath, { scaleX: 1, scaleY: 1 }, seriesModel, dataIndex) — same
+                        //   scale-in entrance as Scatter/Graph symbols, centered on the vertex point.
+                        path.originX = pt.x
+                        path.originY = pt.y
+                        path.scaleX = 0
+                        path.scaleY = 0
+                        initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
                         _ = symbolGroup.add(path)
                     }
                     // PORT-TODO: setLabelStyle(symbolPath, …) — vertex value label DEFERRED (labelStyle not ported).
