@@ -162,7 +162,14 @@ open class PieView: ChartView {
                 continue
             }
 
-            let sector = Sector(["shape": sectorShape as PathShape])
+            // Entrance (upstream PiePiece expansion): create the sector collapsed (endAngle ==
+            //   startAngle), then sweep endAngle open to the final layout angle via initProps below.
+            //   We use the independent-sweep form (each sector opens from its own startAngle), which
+            //   needs no cross-piece startAngle threading (unlike upstream's shared running startAngle).
+            let finalEndAngle = sectorShape.endAngle
+            var collapsedShape = sectorShape
+            collapsedShape.endAngle = sectorShape.startAngle
+            let sector = Sector(["shape": collapsedShape as PathShape])
             // upstream `PiePiece` sets `this.z2 = 2;` in its constructor.
             sector.z2 = 2
             // sector.useStyle(data.getItemVisual(idx, 'style'));
@@ -184,6 +191,12 @@ open class PieView: ChartView {
             let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
             states.setStatesStylesFromModel(sector, itemModel)
+
+            // Sweep the collapsed sector open to its final angle (shared basicTransition helper).
+            //   Shape props MUST be a dict of animatable fields (a full SectorShape struct is opaque
+            //   to the animator — the struct->dict rule). Instant (final angle, no animator) when the
+            //   series' animation is disabled.
+            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
 
             data.setItemGraphicEl(idx, sector)
             _ = group.add(sector)
