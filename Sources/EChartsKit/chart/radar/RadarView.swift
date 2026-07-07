@@ -206,6 +206,10 @@ open class RadarView: ChartView {
                     )
                     if let path = el as? Path {
                         path.name = "vertex"
+                        // upstream: symbolPath.attr({ z2: 100 }) — lift the vertex markers above the radar
+                        //   coordinate axis lines (AxisBuilder axisLine z2 1), which otherwise cross over
+                        //   the data points (the coordinate-over-data z-order defect).
+                        path.z2 = 100
                         // PORT-TODO: symbolPath.style.strokeNoScale = true — not applied (same deviation as
                         //   Scatter/Graph; the symbol style is set inside createSymbol via setColor).
                         _ = symbolGroup.add(path)

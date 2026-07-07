@@ -1381,11 +1381,47 @@ public final class EChartsSlim: EChartsType {
         for componentView in _componentsViews {
             guard let model = componentView.__model else { continue }
             componentView.render(model, ecModel, api, payload)
+            // upstream echarts.ts renderComponents runs `updateZ(model, view)` after each render — set
+            //   every rendered element's z/zlevel from the model. Coordinate components default z:0.
+            updateZ(model, componentView.group, 0)
             // upstream (echarts.ts renderComponents): a rendered view is marked alive so the
             //   `updateDirectly` light-update path (callView's `view.__alive` guard) can dispatch
             //   highlight/downplay/updateView to it. Without this, all light-update dispatch no-ops.
             componentView.__alive = true
         }
+    }
+
+    // upstream: echarts.ts `updateZ(model, view)` → `graphic.retrieveZInfo(model)` +
+    //   `traverseUpdateZ(el, z, zlevel)`. Set every rendered element's `z`/`zlevel` from the model. The
+    //   painter sorts by (zlevel, z, z2), so this is what lifts SERIES (z 2/3) above the coordinate
+    //   COMPONENTS (z 0) — without it, a coordinate axis/splitLine (z2 1‑2) renders OVER the series data
+    //   (radar spokes over vertices, polar grid over the line). `z2` is preserved (intra-view order).
+    //   `defaultZ` fills a model with no explicit `z`: series default to 2 (echarts gives line 3,
+    //   scatter/radar/pie/candlestick 2, and bar relies on z2 — a 2 floor keeps every series above the
+    //   z:0 coordinate grid), components to 0.
+    private func zSlimNum(_ v: Any?) -> Double? {
+        if let d = v as? Double { return d }
+        if let i = v as? Int { return Double(i) }
+        if let n = v as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    private func updateZ(_ model: ComponentModel, _ group: Group, _ defaultZ: Double) {
+        let z = zSlimNum(model.get("z")) ?? defaultZ
+        let zlevel = zSlimNum(model.get("zlevel")) ?? 0
+        func apply(_ el: Element) {
+            if let d = el as? Displayable {
+                d.z = z
+                d.zlevel = zlevel
+            }
+            // Attached label (setTextContent) is not a child, so the traverse below never visits it.
+            if let tc = el.getTextContent() as? Displayable {
+                tc.z = z
+                tc.zlevel = zlevel
+            }
+        }
+        apply(group)
+        _ = group.traverse { el in apply(el); return false }
     }
 
     // renderSeries (echarts.ts:2472) — minimal: bypass the Scheduler `renderTask.perform` and call
@@ -1395,6 +1431,9 @@ public final class EChartsSlim: EChartsType {
         ecModel.eachSeries { seriesModel, _ in
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
             chartView.render(seriesModel, ecModel, api, payload)
+            // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
+            //   the coordinate components (default 2) so the data draws over the grid/axis/splitLine.
+            self.updateZ(seriesModel, chartView.group, 2)
             // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
             //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
             chartView.__alive = true
