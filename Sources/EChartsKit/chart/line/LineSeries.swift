@@ -27,6 +27,17 @@ open class LineSeriesModel: SeriesModel {
         return createSeriesData(nil, self, CreateSeriesDataOpt(useEncodeDefaulter: true))
     }
 
+    // upstream (instance field): hasSymbolVisual = true; — the symbol visual stage (visual/symbol.ts)
+    //   reads it to populate the symbol / symbolSize / symbolRotate / symbolOffset item visuals that
+    //   LineView's SymbolDraw pass consumes. The base declares `open var hasSymbolVisual = false`, so
+    //   flip it in the init override (faithful to the upstream instance field). `defaultSymbol` stays
+    //   'circle', but the line defaultOption already sets `symbol: 'emptyCircle'`, so `get("symbol")`
+    //   supplies it before the fallback.
+    open override func `init`(_ option: ModelOption?, _ parentModel: Model? = nil, _ ecModel: GlobalModel? = nil, _ rest: Any...) {
+        super.`init`(option, parentModel, ecModel)
+        self.hasSymbolVisual = true
+    }
+
     // upstream basic line uses the default `visualStyleAccessPath = 'itemStyle'` / `visualDrawType = 'fill'`
     //   (NOT the `lineStyle`/`stroke` override that parallel/lines series use), so the palette color lands
     //   under the item visual style's `fill` key — `LineView` reads it and applies it as the line stroke.

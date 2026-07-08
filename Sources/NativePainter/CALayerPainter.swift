@@ -131,6 +131,18 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
 
     var paint = PaintStyle.from(style)
 
+    // 2a. strokeNoScale: the stroke keeps its authored width regardless of the element's scale
+    //     (zrender canvas: `ctx.lineWidth = lineWidth / el.getLineScale()`). The element's world
+    //     transform is already concatenated onto the CTM above, so divide the line width by that
+    //     scale to cancel it — otherwise a symbol built as a 2×2 shape scaled by size/2 would stroke
+    //     size/2× too thick (an emptyCircle then fills solid instead of reading hollow).
+    if style.strokeNoScale == true {
+        let lineScale = p.getLineScale()
+        if lineScale > 1e-10 {
+            paint.lineWidth /= lineScale
+        }
+    }
+
     // 2b. Gradient bounding rect (objectBoundingBox / `!global` resolution). zrender resolves
     //     gradient coords against the element's LOCAL bounding rect (canvas/graphic.ts
     //     `rect = el.getBoundingRect()`), in the same space as the replayed path geometry.

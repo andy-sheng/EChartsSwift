@@ -178,80 +178,34 @@ open class LineView: ChartView {
         lineGroup.setClipPath(clipPath)
         _ = group.add(lineGroup)
 
-        // ── SymbolDraw pass (statically inlined) ────────────────────────────────────────────────
-        // upstream: LineView creates a `SymbolDraw` and calls `symbolDraw.updateData(data, {...})`,
-        //   which enters/updates one `Symbol` (graphic.Path) per datum. We omit the diff/animation
-        //   machinery and just build a symbol per point when `showSymbol` is truthy and the resolved
-        //   symbol type is not 'none' — enough for a static render.
-        // PORT-TODO: SymbolDraw enter/leave animation, symbolRotate/symbolOffset, endLabel, and
-        //   showAllSymbol / 'auto' sampling (upstream hides symbols when points are dense) — the
-        //   static port always shows them when showSymbol != false. emphasis/label = PORT-TODO.
-        // PORT-TODO: line symbols are added to `group` directly (unclipped, no scale-in) — upstream's
-        //   SymbolDraw enter animation (per-symbol scale from 0) is deferred; only the polyline/area
-        //   draw-on (via lineGroup's clip) is implemented here.
+        // ── SymbolDraw pass ─────────────────────────────────────────────────────────────────────
+        // L2 breadth: the shared SymbolDraw (chart/helper) now draws the line's data-point symbols —
+        //   each a Symbol (Group) with the symbol Path child, carrying entrance scale-in, emphasis
+        //   hover-scale, symbolRotate/offset and the per-point label. The line's colour reaches the
+        //   symbol via the item visual `style.fill` (line series uses itemStyle/fill), so emptyCircle
+        //   (line default) auto-swaps to stroke=lineColor/fill=neutral00 inside Symbol.setColor.
+        // PORT-TODO: showAllSymbol / 'auto' density sampling (upstream hides symbols when points are
+        //   dense) and endLabel — the port shows all symbols when showSymbol != false.
         let showSymbol = seriesModel.get("showSymbol")
         // upstream truthiness: draw unless showSymbol is explicitly false.
         if (showSymbol as? Bool) != false {
-            let seriesSymbol = (seriesModel.get("symbol") as? String) ?? "emptyCircle"
-            let seriesSymbolSize: Any = seriesModel.get("symbolSize") ?? 4.0
+            // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
+            //   symbolKeepAspect data + item visuals that SymbolDraw reads (LineSeries.hasSymbolVisual).
+            symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+            symbolVisual.dataSymbolTask(seriesModel)
+
             // Re-project per datum (rather than reusing `points`) so each symbol tracks its own datum
             //   even where a non-finite coord was dropped from the polyline point array above.
-            for i in 0..<data.count() {
+            let symbolDraw = SymbolDraw()
+            var opt = SymbolDrawUpdateOpt()
+            opt.getSymbolPoint = { i in
                 let baseVal = lineToNumber(store.get(baseDimIdx, i))
                 let value = lineToNumber(store.get(valueDimIdx, i))
                 let p = isValueAxisH ? coord.dataToPoint([value, baseVal]) : coord.dataToPoint([baseVal, value])
-                if !(p.count >= 2 && p[0].isFinite && p[1].isFinite) { continue }
-
-                // upstream resolves the per-item symbol/size via the symbol visual stage
-                //   (data.getItemVisual(i, 'symbol' / 'symbolSize')), falling back to the series option.
-                let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol
-                if symbolType == "none" { continue }
-                let symbolSizeVisual = data.getItemVisual(i, "symbolSize") ?? seriesSymbolSize
-                let (w, h) = symbol.normalizeSymbolSize(symbolSizeVisual)
-
-                // Color the symbol with the line's resolved stroke (matches upstream, where the symbol
-                //   adopts the line's visual color): emptyCircle → stroke=lineColor/fill=neutral00/lw=2,
-                //   solid → fill=lineColor. createSymbol positions the symbol's top-left at (x, y), so
-                //   offset by half the size to center it on the point.
-                let el = symbol.createSymbol(symbolType, p[0] - w / 2, p[1] - h / 2, w, h, ZRenderKit.ZRColor.string(stroke))
-                if let element = el as? Path {
-                    element.name = "symbol"
-                    // Data-point symbols must sit above a co-gridded bar series (BarView rects use z2 1);
-                    //   without this the symbols where the line dips below a taller bar's top are hidden
-                    //   behind that bar (mix-bar-line). Upstream keeps line symbols above the bars via the
-                    //   series z; a z2 above the bar rects is the static-render equivalent.
-                    element.z2 = 10
-
-                    // upstream (SymbolDraw/Symbol._updateCommon): each data-point symbol is marked a
-                    //   highDown dispatcher carrying its emphasis-state itemStyle, so a hover restyles
-                    //   it. Mirror BarView.updateStyle's block. PORT-TODO: the line PATH itself also gets
-                    //   line-emphasis upstream (LineView emphasis lineStyle) — deferred; only the
-                    //   data-point symbols are dispatchers here.
-                    let itemModel = data.getItemModel(i)
-                    let emphasisModel = itemModel.getModel(["emphasis"])
-                    let focus: InnerFocus? = emphasisModel.get("focus")
-                    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-                    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-                    states.toggleHoverEmphasis(element, focus, blurScope, isDisabled)
-                    states.setStatesStylesFromModel(element, itemModel)
-
-                    // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the
-                    //   live Handler hit-test / tooltip can resolve the per-point element.
-                    data.setItemGraphicEl(i, element)
-
-                    // Entrance: scale the symbol in from 0 about its point (upstream Symbol.ts first-create:
-                    //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
-                    //   createSymbol sizes via the shape (normal scale 1), so animate 0 → 1 with the transform
-                    //   origin at the datum point so it grows from the point. (scatter's scale-in idiom.)
-                    element.originX = p[0]
-                    element.originY = p[1]
-                    element.scaleX = 0
-                    element.scaleY = 0
-                    initProps(element, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
-
-                    _ = group.add(element)   // added AFTER the polyline so symbols sit on top
-                }
+                return (p.count >= 2 && p[0].isFinite && p[1].isFinite) ? p : nil
             }
+            symbolDraw.updateData(data, opt)
+            _ = group.add(symbolDraw.group)   // added AFTER the polyline so symbols sit on top
         }
 
         self._data = data
