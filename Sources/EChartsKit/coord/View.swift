@@ -580,12 +580,105 @@ public func clampByZoomLimit(
     return zoom
 }
 
+// =====================================================================================================
+// ROAM (pan/zoom) — the value-based subset of upstream's roam interaction flow (geo/map roam, Phase 40).
+//   Upstream stores roam center/zoom on the host MODEL option (`syncBackRoamOptionToRoamHostModel`) and
+//   re-reads them via `viewCoordSysSetRoamOptionFromModel`. The port keeps roam state in a per-host-model
+//   inner store (see roamHelperGeo) — same lifetime — so these two entry points take VALUES rather than a
+//   model: `viewCoordSysSetRoamOption` (re-apply center/zoom, mirrors viewCoordSysSetRoamOptionFromModel)
+//   and `viewCoordSysApplyRoamPayloadSyncBack` (apply a pan/zoom payload to the OVERALL trans, then invert
+//   back to a data-space center + zoom, mirrors viewCoordSysSyncBack minus the roaming-animation syncBackEl).
+// =====================================================================================================
+
+// upstream: viewCoordSysSetRoamOptionFromModel(viewCoordSys, hostModel) — but reading VALUES (the port's
+//   roam state store) instead of `hostModel.getShallow('center'|'zoom'|'scaleLimit')`.
+//     viewInner.centerOption = center; viewInner.zoomLimit = zoomLimit;
+//     viewInner.zoom = clampByZoomLimit(zoomOption || 1, zoomLimit) || 1;
+//     if (viewCoordSysIsInputReady(viewInner)) { viewCoordSysUpdateTransform(viewInner); }
+public func viewCoordSysSetRoamOption(
+    _ viewCoordSys: View, _ centerOption: [Any]?, _ zoomOption: Double?, _ zoomLimit: RoamOptionMixin.ScaleLimit?
+) {
+    viewCoordSys.centerOption = centerOption
+    viewCoordSys.zoomLimit = zoomLimit
+    viewCoordSys.zoom = jsNumOr(clampByZoomLimit(jsNumOr(zoomOption, 1), zoomLimit), 1)
+    if viewCoordSysIsInputReady(viewCoordSys) {
+        viewCoordSysUpdateTransform(viewCoordSys)
+    }
+}
+
+// upstream: getZoomFromRoamTrans(trans) { return trans.scaleX; }
+//   (scaleX == scaleY, see VIEW_COORD_SYS_APPLY_ROAM_CENTER_AND_ZOOM.)
+private func getZoomFromRoamTrans(_ trans: Transformable) -> Double {
+    return trans.scaleX
+}
+
+// upstream: calcRoamTransFromOverallTrans(out, viewInner, overallTrans) {
+//     transformableGetLocalTransform(overallTrans, tmpMtRTO);
+//     matrixMul(tmpMtRTO, tmpMtRTO, viewInner.mtRawInv);   // roamTrans = overallTrans * invert(rawTrans)
+//     decomposeTransform(out, tmpMtRTO);
+// }
+private func calcRoamTransFromOverallTrans(_ out: Transformable, _ view: View, _ overallTrans: Transformable) {
+    let mt = transformableGetLocalTransform(overallTrans)
+    let m = matrix.mul(mt, view.mtRawInv)   // matrix.mul(a, b) == a * b (see calcOverallTrans)
+    _ = decomposeTransform(out, m)
+}
+
+// upstream: applyRoamPayloadToOverallTrans(targetOverallTrans, roamTrans, viewInner, payload)
+//   NOTE: payload.dx/dy are always applied in pixel space (i.e., to overallTrans).
+private func applyRoamPayloadToOverallTrans(
+    _ targetOverallTrans: Transformable,
+    _ roamTrans: Transformable,
+    _ view: View,
+    _ dx: Double?, _ dy: Double?, _ zoom: Double?, _ originX: Double, _ originY: Double
+) {
+    if let dx = dx, let dy = dy {
+        targetOverallTrans.x += dx
+        targetOverallTrans.y += dy
+    }
+    if let deltaZoom = zoom {
+        let oldZoom = getZoomFromRoamTrans(roamTrans)
+        let newZoom = clampByZoomLimit(oldZoom * deltaZoom, view.zoomLimit)
+        let deltaZoom2 = oldZoom != 0 ? newZoom / oldZoom : 1
+        // Keep the mouse center when scaling.
+        targetOverallTrans.x -= (originX - targetOverallTrans.x) * (deltaZoom2 - 1)
+        targetOverallTrans.y -= (originY - targetOverallTrans.y) * (deltaZoom2 - 1)
+        targetOverallTrans.scaleX *= deltaZoom2
+        targetOverallTrans.scaleY *= deltaZoom2
+    }
+}
+
+// upstream: viewCoordSysSyncBack(viewCoordSys, hostModel, otherModelsToSync, payload) +
+//   syncBackToRoamOptionFromRoamTrans — but RETURNING (center, zoom) instead of writing the model option
+//   (the port stores roam state in an inner store). The roaming-animation `syncBackEl` branch is DEFERRED,
+//   so the OVERALL trans is read directly (upstream's `else` branch: copyTransform(sb1, trans[OVERALL])).
+//   `center` is returned in DATA space (numeric); the percent-center round-trip `invertBackToCenterOption`
+//   is not reproduced (the port's stored center is always numeric — percent center is DEFERRED).
+public func viewCoordSysApplyRoamPayloadSyncBack(
+    _ viewCoordSys: View, _ dx: Double?, _ dy: Double?, _ zoom: Double?, _ originX: Double, _ originY: Double
+) -> (center: [Double], zoom: Double) {
+    // sb1 = current overall trans; sb2 = roamTrans derived from it (for the old zoom).
+    let sb1 = copyTransform(transformableCreate(), viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL])
+    let sb2 = transformableCreate()
+    calcRoamTransFromOverallTrans(sb2, viewCoordSys, sb1)
+    // Apply the payload to the OVERALL trans, then re-derive roamTrans into sb1.
+    applyRoamPayloadToOverallTrans(sb1, sb2, viewCoordSys, dx, dy, zoom, originX, originY)
+    calcRoamTransFromOverallTrans(sb1, viewCoordSys, sb1)
+
+    // syncBackToRoamOptionFromRoamTrans: invert roamTrans → (center in data space, zoom).
+    let viewRectCenter = viewCoordSysGetViewRectCenter(viewCoordSys)
+    let z = getZoomFromRoamTrans(sb1)
+    let notZoomNearZero = abs(z) > 1e-6
+    let cvx = notZoomNearZero ? (viewRectCenter[0] - sb1.x) / z : viewRectCenter[0]
+    let cvy = notZoomNearZero ? (viewRectCenter[1] - sb1.y) / z : viewRectCenter[1]
+    let cData = vector.applyTransform(VectorArray(cvx, cvy), viewCoordSys.mtRawInv)
+    return ([cData[0], cData[1]], z)
+}
+
 // PORT-TODO (ROAM, DEFERRED): the following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
-//     viewCoordSysSetRoamOptionFromModel, applyViewCoordSysTransToElement, viewCoordSysSyncBack,
-//     ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys, ownRoamViewUpdateDirectlyInAction,
-//     applyRoamPayloadToOverallTrans, calcOverallTransFromSyncBackEl, calcRoamTransFromOverallTrans,
-//     invertBackToCenterOption, syncBackToRoamOptionFromRoamTrans, syncBackRoamOptionToRoamHostModel,
+//     applyViewCoordSysTransToElement, ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
+//     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl, invertBackToCenterOption,
+//     syncBackToRoamOptionFromRoamTrans (model write-back), syncBackRoamOptionToRoamHostModel,
 //     calcCompensationScaleToPreserveNodeSize.
 
 // ===== Private helpers =====

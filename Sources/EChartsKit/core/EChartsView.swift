@@ -154,6 +154,11 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     private var _graphRoamController: RoamController?
 
+    // L3 Roam — GEO/MAP pan/zoom. Same host-owned-controller pattern as `_graphRoamController` (upstream
+    //   `MapDraw` owns `new RoamController(api.getZr())`; the slim MapView/GeoView are zr-less). Wired live
+    //   on each `setOption` via `_setupGeoRoam` → pan/zoom emit `{type:'geoRoam', ...}` (see roamHelperGeo).
+    private var _geoRoamController: RoamController?
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -204,6 +209,8 @@ public final class EChartsView {
         // L3 Roam: (re)wire the graph RoamController against the freshly-built model (upstream GraphView.render
         //   calls updateRoamControllerSimply every render).
         _setupGraphRoam()
+        // L3 Roam: (re)wire the geo/map RoamController (upstream MapDraw._updateController per render).
+        _setupGeoRoam()
     }
 
     // ------------------------------------------------------------------------
@@ -240,6 +247,50 @@ public final class EChartsView {
         }
 
         updateGraphRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
+            guard let self = self else { return }
+            _ = self.zr.storage.getDisplayList(true)
+            self.zr.refresh()
+        })
+    }
+
+    // ------------------------------------------------------------------------
+    // _setupGeoRoam — L3 Roam GEO/MAP wiring. Prefer a `geo` COMPONENT with roam; else the first `map`
+    //   series with roam. Enable the shared `RoamController` over the live zr and wire pan/zoom → `geoRoam`
+    //   (see roamHelperGeo). The `onDispatched` seam flushes the zr display list + repaints after the
+    //   action's full re-render. If nothing wants geo roam, the controller is disabled.
+    //   PORT-TODO (DEFERRED): MAP_SERIES_GROUP (multiple map series sharing a geo) uses a single host here.
+    // ------------------------------------------------------------------------
+    private func _setupGeoRoam() {
+        guard let ecModel = ec.getModel() else { return }
+
+        var host: ComponentModel? = nil
+        // upstream reads `roam` from the geo component / first not-legend-filtered map series.
+        ecModel.eachComponent("geo") { comp, _ in
+            guard host == nil, let geoModel = comp as? GeoModel else { return }
+            if _viewRoamTruthy(geoModel.get("roam")) { host = geoModel }
+        }
+        if host == nil {
+            ecModel.eachSeriesByType("map") { s, _ in
+                guard host == nil, let mapSeries = s as? MapSeriesModel else { return }
+                if _viewRoamTruthy(mapSeries.get("roam")) { host = mapSeries }
+            }
+        }
+
+        guard let hostModel = host else {
+            // No geo/map roam wanted → disable any previously-enabled controller.
+            _geoRoamController?.disable()
+            return
+        }
+
+        let controller: RoamController
+        if let existing = _geoRoamController {
+            controller = existing
+        } else {
+            controller = RoamController(zr)
+            _geoRoamController = controller
+        }
+
+        updateGeoRoamControllerSimply(hostModel, ec.api, controller, { [weak self] in
             guard let self = self else { return }
             _ = self.zr.storage.getDisplayList(true)
             self.zr.refresh()

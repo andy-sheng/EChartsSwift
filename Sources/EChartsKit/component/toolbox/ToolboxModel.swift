@@ -34,7 +34,11 @@ open class ToolboxModel: ComponentModel {
     // static type = 'toolbox' as const;
     public override class var type: ComponentFullType { return "toolbox" }
 
-    // The layout/box fields are `mergeLayoutParam`-consumed upstream; the slim port keeps the raw bag.
+    // static layoutMode = { type: 'box', ignoreSize: true }
+    public override class var layoutMode: Any? {
+        return ["type": "box", "ignoreSize": true] as [String: Any]
+    }
+
     // static defaultOption: ToolboxOption = { ... }
     public override class var defaultOption: ModelOption? {
         return [
@@ -50,12 +54,50 @@ open class ToolboxModel: ComponentModel {
             "borderColor": tokens.color.border,
             "borderRadius": 0.0,
             "borderWidth": 0.0,
-            "padding": 5.0,
+            "padding": tokens.size.m,       // 15
             "itemSize": 15.0,
-            "itemGap": 8.0,
+            "itemGap": tokens.size.s,       // 10
             "showTitle": true,
+            // iconStyle: { borderColor: accent50, color: 'none' } → the stroke-only icon paint.
+            "iconStyle": [
+                "borderColor": tokens.color.accent50,
+                "color": "none"
+            ] as [String: Any],
+            "emphasis": [
+                "iconStyle": [
+                    "borderColor": tokens.color.accent70
+                ] as [String: Any]
+            ] as [String: Any],
             // feature: { saveAsImage, restore, dataView, dataZoom, magicType, brush } — user-supplied.
-            "feature": [String: Any]()
+            "feature": [String: Any](),
+            "tooltip": [
+                "show": false,
+                "position": "bottom"
+            ] as [String: Any]
         ]
+    }
+
+    // upstream `optionUpdated()` — merge each enabled feature's registered `getDefaultOption(ecModel)`
+    //   (its icon/title/show/... default bag) into the user's `feature[name]` option, so the VIEW can
+    //   read `featureModel.get('icon')` / `get('title')`. (The theme-feature merge is DEFERRED — no
+    //   toolbox theme option in the slim port.)
+    open override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
+        guard var option = self.option as? [String: Any],
+              var feature = option["feature"] as? [String: Any] else {
+            return
+        }
+        for featureName in feature.keys {
+            guard var featureOpt = feature[featureName] as? [String: Any] else { continue }
+            if let registration = getFeature(featureName),
+               let getDefaultOption = registration.getDefaultOption,
+               let ecModel = self.ecModel {
+                let defaultOption = getDefaultOption(ecModel)
+                // merge(featureOpt, Feature.defaultOption)  — user option wins (overwrite:false).
+                _ = util.merge(&featureOpt, defaultOption, false)
+                feature[featureName] = featureOpt
+            }
+        }
+        option["feature"] = feature
+        self.option = option
     }
 }

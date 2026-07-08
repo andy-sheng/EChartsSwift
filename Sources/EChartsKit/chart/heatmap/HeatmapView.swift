@@ -55,9 +55,40 @@ import ZRenderKit
 //   large/progressive path are PORT-TODOs; the matrix/calendar branches are PORT-TODOs (those coord
 //   systems are not wired for heatmap yet).
 
-// upstream: function getIsInPiecewiseRange(dataExtent, pieceList, selected) { ... }
 // upstream: function getIsInContinuousRange(dataExtent, range) { ... }
-// PORT-TODO: both range-test helpers feed `_renderOnGeo` (the canvas-blur layer). Deferred with it.
+//   Returns a predicate over a NORMALIZED value (0..1): true iff it lands inside the visualMap
+//   `range` mapped into normalized space. Feeds `_renderOnGeo` (the blurred HeatmapLayer).
+private func getIsInContinuousRange(_ dataExtent: [Double], _ rangeIn: [Double]) -> (Double) -> Bool {
+    let dataSpan = dataExtent[1] - dataExtent[0]
+    // range = [(range[0]-dataExtent[0])/dataSpan, (range[1]-dataExtent[0])/dataSpan];
+    let r0 = (rangeIn[0] - dataExtent[0]) / dataSpan
+    let r1 = (rangeIn[1] - dataExtent[0]) / dataSpan
+    // return function (val) { return val >= range[0] && val <= range[1]; };
+    return { val in val >= r0 && val <= r1 }
+}
+
+// upstream: function getIsInPiecewiseRange(dataExtent, pieceList, selected) { ... }
+//   `pieceList` is each piece's `[lo, hi]` interval; `selected` is a per-piece-index selected flag.
+//   The upstream `lastIndex` scan optimization is dropped (a plain scan is result-identical).
+private func getIsInPiecewiseRange(
+    _ dataExtent: [Double], _ pieceList: [[Double]], _ selected: [Bool]
+) -> (Double) -> Bool {
+    let dataSpan = dataExtent[1] - dataExtent[0]
+    // pieceList = map(pieceList, piece => ({ interval: [(lo-e0)/span, (hi-e0)/span] }));
+    let normed = pieceList.map { p -> [Double] in
+        [(p[0] - dataExtent[0]) / dataSpan, (p[1] - dataExtent[0]) / dataSpan]
+    }
+    let len = normed.count
+    return { val in
+        for i in 0..<len {
+            let interval = normed[i]
+            if interval[0] <= val && val <= interval[1] {
+                return i < selected.count ? selected[i] : true
+            }
+        }
+        return false
+    }
+}
 
 // upstream: class HeatmapView extends ChartView { static readonly type = 'heatmap'; type = HeatmapView.type; ... }
 open class HeatmapView: ChartView {
@@ -74,7 +105,9 @@ open class HeatmapView: ChartView {
     }
 
     // upstream: private _hmLayer: HeatmapLayer;
-    // PORT-TODO: `HeatmapLayer` (canvas-blur, geo/large mode) NOT ported — `_renderOnGeo` deferred.
+    //   The canvas-blur layer used by the geo path (`_renderOnGeo`) — ported as `HeatmapLayer`
+    //   (chart/heatmap/HeatmapBlurLayer.swift). Cached across renders like upstream.
+    private var _hmLayer: HeatmapLayer?
 
     // upstream: private _progressiveEls: Element[];
     private var _progressiveEls: [Element]?
@@ -127,9 +160,14 @@ open class HeatmapView: ChartView {
         else if let calendar = seriesModel.coordinateSystem as? Calendar {
             self._renderOnCalendar(seriesModel, calendar)
         }
+        else if let geo = seriesModel.coordinateSystem as? Geo {
+            // else if (isGeoLikeCoordSys(coordSys)) { this._renderOnGeo(coordSys, seriesModel, vm, api); }
+            if let vm = visualMapOfThisSeries {
+                self._renderOnGeo(geo, seriesModel, vm, api)
+            }
+        }
         else {
-            // PORT-TODO: matrix `_renderOnGridLike` branch and the geo `_renderOnGeo` (blurred
-            //   `HeatmapLayer`) path are deferred.
+            // PORT-TODO: matrix `_renderOnGridLike` branch is deferred.
         }
     }
 
@@ -359,11 +397,154 @@ open class HeatmapView: ChartView {
     }
 
     // upstream: _renderOnGeo(geo, seriesModel, visualMapModel, api) { ... }
-    // PORT-TODO: the geo/large blurred `HeatmapLayer` (canvas) path is NOT ported (per the heatmap
-    //   milestone scope — the cartesian colored-Rect path above is the deliverable). It needs
-    //   `HeatmapLayer` (canvas gradient blur), `visualMapModel.targetVisuals.inRange/outOfRange` color
-    //   mappers/normalizers, `geo.getViewRect`/`getRoamTransform`, and `getIsInContinuousRange`/
-    //   `getIsInPiecewiseRange`.
+    //   The geo/large blurred `HeatmapLayer` path: each datum's [lng,lat,value] is projected to a
+    //   viewport pixel, stamped as a radial-alpha blob by `HeatmapLayer`, and the accumulated alpha
+    //   is colorized by the visualMap gradient into a `CGImage`, blitted via a single `ZRImage`.
+    func _renderOnGeo(
+        _ geo: Geo,
+        _ seriesModel: HeatmapSeriesModel,
+        _ visualMapModel: VisualMapModel,
+        _ api: ExtensionAPI
+    ) {
+        // const inRangeVisuals = visualMapModel.targetVisuals.inRange;
+        // const outOfRangeVisuals = visualMapModel.targetVisuals.outOfRange;
+        guard let inRangeVisuals = visualMapModel.targetVisuals["inRange"] as? [String: VisualMapping],
+              let colorMappingIn = inRangeVisuals["color"] else {
+            // Data range must have color visuals — nothing to colorize.
+            return
+        }
+        let outOfRangeVisuals = visualMapModel.targetVisuals["outOfRange"] as? [String: VisualMapping]
+        let colorMappingOut = outOfRangeVisuals?["color"]
+
+        let data = seriesModel.getData()
+
+        // const hmLayer = this._hmLayer || (this._hmLayer = new HeatmapLayer());
+        let hmLayer = self._hmLayer ?? HeatmapLayer()
+        self._hmLayer = hmLayer
+        // hmLayer.blurSize/pointSize/minOpacity/maxOpacity = seriesModel.get(...)
+        hmLayer.blurSize = heatmapGetNumber(seriesModel.get("blurSize"), 30)
+        hmLayer.pointSize = heatmapGetNumber(seriesModel.get("pointSize"), 20)
+        hmLayer.minOpacity = heatmapGetNumber(seriesModel.get("minOpacity"), 0)
+        hmLayer.maxOpacity = heatmapGetNumber(seriesModel.get("maxOpacity"), 1)
+
+        // const rect = geo.getViewRect().clone(); rect.applyTransform(geo.getRoamTransform());
+        let rect = geo.getViewRect().clone()
+        let roamTransform = geo.getRoamTransform()
+        rect.applyTransform(roamTransform)
+
+        // Clamp on viewport
+        let x = Swift.max(rect.x, 0)
+        let y = Swift.max(rect.y, 0)
+        let x2 = Swift.min(rect.width + rect.x, api.getWidth())
+        let y2 = Swift.min(rect.height + rect.y, api.getHeight())
+        let width = x2 - x
+        let height = y2 - y
+
+        // const dims = [mapDimension('lng'), mapDimension('lat'), mapDimension('value')];
+        let dims: [Any] = [
+            data.mapDimension("lng") as Any,
+            data.mapDimension("lat") as Any,
+            data.mapDimension("value") as Any
+        ]
+
+        // const points = data.mapArray(dims, (lng, lat, value) => { const pt = geo.dataToPoint([lng, lat]);
+        //   pt[0] -= x; pt[1] -= y; pt.push(value); return pt; });
+        let points: [[Double]] = data.mapArray(dims) { args -> Any? in
+            let lng = heatmapToNumber(args.count > 0 ? args[0] : nil)
+            let lat = heatmapToNumber(args.count > 1 ? args[1] : nil)
+            let value = heatmapToNumber(args.count > 2 ? args[2] : nil)
+            let pt = geo.dataToPoint([lng, lat] as Any) ?? [0, 0]
+            let px = (pt.count > 0 ? pt[0] : 0) - x
+            let py = (pt.count > 1 ? pt[1] : 0) - y
+            return [px, py, value]
+        }.compactMap { $0 as? [Double] }
+
+        // const dataExtent = visualMapModel.getExtent();
+        let dataExtent = visualMapModel.getExtent()
+
+        // const isInRange = type === 'visualMap.continuous' ? getIsInContinuousRange(...) : getIsInPiecewiseRange(...);
+        let isInRange: (Double) -> Bool
+        if visualMapModel.type == "visualMap.continuous", let cm = visualMapModel as? ContinuousModel {
+            let range = heatmapCoerceDoubleArray(cm.get("range")) ?? dataExtent
+            isInRange = getIsInContinuousRange(dataExtent, range)
+        }
+        else if let pm = visualMapModel as? PiecewiseModel {
+            var pieceIntervals: [[Double]] = []
+            var selected: [Bool] = []
+            for piece in pm.getPieceList() {
+                let interval = heatmapCoerceDoubleArray(piece["interval"]) ?? [Double.nan, Double.nan]
+                pieceIntervals.append(interval)
+                // upstream: selected[i] keyed by piece INDEX. The port keys `option.selected` by the
+                //   piece map key; best-effort look up by index string, defaulting to selected (true).
+                // PORT-TODO: exact selected-key parity with PiecewiseModel.getSelectedMapKey.
+                let idx = Int(heatmapToNumber(piece["index"]))
+                let sel = (pm.get("selected") as? [String: Any])?[String(idx)]
+                selected.append((sel as? Bool) ?? true)
+            }
+            isInRange = getIsInPiecewiseRange(dataExtent, pieceIntervals, selected)
+        }
+        else {
+            isInRange = { _ in true }
+        }
+
+        // hmLayer.update(points, width, height, inRangeVisuals.color.getNormalizer(),
+        //   { inRange: ...getColorMapper(), outOfRange: ...getColorMapper() }, isInRange);
+        let normalizer = colorMappingIn.getNormalizer()
+        let noopMapper: ColorMapper = { _, _, _ in [0.0, 0.0, 0.0, 0.0] as Any }
+        let colorFunc: [String: ColorMapper] = [
+            "inRange": colorMappingIn.getColorMapper?() ?? noopMapper,
+            "outOfRange": colorMappingOut?.getColorMapper?() ?? noopMapper
+        ]
+
+        let cgImage = hmLayer.update(
+            points,
+            Int(width.rounded()),
+            Int(height.rounded()),
+            { (v: Double) in normalizer(v) },
+            colorFunc,
+            isInRange
+        )
+        guard let cgImage = cgImage else {
+            // Empty viewport / no colorized output.
+            return
+        }
+
+        // const img = new graphic.Image({ style: { width, height, x, y, image: hmLayer.canvas }, silent: true });
+        var style = ImageStyleProps()
+        style.width = width
+        style.height = height
+        style.x = x
+        style.y = y
+        style.image = .image(cgImage)
+        let img = ZRImage()
+        img.useStyle(style)
+        img.silent = true
+        // this.group.add(img);
+        _ = self.group.add(img)
+    }
+}
+
+// seriesModel.get(...) option numbers box Int OR Double (INT-vs-DOUBLE trap) — coerce with a default.
+private func heatmapGetNumber(_ v: Any?, _ fallback: Double) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return fallback
+}
+
+// Coerce an option value to `[Double]` (visualMap `range` / a piece `interval`), boxing Int/Double.
+private func heatmapCoerceDoubleArray(_ v: Any?) -> [Double]? {
+    if let arr = v as? [Double] { return arr }
+    if let arr = v as? [Any] {
+        let nums = arr.map { e -> Double in
+            if let d = e as? Double { return d }
+            if let i = e as? Int { return Double(i) }
+            if let n = e as? NSNumber { return n.doubleValue }
+            return Double.nan
+        }
+        return nums
+    }
+    return nil
 }
 
 // export default HeatmapView;  -> `open class HeatmapView` above.

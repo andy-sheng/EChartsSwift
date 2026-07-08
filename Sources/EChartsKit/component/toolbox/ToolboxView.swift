@@ -1,0 +1,356 @@
+// Ported from echarts/src/component/toolbox/ToolboxView.ts — keep in sync with upstream
+/*
+* Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
+*/
+
+import Foundation
+import ZRenderKit
+
+// upstream imports (mapped to this port):
+//   import * as textContain from 'zrender/src/contain/text';   -> title-overflow adjust block (DEFERRED, see below).
+//   import * as graphic from '../../util/graphic';             -> `createIcon` reproduced via `makePath`
+//     (util/graphic.ts createIcon not ported as a namespace; same seam as ScrollableLegendView /
+//     SliderTimelineView). `graphic.setTooltipConfig` is DEFERRED (interaction).
+//   import { enterEmphasis, leaveEmphasis } from '../../util/states';  -> DEFERRED (emphasis/blur), no-op.
+//   import Model from '../../model/Model';                     -> `Model`.
+//   import DataDiffer from '../../data/DataDiffer';            -> DROPPED: the feature DIFF is reduced to a
+//     rebuild-each-render (no view reuse across setOption — same reduction as the other ported views).
+//   import * as listComponentHelper from '../helper/listComponent'; -> `makeBackground` reproduced below
+//     (component/helper/listComponent not ported — same PORT-TODO as LegendView).
+//   import ComponentView from '../../view/Component';          -> `ComponentView`.
+//   import ToolboxModel from './ToolboxModel';                 -> `ToolboxModel`.
+//   import { getFeature, ToolboxFeature, ... } from './featureManager'; -> `getFeature` / `ToolboxFeature`
+//     / `ToolboxFeatureModel` (toolboxFeatureManager.swift).
+//   import { getUID } from '../../util/component';             -> `component.getUID`.
+//   import ZRText from 'zrender/src/graphic/Text';             -> `ZRText`.
+//   import { getFont } from '../../label/labelStyle';          -> `labelStyle.getFont`.
+//   import { box, createBoxLayoutReference, getLayoutRect, positionElement } from '../../util/layout';
+//     -> `layout.*`.
+//   import tokens from '../../visual/tokens';                  -> `tokens`.
+
+// class ToolboxView extends ComponentView
+open class ToolboxView: ComponentView {
+
+    // static type = 'toolbox' as const;
+    public static let type = "toolbox"
+    open var type: String { return ToolboxView.type }
+
+    // upstream: `_features: HashMap<...>` + `_featureNames: string[]` — carried across renders for the
+    //   DataDiffer add/update/remove + dispose. The port rebuilds each render (no reuse), so only a
+    //   plain per-render dict of live features is kept (used by `updateView`/`dispose`).
+    private var _features: [String: ToolboxFeature] = [:]
+
+    // render(toolboxModel, ecModel, api, payload)
+    open override func render(
+        _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        let toolboxModel = model as! ToolboxModel
+
+        let group = self.group
+        _ = group.removeAll()
+
+        // if (!toolboxModel.get('show')) return;
+        if !toolboxTruthy(toolboxModel.get("show")) {
+            return
+        }
+
+        // const itemSize = +toolboxModel.get('itemSize');
+        let itemSize = toolboxNum(toolboxModel.get("itemSize")) ?? 0
+        // const isVertical = toolboxModel.get('orient') === 'vertical';
+        let isVertical = (toolboxModel.get("orient") as? String) == "vertical"
+        // const featureOpts = toolboxModel.get('feature') || {};
+        let featureOpts = (toolboxModel.get("feature") as? [String: Any]) ?? [:]
+
+        var features: [String: ToolboxFeature] = [:]
+
+        // The DataDiffer(oldNames, newNames).add/update/remove is reduced to iterating the feature
+        //   options (no reuse across setOption). Order follows the option's key iteration.
+        for featureName in featureOpts.keys {
+            let featureOpt = (featureOpts[featureName] as? [String: Any]) ?? [:]
+            // const featureModel = new Model(featureOpt, toolboxModel, ecModel);
+            let featureModel = Model(featureOpt, toolboxModel, ecModel)
+            // const isFeatureShow = featureModel && featureModel.get('show');
+            let isFeatureShow = toolboxTruthy(featureModel.get("show"))
+            if !isFeatureShow {
+                continue
+            }
+
+            let feature: ToolboxFeature
+            if isUserFeatureName(featureName) {
+                // UserDefinedToolboxFeature { onclick: featureModel.option.onclick, featureName }.
+                // PORT-TODO: DEFERRED — the user `my*` feature's Swift `onclick` closure carried on the
+                //   option bag is not modeled (no on-canvas dispatch target). Skip so nothing crashes.
+                continue
+            }
+            else {
+                // const Feature = getFeature(featureName); if (!Feature) return; feature = new Feature();
+                guard let registration = getFeature(featureName) else {
+                    continue
+                }
+                feature = registration.create()
+            }
+
+            // feature.uid = getUID('toolbox-feature');
+            feature.uid = component.getUID("toolbox-feature")
+            feature.model = featureModel
+            feature.ecModel = ecModel
+            feature.api = api
+
+            createIconPaths(
+                featureModel, feature, featureName,
+                toolboxModel: toolboxModel, ecModel: ecModel, api: api,
+                itemSize: itemSize, isVertical: isVertical, group: group
+            )
+
+            features[featureName] = feature
+
+            // if (isTooltipFeature(feature) && feature.render) feature.render(featureModel, ecModel, api, payload);
+            //   PORT: the only feature with a `render` is DataZoom (mounts its BrushController) — DEFERRED
+            //   (the base `render` is a no-op), so this call is harmless. Kept for the diffable surface.
+            feature.render(featureModel, ecModel, api, payload)
+        }
+
+        self._features = features
+
+        // Perform layout.
+        // const refContainer = createBoxLayoutReference(toolboxModel, api).refContainer;
+        let refContainer = layout.createBoxLayoutReference(toolboxModel, api).refContainer
+        let boxLayoutParams = toolboxModel.getBoxLayoutParams()
+        let padding = toolboxModel.get("padding")
+        let viewRect = layout.getLayoutRect(boxLayoutParams, refContainer, padding)
+        // box(orient, group, itemGap, viewRect.width, viewRect.height);
+        layout.box(
+            (toolboxModel.get("orient") as? String) ?? "horizontal",
+            group,
+            toolboxNum(toolboxModel.get("itemGap")) ?? 0,
+            viewRect.width,
+            viewRect.height
+        )
+        // positionElement(group, boxLayoutParams, refContainer, padding);
+        //   Value-returning port (CONVENTIONS §3): apply the computed x/y back to the group.
+        let posResult = layout.positionElement(
+            group, boxLayoutParamsToDict(boxLayoutParams), refContainer, padding, nil
+        )
+        group.x = posResult.out["x"] ?? group.x
+        group.y = posResult.out["y"] ?? group.y
+
+        // Render background after group is layout
+        if let bounding = group.getBoundingRect() {
+            _ = group.add(toolboxMakeBackground(bounding, toolboxModel))
+        }
+
+        // Adjust icon title positions to avoid them out of screen (`isVertical || group.eachChild(...)`).
+        // PORT-TODO: DEFERRED — the emphasis title-overflow reposition reads the icon's emphasis
+        //   textConfig/textContent state (util/states, deferred). Titles use their default position.
+        _ = isVertical
+    }
+
+    // function createIconPaths(featureModel, feature, featureName)
+    private func createIconPaths(
+        _ featureModel: ToolboxFeatureModel,
+        _ feature: ToolboxFeature,
+        _ featureName: String,
+        toolboxModel: ToolboxModel,
+        ecModel: GlobalModel,
+        api: ExtensionAPI,
+        itemSize: Double,
+        isVertical: Bool,
+        group: Group
+    ) {
+        let iconStyleModel = featureModel.getModel("iconStyle")
+        let iconStyleEmphasisModel = featureModel.getModel(["emphasis", "iconStyle"])
+
+        // const icons = (feature.getIcons) ? feature.getIcons() : featureModel.get('icon');
+        let iconsAny: Any? = feature.getIcons() ?? featureModel.get("icon")
+        // const titles = featureModel.get('title') || {};
+        let titlesAny: Any? = featureModel.get("title")
+
+        // isString(icons) ? { [featureName]: icons } : icons
+        var iconsMap: [String: String] = [:]
+        if let iconStr = iconsAny as? String {
+            iconsMap[featureName] = iconStr
+        }
+        else if let map = iconsAny as? [String: Any] {
+            for (k, v) in map { if let s = v as? String { iconsMap[k] = s } }
+        }
+        else if let map = iconsAny as? [String: String] {
+            iconsMap = map
+        }
+
+        // isString(titles) ? { [featureName]: titles } : titles
+        var titlesMap: [String: String] = [:]
+        if let titleStr = titlesAny as? String {
+            titlesMap[featureName] = titleStr
+        }
+        else if let map = titlesAny as? [String: Any] {
+            for (k, v) in map { if let s = v as? String { titlesMap[k] = s } }
+        }
+
+        let iconPathsStore = toolboxIconPathsInner(featureModel)
+        iconPathsStore.paths = [:]
+
+        for (iconName, iconStr) in iconsMap {
+            // const path = graphic.createIcon(iconStr, {}, { x:-itemSize/2, y:-itemSize/2, width:itemSize, height:itemSize });
+            let path = toolboxCreateIcon(
+                iconStr,
+                BoundingRect(-itemSize / 2, -itemSize / 2, itemSize, itemSize)
+            )
+            // path.setStyle(iconStyleModel.getItemStyle());  (createIcon default strokeNoScale is kept)
+            var style = iconStyleModel.getItemStyle()
+            style["strokeNoScale"] = true
+            path.useStyle(barStyleFromDict(style))
+            path.pathStyle.strokeNoScale = true
+            path.dirtyStyle()
+
+            // const pathEmphasisState = path.ensureState('emphasis'); pathEmphasisState.style = iconStyleEmphasisModel.getItemStyle();
+            // PORT-TODO: DEFERRED — emphasis state (util/states hover flip) out of static-render scope.
+
+            // Text position calculation → the title text content (hidden until hover).
+            var textStyle = TextStyleProps()
+            textStyle.text = titlesMap[iconName]
+            textStyle.align = (iconStyleEmphasisModel.get("textAlign") as? String).flatMap { TextAlign(rawValue: $0) }
+            // fill: null (shown on hover); font from the emphasis icon style's text* fields.
+            textStyle.fill = nil
+            textStyle.font = labelStyle.getFont(labelStyle.GetFontOpt(
+                fontStyle: iconStyleEmphasisModel.get("textFontStyle"),
+                fontWeight: iconStyleEmphasisModel.get("textFontWeight"),
+                fontSize: iconStyleEmphasisModel.get("textFontSize"),
+                fontFamily: iconStyleEmphasisModel.get("textFontFamily")
+            ), ecModel)
+            // PORT-TODO: DEFERRED — textBorderRadius/textPadding (title chip) applied on the hover path.
+            let textContent = ZRText(["style": textStyle])
+            textContent.ignore = true
+            path.setTextContent(textContent)
+
+            // graphic.setTooltipConfig({ el: path, componentModel: toolboxModel, itemName: iconName, ... });
+            // PORT-TODO: DEFERRED — tooltip wiring (`graphic.setTooltipConfig`) out of static-render scope.
+
+            // The hover handlers (mouseover: reveal title + enterEmphasis; mouseout: leaveEmphasis + hide)
+            //   are DEFERRED — emphasis/blur + hover-title reveal are out of static-render scope.
+            //   (featureModel.get(['iconStatus', iconName]) === 'emphasis' ? enterEmphasis : leaveEmphasis)(path);
+
+            _ = group.add(path)
+
+            // path.on('click', bind(feature.onclick, feature, ecModel, api, iconName));
+            //   Wired faithfully: a live-host click dispatches the feature's action (restore / magicType
+            //   are pure option/dispatch → end-to-end). The headless render pipeline never fires it.
+            path.on("click", { [weak feature] _, _ in
+                feature?.onclick(ecModel, api, iconName)
+                return nil
+            })
+
+            iconPathsStore.paths[iconName] = path
+        }
+    }
+
+    // updateView(toolboxModel, ecModel, api, payload)
+    open override func updateView(
+        _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        for (_, feature) in self._features {
+            feature.updateView(feature.model, ecModel, api, payload)
+        }
+    }
+
+    // dispose(ecModel, api)
+    open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        for (_, feature) in self._features {
+            feature.dispose(ecModel, api)
+        }
+    }
+}
+
+// function isUserFeatureName(featureName) { return featureName.indexOf('my') === 0; }
+private func isUserFeatureName(_ featureName: String) -> Bool {
+    return featureName.hasPrefix("my")
+}
+
+// export default ToolboxView;  -> `open class ToolboxView` above.
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// PORT-TODO helpers — NOT part of toolbox/ToolboxView.ts upstream. They reproduce out-of-phase
+// sibling APIs / JS idioms so the static toolbox render compiles. Delete each when its real sibling
+// lands and call the sibling directly.
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+/// Reproduce `graphic.createIcon`'s `path://` / direct-svg branch: `makePath(str.replace('path://',''),
+///   {rectHover:true, style:{strokeNoScale:true}}, rect, 'center')`. (The `image://` branch is DEFERRED.)
+private func toolboxCreateIcon(_ iconStr: String, _ rect: BoundingRect) -> SVGPath {
+    // PORT-TODO: `image://` icons (a ZRImage) are DEFERRED — only the path/svg branch is reproduced.
+    let pathData = iconStr.hasPrefix("path://") ? String(iconStr.dropFirst("path://".count)) : iconStr
+    let path = ZRenderKit.makePath(pathData, nil, rect, "center")
+    path.pathStyle.strokeNoScale = true
+    path.dirtyStyle()
+    return path
+}
+
+/// JS truthiness for the dynamic option bag (`if (x)` / `!x`). (CONVENTIONS §6.)
+private func toolboxTruthy(_ v: Any?) -> Bool {
+    guard let v = v else { return false }
+    if let b = v as? Bool { return b }
+    if let d = v as? Double { return d != 0 && !d.isNaN }
+    if let i = v as? Int { return i != 0 }
+    if let s = v as? String { return !s.isEmpty }
+    return true
+}
+
+/// `+toolboxModel.get('itemSize')` — coerce an option number boxed as Int OR Double (CRITICAL trap #2).
+func toolboxNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let s = v as? String { return Double(s) }
+    return nil
+}
+
+/// Faithful minimal reproduction of `component/helper/listComponent.makeBackground` (same PORT-TODO as
+///   LegendView.makeBackground). Delete when component/helper/listComponent.swift lands.
+private func toolboxMakeBackground(_ rect: BoundingRect, _ componentModel: ComponentModel) -> Rect {
+    let padding = toolboxNormalizeCssArray(componentModel.get("padding"))
+    var style = componentModel.getItemStyle(["color", "opacity"])
+    style["fill"] = componentModel.get("backgroundColor")
+
+    var shape = RectShape()
+    shape.x = rect.x - padding[3]
+    shape.y = rect.y - padding[0]
+    shape.width = rect.width + padding[1] + padding[3]
+    shape.height = rect.height + padding[0] + padding[2]
+    shape.r = toolboxBorderRadius(componentModel.get("borderRadius"))
+
+    return Rect([
+        "shape": shape as PathShape,
+        "style": barStyleFromDict(style),
+        "silent": true,
+        "z2": -1.0
+    ])
+}
+
+/// `formatUtil.normalizeCssArray(padding || 0)` on the dynamic `number | number[]` option value.
+private func toolboxNormalizeCssArray(_ v: Any?) -> [Double] {
+    if let arr = v as? [Double] { return format.normalizeCssArray(arr) }
+    if let arr = v as? [Any] { return format.normalizeCssArray(arr.map { toolboxNum($0) ?? 0 }) }
+    if let d = toolboxNum(v) { return format.normalizeCssArray(d) }
+    return format.normalizeCssArray(0.0)
+}
+
+/// upstream `shape.r = componentModel.get('borderRadius')` where borderRadius is `number | number[]`.
+private func toolboxBorderRadius(_ v: Any?) -> RectRadius? {
+    if let arr = v as? [Double] { return .array(arr) }
+    if let arr = v as? [Any] { return .array(arr.map { toolboxNum($0) ?? 0 }) }
+    if let d = toolboxNum(v) { return .number(d) }
+    return nil
+}

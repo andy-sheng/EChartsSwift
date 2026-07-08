@@ -275,6 +275,15 @@ public final class EChartsSlim: EChartsType {
     private var _width: Double
     private var _height: Double
 
+    // ---- theme / locale (mirrors upstream `ECharts._theme` resolution in `echarts.init`) ----
+    /// The theme passed to `init` — a `String` (a name registered via `registerTheme`) or a
+    /// `[String: Any]` theme object. Resolved to a dict in `setOption` and handed to
+    /// `GlobalModel.init`, which merges it into the option via `mergeTheme`. Upstream `echarts.init`.
+    private let _userTheme: Any?
+    /// The locale passed to `init` — a `String` lang name (registered via `registerLocale`) or a
+    /// `[String: Any]` locale object. Defaults to `locale.SYSTEM_LANG` (EN). Upstream `echarts.init`.
+    private let _userLocale: Any?
+
     /// The flattened, z-sorted display list (upstream: `zr.storage`). A host painter consumes this.
     public let storage = Storage()
     /// The ec root `Group` — all view groups are added here (upstream: elements added to `zr`).
@@ -299,12 +308,43 @@ public final class EChartsSlim: EChartsType {
     /// under the symbol-ish key `IN_EC_CYCLE_KEY` (`'__flagInMainProcess'`).
     private var _inEcCycle = false
 
-    public init(width: Double, height: Double) {
+    // upstream: echarts.init(dom, theme?, opts?) — `theme` is a registered name or a theme object,
+    //   `opts.locale` a registered lang name or a locale object. Both are optional; nil theme merges
+    //   nothing, nil locale resolves to `locale.SYSTEM_LANG` (EN).
+    public init(width: Double, height: Double, theme: Any? = nil, locale: Any? = nil) {
         self._width = width
         self._height = height
+        self._userTheme = theme
+        self._userLocale = locale
         EChartsSlim.installOnce()
         // `_api` needs `self`; all stored properties are initialized above, so it is safe now.
         self._api = SlimExtensionAPI(ec: self)
+    }
+
+    // ------------------------------------------------------------------------
+    // Theme registry. Upstream echarts.ts keeps a module-level `themeStorage` map and
+    //   `registerTheme(name, theme)` writes to it; `init(dom, theme)` looks a string theme up there.
+    //   The built-in `dark` theme is registered in `installOnce()`.
+    // ------------------------------------------------------------------------
+    private static var _themeStorage: [String: [String: Any]] = [:]
+
+    // upstream: export function registerTheme(name: string, theme: ThemeOption)
+    public static func registerTheme(_ name: String, _ theme: [String: Any]) {
+        _themeStorage[name] = theme
+    }
+
+    // upstream (echarts.init): theme = isString(theme) ? themeStorage[theme] : theme
+    private func resolveTheme() -> [String: Any] {
+        if let name = _userTheme as? String {
+            return EChartsSlim._themeStorage[name] ?? [:]
+        }
+        return (_userTheme as? [String: Any]) ?? [:]
+    }
+
+    // upstream (echarts.init): createLocaleObject(opts.locale || SYSTEM_LANG)
+    private func resolveLocale() -> [String: Any] {
+        let arg: Any = _userLocale ?? EChartsKit.locale.SYSTEM_LANG
+        return EChartsKit.locale.createLocaleObject(arg)
     }
 
     // ------------------------------------------------------------------------
@@ -350,6 +390,17 @@ public final class EChartsSlim: EChartsType {
     static func installOnce() {
         if _installed { return }
         _installed = true
+
+        // -- core/locale.ts module side-effects -- registerLocale('EN', langEN) + registerLocale('ZH',
+        //   langZH). A Swift caseless enum has no module init slot, so the default registration is run
+        //   here (idempotent). `GlobalModel.getLocaleModel()` returns the per-instance locale Model built
+        //   from `locale.createLocaleObject(SYSTEM_LANG)` in setOption below.
+        locale.registerDefaultLocales()
+
+        // -- theme/dark.ts + echarts.ts `registerTheme('dark', darkTheme)` -- register the built-in dark
+        //   theme so `EChartsSlim(width:height:theme: "dark")` resolves it by name (mirrors the upstream
+        //   `themeStorage` lookup in `echarts.init(dom, theme)`).
+        registerTheme("dark", darkTheme.theme)
 
         // -- features/index.ts `use(install)` for the AxisBreak feature -- registers the concrete
         //   scale-break helper (scale/breakImpl.ts `installScaleBreakHelper`). Idempotent; enables the
@@ -752,6 +803,7 @@ public final class EChartsSlim: EChartsType {
         //   handlers. The on-canvas icon VIEW + host-dependent features (saveAsImage/dataView/dataZoom-select/
         //   brush button) are DEFERRED; the option-expressible feature DATA cores are wired.
         ComponentModel.registerClass(ToolboxModel.self)                     // registerComponentModel(ToolboxModel)
+        registerToolboxFeatures()                                           // registerFeature('saveAsImage'/'magicType'/'dataZoom'/'restore')
         installToolboxActions(EChartsSlim._registers)                       // registerAction('restore'/'changeMagicType')
 
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
@@ -782,6 +834,11 @@ public final class EChartsSlim: EChartsType {
         //   `graphRoam` action (pan/zoom → the graph view coord sys). See roamHelperGraph.swift.
         //   Idempotent: `registerAction` early-returns on a duplicate type.
         registerGraphRoamAction()
+
+        // -- component/geo/install.ts `registerAction({type:'geoRoam', ...})` +
+        //   chart/map/install.ts `registerRoamActionSimply(registers, 'series', 'map')` (both resolve to
+        //   action type 'geoRoam', "Historical setting") -- the geo/map pan/zoom action. See roamHelperGeo.
+        registerGeoRoamAction()
 
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
@@ -855,7 +912,10 @@ public final class EChartsSlim: EChartsType {
         //   looks up its per-series marker submodel, and draws the points/lines/areas.
         "markPoint": { MarkPointView() },
         "markLine": { MarkLineView() },
-        "markArea": { MarkAreaView() }
+        "markArea": { MarkAreaView() },
+        // toolbox icon row (component/toolbox/install.ts `registerComponentView(ToolboxView)`). Renders
+        //   the feature icon buttons (saveAsImage/restore/dataZoom/magicType) via makePath in a box row.
+        "toolbox": { ToolboxView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -974,7 +1034,11 @@ public final class EChartsSlim: EChartsType {
         let ecModel = GlobalModel()
         let om = OptionManager(_api)
         // init(option, parentModel, ecModel, theme, locale, optionManager)
-        ecModel.`init`(nil, nil, nil, [String: Any](), [String: Any](), om)
+        //   theme: resolved from the `init(theme:)` arg (a registered name or a dict); merged into the
+        //   option by GlobalModel.mergeTheme (backgroundColor / textStyle / axis colors / palette).
+        //   locale: `createLocaleObject(opts.locale || SYSTEM_LANG)` — the default (EN) locale Model
+        //   feeds getLocaleModel() reads (legend selector, time-axis month/day names, toolbox titles).
+        ecModel.`init`(nil, nil, nil, resolveTheme(), resolveLocale(), om)
         ecModel.setOption(opt, nil, [])
         self._model = ecModel
 
@@ -1226,6 +1290,30 @@ public final class EChartsSlim: EChartsType {
         _chartsMap.removeAll()
         _componentViewByModel.removeAll()
         _chartViewByModel.removeAll()
+
+        // BACKGROUND — upstream `echarts._updateBackground` calls `zr.setBackgroundColor(backgroundColor)`
+        //   (a painter-level clear color). The slim driver renders into a bare Group and has no painter clear
+        //   hook (that is a host concern, e.g. CALayerPainter's white), so instead draw the resolved
+        //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything — added first so it paints
+        //   under all component/series groups, and host-independent (native PNG + live view both show it).
+        //   This is what makes the dark theme's dark ground actually visible. Transparent/absent → no rect
+        //   (the host clear shows through, preserving the default white). Gradient backgrounds: PORT-TODO
+        //   (only the string form is handled; the dark theme + explicit `backgroundColor` option are strings).
+        if let bg = ecModel.get("backgroundColor", true) as? String,
+           !bg.isEmpty, bg != "transparent", bg != "rgba(0,0,0,0)" {
+            var shape = RectShape()
+            shape.x = 0
+            shape.y = 0
+            shape.width = _width
+            shape.height = _height
+            let bgRect = Rect([
+                "shape": shape as PathShape,
+                "style": ["fill": bg] as [String: Any],
+                "silent": true,
+                "z2": -Double.greatestFiniteMagnitude
+            ])
+            _ = root.add(bgRect)
+        }
 
         prepareView(isComponent: true, ecModel: ecModel, api: api)
         prepareView(isComponent: false, ecModel: ecModel, api: api)

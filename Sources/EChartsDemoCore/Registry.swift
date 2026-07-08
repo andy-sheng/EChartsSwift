@@ -2,6 +2,7 @@
 // Add a new Demos/*.swift then append its constant here.
 extension EChartsDemoRegistry {
     public static let everything: [EChartsDemo] = [
+        EChartsDemoRegistry.demo_dark_basic,    // Theme (built-in dark theme palette)
         EChartsDemoRegistry.demo_bar_basic,     // Bar
         EChartsDemoRegistry.demo_bar_seven,     // Bar
         EChartsDemoRegistry.demo_line_basic,    // Line
@@ -138,5 +139,6 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_sunburst_labeled,      // Sunburst (labels)
         EChartsDemoRegistry.demo_bar_min_height,        // Bar (barMinHeight)
         EChartsDemoRegistry.demo_line_two_smooth,       // Line (two smooth)
+        EChartsDemoRegistry.demo_toolbox_basic,         // Component (toolbox icon row)
     ]
 }

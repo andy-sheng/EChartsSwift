@@ -237,9 +237,11 @@ func resizeGeo(_ geo: Geo, _ geoModel: MapOrGeoModel, _ api: ExtensionAPI) {
     // viewCoordSysSetViewRect(viewCoordSys, viewRect.x, viewRect.y, viewRect.width, viewRect.height);
     viewCoordSysSetViewRect(viewCoordSys, viewRect.x, viewRect.y, viewRect.width, viewRect.height)
     // viewCoordSysSetRoamOptionFromModel(viewCoordSys, geoModel);
-    // PORT-TODO: roam (pan/zoom) is DEFERRED and `viewCoordSysSetRoamOptionFromModel` (coord/View.ts) is
-    //   NOT yet ported in View.swift. Wire it once ported:
-    //     viewCoordSysSetRoamOptionFromModel(viewCoordSys, geoModel)
+    //   Port: roam (pan/zoom) state lives in a per-host-model inner store (seeded from the host
+    //   center/zoom/scaleLimit option on first build, written by the `geoRoam` action thereafter). This
+    //   seeds the freshly-built View with that state — the equivalent of `viewCoordSysSetRoamOptionFromModel`.
+    //   See roamHelperGeo.swift.
+    geoRoamApplyStateToView(geoModel, viewCoordSys)
 }
 
 // Back compat for ECharts2, where the coord map is set on map series:

@@ -177,4 +177,25 @@ extension EChartsDemoRegistry {
                 ["name": "lo", "type": "line", "smooth": true, "data": [10.0,15,12,20,17,24,21]] as [String: Any]
             ]
         ])
+
+    // Toolbox icon row (top-right): magicType line↔bar, restore, dataZoom box, saveAsImage. Exercises
+    //   the toolbox VIEW (feature icons rendered via makePath, laid out by the box layout).
+    static let demo_toolbox_basic = EChartsDemo(
+        name: "toolbox-basic", category: "Component",
+        summary: "toolbox icon row (magicType / restore / dataZoom / saveAsImage)",
+        width: 460, height: 300,
+        option: [
+            "grid": ["left": 50.0, "top": 40.0, "width": 380.0, "height": 220.0] as [String: Any],
+            "toolbox": [
+                "feature": [
+                    "magicType": ["type": ["line", "bar", "stack"]] as [String: Any],
+                    "restore": [String: Any](),
+                    "dataZoom": [String: Any](),
+                    "saveAsImage": [String: Any]()
+                ] as [String: Any]
+            ] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A","B","C","D","E","F"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "bar", "data": [12.0, 20, 15, 28, 18, 24]] as [String: Any]]
+        ])
 }

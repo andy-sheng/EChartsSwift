@@ -68,6 +68,41 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertNil(stackOf(view), "magicType('tiled') clears the stack")
     }
 
+    // ---- (1c) the toolbox VIEW renders one icon path per enabled feature icon ----
+    //   magicType(type:[line,bar]) → 2 icons (line + bar), restore → 1 icon ⇒ 3 SVGPath icons.
+    func testToolboxViewRendersFeatureIcons() {
+        let view = makeChart()
+
+        // The restore + magicType features must be registered so the model merges their default
+        //   `icon`/`title` into the feature option (and the view can build the icon paths).
+        XCTAssertNotNil(getFeature("restore"), "restore feature must be registered")
+        XCTAssertNotNil(getFeature("magicType"), "magicType feature must be registered")
+        XCTAssertNotNil(getFeature("saveAsImage"), "saveAsImage feature must be registered")
+        XCTAssertNotNil(getFeature("dataZoom"), "dataZoom feature must be registered")
+
+        // Count the makePath icon paths (SVGPath) in the rendered display list. Icons are the only
+        //   SVGPath elements in a plain bar/line + toolbox chart (axes emit Line/Rect, the toolbox
+        //   background is a Rect); each enabled feature icon is exactly one SVGPath.
+        var iconCount = 0
+        _ = view.ec.getRoot().traverse { el in
+            if el is SVGPath { iconCount += 1 }
+            return false
+        }
+        XCTAssertEqual(iconCount, 3,
+                       "toolbox should render 3 feature icons (magicType line+bar, restore), got \(iconCount)")
+    }
+
+    // ---- (1d) each icon carries a hidden title text content (revealed on hover) ----
+    func testToolboxIconsCarryTitleTextContent() {
+        let view = makeChart()
+        var iconsWithText = 0
+        _ = view.ec.getRoot().traverse { el in
+            if let p = el as? SVGPath, p.getTextContent() != nil { iconsWithText += 1 }
+            return false
+        }
+        XCTAssertEqual(iconsWithText, 3, "every toolbox icon should carry a title textContent")
+    }
+
     // ---- (2) restore resets a magicType swap back to the original option ----
     func testRestoreResetsMagicType() {
         let view = makeChart()
