@@ -69,6 +69,24 @@ final class LegendToggleSelectTests: XCTestCase {
         XCTAssertFalse(stillEmphasis, "legend mouseout (downplay) must clear the emphasis")
     }
 
+    // Regression: after a series is toggled OFF (legend-filtered → no view), a subsequent
+    // highlight/downplay must NOT crash. doDispatchAction runs allLeaveBlur, which walks every series
+    // and looked up its view with a force-unwrap — nil for the filtered series → crash on legend hover.
+    func testDispatchAfterLegendHideDoesNotCrash() {
+        let ec = makeTwoSeriesWithLegend()
+        var off = Payload(type: "legendToggleSelect"); off.other["name"] = "Beta"
+        ec.dispatchAction(off)   // Beta now filtered out (no view)
+
+        // A legend hover on the still-visible item dispatches highlight then downplay — both run
+        // allLeaveBlur / blurSeries over ALL series including the view-less Beta.
+        var hi = Payload(type: "highlight"); hi.other["seriesName"] = "Alpha"
+        ec.dispatchAction(hi)
+        var lo = Payload(type: "downplay"); lo.other["seriesName"] = "Alpha"
+        ec.dispatchAction(lo)
+        // Reaching here without a trap is the assertion.
+        XCTAssertEqual(renderedSeriesNames(ec), ["Alpha"], "Beta stays hidden; no crash on blur over a view-less series")
+    }
+
     // An UNSELECTED (toggled-off) scatter legend item must GREY OUT its icon, not make it vanish. The
     // icon color must come from the legend-computed itemStyle (grey inactiveColor), NOT the series data
     // visual (which is empty for a legend-filtered series → previously nil fill → invisible icon).

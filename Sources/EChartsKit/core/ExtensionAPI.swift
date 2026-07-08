@@ -99,7 +99,11 @@ open class ExtensionAPI {
     open func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {
         fatalError("abstract method ExtensionAPI.getViewOfComponentModel must be overridden") // PORT-TODO: abstract
     }
-    open func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
+    // Returns nil for a series with no live view — e.g. a legend-filtered (toggled-off) series, whose
+    //   view is not created/rendered. Upstream `getViewOfSeriesModel` likewise returns undefined then;
+    //   callers (allLeaveBlur / blurSeries) must guard (a force-unwrap here crashed on legend hover after
+    //   a series was hidden).
+    open func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView? {
         fatalError("abstract method ExtensionAPI.getViewOfSeriesModel must be overridden") // PORT-TODO: abstract
     }
     open func getModel() -> GlobalModel {

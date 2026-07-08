@@ -501,8 +501,8 @@ public enum states {
                 (effectiveBlurScope == .series && !sameSeries)
                 || (effectiveBlurScope == .coordinateSystem && !sameCoordSys)
                 || (fs == "series" && sameSeries)
-            if !skip {
-                let view = api.getViewOfSeriesModel(seriesModel)
+            if !skip, let view = api.getViewOfSeriesModel(seriesModel) {
+                // nil view → a legend-filtered / unrendered series; nothing to blur.
                 _ = view.group.traverse({ child in
                     // Elements highlighted by other components (`__highByOuter`) that are still required
                     // to be highlighted (self-focus, same series) are skipped so focus-self can win.

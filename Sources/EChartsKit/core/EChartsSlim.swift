@@ -2178,8 +2178,8 @@ final class SlimExtensionAPI: ExtensionAPI {
     override func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {
         return ec.viewOfComponentModel(componentModel)   // may be nil: viewless component (e.g. polar)
     }
-    override func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
-        return ec.viewOfSeriesModel(seriesModel)!
+    override func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView? {
+        return ec.viewOfSeriesModel(seriesModel)   // nil for a legend-filtered / unrendered series
     }
     // upstream: `getComponentByElement(el)` — walk `el` up (via `__hostTarget ?? parent`) to the nearest
     //   element carrying ECData, and resolve the owning component/series model. Used by roam/brush
