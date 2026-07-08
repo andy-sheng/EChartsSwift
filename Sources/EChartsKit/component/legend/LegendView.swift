@@ -287,11 +287,17 @@ open class LegendView: ComponentView {
                     lineVisualStyle, style, legendIcon, selectMode, api
                 )
 
-                // PORT-TODO: DEFERRED interaction wiring (task: STATIC RENDER ONLY):
-                //   itemGroup.on('click', curry(dispatchSelectAction, name, null, api, excludeSeriesId))
-                //     .on('mouseover', curry(dispatchHighlightAction, seriesModel.name, null, api, excludeSeriesId))
-                //     .on('mouseout', curry(dispatchDownplayAction, seriesModel.name, null, api, excludeSeriesId));
-                _ = itemGroup
+                // upstream: itemGroup.on('click', curry(dispatchSelectAction, name, null, api, excludeSeriesId))
+                //   — a legend item click dispatches legendToggleSelect(name); the action toggles
+                //   LegendModel.selected and the driver's full update() re-runs legendFilter to show/hide the
+                //   series. (The mouseover/mouseout legend-hover highlight/downplay wiring is still DEFERRED.)
+                let clickName = name ?? ""
+                _ = itemGroup.on("click", { _, _ in
+                    var p = Payload(type: "legendToggleSelect")
+                    p.other["name"] = clickName
+                    api.dispatchAction(p)
+                    return nil
+                }, nil)
 
                 // PORT-TODO: DEFERRED SSR wiring — `if (ecModel.ssr) { itemGroup.eachChild(child => {
                 //   getECData(child).seriesIndex/dataIndex/ssrType = ... }) }`.
@@ -321,13 +327,20 @@ open class LegendView: ComponentView {
                         let legendIcon = provider.getItemVisual(dataIdx, "legendIcon") as? String
 
                         // PORT-TODO: the transparent-fill → 0.2-alpha fix-up (color.parse/stringify) and the
-                        //   click/mouseover/mouseout dispatch wiring are DEFERRED (interaction). The visible
-                        //   normal-state legend item is built faithfully.
-                        _ = self._createItem(
+                        //   mouseover/mouseout dispatch wiring are DEFERRED (interaction). The click →
+                        //   legendToggleSelect(dataName) IS wired (pie/funnel slice show/hide).
+                        let dataItemGroup = self._createItem(
                             seriesModel, name, Double(dataIndex),
                             legendItemModel, legendModel, itemAlign,
                             [:], style, legendIcon, selectMode, api
                         )
+                        let clickDataName = name
+                        _ = dataItemGroup.on("click", { _, _ in
+                            var p = Payload(type: "legendToggleSelect")
+                            p.other["name"] = clickDataName
+                            api.dispatchAction(p)
+                            return nil
+                        }, nil)
 
                         legendDrawnMap.set(name, true)
                     }

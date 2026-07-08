@@ -835,6 +835,12 @@ public final class EChartsSlim: EChartsType {
         registerToolboxFeatures()                                           // registerFeature('saveAsImage'/'magicType'/'dataZoom'/'restore')
         installToolboxActions(EChartsSlim._registers)                       // registerAction('restore'/'changeMagicType')
 
+        // component/legend/legendAction.ts `installLegendAction` — registerAction('legendToggleSelect'/
+        //   'legendSelect'/'legendUnSelect'/'legendAllSelect'/'legendInverseSelect', update:'update'). A
+        //   legend item click dispatches legendToggleSelect (wired in LegendView._createItem); the handler
+        //   toggles LegendModel.selected, and the driver's full update() re-runs legendFilter to show/hide.
+        installLegendAction(EChartsSlim._registers)
+
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
         //   registerComponentModel(MarkPointModel/MarkLineModel/MarkAreaModel) + the auto-enable
         //   preprocessors (called in setOption). Markers render statically & faithfully: the Phase-51 axis
@@ -1169,6 +1175,14 @@ public final class EChartsSlim: EChartsType {
                 _ = sampler.reset?(seriesModel, ecModel, api, nil)
             }
         }
+
+        // PROCESSOR — legend show/hide (upstream component/legend/legendFilter.ts, registered at
+        //   PRIORITY.PROCESSOR.SERIES_FILTER). Drops any series whose name is unselected in a legend, so a
+        //   legendToggleSelect (from a legend item click) hides/shows the series. `filterSeries` shrinks
+        //   `_seriesIndices` (honoured by eachSeries/renderSeries + skipped by the axis-extent processors);
+        //   `restoreData()` at the top of update() reset it, so re-selecting restores the series. Must run
+        //   BEFORE coordSysMgr.update + the visual/view stages. Self-gates to a no-op when no legend exists.
+        legendFilter(ecModel)
 
         // PROCESSOR — graph categoryFilter (upstream `registerProcessor(PROCESSOR.FILTER, categoryFilter)`).
         //   Filters graph nodes by legend selection; self-gates to a no-op when no legend component is
