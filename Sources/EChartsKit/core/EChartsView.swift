@@ -159,6 +159,14 @@ public final class EChartsView {
     //   on each `setOption` via `_setupGeoRoam` → pan/zoom emit `{type:'geoRoam', ...}` (see roamHelperGeo).
     private var _geoRoamController: RoamController?
 
+    // L3 Roam — TREE / TREEMAP / SANKEY pan/zoom. Same host-owned-controller pattern as the graph/geo
+    //   controllers (upstream each view owns `new RoamController(api.getZr())`; the slim views are zr-less).
+    //   Wired live on each `setOption` via `_setupTreeRoam` / `_setupTreemapRoam` / `_setupSankeyRoam` →
+    //   pan/zoom emit `{type:'treeRoam' | 'treemapRoam' | 'sankeyRoam', ...}` (see roamHelperViewGroup).
+    private var _treeRoamController: RoamController?
+    private var _treemapRoamController: RoamController?
+    private var _sankeyRoamController: RoamController?
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -211,6 +219,11 @@ public final class EChartsView {
         _setupGraphRoam()
         // L3 Roam: (re)wire the geo/map RoamController (upstream MapDraw._updateController per render).
         _setupGeoRoam()
+        // L3 Roam: (re)wire the tree / treemap / sankey RoamControllers (upstream each view's render calls
+        //   updateRoamControllerSimply / _resetController).
+        _setupTreeRoam()
+        _setupTreemapRoam()
+        _setupSankeyRoam()
     }
 
     // ------------------------------------------------------------------------
@@ -291,6 +304,78 @@ public final class EChartsView {
         }
 
         updateGeoRoamControllerSimply(hostModel, ec.api, controller, { [weak self] in
+            guard let self = self else { return }
+            _ = self.zr.storage.getDisplayList(true)
+            self.zr.refresh()
+        })
+    }
+
+    // ------------------------------------------------------------------------
+    // _setupTreeRoam / _setupTreemapRoam / _setupSankeyRoam — L3 Roam VIEW-GROUP wiring. For the first
+    //   tree / treemap / sankey series with `roam` truthy, enable the shared `RoamController` over the live
+    //   zr and wire pan/zoom → `treeRoam` / `treemapRoam` / `sankeyRoam` (see roamHelperViewGroup). The
+    //   `onDispatched` seam flushes the zr display list + repaints after the action's full re-render (same
+    //   pattern as the graph/geo wiring). If nothing wants roam, the controller is disabled.
+    //   NOTE: treemap's default `roam` is `true`, so a treemap chart gets a live controller by default; the
+    //   roam state starts at identity, so the render is unchanged until the user actually drags/zooms.
+    // ------------------------------------------------------------------------
+    private func _setupTreeRoam() {
+        guard let ecModel = ec.getModel() else { return }
+        var roamSeries: TreeSeriesModel?
+        ecModel.eachSeriesByType("tree") { s, _ in
+            guard roamSeries == nil, let tm = s as? TreeSeriesModel else { return }
+            if self._viewRoamTruthy(tm.get("roam")) { roamSeries = tm }
+        }
+        guard let seriesModel = roamSeries else {
+            _treeRoamController?.disable()
+            return
+        }
+        let controller: RoamController
+        if let existing = _treeRoamController { controller = existing }
+        else { controller = RoamController(zr); _treeRoamController = controller }
+        updateTreeRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
+            guard let self = self else { return }
+            _ = self.zr.storage.getDisplayList(true)
+            self.zr.refresh()
+        })
+    }
+
+    private func _setupTreemapRoam() {
+        guard let ecModel = ec.getModel() else { return }
+        var roamSeries: TreemapSeriesModel?
+        ecModel.eachSeriesByType("treemap") { s, _ in
+            guard roamSeries == nil, let tm = s as? TreemapSeriesModel else { return }
+            if self._viewRoamTruthy(tm.get("roam")) { roamSeries = tm }
+        }
+        guard let seriesModel = roamSeries else {
+            _treemapRoamController?.disable()
+            return
+        }
+        let controller: RoamController
+        if let existing = _treemapRoamController { controller = existing }
+        else { controller = RoamController(zr); _treemapRoamController = controller }
+        updateTreemapRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
+            guard let self = self else { return }
+            _ = self.zr.storage.getDisplayList(true)
+            self.zr.refresh()
+        })
+    }
+
+    private func _setupSankeyRoam() {
+        guard let ecModel = ec.getModel() else { return }
+        var roamSeries: SankeySeriesModel?
+        ecModel.eachSeriesByType("sankey") { s, _ in
+            guard roamSeries == nil, let sm = s as? SankeySeriesModel else { return }
+            if self._viewRoamTruthy(sm.get("roam")) { roamSeries = sm }
+        }
+        guard let seriesModel = roamSeries else {
+            _sankeyRoamController?.disable()
+            return
+        }
+        let controller: RoamController
+        if let existing = _sankeyRoamController { controller = existing }
+        else { controller = RoamController(zr); _sankeyRoamController = controller }
+        updateSankeyRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
             guard let self = self else { return }
             _ = self.zr.storage.getDisplayList(true)
             self.zr.refresh()

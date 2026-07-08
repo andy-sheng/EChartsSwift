@@ -92,6 +92,45 @@ final class EffectLineAnimationTests: XCTestCase {
                       "advancing the clip should move the trail symbol along the line: \(startPos) vs \(midPos)")
     }
 
+    /// EffectPolyline arc-length walk, EXACT positions on a known 2-segment polyline (upstream
+    /// EffectPolyline._updateAnimationPoints + _updateSymbolPosition). Drives `EffectLine.add` directly
+    /// in PIXEL space (no coord system) so the expected positions are computable by hand:
+    ///   points [[0,0],[10,0],[10,10]] → seg1 len 10, seg2 len 10, total 20 → offsets [0, 0.5, 1].
+    ///   t=0   → the polyline start (0,0).
+    ///   t=0.5 → exactly the junction between the two segments (10,0).
+    /// period 4000ms, delay 0 → clip percent = t for the non-roundTrip case (maxT == 1).
+    func test_polyline_effect_symbol_exact_positions_at_t0_and_t_half() throws {
+        let group = Group()
+        let effectModel = Model([
+            "period": 4.0, "symbol": "circle", "symbolSize": 6.0,
+            "loop": true, "roundTrip": false, "delay": 0.0
+        ] as [String: Any])
+        guard let sym = EffectLine.add(
+            to: group,
+            points: [[0, 0], [10, 0], [10, 10]],
+            isPolyline: true,
+            effectModel: effectModel,
+            idx: 0,
+            count: 1,
+            strokeColor: "#ff0000"
+        ) else {
+            return XCTFail("EffectLine.add must build a polyline effect symbol")
+        }
+        guard let clip = sym.animators.first?.getClip() else {
+            return XCTFail("polyline effect symbol missing animator clip")
+        }
+
+        // t = 0 → the polyline start point (0, 0).
+        _ = clip.step(0, 0)
+        XCTAssertEqual(sym.x, 0, accuracy: 1e-6, "t=0 must place the dot at the polyline start x")
+        XCTAssertEqual(sym.y, 0, accuracy: 1e-6, "t=0 must place the dot at the polyline start y")
+
+        // t = 0.5 (half of the 4000ms period) → exactly the mid junction (10, 0).
+        _ = clip.step(2000, 2000)
+        XCTAssertEqual(sym.x, 10, accuracy: 1e-6, "t=0.5 must place the dot at the segment junction x")
+        XCTAssertEqual(sym.y, 0, accuracy: 1e-6, "t=0.5 must place the dot at the segment junction y")
+    }
+
     /// Polyline lines drive the EffectPolyline arc-length walk; it must still build a moving symbol.
     func test_polyline_effect_symbol_created_and_moves() throws {
         let view = makeView(effect: true, polyline: true)

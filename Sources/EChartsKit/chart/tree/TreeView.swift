@@ -210,21 +210,30 @@ open class TreeView: ChartView {
         // const layout = seriesModel.get('layout');
         let layout = (seriesModel.get("layout", false) as? String) ?? "orthogonal"
 
+        // L3 Roam: capture the base (roam-free) placement; the roam transform is applied on top of it at
+        //   the END of render (viewGroupRoamApplyStateToGroup). Identity roam state → group.x = baseX etc.
+        let baseX: Double
+        let baseY: Double
         if layout == "radial" {
-            group.x = layoutInfo.x + layoutInfo.width / 2
-            group.y = layoutInfo.y + layoutInfo.height / 2
+            baseX = layoutInfo.x + layoutInfo.width / 2
+            baseY = layoutInfo.y + layoutInfo.height / 2
         }
         else {
-            group.x = layoutInfo.x
-            group.y = layoutInfo.y
+            baseX = layoutInfo.x
+            baseY = layoutInfo.y
         }
+        group.x = baseX
+        group.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-TODO: view coord system (bbox + createViewCoordSysSimply + applyViewCoordSysTransToElement)
-        //   is DEFERRED (coord/View + roamHelper not ported). The group position set above is the static
-        //   subset of the placement it performs; roam pan/zoom is not applied.
+        //   PORT-TODO: the upstream `View` VIEW_COORD_SYS placement (bbox + createViewCoordSysSimply +
+        //   applyViewCoordSysTransToElement) is DEFERRED (coord/View not ported). The group position set
+        //   above is the static subset of that placement; the roam pan/zoom is applied to the group as a
+        //   TRANSFORM at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
 
-        // updateRoamControllerSimply(...);  — PORT-TODO: roam DEFERRED.
+        // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
+        //   live by EChartsView._setupTreeRoam (the slim TreeView is zr-less); the roam STATE it accumulates
+        //   is re-applied to the group below.
 
         // ------------------------------------------------------------------------------------------
         // NODE SYMBOLS routed through the shared SymbolDraw (chart/helper/SymbolDraw), mirroring the
@@ -284,10 +293,22 @@ open class TreeView: ChartView {
 
         self._data = data
 
-        // this._firstRender = false;  — PORT-TODO: roam state DEFERRED.
+        // L3 Roam: re-apply the accumulated roam transform to the main group (upstream applies center/zoom
+        //   through the View coord sys; the port transforms the group directly — see roamHelperViewGroup).
+        //   On first render / roam off, the state is identity → the placement above is left exactly as-is.
+        viewGroupRoamApplyStateToGroup(seriesModel, group, baseX, baseY)
+
+        // this._firstRender = false;  — PORT-TODO: the enter/roam animation flag stays DEFERRED.
     }
 
-    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — PORT-TODO: roam DEFERRED.
+    // L3 Roam: the pointer-check element (upstream `createIsInSelfByPointerCheckerEl(this.group)`).
+    func roamPointerCheckerGroup() -> Group { return self.group }
+
+    // L3 Roam (test hook): the main group carrying the roam transform (position + scale).
+    var _mainGroupForTest: Group { return self._mainGroup }
+
+    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — the port re-renders via the full update()
+    //   the `treeRoam` action triggers (see roamHelperViewGroup.swift DEVIATION note); no partial path.
 
     // upstream: private _updateViewCoordSys(seriesModel, api)  — PORT-TODO: coord/View + bbox DEFERRED.
 

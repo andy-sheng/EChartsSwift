@@ -186,5 +186,63 @@ final class ZZTopologyFocusTests: XCTestCase {
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(a)), "highlighted node a must not be blurred")
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(b)), "adjacent target b must stay bright")
         XCTAssertTrue(isBlurred(data.getItemGraphicEl(c)), "unrelated node c must be blurred")
+
+        // Ribbons (edges): the adjacency `{node:[a,b], edge:[0]}` set keeps the a→b ribbon (edge 0)
+        //   BRIGHT and blurs the unrelated c→d ribbon (edge 1) — the chord analogue of the graph edge
+        //   fan-out (ChordEdge.updateData → toggleHoverEmphasis → states.blurSeries object-focus branch,
+        //   which resolves the `edge` key through ChordSeriesModel.getData(.edge)).
+        let edgeData = (series as! ChordSeriesModel).getEdgeData()
+        XCTAssertTrue(edgeData.count() >= 2, "chord must build one ribbon per link")
+        XCTAssertFalse(isBlurred(edgeData.getItemGraphicEl(0)), "adjacent ribbon a-b must stay bright")
+        XCTAssertTrue(isBlurred(edgeData.getItemGraphicEl(1)), "unrelated ribbon c-d must be blurred")
+    }
+
+    // MARK: - Chord LIVE hover → the hovered sector enters the "emphasis" ZR state (the mouse-over leg,
+    //   not the dispatch). Mirrors MapTreemapHoverTests: inject a synthetic pointer over the sector's
+    //   global center through the real Handler hit-test → EChartsView "mouseover" → enterEmphasisWhenMouseOver.
+    func testChordSectorHoverEntersEmphasis() {
+        let view = EChartsView(width: 460, height: 380)
+        view.setOption([
+            "series": [["type": "chord",
+                        "emphasis": ["focus": "adjacency"] as [String: Any],
+                        "data": [
+                            ["name": "a"] as [String: Any], ["name": "b"] as [String: Any],
+                            ["name": "c"] as [String: Any], ["name": "d"] as [String: Any]
+                        ],
+                        "links": [
+                            ["source": "a", "target": "b", "value": 5.0] as [String: Any],
+                            ["source": "c", "target": "d", "value": 3.0] as [String: Any]
+                        ]] as [String: Any]]
+        ])
+        let series = view.ec.getModel()!.getSeriesByIndex(0)!
+        let data = series.getData()
+        var aIdx = -1
+        for i in 0..<data.count() where (data.getName(i) == "a") { aIdx = i }
+        XCTAssertTrue(aIdx >= 0, "chord must build a node named 'a'")
+        guard let el = data.getItemGraphicEl(aIdx) else {
+            XCTFail("chord render must populate a sector for 'a'"); return
+        }
+        // The sector is a highDown dispatcher (ChordPiece.updateData → toggleHoverEmphasis).
+        XCTAssertTrue(states.isHighDownDispatcher(el),
+                      "ChordPiece must be marked a highDown dispatcher")
+
+        // The bounding-box center of an annular sector lies OUTSIDE the ring, so hit-test a point that is
+        //   genuinely inside the arc: mid-angle at mid-radius (local sector coords → global).
+        guard let sector = el as? Path, let shape = sector.shape as? SectorShape else {
+            XCTFail("ChordPiece must carry a SectorShape"); return
+        }
+        let midAngle = (shape.startAngle + shape.endAngle) / 2
+        let rMid = (shape.r0 + shape.r) / 2
+        let lx = shape.cx + rMid * cos(midAngle)
+        let ly = shape.cy + rMid * sin(midAngle)
+        let g = el.transformCoordToGlobal(lx, ly)
+        view._injectPointerForTest(type: "mousemove", zrX: g[0], zrY: g[1])
+        XCTAssertTrue(el.currentStates.contains("emphasis"),
+                      "hovering the chord sector must enter the emphasis state")
+
+        // Move off the sector → emphasis clears (the mouseout leg).
+        view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
+        XCTAssertFalse(el.currentStates.contains("emphasis"),
+                       "moving off the sector must clear the emphasis state")
     }
 }

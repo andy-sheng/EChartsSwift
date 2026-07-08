@@ -51,6 +51,36 @@ public func expandOrShrinkRect(
     return rect
 }
 
+// upstream: const AXIS_ALIGN_EPSILON = 1e-5;
+private let AXIS_ALIGN_EPSILON = 1e-5
+
+/// upstream: export function isBoundingRectAxisAligned(transform)
+/// After a boundingRect applying a `transform`, whether to be still parallel screen X and Y.
+public func isBoundingRectAxisAligned(_ transform: MatrixArray?) -> Bool {
+    guard let transform = transform else { return true }
+    return (Swift.abs(transform[1]) < AXIS_ALIGN_EPSILON && Swift.abs(transform[2]) < AXIS_ALIGN_EPSILON)
+        || (Swift.abs(transform[0]) < AXIS_ALIGN_EPSILON && Swift.abs(transform[3]) < AXIS_ALIGN_EPSILON)
+}
+
+/// upstream: export function ensureCopyRect(target, source)
+/// Create or copy to the existing bounding rect to avoid modifying `source`.
+public func ensureCopyRect(_ target: BoundingRect?, _ source: BoundingRect) -> BoundingRect {
+    if let target = target {
+        return BoundingRect.copy(target, source)
+    }
+    return source.clone()
+}
+
+/// upstream: export function ensureCopyTransform(target, source)
+/// Create or copy to the existing transform to avoid modifying `source`. `nil` if no transform,
+/// following zrender's convention (enables bypassing unnecessary calculation).
+/// PORT-NOTE: `matrix.copy` is value-returning here (CONVENTIONS §3), so the incoming `target`
+/// scratch buffer is unused and a fresh MatrixArray is returned.
+public func ensureCopyTransform(_ target: MatrixArray?, _ source: MatrixArray?) -> MatrixArray? {
+    guard let source = source else { return nil }
+    return matrix.copy(source)
+}
+
 // upstream: function expandRectOnOneDimension(rect, delta, xy, wh, ltIdx, rbIdx, minSize)
 //   `isX` selects the x/width pair (true) vs y/height (false). `ltIdx`/`rbIdx` index the left-top /
 //   right-bottom delta for that dimension.

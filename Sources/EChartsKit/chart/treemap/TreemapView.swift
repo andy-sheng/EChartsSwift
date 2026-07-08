@@ -206,11 +206,23 @@ open class TreemapView: ChartView {
         //   rebuild already reflects the final state.
 
         // this._resetController(api);
-        // PORT-TODO: RoamController pan/zoom DEFERRED (roam not ported).
+        //   The RoamController is wired live by EChartsView._setupTreemapRoam (the slim TreemapView is
+        //   zr-less). DEVIATION: upstream treemap roam re-lays-out the tiles into a shifted/scaled
+        //   `rootRect` (`treemapMove`/`treemapRender`); the port instead applies the accumulated roam as a
+        //   TRANSFORM to the container group (see roamHelperViewGroup.swift). Base = (layoutInfo.x, .y)
+        //   (set by _giveContainerGroup); identity roam state → the container is left exactly as-is.
+        viewGroupRoamApplyStateToGroup(seriesModel, containerGroup, layoutInfo.x, layoutInfo.y)
 
         // this._renderBreadcrumb(seriesModel, api, targetInfo);
         self._renderBreadcrumb(seriesModel, api, targetInfo)
     }
+
+    // L3 Roam: the pointer-check element (upstream Treemap._resetController isInSelf reads the container
+    //   group's bounding rect). Returns nil before the first render (container not yet built).
+    func roamPointerCheckerGroup() -> Group? { return self._containerGroup }
+
+    // L3 Roam (test hook): the container group carrying the roam transform (position + scale).
+    var _containerGroupForTest: Group? { return self._containerGroup }
 
     private func _giveContainerGroup(_ layoutInfo: LayoutRect) -> Group {
         // let containerGroup = this._containerGroup;

@@ -274,6 +274,9 @@ public final class EChartsSlim: EChartsType {
     private var _api: ExtensionAPI!                              // upstream: this._api
     private var _width: Double
     private var _height: Double
+    /// The ARIA label string generated during `update()` (upstream `visual/aria.ts` writes it to the
+    /// container DOM's `aria-label`; captured here since there is no DOM). Exposed via `getAriaLabel()`.
+    private var _ariaLabel: String?
 
     // ---- theme / locale (mirrors upstream `ECharts._theme` resolution in `echarts.init`) ----
     /// The theme passed to `init` — a `String` (a name registered via `registerTheme`) or a
@@ -711,6 +714,16 @@ public final class EChartsSlim: EChartsType {
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
+        // -- component/aria/install.ts -- registerPreprocessor(ariaPreprocessor) +
+        //   registerVisual(PRIORITY.VISUAL.ARIA, ariaVisualStageHandler). Aria has NO ComponentModel
+        //   (it reads `ecModel.getModel('aria')` off the raw option; the "aria enabled" default is stamped
+        //   in `initBase`, matching upstream GlobalModel.ts). The preprocessor (`ariaPreprocessor`) runs in
+        //   `setOption` (see below); the visual stage handler generates the accessibility LABEL and is
+        //   invoked directly in `update()` (`aria.ariaLabel(...)` → stored on the ec instance,
+        //   `getAriaLabel()`) because a `StageHandler` returns Void and there is no DOM to write to.
+        //   The `aria.decal.show` decal (SVG-pattern) generation is a PORT-TODO (decal palette infra
+        //   unported). See Sources/EChartsKit/component/aria/ariaVisual.swift + ariaPreprocessor.swift.
+
         // -- component/timeline/install.ts -- registerComponentModel(SliderTimelineModel) +
         //   registerComponentView(SliderTimelineView) + registerSubTypeDefaulter('timeline', ()=>'slider')
         //   + installTimelineAction + registerPreprocessor(timelinePreprocessor). Like visualMap/dataZoom,
@@ -839,6 +852,14 @@ public final class EChartsSlim: EChartsType {
         //   chart/map/install.ts `registerRoamActionSimply(registers, 'series', 'map')` (both resolve to
         //   action type 'geoRoam', "Historical setting") -- the geo/map pan/zoom action. See roamHelperGeo.
         registerGeoRoamAction()
+
+        // -- chart/tree/install.ts + chart/sankey/install.ts `registerRoamActionSimply(registers,'series',
+        //   <sub>)` (→ 'treeRoam' / 'sankeyRoam') + the port's 'treemapRoam' (upstream treemap re-lays-out
+        //   via 'treemapMove'/'treemapRender'; the port applies a view-group TRANSFORM — see
+        //   roamHelperViewGroup.swift). All three accumulate pan/zoom onto the per-series roam state.
+        registerTreeRoamAction()
+        registerTreemapRoamAction()
+        registerSankeyRoamAction()
 
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
@@ -1021,6 +1042,11 @@ public final class EChartsSlim: EChartsType {
         //   timelineModel.getCurrentIndex()] over baseOption). This preprocessor only normalizes the timeline
         //   COMPONENT option itself.
         timelinePreprocessor(&opt)
+        // Preprocessor from component/aria/preprocessor.ts (registerPreprocessor(ariaPreprocessor)):
+        //   migrate the deprecated `aria.show` → `aria.enabled`, and move top-level
+        //   `description`/`general`/`series`/`data` under `aria.label`. Mutates option.aria in place.
+        //   Must run BEFORE `initBase` stamps the `aria.enabled` default (so `show:false` is honored).
+        ariaPreprocessor(&opt)
         // Preprocessor from component/axisPointer/install.ts (registerPreprocessor): always ensure a
         //   global axisPointer option exists (for default settings). tooltip `dependencies:['axisPointer']`
         //   and the axis-tooltip DATA core (modelHelper.collect) both need the AxisPointerModel component
@@ -1145,6 +1171,14 @@ public final class EChartsSlim: EChartsType {
         //   walks each target series' data and `setItemVisual`s the mapped color/opacity/symbol; handler #2
         //   emits the `visualMeta` gradient stops (consumed by heatmap/tooltip). This is the KEY deliverable.
         performVisualMapStage(ecModel, api)
+
+        // VISUAL (aria) — accessibility label. Upstream registers `ariaVisualStageHandler` at
+        //   PRIORITY.VISUAL.ARIA (component/aria/install.ts) and it sets the container DOM's `aria-label`.
+        //   There is no DOM here, so the ported `aria.ariaLabel(...)` RETURNS the generated string and the
+        //   driver stores it on the ec instance (exposed via `getAriaLabel()`). Self-gates to `nil` when
+        //   aria is disabled (default) / has no series. Pure data + locale — no item layout needed, so it
+        //   runs in the visual stage like upstream. See Sources/EChartsKit/component/aria/ariaVisual.swift.
+        _ariaLabel = aria.ariaLabel(ecModel, api)
 
         // NOTE (brush): upstream runs the brush visual at PRIORITY.VISUAL.BRUSH (5000) — AFTER the LAYOUT
         //   stages (1000–4600). The brush rect selector reads each datum's `getItemLayout` (pixel geometry),
@@ -1499,6 +1533,15 @@ public final class EChartsSlim: EChartsType {
         brushVisual(ecModel, api, nil)
 
         renderSeries(ecModel, api)
+
+        // LABEL LAYOUT — upstream registers `installLabelLayout`, which runs the
+        //   `series:layoutlabels` lifecycle stage AFTER `renderSeries` (once every series view has
+        //   attached its label textContents). `LabelManager.runLabelLayoutStage` applies each series'
+        //   user `labelLayout` option (x / y / rotate / align / moveOverlap / hideOverlap) and resolves
+        //   cross-label overlap globally (rotated-rect OBB `hideOverlap`). It self-gates: a chart whose
+        //   series set no `labelLayout` option collects zero labels and the stage is a no-op, so charts
+        //   without overlapping labels are unaffected (existing pie/bar/scatter label PNGs unchanged).
+        LabelManager.runLabelLayoutStage(_chartsViews, api)
     }
 
     // prepareView — get-or-create a view per component/series, add its group to the root + storage.
@@ -1955,6 +1998,10 @@ public final class EChartsSlim: EChartsType {
     public func getRoot() -> Group { return root }
     public func getStorage() -> Storage { return storage }
     public func getModel() -> GlobalModel? { return _model }
+    /// The ARIA accessibility label generated for the current option (upstream `visual/aria.ts`
+    /// sets it as the container's `aria-label` attribute; there is no DOM here, so it is stored on the
+    /// ec instance and exposed via this accessor). `nil` when aria is disabled / has no series.
+    public func getAriaLabel() -> String? { return _ariaLabel }
     /// The ExtensionAPI bound to this driver (upstream `this._api`). Exposed so the live-view host
     /// (`EChartsView`) can drive the ported axisPointer `axisTrigger(payload, ecModel, api)` on hover.
     public var api: ExtensionAPI { return _api }

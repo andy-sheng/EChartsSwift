@@ -82,14 +82,13 @@ public enum geoSourceManager {
         // The MapInput variants are object literals; `rawDef` may also BE the geoJSON directly.
         let rawDefDict = rawDef as? [String: Any]
 
-        // if ((rawDef as SVGMapInput).svg) { ... }
+        // if ((rawDef as SVGMapInput).svg) {
+        //     const resource = new GeoSVGResource(mapName, (rawDef as SVGMapInput).svg);
+        //     storage.set(mapName, resource);
+        // }
         if let svg = rawDefDict?["svg"], jsTruthy(svg) {
-            _ = svg
-            // PORT-TODO: the SVG-map path (GeoSVGResource) is DEFERRED per the geo phase brief AND its
-            //   sibling `GeoSVGResource` is not yet ported. The branch mirrors upstream structure; wire
-            //   it once `GeoSVGResource.swift` lands:
-            //     let resource = GeoSVGResource(mapName, svg)   // (rawDef as SVGMapInput).svg
-            //     storage.set(mapName, resource)
+            let resource = GeoSVGResource(mapName, svg)
+            storage.set(mapName, resource)
         }
         else {
             // Recommend:

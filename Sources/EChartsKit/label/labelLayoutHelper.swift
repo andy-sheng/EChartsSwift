@@ -260,4 +260,303 @@ public enum labelLayoutHelper {
 
         return adjusted
     }
+
+    // ─────────────────────────── LabelGeometry / hideOverlap (L2c) ───────────────────────────
+    //
+    // Ported the rotated-rect OBB overlap machinery that was DEFERRED in the L1c pass above:
+    //   `LabelLayoutData` (the `LabelLayoutBase & LabelGeometry` union), `computeLabelGeometry`,
+    //   the dirty-bit cache (`setLabelLayoutDirty` / `ensureLabelLayoutWithGeometry`), `ensureOBB`,
+    //   `labelIntersect`, `hideOverlap` and `restoreIgnore`. These drive the global label-overlap
+    //   stage (upstream `LabelManager.layout` → `hideOverlap`).
+    //
+    // MARGIN gap (unchanged from L1c): upstream `computeLabelGeometry` resolves `style.margin` vs
+    //   `style.__marginType` (textMargin/minMargin) plus the `marginForce`/`minMarginForce`/
+    //   `marginDefault` overrides. `__marginType` is a documented gap in the port's `labelStyle`, so
+    //   labels carry no explicit margin here and no margin expansion is applied (all four terms are
+    //   0). Faithful for the default labels the slim driver produces.
+
+    // upstream:
+    //   const LABEL_LAYOUT_DIRTY_BIT_OTHERS = 1;
+    //   const LABEL_LAYOUT_DIRTY_BIT_OBB = 2;
+    //   const LABEL_LAYOUT_DIRTY_ALL = OTHERS | OBB;
+    public static let LABEL_LAYOUT_DIRTY_BIT_OTHERS = 1
+    public static let LABEL_LAYOUT_DIRTY_BIT_OBB = 2
+    public static let LABEL_LAYOUT_DIRTY_ALL = 1 | 2
+
+    /// upstream: setLabelLayoutDirty(labelGeometry, dirtyOrClear, dirtyBits?)
+    /// `dirty` is `nil` when uninitialized (upstream `NullUndefined`); JS coerces it to 0 in the
+    /// bitwise ops, so treat `nil` as 0 here.
+    public static func setLabelLayoutDirty(
+        _ g: LabelLayoutData, _ dirtyOrClear: Bool, _ dirtyBits: Int? = nil
+    ) {
+        let bits = dirtyBits ?? LABEL_LAYOUT_DIRTY_ALL
+        g.dirty = dirtyOrClear
+            ? (g.dirty ?? 0) | bits
+            : (g.dirty ?? 0) & ~bits
+    }
+
+    /// upstream: function isLabelLayoutDirty(labelGeometry, dirtyBits?)
+    private static func isLabelLayoutDirty(_ g: LabelLayoutData, _ dirtyBits: Int? = nil) -> Bool {
+        let bits = dirtyBits ?? LABEL_LAYOUT_DIRTY_ALL
+        return g.dirty == nil || (g.dirty! & bits) != 0
+    }
+
+    /// upstream: export function ensureLabelLayoutWithGeometry(labelLayout)
+    /// Recompute the label's geometry if the dirty bit is set; returns the same object.
+    @discardableResult
+    public static func ensureLabelLayoutWithGeometry(_ labelLayout: LabelLayoutData?) -> LabelLayoutData? {
+        guard let labelLayout = labelLayout else { return nil }
+        if isLabelLayoutDirty(labelLayout) {
+            computeLabelGeometry(labelLayout, labelLayout.label)
+        }
+        return labelLayout
+    }
+
+    /// upstream: export function computeLabelGeometry(out, label, opt?)
+    /// Fills `out`'s geometry props (transform / localRect / global rect / axisAligned / ignore) from
+    /// the live label. See the MARGIN gap note above (no margin expansion in the port).
+    public static func computeLabelGeometry(_ out: LabelLayoutData, _ label: ZRText) {
+        // [CAUTION] These props may be modified directly for performance consideration.
+        let rawTransform = label.getComputedTransform()
+        out.transform = ensureCopyTransform(out.transform, rawTransform)
+
+        // NOTE: getBoundingRect must be called AFTER getComputedTransform (upstream note): the latter
+        //   runs the host's `updateInnerText`, which may relayout the label.
+        let outLocalRect = ensureCopyRect(out.localRect, label.getBoundingRect() ?? BoundingRect(0, 0, 0, 0))
+        out.localRect = outLocalRect
+
+        // MARGIN gap: `__marginType`/`margin` machinery deferred → no `expandOrShrinkRect` expansion.
+
+        let outGlobalRect = ensureCopyRect(out.rect, outLocalRect)
+        out.rect = outGlobalRect
+        if let t = rawTransform {
+            outGlobalRect.applyTransform(t)
+        }
+
+        out.axisAligned = isBoundingRectAxisAligned(rawTransform)
+
+        out.geomIgnore = label.ignore
+
+        setLabelLayoutDirty(out, false)                                   // clear ALL
+        setLabelLayoutDirty(out, true, LABEL_LAYOUT_DIRTY_BIT_OBB)        // OBB stays dirty (lazy)
+        // Do not remove `obb` (if existing) for reuse, just reset the dirty bit.
+    }
+
+    /// upstream: function ensureOBB(labelGeometry)
+    /// Create the OBB lazily (only when a rotated-rect check is actually needed) and cache it.
+    @discardableResult
+    public static func ensureOBB(_ g: LabelLayoutData) -> OrientedBoundingRect {
+        var obb = g.obb
+        if obb == nil || isLabelLayoutDirty(g, LABEL_LAYOUT_DIRTY_BIT_OBB) {
+            obb = obb ?? OrientedBoundingRect()
+            g.obb = obb
+            obb!.fromBoundingRect(g.localRect ?? BoundingRect(0, 0, 0, 0), g.transform)
+            setLabelLayoutDirty(g, false, LABEL_LAYOUT_DIRTY_BIT_OBB)
+        }
+        return obb!
+    }
+
+    /// upstream: export function labelIntersect(baseLayoutInfo, targetLayoutInfo, mtv?, intersectOpt?)
+    /// Fast axis-aligned rejection first, then the rotated-rect OBB test if either is rotated.
+    @discardableResult
+    public static func labelIntersect(
+        _ baseLayoutInfo: LabelLayoutData?,
+        _ targetLayoutInfo: LabelLayoutData?,
+        _ mtv: PointLike? = nil,
+        _ intersectOpt: BoundingRectIntersectOpt? = nil
+    ) -> Bool {
+        guard let base = baseLayoutInfo, let target = targetLayoutInfo else {
+            return false
+        }
+        if base.geomIgnore || target.geomIgnore {
+            return false
+        }
+        // Fast rejection.
+        if !base.rect.intersect(target.rect, mtv, intersectOpt) {
+            return false
+        }
+        if base.axisAligned && target.axisAligned {
+            return true // obb is the same as the normal bounding rect.
+        }
+        return ensureOBB(base).intersect(ensureOBB(target), mtv, intersectOpt)
+    }
+
+    /// upstream: export function restoreIgnore(labelList)
+    /// Restore each label's (and its guide line's) `ignore` to the saved default before re-resolving.
+    public static func restoreIgnore(_ labelList: [LabelLayoutData]) {
+        for labelItem in labelList {
+            labelItem.label.attr("ignore", labelItem.defaultAttr.ignore)
+            if let labelLine = labelItem.labelLine {
+                labelLine.attr("ignore", labelItem.defaultAttr.labelGuideIgnore)
+            }
+        }
+    }
+
+    /// upstream: export function hideOverlap(labelList)
+    /// Resolve cross-label overlap globally: higher-priority labels win, each subsequent label that
+    /// overlaps an already-displayed one is set `ignore = true` (kept visible only on emphasis).
+    public static func hideOverlap(_ labelList: [LabelLayoutData]) {
+        var displayedLabels: [LabelLayoutData] = []
+
+        // TODO, render overflow visible first, put in the displayedLabels.
+        var labelList = labelList
+        labelList.sort { a, b in
+            let bySuggest = (b.suggestIgnore ? 1 : 0) - (a.suggestIgnore ? 1 : 0)
+            if bySuggest != 0 {
+                return bySuggest < 0
+            }
+            return (b.priority - a.priority) < 0
+        }
+
+        func hideEl(_ el: Element) {
+            if !el.ignore {
+                // Show on emphasis.
+                let emphasisState = el.ensureState("emphasis")
+                if emphasisState.ignore == nil {
+                    emphasisState.ignore = false
+                }
+            }
+            el.ignore = true
+        }
+
+        for i in 0..<labelList.count {
+            guard let labelItem = ensureLabelLayoutWithGeometry(labelList[i]) else { continue }
+
+            // The current `el.ignore` is involved, since some previous overlap
+            // resolving strategies may have set `el.ignore` to true.
+            if labelItem.label.ignore {
+                continue
+            }
+
+            let label = labelItem.label
+            let labelLine = labelItem.labelLine
+
+            var overlapped = false
+            for j in 0..<displayedLabels.count {
+                if labelIntersect(
+                    labelItem, displayedLabels[j], nil,
+                    BoundingRectIntersectOpt(touchThreshold: 0.05)
+                ) {
+                    overlapped = true
+                    break
+                }
+            }
+
+            // TODO Callback to determine if this overlap should be handled?
+            if overlapped {
+                hideEl(label)
+                if let labelLine = labelLine {
+                    hideEl(labelLine)
+                }
+            }
+            else {
+                displayedLabels.append(labelItem)
+            }
+        }
+    }
+}
+
+/// upstream: `LabelLayoutData = LabelLayoutBase & Partial<LabelGeometry>` (labelLayoutHelper.ts).
+/// A reference type: `hideOverlap` / `shiftLayoutOnXY` mutate `rect` (a shared `BoundingRect`) and
+/// `label` in place. Conforms to `labelLayoutHelper.ShiftLayoutItem` so the moveOverlap resolver
+/// (`shiftLayoutOnXY`) accepts it directly.
+///
+/// The `label` in upstream's `LabelGeometry` is `Pick<ZRText, 'ignore'>`; in the union it collapses
+/// to the real `ZRText` (the base's `label`), and `computeLabelGeometry`'s `out.label.ignore = ...`
+/// is effectively a snapshot. Here `geomIgnore` carries that snapshot; `label` is the real element.
+public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
+    // ─── LabelLayoutBase ───
+    public let label: ZRText
+    public var labelLine: Element?
+    public var layoutOption: LabelLayoutOption?
+    public var priority: Double
+    public var defaultAttr: SavedLabelAttr
+    public var suggestIgnore: Bool
+
+    // ─── LabelGeometry ───
+    /// `nil` == fully dirty (upstream uninitialized `NullUndefined`).
+    public var dirty: Int?
+    /// Global rect from `localRect` + transform. `ShiftLayoutItem.rect` is non-optional, so it is
+    /// force-unwrapped there — it is always populated by `ensureLabelLayoutWithGeometry` before use.
+    public var rect: BoundingRect
+    public var localRect: BoundingRect?
+    public var axisAligned: Bool
+    public var obb: OrientedBoundingRect?
+    public var transform: MatrixArray?
+    /// `out.label.ignore` snapshot (upstream `LabelGeometry.label.ignore`).
+    public var geomIgnore: Bool
+
+    public init(
+        label: ZRText,
+        labelLine: Element? = nil,
+        layoutOption: LabelLayoutOption? = nil,
+        priority: Double = 0,
+        defaultAttr: SavedLabelAttr = SavedLabelAttr(),
+        suggestIgnore: Bool = false
+    ) {
+        self.label = label
+        self.labelLine = labelLine
+        self.layoutOption = layoutOption
+        self.priority = priority
+        self.defaultAttr = defaultAttr
+        self.suggestIgnore = suggestIgnore
+        self.dirty = nil
+        self.rect = BoundingRect(0, 0, 0, 0)
+        self.localRect = nil
+        self.axisAligned = false
+        self.obb = nil
+        self.transform = nil
+        self.geomIgnore = false
+    }
+}
+
+/// upstream: `interface SavedLabelAttr` (LabelManager.ts). Only the fields the ported stage reads are
+/// carried; the drag / attached-text-config fields are PORT-TODO (see `LabelManager.swift`).
+public struct SavedLabelAttr {
+    public var ignore: Bool
+    public var labelGuideIgnore: Bool
+    public var x: Double
+    public var y: Double
+    public var scaleX: Double
+    public var scaleY: Double
+    public var rotation: Double
+    public var styleX: Double?
+    public var styleY: Double?
+    public var align: ZRTextAlign?
+    public var verticalAlign: ZRTextVerticalAlign?
+    public var width: Double?
+    public var height: Double?
+    public var fontSize: Any?
+
+    public init(
+        ignore: Bool = false,
+        labelGuideIgnore: Bool = false,
+        x: Double = 0,
+        y: Double = 0,
+        scaleX: Double = 1,
+        scaleY: Double = 1,
+        rotation: Double = 0,
+        styleX: Double? = nil,
+        styleY: Double? = nil,
+        align: ZRTextAlign? = nil,
+        verticalAlign: ZRTextVerticalAlign? = nil,
+        width: Double? = nil,
+        height: Double? = nil,
+        fontSize: Any? = nil
+    ) {
+        self.ignore = ignore
+        self.labelGuideIgnore = labelGuideIgnore
+        self.x = x
+        self.y = y
+        self.scaleX = scaleX
+        self.scaleY = scaleY
+        self.rotation = rotation
+        self.styleX = styleX
+        self.styleY = styleY
+        self.align = align
+        self.verticalAlign = verticalAlign
+        self.width = width
+        self.height = height
+        self.fontSize = fontSize
+    }
 }

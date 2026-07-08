@@ -375,19 +375,38 @@ public final class GeoSVGRegion: Region {
 
     public override func calcCenter() -> [Double] {
         let el = self._elOnlyForCalculate
-        // PORT-TODO: SVG-map path (GeoSVGResource) deferred. Upstream walks up the parent chain
-        // multiplying local transforms until reaching the GeoSVGGraphicRoot, inverts the matrix,
-        // and applies it to the bounding-rect center. Element.getLocalTransform / parent /
-        // GeoSVGGraphicRoot.isGeoSVGGraphicRoot are not yet ported, so only the untransformed
-        // rect center is returned here. (references TMP_TRANSFORM / matrix.mul / matrix.invert.)
+        // Upstream walks up the parent chain multiplying local transforms until reaching the
+        //   GeoSVGGraphicRoot, inverts the accumulated matrix, and applies it to the bounding-rect
+        //   center — yielding the center in the ROOT (data-unit / SVG-local) coord.
         guard let rect = el.getBoundingRect() else {
             return [0, 0]
         }
-        let center = [
+        var center = VectorArray(
             rect.x + rect.width / 2,
             rect.y + rect.height / 2
-        ]
-        return center
+        )
+
+        // const mat = matrix.identity(TMP_TRANSFORM);
+        var mat = matrix.identity()
+        _ = TMP_TRANSFORM   // provenance: upstream reuses this scratch buffer.
+
+        var target: Transformable? = el
+        // while (target && !(target as GeoSVGGraphicRoot).isGeoSVGGraphicRoot) { ... }
+        while let t = target, !((t as? GeoSVGGraphicRoot)?.isGeoSVGGraphicRoot ?? false) {
+            // matrix.mul(mat, target.getLocalTransform(), mat);  -> out = localTransform * mat
+            mat = matrix.mul(t.getLocalTransform(), mat)
+            target = t.parent
+        }
+
+        // matrix.invert(mat, mat);
+        if let inv = matrix.invert(mat) {
+            mat = inv
+        }
+
+        // vec2.applyTransform(center, center, mat);
+        center = vector.applyTransform(center, mat)
+
+        return [center[0], center[1]]
     }
 
 }

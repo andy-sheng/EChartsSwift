@@ -225,16 +225,23 @@ open class SankeyView: ChartView {
 
         _ = mainGroup.removeAll()
 
-        mainGroup.x = layoutInfo.x
-        mainGroup.y = layoutInfo.y
+        // L3 Roam: capture the base (roam-free) placement; the roam transform is applied on top of it at
+        //   the END of render (viewGroupRoamApplyStateToGroup). Identity roam state → mainGroup.x = baseX.
+        let baseX = layoutInfo.x
+        let baseY = layoutInfo.y
+        mainGroup.x = baseX
+        mainGroup.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-TODO: createViewCoordSysSimply / applyViewCoordSysTransToElement (coord/View + roam)
-        //   DEFERRED. The node/edge layout positions are already in the series' local pixel space (set by
-        //   sankeyLayout), and `_mainGroup` is placed at `layoutInfo.x/y` above, so the static render needs
-        //   no view-coord transform.
+        //   PORT-TODO: the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
+        //   applyViewCoordSysTransToElement) is DEFERRED (coord/View not ported). The node/edge layout
+        //   positions are already in the series' local pixel space (set by sankeyLayout), and `_mainGroup`
+        //   is placed at `layoutInfo.x/y` above; the roam pan/zoom is applied to the group as a TRANSFORM
+        //   at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
 
-        // updateRoamControllerSimply(...);  — PORT-TODO: roam DEFERRED.
+        // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
+        //   live by EChartsView._setupSankeyRoam (the slim SankeyView is zr-less); the roam STATE it
+        //   accumulates is re-applied to the group below.
 
         // generate a bezier curve (ribbon) for each edge
         graph.eachEdge({ edge, _ in
@@ -455,10 +462,23 @@ open class SankeyView: ChartView {
         //   is DEFERRED (util/graphic initProps not ported; CONVENTIONS §5 — animation deferred).
 
         self._data = seriesModel.getData()
+
+        // L3 Roam: re-apply the accumulated roam transform to the main group (upstream applies center/zoom
+        //   through the View coord sys; the port transforms the group directly — see roamHelperViewGroup).
+        //   On first render / roam off, the state is identity → the placement above is left exactly as-is.
+        viewGroupRoamApplyStateToGroup(seriesModel, mainGroup, baseX, baseY)
+
         self._firstRender = false
     }
 
-    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — PORT-TODO: roam (coord/View) DEFERRED.
+    // L3 Roam: the pointer-check element (upstream `createIsInSelfByPointerCheckerEl(this.group)`).
+    func roamPointerCheckerGroup() -> Group { return self.group }
+
+    // L3 Roam (test hook): the main group carrying the roam transform (position + scale).
+    var _mainGroupForTest: Group { return self._mainGroup }
+
+    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — the port re-renders via the full update()
+    //   the `sankeyRoam` action triggers (see roamHelperViewGroup.swift DEVIATION note); no partial path.
 
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {

@@ -1144,7 +1144,7 @@ func buildAxisLabel(
             ? label.z2 + (z2Max - z2Min + 1) // Make break labels be highest priority.
             : label.z2
         let d = LabelLayoutData(label: label, priority: priority)
-        d.defaultAttrIgnore = label.ignore
+        d.defaultAttr.ignore = label.ignore
         return d
     })
 
@@ -1293,23 +1293,15 @@ func createTextStyle(
     return style
 }
 
-/// PORT-TODO: minimal placeholder for `labelLayoutHelper.LabelLayoutData` / `LabelLayoutWithGeometry`.
-///   Only `label` + `priority` + `suggestIgnore` + `defaultAttr.ignore` are modeled — enough to build
-///   and position axis labels/ticks. The OBB geometry (`localRect` / `transform` / margins / intersection)
-///   is deferred. Delete when label/labelLayoutHelper.swift lands.
-public final class LabelLayoutData {
-    public var label: ZRText
-    public var priority: Double
-    public var suggestIgnore: Bool = false
-    public var defaultAttrIgnore: Bool = false
-    public init(label: ZRText, priority: Double) {
-        self.label = label
-        self.priority = priority
-    }
-}
+// `LabelLayoutData` now lives in `label/labelLayoutHelper.swift` (the real OBB-carrying type landed
+//   in the L2c pass). The axis path below still uses the IDENTITY `ensureLabelLayoutWithGeometry` shim
+//   (rather than `labelLayoutHelper.ensureLabelLayoutWithGeometry`) because the axis name/label
+//   overlap resolver that would consume the OBB geometry is still a PORT-TODO here; axis labels are
+//   moved (`copyTransform`) after this point without re-dirtying, so an eager geometry compute would
+//   be stale. Keeping the identity shim preserves the existing axis behavior.
 
-/// PORT-TODO: identity shim for `labelLayoutHelper.ensureLabelLayoutWithGeometry`. Upstream lazily computes
-///   the label's OBB geometry; here it just returns the layout (geometry deferred). Delete when it lands.
+/// PORT-TODO: identity shim for `labelLayoutHelper.ensureLabelLayoutWithGeometry`. Upstream lazily
+///   computes the label's OBB geometry; here it just returns the layout (axis overlap deferred).
 func ensureLabelLayoutWithGeometry(_ layout: LabelLayoutData?) -> LabelLayoutData? {
     return layout
 }

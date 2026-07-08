@@ -122,10 +122,11 @@ public final class GeoView: ComponentView {
 
         // upstream MapDraw.draw dispatches on `geo.resourceType`:
         //   'geoJSON' → _buildGeoJSON (ported below);  'geoSVG' → _buildSVG (DEFERRED).
-        // PORT-TODO (DEFERRED — GeoSVGResource / geoSVG path): SVG maps render via `_buildSVG` upstream.
-        //   Only the GeoJSON path is ported (per the port brief). A geoSVG geo renders nothing here.
         if geo.resourceType == "geoJSON" {
             self._buildGeoJSON(geo, geoModel, api)
+        }
+        else if geo.resourceType == "geoSVG" {
+            self._buildSVG(geo, geoModel, api)
         }
 
         // upstream: mapDraw.group.on('click', this._handleRegionClick, this);  → DEFERRED (events).
@@ -282,6 +283,68 @@ public final class GeoView: ComponentView {
                 self._resetLabelForRegion(geoModel, regionModel, regionName, centerRaw, regionGroup)
             }
         }
+    }
+
+    // ================================================================================================
+    // Inlined static subset of `MapDraw._buildSVG` (component/helper/MapDraw.ts).
+    //
+    // For a geoSVG map: fetch the pooled parsed-SVG graphic (`GeoSVGResource.useGraphic`), copy the geo
+    // view's RAW transform (raw-svg-rect → view-rect) onto a wrapper group holding the parsed root, apply
+    // the region `itemStyle` (MERGED — for geoSVG the default itemStyle carries a border but NO fill, so
+    // the SVG's authored `fill` is preserved) to each NAMED Displayable, and add the group to the view.
+    //
+    // PORT-TODO (DEFERRED — faithful to a STATIC render):
+    //   - ROAM: only the RAW transform is copied (no roam controller / TRANS_ROAM).
+    //   - series-map DATA: `data`/visualMap encoding/decal (the geo component backdrop has no series data).
+    //   - EMPHASIS/SELECT/BLUR states, event/tooltip/state triggers, and the region LABEL for named
+    //     elements (upstream `resetLabelForRegion` places it at the <g>/element bounding-rect center).
+    //     Only the NORMAL itemStyle is applied here.
+    // ================================================================================================
+    private func _buildSVG(_ geo: Geo, _ geoModel: GeoModel, _ api: ExtensionAPI) {
+        let mapName = geo.map
+        guard let resource = geoSourceManager.getGeoResource(mapName) as? GeoSVGResource else {
+            return
+        }
+
+        // upstream: viewCoordSysCopyTrans(this._svgGroup, viewCoordSys, VIEW_COORD_SYS_TRANS_RAW);
+        //           this._useSVG(mapName) → svgGroup.add(svgGraphic.root)
+        let svgGraphic = resource.useGraphic(self.uid)
+        let svgGroup = Group()
+        _ = viewCoordSysCopyTrans(svgGroup, geo.view, VIEW_COORD_SYS_TRANS_RAW)
+        _ = svgGroup.add(svgGraphic.root)
+
+        // upstream: each(named, namedItem => { applyOptionStyleForRegion(...); el.silent = ...; })
+        for namedItem in svgGraphic.named {
+            let el = namedItem.el
+            let regionName = namedItem.name
+            let regionModel = geoModel.getRegionModel(regionName)
+
+            // OPTION_STYLE_ENABLED tags (rect/circle/line/ellipse/polygon/polyline/path) → itemStyle.
+            //   text/tspan/image can be named but are not styled by region option (upstream note).
+            if let path = el as? Path {
+                let styleModel = regionModel.getModel("itemStyle")
+                let itemStyle = geoGetFixedItemStyle(styleModel)
+                var s = path.pathStyle ?? PathStyleProps()
+                // MERGE (upstream `el.setStyle(normalStyle)`): only overwrite keys present in itemStyle,
+                //   so a geoSVG shape keeps its authored SVG `fill` when the region option sets no color.
+                if let v = geoColorString(itemStyle["fill"]) { s.fill = .string(v) }
+                if let v = geoColorString(itemStyle["stroke"]) { s.stroke = .string(v) }
+                if let v = numOpt(itemStyle["lineWidth"]) { s.lineWidth = v }
+                if let v = numOpt(itemStyle["opacity"]) { s.opacity = v }
+                if let v = numOpt(itemStyle["fillOpacity"]) { s.fillOpacity = v }
+                if let v = numOpt(itemStyle["strokeOpacity"]) { s.strokeOpacity = v }
+                // upstream: el.style.strokeNoScale = true;
+                s.strokeNoScale = true
+                path.useStyle(s)
+            }
+
+            // upstream: const silent = regionModel.get('silent', true); silent != null && (el.silent = silent);
+            if let silent = regionModel.get("silent", true), !(silent is NSNull) {
+                el.silent = jsTruthy(silent)
+            }
+        }
+
+        _ = self.group.add(svgGroup)
     }
 
     // upstream: resetLabelForRegion (STATIC subset). For the geo component the label is drawn when the
