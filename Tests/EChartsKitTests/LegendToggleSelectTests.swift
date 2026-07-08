@@ -46,4 +46,25 @@ final class LegendToggleSelectTests: XCTestCase {
         XCTAssertEqual(renderedSeriesNames(ec).sorted(), ["Alpha", "Beta"], "toggling Beta back on restores it")
         XCTAssertEqual(legend?.isSelected("Beta"), true)
     }
+
+    func testLegendHoverHighlightsSeriesByName() {
+        // Legend item mouseover dispatches highlight(seriesName); the series' data must enter emphasis,
+        // and mouseout (downplay) must clear it.
+        let ec = makeTwoSeriesWithLegend()
+        let betaData = ec.getModel()!.getSeriesByName("Beta").first!.getData()
+
+        var hi = Payload(type: "highlight"); hi.other["seriesName"] = "Beta"
+        ec.dispatchAction(hi)
+        let anyEmphasis = (0..<betaData.count()).contains { idx in
+            (betaData.getItemGraphicEl(idx)?.currentStates.contains("emphasis")) ?? false
+        }
+        XCTAssertTrue(anyEmphasis, "legend hover highlight(seriesName) must emphasize the series' data")
+
+        var lo = Payload(type: "downplay"); lo.other["seriesName"] = "Beta"
+        ec.dispatchAction(lo)
+        let stillEmphasis = (0..<betaData.count()).contains { idx in
+            (betaData.getItemGraphicEl(idx)?.currentStates.contains("emphasis")) ?? false
+        }
+        XCTAssertFalse(stillEmphasis, "legend mouseout (downplay) must clear the emphasis")
+    }
 }

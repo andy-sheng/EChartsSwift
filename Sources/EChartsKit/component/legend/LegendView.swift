@@ -288,13 +288,29 @@ open class LegendView: ComponentView {
                 )
 
                 // upstream: itemGroup.on('click', curry(dispatchSelectAction, name, null, api, excludeSeriesId))
-                //   — a legend item click dispatches legendToggleSelect(name); the action toggles
-                //   LegendModel.selected and the driver's full update() re-runs legendFilter to show/hide the
-                //   series. (The mouseover/mouseout legend-hover highlight/downplay wiring is still DEFERRED.)
+                //   .on('mouseover', curry(dispatchHighlightAction, seriesModel.name, null, api, excludeSeriesId))
+                //   .on('mouseout', curry(dispatchDownplayAction, seriesModel.name, null, api, excludeSeriesId));
+                //   Click → legendToggleSelect (show/hide via legendFilter); hover → highlight/downplay the
+                //   whole series (legendHoverLink), excluding any series that opted out via excludeSeriesId.
                 let clickName = name ?? ""
+                let excludeIds = excludeSeriesId
                 _ = itemGroup.on("click", { _, _ in
                     var p = Payload(type: "legendToggleSelect")
                     p.other["name"] = clickName
+                    api.dispatchAction(p)
+                    return nil
+                }, nil)
+                _ = itemGroup.on("mouseover", { _, _ in
+                    var p = Payload(type: "highlight")
+                    p.other["seriesName"] = clickName      // series legend → highlight the whole series
+                    p.excludeSeriesId = excludeIds
+                    api.dispatchAction(p)
+                    return nil
+                }, nil)
+                _ = itemGroup.on("mouseout", { _, _ in
+                    var p = Payload(type: "downplay")
+                    p.other["seriesName"] = clickName
+                    p.excludeSeriesId = excludeIds
                     api.dispatchAction(p)
                     return nil
                 }, nil)
@@ -334,10 +350,28 @@ open class LegendView: ComponentView {
                             legendItemModel, legendModel, itemAlign,
                             [:], style, legendIcon, selectMode, api
                         )
+                        // upstream data-legend (pie/funnel): click → legendToggleSelect(dataName);
+                        //   mouseover/mouseout → dispatchHighlightAction(null, name, ...) → highlight the
+                        //   DATA item by name across series (seriesName null).
                         let clickDataName = name
+                        let excludeIdsData = excludeSeriesId
                         _ = dataItemGroup.on("click", { _, _ in
                             var p = Payload(type: "legendToggleSelect")
                             p.other["name"] = clickDataName
+                            api.dispatchAction(p)
+                            return nil
+                        }, nil)
+                        _ = dataItemGroup.on("mouseover", { _, _ in
+                            var p = Payload(type: "highlight")
+                            p.other["name"] = clickDataName
+                            p.excludeSeriesId = excludeIdsData
+                            api.dispatchAction(p)
+                            return nil
+                        }, nil)
+                        _ = dataItemGroup.on("mouseout", { _, _ in
+                            var p = Payload(type: "downplay")
+                            p.other["name"] = clickDataName
+                            p.excludeSeriesId = excludeIdsData
                             api.dispatchAction(p)
                             return nil
                         }, nil)
