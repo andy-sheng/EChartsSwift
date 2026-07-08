@@ -36,13 +36,23 @@ public struct EChartsDemo {
     /// Whether the native (EChartsKit) pane can render this demo today (see PHASE-6b LIMITATION).
     /// HTML always renders. Non-bar demos set this false so the gallery shows an honest "native N/A".
     public let nativeSupported: Bool
+    /// Maps this demo registers (name → GeoJSON dict, or `["svg": <string>]` for SVG maps).
+    /// The native pane registers these via `EChartsSlim.registerMap` (usually in the option IIFE); the
+    /// HTML pane needs the SAME `echarts.registerMap(name, data)` injected into the page BEFORE
+    /// setOption — real echarts has no map registered otherwise, so a `map`/`geo` demo renders blank.
+    /// Declare a demo's maps here so BOTH panes register them. Order is not significant.
+    public let mapRegistrations: [String: Any]
 
     public init(name: String, category: String, summary: String,
                 width: Double = 400, height: Double = 300,
-                nativeSupported: Bool = true, option: [String: Any]) {
+                nativeSupported: Bool = true,
+                mapRegistrations: [String: Any] = [:],
+                option: [String: Any]) {
         self.name = name; self.category = category; self.summary = summary
         self.width = width; self.height = height
-        self.nativeSupported = nativeSupported; self.option = option
+        self.nativeSupported = nativeSupported
+        self.mapRegistrations = mapRegistrations
+        self.option = option
     }
 }
 

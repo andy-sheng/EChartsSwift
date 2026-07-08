@@ -21,6 +21,7 @@ extension EChartsDemoRegistry {
         name: "map-svg-basic", category: "Geo",
         summary: "SVG-backed geo map — parseSVG shapes with region name LABELS, hover-emphasis + roam (pan/zoom)",
         width: 520, height: 320,
+        mapRegistrations: ["toySVG": ["svg": toySVG] as [String: Any]],
         option: {
             // Register the toy SVG map before the option is consumed (echarts.registerMap('toySVG', {svg})).
             EChartsSlim.registerMap("toySVG", ["svg": toySVG] as [String: Any])
@@ -44,6 +45,7 @@ extension EChartsDemoRegistry {
         name: "map-svg-series", category: "Geo",
         summary: "series:\"map\" on an SVG map — data values colour named regions via a continuous visualMap",
         width: 520, height: 340,
+        mapRegistrations: ["toySVGSeries": ["svg": toySVG] as [String: Any]],
         option: {
             EChartsSlim.registerMap("toySVGSeries", ["svg": toySVG] as [String: Any])
             return [

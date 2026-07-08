@@ -55,6 +55,7 @@ extension EChartsDemoRegistry {
         name: "map-basic", category: "Map",
         summary: "choropleth map — three toy GeoJSON regions filled by value via a continuous visualMap",
         width: 520, height: 320,
+        mapRegistrations: ["toy": toyMapGeoJSON],
         option: {
             // Register the toy map before the option is consumed (echarts.registerMap('toy', geoJson)).
             EChartsSlim.registerMap("toy", toyMapGeoJSON)

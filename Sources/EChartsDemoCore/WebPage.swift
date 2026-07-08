@@ -34,6 +34,22 @@ public func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
           let optionJSON = String(data: optionData, encoding: .utf8) else { return nil }
     // Guard against a stray `</script>` inside the bundle closing the tag early.
     let safeDist = dist.replacingOccurrences(of: "</script", with: "<\\/script")
+
+    // Inject `echarts.registerMap(name, data)` for every map this demo registers, BEFORE setOption —
+    // real echarts renders a `map`/`geo` series blank otherwise (no map is registered by the option
+    // alone; the native pane registers via EChartsSlim.registerMap, which never reaches the page).
+    // Each value is a GeoJSON dict or `{ svg: "<string>" }`; both are valid registerMap payloads.
+    var registerJS = ""
+    for (mapName, mapData) in demo.mapRegistrations {
+        guard let d = try? JSONSerialization.data(withJSONObject: mapData, options: []),
+              let json = String(data: d, encoding: .utf8),
+              let nd = try? JSONSerialization.data(withJSONObject: [mapName], options: []),
+              let nameJSON = String(data: nd, encoding: .utf8) else { continue }
+        // nameJSON is `["toy"]`; slice off the brackets to get the quoted, escaped string literal.
+        let quotedName = String(nameJSON.dropFirst().dropLast())
+        registerJS += "      echarts.registerMap(\(quotedName), \(json));\n"
+    }
+
     return """
     <!DOCTYPE html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=\(Int(demo.width))">
@@ -41,7 +57,7 @@ public func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
     </head><body style="margin:0;background:#fff">
     <div id="main" style="width:\(Int(demo.width))px;height:\(Int(demo.height))px"></div>
     <script>
-      var opt = \(optionJSON);
+    \(registerJS)  var opt = \(optionJSON);
       opt.animation = false;
       var chart = echarts.init(document.getElementById('main'), null, { renderer: 'canvas' });
       chart.setOption(opt);

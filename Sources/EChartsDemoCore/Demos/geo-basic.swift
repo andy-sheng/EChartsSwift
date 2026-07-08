@@ -51,6 +51,7 @@ extension EChartsDemoRegistry {
         name: "geo-basic", category: "Geo",
         summary: "geo coordinate-system backdrop — three toy GeoJSON regions with outlines + labels",
         width: 520, height: 300,
+        mapRegistrations: ["toy": toyGeoJSON],
         option: {
             // Register the toy map before the option is consumed (echarts.registerMap('toy', geoJson)).
             EChartsSlim.registerMap("toy", toyGeoJSON)
