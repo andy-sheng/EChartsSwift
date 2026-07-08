@@ -149,4 +149,66 @@ final class StateMachineryTests: XCTestCase {
         XCTAssertEqual(r.x, 100, accuracy: 1e-6, "dropping moveRight restores x to normal")
         XCTAssertEqual(r.y, 200, accuracy: 1e-6, "moveDown still keeps y at 200")
     }
+
+    // ───────────────────────────── attached-text state propagation (the label restyle seam) ─────────────────────────────
+    //
+    // When a HOST element enters a state, its attached `textContent` must switch to its own state style
+    // too (upstream Element.useState/useStates propagate the state to `_textContent`). And a `ZRText`
+    // reads its per-state `ElementState.textStyle` (written by `label/labelStyle.swift`) back onto its
+    // live `textStyle` when the state activates — restoring the normal style on downplay.
+
+    /// Build a host Rect with an attached label ZRText whose "emphasis" state carries a red fill.
+    private func makeLabeledHost() -> (Rect, ZRText) {
+        var rs = RectShape(); rs.x = -50; rs.y = -50; rs.width = 100; rs.height = 100
+        let host = Rect(); host.setShape(rs); host.x = 100; host.y = 100
+        var hs = PathStyleProps(); hs.fill = .string("blue"); host.useStyle(hs)
+        // The host carries its own emphasis state (as `setStatesStylesFromModel` gives every data el):
+        //   without it, single `useState('emphasis')` early-returns ("state not exists") before the
+        //   textContent propagation — the `useStates` interaction path has no such guard.
+        host.ensureState("emphasis").style = ["fill": "green"]
+
+        let label = ZRText()
+        var ns = TextStyleProps(); ns.text = "hi"; ns.fill = "black"; ns.x = 5; ns.y = 6
+        label.useStyle(ns)
+        // The per-state textStyle side-channel (as `setLabelStyle` writes it).
+        var es = TextStyleProps(); es.fill = "red"; es.fontWeight = .bold
+        label.ensureState("emphasis").textStyle = es
+        host.setTextContent(label)
+        return (host, label)
+    }
+
+    func test_host_useState_propagates_to_textContent_and_restores() throws {
+        let (host, label) = makeLabeledHost()
+        XCTAssertEqual(label.textStyle.fill, "black", "label starts at its normal fill")
+        XCTAssertNil(label.textStyle.fontWeight, "label starts with no weight override")
+
+        // Host enters emphasis → label must switch to its emphasis textStyle.
+        host.useState("emphasis")
+        XCTAssertEqual(label.currentStates, ["emphasis"], "state propagated to the attached textContent")
+        XCTAssertEqual(label.textStyle.fill, "red", "label restyles to the emphasis fill")
+        if case .bold = label.textStyle.fontWeight {} else {
+            XCTFail("label picks up the emphasis fontWeight (bold)")
+        }
+        // Layout position (x/y) preserved across the restyle.
+        XCTAssertEqual(label.textStyle.x, 5)
+        XCTAssertEqual(label.textStyle.y, 6)
+
+        // Host returns to normal → label restores its normal fill and drops the weight override.
+        host.clearStates()
+        XCTAssertTrue(label.currentStates.isEmpty, "downplay propagated to the attached textContent")
+        XCTAssertEqual(label.textStyle.fill, "black", "label restores its normal fill on downplay")
+        XCTAssertNil(label.textStyle.fontWeight, "label drops the emphasis weight on downplay")
+    }
+
+    func test_host_useStates_propagates_to_textContent() throws {
+        // The primary interaction path (states.applyElementStates → useStates([...])).
+        let (host, label) = makeLabeledHost()
+        host.useStates(["emphasis"])
+        XCTAssertEqual(label.currentStates, ["emphasis"])
+        XCTAssertEqual(label.textStyle.fill, "red", "useStates path also restyles the attached label")
+
+        host.useStates([])   // clear
+        XCTAssertTrue(label.currentStates.isEmpty)
+        XCTAssertEqual(label.textStyle.fill, "black", "clearing states restores the label")
+    }
 }

@@ -442,17 +442,57 @@ open class Path: Displayable {
     public override func update() {
         super.update()
 
-        // PORT-TODO: decal element synthesis (a pattern-rendering feature; STUB per task brief).
-        //   Upstream, when `style.decal` is set, creates a hidden `_decalEl: Path` mirroring this
-        //   path's geometry, copies the style + `pathCopyParams`, and paints the decal pattern.
-        //   This relies on (a) assigning a closure to the `buildPath` METHOD (no Swift equivalent —
-        //   methods are not assignable), (b) `for (let key in style)` dynamic key iteration, and
-        //   (c) pattern paint resolution — all deferred. The `_decalEl` lifecycle hook is kept:
+        // upstream: when `style.decal` is set, synthesize a hidden `_decalEl: Path` that mirrors this
+        //   path's geometry, copies the style + `pathCopyParams`, and is filled with the decal pattern.
+        //   Storage adds `getDecalElement()` to the display list right after this element, so the decal
+        //   texture paints clipped to the same shape, over the fill.
         let style = self.pathStyle!
-        if style.decal != nil {
-            // let decalEl: Path = this._decalEl = this._decalEl || new Path(); ... (deferred)
-            _ = pathCopyParams
-            _ = REDRAW_BIT
+        if let decalPattern = style.decal {
+            // const decalEl: Path = this._decalEl = this._decalEl || new Path();
+            let decalEl: Path = self._decalEl ?? Path()
+            self._decalEl = decalEl
+
+            // upstream:
+            //   if (decalEl.buildPath === Path.prototype.buildPath) {
+            //       decalEl.buildPath = ctx => { this.buildPath(ctx, this.shape); };
+            //   }
+            // Swift methods are not reassignable; use the `__morphBuildPath` build-hook (honored by
+            //   getUpdatedPathProxy/getCachedPathProxy in place of `buildPath`) to copy host geometry.
+            if decalEl.__morphBuildPath == nil {
+                decalEl.__morphBuildPath = { [weak self] ctx in
+                    guard let self = self else { return }
+                    self.buildPath(ctx, self.shape, false)
+                }
+            }
+
+            decalEl.silent = true
+
+            // upstream: for (let key in style) copy every style key onto decalEl.style. PathStyleProps is
+            //   a value struct, so a whole-struct copy is equivalent to copying all keys.
+            var decalElStyle = style
+            // upstream: decalElStyle.fill = style.fill ? style.decal : null;
+            decalElStyle.fill = (style.fill != nil) ? .pattern(decalPattern) : nil
+            // upstream: decalElStyle.decal = null;
+            decalElStyle.decal = nil
+            // upstream: decalElStyle.shadowColor = null;
+            decalElStyle.shadowColor = nil
+            // upstream: style.strokeFirst && (decalElStyle.stroke = null);
+            if style.strokeFirst == true { decalElStyle.stroke = nil }
+            decalEl.pathStyle = decalElStyle
+            decalEl.dirtyStyle()
+
+            // upstream: for (i in pathCopyParams) decalEl[pathCopyParams[i]] = this[pathCopyParams[i]];
+            //   pathCopyParams = TRANSFORMABLE_PROPS + ['invisible','culling','z','z2','zlevel','parent'].
+            decalEl.copyTransform(self)
+            decalEl.invisible = self.invisible
+            decalEl.culling = self.culling
+            decalEl.z = self.z
+            decalEl.z2 = self.z2
+            decalEl.zlevel = self.zlevel
+            decalEl.parent = self.parent
+
+            // decalEl.__dirty |= REDRAW_BIT;
+            decalEl.__dirty = Double(Int(decalEl.__dirty) | Int(REDRAW_BIT))
         }
         else if self._decalEl != nil {
             self._decalEl = nil

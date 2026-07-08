@@ -496,6 +496,85 @@ public final class ZRText: Displayable, GroupLike {
         self.dirtyStyle()
     }
 
+    // ───────────────────────────── state textStyle readback (interaction layer) ─────────────────────────────
+    //
+    // upstream: ZRText's per-state style lives in `state.style` (the SAME untyped bag every Displayable
+    //   uses), and `Displayable._applyStateObj` (Displayable.ts:503-604) applies it on `useState`:
+    //   `targetStyle = mergeStyle(createStyle(), normalState.style); mergeStyle(targetStyle, state.style)`
+    //   then `useStyle(targetStyle)`. In this port a `ZRText`'s style is the typed `textStyle`
+    //   side-channel (not the inherited `Displayable.style`), and `label/labelStyle.swift`'s
+    //   `setLabelStyle`/`setLabelText` write the per-state text style into `ElementState.textStyle`
+    //   (the additive typed field), NOT into the generic `ElementState.style` bag. The collapsed base
+    //   state engine (Element `useState`/`useStates` → `_stateApply`/`_computeRestoreTarget`) only
+    //   applies `state.props`, so it never reads that `textStyle` back. This override closes that seam:
+    //   after the base applies the state (and after the HOST propagates the state down via
+    //   `Element.useState`/`useStates`), re-derive `self.textStyle` = normal ⊕ each active state's
+    //   `textStyle`, so a hovered/highlighted/selected labeled datum's label restyles (color / size /
+    //   weight) per `emphasis.label` / `blur.label` / `select.label`, and restores on downplay.
+    //
+    // NOTE: the per-state `textStyle` is read straight from `self.states[name]` (not via `stateProxy`).
+    //   `setLabelStyle` writes it onto `self.ensureState(name).textStyle`, and — matching upstream, where
+    //   the dynamically-bound `elementStateProxy(textContent, ...)` returns that same `textContent`
+    //   state object — the style content is identical; reading the state directly also side-steps the
+    //   host-bound proxy `setLabelStyle` copies onto the text (a documented `setDefaultStateProxy`
+    //   PORT-TODO), whose default color-lift targets the generic `.style` bag, not `.textStyle`.
+
+    // Saved pristine (normal) textStyle for state restoration — the ZRText analogue of
+    //   `Displayable._normalState.style`. Snapshotted on first state entry, cleared on return to normal.
+    private var _normalTextStyle: TextStyleProps?
+
+    @discardableResult
+    public override func useState(
+        _ stateName: String,
+        _ keepCurrentStates: Bool? = nil,
+        _ noAnimation: Bool? = nil,
+        _ forceUseHoverLayer: Bool? = nil
+    ) -> ElementState? {
+        let result = super.useState(stateName, keepCurrentStates, noAnimation, forceUseHoverLayer)
+        self._applyStateTextStyle()
+        return result
+    }
+
+    public override func useStates(
+        _ states: [String],
+        _ noAnimation: Bool? = nil,
+        _ forceUseHoverLayer: Bool? = nil
+    ) {
+        super.useStates(states, noAnimation, forceUseHoverLayer)
+        self._applyStateTextStyle()
+    }
+
+    /// Re-derive `textStyle` from the pristine normal snapshot overlaid with each currently-active
+    /// state's `ElementState.textStyle` (mirror of `Displayable._applyStateObj`'s style merge, but for
+    /// the typed `textStyle` side-channel). Restores the normal snapshot when no states are active.
+    private func _applyStateTextStyle() {
+        if self.currentStates.isEmpty {
+            // Restore to normal (mirror `_applyStateObj`'s `needsRestoreToNormal` → `useStyle(normal)`).
+            if let normal = self._normalTextStyle {
+                self.useStyle(normal)
+                self._normalTextStyle = nil
+            }
+            return
+        }
+        // Snapshot the pristine normal textStyle on first state entry (mirror `_innerSaveToNormal`:
+        //   `if (toState.style && !normalState.style) normalState.style = ...`).
+        let normal = self._normalTextStyle ?? (self.textStyle ?? TextStyleProps())
+        if self._normalTextStyle == nil {
+            self._normalTextStyle = normal
+        }
+        var target = normal
+        for name in self.currentStates {
+            if let stateTextStyle = self.states[name]?.textStyle {
+                extendTextStyle(&target, stateTextStyle)   // upstream `_mergeStyle` == `extend`
+            }
+        }
+        // Keep the live layout position (x/y) — `setLabelStyle` preserves x/y across a restyle, and the
+        //   per-state textStyle never carries them.
+        if let x = self.textStyle?.x { target.x = x }
+        if let y = self.textStyle?.y { target.y = y }
+        self.useStyle(target)
+    }
+
     // Mirror the CommonStyleProps subset of `textStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity.
     // PORT-TODO: a Swift-only bridge — upstream has a single `this.style` object.

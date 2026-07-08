@@ -136,4 +136,52 @@ final class ZZEmphasisTests: XCTestCase {
         // allLeaveBlur walks every view; must not hit an abstract method (formerly fatalError).
         states.allLeaveBlur(api)
     }
+
+    // ---- (4) the state-textStyle READBACK seam: dispatch highlight on a labeled datum whose series
+    //          has `emphasis.label.color` set makes the ATTACHED label element report the emphasis
+    //          color, and downplay restores it. This proves the Element→textContent state propagation
+    //          plus ZRText's per-state textStyle readback (label restyles on hover/emphasis). ----
+    func testHighlightRestylesAttachedLabelPerEmphasis() {
+        let ec = EChartsSlim(width: 400, height: 300)
+        ec.setOption([
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "type": "bar",
+                "data": [10.0, 20.0, 30.0],
+                // Normal label shown; emphasis recolors it red.
+                "label": ["show": true, "color": "#111111"] as [String: Any],
+                "emphasis": ["label": ["color": "#ff0000"] as [String: Any]] as [String: Any]
+            ] as [String: Any]]
+        ])
+
+        let series = ec.getModel()!.getSeriesByIndex(0)!
+        let el = series.getData().getItemGraphicEl(0)!
+        let label = el.getTextContent()
+        XCTAssertNotNil(label, "the bar render must attach a label textContent (label.show == true)")
+        XCTAssertEqual(label!.textStyle.fill, "#111111", "normal label uses the normal label color")
+
+        // dispatchAction(highlight) on series 0 / data index 0.
+        var hp = Payload(type: "highlight")
+        hp.other["seriesIndex"] = 0.0
+        hp.other["dataIndexInside"] = 0
+        ec.dispatchAction(hp)
+
+        XCTAssertTrue(el.currentStates.contains("emphasis"), "host bar entered emphasis")
+        XCTAssertTrue(label!.currentStates.contains("emphasis"),
+                      "the attached label must have the emphasis state propagated to it")
+        XCTAssertEqual(label!.textStyle.fill, "#ff0000",
+                       "the attached label must report the emphasis.label color after highlight")
+
+        // dispatchAction(downplay) restores the normal label color.
+        var dp = Payload(type: "downplay")
+        dp.other["seriesIndex"] = 0.0
+        dp.other["dataIndexInside"] = 0
+        ec.dispatchAction(dp)
+
+        XCTAssertTrue(label!.currentStates.isEmpty, "downplay clears the label's emphasis state")
+        XCTAssertEqual(label!.textStyle.fill, "#111111",
+                       "the attached label must restore its normal color after downplay")
+    }
 }

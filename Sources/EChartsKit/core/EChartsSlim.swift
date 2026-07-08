@@ -404,6 +404,9 @@ public final class EChartsSlim: EChartsType {
         //   theme so `EChartsSlim(width:height:theme: "dark")` resolves it by name (mirrors the upstream
         //   `themeStorage` lookup in `echarts.init(dom, theme)`).
         registerTheme("dark", darkTheme.theme)
+        // Broadened built-in theme spread (ported from upstream/echarts/theme/*.js extension themes).
+        registerTheme("vintage", vintageTheme.theme)
+        registerTheme("macarons", macaronsTheme.theme)
 
         // -- features/index.ts `use(install)` for the AxisBreak feature -- registers the concrete
         //   scale-break helper (scale/breakImpl.ts `installScaleBreakHelper`). Idempotent; enables the
@@ -1179,6 +1182,17 @@ public final class EChartsSlim: EChartsType {
         //   aria is disabled (default) / has no series. Pure data + locale — no item layout needed, so it
         //   runs in the visual stage like upstream. See Sources/EChartsKit/component/aria/ariaVisual.swift.
         _ariaLabel = aria.ariaLabel(ecModel, api)
+
+        // VISUAL (aria decal) — upstream `ariaVisual`'s `setDecal()` runs alongside `setLabel()` at
+        //   PRIORITY.VISUAL.ARIA (6000). When `aria.decal.show` is enabled it assigns a palette decal to
+        //   each series/datum's `decal` visual (getDecalFromPalette). Self-gates when aria/decal disabled.
+        aria.setDecal(ecModel, api)
+
+        // VISUAL (decal) — upstream registers `decalVisualStageHandler` at PRIORITY.VISUAL.DECAL (7000),
+        //   AFTER the style tasks + aria. It converts each `decal` visual (from itemStyle.decal OR the aria
+        //   palette above) into a tiling `Pattern` stored on the datum's `style` visual, which the chart
+        //   view bridges onto the element's `pathStyle.decal` (→ Path._decalEl → renderer pattern fill).
+        decalVisualStageHandler.overallReset?(ecModel, api, nil)
 
         // NOTE (brush): upstream runs the brush visual at PRIORITY.VISUAL.BRUSH (5000) — AFTER the LAYOUT
         //   stages (1000–4600). The brush rect selector reads each datum's `getItemLayout` (pixel geometry),

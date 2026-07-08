@@ -790,9 +790,23 @@ func layOutAxisTickLabel(
     updateAxisLabelChangableProps(cfg, axisModel, labelLayoutList, transformGroup)
 
     // PORT-TODO: `adjustBreakLabels` (axis break label nudging) deferred.
-    // PORT-TODO: `fixMinMaxLabelShow` (min/max label hide when overlapping neighbour) deferred —
-    //   depends on labelLayoutHelper (labelIntersect / ensureLabelLayoutWithGeometry).
-    // PORT-TODO: `hideOverlap` (time-chart label overlap fix) deferred — depends on labelLayoutHelper.
+    // PORT-TODO: `fixMinMaxLabelShow` (min/max axis label hide when it overlaps its neighbour) still
+    //   deferred. Unlike `hideOverlap` (below), upstream runs it UNCONDITIONALLY (independent of
+    //   `optionHideOverlap`), so wiring it would change default axis rendering; and its
+    //   `!optionHideOverlap` branch needs `newLabelLayoutWithGeometry` (marginForce copy), not ported
+    //   yet. showMinLabel/showMaxLabel special-casing waits on that.
+
+    let optionHideOverlap = cfg.optionHideOverlap
+
+    if truthy(optionHideOverlap) {
+        // This bit fixes the label overlap issue for the time chart and dense category axes.
+        // See https://github.com/apache/echarts/issues/14266 for more.
+        labelLayoutHelper.hideOverlap(
+            // Filter the already ignored labels by the previous overlap resolving methods.
+            util.filter(labelLayoutList, { layout, _ in !layout.label.ignore })
+        )
+    }
+
     // PORT-TODO: `resetOverlapRecordToShared` (cross-axis overlap record) deferred.
     _ = shared
 }
@@ -1175,7 +1189,7 @@ func updateAxisLabelChangableProps(
 ) {
     let labelMargin = (axisModel.get(["axisLabel", "margin"]) as? Double) ?? 0
     util.each(labelLayoutList, { layout, _ in
-        guard let geometry = ensureLabelLayoutWithGeometry(layout) else {
+        guard let geometry = labelLayoutHelper.ensureLabelLayoutWithGeometry(layout) else {
             return
         }
         let labelEl = geometry.label
@@ -1201,8 +1215,10 @@ func updateAxisLabelChangableProps(
         _ = copyTransform(labelEl, _tmpLayoutEl)
         labelEl.markRedraw()
 
-        // PORT-TODO: setLabelLayoutDirty(geometry, true) + ensureLabelLayoutWithGeometry(geometry) —
-        //   the geometry (OBB) recompute is part of labelLayoutHelper (deferred).
+        // Re-dirty and recompute the geometry now that the label carries its final transform, so the
+        //   subsequent `hideOverlap` pass reads up-to-date global rects / OBBs.
+        labelLayoutHelper.setLabelLayoutDirty(geometry, true)
+        labelLayoutHelper.ensureLabelLayoutWithGeometry(geometry)
     })
 }
 let _tmpLayoutEl = Rect()
@@ -1294,14 +1310,8 @@ func createTextStyle(
 }
 
 // `LabelLayoutData` now lives in `label/labelLayoutHelper.swift` (the real OBB-carrying type landed
-//   in the L2c pass). The axis path below still uses the IDENTITY `ensureLabelLayoutWithGeometry` shim
-//   (rather than `labelLayoutHelper.ensureLabelLayoutWithGeometry`) because the axis name/label
-//   overlap resolver that would consume the OBB geometry is still a PORT-TODO here; axis labels are
-//   moved (`copyTransform`) after this point without re-dirtying, so an eager geometry compute would
-//   be stale. Keeping the identity shim preserves the existing axis behavior.
-
-/// PORT-TODO: identity shim for `labelLayoutHelper.ensureLabelLayoutWithGeometry`. Upstream lazily
-///   computes the label's OBB geometry; here it just returns the layout (axis overlap deferred).
-func ensureLabelLayoutWithGeometry(_ layout: LabelLayoutData?) -> LabelLayoutData? {
-    return layout
-}
+//   in the L2c pass). The axis label path now calls the REAL `labelLayoutHelper.ensureLabelLayoutWithGeometry`
+//   directly (see `updateAxisLabelChangableProps` / `layOutAxisTickLabel`): geometry is computed with
+//   the initial transform, then re-dirtied + recomputed after `copyTransform` sets the final transform,
+//   so the `hideOverlap` overlap-resolution pass reads accurate global rects / OBBs. The old identity
+//   shim was removed.

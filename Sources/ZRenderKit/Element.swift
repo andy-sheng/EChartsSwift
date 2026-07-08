@@ -973,6 +973,20 @@ open class Element: Transformable, AnimationTarget {
         }
         self._stateApply(stateName, target, canTransition)
 
+        // upstream Element.useState (Element.ts:1006-1014): propagate the state to the attached
+        //   `textContent` (and `textGuide`) so a labeled element's LABEL restyles per its
+        //   emphasis/blur/select `label` model when the host enters/leaves a state. This is the seam
+        //   that makes hover-to-highlight also recolor/resize/re-weight the attached label text
+        //   (`label/labelStyle.swift` writes the per-state textStyle onto `textContent.states[name]`;
+        //   `ZRText.useState`/`useStates` read it back — see the override there). Hover-layer is
+        //   dropped in this port (see the `useState` PORT-NOTE), so `forceUseHoverLayer` is `false`.
+        if let textContent = self._textContent {
+            _ = textContent.useState(stateName, keepCurrentStates, noAnimation, false)
+        }
+        if let textGuide = self._textGuide {
+            _ = textGuide.useState(stateName, keepCurrentStates, noAnimation, false)
+        }
+
         if toNormalState {
             self.currentStates = []
             self._normalState = ElementState()
@@ -1030,6 +1044,16 @@ open class Element: Transformable, AnimationTarget {
         self.saveCurrentToNormalState(mergedState)
         let target = self._computeRestoreTarget(stateObjects)
         self._stateApply(states.joined(separator: ","), target, canTransition)
+
+        // upstream Element.useStates (Element.ts:1113-1119): propagate to the attached text content /
+        //   guide (same seam as `useState` above — this is the primary path the interaction layer hits,
+        //   since `states.applyElementStates` drives emphasis/blur/select via `useStates`).
+        if let textContent = self._textContent {
+            textContent.useStates(states, noAnimation, false)
+        }
+        if let textGuide = self._textGuide {
+            textGuide.useStates(states, noAnimation, false)
+        }
 
         self._updateAnimationTargets()
         self.currentStates = states

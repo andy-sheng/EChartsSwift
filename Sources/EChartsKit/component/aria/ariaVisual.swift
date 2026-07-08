@@ -22,6 +22,15 @@
 import Foundation
 import ZRenderKit
 
+// upstream: const innerSeries = makeInner<{scope: object}, SeriesModel>();
+//           const innerGlobal = makeInner<{scope: object}, GlobalModel>();
+//   The anonymous `{scope: object}` bag is a reference box (makeInner needs a reference type); `scope`
+//   is an identity object used only as the palette WeakMap key (see model/mixin/palette.getFromPalette).
+private final class AriaDecalScope {}
+private final class AriaDecalScopeBox { var scope: AriaDecalScope? }
+private let innerAriaSeries: (SeriesModel) -> AriaDecalScopeBox = model.makeInner { AriaDecalScopeBox() }
+private let innerAriaGlobal: (GlobalModel) -> AriaDecalScopeBox = model.makeInner { AriaDecalScopeBox() }
+
 // upstream (visual/aria.ts):
 //   import * as zrUtil from 'zrender/src/core/util';
 //   import ExtensionAPI from '../core/ExtensionAPI';
@@ -93,13 +102,129 @@ public enum aria {
         _ = util.merge(&ariaOpt, defaultOption, false)
         ariaModel.option = ariaOpt
 
-        // upstream splits setDecal() / setLabel(). Only setLabel() is ported (returns the string).
-        // PORT-TODO (setDecal): the `aria.decal.show` branch generates decal (SVG-pattern) visuals per datum
-        //   via `getDecalFromPalette` + `data.setItemVisual(idx, 'decal', ...)`. The decal palette infra
-        //   (model/mixin/palette.getDecalFromPalette + the renderer's decal pattern fill) is not ported yet,
-        //   so decal generation is deferred. The LABEL string below is the primary deliverable.
-
+        // upstream splits setDecal() / setLabel(). setLabel() returns the string; setDecal() is a
+        //   sibling static (see `setDecal(_:_:)` below) invoked by the driver — it assigns per-datum
+        //   decal visuals from the palette (`getDecalFromPalette`) which `visual/decalVisual` then turns
+        //   into a paintable Pattern.
         return setLabel(ecModel, api, ariaModel, localeAria)
+    }
+
+    // ------------------------------------------------------------------------
+    // upstream: function setDecal() { ... } (nested in ariaVisual)
+    //
+    // Assigns a palette decal to each series' data when `aria.decal.show` is enabled. Runs BEFORE
+    //   `visual/decalVisual` (which converts the assigned `decal` visual into a tiling Pattern), i.e.
+    //   at PRIORITY.VISUAL.ARIA (6000) < DECAL (7000). Idempotent w.r.t. the ariaModel option merge
+    //   done in `ariaLabel` (merge overwrite=false).
+    // ------------------------------------------------------------------------
+    public static func setDecal(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        let ariaModel = ecModel.getModel("aria")
+
+        // upstream: if (!ariaModel.get('enabled')) { return; }
+        if !jsTruthy(ariaModel.get("enabled")) {
+            return
+        }
+
+        // Mirror ariaLabel's defaults merge so `decal.show` is resolved even if ariaLabel didn't run
+        //   (e.g. label disabled). merge(overwrite=false) leaves user values intact.
+        let localeAria = (ecModel.getLocaleModel().get(["aria"]) as? [String: Any]) ?? [:]
+        var defaultOption = DEFAULT_OPTION
+        var defaultLabel = (defaultOption["label"] as? [String: Any]) ?? [:]
+        _ = util.merge(&defaultLabel, localeAria, false)
+        defaultOption["label"] = defaultLabel
+        var ariaOpt = (ariaModel.option as? [String: Any]) ?? [:]
+        _ = util.merge(&ariaOpt, defaultOption, false)
+        ariaModel.option = ariaOpt
+
+        // upstream: const decalPaletteScope = innerGlobal(ecModel).scope || (innerGlobal(ecModel).scope = {});
+        let globalBox = innerAriaGlobal(ecModel)
+        if globalBox.scope == nil { globalBox.scope = AriaDecalScope() }
+        let decalPaletteScope = globalBox.scope!
+
+        // upstream: const decalModel = ariaModel.getModel('decal'); const useDecal = decalModel.get('show');
+        let decalModel = ariaModel.getModel(["decal"])
+        if !jsTruthy(decalModel.get("show")) {
+            return
+        }
+
+        // upstream: Each type of series uses one scope (pie/funnel use different scopes).
+        //   const paletteScopeGroupByType = zrUtil.createHashMap<object, SeriesModel['type']>();
+        var paletteScopeGroupByType: [String: AriaDecalScope] = [:]
+        ecModel.eachSeries { seriesModel, _ in
+            if !seriesModel.isColorBySeries() {
+                let key = seriesModel.subType
+                let scope: AriaDecalScope
+                if let existing = paletteScopeGroupByType[key] {
+                    scope = existing
+                }
+                else {
+                    scope = AriaDecalScope()
+                    paletteScopeGroupByType[key] = scope
+                }
+                innerAriaSeries(seriesModel).scope = scope
+            }
+        }
+
+        ecModel.eachSeries { seriesModel, _ in
+            // upstream: if (isFunction(seriesModel.enableAriaDecal)) { seriesModel.enableAriaDecal(); return; }
+            // PORT-TODO: `enableAriaDecal` (tree/treemap/sunburst node-tree decal assignment) is not
+            //   ported on SeriesModel; the flat-data path below covers bar/pie/line/scatter/etc.
+
+            let data = seriesModel.getData()
+
+            if !seriesModel.isColorBySeries() {
+                // colorBy:'data' — one decal per datum (e.g. pie slices), keyed by data name.
+                let dataAll = seriesModel.getRawData()
+                var idxMap: [Int: Int] = [:]
+                let decalScope = innerAriaSeries(seriesModel).scope ?? decalPaletteScope
+
+                data.each { args in
+                    let idx = Int(args[0] as! Double)
+                    idxMap[data.getRawIndex(idx)] = idx
+                }
+
+                let dataCount = Double(dataAll.count())
+                dataAll.each { args in
+                    let rawIdx = Int(args[0] as! Double)
+                    let idx = idxMap[rawIdx]
+                    // const name = dataAll.getName(rawIdx) || (rawIdx + '');
+                    let rawName = dataAll.getName(rawIdx)
+                    let name = !rawName.isEmpty ? rawName : String(rawIdx)
+                    let paletteDecal = getDecalFromPalette(ecModel, name, decalScope, dataCount)
+                    guard let idx = idx else { return }
+                    let specifiedDecal = data.getItemVisual(idx, "decal") as? [String: Any]
+                    data.setItemVisual(idx, "decal", mergeDecal(specifiedDecal, paletteDecal) as Any?)
+                }
+            }
+            else {
+                // colorBy:'series' — one decal per series (e.g. bar), keyed by series name.
+                let paletteDecal = getDecalFromPalette(
+                    ecModel, seriesModel.name, decalPaletteScope, ecModel.getSeriesCount()
+                )
+                let specifiedDecal = data.getVisual("decal") as? [String: Any]
+                data.setVisual("decal", mergeDecal(specifiedDecal, paletteDecal) as Any?)
+            }
+        }
+    }
+
+    // upstream: function mergeDecal(specifiedDecal, paletteDecal): DecalObject
+    //   Merge decal from palette to decal from itemStyle; sets `dirty = true`.
+    private static func mergeDecal(_ specifiedDecal: [String: Any]?, _ paletteDecal: [String: Any]?) -> [String: Any]? {
+        // const resultDecal = specifiedDecal
+        //     ? extend(extend({}, paletteDecal), specifiedDecal) : paletteDecal;
+        var resultDecal: [String: Any]?
+        if let specifiedDecal = specifiedDecal {
+            var merged = paletteDecal ?? [:]
+            for (k, v) in specifiedDecal { merged[k] = v }
+            resultDecal = merged
+        }
+        else {
+            resultDecal = paletteDecal
+        }
+        // (resultDecal as InnerDecalObject).dirty = true;
+        guard var result = resultDecal else { return nil }
+        result["dirty"] = true
+        return result
     }
 
     // upstream: function setLabel() { ... } (nested in ariaVisual)

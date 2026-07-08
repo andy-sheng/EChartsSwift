@@ -83,11 +83,25 @@ public enum locale {
     //   registerLocale(LOCALE_ZH, langZH);
     // A caseless enum has no module side-effect slot, so the default registration runs on
     // first access via this idempotent installer (invoked from EChartsSlim.installOnce()).
+    //
+    // Upstream only side-effect-registers EN + ZH from core/locale.ts; the other i18n/langXX
+    // bundles are opt-in in the browser build (the user imports the bundle, which calls
+    // `registerLocale`). In this native port there is no per-file import step, so the built-in
+    // spread is registered here too (still opt-in at USE time: a chart only picks a locale up by
+    // name via `init(locale:)`). Keyed by the standard locale code; `registerLocale` upper-cases
+    // the key so lookups are case-insensitive (e.g. "PT-br" -> "PT-BR").
     private static var _defaultsRegistered = false
     public static func registerDefaultLocales() {
         if _defaultsRegistered { return }
         _defaultsRegistered = true
         registerLocale(LOCALE_EN, langEN.option)
         registerLocale(LOCALE_ZH, langZH.option)
+        // Broadened built-in locale spread (ported from upstream/echarts/src/i18n/lang*.ts).
+        registerLocale("FR", langFR.option)
+        registerLocale("DE", langDE.option)
+        registerLocale("ES", langES.option)
+        registerLocale("JA", langJA.option)
+        registerLocale("RU", langRU.option)
+        registerLocale("PT-br", langPTbr.option)
     }
 }

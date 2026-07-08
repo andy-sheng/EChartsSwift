@@ -54,6 +54,13 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         else if let d = el as? Displayable {
             collected.append(d)
         }
+        // Decal element (`style.decal`) — Storage._updateAndAddDisplayable adds a Path's synthesized
+        // `getDecalElement()` to the display list right after the host (Storage.swift:217-221), so the
+        // repeating decal texture paints clipped to the same shape, over the fill. This Storage-bypassing
+        // route must mirror that or decals never render via renderToImage/render.
+        if let decalEl = (el as? Path)?.getDecalElement(), !decalEl.ignore {
+            walk(decalEl)
+        }
         // Attached leader line (`setTextGuideLine`) — Storage._updateAndAddDisplayable adds the host's
         // textGuideLine to the display list right BEFORE its textContent (so the line paints under the
         // label). Like textContent it is NOT part of `activeChildrenRef()`, so walk it explicitly.

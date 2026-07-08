@@ -88,8 +88,14 @@ public final class GeoView: ComponentView {
     private var _model: GeoModel?
 
     // upstream: focusBlurEnabled = true;
-    // PORT-TODO: consulted by the emphasis/blur system (deferred with states); kept for surface parity.
+    // Consulted by the emphasis/blur system. The geoSVG path now marks named regions as highDown
+    //   dispatchers (see `_buildSVG`), so hover-to-highlight works for the geo component.
     public var focusBlurEnabled = true
+
+    // upstream (MapDraw): private _svgDispatcherMap: HashMap<Element[], RegionName>;
+    //   A named region may map to MULTIPLE SVG elements (a glyph + a label sharing one name). The map is
+    //   the highDown-dispatcher lookup for `findHighDownDispatchers` (hover-link / highlight by name).
+    var _svgDispatcherMap: [String: [Element]] = [:]
 
     // upstream: init(ecModel: GlobalModel, api: ExtensionAPI) { this._api = api; }
     public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -286,19 +292,28 @@ public final class GeoView: ComponentView {
     }
 
     // ================================================================================================
-    // Inlined static subset of `MapDraw._buildSVG` (component/helper/MapDraw.ts).
+    // Inlined subset of `MapDraw._buildSVG` (component/helper/MapDraw.ts) — the GEO COMPONENT variant.
     //
     // For a geoSVG map: fetch the pooled parsed-SVG graphic (`GeoSVGResource.useGraphic`), copy the geo
-    // view's RAW transform (raw-svg-rect → view-rect) onto a wrapper group holding the parsed root, apply
-    // the region `itemStyle` (MERGED — for geoSVG the default itemStyle carries a border but NO fill, so
-    // the SVG's authored `fill` is preserved) to each NAMED Displayable, and add the group to the view.
+    // view's OVERALL transform (raw-svg-rect → view-rect, WITH roam pan/zoom folded in) onto a wrapper
+    // group holding the parsed root, apply the region `itemStyle` (MERGED — for geoSVG the default
+    // itemStyle carries a border but NO fill, so the SVG's authored `fill` is preserved) to each NAMED
+    // Displayable, stamp the emphasis/select/blur itemStyle STATES, mark self-named regions as highDown
+    // dispatchers (hover-to-highlight) with a NAME LABEL, and add the group to the view.
+    //
+    // ROAM (task c): upstream copies the RAW transform onto `_svgGroup` and applies the ROAM transform to
+    //   the parent `_transformGroup` (net world transform = ROAM ∘ RAW). This slim driver has no separate
+    //   transformGroup (the group is rebuilt each render — see the roamHelperGeo header), so we copy the
+    //   combined OVERALL transform (== ROAM ∘ RAW; @see viewCoordSysUpdateOverallTrans) DIRECTLY onto the
+    //   single svg wrapper group. On `geoRoam` the full `update()` re-seeds the view roam state
+    //   (geoRoamApplyStateToView) and this method re-copies the fresh OVERALL trans → the SVG root pans/zooms.
     //
     // PORT-TODO (DEFERRED — faithful to a STATIC render):
-    //   - ROAM: only the RAW transform is copied (no roam controller / TRANS_ROAM).
-    //   - series-map DATA: `data`/visualMap encoding/decal (the geo component backdrop has no series data).
-    //   - EMPHASIS/SELECT/BLUR states, event/tooltip/state triggers, and the region LABEL for named
-    //     elements (upstream `resetLabelForRegion` places it at the <g>/element bounding-rect center).
-    //     Only the NORMAL itemStyle is applied here.
+    //   - series-map DATA: handled by MapView._buildSVG (the geo component backdrop has no series data).
+    //   - `el.z2EmphasisLift = 0` (ECElement augmentation not ported) — the states engine may apply the
+    //     default emphasis z2 lift to an SVG region on hover; harmless for the standard case.
+    //   - event/tooltip triggers (`resetEventTriggerForRegion` / `resetTooltipForRegion`) — the geo custom
+    //     `eventData` + tooltip config depend on innerStore.eventData / setTooltipConfig (deferred).
     // ================================================================================================
     private func _buildSVG(_ geo: Geo, _ geoModel: GeoModel, _ api: ExtensionAPI) {
         let mapName = geo.map
@@ -308,43 +323,168 @@ public final class GeoView: ComponentView {
 
         // upstream: viewCoordSysCopyTrans(this._svgGroup, viewCoordSys, VIEW_COORD_SYS_TRANS_RAW);
         //           this._useSVG(mapName) → svgGroup.add(svgGraphic.root)
+        //   (see ROAM note above — OVERALL folds the roam transform into the single wrapper group.)
         let svgGraphic = resource.useGraphic(self.uid)
         let svgGroup = Group()
-        _ = viewCoordSysCopyTrans(svgGroup, geo.view, VIEW_COORD_SYS_TRANS_RAW)
+        _ = viewCoordSysCopyTrans(svgGroup, geo.view, VIEW_COORD_SYS_TRANS_OVERALL)
         _ = svgGroup.add(svgGraphic.root)
 
-        // upstream: each(named, namedItem => { applyOptionStyleForRegion(...); el.silent = ...; })
+        // upstream: const svgDispatcherMap = this._svgDispatcherMap = createHashMap<Element[], RegionName>();
+        var svgDispatcherMap: [String: [Element]] = [:]
+        // upstream: let focusSelf = false;
+        var focusSelf = false
+
+        // upstream: each(named, namedItem => { ... })
         for namedItem in svgGraphic.named {
-            let el = namedItem.el
+            // Note that we also allow different elements to share the same name (e.g. a city glyph and its
+            //   label), so region option applies to each and their tooltip is defined once (upstream note).
             let regionName = namedItem.name
+            let svgNodeTagLower = namedItem.svgNodeTagLower
+            let el = namedItem.el
             let regionModel = geoModel.getRegionModel(regionName)
 
             // OPTION_STYLE_ENABLED tags (rect/circle/line/ellipse/polygon/polyline/path) → itemStyle.
             //   text/tspan/image can be named but are not styled by region option (upstream note).
-            if let path = el as? Path {
-                let styleModel = regionModel.getModel("itemStyle")
-                let itemStyle = geoGetFixedItemStyle(styleModel)
-                var s = path.pathStyle ?? PathStyleProps()
-                // MERGE (upstream `el.setStyle(normalStyle)`): only overwrite keys present in itemStyle,
-                //   so a geoSVG shape keeps its authored SVG `fill` when the region option sets no color.
-                if let v = geoColorString(itemStyle["fill"]) { s.fill = .string(v) }
-                if let v = geoColorString(itemStyle["stroke"]) { s.stroke = .string(v) }
-                if let v = numOpt(itemStyle["lineWidth"]) { s.lineWidth = v }
-                if let v = numOpt(itemStyle["opacity"]) { s.opacity = v }
-                if let v = numOpt(itemStyle["fillOpacity"]) { s.fillOpacity = v }
-                if let v = numOpt(itemStyle["strokeOpacity"]) { s.strokeOpacity = v }
-                // upstream: el.style.strokeNoScale = true;
-                s.strokeNoScale = true
-                path.useStyle(s)
+            if OPTION_STYLE_ENABLED_SVG_TAGS.contains(svgNodeTagLower), let path = el as? Path {
+                self._applyOptionStyleForRegionSVG(path, regionModel)
+            }
+
+            // upstream: if (el instanceof Displayable) { el.culling = true; }
+            if let disp = el as? Displayable {
+                disp.culling = true
             }
 
             // upstream: const silent = regionModel.get('silent', true); silent != null && (el.silent = silent);
             if let silent = regionModel.get("silent", true), !(silent is NSNull) {
                 el.silent = jsTruthy(silent)
             }
+
+            // upstream: (el as ECElement).z2EmphasisLift = 0;  → ECElement augmentation not ported (DEFERRED).
+
+            // upstream: if (!namedItem.namedFrom) { ...label + event + state trigger... }
+            if namedItem.namedFrom == nil {
+                // upstream: LABEL_HOST_MAP (OPTION_STYLE_ENABLED + 'g') → label at the <g>/element center.
+                if LABEL_HOST_SVG_TAGS.contains(svgNodeTagLower) {
+                    self._resetLabelForRegionSVG(geoModel, regionModel, regionName, el)
+                }
+
+                // upstream: STATE_TRIGGER_TAG_MAP (OPTION_STYLE_ENABLED + 'g') → highDown dispatcher.
+                if STATE_TRIGGER_SVG_TAGS.contains(svgNodeTagLower) {
+                    let focus = self._resetStateTriggerForRegionSVG(geoModel, el, regionName, regionModel)
+                    if let focusStr = focus as? String, focusStr == "self" {
+                        focusSelf = true
+                    }
+                    svgDispatcherMap[regionName, default: []].append(el)
+                }
+            }
         }
 
+        self._svgDispatcherMap = svgDispatcherMap
+
+        // upstream: this._enableBlurEntireSVG(focusSelf, mapOrGeoModel);
+        self._enableBlurEntireSVG(focusSelf, geoModel, svgGraphic)
+
         _ = self.group.add(svgGroup)
+    }
+
+    // upstream: applyOptionStyleForRegion (MapDraw.ts:617) — the geoSVG NORMAL style + emphasis/select/blur
+    //   state styles for one named Displayable. The GEO component has no series data, so the visualMap fill
+    //   branch is omitted here (see MapView._buildSVG for the data-encoded map-series variant).
+    private func _applyOptionStyleForRegionSVG(_ path: Path, _ regionModel: Model) {
+        let styleModel = regionModel.getModel("itemStyle")
+        let itemStyle = geoGetFixedItemStyle(styleModel)
+        var s = path.pathStyle ?? PathStyleProps()
+        // MERGE (upstream `el.setStyle(normalStyle)`): only overwrite keys present in itemStyle, so a
+        //   geoSVG shape keeps its authored SVG `fill` when the region option sets no color.
+        if let v = geoColorString(itemStyle["fill"]) { s.fill = .string(v) }
+        if let v = geoColorString(itemStyle["stroke"]) { s.stroke = .string(v) }
+        if let v = numOpt(itemStyle["lineWidth"]) { s.lineWidth = v }
+        if let v = numOpt(itemStyle["opacity"]) { s.opacity = v }
+        if let v = numOpt(itemStyle["fillOpacity"]) { s.fillOpacity = v }
+        if let v = numOpt(itemStyle["strokeOpacity"]) { s.strokeOpacity = v }
+        // upstream: el.style.strokeNoScale = true;
+        s.strokeNoScale = true
+        path.useStyle(s)
+
+        // upstream: el.ensureState('emphasis'/'select'/'blur').style = getFixedItemStyle(...) ;
+        //           setDefaultStateProxy(el).
+        //   `setStatesStylesFromModel` stamps ensureState(emphasis|blur|select).style = model.getItemStyle()
+        //   (PORT DEVIATION, same as MapView._buildGeoJSON: the shared helper uses getItemStyle, not the
+        //   map-specific getFixedItemStyle/areaColor fixup — adequate for the standard itemStyle case). The
+        //   state proxy is (re)installed by toggleHoverEmphasis's child traverse below.
+        states.setStatesStylesFromModel(path, regionModel)
+        states.setDefaultStateProxy(path)
+    }
+
+    // upstream: resetStateTriggerForRegion (MapDraw.ts:821) — mark the named element a highDown dispatcher
+    //   carrying the region's emphasis focus/blurScope, then enable the geo-component hover-link features
+    //   (`enableComponentHighDownFeatures`, so highlight-by-name resolves this element). Returns the focus.
+    @discardableResult
+    private func _resetStateTriggerForRegionSVG(
+        _ geoModel: GeoModel, _ el: Element, _ regionName: String, _ regionModel: Model
+    ) -> InnerFocus? {
+        // upstream: el.highDownSilentOnTouch = !!mapOrGeoModel.get('selectedMode');  → not ported (touch).
+        let emphasisModel = regionModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+        // upstream: if (isGeoModel(mapOrGeoModel)) { enableComponentHighDownFeatures(el, geoModel, name); }
+        states.enableComponentHighDownFeatures(el, geoModel, regionName)
+        return focus
+    }
+
+    // upstream: resetLabelForRegion (MapDraw.ts:679) — the geoSVG variant (data==null, labelXY==null →
+    //   position "inside"). Retrofitted onto the SHARED LABEL CORE (`labelStyle.setLabelStyle`): the label
+    //   is attached as the named element's `textContent` (default position "inside" → centred in the
+    //   element bounding rect), and per-state `show` is honoured by setLabelStyle itself.
+    private func _resetLabelForRegionSVG(
+        _ geoModel: GeoModel, _ regionModel: Model, _ regionName: String, _ el: Element
+    ) {
+        // upstream: isGeoModel(mapOrGeoModel) ⇒ always draw the label (no data → labelFetcher = geoModel,
+        //   query = regionName). The port folds the geo formatter into `defaultText` (getFormattedLabel),
+        //   so no Double labelDataIndex is needed for the name-keyed geo label.
+        var opt = SetLabelStyleOpt()
+        opt.defaultText = geoModel.getFormattedLabel(regionName, "normal") ?? regionName
+
+        let labelStatesModels = labelStyle.getLabelStatesModels(regionModel)
+        labelStyle.setLabelStyle(el, labelStatesModels, opt)
+    }
+
+    // upstream: _enableBlurEntireSVG (MapDraw.ts:481) — when a region focus is 'self', blur the ENTIRE SVG
+    //   on emphasis (only for the geo component; series-map does not support it yet). Sets a `blur`-state
+    //   opacity on every non-group SVG element (without overwriting a region-option blur opacity).
+    private func _enableBlurEntireSVG(
+        _ focusSelf: Bool, _ geoModel: GeoModel, _ svgGraphic: GeoSVGGraphicRecord
+    ) {
+        guard focusSelf else { return }
+        // upstream: const blurStyle = mapOrGeoModel.getModel(['blur', 'itemStyle']).getItemStyle();
+        let blurStyle = geoModel.getModel(["blur", "itemStyle"]).getItemStyle()
+        let opacity = numOpt(blurStyle["opacity"])
+        _ = svgGraphic.root.traverse { el in
+            if !el.isGroup, let disp = el as? Displayable {
+                states.setDefaultStateProxy(disp)
+                // upstream: const style = el.ensureState('blur').style || {};
+                let blurState = disp.ensureState("blur")
+                // Only support `opacity` (not sure other props suit Text/TSpan/Image). Do not overwrite a
+                //   region-option blur opacity already set.
+                var st: [String: Any] = blurState.style ?? [:]
+                if st["opacity"] == nil, let opacity = opacity {
+                    st["opacity"] = opacity
+                }
+                blurState.style = st
+                // Enable `stateTransition` (animation).
+                _ = disp.ensureState("emphasis")
+            }
+            return false
+        }
+    }
+
+    // upstream: findHighDownDispatchers(name, geoModel) — the geoSVG branch returns the dispatcher elements
+    //   registered for a region name (hover-link / highlight-by-name). Exposed for the high-down driver.
+    func findHighDownDispatchers(_ name: String?) -> [Element] {
+        guard let name = name else { return [] }
+        return self._svgDispatcherMap[name] ?? []
     }
 
     // upstream: resetLabelForRegion (STATIC subset). For the geo component the label is drawn when the

@@ -25,7 +25,13 @@ final class PaletteInner<T> {
 
 private let innerColor: Inner<ZRColor> = model.makeInner { PaletteInner<ZRColor>() }
 
-private let innerDecal: Inner<DecalObject> = model.makeInner { PaletteInner<DecalObject>() }
+// NOTE (decal modeling): a runtime `DecalObject` is the dynamic option bag `[String: Any]` — the aria
+//   decal palette in globalDefault.swift and `itemStyle.decal` are both plain dicts, and `util/decal`'s
+//   `createOrUpdatePatternFromDecal` reads keys off that bag. So the palette stores/returns `[String: Any]`
+//   (the typed `DecalObject` struct in util/types.swift is kept for provenance only). Modeling this as
+//   `DecalObject` would make `normalizeToArray<DecalObject>([[String:Any]])` yield `[]` (a dict is not a
+//   `DecalObject` struct) → every `getDecalFromPalette` would return nil.
+private let innerDecal: Inner<[String: Any]> = model.makeInner { PaletteInner<[String: Any]>() }
 
 
 
@@ -74,13 +80,14 @@ public func getDecalFromPalette(
     _ name: String,
     _ scope: AnyObject,
     _ requestNum: Double? = nil
-) -> DecalObject? {
+) -> [String: Any]? {
     // upstream: const defaultDecals = normalizeToArray((ecModel as Model<AriaOptionMixin>).get(['aria', 'decal', 'decals']));
     // PORT-TODO: upstream casts ecModel to `Model<AriaOptionMixin>` purely for typing `get`;
     //   here GlobalModel conforms to PaletteMixin (upstream `mixin(GlobalModel, PaletteMixin)`),
-    //   which exposes `get`, so the cast targets PaletteMixin.
+    //   which exposes `get`, so the cast targets PaletteMixin. Decals are the dynamic option bag
+    //   `[String: Any]` (see the innerDecal note above).
     let that = ecModel as PaletteMixin   // GlobalModel conforms to PaletteMixin (upcast)
-    let defaultDecals: [DecalObject] = model.normalizeToArray(that.get(["aria", "decal", "decals"], false))
+    let defaultDecals: [[String: Any]] = model.normalizeToArray(that.get(["aria", "decal", "decals"], false))
     return getFromPalette(that, innerDecal, defaultDecals, nil, name, scope, requestNum)
 }
 

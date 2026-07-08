@@ -110,8 +110,15 @@ open class MapView: ChartView {
         //   `resetForLabelLayout` are omitted (no RoamController / transformGroup yet).
 
         // upstream: if (mapSeriesNeedsDrawMap(mapModel)) { mapDraw.draw(...); } else { this._clearMapDraw(); }
+        //   MapDraw.draw dispatches on `geo.resourceType`: 'geoJSON' → _buildGeoJSON; 'geoSVG' → _buildSVG.
         if mapSeriesNeedsDrawMap(mapModel) {
-            self._buildGeoJSON(mapModel, ecModel, api)
+            let geo = mapModel.coordinateSystem as! Geo
+            if geo.resourceType == "geoSVG" {
+                self._buildSVG(mapModel, ecModel, api)
+            }
+            else {
+                self._buildGeoJSON(mapModel, ecModel, api)
+            }
         }
 
         // upstream: mapModel.get('showLegendSymbol') && ecModel.getComponent('legend') && this._renderSymbols(mapModel);
@@ -337,6 +344,134 @@ open class MapView: ChartView {
             let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(regionGroup, focus, blurScope, isDisabled)
         }
+    }
+
+    // ================================================================================================
+    // Inlined subset of `MapDraw._buildSVG` (component/helper/MapDraw.ts) — the SERIES-MAP variant.
+    //
+    // For a series:"map" on a geoSVG map: fetch the pooled parsed-SVG graphic, copy the geo view's OVERALL
+    // transform (raw-svg-rect → view-rect, WITH roam) onto a wrapper group, then for each NAMED Displayable
+    // apply the region `itemStyle` FILLED by the per-region series data-item colour (the visualMap-encoded
+    // `data.getItemVisual(dataIdx,'style').fill`), stamp emphasis/select/blur states, bind the data item's
+    // graphic el (so tooltip / highlight-by-dataIndex resolve it), draw the region-name label when the value
+    // is NaN, and mark self-named regions as highDown dispatchers (hover-to-highlight).
+    //
+    // Same ROAM handling as GeoView._buildSVG (OVERALL trans on the single wrapper group; re-copied on the
+    // full `update()` a geoRoam triggers). DEFERRED (STATIC): decal, event `eventData`, tooltip config.
+    // ================================================================================================
+    private func _buildSVG(_ mapModel: MapSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        let geo = mapModel.coordinateSystem as! Geo
+        let mapName = geo.map
+        guard let resource = geoSourceManager.getGeoResource(mapName) as? GeoSVGResource else {
+            return
+        }
+        let data = mapModel.getData()
+
+        // upstream: isVisualEncodedByVisualMap = data && data.getVisual('visualMeta') && ...length > 0
+        let visualMeta = data.getVisual("visualMeta")
+        let isVisualEncodedByVisualMap = (visualMeta as? [Any])?.isEmpty == false
+
+        // upstream: viewCoordSysCopyTrans(this._svgGroup, viewCoordSys, VIEW_COORD_SYS_TRANS_RAW) — the port
+        //   copies OVERALL (== ROAM ∘ RAW) onto the single wrapper group (see GeoView._buildSVG ROAM note).
+        let svgGraphic = resource.useGraphic(self.uid)
+        let svgGroup = Group()
+        _ = viewCoordSysCopyTrans(svgGroup, geo.view, VIEW_COORD_SYS_TRANS_OVERALL)
+        _ = svgGroup.add(svgGraphic.root)
+
+        for namedItem in svgGraphic.named {
+            let regionName = namedItem.name
+            let svgNodeTagLower = namedItem.svgNodeTagLower
+            let el = namedItem.el
+
+            // upstream: dataIdx = data ? data.indexOfName(regionName) : null;
+            //           regionModel = mapOrGeoModel.getRegionModel(regionName);
+            let dataIdx = data.indexOfName(regionName)
+            let regionModel = mapModel.getRegionModel(regionName)
+
+            // OPTION_STYLE_ENABLED tags → itemStyle (+ visualMap data fill). Capture the resolved solid
+            //   fill (the label's `inheritColor` so `label.color: 'inherit'` picks up the region colour).
+            var regionFill: String? = nil
+            if OPTION_STYLE_ENABLED_SVG_TAGS.contains(svgNodeTagLower), let path = el as? Path {
+                regionFill = self._applyOptionStyleForRegionSVG(
+                    path, regionModel, dataIdx, data, isVisualEncodedByVisualMap
+                )
+            }
+
+            // upstream: if (el instanceof Displayable) { el.culling = true; }
+            if let disp = el as? Displayable {
+                disp.culling = true
+            }
+
+            // upstream: const silent = regionModel.get('silent', true); silent != null && (el.silent = silent);
+            if let silent = regionModel.get("silent", true), !(silent is NSNull) {
+                el.silent = mapJsTruthy(silent)
+            }
+
+            // upstream: (el as ECElement).z2EmphasisLift = 0;  → ECElement augmentation not ported (DEFERRED).
+
+            // upstream: if (!namedItem.namedFrom) { ...label + event + state trigger... }
+            if namedItem.namedFrom == nil {
+                // upstream: LABEL_HOST_MAP → resetLabelForRegion (map series → data-driven visibility).
+                if LABEL_HOST_SVG_TAGS.contains(svgNodeTagLower) {
+                    self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, regionFill, el)
+                }
+
+                // upstream: resetEventTriggerForRegion → data.setItemGraphicEl(dataIdx, el).
+                if dataIdx >= 0 {
+                    data.setItemGraphicEl(dataIdx, el)
+                }
+
+                // upstream: STATE_TRIGGER_TAG_MAP → toggleHoverEmphasis(el, focus, blurScope, disabled).
+                //   (enableComponentHighDownFeatures is geo-component-only — not applied for a map series.)
+                if STATE_TRIGGER_SVG_TAGS.contains(svgNodeTagLower) {
+                    let emphasisModel = regionModel.getModel(["emphasis"])
+                    let focus: InnerFocus? = emphasisModel.get("focus")
+                    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+                }
+            }
+        }
+
+        _ = self.group.add(svgGroup)
+    }
+
+    // upstream: applyOptionStyleForRegion (MapDraw.ts:617) — the map-series geoSVG NORMAL style (with the
+    //   visualMap-encoded data fill) + emphasis/select/blur state styles for one named Displayable.
+    @discardableResult
+    private func _applyOptionStyleForRegionSVG(
+        _ path: Path, _ regionModel: Model, _ dataIdx: Int, _ data: SeriesData, _ isVisualEncodedByVisualMap: Bool
+    ) -> String? {
+        var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
+        // upstream: if (data) { const style = data.getItemVisual(dataIndex, 'style');
+        //     if (isVisualEncodedByVisualMap && style.fill) { normalStyle.fill = style.fill; } }
+        if dataIdx >= 0, let style = data.getItemVisual(dataIdx, "style") as? [String: Any] {
+            if isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
+                normalStyle["fill"] = fill
+            }
+            // PORT-TODO (DEFERRED — decal): normalStyle.decal = createOrUpdatePatternFromDecal(...).
+        }
+
+        var s = path.pathStyle ?? PathStyleProps()
+        // MERGE (upstream `el.setStyle(normalStyle)`): overwrite only keys present in normalStyle, so a
+        //   geoSVG shape keeps its authored SVG `fill` when neither region option nor visualMap sets one.
+        if let v = mapColorString(normalStyle["fill"]) { s.fill = .string(v) }
+        if let v = mapColorString(normalStyle["stroke"]) { s.stroke = .string(v) }
+        if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
+        if let v = mapToNumber(normalStyle["opacity"]) { s.opacity = v }
+        if let v = mapToNumber(normalStyle["fillOpacity"]) { s.fillOpacity = v }
+        if let v = mapToNumber(normalStyle["strokeOpacity"]) { s.strokeOpacity = v }
+        // upstream: el.style.strokeNoScale = true;
+        s.strokeNoScale = true
+        path.useStyle(s)
+
+        // upstream: ensureState('emphasis'/'select'/'blur').style = getFixedItemStyle(...); setDefaultStateProxy.
+        //   (PORT DEVIATION, same as _buildGeoJSON: getItemStyle, not getFixedItemStyle, for the state styles.)
+        states.setStatesStylesFromModel(path, regionModel)
+        states.setDefaultStateProxy(path)
+
+        // The region's resolved solid fill — the label's `inheritColor`.
+        return mapColorString(normalStyle["fill"])
     }
 
     // upstream: resetLabelForRegion (map-series subset). The region-name label is drawn when

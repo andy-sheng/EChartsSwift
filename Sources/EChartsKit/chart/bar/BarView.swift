@@ -982,6 +982,10 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
     }
     if let v = colorString(d["fill"]) { s.fill = .string(v) }
     if let v = colorString(d["stroke"]) { s.stroke = .string(v) }
+    // decal: the `visual/decalVisual` stage stores a generated `Pattern` (tiling texture) under the
+    //   item/series 'style' visual's `decal` key. Bridge it to `pathStyle.decal` so `Path.update()`
+    //   synthesizes the decal element (`_decalEl`) that the renderer paints over the fill.
+    if let pat = d["decal"] as? ZRenderKit.Pattern { s.decal = pat }
     if let v = d["opacity"] as? Double { s.opacity = v }
     if let v = d["fillOpacity"] as? Double { s.fillOpacity = v }
     if let v = d["strokeOpacity"] as? Double { s.strokeOpacity = v }

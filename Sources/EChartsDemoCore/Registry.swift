@@ -31,7 +31,8 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_calendar_basic,    // Calendar
         EChartsDemoRegistry.demo_matrix_basic,      // Matrix (table backdrop — header cells + body cells)
         EChartsDemoRegistry.demo_geo_basic,         // Geo (toy GeoJSON regions backdrop)
-        EChartsDemoRegistry.demo_map_svg_basic,     // Geo (SVG-backed map — parseSVG shapes rendered by GeoView)
+        EChartsDemoRegistry.demo_map_svg_basic,     // Geo (SVG-backed map — labels + hover-emphasis + roam)
+        EChartsDemoRegistry.demo_map_svg_series,    // Geo (series:"map" on an SVG map — regions coloured by value)
         EChartsDemoRegistry.demo_map_basic,         // Map (choropleth — toy GeoJSON regions filled by value)
         EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
         EChartsDemoRegistry.demo_heatmap_basic,     // Heatmap (cartesian, cells colored by value via visualMap)
@@ -141,5 +142,8 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_bar_min_height,        // Bar (barMinHeight)
         EChartsDemoRegistry.demo_line_two_smooth,       // Line (two smooth)
         EChartsDemoRegistry.demo_toolbox_basic,         // Component (toolbox icon row)
+        // gallery-decal — decal (repeating-texture) patterns (util/decal + aria.decal.show).
+        EChartsDemoRegistry.demo_bar_decal,             // Bar (itemStyle.decal texture)
+        EChartsDemoRegistry.demo_bar_aria_decal,        // Bar (aria.decal.show auto-texture)
     ]
 }

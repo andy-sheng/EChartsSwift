@@ -130,6 +130,14 @@ open class ExtensionAPI {
         fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-TODO: abstract
     }
 
+    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
+    //   Upstream returns `zr.painter.dpr` (the device pixel ratio). Used by `util/decal`'s tile
+    //   rasterization (createOrUpdatePatternFromDecal). Defaults to 1 (the headless/test dpr); the
+    //   host painter can override when a real dpr is wired.
+    open func getDevicePixelRatio() -> Double {
+        return 1
+    }
+
     // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (see init note). Upstream
     //   `ExtensionAPI.dispatchAction` is `zrUtil.bind(ecInstance.dispatchAction, ecInstance)`. Declared
     //   here as a faithful-signature abstract member so the action round-trip (a view/action handler
