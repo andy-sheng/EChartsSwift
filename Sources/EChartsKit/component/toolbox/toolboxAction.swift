@@ -46,6 +46,24 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
         return nil
     }
 
+    // component/helper/interactionMutex.ts self-registers `takeGlobalCursor` at module load
+    //   (`registerAction({type:'takeGlobalCursor', event:'globalCursorTaken', update:'update'}, noop)`).
+    //   The upstream handler is a NO-OP (the cursor arming is consumed by the toolbox DataZoom feature's
+    //   `render`, which enables its BrushController). The port additionally records the `dataZoomSelect`
+    //   arm state on the driver so the live host (`EChartsView`) can switch its rect-drag to a dataZoom
+    //   box-select. (DEVIATION vs upstream, where the toolbox feature holds `_isZoomActive`; the slim
+    //   host has no live feature-owned BrushController at drag time — see EChartsSlim.dataZoomSelectActive.)
+    var cursorInfo = ActionInfo(type: "takeGlobalCursor")
+    cursorInfo.event = "globalCursorTaken"
+    cursorInfo.update = "update"
+    registerAction(cursorInfo) { payload, _, api in
+        if (payload.other["key"] as? String) == "dataZoomSelect" {
+            let active = (payload.other["dataZoomSelectActive"] as? Bool) ?? false
+            (api as? SlimExtensionAPI)?.setDataZoomSelectActive(active)
+        }
+        return nil
+    }
+
     // registerAction({type:'changeMagicType', event:'magicTypeChanged', update:'prepareAndUpdate'}, handler)
     var magicInfo = ActionInfo(type: "changeMagicType")
     magicInfo.event = "magicTypeChanged"

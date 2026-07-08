@@ -689,7 +689,10 @@ open class Path: Displayable {
         return fill != nil && !isNoneColor(fill)
     }
 
-    public override func getBoundingRect() -> BoundingRect? {
+    // `open` (not merely `public override`): `getBoundingRect` is a subclassing seam for out-of-module
+    //   Path subclasses that cache/derive their own rect (e.g. EChartsKit's LargeSymbolPath, which
+    //   ignores stroke and derives the rect from its packed points — faithful to upstream).
+    open override func getBoundingRect() -> BoundingRect? {
         var rect = self._rect
         let style = self.pathStyle!
         let needsUpdateRect = (rect == nil)
@@ -755,7 +758,9 @@ open class Path: Displayable {
         return rect
     }
 
-    public override func contain(_ x: Double, _ y: Double) -> Bool {
+    // `open` (subclassing seam): a custom Path (e.g. LargeSymbolPath) overrides `contain` to run its
+    //   own hit-test (findDataIndex) instead of fill/stroke winding.
+    open override func contain(_ x: Double, _ y: Double) -> Bool {
         let localPos = self.transformCoordToLocal(x, y)
         let rect = self.getBoundingRect()
         let style = self.pathStyle!
@@ -794,7 +799,9 @@ open class Path: Displayable {
     }
 
     /// Shape changed
-    public func dirtyShape() {
+    // `open` (subclassing seam): a custom Path overrides `dirtyShape` to invalidate its own caches
+    //   (e.g. LargeSymbolPath's derived bounding rect) before delegating to `super`.
+    open func dirtyShape() {
         self.__dirty = Double(Int(self.__dirty) | Int(SHAPE_CHANGED_BIT))
         if self._rect != nil {
             self._rect = nil

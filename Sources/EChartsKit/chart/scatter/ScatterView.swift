@@ -38,11 +38,15 @@ open class ScatterView: ChartView {
         self.type = ScatterView.type
     }
 
-    // L2: the shared `SymbolDraw` (chart/helper) now drives per-point symbols (enter/update/leave diff,
-    //   emphasis hover-scale, symbolRotate/offset/keepAspect, symbol labels). `_isLargeDraw` /
-    //   LargeSymbolDraw + the incremental pipeline remain PORT-TODO (large mode deferred).
+    // L2: the shared `SymbolDraw` (chart/helper) drives per-point symbols (enter/update/leave diff,
+    //   emphasis hover-scale, symbolRotate/offset/keepAspect, symbol labels). The large-mode fast path
+    //   (`large: true` past `largeThreshold`) instead routes to `LargeSymbolDraw` (a SINGLE path that
+    //   paints every point). The incremental/progressive pipeline stays PORT-TODO (single-pass here).
     private var _data: SeriesData?
     private var _symbolDraw: SymbolDraw?
+    // upstream: private _largeSymbolDraw: LargeSymbolDraw; private _isLargeDraw: boolean;
+    private var _largeSymbolDraw: LargeSymbolDraw?
+    private var _isLargeDraw: Bool = false
 
     // upstream: render(seriesModel, ecModel, api) {
     //     const data = seriesModel.getData();
@@ -115,6 +119,52 @@ open class ScatterView: ChartView {
             return
         }
 
+        // upstream `_updateSymbolDraw`: `isLargeDraw = pipelineContext.large` — for a scatter series
+        //   that is `large: true` and past its `largeThreshold`. The Scheduler pipeline context is not
+        //   ported, so derive it inline here (`large && count >= largeThreshold`).
+        let large = (seriesModel.get("large") as? Bool) ?? false
+        let largeThreshold = scatterAsInt(seriesModel.get("largeThreshold")) ?? 2000
+        let isLargeDraw = large && store.count() >= largeThreshold
+
+        if isLargeDraw {
+            // upstream: symbolDraw = this._largeSymbolDraw = new LargeSymbolDraw(); (swap views on toggle)
+            if self._largeSymbolDraw == nil || self._isLargeDraw != isLargeDraw {
+                self._symbolDraw?.remove()
+                self._symbolDraw = nil
+                _ = self.group.removeAll()
+                let lsd = LargeSymbolDraw()
+                self._largeSymbolDraw = lsd
+                _ = self.group.add(lsd.group)
+            }
+            self._isLargeDraw = true
+            let largeDraw = self._largeSymbolDraw!
+
+            // upstream `pointsLayout` stores the packed `points` (Float32Array [x0,y0,x1,y1,...]) as the
+            //   'points' data layout; the port computes points on the fly, so build + stash the packed
+            //   array here so LargeSymbolDraw.updateData can read `data.getLayout('points')` faithfully.
+            var packed = [Double](repeating: 0, count: store.count() * 2)
+            for i in 0..<store.count() {
+                let p = pointAt(i)
+                packed[i * 2] = p.count > 0 ? p[0] : Double.nan
+                packed[i * 2 + 1] = p.count > 1 ? p[1] : Double.nan
+            }
+            data.setLayout("points", packed)
+
+            var opt = SymbolDrawUpdateOpt()
+            opt.getSymbolPoint = { i in pointAt(i) }
+            largeDraw.updateData(data, opt)
+            self._data = data
+            return
+        }
+
+        // Toggle back from large → normal: drop the large draw + reset the group.
+        if self._isLargeDraw {
+            self._largeSymbolDraw?.remove()
+            self._largeSymbolDraw = nil
+            _ = self.group.removeAll()
+            self._isLargeDraw = false
+        }
+
         // upstream: `const symbolDraw = this._updateSymbolDraw(data, seriesModel);
         //            symbolDraw.updateData(data, createSymbolDrawOpt(seriesModel));`
         //   The shared SymbolDraw owns its own group (added once to the view group) and diffs old→new
@@ -132,11 +182,18 @@ open class ScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-TODO: LargeSymbolDraw (large mode), incrementalPrepareRender/incrementalRender/
-        //   updateTransform, clipShape (createCoordSysClipAreaSimply) — deferred with the incremental
-        //   pipeline + large-draw helpers.
+        // PORT-TODO: incrementalPrepareRender/incrementalRender/updateTransform, clipShape
+        //   (createCoordSysClipAreaSimply) — deferred with the incremental pipeline.
         self._data = data
     }
+}
+
+// `largeThreshold` (and friends) box as Int OR Double (the Int-vs-Double option-read trap); coerce.
+private func scatterAsInt(_ v: Any?) -> Int? {
+    if let i = v as? Int { return i }
+    if let d = v as? Double { return Int(d) }
+    if let n = v as? NSNumber { return n.intValue }
+    return nil
 }
 
 // export default ScatterView;  -> `open class ScatterView` above.

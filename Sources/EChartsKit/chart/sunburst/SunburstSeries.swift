@@ -35,7 +35,7 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import enableAriaDecalForTree from '../helper/enableAriaDecalForTree';
-//       -> PORT-TODO: chart/helper/enableAriaDecalForTree.ts NOT ported (aria decal deferred).
+//       -> `enableAriaDecalForTree` (chart/helper/enableAriaDecalForTree.swift).
 
 // ============================================================================
 // The upstream `interface`/`type` declarations (SunburstItemStyleOption, SunburstLabelOption,
@@ -277,9 +277,10 @@ open class SunburstSeriesModel: SeriesModel {
         }
     }
 
-    // enableAriaDecal() { enableAriaDecalForTree(this); }
-    open func enableAriaDecal() {
-        // PORT-TODO: chart/helper/enableAriaDecalForTree.ts NOT ported (aria decal deferred). No-op.
+    // upstream: enableAriaDecal() { enableAriaDecalForTree(this); }
+    open override var hasEnableAriaDecal: Bool { true }
+    open override func enableAriaDecal() {
+        enableAriaDecalForTree(self)
     }
 }
 

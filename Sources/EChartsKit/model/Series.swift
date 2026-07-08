@@ -476,6 +476,19 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         return self.getColorBy() == .series
     }
 
+    // upstream (Series.ts:146): `enableAriaDecal(): void;` — declared on the SeriesModel interface but
+    //   implemented ONLY by tree-structured series (treemap/sunburst via `enableAriaDecalForTree`). The
+    //   aria decal stage guards its call with `zrUtil.isFunction(seriesModel.enableAriaDecal)`; series
+    //   that don't define it fall through to the flat-data palette assignment.
+    // PORT: Swift has no `isFunction` on a method that "might not be implemented", so `hasEnableAriaDecal`
+    //   mirrors the upstream presence check — base returns false (fall through), the tree series override
+    //   it to true and implement `enableAriaDecal()`.
+    open var hasEnableAriaDecal: Bool { false }
+
+    // upstream: lets each series define how the aria decal palette is applied to its data. Base is a
+    //   no-op (unreachable: guarded by `hasEnableAriaDecal`).
+    open func enableAriaDecal() {}
+
     /**
      * Get base axis if has coordinate system and has axis.
      * By default use coordSys.getBaseAxis();

@@ -252,12 +252,20 @@ open class MapView: ChartView {
                 var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
                 // upstream: if (data) { const style = data.getItemVisual(dataIndex, 'style');
                 //     if (isVisualEncodedByVisualMap && style.fill) { normalStyle.fill = style.fill; } }
-                if dataIdx >= 0,
-                   let style = data.getItemVisual(dataIdx, "style") as? [String: Any] {
-                    if isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
+                if dataIdx >= 0 {
+                    if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
+                       isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
                         normalStyle["fill"] = fill
                     }
-                    // PORT-TODO (DEFERRED — decal): `normalStyle.decal = createOrUpdatePatternFromDecal(...)`.
+                    // upstream (MapDraw.ts:658-664): `const decal = data.getItemVisual(dataIndex, 'decal');
+                    //   if (decal) { normalStyle.decal = createOrUpdatePatternFromDecal(decal, api); }`.
+                    //   The raw 'decal' visual is the decal OPTION bag (set by visual/style or aria.setDecal);
+                    //   map generates its own Pattern inline (it styles from the region itemStyle, not the
+                    //   data 'style' bag) rather than reading the decalVisual-produced style.decal.
+                    let decal = data.getItemVisual(dataIdx, "decal")
+                    if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
+                        normalStyle["decal"] = pat
+                    }
                 }
 
                 var pathStyle = mapPathStyleFromDict(normalStyle)
@@ -393,7 +401,7 @@ open class MapView: ChartView {
             var regionFill: String? = nil
             if OPTION_STYLE_ENABLED_SVG_TAGS.contains(svgNodeTagLower), let path = el as? Path {
                 regionFill = self._applyOptionStyleForRegionSVG(
-                    path, regionModel, dataIdx, data, isVisualEncodedByVisualMap
+                    path, regionModel, dataIdx, data, isVisualEncodedByVisualMap, api
                 )
             }
 
@@ -440,16 +448,22 @@ open class MapView: ChartView {
     //   visualMap-encoded data fill) + emphasis/select/blur state styles for one named Displayable.
     @discardableResult
     private func _applyOptionStyleForRegionSVG(
-        _ path: Path, _ regionModel: Model, _ dataIdx: Int, _ data: SeriesData, _ isVisualEncodedByVisualMap: Bool
+        _ path: Path, _ regionModel: Model, _ dataIdx: Int, _ data: SeriesData, _ isVisualEncodedByVisualMap: Bool,
+        _ api: ExtensionAPI
     ) -> String? {
         var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
         // upstream: if (data) { const style = data.getItemVisual(dataIndex, 'style');
         //     if (isVisualEncodedByVisualMap && style.fill) { normalStyle.fill = style.fill; } }
-        if dataIdx >= 0, let style = data.getItemVisual(dataIdx, "style") as? [String: Any] {
-            if isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
+        if dataIdx >= 0 {
+            if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
+               isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
                 normalStyle["fill"] = fill
             }
-            // PORT-TODO (DEFERRED — decal): normalStyle.decal = createOrUpdatePatternFromDecal(...).
+            // upstream (MapDraw.ts:658-664): the raw 'decal' visual → an inline-generated tiling Pattern.
+            let decal = data.getItemVisual(dataIdx, "decal")
+            if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
+                normalStyle["decal"] = pat
+            }
         }
 
         var s = path.pathStyle ?? PathStyleProps()
@@ -461,6 +475,7 @@ open class MapView: ChartView {
         if let v = mapToNumber(normalStyle["opacity"]) { s.opacity = v }
         if let v = mapToNumber(normalStyle["fillOpacity"]) { s.fillOpacity = v }
         if let v = mapToNumber(normalStyle["strokeOpacity"]) { s.strokeOpacity = v }
+        if let pat = normalStyle["decal"] as? ZRenderKit.Pattern { s.decal = pat }
         // upstream: el.style.strokeNoScale = true;
         s.strokeNoScale = true
         path.useStyle(s)
@@ -725,6 +740,10 @@ private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let v = mapToNumber(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
     if let v = mapToNumber(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
     if let v = mapToNumber(dict["lineDashOffset"]) { s.lineDashOffset = v }
+    // upstream (MapDraw.applyOptionStyleForRegion): `normalStyle.decal = createOrUpdatePatternFromDecal(...)`.
+    //   The generated tiling `Pattern` is bridged to `pathStyle.decal` so `Path.update()` synthesizes the
+    //   decal element (`_decalEl`) the renderer paints over the region fill (mirrors barStyleFromDict).
+    if let pat = dict["decal"] as? ZRenderKit.Pattern { s.decal = pat }
     // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
     return s
 }

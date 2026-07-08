@@ -6,7 +6,9 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_bar_basic,     // Bar
         EChartsDemoRegistry.demo_bar_seven,     // Bar
         EChartsDemoRegistry.demo_line_basic,    // Line
+        EChartsDemoRegistry.demo_line_lttb,     // Line (10k points down-sampled via sampling:"lttb")
         EChartsDemoRegistry.demo_scatter_basic, // Scatter
+        EChartsDemoRegistry.demo_large_scatter, // Scatter (large-mode single LargeSymbolPath)
         EChartsDemoRegistry.demo_effectscatter_basic, // EffectScatter
         EChartsDemoRegistry.demo_lines_basic,   // Lines
         EChartsDemoRegistry.demo_lines_effect,  // Lines (flying-trail effect)

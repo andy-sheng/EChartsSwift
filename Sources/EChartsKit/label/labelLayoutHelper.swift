@@ -469,6 +469,15 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
     public let label: ZRText
     public var labelLine: Element?
     public var layoutOption: LabelLayoutOption?
+    /// upstream `LabelDesc['layoutOptionOrCb']`'s function arm. When set, `updateLayoutConfig` builds
+    ///   `prepareLayoutCallbackParams` and calls this to derive `layoutOption` per-label (the
+    ///   option-object arm leaves this `nil` and uses `layoutOption` directly).
+    public var layoutCallback: LabelLayoutOptionCallback?
+    /// Identity of the data this label represents (upstream `LabelDesc.dataIndex`/`.dataType` +
+    ///   `seriesModel.seriesIndex`), threaded so the callback params can be built.
+    public var dataIndex: Double?
+    public var dataType: SeriesDataType?
+    public var seriesIndex: Double
     public var priority: Double
     public var defaultAttr: SavedLabelAttr
     public var suggestIgnore: Bool
@@ -490,6 +499,10 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         label: ZRText,
         labelLine: Element? = nil,
         layoutOption: LabelLayoutOption? = nil,
+        layoutCallback: LabelLayoutOptionCallback? = nil,
+        dataIndex: Double? = nil,
+        dataType: SeriesDataType? = nil,
+        seriesIndex: Double = 0,
         priority: Double = 0,
         defaultAttr: SavedLabelAttr = SavedLabelAttr(),
         suggestIgnore: Bool = false
@@ -497,6 +510,10 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         self.label = label
         self.labelLine = labelLine
         self.layoutOption = layoutOption
+        self.layoutCallback = layoutCallback
+        self.dataIndex = dataIndex
+        self.dataType = dataType
+        self.seriesIndex = seriesIndex
         self.priority = priority
         self.defaultAttr = defaultAttr
         self.suggestIgnore = suggestIgnore

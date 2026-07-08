@@ -303,9 +303,10 @@ open class TreemapSeriesModel: SeriesModel {
         }
     }
 
-    // enableAriaDecal() { enableAriaDecalForTree(this); }
-    public func enableAriaDecal() {
-        // PORT-TODO: chart/helper/enableAriaDecalForTree.ts NOT ported (aria decal deferred). No-op.
+    // upstream: enableAriaDecal() { enableAriaDecalForTree(this); }
+    open override var hasEnableAriaDecal: Bool { true }
+    open override func enableAriaDecal() {
+        enableAriaDecalForTree(self)
     }
 
     // static defaultOption: TreemapSeriesOption = { ... }

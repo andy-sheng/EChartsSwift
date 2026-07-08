@@ -147,6 +147,19 @@ open class ExtensionAPI {
     open func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-TODO: abstract
     }
+
+    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getConnectedDataURL` /
+    //   `getDataURL`). Upstream returns a DATA-URL STRING of the rendered chart (a `<canvas>.toDataURL`).
+    //   The headless port returns the ENCODED image `Data` (PNG/JPEG bytes) produced by the host-injected
+    //   rasterizer (see EChartsSlim `getRenderedImage`); nil when no host renderer is wired. Only the
+    //   toolbox SaveAsImage feature reads this in the ported slice. `opts` = { type, backgroundColor,
+    //   connectedBackgroundColor, excludeComponents, pixelRatio } (the upstream option bag).
+    open func getConnectedDataURL(_ opts: [String: Any]) -> Data? { return nil }
+
+    // PORT SEAM (no upstream analog on ExtensionAPI): the toolbox SaveAsImage `onclick` downloads the
+    //   data URL via a DOM `<a download>` in the browser. Headless has no download, so the encoded bytes
+    //   are handed to the host via this seam (forwarded to `EChartsSlim.onSaveImage`). Default no-op.
+    open func saveAsImage(_ data: Data, _ filename: String) { }
 }
 
 // upstream return type: `ChartView | ComponentView`. Swift has no union types; the two view

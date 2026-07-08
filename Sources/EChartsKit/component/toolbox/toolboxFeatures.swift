@@ -27,12 +27,46 @@ import ZRenderKit
 // ════════════════════════════════════════════════════════════════════════════════════════════
 open class ToolboxSaveAsImageFeature: ToolboxFeature {
 
-    // onclick(ecModel, api) { ...api.getConnectedDataURL(...) + download the data URL... }
-    // PORT-TODO: DEFERRED — the actual PNG/JPEG/SVG export (`api.getConnectedDataURL` + the DOM
-    //   `<a download>` / `msSaveOrOpenBlob` / `window.open` browser download) is host-dependent and
-    //   has no faithful headless analog yet. The icon renders; the export is a documented no-op.
+    // onclick(ecModel, api) { const url = api.getConnectedDataURL(...); ...download the data URL... }
+    //   PORT: the SVG-painter branch + the browser download machinery (`<a download>` /
+    //   `msSaveOrOpenBlob` / `window.open`) collapse to the host seam: `api.getConnectedDataURL` returns
+    //   the ENCODED PNG bytes (rendered by the host-injected `EChartsSlim.getRenderedImage`) and
+    //   `api.saveAsImage` hands them to the host (`EChartsSlim.onSaveImage`) — the download analog. Both
+    //   nil in pure headless → silent no-op. The URL-building option bag is faithful.
     open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
-        // PORT-TODO: capture the rendered display list to a CGImage and hand it to the host to save.
+        let model = self.model!
+        // const title = model.get('name') || ecModel.get('title.0.text') || 'echarts';
+        var title = "echarts"
+        if let name = model.get("name") as? String, !name.isEmpty {
+            title = name
+        }
+        else if let titleText = ecModel.getComponent("title")?.get("text") as? String, !titleText.isEmpty {
+            // upstream `ecModel.get('title.0.text')` — the first title component's text.
+            title = titleText
+        }
+        // const isSvg = api.getZr().painter.getType() === 'svg';  (native painter is raster → png)
+        //   type = isSvg ? 'svg' : model.get('type', true) || 'png';
+        let imgType = (model.get("type", true) as? String) ?? "png"
+        // const url = api.getConnectedDataURL({ type, backgroundColor, connectedBackgroundColor,
+        //     excludeComponents, pixelRatio });
+        var opts: [String: Any] = ["type": imgType]
+        if let bg = model.get("backgroundColor", true) ?? ecModel.get("backgroundColor") {
+            opts["backgroundColor"] = bg
+        }
+        if let cbg = model.get("connectedBackgroundColor") {
+            opts["connectedBackgroundColor"] = cbg
+        }
+        if let exclude = model.get("excludeComponents") {
+            opts["excludeComponents"] = exclude
+        }
+        if let pixelRatio = model.get("pixelRatio") {
+            opts["pixelRatio"] = pixelRatio
+        }
+        guard let data = api.getConnectedDataURL(opts) else {
+            return   // no host rasterizer wired (pure headless) → export is a no-op.
+        }
+        // The browser `<a download>` → the host save callback (PORT SEAM).
+        api.saveAsImage(data, title + "." + imgType)
     }
 
     // static getDefaultOption(ecModel)
@@ -68,8 +102,9 @@ open class ToolboxRestoreFeature: ToolboxFeature {
     //     api.dispatchAction({ type: 'restore', from: this.uid });
     // }
     open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
-        // PORT-TODO: `history.clear(ecModel)` (dataZoom snapshot stack) — the toolbox dataZoom history
-        //   is DEFERRED; `restore` already resets the full option via the registered action handler.
+        // history.clear(ecModel) — drop the toolbox dataZoom snapshot stack (the `restore` action then
+        //   resets the full option via the registered handler).
+        dataZoomHistoryClear(ecModel)
         var payload = Payload(type: "restore")
         payload.other["from"] = self.uid
         api.dispatchAction(payload)
@@ -187,6 +222,11 @@ open class ToolboxMagicTypeFeature: ToolboxFeature {
 // const ICON_TYPES = ['zoom', 'back'];
 open class ToolboxDataZoomFeature: ToolboxFeature {
 
+    // upstream: `_isZoomActive: boolean` (toggled by the `zoom` icon; enables the BrushController drag).
+    //   The port drives the actual box-drag from the live host (EChartsView) reading the driver-level
+    //   `dataZoomSelectActive` flag; this per-feature copy tracks the icon's emphasis state.
+    var _isZoomActive: Bool = false
+
     // getIcons() — same pattern as MagicType: filter the icon group by the enabled `type`s.
     open override func getIcons() -> [String: String]? {
         let availableIcons = (self.model.get("icon") as? [String: Any]) ?? [:]
@@ -201,13 +241,69 @@ open class ToolboxDataZoomFeature: ToolboxFeature {
         return icons
     }
 
+    // render(featureModel, ecModel, api, payload) — upstream mounts the BrushController then
+    //   `updateZoomBtnStatus` + `updateBackBtnStatus`. PORT: the BrushController mount is DEFERRED (the
+    //   live host `EChartsView` owns the rect-drag); this keeps the icon-status bookkeeping faithful —
+    //   the `zoom` icon reflects the arm state (flipped by a `takeGlobalCursor` payload) and the `back`
+    //   icon is emphasized only while there is history to pop.
+    open override func render(
+        _ featureModel: ToolboxFeatureModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        // updateZoomBtnStatus
+        var zoomActive = _isZoomActive
+        if payload.type == "takeGlobalCursor" {
+            zoomActive = (payload.other["key"] as? String) == "dataZoomSelect"
+                ? ((payload.other["dataZoomSelectActive"] as? Bool) ?? false)
+                : false
+        }
+        _isZoomActive = zoomActive
+        toolboxSetIconStatus(featureModel, "zoom", zoomActive ? "emphasis" : "normal")
+        // updateBackBtnStatus: history.count(ecModel) > 1 ? 'emphasis' : 'normal'
+        toolboxSetIconStatus(featureModel, "back", dataZoomHistoryCount(ecModel) > 1 ? "emphasis" : "normal")
+    }
+
     // onclick(ecModel, api, type) { handlers[type].call(this); }  // 'zoom' arms a box-select; 'back' pops history
-    // PORT-TODO: DEFERRED — the box-select zoom (a mounted `BrushController` cover-drag that reads the
-    //   dragged range → dataZoom `startValue`/`endValue`) and the `back` history pop need the live-view
-    //   host + the toolbox dataZoom `history` stack (both DEFERRED). The icons render; the interaction
-    //   is a documented no-op. The DATA core it would drive (dataZoomProcessor) is already ported.
     open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
-        // PORT-TODO: arm/disarm the box-select (type == 'zoom') or pop the history (type == 'back').
+        switch type {
+        case "zoom":
+            // handlers.zoom: `const nextActive = !this._isZoomActive; api.dispatchAction({type:
+            //   'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: nextActive});`
+            //   Read the CURRENT arm state off the driver (via the slim api) so the toggle is correct even
+            //   though the feature instance is rebuilt each render (its `_isZoomActive` would otherwise
+            //   reset). Falls back to the per-feature copy for a non-slim api.
+            let current = (api as? SlimExtensionAPI)?.dataZoomSelectActiveValue ?? _isZoomActive
+            let nextActive = !current
+            _isZoomActive = nextActive
+            var payload = Payload(type: "takeGlobalCursor")
+            payload.other["key"] = "dataZoomSelect"
+            payload.other["dataZoomSelectActive"] = nextActive
+            api.dispatchAction(payload)
+        case "back":
+            // handlers.back: `this._dispatchZoomAction(history.pop(this.ecModel));`
+            _dispatchZoomAction(dataZoomHistoryPop(ecModel), api)
+        default:
+            break
+        }
+    }
+
+    // dispose(ecModel, api) { this._brushController && this._brushController.dispose(); }
+    //   PORT: no live BrushController (the host owns the drag) → nothing to dispose.
+
+    // _dispatchZoomAction(snapshot) — convert the { dataZoomId: batchItem } snapshot to a dataZoom
+    //   action batch and dispatch (upstream `this.api.dispatchAction({type:'dataZoom', from:uid, batch})`).
+    func _dispatchZoomAction(_ snapshot: DataZoomStoreSnapshot, _ api: ExtensionAPI) {
+        var batch: [PayloadItem] = []
+        for (_, batchItem) in snapshot {
+            var item = PayloadItem()
+            item.other = batchItem   // { dataZoomId, start/end | startValue/endValue }
+            batch.append(item)
+        }
+        if !batch.isEmpty {
+            var payload = Payload(type: "dataZoom")
+            payload.other["from"] = self.uid
+            payload.batch = batch
+            api.dispatchAction(payload)
+        }
     }
 
     // static getDefaultOption(ecModel)

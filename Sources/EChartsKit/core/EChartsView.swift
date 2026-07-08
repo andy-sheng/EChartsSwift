@@ -757,8 +757,12 @@ public final class EChartsView {
     private func _bindBrush() {
         _ = zr.on("mousedown", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
-            // Only arm a brush drag when a brush component exists (minimal cursor-mode stand-in).
-            guard self.ec.getModel()?.getComponent("brush") != nil else { return nil }
+            // Arm a rect drag when a brush component exists (minimal cursor-mode stand-in) OR the toolbox
+            //   dataZoom box-select is armed (`takeGlobalCursor` set `dataZoomSelectActive`). The mouseup
+            //   dispatches a `brush` action or a `dataZoom` box-select accordingly (see `_finishBrushDrag`).
+            guard self.ec.getModel()?.getComponent("brush") != nil || self.ec.dataZoomSelectActive else {
+                return nil
+            }
             self._brushDrag = (startX: e.offsetX, startY: e.offsetY)
             return nil
         }, nil)
@@ -779,6 +783,13 @@ public final class EChartsView {
     /// axes) is treated as a click and dispatches an EMPTY brush (clears any current selection), mirroring
     /// upstream `removeOnClick`; a real drag dispatches the rect area.
     private func _finishBrushDrag(startX: Double, startY: Double, endX: Double, endY: Double) {
+        // Toolbox dataZoom box-select armed → interpret the drag as a cartesian dataZoom zoom, NOT a
+        //   brush selection (upstream: the toolbox DataZoom feature's own BrushController owns the drag
+        //   while zoom is active, and `_onBrush` dispatches a `dataZoom` action — see `_finishDataZoomSelect`).
+        if ec.dataZoomSelectActive {
+            _finishDataZoomSelect(startX: startX, startY: startY, endX: endX, endY: endY)
+            return
+        }
         let dx = abs(endX - startX)
         let dy = abs(endY - startY)
         var bp = Payload(type: "brush")
@@ -805,11 +816,80 @@ public final class EChartsView {
         zr.refresh()
     }
 
+    // ------------------------------------------------------------------------
+    // _finishDataZoomSelect — mouseup while the toolbox dataZoom box-select is armed. Turns the dragged
+    //   pixel box into a `dataZoom` action: for each cartesian dataZoom, the two rect edges along its
+    //   target axis' dim map to a [min,max] DATA value range (restricted by min/maxValueSpan), pushed to
+    //   the toolbox dataZoom history stack and dispatched. Faithful (reduced) port of
+    //   `DataZoomFeature._onBrush` + `setBatch`.
+    //   DEVIATION: no toolbox-internal `type:'select'` dataZoom creator — the box drives whatever
+    //     cartesian dataZoom the user configured (matched by `getAxisModel(dim, idx)` non-nil; upstream
+    //     `findDataZoom` minus the `subType:'select'` filter). Precision rounding
+    //     (`getAcceptableTickPrecision` + `round`) and multi-axis-per-grid grouping are DEFERRED.
+    // ------------------------------------------------------------------------
+    private func _finishDataZoomSelect(startX: Double, startY: Double, endX: Double, endY: Double) {
+        guard let ecModel = ec.getModel() else { return }
+        let dx = abs(endX - startX)
+        let dy = abs(endY - startY)
+        if dx < 2.0 && dy < 2.0 { return }   // a near-zero drag is a click, not a zoom.
+
+        let x0 = Swift.min(startX, endX), x1 = Swift.max(startX, endX)
+        let y0 = Swift.min(startY, endY), y1 = Swift.max(startY, endY)
+
+        var snapshot: DataZoomStoreSnapshot = [:]
+        var batch: [PayloadItem] = []
+
+        ecModel.eachComponent("dataZoom") { modelItem, _ in
+            guard let dzModel = modelItem as? DataZoomModel else { return }
+            dzModel.eachTargetAxis { axisDim, axisIndex in
+                guard let axisModel = dzModel.getAxisModel(axisDim, axisIndex),
+                      let axis = axisModel.axis as? Axis2D else { return }
+                // The two rect edges along this axis' dim → data values (pointToData reads its dim slot).
+                let vLo = axis.pointToData([x0, y0])
+                let vHi = axis.pointToData([x1, y1])
+                var minMax = [Swift.min(vLo, vHi), Swift.max(vLo, vHi)]
+
+                // Restrict range — upstream `findRepresentativeAxisProxy(axisModel).getMinMaxSpan()`.
+                if let proxy = dzModel.findRepresentativeAxisProxy(axisModel) {
+                    let mms = proxy.getMinMaxSpan()
+                    if mms.minValueSpan != nil || mms.maxValueSpan != nil {
+                        sliderMove(0, &minMax, axis.scale.getExtent(), .at(0),
+                                   mms.minValueSpan, mms.maxValueSpan)
+                    }
+                }
+
+                let batchItem: [String: Any] = [
+                    "dataZoomId": dzModel.id,
+                    "startValue": minMax[0],
+                    "endValue": minMax[1]
+                ]
+                snapshot[dzModel.id] = batchItem
+                var pi = PayloadItem()
+                pi.other = batchItem
+                batch.append(pi)
+            }
+        }
+
+        if !batch.isEmpty {
+            // history.push(ecModel, snapshot) — the `back` icon restores the previous window.
+            dataZoomHistoryPush(ecModel, snapshot)
+            var payload = Payload(type: "dataZoom")
+            payload.batch = batch
+            ec.dispatchAction(payload)
+            _ = zr.storage.getDisplayList(true)
+            zr.refresh()
+        }
+    }
+
     /// mousedown — begin a drag iff the cursor is over a coord system hosting an inside dataZoom that
     /// permits `moveOnMouseMove` (upstream `_mousedownHandler` → `_checkPointer` containsPoint, then
     /// `_dragging = true` with `_x`/`_y` = the down point).
     private func _handleInsidePanDown(_ e: ElementEvent) {
         guard let ecModel = ec.getModel() else { return }
+        // While the toolbox dataZoom box-select is armed, the drag draws the zoom rectangle — do NOT also
+        //   arm an inside-dataZoom pan (upstream the two cursor modes are mutually exclusive via
+        //   interactionMutex; the box-select's `takeGlobalCursor` takes the global pan cursor).
+        if ec.dataZoomSelectActive { return }
         let x = e.offsetX
         let y = e.offsetY
         var eligible = false

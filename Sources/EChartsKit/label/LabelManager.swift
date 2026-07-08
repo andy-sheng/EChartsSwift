@@ -31,8 +31,14 @@ import ZRenderKit
 //     - `layout`: resolve overlap globally — `moveOverlap` (shiftX/shiftY → `shiftLayoutOnXY`) and
 //        `hideOverlap` (rotated-rect OBB overlap → `labelLayoutHelper.hideOverlap`).
 //
+//   PORTED (L1a follow-up): the label-layout CALLBACK form (`LabelLayoutOptionCallback`). Upstream
+//     carries `LabelDesc.layoutOptionOrCb` (option OR function) and, in `updateLayoutConfig`, resolves
+//     the function against `prepareLayoutCallbackParams(labelItem, hostEl)`. The port stores the closure
+//     on the series option (`seriesModel.get("labelLayout") as? LabelLayoutOptionCallback`) — options
+//     can carry a Swift closure as an `Any` — builds the params (dataIndex/dataType/seriesIndex/text/
+//     rect/labelRect/align/verticalAlign/labelLinePoints), and applies the returned `LabelLayoutOption`.
+//
 //   DEFERRED (documented gaps, faithful to the rest of the port):
-//     - The label-layout callback form (`LabelLayoutOptionCallback`) — only the option-object form is read.
 //     - `draggable` / drag handlers, `labelLinePoints`, and `processLabelsOverall` (label-line update +
 //        label value/fade animation) — the slim driver draws a static frame and has no per-frame label
 //        animation loop, and label lines are drawn by each chart view.
@@ -43,7 +49,10 @@ import ZRenderKit
 /// upstream: `class LabelManager` (LabelManager.ts).
 public final class LabelManager {
 
-    private var _labelList: [LabelLayoutData] = []
+    // upstream: `private _labelList`. Widened to `internal` (not `private`) so the `@testable` label
+    //   layout-callback tests can seed `_labelList` directly — driving `updateLayoutConfig` end-to-end
+    //   without standing up a full `SeriesModel` + data pipeline. No behavioural change.
+    internal var _labelList: [LabelLayoutData] = []
     private var _chartViewList: [ChartView] = []
 
     public init() {}
@@ -55,7 +64,14 @@ public final class LabelManager {
     }
 
     /// upstream: private _addLabel(dataIndex, dataType, seriesModel, label, layoutOptionOrCb)
-    private func _addLabel(_ label: ZRText, _ layoutOption: LabelLayoutOption?) {
+    private func _addLabel(
+        _ label: ZRText,
+        _ layoutOption: LabelLayoutOption?,
+        _ layoutCallback: LabelLayoutOptionCallback?,
+        _ dataIndex: Double?,
+        _ dataType: SeriesDataType?,
+        _ seriesIndex: Double
+    ) {
         let host = label.__hostTarget
 
         // Priority: use the host element's transformed bounding-rect area (upstream default). A label
@@ -73,6 +89,10 @@ public final class LabelManager {
             label: label,
             labelLine: guide,
             layoutOption: layoutOption,
+            layoutCallback: layoutCallback,
+            dataIndex: dataIndex,
+            dataType: dataType,
+            seriesIndex: seriesIndex,
             priority: priority,
             defaultAttr: SavedLabelAttr(
                 ignore: label.ignore,
@@ -91,10 +111,17 @@ public final class LabelManager {
 
         guard let seriesModel = chartView.__model else { return }
         let rawOption = seriesModel.get("labelLayout")
-        guard let layoutOption = LabelManager.parseLayoutOption(rawOption) else {
-            // No option (or an empty option object / an unsupported callback form) → skip.
+        // upstream gate: `isFunction(layoutOption) || keys(layoutOption).length` — the CALLBACK form
+        //   (a Swift closure stored on the option, `LabelLayoutOptionCallback`) OR a non-empty option
+        //   object. Callbacks are resolved per-label at `updateLayoutConfig` (they need each label's
+        //   geometry), so here we only detect+carry them.
+        let layoutCallback = rawOption as? LabelLayoutOptionCallback
+        let layoutOption = LabelManager.parseLayoutOption(rawOption)
+        guard layoutCallback != nil || layoutOption != nil else {
+            // No option (or an empty option object) → skip.
             return
         }
+        let seriesIndex = seriesModel.seriesIndex
 
         _ = chartView.group.traverse({ child -> Bool in
             if child.ignore {
@@ -103,12 +130,53 @@ public final class LabelManager {
             // Only support label being hosted on graphic elements.
             if let textEl = child.getTextContent() {
                 // Can only attach the text on the element with dataIndex — mirrors upstream (the ECData
-                //   is read for dataIndex/dataType; here only the label + option are needed downstream).
-                _ = innerStore.getECData(child)
-                self._addLabel(textEl, layoutOption)
+                //   is read for dataIndex/dataType, which the callback-params builder needs).
+                let ecData = innerStore.getECData(child)
+                self._addLabel(textEl, layoutOption, layoutCallback, ecData.dataIndex, ecData.dataType, seriesIndex)
             }
             return false
         })
+    }
+
+    /// upstream: prepareLayoutCallbackParams(labelItem, hostEl) — builds the params passed to a
+    /// `labelLayout` callback from the label's current (already-attached) geometry.
+    private func prepareLayoutCallbackParams(_ labelItem: LabelLayoutData) -> LabelLayoutOptionCallbackParams {
+        let label = labelItem.label
+        let hostEl = label.__hostTarget
+        let labelLine = hostEl?.getTextGuideLine()
+
+        // labelRect: the label's own bounding rect in global space.
+        let labelRect: RectLike = LabelManager.globalRect(label)
+        // rect (host rect): the host element's bounding rect in global space (upstream `labelItem.hostRect`).
+        let hostRect: RectLike = hostEl.map { LabelManager.globalRect($0) } ?? BoundingRect(0, 0, 0, 0)
+
+        return LabelLayoutOptionCallbackParams(
+            dataIndex: labelItem.dataIndex,
+            dataType: labelItem.dataType,
+            seriesIndex: labelItem.seriesIndex,
+            text: label.textStyle?.text,
+            align: label.textStyle?.align,
+            verticalAlign: label.textStyle?.verticalAlign,
+            rect: hostRect,
+            labelRect: labelRect,
+            labelLinePoints: LabelManager.cloneLinePoints(labelLine)
+        )
+    }
+
+    /// upstream: `el.getBoundingRect().plain()` then `BoundingRect.applyTransform` by the computed
+    ///   transform — the element's rect in global space.
+    private static func globalRect(_ el: Element) -> RectLike {
+        guard let r = el.getBoundingRect() else { return BoundingRect(0, 0, 0, 0) }
+        let rect = r.clone()
+        rect.applyTransform(el.getComputedTransform())
+        return rect
+    }
+
+    /// upstream `cloneArr(labelLine && labelLine.shape.points)` — the guide line's points as `[[x, y]]`.
+    private static func cloneLinePoints(_ labelLine: Polyline?) -> [[Double]]? {
+        // `Path.shape` is the type-erased `any PathShape`; narrow to `PolylineShape` for `.points`.
+        guard let shape = labelLine?.shape as? PolylineShape, let points = shape.points else { return nil }
+        return points.map { [$0.x, $0.y] }
     }
 
     /// upstream: updateLayoutConfig(api) — applies the user `labelLayout` option to each label.
@@ -117,6 +185,12 @@ public final class LabelManager {
     public func updateLayoutConfig(_ width: Double, _ height: Double) {
         let degreeToRadian = Double.pi / 180
         for labelItem in self._labelList {
+            // upstream: `isFunction(layoutOptionOrCb) ? layoutOptionOrCb(prepareLayoutCallbackParams(...))
+            //   : layoutOptionOrCb`. Resolve the callback form to a concrete option here, and cache it
+            //   back on the item so the later overlap `layout()` stage reads the resolved option too.
+            if let cb = labelItem.layoutCallback {
+                labelItem.layoutOption = cb(self.prepareLayoutCallbackParams(labelItem))
+            }
             guard let layoutOption = labelItem.layoutOption else { continue }
             let label = labelItem.label
             let hostEl = label.__hostTarget
@@ -214,7 +288,8 @@ public final class LabelManager {
             return opt
         }
         guard let dict = raw as? [String: Any], !dict.isEmpty else {
-            // Callback form (LabelLayoutOptionCallback) is a documented gap; empty dict → skip.
+            // Callback form (LabelLayoutOptionCallback) is handled separately by `addLabelsOfSeries`
+            //   (it needs per-label geometry, resolved in `updateLayoutConfig`); empty dict → skip.
             return nil
         }
         var opt = LabelLayoutOption()

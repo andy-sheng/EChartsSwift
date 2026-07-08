@@ -53,7 +53,8 @@ open class ToolboxView: ComponentView {
     // upstream: `_features: HashMap<...>` + `_featureNames: string[]` — carried across renders for the
     //   DataDiffer add/update/remove + dispose. The port rebuilds each render (no reuse), so only a
     //   plain per-render dict of live features is kept (used by `updateView`/`dispose`).
-    private var _features: [String: ToolboxFeature] = [:]
+    //   (internal getter so a headless test can reach a live feature's onclick — e.g. saveAsImage).
+    private(set) var _features: [String: ToolboxFeature] = [:]
 
     // render(toolboxModel, ecModel, api, payload)
     open override func render(

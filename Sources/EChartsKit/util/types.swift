@@ -1508,15 +1508,40 @@ public struct LabelLayoutOptionCallbackParams {
      */
     public var dataType: SeriesDataType?
     public var seriesIndex: Double
-    public var text: String
-    public var align: ZRTextAlign
-    public var verticalAlign: ZRTextVerticalAlign
+    // PORT: `text`/`align`/`verticalAlign` are read from `label.style.*` upstream, which are optional at
+    //   runtime (a label may have no text / inherit alignment), so they are modeled `Optional` here even
+    //   though the upstream d.ts types them non-nullable.
+    public var text: String?
+    public var align: ZRTextAlign?
+    public var verticalAlign: ZRTextVerticalAlign?
     public var rect: RectLike
     public var labelRect: RectLike
     // Points of label line in pie/funnel
     public var labelLinePoints: [[Double]]?
     // x: number
     // y: number
+
+    public init(
+        dataIndex: Double? = nil,
+        dataType: SeriesDataType? = nil,
+        seriesIndex: Double = 0,
+        text: String? = nil,
+        align: ZRTextAlign? = nil,
+        verticalAlign: ZRTextVerticalAlign? = nil,
+        rect: RectLike,
+        labelRect: RectLike,
+        labelLinePoints: [[Double]]? = nil
+    ) {
+        self.dataIndex = dataIndex
+        self.dataType = dataType
+        self.seriesIndex = seriesIndex
+        self.text = text
+        self.align = align
+        self.verticalAlign = verticalAlign
+        self.rect = rect
+        self.labelRect = labelRect
+        self.labelLinePoints = labelLinePoints
+    }
 }
 
 public struct LabelLayoutOption {

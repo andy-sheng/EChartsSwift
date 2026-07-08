@@ -42,13 +42,13 @@
 //   tag distinguishing which one produced it is not stored. See the two PORT-TODOs in
 //   `setTextStyleCommon` below.
 //
-// DEFERRED (do NOT port, per phase scope): `setLabelValueAnimation` (L739) and `animateLabelValue`
-//   (L763) — the "number roll-up" label value animation. Both depend on `initProps`/`updateProps`
-//   (util/graphic.ts, an animation-orchestration seam not yet ported for labels) and
-//   `interpolateRawValues` (util/model.ts). `labelInner`'s store below still carries the exact fields
-//   upstream's `labelInner` would need for them (`prevValue`/`value`/`interpolatedValue`/
-//   `valueAnimation`/`precision`/`statesModels`/`defaultInterpolatedText`), so wiring these back in
-//   later is additive, not a rewrite.
+// PORTED (L1a follow-up): `setLabelValueAnimation` (L739) and `animateLabelValue` (L763) — the
+//   "number roll-up" label value animation — are now implemented below (near `labelInner`). They use
+//   the ported `initProps`/`updateProps` (animation/basicTransition.swift) + `model.interpolateRawValues`
+//   (util/modelUtil.swift). `labelInner`'s store carries the fields they need (`prevValue`/`value`/
+//   `interpolatedValue`/`valueAnimation`/`precision`/`statesModels`/`defaultInterpolatedText`).
+//   See the two functions' PORT-NOTEs for the synthetic-`percent` prop handling and the STATIC-oracle
+//   deviation (settles to the final value; the live host renders intermediate frames).
 
 import Foundation
 import ZRenderKit
@@ -810,6 +810,118 @@ public enum labelStyle {
 
     public static let labelInner: (ZRText) -> LabelInnerStore = model.makeInner { LabelInnerStore() }
 
+    // ───────────────────────────── setLabelValueAnimation (labelStyle.ts:739) ─────────────────────────────
+    //
+    // Store the (new) target value on `labelInner` and, when `valueAnimation` is enabled on the normal
+    // label model, snapshot the precision / default-text getter / states-models needed by the number
+    // roll-up animation that `animateLabelValue` later runs. Faithful 1:1 port; the only shape change is
+    // `LabelStatesModels<LabelModelForText>` collapsing to the port's untyped `LabelStatesModels`.
+    public static func setLabelValueAnimation(
+        _ label: ZRText?,
+        _ labelStatesModels: LabelStatesModels,
+        _ value: InterpolatableValue?,
+        _ getDefaultText: @escaping (InterpolatableValue) -> String
+    ) {
+        guard let label = label else { return }
+
+        let obj = labelInner(label)
+        obj.prevValue = obj.value
+        obj.value = value
+        // upstream reads `labelStatesModels.normal` unconditionally (the TS intersection guarantees it);
+        //   the port's plain dictionary can't, so guard — no normal model ⇒ nothing to animate.
+        guard let normalLabelModel = labelStatesModels[.normal] else { return }
+
+        obj.valueAnimation = normalLabelModel.get("valueAnimation") as? Bool
+
+        if obj.valueAnimation == true {
+            obj.precision = normalLabelModel.get("precision")
+            obj.defaultInterpolatedText = getDefaultText
+            obj.statesModels = labelStatesModels
+        }
+    }
+
+    // ───────────────────────────── animateLabelValue (labelStyle.ts:763) ─────────────────────────────
+    //
+    // Drive the label's displayed text from the previous value to the target value: each animation frame
+    // interpolates the raw value (via the ported `interpolateRawValues`) and re-formats the label text.
+    //
+    // PORT-NOTE (`percent` prop): upstream animates a SYNTHETIC `percent` prop on the ZRText purely to
+    //   keep the animator alive (#15916); the port has no dynamic per-element property, so `percent` is
+    //   an unknown key — `initProps`/`updateProps` still create a forced animator (because a `during`
+    //   callback is supplied, `animateOrSetProps` sets `force`), so the per-frame `during` fires exactly
+    //   as upstream. When animation is DISABLED, `animateOrSetProps` synchronously calls `during(1)`, so
+    //   the label settles to the final formatted value in one shot.
+    //
+    // STATIC PNG ORACLE DEVIATION: the headless oracle advances animators to completion (percent→1), so
+    //   the label settles to the FINAL formatted number rather than showing a mid-roll intermediate — the
+    //   live host renders the intermediate frames. (See MEMORY live-animation-host / advanceAnimations.)
+    public static func animateLabelValue(
+        _ textEl: ZRText,
+        _ dataIndex: Double?,
+        _ data: SeriesData,
+        _ animatableModel: Model?,
+        _ labelFetcher: DataFormatMixin?
+    ) {
+        let labelInnerStore = labelInner(textEl)
+        if labelInnerStore.valueAnimation != true
+            || _valuesStrictEqual(labelInnerStore.prevValue, labelInnerStore.value) {
+            // Value not changed, no new label animation.
+            return
+        }
+
+        let defaultInterpolatedText = labelInnerStore.defaultInterpolatedText
+        // Consider the case that being animating: do not use `obj.value`, otherwise it will jump to
+        //   `obj.value` when this new animation started.
+        let currValue = util.retrieve2(labelInnerStore.interpolatedValue, labelInnerStore.prevValue)
+        let targetValue = labelInnerStore.value
+
+        let dataIndexInt: Int? = dataIndex.map { Int($0) }
+        let statesModels = labelInnerStore.statesModels ?? [:]
+
+        let during: (Double) -> Void = { percent in
+            let interpolated = model.interpolateRawValues(
+                data,
+                labelInnerStore.precision,
+                currValue,
+                targetValue,
+                percent
+            )
+
+            labelInnerStore.interpolatedValue = percent == 1 ? nil : interpolated
+
+            var opt = SetLabelStyleOpt()
+            opt.labelDataIndex = dataIndex
+            opt.labelFetcher = labelFetcher
+            opt.defaultText = defaultInterpolatedText != nil
+                ? (interpolated.map { defaultInterpolatedText!($0) } ?? "")
+                // upstream `interpolated + ''` — JS string coercion of the interpolated value.
+                : _interpolatedValueToString(interpolated)
+
+            let labelText = getLabelText(opt, statesModels, interpolated)
+            setLabelText(textEl, labelText)
+        }
+
+        // upstream: `(textEl as ZRText & {percent?}).percent = 0` — a synthetic animatable prop (see
+        //   PORT-NOTE above). Setting it here is a no-op in the port (unknown key), but harmless.
+        _ = textEl.attr("percent", 0.0)
+        let props: [String: Any] = ["percent": 1.0]
+        if labelInnerStore.prevValue == nil {
+            initProps(textEl, props, animatableModel, dataIndexInt, nil, during)
+        }
+        else {
+            updateProps(textEl, props, animatableModel, dataIndexInt, nil, during)
+        }
+    }
+
+    // upstream `interpolated + ''` — JS coercion of an `InterpolatableValue` to a string.
+    private static func _interpolatedValueToString(_ v: InterpolatableValue?) -> String {
+        guard let v = v else { return "" }   // JS `null + ''` → 'null'/'undefined'; empty is safer here.
+        if let d = v as? Double { return _jsNumberToString(d) }
+        if let i = v as? Int { return String(i) }
+        if let s = v as? String { return s }
+        return "\(v)"
+    }
+
     // ───────────────────────────── LabelMarginType (labelStyle.ts:819) ─────────────────────────────
     //
     // PENDING (upstream comment): Temporary impl. unify them?
@@ -957,4 +1069,21 @@ private func _jsNumberOrNil(_ v: Any?) -> Double? {
 private func _jsNumberToString(_ n: Double) -> String {
     if n == n.rounded() && abs(n) < 1e15 { return String(Int(n)) }
     return String(n)
+}
+
+// upstream `labelInnerStore.prevValue === labelInnerStore.value` — a strict-equality change-detection.
+//   `InterpolatableValue` is `ParsedValue | ParsedValue[]`; for the scalar case (the only one the number
+//   roll-up animates) JS `===` is value equality, which this reproduces for Double/Int/String. Two nils
+//   are equal (the init case where `value` was previously unset). Arrays / mixed types fall back to
+//   `false` (upstream `===` on distinct array refs is also `false`), so a re-layout re-animates — the
+//   conservative, upstream-matching choice.
+private func _valuesStrictEqual(_ a: InterpolatableValue?, _ b: InterpolatableValue?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case (nil, _), (_, nil): return false
+    default: break
+    }
+    if let da = _num(a), let db = _num(b) { return da == db }
+    if let sa = a as? String, let sb = b as? String { return sa == sb }
+    return false
 }

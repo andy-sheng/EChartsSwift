@@ -167,8 +167,14 @@ public enum aria {
 
         ecModel.eachSeries { seriesModel, _ in
             // upstream: if (isFunction(seriesModel.enableAriaDecal)) { seriesModel.enableAriaDecal(); return; }
-            // PORT-TODO: `enableAriaDecal` (tree/treemap/sunburst node-tree decal assignment) is not
-            //   ported on SeriesModel; the flat-data path below covers bar/pie/line/scatter/etc.
+            //   Tree-structured series (treemap/sunburst) define their own node-tree decal assignment
+            //   (enableAriaDecalForTree). `hasEnableAriaDecal` mirrors the upstream `isFunction` presence
+            //   check (see SeriesModel.hasEnableAriaDecal). The flat-data path below covers
+            //   bar/pie/line/scatter/etc.
+            if seriesModel.hasEnableAriaDecal {
+                seriesModel.enableAriaDecal()
+                return
+            }
 
             let data = seriesModel.getData()
 

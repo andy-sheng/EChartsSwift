@@ -389,6 +389,17 @@ public final class EChartsSlim: EChartsType {
     //   and then each item's rect x/y/width/height, which PictorialBarView reads via data.getItemLayout.
     private static let _pictorialBarLayoutHandler: StageHandler = createCrossSeriesLayoutHandler(SERIES_TYPE_PICTORIAL_BAR)
     private static let _pictorialBarProgressiveLayoutHandler: StageHandler = createProgressiveLayout(SERIES_TYPE_PICTORIAL_BAR)
+    // The dataSample down-sampling processors (upstream bar `install.ts` + line `install.ts` each
+    //   `registerProcessor(PRIORITY.PROCESSOR.STATISTIC, dataSample(seriesType))`). One per series type
+    //   that supports sampling; created once and run per matching series in the data-processor stage.
+    static let _dataSamplers: [StageHandler] = [
+        dataSample(SERIES_TYPE_BAR),
+        dataSample(SERIES_TYPE_LINE)
+    ]
+    // The negativeDataFilter processors (upstream pie `install.ts` `registerProcessor(negativeDataFilter('pie'))`).
+    static let _negativeDataFilters: [StageHandler] = [
+        negativeDataFilter(SERIES_TYPE_PIE)
+    ]
 
     static func installOnce() {
         if _installed { return }
@@ -434,7 +445,8 @@ public final class EChartsSlim: EChartsType {
         // registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(bar)) → PORT-TODO: the non-large
         //   bar path recomputes per-item geometry inside `BarView.render`, so the progressive layout
         //   task is not needed for a basic render (see barGrid.swift `createProgressiveLayout` note).
-        // registerProcessor(PROCESSOR.STATISTIC, dataSample) → PORT-TODO: down-sampling not needed.
+        // registerProcessor(PROCESSOR.STATISTIC, dataSample(bar)) — captured in `_dataSamplers` and run
+        //   in the data-processor stage (see the `_dataSamplers` loop in the update pipeline).
         registerBarGridAxisHandlers(_registers)   // populates axisStatistics `clientsForLookup` +
                                                   //   captures the axis-statistics processor (see registrar).
                                                   //   NOTE: registers BOTH 'bar' and 'pictorialBar' axis
@@ -452,6 +464,7 @@ public final class EChartsSlim: EChartsType {
         // -- chart/line/install.ts (minimal) -- registerSeriesModel(LineSeries) + registerChartView(LineView).
         //   Line needs NO cross-series/progressive layout registrar (LineView computes points directly
         //   from `coord.dataToPoint`); the visual stage colors it like any series.
+        //   registerProcessor(PROCESSOR.STATISTIC, dataSample(line)) — captured in `_dataSamplers`.
         ComponentModel.registerClass(LineSeriesModel.self)
 
         // -- chart/scatter/install.ts (minimal) -- registerSeriesModel(ScatterSeries) + registerChartView(ScatterView).
@@ -1130,6 +1143,31 @@ public final class EChartsSlim: EChartsType {
 
         for processor in EChartsSlim._registers.capturedProcessors {
             processor(ecModel)
+        }
+
+        // PROCESSOR — negativeDataFilter (upstream pie `registerProcessor(negativeDataFilter('pie'))`,
+        //   PRIORITY_PROCESSOR_DEFAULT = 2000). Drops each datum whose 'value' dimension is a negative
+        //   number so a pie omits negative slices. A per-series `reset` handler; run it over each matching
+        //   series (self-gates: no-op when a series has no negative values). Must run in the data-processor
+        //   stage before the pie layout reads `getData()`.
+        for filter in EChartsSlim._negativeDataFilters {
+            ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
+                _ = filter.reset?(seriesModel, ecModel, api, nil)
+            }
+        }
+
+        // PROCESSOR (STATISTIC) — dataSample (upstream bar/line `registerProcessor(PRIORITY.PROCESSOR.STATISTIC,
+        //   dataSample(seriesType))`, priority 5000). "Down sample after filter": when a cartesian2d series sets
+        //   `sampling` and its point count exceeds the base-axis pixel width, replace `getData()` with a
+        //   downsampled view (lttb / minmax / average / sum / max / min / nearest). MUST run BEFORE
+        //   `coordSysMgr.update` (the value-axis extent is recomputed from the sampled data) and before the
+        //   visual + view stages read `getData()`. Self-gates to a no-op when `sampling` is unset, the series
+        //   is not cartesian2d, or the data already fits (count <= 10 or rate <= 1). The axis pixel extent it
+        //   reads is available because `Grid.create` resizes with `beforeDataProcessing: true`.
+        for sampler in EChartsSlim._dataSamplers {
+            ecModel.eachSeriesByType(sampler.seriesType!) { seriesModel, _ in
+                _ = sampler.reset?(seriesModel, ecModel, api, nil)
+            }
         }
 
         // PROCESSOR — graph categoryFilter (upstream `registerProcessor(PROCESSOR.FILTER, categoryFilter)`).
@@ -2022,6 +2060,28 @@ public final class EChartsSlim: EChartsType {
     public func getWidth() -> Double { return _width }
     public func getHeight() -> Double { return _height }
 
+    // ------------------------------------------------------------------------
+    // Toolbox SaveAsImage host seams (component/toolbox/feature/SaveAsImage.ts). Upstream the feature's
+    //   onclick calls `api.getConnectedDataURL(...)` (a DOM canvas → data URL) then triggers a browser
+    //   `<a download>`. Headless has neither, so the HOST injects the rasterizer + receives the bytes:
+    //     - `getRenderedImage(opts)` renders the current `getRoot()` to encoded PNG/JPEG `Data` (a live
+    //        host wires this to NativePainter's `renderToImage` — EChartsKit cannot import NativePainter).
+    //     - `onSaveImage(data, filename)` receives the encoded bytes (the "download" — a live host saves
+    //        them to disk / shares them). Both nil in pure headless (the export is then a silent no-op).
+    //   `SlimExtensionAPI.getConnectedDataURL` / `.saveAsImage` forward to these, so the ported feature
+    //   onclick stays faithful (build the URL via the api, hand the bytes to the host).
+    public var getRenderedImage: ((_ opts: [String: Any]) -> Data?)?
+    public var onSaveImage: ((_ data: Data, _ filename: String) -> Void)?
+
+    // ------------------------------------------------------------------------
+    // Toolbox DataZoom box-select arm state (component/toolbox/feature/DataZoom.ts). Upstream the feature
+    //   stores `_isZoomActive` and enables its `BrushController` cover-drag; the slim host has no live
+    //   feature-owned BrushController at drag time, so the arm flag lives on the driver: the
+    //   `takeGlobalCursor` action (key 'dataZoomSelect') writes it, and the live host (`EChartsView`)
+    //   reads it to switch its rect-drag from a `brush` action to a `dataZoom` box-select. Default off.
+    // ------------------------------------------------------------------------
+    public var dataZoomSelectActive: Bool = false
+
     // For `api.getViewOf*` forwarding.
     fileprivate func viewOfComponentModel(_ model: ComponentModel) -> ComponentView? {
         return _componentViewByModel[ObjectIdentifier(model)]
@@ -2085,6 +2145,23 @@ final class SlimExtensionAPI: ExtensionAPI {
     //   `enterBlur`/`leaveBlur`/`enterSelect`/`leaveSelect` to the module-level `util/states` functions.
     //   These forward to the ported `states.*` element-state helpers (TASK 1). Views + the payload-driven
     //   `updateDirectly` reach element state through these methods (echarts.ts `availableMethods`).
+    // upstream: `api.getConnectedDataURL(opts)` — a data-URL string of the rendered chart. The port
+    //   returns the ENCODED PNG/JPEG bytes rendered by the host-injected `EChartsSlim.getRenderedImage`
+    //   (nil in pure headless). See the SaveAsImage host seam note on EChartsSlim.
+    override func getConnectedDataURL(_ opts: [String: Any]) -> Data? {
+        return ec.getRenderedImage?(opts)
+    }
+    // PORT SEAM: upstream downloads the data URL via a DOM `<a download>`; the port hands the encoded
+    //   bytes to the host's `EChartsSlim.onSaveImage` callback.
+    override func saveAsImage(_ data: Data, _ filename: String) {
+        ec.onSaveImage?(data, filename)
+    }
+    // Toolbox DataZoom box-select arm state (see EChartsSlim.dataZoomSelectActive). Read by the feature's
+    //   `zoom` onclick (so the toggle survives the feature being rebuilt each render) + written by the
+    //   `takeGlobalCursor` action handler.
+    var dataZoomSelectActiveValue: Bool { ec.dataZoomSelectActive }
+    func setDataZoomSelectActive(_ active: Bool) { ec.dataZoomSelectActive = active }
+
     override func enterEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
         states.enterEmphasis(el, highlightDigit)
     }

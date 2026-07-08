@@ -245,7 +245,11 @@ open class Symbol: Group {
 
         // ZRImage branch DEFERRED (createSymbol does not produce images yet). Non-image path:
         symbolPath.useStyle(barStyleFromDict(symbolStyle))
-        // Disable decal because the symbol scale would be applied on the decal.
+        // upstream (Symbol.ts:296-297): `symbolPath.style.decal = null;`
+        //   "Disable decal because symbol scale will been applied on the decal."
+        //   FAITHFUL: scatter/symbol series intentionally do NOT texture with a decal (the symbol's
+        //   transform scale would distort the tile) — `barStyleFromDict` bridged style.decal above, so
+        //   this clears it back to match upstream. Do not remove: it is not a deferral.
         symbolPath.pathStyle.decal = nil
         if let ec = symbolPath as? ECSymbol, let vc = visualColor {
             ec.setColor(.string(vc), opts?.symbolInnerColor)
