@@ -38,10 +38,9 @@ public let graphCircularLayoutStageHandler = model.createSimpleOverallStageHandl
     { ecModel, _, _ in graphCircularLayout(ecModel) }
 )
 
-// PORT-TODO: the third graph layout — iterative physics — is deferred this phase. Port
-// `echarts/src/chart/graph/forceLayout.ts` (+ `forceHelper.ts`) later; `layout: 'force'` series
-// currently have no force stage handler. Only the deterministic `simpleLayout` + `circularLayout`
-// ship now (per phase scope).
+// The third graph layout — iterative physics (`layout: 'force'`) — is ported in the siblings
+// `forceLayout.swift` (+ `forceHelper.swift`): `graphForceLayoutStageHandler`. It settles the
+// simulation synchronously for the static render (the live per-frame tick is a PORT-TODO there).
 
 // Exposed for the slim driver to call directly, matching upstream's module-private
 // `function graphCircularLayout(ecModel)`.

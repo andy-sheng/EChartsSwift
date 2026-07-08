@@ -1326,6 +1326,10 @@ public final class EChartsSlim: EChartsType {
         createViewCoordSys(ecModel, api)
         graphCircularLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
+        // `layout:'force'` — iterative physics simulation (graphForceLayoutStageHandler). Self-gates on
+        //   the series `layout` option; for a static frame it settles the simulation synchronously (the
+        //   live per-frame tick is a PORT-TODO — see forceLayout.swift). Runs alongside the other two.
+        graphForceLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
         graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
 

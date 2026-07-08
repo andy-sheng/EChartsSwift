@@ -19,6 +19,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_treemap_basic,     // Treemap
         EChartsDemoRegistry.demo_tree_basic,        // Tree
         EChartsDemoRegistry.demo_graph_basic,       // Graph
+        EChartsDemoRegistry.demo_graph_force,       // Graph (force layout)
         EChartsDemoRegistry.demo_radar_basic,       // Radar
         EChartsDemoRegistry.demo_polar_basic,       // Polar
         EChartsDemoRegistry.demo_gauge_basic,       // Gauge
