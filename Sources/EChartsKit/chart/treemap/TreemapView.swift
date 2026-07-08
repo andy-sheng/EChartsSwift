@@ -463,16 +463,28 @@ open class TreemapView: ChartView {
         let upperLabelHeight = (thisLayout["upperLabelHeight"] as? Double) ?? 0
         renderBackground(group, bg, isParent && upperLabelHeight != 0)
 
-        // const emphasisModel = nodeModel.getModel('emphasis'); focus/blurScope/disabled -> DEFERRED.
-        // const focusOrIndices = ... -> DEFERRED.
+        // Phase 49 (hover-emphasis): upstream TreemapView.ts:817-825.
+        //   const emphasisModel = nodeModel.getModel('emphasis');
+        //   const focus = ...; const blurScope = ...; const isDisabled = ...;
+        //   const focusOrIndices = focus === 'ancestor' ? thisNode.getAncestorsIndices()
+        //       : focus === 'descendant' ? thisNode.getDescendantIndices() : focus;
+        let emphasisModel = nodeModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let focusOrIndices = treemapResolveFocus(focus, thisNode)
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
 
         // No children, render content.
         if isParent {
-            // Because of the implementation about "traverse" in graphic hover style, we can not set
-            // hover listener on the "group" of non-leaf node. (high-down dispatch DEFERRED.)
+            // Because of the implementation about "traverse" in graphic hover style, we can not set the
+            // hover listener on the "group" of a non-leaf node — the descendants' hover events would be
+            // heard. So the BACKGROUND rect is the highDown dispatcher (upstream TreemapView.ts:828-841).
+            //   `toggleHoverEmphasis` == setAsHighDownDispatcher(bg, !isDisabled) + enableHoverFocus(bg,…)
+            //   (freshly-created bg is not yet a dispatcher, so the upstream `if isHighDownDispatcher(group)
+            //   setAsHighDownDispatcher(group,false)` reset is a no-op here).
             // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, bg);
             data.setItemGraphicEl(thisNode.dataIndex, bg)
-            // setAsHighDownDispatcher(bg, !isDisabled); enableHoverFocus(...) -> DEFERRED (states not ported).
+            states.toggleHoverEmphasis(bg, focusOrIndices, blurScope, isDisabled)
         }
         else {
             // const content = giveGraphic('content', Rect, depth, Z2_CONTENT);
@@ -483,6 +495,8 @@ open class TreemapView: ChartView {
             renderContent(group, content)
 
             // (bg as ECElement).disableMorphing = true;  -> DEFERRED (morph/animation not ported).
+            // Leaf node: the whole node GROUP is the highDown dispatcher (upstream TreemapView.ts:852-859) —
+            //   its child traverse (in enableHoverEmphasis) attaches the state proxy to the bg + content.
             // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, group);
             data.setItemGraphicEl(thisNode.dataIndex, group)
 
@@ -490,7 +504,7 @@ open class TreemapView: ChartView {
             if let cursorStyle = nodeModel.getShallow("cursor") {
                 _ = content.attr("cursor", cursorStyle)
             }
-            // setAsHighDownDispatcher(group, !isDisabled); enableHoverFocus(...) -> DEFERRED.
+            states.toggleHoverEmphasis(group, focusOrIndices, blurScope, isDisabled)
         }
 
         return group
@@ -546,7 +560,12 @@ open class TreemapView: ChartView {
                 bgStyle.opacity = 0
                 bg.useStyle(bgStyle)
                 initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
-                // ensureState('emphasis'|'blur'|'select') + setDefaultStateProxy -> DEFERRED (states not ported).
+                // Phase 49 (hover-emphasis): upstream stamps the emphasis/blur/select itemStyle states +
+                //   setDefaultStateProxy on the bg rect (TreemapView.ts:910-914). `setStatesStylesFromModel`
+                //   is the ported equivalent (ensureState(state).style = model.getItemStyle()); the state
+                //   proxy is attached when the node group / bg is toggled a highDown dispatcher in renderNode
+                //   (the dispatcher's child traverse covers this rect).
+                states.setStatesStylesFromModel(bg, nodeModel)
             }
 
             // group.add(bg);
@@ -589,7 +608,9 @@ open class TreemapView: ChartView {
                 contentStyle.opacity = 0
                 content.useStyle(contentStyle)
                 initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
-                // ensureState(...) + setDefaultStateProxy -> DEFERRED (states not ported).
+                // Phase 49 (hover-emphasis): emphasis/blur/select itemStyle states + setDefaultStateProxy on
+                //   the content rect (TreemapView.ts:961-962). See renderBackground for the port equivalence.
+                states.setStatesStylesFromModel(content, nodeModel)
             }
 
             // group.add(content);
@@ -706,6 +727,18 @@ private func rectRadiusFromOption(_ r: Any?) -> RectRadius? {
 private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {
     // `RectLike` is a protocol (AnyObject); `BoundingRect` is the concrete conformer.
     return BoundingRect(x, y, width, height)
+}
+
+// Phase 49 (hover-emphasis): resolve a treemap node `emphasis.focus` string to its lineage index set
+//   (upstream TreemapView.ts:822-825). 'ancestor' / 'descendant' → that side's dataIndices (the
+//   ARRAY-focus form `states.blurSeries` consumes); any other focus ('self'/'series'/indices/nil) passes
+//   through unchanged.
+private func treemapResolveFocus(_ focus: InnerFocus?, _ node: TreeNode) -> InnerFocus? {
+    switch focus as? String {
+    case "ancestor":   return node.getAncestorsIndices()
+    case "descendant": return node.getDescendantIndices()
+    default:           return focus
+    }
 }
 
 // export default TreemapView;  -> `open class TreemapView` above.

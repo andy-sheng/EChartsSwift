@@ -212,15 +212,20 @@ final class OptionManager {
             // so we can get currentIndex from timelineModel.
             let timelineModel = ecModel.getComponent("timeline")
             if let timelineModel = timelineModel {
-                // FIXME:TS as TimelineModel or quivlant interface
-                // PORT-TODO: `TimelineModel` (component/timeline) is not ported; upstream does
-                //   `(timelineModel as any).getCurrentIndex()`. Default the current index to 0
-                //   until a `TimelineModel` exposing `getCurrentIndex()` lands.
-                _ = timelineModel
-                let currentIndex = 0
-                option = util.clone(
-                    timelineOptions[currentIndex]
-                )
+                // upstream: option = clone(timelineOptions[(timelineModel as TimelineModel).getCurrentIndex()]);
+                //   `TimelineModel` (component/timeline) is now ported; read the real current index.
+                var currentIndex = (timelineModel as? TimelineModel)?.getCurrentIndex() ?? 0
+                // upstream `timelineOptions[currentIndex]` is `undefined` when out of range, and
+                //   `clone(undefined)` yields `undefined` (→ nil here). Guard the Swift index access;
+                //   an out-of-range currentIndex just merges nothing (matches upstream's no-op merge).
+                if currentIndex < 0 || currentIndex >= timelineOptions.count {
+                    currentIndex = -1
+                }
+                if currentIndex >= 0 {
+                    option = util.clone(
+                        timelineOptions[currentIndex]
+                    )
+                }
             }
         }
 

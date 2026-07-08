@@ -998,61 +998,185 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
 
 // export default BarView;  -> `open class BarView` above.
 
+// ================================================================================================
+// upstream: the `polar` entries of `elementCreator` / `isValidLayout` / `getLayout` + the polar
+//   `updateStyle` branch (BarView.ts). This is a faithful port of the polar Sector path, restricted
+//   to RADIAL bars (baseAxis.dim === 'angle': a category angle axis + value radius axis — the
+//   canonical bar-on-polar and the gallery `bar-polar-radial` demo).
+//
+// PORT-TODO (deferred, matching the rest of the polar block):
+//   * layout/barPolar.ts is not ported, so the Sector layout (band width / bar offset / stacking) is
+//     reproduced inline from the axes for the single-series default rather than read back from
+//     `data.getItemLayout`. Multi-series bar-width sharing & stacking on polar are deferred.
+//   * TANGENTIAL bars (baseAxis.dim === 'radius') are deferred — `_renderPolarBars` returns early.
+//   * roundCap → `util/shape/sausage` (Sausage) is NOT ported; roundCap is ignored (always a Sector).
+//   * getSectorCornerRadius / sector text rotation / sector label position are deferred (see the
+//     `updateStyle` polar PORT-TODOs).
+// ================================================================================================
+
+// upstream (BarView.ts `polarPropties`): ['cx','cy','r','startAngle','endAngle'].
+func isValidLayoutPolar(_ layout: SectorShape) -> Bool {
+    for v in [layout.cx, layout.cy, layout.r, layout.startAngle, layout.endAngle] {
+        if !v.isFinite { return false }
+    }
+    return true
+}
+
+// Partial dict of the animatable Sector fields (mirrors `rectShapeAnimShape`; see that note — a typed
+//   struct is opaque to `animateToShallow`, so per-field tweens need a `[String: Any]`).
+func sectorShapeAnimShape(_ s: SectorShape) -> [String: Any] {
+    ["cx": s.cx, "cy": s.cy, "r0": s.r0, "r": s.r, "startAngle": s.startAngle, "endAngle": s.endAngle]
+}
+
+// upstream: `elementCreator.polar` (Sector / Sausage path). Sausage is not ported → always a Sector.
+func elementCreatorPolar(
+    _ seriesModel: BarSeriesModel,
+    _ newIndex: Int,
+    _ layout: SectorShape,
+    _ isRadial: Bool,
+    _ animationModel: BarSeriesModel?,
+    _ isUpdate: Bool,
+    _ roundCap: Bool
+) -> BarPossiblePath {
+    // upstream: const ShapeClass = (!isRadial && roundCap) ? Sausage : Sector;  (Sausage not ported)
+    let sector = Sector(["shape": layout as PathShape, "z2": Double(1)])
+    sector.name = "item"
+    _ = (newIndex, isUpdate, roundCap)
+
+    // Animation: collapse the bar at its baseline so the entrance grows it open — radial bars grow
+    //   `r` from `r0`, tangential bars sweep `endAngle` from `startAngle` (upstream elementCreator.polar).
+    if animationModel != nil {
+        var s = sector.shape as! SectorShape
+        if isRadial {
+            s.r = layout.r0
+        }
+        else {
+            s.endAngle = layout.startAngle
+        }
+        sector.shape = s
+    }
+    return sector
+}
+
 extension BarView {
-    // Minimal polar-bar port (mirrors echarts src/layout/barPolar.ts, radial-bar branch).
-    // The gallery `bar-polar-radial` demo uses a category angleAxis + value radiusAxis, so
-    // baseAxis.dim === 'angle' and each bar is a Sector spanning one angular band, extending
-    // radially from r0 (value 0) to r (the datum value). Tangential bars (baseAxis.dim ===
-    // 'radius') are out of scope for the current gallery.
+    // Faithful polar-bar render — mirrors the cartesian `_renderNormal` diff loop, but emits a
+    // `Sector` per datum. Radial bars only (see the polar element-creator block above for the
+    // deferred cases). Each Sector is named "item", styled via the shared `updateStyle` (item color +
+    // emphasis: toggleHoverEmphasis + setStatesStylesFromModel), grown open on entry, and registered
+    // with the data store so hover/highlight/remove animations reach it end-to-end.
     func _renderPolarBars(_ seriesModel: BarSeriesModel, _ polar: Polar, _ group: Group) {
         let data = seriesModel.getData()
+        let oldData = self._data
         let angleAxis = polar.getAngleAxis()
         let radiusAxis = polar.getRadiusAxis()
-        let RADIAN = Double.pi / 180
+        let baseAxis = polar.getBaseAxis()
+        // upstream: isHorizontalOrRadial = baseAxis.dim === 'angle'  (angle base → radial bars).
+        let isHorizontalOrRadial = baseAxis.dim == "angle"
 
-        // Radial bars only when the angle axis is the base (category) axis.
-        guard angleAxis.type == "category" else { return }
+        // Only the RADIAL (category angle axis) case is ported; tangential bars are deferred.
+        guard isHorizontalOrRadial, angleAxis.type == "category" else {
+            // PORT-TODO: tangential bars (radius base) deferred; clear stale bars if any.
+            _ = group.removeAll()
+            self._data = data
+            return
+        }
+
+        let animationModel: BarSeriesModel? = (seriesModel.isAnimationEnabled() ?? false) ? seriesModel : nil
+        let roundCap = (seriesModel.get("roundCap", true) as? Bool) ?? false  // ignored (Sausage not ported)
+
+        let RADIAN = Double.pi / 180
+        // Band width (degrees) of one category slot; the single series occupies ~80% (default
+        //   barCategoryGap '20%'), centered on the category angle.
+        let bandDeg = angleAxis.getBandWidth()
+        let halfW = abs(bandDeg) * 0.4
+        let r0 = radiusAxis.dataToRadius(0)
 
         guard let angleDimName = data.mapDimension("angle"),
-              let radiusDimName = data.mapDimension("radius") else { return }
+              let radiusDimName = data.mapDimension("radius") else {
+            self._data = data
+            return
+        }
         let angleDimIdx = data.getDimensionIndex(angleDimName)
         let radiusDimIdx = data.getDimensionIndex(radiusDimName)
         let store = data.getStore()
 
-        // Band width (degrees) of one category slot on the angle axis; single series occupies
-        //   ~80% (default barCategoryGap '20%'), centered on the category angle.
-        let bandDeg = angleAxis.getBandWidth()
-        let halfW = abs(bandDeg) * 0.4
-
-        var radiusExtent = radiusAxis.getExtent()
-        if radiusExtent[0] > radiusExtent[1] { radiusExtent.reverse() }
-        let r0 = radiusAxis.dataToRadius(0)
-
-        let count = data.count()
-        for i in 0..<count {
+        // upstream: `getLayout.polar` — here reproduced inline (layout/barPolar not ported).
+        func polarLayout(_ i: Int) -> SectorShape? {
             let value = barToNumber(store.get(radiusDimIdx, i))
-            if value.isNaN { continue }
+            if value.isNaN { return nil }
             let angleVal = barToNumber(store.get(angleDimIdx, i))
             let centerDeg = angleAxis.dataToAngle(angleVal)
-            let r = radiusAxis.dataToRadius(value)
-
             var shape = SectorShape()
             shape.cx = polar.cx
             shape.cy = polar.cy
             shape.r0 = r0
-            shape.r = r
+            shape.r = radiusAxis.dataToRadius(value)
             // Degrees → radians with the polar sign convention (see Polar.getArea): -deg * RADIAN.
-            // With the -deg*RADIAN mapping, the band's near edge (centerDeg - halfW) yields the larger
-            //   (less-negative) angle, so it is the startAngle and clockwise:true sweeps the short band arc
-            //   (same convention pieLayout uses: start > end, clockwise → small positive sweep).
+            // The band's near edge (centerDeg - halfW) yields the larger (less-negative) angle → it is
+            //   the startAngle and clockwise:true sweeps the short band arc (same as pieLayout).
             shape.startAngle = -(centerDeg - halfW) * RADIAN
             shape.endAngle = -(centerDeg + halfW) * RADIAN
             shape.clockwise = !angleAxis.inverse
-
-            let sector = Sector(["shape": shape as PathShape])
-            sector.useStyle(barStyleFromDict(data.getItemVisual(i, "style")))
-            group.add(sector)
+            return shape
         }
+
+        data.diff(oldData)
+            .add({ dataIndex in
+                let itemModel = data.getItemModel(dataIndex)
+                guard let layout = polarLayout(dataIndex) else { return }
+                if !data.hasValue(dataIndex) || !isValidLayoutPolar(layout) { return }
+
+                let el = elementCreatorPolar(
+                    seriesModel, dataIndex, layout, isHorizontalOrRadial,
+                    animationModel, false, roundCap
+                )
+                // Shared styling: item color + label + emphasis (isPolar = true).
+                updateStyle(
+                    el, data, dataIndex, itemModel, RectShape(),
+                    seriesModel, isHorizontalOrRadial, true
+                )
+                initProps(el, ["shape": sectorShapeAnimShape(layout)], seriesModel, dataIndex)
+
+                data.setItemGraphicEl(dataIndex, el)
+                _ = group.add(el)
+            })
+            .update({ newIndex, oldIndex in
+                let itemModel = data.getItemModel(newIndex)
+                var el = oldData?.getItemGraphicEl(oldIndex) as? BarPossiblePath
+                guard let layout = polarLayout(newIndex) else {
+                    if let el = el { _ = group.remove(el) }
+                    return
+                }
+                if !data.hasValue(newIndex) || !isValidLayoutPolar(layout) {
+                    if let el = el { _ = group.remove(el) }
+                    return
+                }
+
+                if el == nil {
+                    el = elementCreatorPolar(
+                        seriesModel, newIndex, layout, isHorizontalOrRadial,
+                        animationModel, true, roundCap
+                    )
+                }
+                else {
+                    saveOldStyle(el!)
+                }
+
+                updateStyle(
+                    el!, data, newIndex, itemModel, RectShape(),
+                    seriesModel, isHorizontalOrRadial, true
+                )
+                updateProps(el!, ["shape": sectorShapeAnimShape(layout)], seriesModel, newIndex)
+
+                data.setItemGraphicEl(newIndex, el!)
+                _ = group.add(el!)
+            })
+            .remove({ dataIndex in
+                let el = oldData?.getItemGraphicEl(dataIndex) as? Path
+                if let el = el { removeElementWithFadeOut(el, seriesModel, dataIndex) }
+            })
+            .execute()
+
         self._data = data
     }
 }

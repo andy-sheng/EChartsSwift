@@ -108,6 +108,15 @@ open class Scale: ScaleMapper {
     // Set by each concrete subclass; "Must be available in constructor" → IUO closure.
     public var parse: ((ScaleDataValue) -> ParsedValueNumeric)!
 
+    // PORT-DEVIATION: upstream `SliderTimelineView._createAxis` monkeypatches the created scale's
+    //   method: `scale.getTicks = function () { return data.mapArray(['value'], v => ({value: v})); }`.
+    //   Swift's concrete scales (`IntervalScale`/`TimeScale`/`OrdinalScale`) are `final` and their
+    //   methods cannot be reassigned per instance, so the base carries an optional override closure
+    //   that each concrete `getTicks` consults FIRST. `nil` by default → completely inert for every
+    //   existing scale/axis; only the timeline axis sets it. (See component/timeline/SliderTimelineView.ts
+    //   `_createAxis` — keep in sync.)
+    public var getTicksOverride: ((ScaleGetTicksOpt?) -> [ScaleTick])?
+
     public override init() { super.init() }
 
     /**

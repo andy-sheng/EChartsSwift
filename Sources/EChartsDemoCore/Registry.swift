@@ -11,6 +11,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_lines_effect,  // Lines (flying-trail effect)
         EChartsDemoRegistry.demo_pie_basic,     // Pie
         EChartsDemoRegistry.demo_bar_title_legend, // Component (title + legend)
+        EChartsDemoRegistry.demo_timeline_basic,   // Component (timeline playhead + baseOption/options merge)
         EChartsDemoRegistry.demo_funnel_basic,      // Funnel
         EChartsDemoRegistry.demo_candlestick_basic, // Candlestick
         EChartsDemoRegistry.demo_boxplot_basic,     // Boxplot

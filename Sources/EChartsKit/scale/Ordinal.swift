@@ -316,6 +316,8 @@ public final class OrdinalScale: Scale, ClassManageable {
      * `makeCategoryTicks` is effectively used.
      */
     public override func getTicks(_ opt: ScaleGetTicksOpt? = nil) -> [ScaleTick] {
+        // PORT-DEVIATION: honor the per-instance `getTicksOverride` (timeline axis) — see Scale.swift.
+        if let override = self.getTicksOverride { return override(opt) }
         var ticks: [ScaleTick] = []
         helper.ordinalScaleCreateTicks(self, 0) { tick, _ in
             ticks.append(tick)

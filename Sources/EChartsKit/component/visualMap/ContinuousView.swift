@@ -24,76 +24,85 @@ import ZRenderKit
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import * as zrUtil from 'zrender/src/core/util';                 → `util.*` (ZRenderKit).
 //   import LinearGradient from 'zrender/src/graphic/LinearGradient'; → `LinearGradient` (ZRenderKit).
-//   import * as eventTool from 'zrender/src/core/event';             → PORT-TODO: DEFERRED (drag/interaction).
+//   import * as eventTool from 'zrender/src/core/event';             → native-event `stop` (no-op headless).
 //   import VisualMapView from './VisualMapView';                     → `VisualMapView` (base, same dir).
-//   import * as graphic from '../../util/graphic';
-//     → `Group` / `Rect` / `ZRText` (ZRenderKit). `graphic.Polygon` (the upstream bar is a Polygon whose
-//        points/fill are set by the DEFERRED `_updateView`); the STATIC bar here is a gradient-filled `Rect`.
-//        `graphic.getTransform` / `graphic.applyTransform` / `graphic.transformDirection` (util/graphic — NOT
-//        ported) are reproduced locally at the bottom (used only by the static `_renderEndsText`).
+//   import * as graphic from '../../util/graphic';                   → `Group`/`Rect`/`Polygon`/`ZRText`;
+//        `getTransform`/`applyTransform`/`transformDirection` reproduced locally (bottom).
 //   import {linearMap, mathMax, mathMin, mathPI} from '../../util/number';
-//     → `mathPI` == `Double.pi`; `mathMax`/`mathMin` == `Swift.max`/`Swift.min`; `linearMap` (util/number.swift,
-//        used only by the DEFERRED handle/hover machinery).
-//   import sliderMove from '../helper/sliderMove';                   → PORT-TODO: DEFERRED (drag).
-//   import * as helper from './helper';
-//     → PORT-TODO: `visualMap/helper` NOT ported. `helper.getItemAlign` reproduced locally (bottom);
-//        `helper.getCursor` / `helper.makeHighDownBatch` are DEFERRED (interaction).
-//   import * as modelUtil from '../../util/model';                   → PORT-TODO: DEFERRED (makeInner / hover batches).
-//   import ContinuousModel from './ContinuousModel';
-//     → PORT-TODO: `ContinuousModel` is an ASSUMED sibling (models phase). Surface consumed here:
-//        `get(...)`, `itemSize`, `getExtent()`, `textStyleModel`, plus (inherited) `controllerVisuals` /
-//        `getValueState` via the base `getControllerVisual`.
-//   import Element, { ElementEvent } from 'zrender/src/Element';     → `Element` / DEFERRED events.
+//        → `number.linearMap`; `mathMax`/`mathMin` == `Swift.max`/`Swift.min`; `mathPI` == `Double.pi`.
+//   import sliderMove from '../helper/sliderMove';                   → `sliderMove` (component/helper/sliderMove.swift).
+//   import * as helper from './helper';                              → `getItemAlign`/`makeHighDownBatch` (local + visualMapHelper).
+//   import * as modelUtil from '../../util/model';                   → `model.makeInner` / `model.compressBatches`.
+//   import ContinuousModel from './ContinuousModel';                 → `ContinuousModel` (sibling).
+//   import Element, { ElementEvent } from 'zrender/src/Element';     → `Element` / `ElementEvent`.
 //   import { TextVerticalAlign, TextAlign } from 'zrender/src/core/types';  → `TextVerticalAlign` / `TextAlign`.
-//   import { parsePercent } from 'zrender/src/contain/text';         → DEFERRED (handle sizing).
-//   import { createSymbol } from '../../util/symbol';                → DEFERRED (handle/indicator symbols).
-//   import { createTextStyle } from '../../label/labelStyle';        → the module-internal `createTextStyle`
-//        (AxisBuilder.swift) — faithful minimal reproduction of `label/labelStyle.createTextStyle`.
-//   (all remaining imports — states / innerStore / event / BoundingRect — feed the DEFERRED interaction paths.)
+//   import { parsePercent } from 'zrender/src/contain/text';         → `text.parsePercent`.
+//   import { setAsHighDownDispatcher } from '../../util/states';     → `states.setAsHighDownDispatcher`.
+//   import { createSymbol } from '../../util/symbol';                → `symbol.createSymbol`.
+//   import { ECData, getECData } from '../../util/innerStore';       → `innerStore.getECData`.
+//   import { createTextStyle } from '../../label/labelStyle';        → `createTextStyle` (AxisBuilder.swift).
+//   import { findEventDispatcher } from '../../util/event';          → walked inline (hoverLink-from-series).
+//   import BoundingRect from 'zrender/src/core/BoundingRect';        → `BoundingRect` (label-overlap DEFERRED).
 
 // Arbitrary value
-// PORT-TODO: HOVER_LINK_SIZE / HOVER_LINK_OUT / HANDLE_LABEL_MERGE_MARGIN feed the DEFERRED hover-link /
-//   handle-label machinery. Preserved for the diffable surface.
-// const HOVER_LINK_SIZE = 12; const HOVER_LINK_OUT = 6; const HANDLE_LABEL_MERGE_MARGIN = 2;
+private let HOVER_LINK_SIZE = 12.0
+private let HOVER_LINK_OUT = 6.0
+// PORT-TODO: HANDLE_LABEL_MERGE_MARGIN feeds the DEFERRED handle-label overlap merge (_updateHandle).
 
-// type Orient = VisualMapModel['option']['orient'];   → `String` ('horizontal' | 'vertical').
+// type ContinuousVisualMapHandleIndex = 0 | 1 | 'all';  → modeled by `SliderMoveHandleIndex`.
+
+// const elInner = modelUtil.makeInner<{ hdlIdx }, Element>();
+//   Per-element storage of the drag handle index (0 | 1 | 'all'). `makeInner`'s value must be a
+//   reference type, so a tiny box holds the (value-type) `SliderMoveHandleIndex`.
+private final class HandleIndexBox { var hdlIdx: SliderMoveHandleIndex? }
+private let elInner: (Element) -> HandleIndexBox = model.makeInner { HandleIndexBox() }
 
 // upstream: type ShapeStorage = { handleThumbs; handleLabelPoints; handleLabels; inRange; outOfRange;
 //   mainGroup; indicator; indicatorLabel; indicatorLabelPoint }.
-//   STATIC subset: only `mainGroup` (+ the gradient bar it holds) is built here; the handle/indicator
-//   slots are DEFERRED with the drag interaction.
 private final class ShapeStorage {
     var mainGroup: Group!
-    // PORT-TODO: DEFERRED — handleThumbs / handleLabels / handleLabelPoints / inRange / outOfRange (Polygons) /
-    //   indicator / indicatorLabel / indicatorLabelPoint (drag handle + hover indicator).
+    var inRange: Polygon!
+    var outOfRange: Polygon!
+    var handleThumbs: [Path] = []
+    var handleLabels: [ZRText] = []
+    var handleLabelPoints: [[Double]] = []
+    var indicator: Path?
+    var indicatorLabel: ZRText?
+    var indicatorLabelPoint: [Double] = [0, 0]
     init() {}
 }
 
 // upstream: class ContinuousView extends VisualMapView
-// CONVENTIONS §2/§4: reference type → `final class`.
 public final class ContinuousView: VisualMapView {
 
     // static type = 'visualMap.continuous';
     public static let continuousType = "visualMap.continuous"
-    // type = ContinuousView.type;
     public override var type: String { return ContinuousView.continuousType }
-
-    // visualMapModel: ContinuousModel;  (narrowed; the base stores the same instance as VisualMapModel)
 
     // private _shapes = {} as ShapeStorage;
     private var _shapes = ShapeStorage()
 
+    // private _dataInterval: number[] = [];
+    private var _dataInterval: [Double] = []
+    // private _handleEnds: number[] = [];
+    private var _handleEnds: [Double] = []
     // private _orient: Orient;
     private var _orient: String = "vertical"
-
     // private _useHandle: boolean;
     private var _useHandle: Bool = false
+    // private _hoverLinkDataIndices: TargetDataIndices = [];
+    private var _hoverLinkDataIndices: [BatchItem] = []
+    // private _dragging / _hovering / _firstShowIndicator: boolean;
+    private var _dragging: Bool = false
+    private var _hovering: Bool = false
+    private var _firstShowIndicator: Bool = false
 
-    // PORT-TODO: DEFERRED interaction state — `_dataInterval` / `_handleEnds` / `_hoverLinkDataIndices` /
-    //   `_dragging` / `_hovering` / `_firstShowIndicator` drive drag + hover-link, all deferred.
-
-    // init(ecModel, api) { super.init(...); bind hover handlers... }
-    //   The DEFERRED `zrUtil.bind` of the hover handlers is dropped (interaction). Base init is inherited.
+    // ---- test seam: expose the two draggable handle thumbs so a headless test can compute their
+    //   global pixel centres and inject a synthetic pointer drag over them (see ZZVisualMapDragTests).
+    internal func _handleThumbForTest(_ i: Int) -> Path? {
+        return _shapes.handleThumbs.indices.contains(i) ? _shapes.handleThumbs[i] : nil
+    }
+    internal var _dataIntervalForTest: [Double] { return _dataInterval }
 
     // upstream: doRender(visualMapModel, ecModel, api, payload: {type, from})
     public override func doRender(
@@ -103,8 +112,8 @@ public final class ContinuousView: VisualMapView {
         _ payload: Payload
     ) {
         // if (!payload || payload.type !== 'selectDataRange' || payload.from !== this.uid) { this._buildView(); }
-        //   `selectDataRange` is a self-dispatched DRAG action (interaction, DEFERRED). For the static
-        //   render we always (re)build — the guard only suppresses rebuilds triggered by the deferred drag.
+        //   A `selectDataRange` self-dispatched by THIS view's own drag must NOT rebuild (the drag has
+        //   already updated the shapes in place via `_updateView`); every other trigger rebuilds.
         let from = payload.other["from"] as? String
         if payload.type != "selectDataRange" || from != self.uid {
             self._buildView()
@@ -120,8 +129,8 @@ public final class ContinuousView: VisualMapView {
         self._orient = (visualMapModel.get("orient") as? String) ?? "vertical"
         self._useHandle = visualMapJsTruthy(visualMapModel.get("calculable"))
 
-        // PORT-TODO: DEFERRED — `this._resetInterval()` seeds `_dataInterval` / `_handleEnds` from the
-        //   selected range for the drag handles. The static gradient bar uses the full data extent instead.
+        // this._resetInterval();
+        self._resetInterval()
 
         self._renderBar(thisGroup)
 
@@ -130,79 +139,52 @@ public final class ContinuousView: VisualMapView {
         self._renderEndsText(thisGroup, dataRangeText, 0)
         self._renderEndsText(thisGroup, dataRangeText, 1)
 
-        // PORT-TODO: DEFERRED — `this._updateView(true)` (sketch) + `this._updateView()` (real) set the
-        //   in/out-of-range Polygon points + handle positions. That is the drag machinery; the static bar
-        //   is filled directly in `_renderBar`.
+        // Do this for background size calculation.
+        self._updateView(true)
 
         // After updating view, inner shapes is built completely, and then background can be rendered.
         self.renderBackground(thisGroup)
 
-        // PORT-TODO: DEFERRED — `this._enableHoverLinkToSeries()` / `this._enableHoverLinkFromSeries()`
-        //   (hover-link interaction, out of static-render scope).
+        // Real update view
+        self._updateView(false)
+
+        self._enableHoverLinkToSeries()
+        // PORT-TODO: `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
+        //   The slim ExtensionAPI has no live `getZr()`, so the series→bar hover indicator (the "and vice
+        //   versa" direction) is driven by the host `EChartsView` instead: it calls this view's public
+        //   `_hoverLinkFromSeriesMouseOver(_:)` / `_hideIndicator()` on a series-element mouseover/mouseout.
 
         self.positionGroup(thisGroup)
     }
 
     private func _renderEndsText(_ group: Group, _ dataRangeText: [Any]?, _ endsIndex: Int) {
+        // if (!dataRangeText) { return; }  — the calculable handle VALUES are shown by the handle labels
+        //   (_updateHandle), so the ends-text renders only when an explicit `text` is configured.
+        guard let dataRangeText = dataRangeText else { return }
+
         let visualMapModel = self.visualMapModel!
 
-        // Compatible with ec2, text[0] maps to the high value, text[1] to the low value.
-        let text: String
-        if let dataRangeText = dataRangeText {
-            let rawText = dataRangeText.indices.contains(1 - endsIndex) ? dataRangeText[1 - endsIndex] : nil
-            text = rawText != nil ? stringifyAny(rawText) : ""
-        }
-        else if self._useHandle {
-            // A `calculable` visualMap without an explicit `text` shows its range-handle VALUES at the ends
-            //   — the '100'/'0' endpoint labels. `_applyTransform` runs the end point through the bar
-            //   group's scaleY:-1 transform, so endsIndex 0 lands at the VISUAL BOTTOM (low value) and
-            //   endsIndex 1 at the top (high value).
-            let vExtent = visualMapModel.getExtent()
-            let value = endsIndex == 0 ? Swift.min(vExtent[0], vExtent[1]) : Swift.max(vExtent[0], vExtent[1])
-            text = visualMapModel.formatValueText(value)
-        }
-        else {
-            return
-        }
+        // Compatible with ec2, text[0] map to high value, text[1] map low value.
+        let rawText = dataRangeText.indices.contains(1 - endsIndex) ? dataRangeText[1 - endsIndex] : nil
+        let text = rawText != nil ? stringifyAny(rawText) : ""
 
         let textGap = visualMapAsDouble(visualMapModel.get("textGap")) ?? 0
         let itemSize = visualMapModel.itemSize
 
         let barGroup = self._shapes.mainGroup!
+        let position = self._applyTransform(
+            [itemSize[0] / 2, endsIndex == 0 ? -textGap : itemSize[1] + textGap],
+            barGroup
+        )
+        let align = self._applyTransform(endsIndex == 0 ? "bottom" : "top", barGroup)
         let orient = self._orient
         let textStyleModel = visualMapModel.textStyleModel
 
-        let position: [Double]
-        let vAlignStr: String
-        let alignStr: String
+        let vAlignStr = (textStyleModel.get("verticalAlign") as? String)
+            ?? (orient == "horizontal" ? "middle" : align)
+        let alignStr = (textStyleModel.get("align") as? String)
+            ?? (orient == "horizontal" ? align : "center")
 
-        // A `calculable` visualMap shows its range values BESIDE the handles: upstream draws them as the
-        //   handleLabels (handle-label subsystem, DEFERRED here) at `[itemSize[0] + gap, handleY]`, to the
-        //   RIGHT of a vertical bar rather than centered above/below it. Place the synthetic handle values
-        //   there so they clear the y-axis instead of overlapping it (visualmap-basic / heatmap-basic).
-        if dataRangeText == nil && self._useHandle && orient != "horizontal" {
-            // endsIndex 0 = low = visual bottom (bar-group scaleY:-1); endsIndex 1 = high = visual top.
-            position = self._applyTransform(
-                [itemSize[0] + textGap, endsIndex == 0 ? 0 : itemSize[1]],
-                barGroup
-            )
-            vAlignStr = (textStyleModel.get("verticalAlign") as? String) ?? "middle"
-            alignStr = (textStyleModel.get("align") as? String) ?? "left"
-        } else {
-            // upstream: position = this._applyTransform([itemSize[0]/2, endsIndex===0 ? -textGap :
-            //   itemSize[1]+textGap], barGroup); align = _applyTransform(endsIndex===0 ? 'bottom':'top').
-            position = self._applyTransform(
-                [itemSize[0] / 2, endsIndex == 0 ? -textGap : itemSize[1] + textGap],
-                barGroup
-            )
-            let align = self._applyTransform(endsIndex == 0 ? "bottom" : "top", barGroup)
-            vAlignStr = (textStyleModel.get("verticalAlign") as? String)
-                ?? (orient == "horizontal" ? "middle" : align)
-            alignStr = (textStyleModel.get("align") as? String)
-                ?? (orient == "horizontal" ? align : "center")
-        }
-
-        // this.group.add(new graphic.Text({ style: createTextStyle(textStyleModel, {x, y, verticalAlign, align, text}) }));
         var style = createTextStyle(
             textStyleModel,
             text: text,
@@ -218,6 +200,8 @@ public final class ContinuousView: VisualMapView {
         let visualMapModel = self.visualMapModel!
         let shapes = self._shapes
         let itemSize = visualMapModel.itemSize
+        let orient = self._orient
+        let useHandle = self._useHandle
         // const itemAlign = helper.getItemAlign(visualMapModel, this.api, itemSize);
         let itemAlign = getItemAlign(visualMapModel, self.api!, itemSize)
         let mainGroup = self._createBarGroup(itemAlign)
@@ -226,27 +210,15 @@ public final class ContinuousView: VisualMapView {
         let gradientBarGroup = Group()
         _ = mainGroup.add(gradientBarGroup)
 
-        // Bar
-        // PORT-TODO: upstream builds two `graphic.Polygon`s (`outOfRange`, `inRange`) whose points + fill
-        //   are assigned by the DEFERRED `_updateView`, and mounts drag on `inRange`. The STATIC render
-        //   draws a single gradient-filled `Rect` spanning the item — the value→visual color encoding via
-        //   `_makeColorGradient` (getControllerVisual('color')) is preserved; the drag/handle path is deferred.
-        let dataExtent = visualMapModel.getExtent()
-        let colorStops = self._makeColorGradient(dataExtent, forceState: nil, convertOpacityToAlpha: true)
-        // new LinearGradient(0, 0, 0, 1, colorStops)  (vertical bar gradient, low→high along y)
-        let barColor = LinearGradient(0, 0, 0, 1, colorStops)
-
-        var barShape = RectShape()
-        barShape.x = 0
-        barShape.y = 0
-        barShape.width = itemSize[0]
-        barShape.height = itemSize[1]
-        let barRect = Rect(["shape": barShape as PathShape])
-        barRect.pathStyle.fill = .linearGradient(barColor)
-        _ = gradientBarGroup.add(barRect)
+        // Bar — two polygons: outOfRange (the full track) + inRange (the selected window). Points/fill
+        //   are set by `_updateView`; the drag mounts on `inRange` ('all' = move the whole window).
+        shapes.outOfRange = createPolygon(nil, nil)
+        _ = gradientBarGroup.add(shapes.outOfRange)
+        shapes.inRange = createPolygon(nil, useHandle ? getCursor(self._orient) : nil)
+        _ = gradientBarGroup.add(shapes.inRange)
+        self._mountDrag(shapes.inRange, .all)
 
         // A border radius clip.
-        // gradientBarGroup.setClipPath(new graphic.Rect({ shape: {x:0,y:0,width,height,r:3} }));
         var clipShape = RectShape()
         clipShape.x = 0
         clipShape.y = 0
@@ -255,62 +227,304 @@ public final class ContinuousView: VisualMapView {
         clipShape.r = .number(3)
         gradientBarGroup.setClipPath(Rect(["shape": clipShape as PathShape]))
 
-        // Calculable handles — STATIC form. The full drag/indicator widget is deferred, but a `calculable`
-        //   visualMap must still show the two range handles + their value labels (echarts draws them at the
-        //   current window ends; static = the full data extent). For a vertical bar the TOP handle marks the
-        //   high value, the BOTTOM the low (matching `_renderEndsText`'s high→low mapping). Each handle is a
-        //   thin bar tinted with that end's mapped color, with the formatted value beside it.
-        if self._useHandle {
-            let vExtent = visualMapModel.getExtent()
-            let highVal = Swift.max(vExtent[0], vExtent[1])
-            let lowVal = Swift.min(vExtent[0], vExtent[1])
-            // The gradient bar renders colorStops along y=0→1 (top→bottom); its top end is the high value,
-            //   so the top handle uses colorStops.first, the bottom colorStops.last (matching the bar).
-            let highColor = colorStops.first?.color ?? "#000"
-            let lowColor = colorStops.last?.color ?? "#000"
-            let textStyleModel = visualMapModel.textStyleModel
-            let isVertical = self._orient != "horizontal"
-            for endsIndex in 0..<2 {
-                let isHighEnd = endsIndex == 0
-                let value = isHighEnd ? highVal : lowVal
-                let color = isHighEnd ? highColor : lowColor
+        // const textRect = visualMapModel.textStyleModel.getTextRect('国');
+        //   PORT-TODO: `Model.getTextRect` is not ported; approximate `textSize` by the font size (the
+        //   `国` glyph is ~1em square), which is all `_createIndicator` uses it for (label offset).
+        let textSize = visualMapAsDouble(visualMapModel.textStyleModel.get("fontSize")) ?? 12
 
-                var hShape = RectShape()
-                if isVertical {
-                    let y = isHighEnd ? 0.0 : itemSize[1]
-                    hShape.x = -1; hShape.y = y - 2; hShape.width = itemSize[0] + 2; hShape.height = 4
-                } else {
-                    let x = isHighEnd ? itemSize[0] : 0.0
-                    hShape.x = x - 2; hShape.y = -1; hShape.width = 4; hShape.height = itemSize[1] + 2
-                }
-                let handle = Rect(["shape": hShape as PathShape])
-                handle.pathStyle.fill = .string(color)
-                handle.pathStyle.stroke = .string("#fff")
-                handle.pathStyle.lineWidth = 1
-                _ = mainGroup.add(handle)
-                // The value labels are drawn by `_renderEndsText` (in the UNFLIPPED outer group via
-                //   _applyTransform) so they are not mirrored by this group's scaleY:-1 transform.
-                _ = (value, textStyleModel, isVertical)
-            }
+        // Handle
+        if useHandle {
+            shapes.handleThumbs = []
+            shapes.handleLabels = []
+            shapes.handleLabelPoints = []
+
+            self._createHandle(visualMapModel, mainGroup, 0, itemSize, textSize, orient)
+            self._createHandle(visualMapModel, mainGroup, 1, itemSize, textSize, orient)
         }
+
+        self._createIndicator(visualMapModel, mainGroup, itemSize, textSize, orient)
 
         _ = targetGroup.add(mainGroup)
     }
 
-    // upstream: private _makeColorGradient(dataInterval, opts) — sample the (possibly non-linear, e.g.
-    //   colorHue) mapping into gradient color stops. Faithful.
+    // upstream: _createHandle(visualMapModel, mainGroup, handleIndex, itemSize, textSize, orient)
+    private func _createHandle(
+        _ visualMapModel: VisualMapModel,
+        _ mainGroup: Group,
+        _ handleIndex: Int,
+        _ itemSize: [Double],
+        _ textSize: Double,
+        _ orient: String
+    ) {
+        // const handleSize = parsePercent(visualMapModel.get('handleSize'), itemSize[0]);
+        let handleSize = text.parsePercent(numberOrString(visualMapModel.get("handleSize")), itemSize[0])
+        // const handleThumb = createSymbol(handleIcon, -handleSize/2, -handleSize/2, handleSize, handleSize, null, true);
+        let handleThumb = symbol.createSymbol(
+            (visualMapModel.get("handleIcon") as? String) ?? "roundRect",
+            -handleSize / 2, -handleSize / 2, handleSize, handleSize,
+            nil, true
+        ) as! Path
+        let cursor = getCursor(self._orient)
+        handleThumb.cursor = cursor
+        // handleThumb.attr({ onmousemove(e){ eventTool.stop(e.event) } }) — native stop, no-op headless.
+
+        self._mountDrag(handleThumb, .at(handleIndex))
+        handleThumb.x = itemSize[0] / 2
+
+        handleThumb.useStyle(barStyleFromDict(visualMapModel.getModel("handleStyle").getItemStyle()))
+        handleThumb.pathStyle.strokeNoScale = true
+        handleThumb.pathStyle.strokeFirst = true
+        handleThumb.pathStyle.lineWidth = (handleThumb.pathStyle.lineWidth ?? 0) * 2
+
+        handleThumb.ensureState("emphasis").style =
+            visualMapModel.getModel(["emphasis", "handleStyle"]).getItemStyle()
+        states.setAsHighDownDispatcher(handleThumb, true)
+
+        _ = mainGroup.add(handleThumb)
+
+        // Text is always horizontal layout but should not be effected by transform (orient/inverse). So
+        //   the label is built separately (in the view group), located via handleLabelPoint on the thumb.
+        let textStyleModel = self.visualMapModel!.textStyleModel
+        var labelStyle = createTextStyle(textStyleModel, text: "")
+        labelStyle.x = 0
+        labelStyle.y = 0
+        let handleLabel = ZRText(["style": labelStyle])
+        handleLabel.cursor = cursor
+        self._mountDrag(handleLabel, .at(handleIndex))
+        handleLabel.ensureState("blur").style = ["opacity": 0.1]
+        // handleLabel.stateTransition = { duration: 200 } — animation, DEFERRED.
+
+        _ = self.group.add(handleLabel)
+
+        let shapes = self._shapes
+        while shapes.handleThumbs.count <= handleIndex { shapes.handleThumbs.append(handleThumb) }
+        shapes.handleThumbs[handleIndex] = handleThumb
+        while shapes.handleLabelPoints.count <= handleIndex { shapes.handleLabelPoints.append([handleSize, 0]) }
+        shapes.handleLabelPoints[handleIndex] = [handleSize, 0]
+        while shapes.handleLabels.count <= handleIndex { shapes.handleLabels.append(handleLabel) }
+        shapes.handleLabels[handleIndex] = handleLabel
+    }
+
+    // upstream: _createIndicator(visualMapModel, mainGroup, itemSize, textSize, orient)
+    private func _createIndicator(
+        _ visualMapModel: VisualMapModel,
+        _ mainGroup: Group,
+        _ itemSize: [Double],
+        _ textSize: Double,
+        _ orient: String
+    ) {
+        // const scale = parsePercent(visualMapModel.get('indicatorSize'), itemSize[0]);
+        let scale = text.parsePercent(numberOrString(visualMapModel.get("indicatorSize")), itemSize[0])
+        let indicator = symbol.createSymbol(
+            (visualMapModel.get("indicatorIcon") as? String) ?? "circle",
+            -scale / 2, -scale / 2, scale, scale,
+            nil, true
+        ) as! Path
+        indicator.cursor = "move"
+        indicator.invisible = true
+        indicator.silent = true
+        indicator.x = itemSize[0] / 2
+        // const indicatorStyle = visualMapModel.getModel('indicatorStyle').getItemStyle();
+        indicator.useStyle(barStyleFromDict(visualMapModel.getModel("indicatorStyle").getItemStyle()))
+        // PORT-TODO: ZRImage-icon branch (image indicator) — createSymbol image path falls back to a
+        //   SymbolClz here, so the ZRImage special-case is not needed.
+
+        _ = mainGroup.add(indicator)
+
+        let textStyleModel = self.visualMapModel!.textStyleModel
+        var labelStyle = createTextStyle(textStyleModel, text: "")
+        labelStyle.x = 0
+        labelStyle.y = 0
+        let indicatorLabel = ZRText(["style": labelStyle])
+        indicatorLabel.silent = true
+        indicatorLabel.invisible = true
+        _ = self.group.add(indicatorLabel)
+
+        let indicatorLabelPoint: [Double] = [
+            (orient == "horizontal" ? textSize / 2 : HOVER_LINK_OUT) + itemSize[0] / 2,
+            0
+        ]
+
+        let shapes = self._shapes
+        shapes.indicator = indicator
+        shapes.indicatorLabel = indicatorLabel
+        shapes.indicatorLabelPoint = indicatorLabelPoint
+
+        self._firstShowIndicator = true
+    }
+
+    // upstream: _mountDrag(el, handleIndex) — draggable + drift/ondragend + record the handle index.
+    private func _mountDrag(_ el: Element, _ handleIndex: SliderMoveHandleIndex) {
+        el.draggable = .true
+        // upstream: drift: bind(this._dragHandle, this, el, false). The Draggable mixin (Handler) calls
+        //   `el.drift(dx, dy, e)` on every drag move; the assigned `driftHandler` fully replaces the
+        //   default translate (Element.driftHandler seam). [weak el] breaks el→closure→el.
+        el.driftHandler = { [weak self, weak el] dx, dy, e in
+            guard let self = self, let el = el else { return }
+            self._dragHandle(el, false, dx, dy, e)
+        }
+        // upstream: ondragend: bind(this._dragHandle, this, el, true). The Handler dispatches a 'dragend'
+        //   ELEMENT event on `el` at mouseup (Draggable._dragEnd → dispatchToElement).
+        _ = el.on("dragend", { [weak self, weak el] _, args in
+            guard let self = self, let el = el else { return nil }
+            self._dragHandle(el, true, 0, 0, args.first as? ElementEvent)
+            return nil
+        })
+        elInner(el).hdlIdx = handleIndex
+    }
+
+    // upstream: _dragHandle(sourceEl, isEnd?, dx?, dy?)
+    private func _dragHandle(
+        _ sourceEl: Element,
+        _ isEnd: Bool,
+        _ dx: Double,
+        _ dy: Double,
+        _ e: ElementEvent?
+    ) {
+        if !self._useHandle {
+            return
+        }
+
+        let handleIndex = elInner(sourceEl).hdlIdx ?? .all
+        self._dragging = !isEnd
+
+        if !isEnd {
+            // Transform dx, dy to bar coordination.
+            let vertex = self._applyTransform([dx, dy], self._shapes.mainGroup, true)
+            self._updateInterval(handleIndex, vertex[1])
+
+            self._hideIndicator()
+            // Considering realtime, update view should be executed before dispatch action.
+            self._updateView(false)
+        }
+
+        // dragEnd do not dispatch action when realtime.
+        // isEnd === !realtime
+        let realtime = visualMapJsTruthy(self.visualMapModel!.get("realtime"))
+        if isEnd == !realtime {
+            var payload = Payload(type: "selectDataRange")
+            payload.other["from"] = self.uid
+            payload.other["visualMapId"] = self.visualMapModel!.id
+            payload.other["selected"] = Array(self._dataInterval)
+            self.api!.dispatchAction(payload, nil)
+        }
+
+        if isEnd {
+            if !self._hovering { self._clearHoverLinkToSeries() }
+        }
+        else if useHoverLinkOnHandle(self.visualMapModel!) {
+            let hoverPos: Double
+            switch handleIndex {
+            case .all: hoverPos = (self._handleEnds[0] + self._handleEnds[1]) / 2
+            case .at(let i): hoverPos = self._handleEnds[i]
+            }
+            self._doHoverLinkToSeries(hoverPos, false)
+        }
+    }
+
+    // upstream: _resetInterval() — seed `_dataInterval` + `_handleEnds` from the model's selected range.
+    private func _resetInterval() {
+        let visualMapModel = self.visualMapModel!
+
+        // const dataInterval = this._dataInterval = visualMapModel.getSelected();
+        let dataInterval = (visualMapModel.getSelected() as? [Double]) ?? []
+        self._dataInterval = dataInterval
+        let dataExtent = visualMapModel.getExtent()
+        let sizeExtent = [0.0, visualMapModel.itemSize[1]]
+
+        self._handleEnds = [
+            number.linearMap(dataInterval[0], dataExtent, sizeExtent, true),
+            number.linearMap(dataInterval[1], dataExtent, sizeExtent, true)
+        ]
+    }
+
+    // upstream: _updateInterval(handleIndex, delta)
+    private func _updateInterval(_ handleIndex: SliderMoveHandleIndex, _ deltaIn: Double) {
+        let delta = deltaIn.isNaN ? 0 : deltaIn
+        let visualMapModel = self.visualMapModel!
+        var handleEnds = self._handleEnds
+        let sizeExtent = [0.0, visualMapModel.itemSize[1]]
+
+        // sliderMove(delta, handleEnds, sizeExtent, handleIndex, /* cross is forbidden */ 0);
+        _ = sliderMove(delta, &handleEnds, sizeExtent, handleIndex, 0)
+        self._handleEnds = handleEnds
+
+        let dataExtent = visualMapModel.getExtent()
+        // Update data interval.
+        self._dataInterval = [
+            number.linearMap(handleEnds[0], sizeExtent, dataExtent, true),
+            number.linearMap(handleEnds[1], sizeExtent, dataExtent, true)
+        ]
+    }
+
+    // upstream: _updateView(forSketch?)
+    private func _updateView(_ forSketch: Bool) {
+        let visualMapModel = self.visualMapModel!
+        let dataExtent = visualMapModel.getExtent()
+        let shapes = self._shapes
+
+        let outOfRangeHandleEnds = [0.0, visualMapModel.itemSize[1]]
+        let inRangeHandleEnds = forSketch ? outOfRangeHandleEnds : self._handleEnds
+
+        let visualInRange = self._createBarVisual(
+            self._dataInterval, dataExtent, inRangeHandleEnds, "inRange"
+        )
+        let visualOutOfRange = self._createBarVisual(
+            dataExtent, dataExtent, outOfRangeHandleEnds, "outOfRange"
+        )
+
+        // shapes.inRange.setStyle({fill}).setShape('points', points);  — per-key setShape is a no-op in
+        //   this port, so assign the shape/fill directly (equivalent).
+        _setPolygon(shapes.inRange, fill: visualInRange.barColor, points: visualInRange.barPoints)
+        _setPolygon(shapes.outOfRange, fill: visualOutOfRange.barColor, points: visualOutOfRange.barPoints)
+
+        self._updateHandle(inRangeHandleEnds, visualInRange)
+    }
+
+    // upstream: _createBarVisual(dataInterval, dataExtent, handleEnds, forceState) → BarVisual
+    private struct BarVisual {
+        var barColor: LinearGradient
+        var barPoints: [VectorArray]
+        var handlesColor: [String]
+    }
+    private func _createBarVisual(
+        _ dataInterval: [Double],
+        _ dataExtent: [Double],
+        _ handleEnds: [Double],
+        _ forceState: VisualState
+    ) -> BarVisual {
+        let colorStops = self._makeColorGradient(
+            dataInterval, forceState: forceState, convertOpacityToAlpha: true
+        )
+
+        let symbolSizes = [
+            cvDouble(self.getControllerVisual(dataInterval[0], "symbolSize", forceState: forceState, convertOpacityToAlpha: true))
+                ?? self.visualMapModel!.itemSize[0],
+            cvDouble(self.getControllerVisual(dataInterval[1], "symbolSize", forceState: forceState, convertOpacityToAlpha: true))
+                ?? self.visualMapModel!.itemSize[0]
+        ]
+        let barPoints = self._createBarPoints(handleEnds, symbolSizes)
+
+        return BarVisual(
+            barColor: LinearGradient(0, 0, 0, 1, colorStops),
+            barPoints: barPoints,
+            handlesColor: [
+                colorStops.first?.color ?? "#000",
+                colorStops.last?.color ?? "#000"
+            ]
+        )
+    }
+
+    // upstream: _makeColorGradient(dataInterval, opts) — sample the (possibly non-linear) mapping.
     private func _makeColorGradient(
         _ dataInterval: [Double],
         forceState: VisualState?,
         convertOpacityToAlpha: Bool
     ) -> [GradientColorStop] {
-        // Considering colorHue, which is not linear, so we have to sample to calculate gradient color
-        // stops, but not only calculate head and tail.
         let sampleNumber = 100 // Arbitrary value.
         var colorStops: [GradientColorStop] = []
         let step = (dataInterval[1] - dataInterval[0]) / Double(sampleNumber)
 
-        // colorStops.push({ color: getControllerVisual(dataInterval[0], 'color', opts), offset: 0 });
         colorStops.append(GradientColorStop(
             offset: 0,
             color: colorToString(self.getControllerVisual(
@@ -318,7 +532,6 @@ public final class ContinuousView: VisualMapView {
             ))
         ))
 
-        // for (let i = 1; i < sampleNumber; i++) { ... }
         var i = 1
         while i < sampleNumber {
             let currValue = dataInterval[0] + step * Double(i)
@@ -334,7 +547,6 @@ public final class ContinuousView: VisualMapView {
             i += 1
         }
 
-        // colorStops.push({ color: getControllerVisual(dataInterval[1], 'color', opts), offset: 1 });
         colorStops.append(GradientColorStop(
             offset: 1,
             color: colorToString(self.getControllerVisual(
@@ -345,7 +557,18 @@ public final class ContinuousView: VisualMapView {
         return colorStops
     }
 
-    // upstream: private _createBarGroup(itemAlign) — the orient/inverse/itemAlign transform of the bar.
+    // upstream: _createBarPoints(handleEnds, symbolSizes)
+    private func _createBarPoints(_ handleEnds: [Double], _ symbolSizes: [Double]) -> [VectorArray] {
+        let itemSize = self.visualMapModel!.itemSize
+        return [
+            VectorArray(itemSize[0] - symbolSizes[0], handleEnds[0]),
+            VectorArray(itemSize[0], handleEnds[0]),
+            VectorArray(itemSize[0], handleEnds[1]),
+            VectorArray(itemSize[0] - symbolSizes[1], handleEnds[1])
+        ]
+    }
+
+    // upstream: _createBarGroup(itemAlign) — the orient/inverse/itemAlign transform of the bar.
     private func _createBarGroup(_ itemAlign: String) -> Group {
         let isVertical = self._orient == "vertical"
         let isItemAlignButtom = itemAlign == "bottom"
@@ -368,14 +591,264 @@ public final class ContinuousView: VisualMapView {
         return Group(props)
     }
 
-    // PORT-TODO: DEFERRED — the whole drag/handle/indicator/hover-link surface of ContinuousView.ts is
-    //   out of static-render scope (CONVENTIONS §5): `_createHandle`, `_createIndicator`, `_mountDrag`,
-    //   `_dragHandle`, `_resetInterval`, `_updateInterval`, `_updateView`, `_createBarVisual`,
-    //   `_createBarPoints`, `_updateHandle`, `_showIndicator`, `_enableHoverLinkToSeries`,
-    //   `_enableHoverLinkFromSeries`, `_doHoverLinkToSeries`, `_hoverLinkFromSeriesMouseOver`,
-    //   `_hideIndicator`, `_clearHoverLinkToSeries`, `_clearHoverLinkFromSeries`, `_dispatchHighDown`,
-    //   `dispose`, and the module helpers `createPolygon` / `getHalfHoverLinkSize` / `useHoverLinkOnHandle`
-    //   / `getCursor`. Port alongside the action/interaction layer.
+    // upstream: _updateHandle(handleEnds, visualInRange)
+    private func _updateHandle(_ handleEnds: [Double], _ visualInRange: BarVisual) {
+        if !self._useHandle {
+            return
+        }
+
+        let shapes = self._shapes
+        let visualMapModel = self.visualMapModel!
+        let handleThumbs = shapes.handleThumbs
+        let handleLabels = shapes.handleLabels
+        let itemSize = visualMapModel.itemSize
+        let dataExtent = visualMapModel.getExtent()
+        let barGroup = shapes.mainGroup!
+        let alignDir = self._applyTransform("left", barGroup)
+        let isVertical = self._orient == "vertical"
+
+        for handleIndex in 0..<2 {
+            guard handleThumbs.indices.contains(handleIndex),
+                  handleLabels.indices.contains(handleIndex) else { continue }
+            let handleThumb = handleThumbs[handleIndex]
+            handleThumb.pathStyle.fill = .string(visualInRange.handlesColor[handleIndex])
+            handleThumb.dirtyStyle()
+            handleThumb.y = handleEnds[handleIndex]
+
+            let val = number.linearMap(handleEnds[handleIndex], [0, itemSize[1]], dataExtent, true)
+            let symbolSize = cvDouble(self.getControllerVisual(val, "symbolSize")) ?? itemSize[0]
+
+            handleThumb.scaleX = symbolSize / itemSize[0]
+            handleThumb.scaleY = symbolSize / itemSize[0]
+            handleThumb.x = itemSize[0] - symbolSize / 2
+
+            // Update handle label position.
+            var textPoint = applyTransformPoint(
+                shapes.handleLabelPoints[handleIndex],
+                getTransform(handleThumb, self.group),
+                false
+            )
+
+            if !isVertical {
+                // Offset to avoid label collision at minimum symbol size.
+                let minimumOffset = (alignDir == "left" || alignDir == "top")
+                    ? (itemSize[0] - symbolSize) / 2
+                    : (itemSize[0] - symbolSize) / -2
+                textPoint[1] += minimumOffset
+            }
+
+            var s = handleLabels[handleIndex].textStyle!
+            s.x = textPoint[0]
+            s.y = textPoint[1]
+            s.text = visualMapModel.formatValueText(self._dataInterval[handleIndex])
+            s.verticalAlign = .middle
+            s.align = isVertical ? TextAlign(rawValue: alignDir) : .center
+            handleLabels[handleIndex].useStyle(s)
+            elInner(handleLabels[handleIndex]).hdlIdx = .at(handleIndex)
+        }
+
+        // PORT-TODO: the handle-LABEL overlap merge (BoundingRect.intersect MTV → nudge apart + switch
+        //   both labels to 'all'-drag) is a visual refinement when the two handles are very close; deferred.
+    }
+
+    // upstream: _showIndicator(cursorValue, textValue, rangeSymbol?, halfHoverLinkSize?)
+    private func _showIndicator(
+        _ cursorValue: Double,
+        _ textValue: Double,
+        _ rangeSymbol: String? = nil,
+        _ halfHoverLinkSize: Double? = nil
+    ) {
+        let visualMapModel = self.visualMapModel!
+        let dataExtent = visualMapModel.getExtent()
+        let itemSize = visualMapModel.itemSize
+        let sizeExtent = [0.0, itemSize[1]]
+
+        let shapes = self._shapes
+        guard let indicator = shapes.indicator else { return }
+
+        indicator.invisible = false
+
+        let color = colorToString(self.getControllerVisual(cursorValue, "color", convertOpacityToAlpha: true))
+        let symbolSize = cvDouble(self.getControllerVisual(cursorValue, "symbolSize")) ?? itemSize[0]
+        let y = number.linearMap(cursorValue, dataExtent, sizeExtent, true)
+        let x = itemSize[0] - symbolSize / 2
+
+        // Update indicator position.
+        indicator.y = y
+        indicator.x = x
+        let textPoint = applyTransformPoint(
+            shapes.indicatorLabelPoint,
+            getTransform(indicator, self.group),
+            false
+        )
+
+        if let indicatorLabel = shapes.indicatorLabel {
+            indicatorLabel.invisible = false
+            let alignDir = self._applyTransform("left", shapes.mainGroup)
+            let isHorizontal = self._orient == "horizontal"
+            var s = indicatorLabel.textStyle!
+            s.text = (rangeSymbol ?? "") + visualMapModel.formatValueText(textValue)
+            s.verticalAlign = isHorizontal ? TextVerticalAlign(rawValue: alignDir) : .middle
+            s.align = isHorizontal ? .center : TextAlign(rawValue: alignDir)
+            s.x = textPoint[0]
+            s.y = textPoint[1]
+            indicatorLabel.useStyle(s)
+        }
+
+        // PORT-TODO: animateTo(indicatorNewProps, {duration:100, cubicInOut, additive}) — the animated
+        //   indicator move is deferred; the fill is set directly here.
+        indicator.pathStyle.fill = .string(color)
+        indicator.dirtyStyle()
+
+        self._firstShowIndicator = false
+
+        let handleLabels = self._shapes.handleLabels
+        for i in 0..<handleLabels.count {
+            // Fade out handle labels via the api blur seam.
+            self.api!.enterBlur(handleLabels[i])
+        }
+    }
+
+    // upstream: _enableHoverLinkToSeries() — bar hover → highlight the matching series data.
+    private func _enableHoverLinkToSeries() {
+        _ = self._shapes.mainGroup.on("mousemove", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            self._hovering = true
+
+            if !self._dragging {
+                let itemSize = self.visualMapModel!.itemSize
+                var pos = self._applyTransform([e.offsetX, e.offsetY], self._shapes.mainGroup, true, true)
+                // For hover link show when hover handle (might be below/upper than sizeExtent).
+                pos[1] = Swift.min(Swift.max(0, pos[1]), itemSize[1])
+                self._doHoverLinkToSeries(pos[1], 0 <= pos[0] && pos[0] <= itemSize[0])
+            }
+            return nil
+        })
+
+        _ = self._shapes.mainGroup.on("mouseout", { [weak self] _, _ in
+            guard let self = self else { return nil }
+            self._hovering = false
+            if !self._dragging { self._clearHoverLinkToSeries() }
+            return nil
+        })
+    }
+
+    // upstream: _doHoverLinkToSeries(cursorPos, hoverOnBar?)
+    private func _doHoverLinkToSeries(_ cursorPosIn: Double, _ hoverOnBar: Bool) {
+        let visualMapModel = self.visualMapModel! as! ContinuousModel
+        let itemSize = visualMapModel.itemSize
+
+        if !visualMapJsTruthy(visualMapModel.get("hoverLink")) {
+            return
+        }
+
+        let sizeExtent = [0.0, itemSize[1]]
+        let dataExtent = visualMapModel.getExtent()
+
+        // For hover link show when hover handle (might be below or upper than sizeExtent).
+        let cursorPos = Swift.min(Swift.max(sizeExtent[0], cursorPosIn), sizeExtent[1])
+
+        let halfHoverLinkSize = getHalfHoverLinkSize(visualMapModel, dataExtent, sizeExtent)
+        var hoverRange = [cursorPos - halfHoverLinkSize, cursorPos + halfHoverLinkSize]
+        let cursorValue = number.linearMap(cursorPos, sizeExtent, dataExtent, true)
+        var valueRange = [
+            number.linearMap(hoverRange[0], sizeExtent, dataExtent, true),
+            number.linearMap(hoverRange[1], sizeExtent, dataExtent, true)
+        ]
+        // Consider data range out of visualMap range.
+        if hoverRange[0] < sizeExtent[0] { valueRange[0] = -Double.infinity }
+        if hoverRange[1] > sizeExtent[1] { valueRange[1] = Double.infinity }
+        _ = hoverRange   // (kept for structural fidelity)
+
+        // Do not show indicator when mouse is over handle (labels overlap, especially dragging).
+        if hoverOnBar {
+            if valueRange[0] == -Double.infinity {
+                self._showIndicator(cursorValue, valueRange[1], "< ", halfHoverLinkSize)
+            }
+            else if valueRange[1] == Double.infinity {
+                self._showIndicator(cursorValue, valueRange[0], "> ", halfHoverLinkSize)
+            }
+            else {
+                self._showIndicator(cursorValue, cursorValue, "≈ ", halfHoverLinkSize)
+            }
+        }
+
+        let oldBatch = self._hoverLinkDataIndices
+        var newBatch: [BatchItem] = []
+        if hoverOnBar || useHoverLinkOnHandle(visualMapModel) {
+            newBatch = targetDataIndicesToBatchItems(visualMapModel.findTargetDataIndices(valueRange))
+            self._hoverLinkDataIndices = newBatch
+        }
+
+        let resultBatches = model.compressBatches(oldBatch, newBatch)
+
+        self._dispatchHighDown("downplay", makeHighDownBatch(resultBatches.0, visualMapModel))
+        self._dispatchHighDown("highlight", makeHighDownBatch(resultBatches.1, visualMapModel))
+    }
+
+    // upstream: _hoverLinkFromSeriesMouseOver(e) — hovering a data point highlights the corresponding
+    //   position on the visualMap bar (the "and vice versa" direction). Driven by the host EChartsView.
+    public func _hoverLinkFromSeriesMouseOver(_ e: ElementEvent) {
+        // findEventDispatcher(e.target, target => getECData(target).dataIndex != null, true) — walk up
+        //   to the nearest ECData-bearing ancestor.
+        var ecDataFound: ECData? = nil
+        var cur: Element? = e.target
+        while let el = cur {
+            let d = innerStore.getECData(el)
+            if d.dataIndex != nil {
+                ecDataFound = d
+                break
+            }
+            cur = el.__hostTarget ?? (el.parent as? Element)
+        }
+        guard let ecData = ecDataFound,
+              let dataIndex = ecData.dataIndex,
+              let seriesIndex = ecData.seriesIndex else { return }
+
+        guard let dataModel = self.ecModel!.getSeriesByIndex(seriesIndex) else { return }
+
+        let visualMapModel = self.visualMapModel!
+        if !visualMapModel.isTargetSeries(dataModel) { return }
+
+        let data = dataModel.getData(ecData.dataType)
+        guard let dimIdx = visualMapModel.getDataDimensionIndex(data) else { return }
+        let value = data.getStore().get(dimIdx, Int(dataIndex))
+        let valueD = cvDouble(value)
+
+        if let v = valueD, !v.isNaN {
+            self._showIndicator(v, v)
+        }
+    }
+
+    // upstream: _hideIndicator()
+    public func _hideIndicator() {
+        let shapes = self._shapes
+        shapes.indicator?.invisible = true
+        shapes.indicatorLabel?.invisible = true
+
+        let handleLabels = self._shapes.handleLabels
+        for i in 0..<handleLabels.count {
+            self.api!.leaveBlur(handleLabels[i])
+        }
+    }
+
+    // upstream: _clearHoverLinkToSeries()
+    private func _clearHoverLinkToSeries() {
+        self._hideIndicator()
+
+        let indices = self._hoverLinkDataIndices
+        self._dispatchHighDown("downplay", makeHighDownBatch(indices, self.visualMapModel!))
+
+        self._hoverLinkDataIndices = []
+    }
+
+    // upstream: _dispatchHighDown(type, batch)
+    private func _dispatchHighDown(_ type: String, _ batch: [PayloadItem]) {
+        if batch.isEmpty { return }
+        var payload = Payload(type: type)
+        payload.batch = batch
+        self.api!.dispatchAction(payload, nil)
+    }
 
     // upstream overloaded: _applyTransform(vertex: number[] | Direction, element, inverse?, global?)
     private func _applyTransform(_ vertex: [Double], _ element: Element, _ inverse: Bool = false, _ global: Bool = false) -> [Double] {
@@ -392,9 +865,95 @@ public final class ContinuousView: VisualMapView {
 // export default ContinuousView;  → `final class ContinuousView` above.
 
 // ============================================================================
+// Module-internal helpers (upstream free functions at the bottom of ContinuousView.ts).
+// ============================================================================
+
+// upstream: function createPolygon(points?, cursor?)
+private func createPolygon(_ points: [VectorArray]?, _ cursor: String?) -> Polygon {
+    var shape = PolygonShape()
+    shape.points = points
+    let poly = Polygon(["shape": shape as PathShape])
+    if let cursor = cursor { poly.cursor = cursor }
+    // onmousemove(e){ eventTool.stop(e.event) } — native stop, no-op headless.
+    return poly
+}
+
+// upstream: function getHalfHoverLinkSize(visualMapModel, dataExtent, sizeExtent)
+private func getHalfHoverLinkSize(_ visualMapModel: ContinuousModel, _ dataExtent: [Double], _ sizeExtent: [Double]) -> Double {
+    var halfHoverLinkSize = HOVER_LINK_SIZE / 2
+    if let hoverLinkDataSize = visualMapAsDouble(visualMapModel.get("hoverLinkDataSize")) {
+        halfHoverLinkSize = number.linearMap(hoverLinkDataSize, dataExtent, sizeExtent, true) / 2
+    }
+    return halfHoverLinkSize
+}
+
+// upstream: function useHoverLinkOnHandle(visualMapModel)
+private func useHoverLinkOnHandle(_ visualMapModel: VisualMapModel) -> Bool {
+    let hoverLinkOnHandle = visualMapModel.get("hoverLinkOnHandle")
+    // return !!(hoverLinkOnHandle == null ? get('realtime') : hoverLinkOnHandle);
+    if hoverLinkOnHandle == nil || hoverLinkOnHandle is NSNull {
+        return visualMapJsTruthy(visualMapModel.get("realtime"))
+    }
+    return visualMapJsTruthy(hoverLinkOnHandle)
+}
+
+// upstream: function getCursor(orient)
+private func getCursor(_ orient: String) -> String {
+    return orient == "vertical" ? "ns-resize" : "ew-resize"
+}
+
+// upstream helper.makeHighDownBatch(batch, visualMapModel) — move dataIndex → dataIndexInside + stamp a
+//   `highlightKey`. Here we take the compressed `[BatchItem]` and emit `[PayloadItem]`.
+private func makeHighDownBatch(_ batch: [BatchItem], _ visualMapModel: VisualMapModel) -> [PayloadItem] {
+    var out: [PayloadItem] = []
+    for item in batch {
+        var p = PayloadItem()
+        p.other["seriesId"] = item.seriesId
+        // batchItem.dataIndexInside = batchItem.dataIndex; batchItem.dataIndex = null;
+        p.other["dataIndexInside"] = item.dataIndex
+        p.other["highlightKey"] = "visualMap" + String(Int(visualMapModel.componentIndex))
+        out.append(p)
+    }
+    return out
+}
+
+// Convert `findTargetDataIndices` output ([{seriesId, dataIndex:[Double]}]) → [BatchItem].
+private func targetDataIndicesToBatchItems(_ list: [[String: Any]]) -> [BatchItem] {
+    return list.compactMap { dict in
+        guard let seriesId = dict["seriesId"] else { return nil }
+        let dataIndex = dict["dataIndex"] ?? ([] as [Double])
+        return BatchItem(seriesId: seriesId, dataIndex: dataIndex)
+    }
+}
+
+// Assign a polygon's points + fill directly (per-key setShape/setStyle is a no-op in this port).
+private func _setPolygon(_ poly: Polygon?, fill: LinearGradient, points: [VectorArray]) {
+    guard let poly = poly else { return }
+    var shape = PolygonShape()
+    shape.points = points
+    _ = poly.setShape(shape as PathShape)
+    poly.pathStyle.fill = .linearGradient(fill)
+    poly.dirtyStyle()
+}
+
+// getControllerVisual('color'/'symbolSize', …) → coerce to the concrete Swift type the callers need.
+private func cvDouble(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return nil
+}
+
+// `parsePercent(get('handleSize'), base)` takes a `NumberOrString`; bridge the dynamic option value.
+private func numberOrString(_ v: Any?) -> NumberOrString {
+    if let s = v as? String { return .string(s) }
+    if let d = cvDouble(v) { return .number(d) }
+    return .number(0)
+}
+
+// ============================================================================
 // PORT-TODO helpers — NOT part of visualMap/ContinuousView.ts upstream. These reproduce out-of-phase
-// sibling APIs (`util/graphic` transform helpers, `visualMap/helper.getItemAlign`) so the static render
-// compiles. Delete each when its real sibling lands and call the sibling directly.
+// sibling APIs (`util/graphic` transform helpers, `visualMap/helper.getItemAlign`) so the view compiles.
 // ============================================================================
 
 /// upstream `util/graphic.getTransform(target, ancestor)` — matrix from `target` up to (excluding) `ancestor`.
@@ -402,14 +961,13 @@ private func getTransform(_ target: Transformable?, _ ancestor: Transformable?) 
     var mat = matrix.identity()
     var t = target
     while let cur = t, cur !== ancestor {
-        // matrix.mul(mat, target.getLocalTransform(), mat)  → out = mul(m1, m2)
         mat = matrix.mul(cur.getLocalTransform(), mat)
         t = cur.parent
     }
     return mat
 }
 
-/// upstream `util/graphic.applyTransform(target, transform, invert?)` — apply matrix (or its inverse) to a point.
+/// upstream `util/graphic.applyTransform(target, transform, invert?)`.
 private func applyTransformPoint(_ target: [Double], _ transform: MatrixArray, _ invert: Bool) -> [Double] {
     var m = transform
     if invert {
@@ -421,7 +979,6 @@ private func applyTransformPoint(_ target: [Double], _ transform: MatrixArray, _
 
 /// upstream `util/graphic.transformDirection(direction, transform, invert?)`.
 private func transformDirection(_ direction: String, _ transform: MatrixArray, _ invert: Bool) -> String {
-    // Pick a base, ensure that transform result will not be (0, 0).
     let hBase = (transform[4] == 0 || transform[5] == 0 || transform[0] == 0)
         ? 1.0 : Swift.abs(2 * transform[4] / transform[0])
     let vBase = (transform[4] == 0 || transform[5] == 0 || transform[2] == 0)
@@ -439,10 +996,9 @@ private func transformDirection(_ direction: String, _ transform: MatrixArray, _
 }
 
 /// The `getControllerVisual('color', ...)` result is a color option value (a `String` in the static path).
-/// Coerce to the `String` that `GradientColorStop.color` requires.
 internal func colorToString(_ v: Any?) -> String {
     if let s = v as? String { return s }
-    // PORT-TODO: gradient/pattern color objects are not stringified here (out of static-render scope).
+    // PORT-TODO: gradient/pattern color objects are not stringified here.
     return ""
 }
 
@@ -451,42 +1007,32 @@ internal func stringifyAny(_ v: Any?) -> String {
     guard let v = v else { return "" }
     if let s = v as? String { return s }
     if let d = visualMapAsDouble(v) {
-        // JS numeric stringify: drop the trailing `.0` for integral values.
         return d == d.rounded() && d.isFinite ? String(Int(d)) : String(d)
     }
     return "\(v)"
 }
 
-/// PORT-TODO: faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported). Returns
-///   'left'|'right'|'top'|'bottom'. The auto branch mirrors upstream except the `rect.margin[...]` term
-///   (util/layout.swift `LayoutRect` has no `.margin` slot yet) is taken as 0 — the dominant term is
-///   `rect[x|y] + rect[width|height]*0.5` vs `ecSize*0.5`. Delete when visualMap/helper.swift lands.
+/// PORT-TODO: faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported).
 internal func getItemAlign(_ visualMapModel: VisualMapModel, _ api: ExtensionAPI, _ itemSize: [Double]) -> String {
-    // const paramsSet = [['left','right','width'], ['top','bottom','height']];
     let paramsSet = [["left", "right", "width"], ["top", "bottom", "height"]]
 
     let itemAlign = visualMapModel.get("align") as? String
-    // if (itemAlign != null && itemAlign !== 'auto') { return itemAlign; }
     if let itemAlign = itemAlign, itemAlign != "auto" {
         return itemAlign
     }
 
-    // Auto decision align.
     let ecWidth = api.getWidth()
     let ecHeight = api.getHeight()
     let realIndex = (visualMapModel.get("orient") as? String) == "horizontal" ? 1 : 0
 
     let reals = paramsSet[realIndex]
-    // const fakeValue = [0, null, 10];
     let fakeValue: [Any?] = [0.0, nil, 10.0]
 
     var layoutInput: [String: Any] = [:]
     for i in 0..<3 {
-        // layoutInput[paramsSet[1 - realIndex][i]] = fakeValue[i];
         if let fv = fakeValue[i] {
             layoutInput[paramsSet[1 - realIndex][i]] = fv
         }
-        // layoutInput[reals[i]] = i === 2 ? itemSize[0] : modelOption[reals[i]];
         if i == 2 {
             layoutInput[reals[i]] = itemSize[0]
         }
@@ -495,7 +1041,6 @@ internal func getItemAlign(_ visualMapModel: VisualMapModel, _ api: ExtensionAPI
         }
     }
 
-    // const rParam = ([['x','width',3], ['y','height',0]])[realIndex];
     let ecSize = BoundingRect(0, 0, ecWidth, ecHeight)
     let rect = layout.getLayoutRect(layoutInput as Any?, ecSize, visualMapModel.get("padding"))
 
@@ -503,7 +1048,5 @@ internal func getItemAlign(_ visualMapModel: VisualMapModel, _ api: ExtensionAPI
     let rectLen = realIndex == 0 ? rect.width : rect.height
     let ecLen = realIndex == 0 ? ecWidth : ecHeight
 
-    // return reals[ (margin[...] || 0) + rect[x|y] + rect[w|h]*0.5 < ecSize[w|h]*0.5 ? 0 : 1 ];
-    //   PORT-TODO: margin term dropped (see doc comment) — treated as 0.
     return reals[(0 + rectStart + rectLen * 0.5) < ecLen * 0.5 ? 0 : 1]
 }

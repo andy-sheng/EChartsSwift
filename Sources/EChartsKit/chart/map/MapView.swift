@@ -279,6 +279,16 @@ open class MapView: ChartView {
                     dataIdx
                 )
 
+                // Phase 49 (hover-emphasis): upstream applyOptionStyleForRegion (MapDraw.ts:671-676) stamps
+                //   the emphasis/blur/select itemStyle states on EACH region compound path, then
+                //   setDefaultStateProxy. `states.setStatesStylesFromModel` is the ported equivalent (it
+                //   ensureState('emphasis'/'blur'/'select').style = model.getItemStyle()); the state proxy is
+                //   attached when the region group is toggled a highDown dispatcher below (its child traverse
+                //   covers this path). PORT DEVIATION: upstream uses `getFixedItemStyle` for the state styles;
+                //   the shared helper uses the plain `getItemStyle` (the map-specific areaColor fixup is only
+                //   applied to the NORMAL style here). Adequate for the standard itemStyle emphasis case.
+                states.setStatesStylesFromModel(compoundPath, regionModel)
+
                 // The region's resolved solid fill (polygon) or stroke (line) — the label's
                 //   `inheritColor` so `label.color: 'inherit'` picks up the region colour.
                 let fill = isLine
@@ -301,6 +311,31 @@ open class MapView: ChartView {
                     mapModel, data, regionModel, regionName, dataIdx, target.fill, target.path
                 )
             }
+        }
+
+        // upstream (MapDraw.ts:382-396): a SECOND pass over the completed region groups — the children
+        //   (compound paths + label) must all be added before the group is wired as an event/hover trigger.
+        //   `resetEventTriggerForRegion` mounts the region GROUP (not the individual paths) as the data item's
+        //   graphic el, and `resetStateTriggerForRegion` marks the group a highDown dispatcher carrying the
+        //   region's emphasis focus/blurScope. The group (a Group) is the dispatcher so hovering ANY of its
+        //   child paths/label enters emphasis and the state proxy (attached by the child traverse in
+        //   enableHoverEmphasis) restyles every child from the states set in createCompoundPath.
+        //   (resetTooltipForRegion is geo-component-only → not applicable to a map series → skipped.)
+        for (regionName, regionGroup) in regionsGroupByName {
+            let info = regionInfoByName[regionName]!
+
+            // resetEventTriggerForRegion: data && data.setItemGraphicEl(dataIdx, regionGroup).
+            if info.dataIdx >= 0 {
+                data.setItemGraphicEl(info.dataIdx, regionGroup)
+            }
+
+            // resetStateTriggerForRegion: toggleHoverEmphasis(el, focus, blurScope, disabled).
+            //   (highDownSilentOnTouch / geo enableComponentHighDownFeatures are geo-only — DEFERRED.)
+            let emphasisModel = info.regionModel.getModel(["emphasis"])
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(regionGroup, focus, blurScope, isDisabled)
         }
     }
 

@@ -220,6 +220,8 @@ public final class TimeScale: Scale, ClassManageable {
     }
 
     public override func getTicks(_ opt: ScaleGetTicksOpt? = nil) -> [ScaleTick] {
+        // PORT-DEVIATION: honor the per-instance `getTicksOverride` (timeline axis) — see Scale.swift.
+        if let override = self.getTicksOverride { return override(opt) }
         let opt = opt ?? ScaleGetTicksOpt()
 
         let interval = self._interval

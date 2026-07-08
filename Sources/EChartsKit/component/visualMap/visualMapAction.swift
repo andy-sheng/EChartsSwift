@@ -49,18 +49,15 @@ public let visualMapActionInfo: ActionInfo = {
 //       });
 //   };
 //
-// PORT-TODO (CONVENTIONS §5 — INTERACTION is render-static-only / DEFERRED): `selectDataRange` is the
-//   dataZoom-style range-selection action of the visualMap control widget. Its model mutation
-//   (`VisualMapModel.setSelected(payload.selected)`) is deferred behind the VisualMapModel port. The
-//   `refineEvent`-free handler is kept as the faithful shell so the driver can register the action once
-//   VisualMapModel lands. `ecModel.eachComponent({mainType:'visualMap', query: payload}, …)` uses the
-//   `QueryConditionKindA` form (mainType + query); `payload.selected` lives in `Payload.other["selected"]`
-//   (the dynamic remainder, since `Payload` has no typed `selected` field).
+// `selectDataRange` is the range-selection action of the continuous visualMap control widget (dispatched
+//   by `ContinuousView._dragHandle` on a handle drag). `ecModel.eachComponent({mainType:'visualMap',
+//   query: payload}, …)` uses the `QueryConditionKindA` form (mainType + query); `payload.selected` lives
+//   in `Payload.other["selected"]` (the dynamic remainder, since `Payload` has no typed `selected` field)
+//   — the query keys (`visualMapId`/`visualMapIndex`) also live there and are consumed by preParseFinder.
 public let visualMapActionHander: ActionHandler = { payload, ecModel, _ in
     ecModel.eachComponent(QueryConditionKindA(mainType: "visualMap", query: payload.other)) { model, _ in
         // (model as VisualMapModel).setSelected(payload.selected);
-        // PORT-TODO: VisualMapModel.setSelected DEFERRED (interaction — see the top-of-const PORT-TODO).
-        _ = model
+        (model as? VisualMapModel)?.setSelected(payload.other["selected"])
     }
     return nil   // upstream returns void
 }

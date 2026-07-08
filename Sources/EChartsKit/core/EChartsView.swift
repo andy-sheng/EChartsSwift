@@ -291,6 +291,10 @@ public final class EChartsView {
             //   tooltip trigger reads the hovered element's ECData directly), so a hover fires BOTH the
             //   emphasis highlight AND the tooltip-on-hover.
             self._showTooltipForHover(e)
+            // visualMap continuous hoverLink FROM series: hovering a data point shows the indicator on the
+            //   bar (upstream ContinuousView binds `api.getZr().on('mouseover', _hoverLinkFromSeriesMouseOver)`;
+            //   the slim ExtensionAPI has no live getZr, so the host drives it here — see ContinuousView).
+            self._hoverLinkVisualMapFromSeries(e)
             return nil
         }, nil)
 
@@ -305,6 +309,11 @@ public final class EChartsView {
             }
             // Phase 34: hide the tooltip when the pointer leaves the element (upstream `_hide`).
             self.tooltipView?.hide()
+            // visualMap continuous hoverLink: hide the bar indicator when the pointer leaves the series
+            //   element (upstream `api.getZr().on('mouseout', _hideIndicator)`).
+            for cv in self.ec._componentsViews {
+                (cv as? ContinuousView)?._hideIndicator()
+            }
             self.zr.refresh()
             return nil
         }, nil)
@@ -869,6 +878,20 @@ public final class EChartsView {
                 return
             }
             cur = el.__hostTarget ?? (el.parent as? Element)
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // _hoverLinkVisualMapFromSeries — the continuous visualMap's hoverLink "vice versa" direction.
+    //   Upstream `ContinuousView` binds `api.getZr().on('mouseover', this._hoverLinkFromSeriesMouseOver)`
+    //   so hovering a data point highlights the matching position on the visualMap bar (shows the
+    //   indicator). The slim ExtensionAPI has no live `getZr()`, so — like the tooltip / axisPointer —
+    //   this host forwards each series-element mouseover to every rendered `ContinuousView`, which
+    //   internally guards on ECData / isTargetSeries and shows its indicator.
+    // ------------------------------------------------------------------------
+    private func _hoverLinkVisualMapFromSeries(_ e: ElementEvent) {
+        for cv in ec._componentsViews {
+            (cv as? ContinuousView)?._hoverLinkFromSeriesMouseOver(e)
         }
     }
 

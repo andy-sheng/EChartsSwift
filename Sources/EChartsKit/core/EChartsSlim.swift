@@ -351,6 +351,11 @@ public final class EChartsSlim: EChartsType {
         if _installed { return }
         _installed = true
 
+        // -- features/index.ts `use(install)` for the AxisBreak feature -- registers the concrete
+        //   scale-break helper (scale/breakImpl.ts `installScaleBreakHelper`). Idempotent; enables the
+        //   `xxxAxis.breaks` option. Non-broken axes stay byte-identical (empty breaks => brk stays nil).
+        installScaleBreakHelper()
+
         // -- component/dataset/install.ts -- registerComponentModel(DatasetModel) +
         //   registerComponentView(DatasetView). Must be registered so a `dataset: [...]` option
         //   instantiates a `DatasetModelImpl` (its `init` builds a SourceManager); series then query
@@ -655,6 +660,18 @@ public final class EChartsSlim: EChartsType {
         // -- component/title/install.ts -- registerComponentModel(TitleModel) + registerComponentView(TitleView).
         ComponentModel.registerClass(TitleModel.self)
 
+        // -- component/timeline/install.ts -- registerComponentModel(SliderTimelineModel) +
+        //   registerComponentView(SliderTimelineView) + registerSubTypeDefaulter('timeline', ()=>'slider')
+        //   + installTimelineAction + registerPreprocessor(timelinePreprocessor). Like visualMap/dataZoom,
+        //   the ABSTRACT base `TimelineModel` (type 'timeline') is NOT registered; only the concrete
+        //   'timeline.slider' subtype is, and a subtype defaulter resolves a bare `timeline: {...}` to it.
+        //   The baseOption+options[currentIndex] MERGE is driven by OptionManager (getTimelineOption reads
+        //   the model's currentIndex). The play AUTO-ADVANCE is DEFERRED (needs the live host); the STATIC
+        //   axis + tick symbols + control buttons + current-index checkpoint are what render here.
+        ComponentModel.registerClass(SliderTimelineModel.self)
+        ComponentModel.registerSubTypeDefaulter("timeline", { _ in "slider" })
+        installTimelineAction(EChartsSlim._registers)                      // registerAction('timelineChange'/'timelinePlayChange')
+
         // -- component/graphic/install.ts -- registerComponentModel(GraphicComponentModel) +
         //   registerComponentView(GraphicComponentView) + registerPreprocessor(graphicOptionPreprocessor).
         //   The preprocessor is invoked in `setOption` (see below).
@@ -687,6 +704,7 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(ContinuousModel.self)                 // registerComponentModel(ContinuousModel)
         ComponentModel.registerClass(PiecewiseModel.self)                  // registerComponentModel(PiecewiseModel)
         registerVisualMapSubTypeDefaulter()                                // registerSubTypeDefaulter('visualMap', ...)
+        registerAction(visualMapActionInfo, visualMapActionHander)         // registerAction('selectDataRange', ...)
 
         // -- component/dataZoom/install.ts (installDataZoomInside + installDataZoomSlider + installCommon) --
         //   registerComponentModel(InsideZoomModel / SliderZoomModel) + registerComponentView(...) [DEFERRED
@@ -783,6 +801,10 @@ public final class EChartsSlim: EChartsType {
         // Phase 7 static components (keyed by mainType; legend's subtype 'plain' is resolved by the
         //   registerSubTypeDefaulter above, but the VIEW is still looked up by mainType 'legend').
         "title": { TitleView() },
+        // Timeline slider widget — the bottom playhead: axis line + per-index tick symbols + the
+        //   current-index checkpoint symbol + prev/next/play control buttons. Keyed by FULL type
+        //   'timeline.slider' (subtype dispatch — the base 'timeline' is abstract).
+        "timeline.slider": { SliderTimelineView() },
         "graphic": { GraphicComponentView() },
         "legend": { LegendView() },
         // Scrollable legend view — resolved by FULL type 'legend.scroll' (subtype dispatch) so
@@ -931,6 +953,14 @@ public final class EChartsSlim: EChartsType {
         markPointPreprocessor(&opt)
         markLinePreprocessor(&opt)
         markAreaPreprocessor(&opt)
+        // Preprocessor from component/timeline/preprocessor.ts (registerPreprocessor(timelinePreprocessor)):
+        //   normalize the `timeline` option (ec2-compat: type→axisType, controlPosition→controlStyle.position,
+        //   transfer label/itemStyle on each data item). Mutates option.timeline in place (inout ECUnitOption).
+        //   NOTE: the baseOption+options[currentIndex] MERGE is NOT done here — it is driven by OptionManager
+        //   (parseRawOption splits `{baseOption, options, timeline}`; getTimelineOption merges options[
+        //   timelineModel.getCurrentIndex()] over baseOption). This preprocessor only normalizes the timeline
+        //   COMPONENT option itself.
+        timelinePreprocessor(&opt)
         // Preprocessor from component/axisPointer/install.ts (registerPreprocessor): always ensure a
         //   global axisPointer option exists (for default settings). tooltip `dependencies:['axisPointer']`
         //   and the axis-tooltip DATA core (modelHelper.collect) both need the AxisPointerModel component

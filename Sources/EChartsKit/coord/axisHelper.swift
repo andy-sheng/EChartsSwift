@@ -368,9 +368,25 @@ public enum axisHelper {
                 }
                 return nil
             }
-            // PORT-TODO: `option` is the dynamic option bag (`Any?`); the breaks are stored as raw
-            //   dictionaries, not `[AxisBreakOption]` structs, so this cast yields `nil` until the
-            //   axis-option parser lands (Phase 6b).
+            // upstream returns `axisModel.get('breaks')` directly as `AxisBreakOption[]`. In the port
+            //   the dynamic option bag stores each break as a raw dictionary (the axis-option struct
+            //   parser is not ported), so convert the raw `[{start,end,gap?,isExpanded?}]` entries into
+            //   `AxisBreakOption` structs here. Non-dict / malformed entries are skipped.
+            if let rawList = option as? [Any] {
+                var result: [AxisBreakOption] = []
+                for raw in rawList {
+                    guard let dict = raw as? [String: Any] else { continue }
+                    guard let start = dict["start"], let end = dict["end"] else { continue }
+                    result.append(AxisBreakOption(
+                        start: start,
+                        end: end,
+                        gap: dict["gap"],
+                        isExpanded: dict["isExpanded"] as? Bool
+                    ))
+                }
+                return result
+            }
+            // Already-parsed structs (e.g. built programmatically) pass through.
             return option as? [AxisBreakOption]
         }
         return nil

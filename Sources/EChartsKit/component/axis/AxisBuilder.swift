@@ -597,6 +597,12 @@ let builders: [String: AxisElementsBuilder] = [
         line.anid = "line"
         _ = group.add(line)
 
+        // PORT-ADDITION (minimal, guarded by hasBreaks): draw the value-axis break marker glyph at
+        //   each break position on the axis line. Upstream's full break-area zigzag rendering is
+        //   deferred (see axisBreakMarker.swift); this is the CORE marker. Non-broken axes are
+        //   unaffected (buildAxisBreakMarker early-returns when the scale has no breaks).
+        buildAxisBreakMarker(axisModel.axis as! Axis, group, transformGroup.transform, lineStyle)
+
         // upstream: let arrows = axisModel.get(['axisLine', 'symbol']); if (arrows != null) { ... createSymbol ... }
         //   PORT-TODO: axisLine arrow symbols require `util/symbol` (createSymbol / normalizeSymbolOffset),
         //   which is NOT ported. Deferred.
