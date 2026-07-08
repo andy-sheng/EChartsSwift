@@ -38,10 +38,11 @@ open class ScatterView: ChartView {
         self.type = ScatterView.type
     }
 
-    // PORT-TODO: `_finished` / `_isLargeDraw` / `_symbolDraw` (incremental + large-draw state) omitted —
-    //   SymbolDraw/LargeSymbolDraw not ported. The static render below replaces `_updateSymbolDraw` +
-    //   `symbolDraw.updateData` entirely.
+    // L2: the shared `SymbolDraw` (chart/helper) now drives per-point symbols (enter/update/leave diff,
+    //   emphasis hover-scale, symbolRotate/offset/keepAspect, symbol labels). `_isLargeDraw` /
+    //   LargeSymbolDraw + the incremental pipeline remain PORT-TODO (large mode deferred).
     private var _data: SeriesData?
+    private var _symbolDraw: SymbolDraw?
 
     // upstream: render(seriesModel, ecModel, api) {
     //     const data = seriesModel.getData();
@@ -55,6 +56,12 @@ open class ScatterView: ChartView {
     ) {
         let data = seriesModel.getData()
         let store = data.getStore()
+
+        // Symbol-visual stages (visual/symbol.ts): populate the data + per-item symbol / symbolSize /
+        //   symbolRotate / symbolOffset / symbolKeepAspect visuals from the series option, which
+        //   SymbolDraw/Symbol read. Run inline here (the port invokes visual stages from the view).
+        symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+        symbolVisual.dataSymbolTask(seriesModel)
 
         // Per-datum point placement. Upstream `pointsLayout` (layout/points.ts) is generic over the coord
         //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
@@ -108,81 +115,26 @@ open class ScatterView: ChartView {
             return
         }
 
-        let group = self.group
-        group.removeAll()
-
-        // Series-level fallbacks for symbol type/size (the visual/symbol.ts stage that populates the
-        //   per-item 'symbol'/'symbolSize' visuals is a PORT-TODO; fall back to the series option).
-        let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
-        let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 10.0
-
-        // The palette color for a scatter lands under the item visual style's `fill` key. Bridge the
-        //   EChartsKit `ZRColor.color(String)` (or a raw String) to a solid color string — same bridge as
-        //   LineView's `colorString`. Gradient/pattern out of scope.
-        func colorString(_ v: Any?) -> String? {
-            if let str = v as? String { return str }
-            if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-            return nil
-        }
-        // Series-level style fallback (visual/style.ts writes the palette color into the series visual
-        //   `style` bag; item-level visuals override it when present).
-        let seriesStyle = data.getVisual("style") as? [String: Any]
-
-        for i in 0..<data.count() {
-            let point = pointAt(i)
-            if point.count < 2 || !point[0].isFinite || !point[1].isFinite { continue }
-
-            let symbolType = (data.getItemVisual(i, "symbol") as? String) ?? seriesSymbol
-            let (sizeW, sizeH) = symbol.normalizeSymbolSize(data.getItemVisual(i, "symbolSize") ?? seriesSymbolSize)
-
-            // Resolve the fill color: item visual style first, then the series visual style.
-            let itemStyle = (data.getItemVisual(i, "style") as? [String: Any]) ?? seriesStyle
-            var fill: ZRenderKit.ZRColor? = nil
-            if let cs = colorString(itemStyle?["fill"]) {
-                fill = .string(cs)
-            }
-
-            // upstream (inside SymbolDraw): createSymbol places the symbol centered on the point
-            //   (`x - size/2`, `y - size/2`, size, size). PORT-TODO: symbolRotate/symbolOffset/
-            //   symbolKeepAspect + emphasis scale not applied (SymbolDraw states deferred).
-            let el = symbol.createSymbol(
-                symbolType, point[0] - sizeW / 2, point[1] - sizeH / 2, sizeW, sizeH, fill
-            )
-            if let path = el as? Path {
-                path.name = "item"
-
-                // upstream (SymbolDraw/Symbol._updateCommon → chart/helper/Symbol.ts): each symbol is
-                //   marked a highDown dispatcher carrying its emphasis-state itemStyle, so a hover
-                //   (enterEmphasisWhenMouseOver) restyles it. Mirror BarView.updateStyle's block.
-                let itemModel = data.getItemModel(i)
-                let emphasisModel = itemModel.getModel(["emphasis"])
-                let focus: InnerFocus? = emphasisModel.get("focus")
-                let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-                let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-                states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
-                states.setStatesStylesFromModel(path, itemModel)
-
-                // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
-                //   Handler hit-test / tooltip can resolve the per-point element from the series data.
-                data.setItemGraphicEl(i, path)
-
-                // Entrance: scale the symbol in from 0 about the point (upstream Symbol.ts first-create:
-                //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
-                //   The port's createSymbol sizes via the shape (normal scale 1), so animate 0 → 1 with the
-                //   transform origin at the point so it grows from the datum.
-                path.originX = point[0]
-                path.originY = point[1]
-                path.scaleX = 0
-                path.scaleY = 0
-                initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
-
-                _ = group.add(path)
-            }
+        // upstream: `const symbolDraw = this._updateSymbolDraw(data, seriesModel);
+        //            symbolDraw.updateData(data, createSymbolDrawOpt(seriesModel));`
+        //   The shared SymbolDraw owns its own group (added once to the view group) and diffs old→new
+        //   data into Symbol elements — each Symbol handles its style, emphasis hover-scale,
+        //   symbolRotate/offset/keepAspect, entrance scale-in and the per-point label.
+        let symbolDraw = self._symbolDraw ?? SymbolDraw()
+        if self._symbolDraw == nil {
+            self._symbolDraw = symbolDraw
+            _ = self.group.add(symbolDraw.group)
         }
 
-        // PORT-TODO: SymbolDraw enter/update/leave diff, LargeSymbolDraw, incrementalPrepareRender/
-        //   incrementalRender/updateTransform, clipShape (createCoordSysClipAreaSimply), symbolRotate/
-        //   symbolOffset/symbolKeepAspect, emphasis scale — all deferred with the SymbolDraw helpers.
+        // pointsLayout stores per-item layouts upstream; the port computes points on the fly per coord
+        //   system, so feed them to SymbolDraw via getSymbolPoint.
+        var opt = SymbolDrawUpdateOpt()
+        opt.getSymbolPoint = { i in pointAt(i) }
+        symbolDraw.updateData(data, opt)
+
+        // PORT-TODO: LargeSymbolDraw (large mode), incrementalPrepareRender/incrementalRender/
+        //   updateTransform, clipShape (createCoordSysClipAreaSimply) — deferred with the incremental
+        //   pipeline + large-draw helpers.
         self._data = data
     }
 }

@@ -33,7 +33,9 @@ public typealias GroupProps = ElementProps   // upstream: interface GroupProps e
 
 // NOTE (CONVENTIONS §2): upstream `class Group extends Element`. `Element` is a (non-final)
 //   `class`, and `Group` is itself never subclassed, but we keep it `public final class`.
-public final class Group: Element {
+// upstream `class Group extends Element` is NOT final — `chart/helper/Symbol` and others extend it.
+// `open` (not `final`) so EChartsKit's `Symbol` (a Group wrapping a symbol path) can subclass it.
+open class Group: Element {
 
     // upstream: readonly isGroup = true — Element declares `var isGroup` (default false); set in init.
 

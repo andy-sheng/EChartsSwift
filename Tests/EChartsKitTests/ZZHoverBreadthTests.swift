@@ -26,7 +26,15 @@ final class ZZHoverBreadthTests: XCTestCase {
     // baked into the shape's absolute coords), so the local bounding rect is already grid-global.
     private func boundingCenter(_ el: Element) -> (Double, Double)? {
         guard let r = el.getBoundingRect() else { return nil }
-        return (r.x + r.width / 2, r.y + r.height / 2)
+        let cx = r.x + r.width / 2
+        let cy = r.y + r.height / 2
+        // Apply the element's computed transform → global (zr) coords. Bars/sectors bake position into
+        //   their shape (local == global), but a scatter Symbol is a Group positioned via its transform
+        //   (setPosition → group.x/y) with a local symbol-path rect, so the bare local center would miss.
+        if let m = el.getComputedTransform() {
+            return (m[0] * cx + m[2] * cy + m[4], m[1] * cx + m[3] * cy + m[5])
+        }
+        return (cx, cy)
     }
 
     // MARK: - Scatter

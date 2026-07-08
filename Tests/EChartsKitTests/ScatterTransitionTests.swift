@@ -1,5 +1,10 @@
-// Entering scatter symbols scale in (scaleX/scaleY 0→1) when the series has animation on, and are at
-// full scale with no animator when off. Faithful to chart/helper/Symbol.ts first-create scale-in.
+// Entering scatter symbols scale in when the series has animation on, and are at full scale with no
+// animator when off. Faithful to chart/helper/Symbol.ts first-create scale-in.
+//
+// L2 UPDATE: scatter now goes through the shared SymbolDraw/Symbol. Upstream `Symbol._createSymbol`
+// builds the symbol path at a fixed 2×2 size and scales it by `symbolSize/2`, so the symbol path's
+// resting scaleX is `symbolSize/2` (NOT 1), and the entrance animates scaleX 0 → symbolSize/2. The
+// option below uses symbolSize 20, so the final/resting scaleX is 10.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -31,14 +36,14 @@ final class ScatterTransitionTests: XCTestCase {
         //   animator's own keyframe track (not the live property) carries the 0→1 scale-in that plays out
         //   over the animation clock. Assert the track exists rather than a synchronous interim value.
         let animator = sym.animators.first { $0.getTrack("scaleX") != nil }
-        XCTAssertNotNil(animator, "an animator should carry a scaleX track (the 0→1 scale-in)")
-        XCTAssertEqual(sym.scaleX, 1.0, accuracy: 1e-9, "setToFinal jumps the live property to its final value immediately")
-        // Prove the track carries a genuine 0→1 delta (not a no-op): stepping to t=0 restores the start.
+        XCTAssertNotNil(animator, "an animator should carry a scaleX track (the 0→size/2 scale-in)")
+        XCTAssertEqual(sym.scaleX, 10.0, accuracy: 1e-9, "setToFinal jumps the live property to its final value (symbolSize/2)")
+        // Prove the track carries a genuine 0→size/2 delta (not a no-op): stepping to t=0 restores the start.
         if let track = animator?.getTrack("scaleX") {
             track.step(sym, 0.0)
             XCTAssertEqual(sym.scaleX, 0.0, accuracy: 1e-9, "scaleX track starts at 0 (real scale-in delta)")
             track.step(sym, 1.0)
-            XCTAssertEqual(sym.scaleX, 1.0, accuracy: 1e-9, "scaleX track ends at 1")
+            XCTAssertEqual(sym.scaleX, 10.0, accuracy: 1e-9, "scaleX track ends at symbolSize/2")
         }
     }
 
@@ -47,6 +52,6 @@ final class ScatterTransitionTests: XCTestCase {
         ec.setOption(option(false))
         guard let sym = firstSymbol(ec.getRoot()) else { return XCTFail("no scatter symbol") }
         XCTAssertEqual(sym.animators.count, 0, "no animator when animation off")
-        XCTAssertEqual(sym.scaleX, 1.0, accuracy: 1e-9, "symbol at full scale immediately when animation off")
+        XCTAssertEqual(sym.scaleX, 10.0, accuracy: 1e-9, "symbol at full scale (symbolSize/2) immediately when animation off")
     }
 }
