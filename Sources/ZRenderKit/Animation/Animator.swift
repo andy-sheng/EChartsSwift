@@ -966,6 +966,33 @@ public final class Animator<T> {
         }
         self._started = 1
 
+        // Duration-0 fast path: a zero-length animation IS its final state, so apply every track's
+        // last-keyframe value directly and finish WITHOUT scheduling a Clip. This is required for
+        // correctness, not merely an optimization:
+        //   (1) A `life: 0` Clip is only resolved by an animation-loop tick, so a SYNCHRONOUS state
+        //       jump — the `stateTransition`-off path does `animateTo(target, { duration: 0 })` — would
+        //       never apply until the next frame, or never at all in a one-shot/headless render. This
+        //       is what made a hovered line/scatter symbol fail to enlarge (its emphasis scaleX stayed
+        //       at the resting value).
+        //   (2) `Track.prepare` computes `kf.percent = kf.time / maxTime = 0 / 0 = NaN` when maxTime is
+        //       0; a subsequent overlapping transition (e.g. downplay right after) then interpolates
+        //       from/to NaN and corrupts the property to NaN — this is what left the symbol scale at NaN
+        //       (invisible) and never restored on mouse-out.
+        // Mirrors the discrete-track direct-set in the main loop below (same `animationSet(propName,
+        // lastKf.rawValue)` shape); zrender relies on a rAF tick to resolve life-0 clips, which a
+        // faithful static/loop-driven port cannot, so we settle them at start() instead.
+        if self._maxTime <= 0 {
+            for i in 0..<self._trackKeys.count {
+                let track = self._tracks[self._trackKeys[i]]!
+                if track.needsAnimate(), let lastKf = track.keyframes.last {
+                    (self._target as? AnimationTarget)?.animationSet(track.propName, lastKf.rawValue)
+                }
+                track.setFinished()
+            }
+            self._doneCallback()
+            return self
+        }
+
         // upstream `const self = this` — Swift closures capture `self`; use [weak self] to break
         //   the animator → _clip → onframe → self retain cycle (CONVENTIONS §8). When the owner
         //   drops the animator, the clip's callbacks no-op (the clip is also released on stop/done).
