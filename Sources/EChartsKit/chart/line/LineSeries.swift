@@ -54,11 +54,12 @@ open class LineSeriesModel: SeriesModel {
             "legendHoverLink": true,
             "clip": true,
             // LOAD-BEARING for LineView's showSymbol pass: upstream defaultOption defaults
-            //   `symbol: 'emptyCircle'`, `symbolSize: 4`, `showSymbol: true`. Without these the
-            //   symbol pass reads nil and draws nothing. PORT-TODO: symbolRotate / symbolKeepAspect
-            //   and the rest of upstream's SymbolOptionMixin defaults deferred with the symbol subsystem.
+            //   `symbol: 'emptyCircle'`, `symbolSize: 6`, `showSymbol: true` (LineSeries.ts:202 — echarts
+            //   6.x bumped the default from 4 to 6). Without these the symbol pass reads nil and draws
+            //   nothing. PORT-TODO: symbolRotate / symbolKeepAspect and the rest of upstream's
+            //   SymbolOptionMixin defaults deferred with the symbol subsystem.
             "symbol": "emptyCircle",
-            "symbolSize": 4.0,
+            "symbolSize": 6.0,
             "showSymbol": true
         ] as [String: Any]
     }
