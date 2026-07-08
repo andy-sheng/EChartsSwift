@@ -96,15 +96,23 @@ open class ScatterSeriesModel: SeriesModel {
     //   Build a single symbol tinted with the series color; hollow variants ('emptyCircle') stroke +
     //   white-fill like the chart symbols.
     open override func getLegendIcon(_ opt: LegendIconParams) -> Element? {
-        let seriesColor: String? = {
+        // Prefer the legend-computed `opt.itemStyle.fill` (upstream getLegendIcon uses it): the resolved
+        //   series color when the item is SELECTED, and the grey `inactiveColor` when UNSELECTED. This is
+        //   stable even for a legend-filtered (toggled-off) series, whose data visual is gone — reading
+        //   getData().getVisual there returned nil, so the icon lost its fill and VANISHED instead of
+        //   greying out. Fall back to the series data visual only when itemStyle has no usable fill.
+        let colorZR: ZRenderKit.ZRColor? = {
+            if let f = opt.itemStyle["fill"] {
+                if let z = f as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
+                if let s = f as? String, !s.isEmpty, s != "inherit", s != "auto", s != "none" { return .string(s) }
+            }
             guard let s = self.getData().getVisual("style") as? [String: Any] else { return nil }
             for key in ["fill", "stroke"] {
-                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return c }
-                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return str }
+                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
+                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return .string(str) }
             }
             return nil
         }()
-        let colorZR: ZRenderKit.ZRColor? = seriesColor.map { .string($0) }
 
         let visualType = (self.getData().getVisual("symbol") as? String) ?? (self.get("symbol", false) as? String)
         let symbolType = (visualType == nil || visualType == "none") ? "circle" : visualType!

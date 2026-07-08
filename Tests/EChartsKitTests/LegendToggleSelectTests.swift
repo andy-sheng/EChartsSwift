@@ -4,6 +4,7 @@
 // unported; LegendView item click was a PORT-TODO).
 import XCTest
 @testable import EChartsKit
+@testable import ZRenderKit
 
 final class LegendToggleSelectTests: XCTestCase {
     private func makeTwoSeriesWithLegend() -> EChartsSlim {
@@ -66,5 +67,39 @@ final class LegendToggleSelectTests: XCTestCase {
             (betaData.getItemGraphicEl(idx)?.currentStates.contains("emphasis")) ?? false
         }
         XCTAssertFalse(stillEmphasis, "legend mouseout (downplay) must clear the emphasis")
+    }
+
+    // An UNSELECTED (toggled-off) scatter legend item must GREY OUT its icon, not make it vanish. The
+    // icon color must come from the legend-computed itemStyle (grey inactiveColor), NOT the series data
+    // visual (which is empty for a legend-filtered series → previously nil fill → invisible icon).
+    func testScatterLegendIconGreysOutWhenUnselected() {
+        let ec = EChartsSlim(width: 400, height: 300)
+        ec.setOption([
+            "legend": ["data": ["S"]] as [String: Any],
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["name": "S", "type": "scatter",
+                        "itemStyle": ["color": "#ff0000"] as [String: Any],
+                        "data": [[1.0, 2.0], [3.0, 4.0]] as [Any]] as [String: Any]]
+        ])
+        let series = ec.getModel()!.getSeriesByIndex(0)!
+
+        // What LegendView passes for an UNSELECTED item: itemStyle.fill forced to the grey inactiveColor.
+        let grey = "#cfd2d7"
+        var params = LegendIconParams(itemWidth: 25, itemHeight: 14, icon: "circle",
+                                      iconRotate: 0, itemStyle: ["fill": grey], lineStyle: [:],
+                                      symbolKeepAspect: nil)
+        guard let icon = series.getLegendIcon(params) else { XCTFail("scatter getLegendIcon returned nil"); return }
+
+        // Find the symbol path and assert it is filled with the grey (not nil → not invisible).
+        var iconFill: ZRenderKit.ZRColor?
+        _ = (icon as? Group)?.traverse { el in
+            if let p = el as? Path, iconFill == nil { iconFill = p.pathStyle.fill }
+            return false
+        }
+        guard case let .string(hex)? = iconFill else {
+            XCTFail("unselected scatter legend icon has no fill (vanished) — got \(String(describing: iconFill))"); return
+        }
+        XCTAssertEqual(hex.lowercased(), grey, "unselected scatter legend icon must be the grey inactiveColor")
     }
 }

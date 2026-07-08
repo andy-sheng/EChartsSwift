@@ -70,18 +70,25 @@ open class LineSeriesModel: SeriesModel {
     open override func getLegendIcon(_ opt: LegendIconParams) -> Element? {
         let group = Group()
 
-        // The passed `opt` lineStyle/itemStyle can still carry unresolved 'inherit'/'auto' placeholders
-        //   (this port does not set the `legendLineStyle` visual). Resolve the series color from its data
-        //   visual `style` directly (stroke for the line color, else fill), so the icon is correctly tinted.
-        let seriesColor: String? = {
+        // Prefer the legend-computed `opt.itemStyle.fill` / `opt.lineStyle.stroke` (the resolved series
+        //   color when SELECTED, grey `inactiveColor` when UNSELECTED). This is stable even for a
+        //   legend-filtered (toggled-off) series whose data visual is gone — reading getData().getVisual
+        //   there returned nil, so the icon lost its color and VANISHED instead of greying out. Fall back
+        //   to the series data visual only when the legend style carries no usable color.
+        let colorZR: ZRenderKit.ZRColor? = {
+            for bag in [opt.itemStyle, opt.lineStyle] {
+                for key in ["fill", "stroke"] {
+                    if let z = bag[key] as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
+                    if let s = bag[key] as? String, !s.isEmpty, s != "inherit", s != "auto", s != "none" { return .string(s) }
+                }
+            }
             guard let s = self.getData().getVisual("style") as? [String: Any] else { return nil }
             for key in ["stroke", "fill"] {
-                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return c }
-                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return str }
+                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
+                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return .string(str) }
             }
             return nil
         }()
-        let colorZR: ZRenderKit.ZRColor? = seriesColor.map { .string($0) }
 
         // Horizontal line spanning the swatch, vertically centered.
         let line = symbol.createSymbol("line", 0, opt.itemHeight / 2, opt.itemWidth, 0, nil, false)
