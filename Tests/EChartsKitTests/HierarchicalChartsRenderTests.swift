@@ -70,7 +70,7 @@ final class HierarchicalChartsRenderTests: XCTestCase {
         var nodeSymbols = 0
         _ = ec.getRoot().traverse { el in
             if el is ZRenderKit.Line { lines += 1 }
-            else if el.name == "node", el is ZRenderKit.Path { nodeSymbols += 1 }
+            else if el.name == "item", el is ZRenderKit.Path { nodeSymbols += 1 }  // Symbol path (L2)
             return false
         }
         XCTAssertGreaterThan(nodeSymbols, 0, "graph nodes → Symbol paths")

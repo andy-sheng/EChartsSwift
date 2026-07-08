@@ -8,7 +8,7 @@ import XCTest
 
 final class GraphLabelStyleTests: XCTestCase {
     private func firstNode(_ el: Element) -> Path? {
-        if let p = el as? Path, p.name == "node" { return p }
+        if let p = el as? Path, p.name == "item" { return p }
         if let g = el as? Group { for c in g.children() { if let h = firstNode(c) { return h } } }
         return nil
     }
@@ -32,7 +32,7 @@ final class GraphLabelStyleTests: XCTestCase {
     func test_node_label_uses_formatter_via_setLabelStyle() {
         let ec = EChartsSlim(width: 400, height: 400)
         ec.setOption(option(showLabel: true, formatter: "node-{b}"))
-        guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node (name==\"node\")") }
+        guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node (name==\"item\")") }
         guard let label = node.getTextContent() else {
             return XCTFail("node should have an attached label textContent when label.show==true")
         }

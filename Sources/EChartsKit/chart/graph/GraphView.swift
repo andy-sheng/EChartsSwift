@@ -143,13 +143,12 @@ open class GraphView: ChartView {
         //   both write final node/edge layouts before render, so no iteration is needed here.
 
         // --- Nodes: symbolDraw.updateData(data) --------------------------------------------------
-        //   SymbolDraw iterates `data`, reading `data.getItemLayout(i)` (the `[x, y]` the layout stage
-        //   stored via node.setLayout) and the item visual `symbol` / `symbolSize` / `style.fill`.
-        let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
-        let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 10.0
-        // Series-level style fallback (visual/style writes the palette color into the series visual
-        //   `style` bag; item-level visuals override it when present).
-        let seriesNodeStyle = data.getVisual("style") as? [String: Any]
+        // L2 breadth: the shared SymbolDraw (chart/helper) draws graph node symbols — each a Symbol
+        //   (Group) with the symbol Path child, carrying colour (from the item visual style.fill),
+        //   the node label, emphasis hover-scale, symbolRotate/offset and the entrance scale-in.
+        //   Edges stay inline (LineDraw not ported). The node/edge layouts are in the graph's DATA
+        //   space; the View coord maps them onto the pixel view rect (fit-to-fill), so feed fitPoint'd
+        //   points to SymbolDraw via getSymbolPoint.
 
         // The node/edge layouts are in the graph's DATA space; the View coord maps them onto the pixel
         //   view rect (fit-to-fill). Apply it here so `layout:'none'` graphs (raw x/y) fill the view like
@@ -162,93 +161,24 @@ open class GraphView: ChartView {
             return GraphPoint(x: m[0], y: m[1])
         }
 
-        for i in 0..<data.count() {
-            // const layout = data.getItemLayout(i);  → `[x, y]` (node.setLayout([x, y])).
-            guard let raw = graphPointFromLayout(data.getItemLayout(i)) else { continue }
-            let pos = fitPoint(raw)
-            if !pos.x.isFinite || !pos.y.isFinite { continue }
+        // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
+        //   symbolKeepAspect data + item visuals SymbolDraw reads (GraphSeries.hasSymbolVisual = true).
+        symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+        symbolVisual.dataSymbolTask(seriesModel)
 
-            let symbolType = (data.getItemVisual(i, "symbol") as? String)
-                ?? (data.getItemModel(i).get("symbol") as? String)
-                ?? seriesSymbol
-            // The per-node `symbolSize` is authored on the data item; the symbol visual stage does not
-            //   populate it for graph nodes, so fall back to the item model (matches getSymbolSize, which
-            //   adjustEdge already relies on) before the series default.
-            let (sizeW, sizeH) = symbol.normalizeSymbolSize(
-                data.getItemVisual(i, "symbolSize")
-                    ?? data.getItemModel(i).get("symbolSize")
-                    ?? seriesSymbolSize
-            )
-
-            // Resolve fill: item visual style first, then the series visual style.
-            let itemStyle = (data.getItemVisual(i, "style") as? [String: Any]) ?? seriesNodeStyle
-            var fill: ZRenderKit.ZRColor? = nil
-            if let cs = graphColorString(itemStyle?["fill"]) { fill = .string(cs) }
-
-            // createSymbol places the symbol centered on the point (`x - size/2`, `y - size/2`).
-            //   PORT-TODO: symbolRotate / symbolOffset / symbolKeepAspect / emphasis scale + the node
-            //   name label (SymbolClz useNameLabel) not applied (SymbolDraw states DEFERRED).
-            let el = symbol.createSymbol(
-                symbolType, pos.x - sizeW / 2, pos.y - sizeH / 2, sizeW, sizeH, fill
-            )
-            if let path = el as? Path {
-                path.name = "node"
-                // upstream chart/helper/Symbol z2 default is 100 (Symbol.ts:85 `retrieve2(z2, 100)`), while
-                //   edges (chart/helper/Line) default z2 0 — so nodes draw OVER the edges. The port adds the
-                //   node loop before the edge loop, so without this the edges win the insertion tiebreak and
-                //   cross over the nodes (graph-grid).
-                path.z2 = 100
-
-                // upstream (SymbolDraw → chart/helper/Symbol._updateCommon, Symbol.ts:357): each node
-                //   symbol is marked a highDown dispatcher carrying its emphasis-state itemStyle, so a
-                //   hover restyles it. Mirror ScatterView.render's block.
-                //   PORT-TODO: `focus === 'adjacency'` (getAdjacentDataIndices) — the adjacency focus that
-                //   also blurs non-neighbour nodes/edges — is DEFERRED (raw focus passed through).
-                let itemModel = data.getItemModel(i)
-                let emphasisModel = itemModel.getModel(["emphasis"])
-                let focus: InnerFocus? = emphasisModel.get("focus")
-                let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-                let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-                states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
-                states.setStatesStylesFromModel(path, itemModel)
-
-                // Node name label — upstream SymbolClz._updateLabel (chart/helper/Symbol.ts:255-331):
-                //   `getLabelStatesModels(itemModel)` + `setLabelStyle(symbolPath, models, opt)`.
-                //   `setLabelStyle` attaches the label as `path`'s textContent (via setTextContent +
-                //   textConfig position), honours label.show (hides when false — graph default), applies
-                //   the label formatter through `labelFetcher`/`labelDataIndex`, and wires the
-                //   emphasis/blur/select state text. The painter renders the attached textContent, so the
-                //   previous hand-rolled ZRText block is gone. `defaultText` is `getDefaultLabel(data, idx)`
-                //   (graph uses SymbolDraw's default, i.e. NOT `useNameLabel`); `inheritColor` is the node
-                //   fill so an 'inherit'/inside label picks up the symbol color like upstream.
-                let labelStatesModels = labelStyle.getLabelStatesModels(itemModel)
-                var labelOpt = SetLabelStyleOpt()
-                labelOpt.labelFetcher = seriesModel
-                labelOpt.labelDataIndex = Double(i)
-                labelOpt.defaultText = labelHelper.getDefaultLabel(data, Double(i))
-                labelOpt.inheritColor = graphColorString(itemStyle?["fill"])
-                if let opRaw = itemStyle?["opacity"] {
-                    let op = graphToNumber(opRaw)
-                    if op.isFinite { labelOpt.defaultOpacity = op }
-                }
-                labelStyle.setLabelStyle(path, labelStatesModels, labelOpt)
-
-                // upstream SymbolDraw calls `data.setItemGraphicEl(idx, symbolEl)`; needed so the live
-                //   Handler hit-test / tooltip can resolve the per-node element from the series data.
-                data.setItemGraphicEl(i, path)
-
-                // Entrance: scale the symbol in from 0 about the point (upstream Symbol.ts first-create:
-                //   symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel, idx)).
-                //   Mirror ScatterView.render's identical block so graph nodes grow in from their center.
-                path.originX = pos.x
-                path.originY = pos.y
-                path.scaleX = 0
-                path.scaleY = 0
-                initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, i)
-
-                _ = group.add(path)
-            }
+        // upstream: `symbolDraw.updateData(data)`. Each node → a Symbol (Group) whose child path carries
+        //   the node colour (item visual style.fill), the node label, emphasis hover-scale and the
+        //   entrance scale-in. Node layouts are in DATA space → fitPoint maps them to the pixel view.
+        //   PORT-TODO: `focus === 'adjacency'` (getAdjacentDataIndices) adjacency focus still deferred.
+        let symbolDraw = SymbolDraw()
+        var nodeOpt = SymbolDrawUpdateOpt()
+        nodeOpt.getSymbolPoint = { i in
+            guard let raw = graphPointFromLayout(data.getItemLayout(i)) else { return nil }
+            let p = fitPoint(raw)
+            return (p.x.isFinite && p.y.isFinite) ? [p.x, p.y] : nil
         }
+        symbolDraw.updateData(data, nodeOpt)
+        _ = group.add(symbolDraw.group)
 
         // --- Edges: lineDraw.updateData(edgeData) ------------------------------------------------
         //   LineDraw iterates `edgeData`, reading `edgeData.getItemLayout(i)` — the point list the layout
