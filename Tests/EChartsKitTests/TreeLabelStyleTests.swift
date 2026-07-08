@@ -2,8 +2,10 @@
 //
 // Upstream TreeView draws node labels through SymbolClz's `useNameLabel: true` +
 // `setLabelStyle(symbolPath, getLabelStatesModels(itemModel), { labelFetcher: seriesModel, ... })`
-// (chart/helper/Symbol.ts:315). This test asserts the ported TreeView routes its node label through
-// `labelStyle.setLabelStyle` on the node symbol Path `el` (the item element) rather than the old
+// (chart/helper/Symbol.ts:315). L2 UPDATE: the ported TreeView now routes its node symbols through the
+// shared SymbolDraw/Symbol, so `data.getItemGraphicEl(i)` is the node's `Symbol` (a Group) and its child
+// symbol Path (name "item") carries the label. This test asserts the label reaches that item Path through
+// `labelStyle.setLabelStyle` (the shared Symbol's `useNameLabel: true` core path) rather than the old
 // hand-rolled ZRText:
 //   - the item element carries a `getTextContent()` whose `textStyle.text` == the node NAME
 //     (the useNameLabel default text), and
@@ -40,7 +42,8 @@ final class TreeLabelStyleTests: XCTestCase {
         // Collect every node item element that carries a label textContent, keyed by data index.
         var labelled: [(idx: Int, el: ZRenderKit.Path, text: String, position: String?)] = []
         for i in 0..<data.count() {
-            guard let el = data.getItemGraphicEl(i) as? ZRenderKit.Path else { continue }
+            // The node graphic el is a Symbol (Group); its "item"-named child Path carries the label.
+            guard let sym = data.getItemGraphicEl(i) as? Symbol, let el = sym.getSymbolPath() else { continue }
             guard let tc = el.getTextContent() else { continue }
             let pos = el.textConfig?.position as? String
             labelled.append((i, el, tc.textStyle?.text ?? "<nil>", pos))

@@ -45,6 +45,34 @@ final class EffectScatterAnimationTests: XCTestCase {
         }
     }
 
+    /// The base symbol is now routed through the shared `SymbolDraw` with the ported `EffectSymbol`
+    /// ctor: each datum becomes an `EffectSymbol` (a `Symbol` group) whose childAt(0) is the base symbol
+    /// Path (name "item", resting scaleX == symbolSize/2, since Symbol scales a 2x2 shape) and whose
+    /// childAt(1) is the ripple Group holding the `number` sibling rings.
+    func test_base_symbol_routed_through_effect_symbol() throws {
+        let view = makeView()   // symbolSize: 20 → resting scaleX == 10
+
+        // Find the EffectSymbol group (the only Symbol subclass in the tree).
+        var effectSymbol: EffectSymbol?
+        func find(_ el: Element) {
+            if let es = el as? EffectSymbol { effectSymbol = es; return }
+            if let g = el as? Group { for c in g.children() { find(c); if effectSymbol != nil { return } } }
+        }
+        find(view.ec.getRoot())
+        guard let es = effectSymbol else { return XCTFail("no EffectSymbol group found") }
+
+        // childAt(0): the base symbol Path named "item" at resting scale symbolSize/2.
+        guard let base = es.childAt(0) as? Path else { return XCTFail("EffectSymbol childAt(0) is not a Path") }
+        XCTAssertEqual(base.name, "item", "base symbol path should be named \"item\"")
+        XCTAssertEqual(base.scaleX, 10.0, accuracy: 1e-9, "base symbol resting scaleX == symbolSize/2")
+        XCTAssertEqual(base.scaleY, 10.0, accuracy: 1e-9, "base symbol resting scaleY == symbolSize/2")
+
+        // childAt(1): the ripple Group with `number: 3` sibling ripple rings scaled to symbolSize.
+        guard let rippleGroup = es.childAt(1) as? Group else { return XCTFail("EffectSymbol childAt(1) is not a Group") }
+        XCTAssertEqual(rippleGroup.children().count, 3, "ripple group should hold `rippleEffect.number` rings")
+        XCTAssertEqual(rippleGroup.scaleX, 20.0, accuracy: 1e-9, "ripple group scaled to symbolSize width")
+    }
+
     func test_ripple_has_looping_scale_and_opacity_animators() throws {
         let view = makeView()
         guard let ripple = findRipple(view.ec.getRoot()) else {

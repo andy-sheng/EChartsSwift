@@ -103,6 +103,12 @@ open class LinesView: ChartView {
         // const isPolyline = !!seriesModel.get('polyline');
         let isPolyline = linesTruthy(seriesModel.get("polyline", false))
 
+        // upstream: this._hasEffet = seriesModel.get(['effect', 'show']); — when set, the LineDraw draws
+        //   `EffectLine`/`EffectPolyline` (a moving trail symbol) instead of a plain `Line`/`Polyline`.
+        //   The static port keeps the inline line shapes and ADDS the animated trail symbol (see
+        //   chart/lines/EffectLine.swift) per item when the flag is on.
+        let hasEffect = linesTruthy(seriesModel.get(["effect", "show"]))
+
         // Line color: `visualStyleAccessPath = 'lineStyle'`, `visualDrawType = 'stroke'` — the visual/style
         //   stage writes the palette color into the series visual `style` bag under `stroke` (item visuals
         //   override it). Same bridge as GraphView's edge coloring / LineView's `colorString`.
@@ -128,7 +134,13 @@ open class LinesView: ChartView {
             // Override stroke with the resolved visual color: item visual `style.stroke` first, then the
             //   series visual `style.stroke` (the palette color the visual/style stage stored).
             let itemVisualStyle = (data.getItemVisual(i, "style") as? [String: Any]) ?? seriesLineStyle
-            if let cs = linesColorString(itemVisualStyle?["stroke"]) { style.stroke = .string(cs) }
+            let strokeColorStr = linesColorString(itemVisualStyle?["stroke"])
+            if let cs = strokeColorStr { style.stroke = .string(cs) }
+
+            // Pixel point list captured for the (optional) flying-trail effect — mirrors upstream
+            //   `data.getItemLayout(idx)`: [p0, p1] (+ control point at index 2 for a curved line), or
+            //   all polyline points. Filled by whichever geometry branch runs below.
+            var effectPoints: [[Double]] = []
 
             let el: Path
             if isPolyline {
@@ -144,6 +156,7 @@ open class LinesView: ChartView {
                     }
                 }
                 if points.count < 2 { continue }
+                if hasEffect { effectPoints = points.map { [$0[0], $0[1]] } }
                 var shape = PolylineShape()
                 shape.points = points
                 let polyline = Polyline()
@@ -176,6 +189,8 @@ open class LinesView: ChartView {
                     // ]
                     let cpx = (p0[0] + p1[0]) / 2 - (p0[1] - p1[1]) * curveness
                     let cpy = (p0[1] + p1[1]) / 2 - (p1[0] - p0[0]) * curveness
+                    // Curved line → the effect symbol follows the quadratic p0 → (cpx,cpy) → p1.
+                    if hasEffect { effectPoints = [[p0[0], p0[1]], [p1[0], p1[1]], [cpx, cpy]] }
                     var shape = BezierCurveShape()
                     shape.x1 = p0[0]
                     shape.y1 = p0[1]
@@ -189,6 +204,8 @@ open class LinesView: ChartView {
                     el = curve
                 }
                 else {
+                    // Straight line → the effect symbol follows p0 → p1 (midpoint control point).
+                    if hasEffect { effectPoints = [[p0[0], p0[1]], [p1[0], p1[1]]] }
                     var shape = LineShape()
                     shape.x1 = p0[0]
                     shape.y1 = p0[1]
@@ -211,6 +228,23 @@ open class LinesView: ChartView {
             //   helper/LinePath, helper/Symbol not ported).
             _ = group.add(el)
             data.setItemGraphicEl(i, el)
+
+            // upstream: when `effect.show`, the LineDraw uses EffectLine/EffectPolyline — a moving trail
+            //   symbol animated along the line. The static port keeps the line above and ADDS the animated
+            //   symbol here (chart/lines/EffectLine.swift). Per-item effect model (upstream
+            //   `lineData.getItemModel(idx).getModel('effect')`).
+            if hasEffect && effectPoints.count >= 2 {
+                let effectModel = itemModel.getModel("effect")
+                EffectLine.add(
+                    to: group,
+                    points: effectPoints,
+                    isPolyline: isPolyline,
+                    effectModel: effectModel,
+                    idx: i,
+                    count: data.count(),
+                    strokeColor: strokeColorStr
+                )
+            }
         }
 
         self._data = data

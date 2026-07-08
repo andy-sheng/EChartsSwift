@@ -534,8 +534,11 @@ open class LegendView: ComponentView {
 
         // @ts-ignore
         // itemGroup.__legendDataIndex = dataIndex;
-        // PORT-TODO: DEFERRED — `__legendDataIndex` is read only by ScrollableLegend/interaction; skipped.
-        _ = dataIndex
+        //   Element is not dynamically extensible in Swift, so the value lives in an inner-store side
+        //   table (legendItemDataIndexInner, declared in ScrollableLegendView.swift). Read ONLY by
+        //   ScrollableLegendView's pagination scan; plain LegendView never reads it, so this write is a
+        //   behavioural no-op for the plain legend.
+        legendItemDataIndexInner(itemGroup).value = dataIndex
 
         return itemGroup
     }

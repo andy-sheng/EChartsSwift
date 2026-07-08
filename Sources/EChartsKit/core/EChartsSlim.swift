@@ -339,6 +339,13 @@ public final class EChartsSlim: EChartsType {
     //   only large/progressive ones. `BarView.getLayoutCartesian2D` reads that item layout back, so
     //   without running this handler no bar has a shape and `BarView` emits zero Rects.
     private static let _barProgressiveLayoutHandler: StageHandler = createProgressiveLayout(SERIES_TYPE_BAR)
+    // The pictorialBar cross-series + per-item layout handlers (upstream chart/bar/installPictorialBar.ts
+    //   `registerLayout(VISUAL.LAYOUT, createCrossSeriesLayoutHandler(pictorialBar))` +
+    //   `registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(pictorialBar))`). Same role as the two
+    //   bar handlers above, but gated on the 'pictorialBar' series type — they set bandWidth/offset/size
+    //   and then each item's rect x/y/width/height, which PictorialBarView reads via data.getItemLayout.
+    private static let _pictorialBarLayoutHandler: StageHandler = createCrossSeriesLayoutHandler(SERIES_TYPE_PICTORIAL_BAR)
+    private static let _pictorialBarProgressiveLayoutHandler: StageHandler = createProgressiveLayout(SERIES_TYPE_PICTORIAL_BAR)
 
     static func installOnce() {
         if _installed { return }
@@ -368,6 +375,17 @@ public final class EChartsSlim: EChartsType {
         // registerProcessor(PROCESSOR.STATISTIC, dataSample) → PORT-TODO: down-sampling not needed.
         registerBarGridAxisHandlers(_registers)   // populates axisStatistics `clientsForLookup` +
                                                   //   captures the axis-statistics processor (see registrar).
+                                                  //   NOTE: registers BOTH 'bar' and 'pictorialBar' axis
+                                                  //   handlers, so pictorialBar needs no separate call.
+
+        // -- chart/bar/installPictorialBar.ts -- registerSeriesModel(PictorialBarSeries) +
+        //   registerChartView(PictorialBarView) (view keyed by subType 'pictorialBar' below) +
+        //   registerLayout(VISUAL.LAYOUT, createCrossSeriesLayoutHandler(pictorialBar)) → `_pictorialBarLayoutHandler`
+        //   + registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(pictorialBar)) →
+        //   `_pictorialBarProgressiveLayoutHandler`. Both are run in the layout stage below. pictorialBar
+        //   draws a repeated/stretched symbol per bar (symbolRepeat / symbolClip / symbolPosition) instead
+        //   of a plain Rect, reusing the bar grid geometry.
+        ComponentModel.registerClass(PictorialBarSeriesModel.self)
 
         // -- chart/line/install.ts (minimal) -- registerSeriesModel(LineSeries) + registerChartView(LineView).
         //   Line needs NO cross-series/progressive layout registrar (LineView computes points directly
@@ -649,6 +667,14 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(LegendModel.self)
         ComponentModel.registerSubTypeDefaulter("legend", { _ in "plain" })
 
+        // -- component/legend/installLegendScroll.ts -- registerComponentModel(ScrollableLegendModel) +
+        //   registerComponentView(ScrollableLegendView) + legendScrollActions (page-flip action). The
+        //   subtype defaulter above resolves a bare `legend: {...}` (no `type`) to 'plain'; an explicit
+        //   `legend: {type: 'scroll'}` resolves via `option.type` → 'legend.scroll' → this model/view.
+        //   The page-flip ACTION ('legendScroll') is DEFERRED (needs the live-view host); the STATIC
+        //   pagination layout (first page + clip + page controls) is what renders here.
+        ComponentModel.registerClass(ScrollableLegendModel.self)
+
         // -- component/visualMap/installCommon.ts + typeDefaulter.ts + preprocessor.ts + visualEncoding.ts --
         //   registerComponentModel(ContinuousModel/PiecewiseModel) + registerComponentView(ContinuousView/
         //   PiecewiseVisualMapView) + registerSubTypeDefaulter('visualMap', continuous|piecewise) +
@@ -754,6 +780,10 @@ public final class EChartsSlim: EChartsType {
         "title": { TitleView() },
         "graphic": { GraphicComponentView() },
         "legend": { LegendView() },
+        // Scrollable legend view — resolved by FULL type 'legend.scroll' (subtype dispatch) so
+        //   `legend: {type: 'scroll'}` gets the paginating view while a plain `legend: {...}` (full
+        //   type 'legend.plain') still falls through to the mainType 'legend' → LegendView above.
+        "legend.scroll": { ScrollableLegendView() },
         // Radar coord-sys component view (draws the axis lines/ticks/names + split rings/areas backdrop);
         //   registered under mainType 'radar' (upstream install.ts `registerComponentView(RadarView)`).
         "radar": { RadarComponentView() },
@@ -802,6 +832,9 @@ public final class EChartsSlim: EChartsType {
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
+        // PictorialBar chart view (repeated/stretched symbol per bar). Registered under series subType
+        //   'pictorialBar' (upstream chart/bar/installPictorialBar.ts `registerChartView(PictorialBarView)`).
+        "pictorialBar": { PictorialBarView() },
         "line": { LineView() },
         "scatter": { ScatterView() },
         // EffectScatter chart view (static base symbols; ripple DEFERRED). Registered under series subType
@@ -1173,6 +1206,20 @@ public final class EChartsSlim: EChartsType {
         //   `runSeriesStageHandler` used for the visual stages (the `next`-iterator fix above makes its
         //   `progress` executor actually iterate the data). `BarView.getLayoutCartesian2D` consumes it.
         runSeriesStageHandler(EChartsSlim._barProgressiveLayoutHandler, ecModel, api)
+
+        // LAYOUT — pictorialBar cross-series + per-item layout (upstream chart/bar/installPictorialBar.ts).
+        //   Same two stages as bar (bandWidth/offset/size, then each item's rect x/y/width/height), gated on
+        //   the 'pictorialBar' series type. PictorialBarView.render reads the per-item rect via
+        //   data.getItemLayout to size each symbol to its bar.
+        //   GUARD: only run when a pictorialBar series is actually present. The cross-series bar-grid
+        //   overallReset re-divides the axis band across bar-ish series and rewrites their layout; running
+        //   it a SECOND time (after the plain-bar handler above) corrupts plain bar rects on a chart that
+        //   has no pictorialBar at all. Gating on presence keeps plain bar charts intact while still laying
+        //   out pictorialBar when it is used.
+        if !ecModel.getSeriesByType(SERIES_TYPE_PICTORIAL_BAR).isEmpty {
+            EChartsSlim._pictorialBarLayoutHandler.overallReset?(ecModel, api, nil)
+            runSeriesStageHandler(EChartsSlim._pictorialBarProgressiveLayoutHandler, ecModel, api)
+        }
 
         // LAYOUT — pie angle/radius layout (upstream `registerLayout(pieLayout)`). Pie has no cartesian
         //   coord, so `_coordSysMgr` never injects geometry; this OVERALL stage computes each datum's

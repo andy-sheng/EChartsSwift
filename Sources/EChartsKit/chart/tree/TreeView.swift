@@ -26,11 +26,14 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';                 -> `Group` / `BezierCurve` (ZRenderKit shapes).
 //       PORT-TODO: util/graphic's updateProps/removeElement (animation) NOT ported — the static render
 //       sets final geometry directly (same deviation as FunnelView/PieView/SunburstView).
-//   import {getECData} from '../../util/innerStore';               -> PORT-TODO: innerStore NOT ported (focus/ECData deferred).
-//   import SymbolClz from '../helper/Symbol';                      -> PORT-TODO: chart/helper/Symbol NOT ported.
-//       The node symbol is built inline with `symbol.createSymbol` (same deviation as ScatterView),
-//       so `TreeSymbol`'s `__edge`/`__radial*`/`__old*` augmentation + updateData/useNameLabel/
-//       setSymbolScale/fadeOut are DEFERRED.
+//   import {getECData} from '../../util/innerStore';               -> `innerStore.getECData` (ported).
+//   import SymbolClz from '../helper/Symbol';                      -> `Symbol` (chart/helper/SymbolElement.swift).
+//       PORT NOTE: the node symbols are routed through the shared `SymbolDraw` (chart/helper/SymbolDraw),
+//       mirroring the port's GraphView — each node becomes a `Symbol` (Group) carrying colour, the
+//       useNameLabel node label, emphasis hover-scale, symbolRotate/offset and the entrance scale-in.
+//       `TreeSymbol`'s `__edge`/`__radial*`/`__old*` augmentation (used only by the DEFERRED enter/update/
+//       remove animation + radial label rotation) has no Swift analogue; the edge blur-forward that
+//       `__edge` powers is reproduced via the symbol Path's `onHoverStateChange` hook (see decorateNode).
 //   import {radialCoordinate} from './layoutHelper';               -> `layoutHelper.radialCoordinate` (sibling).
 //   import * as bbox from 'zrender/src/core/bbox';                 -> PORT-TODO: only used by _updateViewCoordSys (deferred).
 //   import { applyViewCoordSysTransToElement, calcCompensationScaleToPreserveNodeSize,
@@ -224,17 +227,52 @@ open class TreeView: ChartView {
         // updateRoamControllerSimply(...);  — PORT-TODO: roam DEFERRED.
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream `data.diff(oldData)` runs add/update/remove keyed by id,
-        //   reusing TreeSymbol instances + enter/update/remove animation. The diff + SymbolClz reuse +
-        //   expand/collapse click action + node/link scale are DEFERRED (see PORT-TODOs), so the group
-        //   is rebuilt from scratch each render: one node symbol + its parent/child edge per node.
+        // NODE SYMBOLS routed through the shared SymbolDraw (chart/helper/SymbolDraw), mirroring the
+        //   port's GraphView. Upstream TreeView manages `SymbolClz` instances directly through
+        //   `data.diff(oldData)`; the port delegates the node-symbol lifecycle to SymbolDraw (colour,
+        //   node label, emphasis hover-scale, symbolRotate/offset, entrance scale-in) — the same helper
+        //   scatter/line/graph use — and keeps the tree EDGES (links) drawn inline (LineDraw not ported).
+        //
+        // STATIC render deviation: a FRESH SymbolDraw is built each render (its `_data` starts nil → the
+        //   diff is all-`.add`), so every node hits the ctor branch (which carries `useNameLabel: true`),
+        //   and the group is rebuilt from scratch. The keyed reuse + expand/collapse click + node/link
+        //   scale + radial label rotation are DEFERRED (see PORT-TODOs).
         // ------------------------------------------------------------------------------------------
         _ = group.removeAll()
 
-        // .add / .update: `if (symbolNeedsDraw(data, newIdx)) { updateNode(...); }`
+        // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
+        //   symbolKeepAspect data + item visuals SymbolDraw reads (TreeSeries.hasSymbolVisual = true).
+        symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+        symbolVisual.dataSymbolTask(seriesModel)
+
+        // upstream `symbolEl = new SymbolClz(data, dataIndex, null, { symbolInnerColor, useNameLabel: true })`:
+        //   route the node symbols through SymbolDraw with a ctor that sets `useNameLabel: true` so each
+        //   node label's default text is the node NAME (not the value-derived getDefaultLabel).
+        //   PORT-TODO: `symbolInnerColor` (the hollow inner fill for collapsed nodes) is a SymbolClz init
+        //   opt not modelled by the shared Symbol yet — DEFERRED.
+        let treeSymbolCtor: SymbolLikeCtor = { data, idx, scope, opts in
+            var o = opts ?? SymbolOpts()
+            o.useNameLabel = true
+            return Symbol(data, idx, scope, o)
+        }
+        let symbolDraw = SymbolDraw(treeSymbolCtor)
+        var opt = SymbolDrawUpdateOpt()
+        // The node layout is a `{ x, y, rawX, rawY }` bag (treeLayout → setItemLayout); feed SymbolDraw
+        //   the group-local `[x, y]` pixel point (nil skips the node — SymbolDraw's symbolNeedsDraw gate).
+        opt.getSymbolPoint = { i in
+            guard symbolNeedsDraw(data, i) else { return nil }
+            guard let layout = data.getItemLayout(i) as? [String: Any],
+                  let x = layout["x"] as? Double, let y = layout["y"] as? Double else { return nil }
+            return [x, y]
+        }
+        symbolDraw.updateData(data, opt)
+        _ = group.add(symbolDraw.group)
+
+        // Per-node decoration the shared Symbol does not cover: the tree's outward label side, the parent/
+        //   child EDGE (drawn inline), the topology `emphasis.focus` index set, and the edge blur-forward.
         for newIdx in 0..<data.count() {
             if symbolNeedsDraw(data, newIdx) {
-                updateNode(data, newIdx, group, seriesModel)
+                decorateNode(data, newIdx, group, seriesModel)
             }
         }
 
@@ -279,11 +317,13 @@ func symbolNeedsDraw(_ data: SeriesData, _ dataIndex: Int) -> Bool {
     return !x.isNaN && !y.isNaN
 }
 
-// upstream: function updateNode(data, dataIndex, symbolEl, group, seriesModel)
-//   STATIC form: `symbolEl` (the reused TreeSymbol) is always nil here — the group is rebuilt each render.
-//   The enter/update animation (graphic.updateProps of x/y & radial label rotation), SymbolClz.updateData,
-//   useNameLabel, symbolInnerColor, and the emphasis focus (getECData / onHoverStateChange) are DEFERRED.
-private func updateNode(
+// Per-node decoration applied AFTER SymbolDraw has built the node symbols. SymbolDraw/Symbol handle the
+//   node's colour, name label (useNameLabel), emphasis hover-scale and entrance scale-in; this function
+//   adds the tree-specific pieces upstream `updateNode` also does that the shared Symbol does not cover:
+//   the outward LABEL SIDE, the parent/child EDGE (drawn inline), the topology `emphasis.focus` index set
+//   and the edge blur-forward hook. `data.getItemGraphicEl(dataIndex)` is the node's `Symbol` (a Group);
+//   its child symbol Path (name "item") is the label/emphasis carrier.
+private func decorateNode(
     _ data: SeriesData,
     _ dataIndex: Int,
     _ group: Group,
@@ -291,15 +331,10 @@ private func updateNode(
 ) {
     // const node = data.tree.getNodeByDataIndex(dataIndex);
     guard let node = data.tree?.getNodeByDataIndex(dataIndex) else { return }
-    // const itemModel = node.getModel();  (used by drawEdge for lineStyle)
 
-    // const visualColor = (node.getVisual('style') as PathStyleProps).fill;
-    let visualColor = treeVisualFill(node.getVisual("style"))
-    // const symbolInnerColor = node.isExpand === false && node.children.length !== 0
-    //     ? visualColor : tokens.color.neutral00;
-    //   PORT-TODO: symbolInnerColor is a SymbolClz init opt (inner "hollow" fill for collapsed nodes);
-    //   SymbolClz is not ported so it is unused by the plain `symbol.createSymbol` node below.
-    _ = node.isExpand == false && node.children.count != 0 ? visualColor : tokens_color_neutral00
+    // The Symbol (Group) SymbolDraw created for this node + its symbol Path child.
+    let symbolEl = data.getItemGraphicEl(dataIndex) as? Symbol
+    let symbolPath = symbolEl?.getSymbolPath()
 
     // const virtualRoot = data.tree.root;
     let virtualRoot: TreeNode = data.tree!.root
@@ -312,108 +347,39 @@ private func updateNode(
     // const targetLayout = node.getLayout();
     guard let targetLayout = treeNodeLayout(node.getLayout()) else { return }
 
-    // ------------------------------------------------------------------------------------------
-    // symbolEl = new SymbolClz(data, dataIndex, null, { symbolInnerColor, useNameLabel: true });
-    //   PORT-TODO: SymbolClz not ported. Build the node symbol with `symbol.createSymbol` (ScatterView
-    //   deviation): item visual symbol/symbolSize/style-fill, centered on targetLayout. useNameLabel
-    //   (the node-name label) + symbolInnerColor + emphasis are DEFERRED.
-    // ------------------------------------------------------------------------------------------
-    let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "emptyCircle"
-    let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 7.0
-    let symbolType = (data.getItemVisual(dataIndex, "symbol") as? String) ?? seriesSymbol
-    let (sizeW, sizeH) = symbol.normalizeSymbolSize(data.getItemVisual(dataIndex, "symbolSize") ?? seriesSymbolSize)
+    // const itemModel = node.getModel();  (used below for focus + by drawEdge for lineStyle)
+    let itemModel = data.getItemModel(dataIndex)
+    let emphasisModel = itemModel.getModel(["emphasis"])
+    let focus: InnerFocus? = emphasisModel.get("focus")
 
-    var fill: ZRenderKit.ZRColor? = nil
-    if let cs = visualColor { fill = .string(cs) }
-
-    // graphic.updateProps(symbolEl, { x: targetLayout.x, y: targetLayout.y }, seriesModel):
-    //   animation deferred → place the symbol at its final position (centered on the layout point).
-    let symbolEl = symbol.createSymbol(
-        symbolType, targetLayout.x - sizeW / 2, targetLayout.y - sizeH / 2, sizeW, sizeH, fill
-    )
-    if let path = symbolEl as? Path {
-        path.name = "item"
-
-        // upstream (SymbolClz → chart/helper/Symbol._updateCommon, Symbol.ts:357): the node symbol is
-        //   marked a highDown dispatcher carrying its emphasis-state itemStyle, so a hover restyles it.
-        //   Mirror ScatterView.render's block.
-        //   PORT-TODO: `focus === 'relative'|'ancestor'|'descendant'` (getAncestorsIndices /
-        //   getDescendantIndices, TreeView.ts:447-456) — the tree-topology focus that also blurs
-        //   unrelated nodes — is DEFERRED (raw focus passed through).
-        let itemModel = data.getItemModel(dataIndex)
-        let emphasisModel = itemModel.getModel(["emphasis"])
-        let focus: InnerFocus? = emphasisModel.get("focus")
-        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-        states.toggleHoverEmphasis(path, focus, blurScope, isDisabled)
-        states.setStatesStylesFromModel(path, itemModel)
-
-        // Node name label — routed through the SHARED LABEL CORE (upstream SymbolClz `useNameLabel: true`
-        //   + `setLabelStyle(symbolPath, getLabelStatesModels(itemModel), { labelFetcher: seriesModel,
-        //   labelDataIndex: idx, defaultText: getName(idx), inheritColor: visualColor, ... })`,
-        //   chart/helper/Symbol.ts:257/315). `setLabelStyle` attaches the label as `path`'s textContent
-        //   (+ textConfig) and the painter walks it; the per-state (emphasis/blur/select) label sub-models
-        //   and the formatter chain now come for free from the core. `useNameLabel` → defaultText is the
-        //   node NAME (`data.getName(idx)`), not the value-derived `getDefaultLabel`.
-        let labelModels = labelStyle.getLabelStatesModels(itemModel)
-        var labelOpt = SetLabelStyleOpt()
-        labelOpt.labelFetcher = seriesModel
-        labelOpt.labelDataIndex = Double(dataIndex)
-        labelOpt.defaultText = data.getName(dataIndex)
-        if let cs = visualColor { labelOpt.inheritColor = cs }
-        // Tree's outward side. Upstream overrides `position` to `normalLabelModel.get('position') ||
-        //   (isLeft ? 'left' : 'right')` (TreeView.ts:437, the radial branch); for the orthogonal port the
-        //   side is chosen per orientation — internal nodes label on the inner side, leaves on the outer.
+    // Tree's outward label side. Upstream overrides the label `position` to `normalLabelModel.get('position')
+    //   || (isLeft ? 'left' : 'right')` (TreeView.ts:437); for the orthogonal port the side is chosen per
+    //   orientation — internal nodes label on the inner side, leaves on the outer. The shared Symbol already
+    //   built the label (through the label core's createTextConfig, which stamps `outsideFill`), defaulting
+    //   the normal position to "inside"; override it to the tree's outward side unless the label model pins
+    //   a position. Only touch it when a label was actually created (normal `show != false`).
+    if let symbolPath = symbolPath {
         let treeOrient = seriesModel.getOrient()
         let textPosition = treeLabelPosition(treeOrient, isLeaf: node.children.isEmpty)
-        labelOpt.defaultOutsidePosition = textPosition
-        labelStyle.setLabelStyle(path, labelModels, labelOpt)
-
-        // `createTextConfig` defaults the normal position to "inside" when the label model pins none; the
-        //   tree wants its outward side instead (upstream `normalLabelModel.get('position') || textPosition`).
-        //   Only touch it when a label was actually created (normal `show != false`).
+        let labelModels = labelStyle.getLabelStatesModels(itemModel)
         if let normalModel = labelModels[.normal],
            (normalModel.getShallow("show") as? Bool) != false {
             let pinned = normalModel.get("position")
-            if path.textConfig == nil { path.textConfig = ElementTextConfig() }
-            path.textConfig?.position = pinned ?? textPosition
-        }
-
-        // upstream chart/helper/Symbol z2 default 100; tree edges (Bezier) default z2 0. The node loop
-        //   adds a node then its edge, so without this the edges cross OVER the node symbols.
-        path.z2 = 100
-
-        // Entrance: scale the node symbol in from 0 about its layout point (upstream chart/helper/Symbol.ts
-        //   first-create: symbolPath.scaleX = scaleY = 0; initProps(symbolPath, {scaleX,scaleY}, seriesModel,
-        //   idx)). SymbolClz's per-node create/update scale-in is DEFERRED, so reproduce it here with the
-        //   ScatterView idiom: origin at the node point (group-local targetLayout), scale 0 → 1. scaleX/scaleY
-        //   are scalar transform props (no dict). Animates via animateTo when the series has animation on,
-        //   else snaps to full scale instantly.
-        path.originX = targetLayout.x
-        path.originY = targetLayout.y
-        path.scaleX = 0
-        path.scaleY = 0
-        initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, dataIndex)
-
-        // group.add(symbolEl); data.setItemGraphicEl(dataIndex, symbolEl);
-        _ = group.add(path)
-        data.setItemGraphicEl(dataIndex, path)
-
-        // Phase 45: `emphasis.focus:'relative'|'ancestor'|'descendant'` (upstream TreeView.ts:447-456).
-        //   Overwrite the node symbol's `ecData.focus` with the topology index SET (ancestors and/or
-        //   descendants — all node dataIndices), so hovering the node keeps that lineage bright and blurs
-        //   the rest. The value is a plain `[Int]` (the ARRAY-focus form `states.blurSeries` consumes; tree
-        //   edges are anonymous children with no edge-data, so there is no edge dataType).
-        if let resolved = treeResolveFocus(focus, node) {
-            innerStore.getECData(path).focus = resolved
+            if symbolPath.textConfig == nil { symbolPath.textConfig = ElementTextConfig() }
+            symbolPath.textConfig?.position = pinned ?? textPosition
         }
     }
 
-    // Radial label position/rotation block — PORT-TODO: DEFERRED (SymbolClz text content + setTextConfig
-    //   not available without the ported chart/helper/Symbol node label).
-
-    // Handle status (emphasis focus 'relative'|'ancestor'|'descendant' → getECData(symbolEl).focus):
-    //   PORT-TODO: DEFERRED (util/innerStore + states not ported).
+    // Phase 45: `emphasis.focus:'relative'|'ancestor'|'descendant'` (upstream TreeView.ts:447-456).
+    //   Overwrite the node symbol's `ecData.focus` (Symbol.toggleHoverEmphasis stored the RAW focus on the
+    //   Symbol group) with the topology index SET (ancestors and/or descendants — all node dataIndices), so
+    //   hovering the node keeps that lineage bright and blurs the rest. The value is a plain `[Int]` (the
+    //   ARRAY-focus form `states.blurSeries` consumes; tree edges are anonymous children with no edge-data,
+    //   so there is no edge dataType). Set it on the Symbol group — the element `blurSeriesFromHighlightPayload`
+    //   reads via `data.getItemGraphicEl(dataIndex)`.
+    if let symbolEl = symbolEl, let resolved = treeResolveFocus(focus, node) {
+        innerStore.getECData(symbolEl).focus = resolved
+    }
 
     // drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout, sourceLayout, targetLayout, group);
     let edgeEl = drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group)
@@ -423,8 +389,9 @@ private func updateNode(
     //   un-blurred by the focus index set. Mirror upstream: when the node symbol's hover state changes to a
     //   NON-blur state (emphasis/normal), forward it to the edge — UNLESS the parent node is itself blurred
     //   (so an edge into a blurred subtree stays dim). This makes an in-lineage edge brighten with its node
-    //   under `focus:'ancestor'|'descendant'|'relative'`.
-    if let edgeEl = edgeEl, let symbolPath = symbolEl as? Path {
+    //   under `focus:'ancestor'|'descendant'|'relative'`. The hook is placed on the Symbol's `item` Path (so
+    //   it fires when `leaveBlur`/`singleEnterBlur` traverses the Symbol group down onto that child).
+    if let edgeEl = edgeEl, let symbolPath = symbolPath {
         states.getHighDownInner(symbolPath).onHoverStateChange = { [weak edgeEl] toState in
             guard let edgeEl = edgeEl, toState != .blur else { return }
             let parentEl = node.parentNode.flatMap { data.getItemGraphicEl($0.dataIndex) }

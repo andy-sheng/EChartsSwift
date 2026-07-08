@@ -8,6 +8,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_scatter_basic, // Scatter
         EChartsDemoRegistry.demo_effectscatter_basic, // EffectScatter
         EChartsDemoRegistry.demo_lines_basic,   // Lines
+        EChartsDemoRegistry.demo_lines_effect,  // Lines (flying-trail effect)
         EChartsDemoRegistry.demo_pie_basic,     // Pie
         EChartsDemoRegistry.demo_bar_title_legend, // Component (title + legend)
         EChartsDemoRegistry.demo_funnel_basic,      // Funnel
