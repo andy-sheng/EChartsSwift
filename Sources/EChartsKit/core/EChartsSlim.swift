@@ -760,6 +760,11 @@ public final class EChartsSlim: EChartsType {
         //   module-load side effects, so it happens here (see core/actionRegister.swift).
         registerBuiltinActions()
 
+        // -- chart/graph/install.ts `registerRoamActionSimply(registers, 'series', 'graph')` -- the
+        //   `graphRoam` action (pan/zoom → the graph view coord sys). See roamHelperGraph.swift.
+        //   Idempotent: `registerAction` early-returns on a duplicate type.
+        registerGraphRoamAction()
+
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
         // These are file-scope closures, assigned lazily on first `install`.
@@ -1866,6 +1871,26 @@ final class SlimExtensionAPI: ExtensionAPI {
     }
     override func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView {
         return ec.viewOfSeriesModel(seriesModel)!
+    }
+    // upstream: `getComponentByElement(el)` — walk `el` up (via `__hostTarget ?? parent`) to the nearest
+    //   element carrying ECData, and resolve the owning component/series model. Used by roam/brush
+    //   `onIrrelevantElement`. Base is abstract (fatalError); provide a concrete resolver for the roam path.
+    //   Returns a fresh EMPTY sentinel model (mainType "") when nothing resolves — `onIrrelevantElement`
+    //   treats that conservatively (roam proceeds), matching upstream's null-ish default.
+    override func getComponentByElement(_ el: Element) -> ComponentModel {
+        var cur: Element? = el
+        while let e = cur {
+            let ecData = innerStore.getECData(e)
+            if let si = ecData.seriesIndex, let sm = ec.getModel()?.getSeriesByIndex(si) {
+                return sm
+            }
+            if let mt = ecData.componentMainType,
+               let cm = ec.getModel()?.getComponent(mt, ecData.componentIndex) {
+                return cm
+            }
+            cur = e.__hostTarget ?? (e.parent as? Element)
+        }
+        return ComponentModel(nil, nil, ec.getModel())
     }
     // upstream: `dispatchAction` is bound onto the api from `ecInstance` (availableMethods). Forward to
     //   the driver's ported round-trip (an action/view handler calls `api.dispatchAction(...)`).

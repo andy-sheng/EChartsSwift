@@ -143,6 +143,17 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     private var _brushDrag: (startX: Double, startY: Double)?
 
+    // ------------------------------------------------------------------------
+    // L3 Roam — GRAPH pan/zoom. A single live `RoamController` bound over the zr (upstream `GraphView`
+    //   owns `new RoamController(api.getZr())`; the slim `GraphView` is zr-less, so — like the Phase-38/39
+    //   inside-dataZoom wheel/pan — `EChartsView` owns the controller and re-runs
+    //   `updateRoamControllerSimply` on each `setOption`). On drag-pan / wheel-zoom the controller emits
+    //   'pan'/'zoom', which dispatch `{type:'graphRoam', ...}` → the graph view coord sys shifts/scales and
+    //   the chart re-renders. Created lazily the first time a graph series with `roam` truthy is seen.
+    //   PORT-TODO (DEFERRED): map/geo/tree/treemap reuse of the same controller (this wiring is GRAPH-only).
+    // ------------------------------------------------------------------------
+    private var _graphRoamController: RoamController?
+
     /// Lazily build the tooltip view over the live zr, then (re)bind it to the current ec model.
     private func _ensureTooltipView() -> TooltipView? {
         guard let ecModel = ec.getModel() else { return nil }
@@ -190,6 +201,56 @@ public final class EChartsView {
     public func setOption(_ option: [String: Any]) {
         ec.setOption(option)
         _syncRoot()
+        // L3 Roam: (re)wire the graph RoamController against the freshly-built model (upstream GraphView.render
+        //   calls updateRoamControllerSimply every render).
+        _setupGraphRoam()
+    }
+
+    // ------------------------------------------------------------------------
+    // _setupGraphRoam — L3 Roam GRAPH wiring. For each graph series with `roam` truthy, enable the shared
+    //   `RoamController` over the live zr and wire pan/zoom → `graphRoam` (see roamHelperGraph). The
+    //   `onDispatched` seam flushes the zr display list + repaints after the action's full re-render (same
+    //   pattern as `_handleInsideZoomWheel`). If no graph series wants roam, the controller is disabled.
+    // ------------------------------------------------------------------------
+    private func _setupGraphRoam() {
+        guard let ecModel = ec.getModel() else { return }
+
+        // Find the first graph series with roam enabled (upstream enables a controller per graph series;
+        //   the slim host uses ONE controller — graph charts realistically have a single graph series).
+        var roamSeries: GraphSeriesModel?
+        ecModel.eachSeriesByType("graph") { s, _ in
+            guard roamSeries == nil, let gm = s as? GraphSeriesModel else { return }
+            if _viewRoamTruthy(gm.get("roam")) {
+                roamSeries = gm
+            }
+        }
+
+        guard let seriesModel = roamSeries else {
+            // No graph roam wanted → disable any previously-enabled controller.
+            _graphRoamController?.disable()
+            return
+        }
+
+        let controller: RoamController
+        if let existing = _graphRoamController {
+            controller = existing
+        } else {
+            controller = RoamController(zr)
+            _graphRoamController = controller
+        }
+
+        updateGraphRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
+            guard let self = self else { return }
+            _ = self.zr.storage.getDisplayList(true)
+            self.zr.refresh()
+        })
+    }
+
+    /// Whether a `roam` option value is truthy (true / 'move' / 'pan' / 'scale' / 'zoom'); false / nil off.
+    private func _viewRoamTruthy(_ v: Any?) -> Bool {
+        if let b = v as? Bool { return b }
+        if let s = v as? String { return !s.isEmpty && s != "false" }
+        return false
     }
 
     /// Add the ec root into the zr storage ONCE (subsequent `setOption`s rebuild the root's children

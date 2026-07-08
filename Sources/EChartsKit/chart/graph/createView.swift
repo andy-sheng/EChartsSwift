@@ -89,11 +89,53 @@ public final class GraphViewCoordSys: CoordinateSystem {
         self.boxH = boxH > 0 ? boxH : 1
     }
 
+    // ------------------------------------------------------------------------------------------------
+    // ROAM (VIEW_COORD_SYS_TRANS_ROAM). Upstream a real `View` composes a raw (dataRect→viewRect) map
+    //   with a roam (center/zoom) transform → VIEW_COORD_SYS_TRANS_OVERALL. This stand-in reproduces the
+    //   same OVERALL affine as a pure scale+translate (the box→rect map has no rotation), so a graph can
+    //   pan/zoom. `roamCenter` is a point in DATA space that maps to the center of the view rect;
+    //   `roamZoom` is the scale (== 1, identity roam, in the static render). See `applyRoamPayload`.
+    // ------------------------------------------------------------------------------------------------
+    public var roamCenter: [Double]? = nil          // VIEW_COORD_SYS center (data space).
+    public var roamZoom: Double = 1                  // VIEW_COORD_SYS zoom.
+
+    // The raw box→rect linear map as scale + translate (px = rawScale*data + rawT).
+    private var rawScaleX: Double { rect.width / boxW }
+    private var rawScaleY: Double { rect.height / boxH }
+    private var rawTx: Double { rect.x - boxX * rawScaleX }
+    private var rawTy: Double { rect.y - boxY * rawScaleY }
+    private var viewCenterX: Double { rect.x + rect.width / 2 }
+    private var viewCenterY: Double { rect.y + rect.height / 2 }
+
+    // OVERALL affine = roam(center, zoom) ∘ raw. Returns (scaleX, scaleY, translateX, translateY).
+    //   Mirrors View's `viewCoordSysUpdateRoamTrans` + `calcOverallTrans`.
+    private func overallTransform() -> (sx: Double, sy: Double, tx: Double, ty: Double) {
+        let zoom = roamZoom
+        // roamViewCenter = raw(center) or the view-rect center (upstream `viewCoordSysUpdateRoamTrans`).
+        let rvcx: Double
+        let rvcy: Double
+        if let c = roamCenter, c.count >= 2, c[0].isFinite, c[1].isFinite {
+            rvcx = rawScaleX * c[0] + rawTx
+            rvcy = rawScaleY * c[1] + rawTy
+        } else {
+            rvcx = viewCenterX
+            rvcy = viewCenterY
+        }
+        let roamTx = viewCenterX - zoom * rvcx
+        let roamTy = viewCenterY - zoom * rvcy
+        let sx = zoom * rawScaleX
+        let sy = zoom * rawScaleY
+        // overallT = roamT + zoom * rawT.
+        let tx = roamTx + zoom * rawTx
+        let ty = roamTy + zoom * rawTy
+        return (sx, sy, tx, ty)
+    }
+
     public func getBoundingRect() -> BoundingRect? { return rect.clone() }
     public func getViewRect() -> BoundingRect? { return rect.clone() }
 
-    // The roam-less View transform: map the node bounding box (data space) onto the pixel view rect.
-    //   Upstream builds this via `View.setBoundingRect` + `setViewRect` (createViewCoordSysSimply).
+    // The View transform (raw + roam): map the node bounding box (data space) onto the pixel view rect,
+    //   then apply the roam (pan/zoom). Upstream: `View.dataToPoint` reading VIEW_COORD_SYS_TRANS_OVERALL.
     public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double] {
         var px = Double.nan, py = Double.nan
         if let p = data as? [Double], p.count >= 2 { px = p[0]; py = p[1] }
@@ -101,10 +143,46 @@ public final class GraphViewCoordSys: CoordinateSystem {
             px = (p[0] as? Double) ?? Double((p[0] as? Int) ?? 0)
             py = (p[1] as? Double) ?? Double((p[1] as? Int) ?? 0)
         } else { return [Double.nan, Double.nan] }
-        return [
-            (px - boxX) / boxW * rect.width + rect.x,
-            (py - boxY) / boxH * rect.height + rect.y
-        ]
+        let o = overallTransform()
+        return [o.sx * px + o.tx, o.sy * py + o.ty]
+    }
+
+    // Apply a roam payload (pan dx/dy and/or zoom scale about origin) to the OVERALL transform, then sync
+    //   back to (center, zoom) — the single source of truth (upstream `applyRoamPayloadToOverallTrans` +
+    //   `syncBackToRoamOptionFromRoamTrans`). Returns the NEW (center in data space, zoom). Pure (does not
+    //   mutate self); the caller stores the result so the next `createViewCoordSys` rebuild reflects it.
+    public func applyRoamPayload(
+        _ dx: Double?, _ dy: Double?,
+        _ zoomScale: Double?, _ originX: Double, _ originY: Double,
+        _ zoomLimit: RoamOptionMixin.ScaleLimit?
+    ) -> (center: [Double], zoom: Double) {
+        var (sx, sy, tx, ty) = overallTransform()
+
+        // pan — dx/dy are applied in pixel space (upstream: `targetOverallTrans.x += payload.dx`).
+        if let dx = dx, let dy = dy {
+            tx += dx
+            ty += dy
+        }
+        // zoom about the mouse origin (upstream: keep the mouse center when scaling).
+        if let scale = zoomScale {
+            let oldZoom = roamZoom
+            let newZoom = clampByZoomLimit(oldZoom * scale, zoomLimit)
+            let dz = oldZoom != 0 ? newZoom / oldZoom : 1
+            tx -= (originX - tx) * (dz - 1)
+            ty -= (originY - ty) * (dz - 1)
+            sx *= dz
+            sy *= dz
+        }
+
+        // sync back: recover zoom + center (data space) from the mutated OVERALL affine.
+        let newZoom = rawScaleX != 0 ? sx / rawScaleX : roamZoom
+        let roamTx = tx - newZoom * rawTx
+        let roamTy = ty - newZoom * rawTy
+        let cvx = newZoom != 0 ? (viewCenterX - roamTx) / newZoom : viewCenterX
+        let cvy = newZoom != 0 ? (viewCenterY - roamTy) / newZoom : viewCenterY
+        let cdx = rawScaleX != 0 ? (cvx - rawTx) / rawScaleX : 0
+        let cdy = rawScaleY != 0 ? (cvy - rawTy) / rawScaleY : 0
+        return ([cdx, cdy], newZoom)
     }
 
     public func pointToData(_ point: [Double], _ opt: Any?) -> Any? { return point }
@@ -207,7 +285,13 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
         // PORT-TODO(injectCoordSysByOption + real View deferred): assign the stand-in view coord sys onto
         //   the series so the layout stages (circular/simple) can read `type`/`getBoundingRect()`. Upstream
         //   assigns the coord sys through the CoordinateSystemManager pipeline; here we set it directly.
-        seriesModel.coordinateSystem = GraphViewCoordSys(viewRect, min[0], min[1], bbWidth, bbHeight)
+        let graphCoordSys = GraphViewCoordSys(viewRect, min[0], min[1], bbWidth, bbHeight)
+        // ROAM: seed the coord sys with the current roam (center/zoom). The roam state is the single source
+        //   of truth carried across `update()` rebuilds (upstream `viewCoordSysSetRoamOptionFromModel`
+        //   reads center/zoom from the model each rebuild; here they live in a per-series inner store that
+        //   the `graphRoam` action writes, seeded from the series option on first build). See roamHelperGraph.
+        graphRoamApplyStateToCoordSys(seriesModel, graphCoordSys)
+        seriesModel.coordinateSystem = graphCoordSys
 
         viewList.append(viewCoordSys)
     }
