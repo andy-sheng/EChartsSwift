@@ -20,7 +20,7 @@
 
 import Foundation
 import ZRenderKit
-// import SymbolDraw from '../../chart/helper/SymbolDraw';          -> PORT-TODO: helper/SymbolDraw not ported.
+// import SymbolDraw from '../../chart/helper/SymbolDraw';          -> `SymbolDraw` (chart/helper/SymbolDraw.swift, ported).
 // import * as numberUtil from '../../util/number';                 -> EChartsKit `number` (util/number.swift)
 // import SeriesData from '../../data/SeriesData';                  -> EChartsKit `SeriesData`
 // import * as markerHelper from './markerHelper';                  -> sibling markerHelper.swift
@@ -151,11 +151,11 @@ open class MarkPointView: MarkerView {
 
         let symbolDrawMap = self.markerGroupMap!
         // const symbolDraw = symbolDrawMap.get(seriesId) || symbolDrawMap.set(seriesId, new SymbolDraw());
-        //   PORT-TODO: SymbolDraw not ported. `MarkerSymbolDraw` is a minimal `MarkerDraw` stand-in that
-        //   only holds the `group` slot (enough for markerGroupMap keep/removal + markKeep); the
-        //   enter/update/leave symbol diff is replaced by the direct build below.
-        let symbolDraw = symbolDrawMap.get(seriesId) as? MarkerSymbolDraw
-            ?? (symbolDrawMap.set(seriesId, MarkerSymbolDraw()) as! MarkerSymbolDraw)
+        //   The shared `chart/helper/SymbolDraw` IS ported and drives per-point `Symbol` elements
+        //   (enter/update/leave diff + itemStyle + LABEL via getDefaultLabel/setLabelStyle). `SymbolDraw`
+        //   conforms to `MarkerDraw` (see extension at bottom) so it lives in `markerGroupMap`.
+        let symbolDraw = symbolDrawMap.get(seriesId) as? SymbolDraw
+            ?? (symbolDrawMap.set(seriesId, SymbolDraw()) as! SymbolDraw)
 
         let mpData = createData(coordSys, seriesModel, mpModel)
 
@@ -214,39 +214,10 @@ open class MarkPointView: MarkerView {
 
         // TODO Text are wrong
         // symbolDraw.updateData(mpData);
-        // DEVIATION (STATIC RENDER, same treatment as ScatterView): `SymbolDraw.updateData` (enter/update/
-        //   leave diff + labels + emphasis/blur + animation) is not ported. Inline a direct per-point
-        //   symbol build reading the per-item visuals set above and the layout point set by
-        //   updateMarkerLayout. PORT-TODO: SymbolDraw diff, item labels, symbolRotate/symbolOffset/
-        //   symbolKeepAspect, emphasis scale — all deferred.
-        _ = symbolDraw.group.removeAll()
-        mpData.each { args in
-            let idx = Int(args[0] as? Double ?? 0)
-            guard let point = mpData.getItemLayout(idx) as? [Double],
-                  point.count >= 2, point[0].isFinite, point[1].isFinite else {
-                return
-            }
-            // Fall back to the model-resolved default (via markPoint defaultOption: symbol 'pin', size 50)
-            //   when the per-item visual is absent — the deferred `visual/symbol.ts` stage's job.
-            let symbolType = (mpData.getItemVisual(idx, "symbol") as? String)
-                ?? (mpModel.get("symbol") as? String) ?? "pin"
-            let sizeVisual = mpData.getItemVisual(idx, "symbolSize") ?? mpModel.get("symbolSize") ?? 50.0
-            let (sizeW, sizeH) = symbol.normalizeSymbolSize(sizeVisual)
-            let itemStyle = mpData.getItemVisual(idx, "style") as? [String: Any]
-            var fill: ZRenderKit.ZRColor? = nil
-            if let cs = colorString(itemStyle?["fill"]) {
-                fill = .string(cs)
-            }
-            // createSymbol places the symbol centered on the point (`x - size/2`, `y - size/2`, size, size).
-            let el = symbol.createSymbol(
-                symbolType, point[0] - sizeW / 2, point[1] - sizeH / 2, sizeW, sizeH, fill
-            )
-            if let path = el as? Path {
-                path.name = "item"
-                _ = symbolDraw.group.add(path)
-            }
-        }
-
+        //   Faithful: the real `SymbolDraw` builds the symbols (falling back to the markPoint model
+        //   default 'pin'/size-50 via the same visual slots set above) AND the value label inside each
+        //   pin (label:{show:true,position:'inside'} → getDefaultLabel(mpData, idx)).
+        symbolDraw.updateData(mpData)
         _ = self.group.add(symbolDraw.group)
 
         // Set host model for tooltip
@@ -353,13 +324,9 @@ private func createData(
 // the static markPoint render compiles. Delete each when its real sibling lands and call it directly.
 // ============================================================================
 
-// Minimal `MarkerDraw` stand-in for the deferred `chart/helper/SymbolDraw`. Holds only the `group` slot
-//   (all that MarkerView's markerGroupMap keep/removal + `markKeep` require); symbols are built directly
-//   into `group` by `renderSeries`.
-final class MarkerSymbolDraw: MarkerDraw {
-    let group = Group()
-    init() {}
-}
+// `chart/helper/SymbolDraw` conforms to `MarkerDraw` (it exposes `group: Group`) so a real SymbolDraw
+//   can be stored in MarkerView's `markerGroupMap` (keep/removal + markKeep only need the group slot).
+extension SymbolDraw: MarkerDraw {}
 
 // Minimal faithful port of `visual/helper.ts#getVisualFromData` (only the `'color'` branch is exercised
 //   by markPoint; the other branches are preserved for fidelity).
@@ -404,15 +371,6 @@ private func toMarkerPositionOption(_ any: Any?) -> MarkerPositionOption {
     opt.valueDim = dict["valueDim"] as? String
     opt.value = dict["value"]
     return opt
-}
-
-// Bridge `ZRColor` (EChartsKit enum) / raw String to a solid color string for `createSymbol`
-//   (same bridge as ScatterView/LineView; gradient/pattern out of scope).
-private func colorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    if let zr = v as? ZRenderKit.ZRColor, case let .string(str) = zr { return str }
-    return nil
 }
 
 // JS truthiness for the dynamic option-bag results (`if (x)` / `!x`) — CONVENTIONS §6.

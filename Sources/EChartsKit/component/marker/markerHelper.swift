@@ -100,9 +100,9 @@ public enum markerHelper {
 
         let seriesModel = data.hostModel as! SeriesModel
         // const dataIndex = seriesModel.indicesOfNearest(axisDim, calcDataDim, value)[0];
-        // PORT-TODO: `SeriesModel.indicesOfNearest` is currently stubbed to `[]` (depends on the not-
-        //   yet-wired coord/Axis `dataToCoord`); `[0]` would be undefined. Fallback to index 0 so the
-        //   statistic path does not crash — revisit once `indicesOfNearest` lands.
+        //   `SeriesModel.indicesOfNearest` is now implemented (model/Series.swift, via the Phase-51
+        //   Cartesian2D `getAxis`/`dataToCoord` witnesses); `.first ?? 0` mirrors JS `[0]` (`[]` → the
+        //   Cartesian anchor falls back to index 0 exactly as upstream reads `undefined`-safe here).
         let dataIndex = seriesModel.indicesOfNearest(axisDim, calcDataDim, value).first ?? 0
         let idx = Int(dataIndex)
 
@@ -239,12 +239,10 @@ public enum markerHelper {
         _ coordSys: CoordinateSystem,
         _ seriesModel: SeriesModel
     ) -> MarkerAxisInfo {
-        // PORT-TODO: `coordSys.getAxis`/`getOtherAxis` are called through the `CoordinateSystem`
-        //   protocol, but the concrete `Cartesian2D` declares more-specific signatures
-        //   (`getAxis(_:DimensionName)`, `getOtherAxis(_:Axis2D)->Axis2D`) that do NOT witness the
-        //   protocol's optional-param requirements (see coord/cartesian/Cartesian2D.swift notes), so
-        //   the protocol-default (nil-returning) is dispatched here. Axis resolution is therefore
-        //   effectively deferred until the coord-system protocol witnesses are reconciled.
+        // Phase 51 reconciled the coord-system protocol witnesses: `Cartesian2D` now declares the
+        //   delegating `getAxis(_ dim: DimensionName?) -> Axis?` / `getOtherAxis(_ baseAxis: Axis) -> Axis?`
+        //   overloads that witness the `CoordinateSystem` requirements, so axis resolution through the
+        //   erased `coordSys` here resolves the real axes (no longer the nil-returning default).
         var ret = MarkerAxisInfo()   // {} as MarkerAxisInfo
 
         if item.valueIndex != nil || item.valueDim != nil {

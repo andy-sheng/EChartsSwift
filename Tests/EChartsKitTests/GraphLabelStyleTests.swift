@@ -51,6 +51,21 @@ final class GraphLabelStyleTests: XCTestCase {
         XCTAssertEqual(node.getTextContent()?.textStyle?.text, "n1")
     }
 
+    // The node symbol path carries z2:100 (Symbol._createSymbol's retrieve2(z2, 100)); its label defaults
+    // to z2:0, so WITHOUT the doUpdateZ lift it sorts BEHIND the opaque node and is invisible (the bug).
+    // EChartsSlim.updateZ lifts the graph node label to z2 = subtreeMaxZ2 + 2, so it paints over the node
+    // — matching real echarts (whose default 'inside' node labels render on top of the node symbol).
+    func test_node_label_z2_lifted_above_symbol() {
+        let ec = EChartsSlim(width: 400, height: 400)
+        ec.setOption(option(showLabel: true, formatter: nil))
+        guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node") }
+        XCTAssertEqual(node.z2, 100, "graph node symbol path z2 is retrieve2(z2, 100)")
+        guard let label = node.getTextContent() else { return XCTFail("no node label") }
+        XCTAssertGreaterThan(label.z2, node.z2,
+                             "node label must sort ABOVE its symbol so it is not hidden behind the node")
+        XCTAssertEqual(label.z2, node.z2 + 2, "doUpdateZ lifts the label to subtreeMaxZ2 + 2")
+    }
+
     // label.show:false → setLabelStyle hides the label (no visible textContent).
     func test_node_label_hidden_when_show_false() {
         let ec = EChartsSlim(width: 400, height: 400)

@@ -71,16 +71,24 @@ final class AxisLabelHideOverlapTests: XCTestCase {
         }
     }
 
-    func testIntervalZeroShowsAllWhenHideOverlapOff() {
+    func testIntervalZeroShowsAllInteriorWhenHideOverlapOff() {
         let ec = EChartsSlim(width: 400, height: 300)
-        // Default: no hideOverlap. interval:0 → all labels generated AND shown (overprint allowed).
+        // Default: no hideOverlap. interval:0 → a label element for every category; the global
+        //   `hideOverlap` pass does NOT run, so the interior (non-extreme) labels all overprint and
+        //   stay shown. `fixMinMaxLabelShow` still runs unconditionally and may hide ONLY the extreme
+        //   (min/max) labels when they overlap their inner neighbour (see AxisMinMaxLabelShowTests).
         ec.setOption(denseCategoryOption(hideOverlap: nil))
 
         let labels = collectAxisLabels(ec.getRoot()) { $0.hasPrefix("Category-Label") }
         XCTAssertEqual(labels.count, 20, "interval:0 emits a label element for every category")
-        let hidden = labels.filter { $0.ignore }
-        XCTAssertEqual(hidden.count, 0,
-                       "interval:0 with hideOverlap off shows every label (no overlap pass runs)")
+
+        // Only the two extreme-value labels ("Category-Label-0" / "Category-Label-19") may be hidden by
+        //   fixMinMaxLabelShow; every interior label must remain visible (no global overlap pass runs).
+        let hiddenTexts = Set(labels.filter { $0.ignore }.compactMap { $0.textStyle.text })
+        for t in hiddenTexts {
+            XCTAssertTrue(t == "Category-Label-0" || t == "Category-Label-19",
+                          "only the min/max label may be hidden with hideOverlap off, not interior \(t)")
+        }
     }
 
     // A SPARSE axis (few short labels, plenty of room) is unchanged even with hideOverlap on: nothing

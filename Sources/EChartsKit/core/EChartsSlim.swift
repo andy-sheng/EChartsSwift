@@ -837,12 +837,12 @@ public final class EChartsSlim: EChartsType {
 
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
         //   registerComponentModel(MarkPointModel/MarkLineModel/MarkAreaModel) + the auto-enable
-        //   preprocessors (called in setOption). The COORDINATE markers now render: the Phase-51 axis
-        //   witnesses fixed `coordSys.getAxis/getOtherAxis`, so the master marker model's per-series
-        //   submodel creation + the MarkerView `dataTransform`/`dataToPoint` path resolve. The STATISTIC
-        //   markers (type:'min'/'max'/'average'/'median') still depend on `SeriesModel.indicesOfNearest`
-        //   (stubbed → dataIndex 0) — the value is computed by `numCalculate` but the anchor index is
-        //   approximate; the coordinate-value markers (`{yAxis:v}` / `{xAxis:v}` / `{coord:[x,y]}`) are exact.
+        //   preprocessors (called in setOption). Markers render statically & faithfully: the Phase-51 axis
+        //   witnesses fixed `coordSys.getAxis/getOtherAxis` and `SeriesModel.indicesOfNearest` is now
+        //   implemented, so both COORDINATE markers (`{yAxis:v}`/`{coord:[x,y]}`) and STATISTIC markers
+        //   (type:'min'/'max'/'average'/'median') resolve. markPoint renders via the real SymbolDraw
+        //   (symbol + value label); markLine via a static LineDraw stand-in (dashed lineStyle + end
+        //   symbols + label); markArea via its Polygon band. PORT-TODO: enter/leave animation + emphasis.
         ComponentModel.registerClass(MarkPointModel.self)                  // registerComponentModel(MarkPointModel)
         ComponentModel.registerClass(MarkLineModel.self)                   // registerComponentModel(MarkLineModel)
         ComponentModel.registerClass(MarkAreaModel.self)                   // registerComponentModel(MarkAreaModel)
@@ -1696,25 +1696,77 @@ public final class EChartsSlim: EChartsType {
     private func updateZ(_ model: ComponentModel, _ group: Group, _ defaultZ: Double) {
         let z = zSlimNum(model.get("z")) ?? defaultZ
         let zlevel = zSlimNum(model.get("zlevel")) ?? 0
-        // Set z/zlevel on every displayable, preserving z2 (intra-view order). This is the z-LEVEL part
-        //   of upstream `doUpdateZ` — enough to lift series (z 2/3) above the coordinate grid (z 0).
-        // PORT-NOTE: upstream also lifts each host's attached LABEL to `z2 = subtreeMaxZ2 + 2` (labels
-        //   over glyphs). That is intentionally NOT replicated: it would expose treemap tile labels that
-        //   the port creates but upstream hides (label overflow/visibility not ported), and the labels
-        //   the port DOES want visible (sankey/tree/graph node names) are on hosts with z2 0 and already
-        //   paint over the host via the painter's insertion-order tie-break.
-        func apply(_ el: Element) {
-            if let d = el as? Displayable {
-                d.z = z
-                d.zlevel = zlevel
-            }
-            if let tc = el.getTextContent() {   // ZRText is a Displayable — no downcast needed.
-                tc.z = z
-                tc.zlevel = zlevel
+        // upstream `updateZ` does `view.eachRendered(el => { traverseUpdateZ(el, z, zlevel); return true })`
+        //   — `return true` stops descent, so `traverseUpdateZ` runs once per TOP-LEVEL rendered element
+        //   (each with a fresh `maxZ2 = -Infinity`). Mirror that: run `doUpdateZ` on each direct child of
+        //   the view group. The container `group` itself is a `Group` (not a Displayable) → nothing to set.
+        //
+        // SCOPED z2-lift: upstream `doUpdateZ` ALWAYS lifts each host's attached label to `z2 =
+        //   subtreeMaxZ2 + 2` (labels over glyphs). The port applies that lift ONLY for the graph series.
+        //   Reason: several ported views (notably treemap) create tile labels that upstream HIDES via the
+        //   label overflow/visibility engine (NOT ported); the port relied on those labels sorting BEHIND
+        //   the tile (tile `z2` > label `z2` 0) to stay invisible. Lifting them everywhere re-exposes
+        //   them — a visual-parity regression vs real echarts (which shows no treemap labels here). Graph
+        //   node symbols carry `z2 = 100` (Symbol._createSymbol's `retrieve2(z2, 100)`), so WITHOUT the
+        //   lift their name label (default `z2 = 0`) sorts behind the node and is invisible — the bug this
+        //   fixes. Scoping to graph fixes that without perturbing treemap/other views. See util/graphic.ts
+        //   `doUpdateZ` for the general form.
+        let liftLabelZ2 = model is GraphSeriesModel
+        for child in group.children() {
+            _ = doUpdateZ(child, z, zlevel, -Double.infinity, liftLabelZ2)
+        }
+    }
+
+    // upstream: util/graphic.ts `doUpdateZ(el, z, zlevel, maxZ2)`. Sets `z`/`zlevel` on every displayable
+    //   (preserving `z2`, the intra-view order the painter tie-breaks on) and on each host's attached
+    //   label. When `liftLabelZ2` is set (graph only — see `updateZ`), also threads the running max `z2`
+    //   through the DFS and LIFTS each label to `z2 = subtreeMaxZ2 + 2` (and the text guide line to
+    //   `maxZ2 ± 1`) so it paints over the glyph it annotates. When `liftLabelZ2` is off, only z/zlevel is
+    //   set (label z2 left at its authored value) — the port's historical behavior for non-graph views.
+    //   PORT-NOTE: `ignoreModelZ` (an ExtendedElement flag used to intentionally pin lifted elements) is
+    //   not ported → not checked here.
+    @discardableResult
+    private func doUpdateZ(
+        _ el: Element, _ z: Double, _ zlevel: Double, _ maxZ2In: Double, _ liftLabelZ2: Bool
+    ) -> Double {
+        var maxZ2 = maxZ2In
+
+        // Group may also have textContent.
+        let label = el.getTextContent()
+        let labelLine = el.getTextGuideLine()
+
+        if el.isGroup {
+            if let g = el as? Group {
+                for child in g.children() {
+                    maxZ2 = Swift.max(doUpdateZ(child, z, zlevel, maxZ2, liftLabelZ2), maxZ2)
+                }
             }
         }
-        apply(group)
-        _ = group.traverse { el in apply(el); return false }
+        else if let d = el as? Displayable {
+            d.z = z
+            d.zlevel = zlevel
+            // upstream `el.z2 || 0` — treat a NaN z2 as 0.
+            maxZ2 = Swift.max(d.z2.isNaN ? 0 : d.z2, maxZ2)
+        }
+
+        // Always set z/zlevel if label/labelLine exists; lift z2 above the subtree glyphs (graph only).
+        if let label = label {   // ZRText is a Displayable — no downcast needed.
+            label.z = z
+            label.zlevel = zlevel
+            if liftLabelZ2, maxZ2.isFinite { label.z2 = maxZ2 + 2 }
+        }
+        // labelLine (text guide line) z-handling is gated on the lift too: graph has no label lines, so
+        //   this is a graph-only no-op, and non-graph views keep their historical labelLine z (untouched
+        //   here — set only if the line is also a traversed group child, exactly as before).
+        if liftLabelZ2, let labelLine = labelLine {
+            labelLine.z = z
+            labelLine.zlevel = zlevel
+            if maxZ2.isFinite {
+                let showAbove = el.textGuideLineConfig?.showAbove ?? false
+                labelLine.z2 = maxZ2 + (showAbove ? 1 : -1)
+            }
+        }
+        return maxZ2
     }
 
     // renderSeries (echarts.ts:2472) — minimal: bypass the Scheduler `renderTask.perform` and call

@@ -24,11 +24,11 @@ import ZRenderKit
 // import * as numberUtil from '../../util/number';                   -> EChartsKit `number`
 // import * as markerHelper from './markerHelper';                    -> sibling markerHelper.swift
 // import LineDraw from '../../chart/helper/LineDraw';
-//   -> PORT-TODO: `chart/helper/LineDraw` (+ `chart/helper/Line`, which builds the Polyline/Line +
-//      end-symbols/label group) is a DEEP, unported dependency (needs util/states, label/labelStyle,
-//      emphasis). Per CONVENTIONS §6 it is out of static-render scope; a MINIMAL faithful stand-in
-//      `LineDraw` is defined at the bottom of this file that draws the from→to segment as a `Polyline`
-//      from the item layout. Diff/enter-leave animation, end symbols, and labels are deferred.
+//   -> PORT-TODO: the real `chart/helper/LineDraw` (+ `chart/helper/Line`, with enter/leave animation
+//      + emphasis/blur states) is not ported. A STATIC-SUBSET stand-in `LineDraw` is defined at the
+//      bottom of this file: it draws the from→to Polyline with the full `lineStyle` (dashed/width/
+//      opacity), the from/to end symbols (circle+arrow, tangent-rotated per Line.ts), and the default
+//      value label. Diff/enter-leave animation + emphasis are deferred.
 // import MarkerView from './MarkerView';                             -> sibling MarkerView.swift
 // import {getStackedDimension} from '../../data/helper/dataStackHelper'; -> EChartsKit `getStackedDimension`
 // import { CoordinateSystem, isCoordinateSystemType } from '../../coord/CoordinateSystem';
@@ -548,17 +548,31 @@ private func createList(
     )
     lineData.hasItemOption = true
 
+    // Stash the resolved line VALUE (the merged item[2].value) as an item visual so the LineDraw
+    //   stand-in can render the default label text (upstream Line.ts uses `seriesModel.getRawValue(idx)`
+    //   → the merged line-data item's value; `getRawValue`/`getFormattedLabel` are blocked here because
+    //   MarkerModel's DataFormatMixin conformance is deferred — see MarkerModel.swift).
+    for i in 0..<optData.count {
+        let n2 = optData[i].count > 2 ? optData[i][2] : nil
+        if let v = n2?.value {
+            lineData.setItemVisual(i, ["__labelValue": v])
+        }
+    }
+
     return (from: fromData, to: toData, line: lineData)
 }
 
 // export default MarkLineView;  -> `final class MarkLineView` above.
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// MINIMAL faithful stand-in for chart/helper/LineDraw.ts (+ chart/helper/Line.ts).
-// PORT-TODO: the real LineDraw diffs `lineData`, entering a `Line` group per datum (Polyline body +
-//   two end `Symbol`s + `label`), with enter/leave animation and emphasis/blur states. Here we only
-//   build the from→to segment as a `Polyline` from the resolved item layout — enough for a static
-//   render. End symbols, labels, dashed `lineStyle.type`, and animation are all deferred.
+// STATIC-SUBSET stand-in for chart/helper/LineDraw.ts (+ chart/helper/Line.ts). The real LineDraw
+//   diffs `lineData`, entering a `Line` group per datum (Polyline body + two end `Symbol`s + a
+//   `label`), with enter/leave animation and emphasis/blur states. This stand-in builds the static
+//   from→to segment faithfully: the `Polyline` body with the full `lineStyle` (dashed/width/opacity),
+//   the from/to end SYMBOLS (circle+arrow) at the resolved endpoints with the Line.ts tangent
+//   rotation, and the default value LABEL at `label.position`. PORT-TODO: enter/leave animation,
+//   emphasis/blur states, curved (`percent`<1 / bezier) lines, and non-`end`/`start` label layouts
+//   are deferred (see the switch in chart/helper/Line.ts#beforeUpdate).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 final class LineDraw: MarkerDraw {
     // group = new graphic.Group();
@@ -581,23 +595,72 @@ final class LineDraw: MarkerDraw {
             else {
                 continue
             }
+            // A `Line` in upstream is a Group holding the polyline + end symbols + label; mirror that
+            //   grouping so z-order and future emphasis wiring line up.
+            let lineGroup = Group()
+            lineGroup.name = "line"
+
+            let style = lineData.getItemVisual(idx, "style") as? [String: Any]
+
             var shape = PolylineShape()
             shape.points = [VectorArray(p0[0], p0[1]), VectorArray(p1[0], p1[1])]
             let line = Polyline()
             line.setShape(shape)
             line.name = "line"
 
+            // Full lineStyle: stroke + lineWidth + opacity + lineDash (the markLine default
+            //   `lineStyle.type:'dashed'` → getLineStyle → style["lineDash"]="dashed").
             var st = PathStyleProps()
             st.fill = .string("none")
-            if let style = lineData.getItemVisual(idx, "style") as? [String: Any],
-               let stroke = colorString(style["stroke"]) {
+            let strokeColor = colorString(style?["stroke"])
+            if let stroke = strokeColor {
                 st.stroke = .string(stroke)
             }
-            st.lineWidth = 2
+            st.lineWidth = (style?["lineWidth"] as? Double) ?? 2
+            if let op = style?["opacity"] as? Double { st.opacity = op }
+            st.lineDash = lineDashFrom(style?["lineDash"])
             line.useStyle(st)
+            _ = lineGroup.add(line)
 
-            _ = self.group.add(line)
-            lineData.setItemGraphicEl(idx, line)
+            // from/to end symbols with the Line.ts tangent rotation. For a straight 2-point line the
+            //   tangent is constant = normalize(toPos − fromPos).
+            var d = [p1[0] - p0[0], p1[1] - p0[1]]
+            let dlen = (d[0] * d[0] + d[1] * d[1]).squareRoot()
+            if dlen > 0 { d = [d[0] / dlen, d[1] / dlen] }
+            let baseAtan = atan2(d[1], d[0])
+            if let sym = makeEndSymbol(lineData, idx, "from", strokeColor, style?["opacity"] as? Double) {
+                sym.x = p0[0]; sym.y = p0[1]
+                // percent 0: `1 * PI/2 − atan2(tangent)`
+                sym.rotation = Double.pi / 2 - baseAtan
+                _ = lineGroup.add(sym)
+            }
+            if let sym = makeEndSymbol(lineData, idx, "to", strokeColor, style?["opacity"] as? Double) {
+                sym.x = p1[0]; sym.y = p1[1]
+                // percent 1: `-1 * PI/2 − atan2(tangent)`
+                sym.rotation = -Double.pi / 2 - baseAtan
+                _ = lineGroup.add(sym)
+            }
+
+            // default value LABEL (label.show/position/distance resolve from the markLine model via the
+            //   item model's parent chain). Only the 'start'/'end' positions of Line.ts are ported.
+            let itemModel = lineData.getItemModel(idx)
+            let labelModel = itemModel.getModel("label")
+            if isTruthy(labelModel.get("show")), let text = labelText(lineData, idx) {
+                let position = (labelModel.get("position") as? String) ?? "end"
+                let distance = (labelModel.get("distance") as? Double) ?? 5
+                let label = ZRText(["silent": true])
+                var ts = TextStyleProps()
+                ts.text = text
+                ts.font = labelModel.getFont()
+                ts.fill = labelModel.getTextColor() ?? strokeColor
+                positionLineLabel(&ts, position, distance, d, p0, p1)
+                label.useStyle(ts)
+                label.z2 = 10
+                _ = lineGroup.add(label)
+            }
+
+            _ = self.group.add(lineGroup)
+            lineData.setItemGraphicEl(idx, lineGroup)
         }
         self._lineData = lineData
     }
@@ -610,6 +673,75 @@ final class LineDraw: MarkerDraw {
             self.updateData(lineData)
         }
     }
+}
+
+// Build a from/to end symbol per chart/helper/Line.ts#createSymbol (centered at origin so the group
+//   rotation pivots on the endpoint). Returns nil for symbol type 'none'/absent.
+private func makeEndSymbol(
+    _ lineData: SeriesData, _ idx: Int, _ name: String, _ color: String?, _ opacity: Double?
+) -> Path? {
+    let symbolType = lineData.getItemVisual(idx, name + "Symbol") as? String
+    guard let symbolType = symbolType, symbolType != "none" else { return nil }
+    let sizeVisual = lineData.getItemVisual(idx, name + "SymbolSize") ?? 8.0
+    let sizeArr = symbol.normalizeSymbolSize(sizeVisual)
+    let offset = symbol.normalizeSymbolOffset(lineData.getItemVisual(idx, name + "SymbolOffset") ?? 0, [sizeArr.0, sizeArr.1]) ?? (0, 0)
+    let colorZR: ZRenderKit.ZRColor? = color.map { .string($0) }
+    let sym = symbol.createSymbol(
+        symbolType,
+        -sizeArr.0 / 2 + offset.0,
+        -sizeArr.1 / 2 + offset.1,
+        sizeArr.0, sizeArr.1,
+        colorZR
+    )
+    guard let path = sym as? Path else { return nil }
+    if let op = opacity { path.pathStyle.opacity = op }
+    path.name = name
+    return path
+}
+
+// chart/helper/Line.ts#beforeUpdate label layout — only the 'end'/'start' cases (straight line).
+private func positionLineLabel(
+    _ ts: inout TextStyleProps, _ position: String, _ distance: Double,
+    _ d: [Double], _ fromPos: [Double], _ toPos: [Double]
+) {
+    let distanceX = distance
+    let distanceY = distance
+    if position == "start" {
+        ts.x = -d[0] * distanceX + fromPos[0]
+        ts.y = -d[1] * distanceY + fromPos[1]
+        ts.align = d[0] > 0.8 ? .right : (d[0] < -0.8 ? .left : .center)
+        ts.verticalAlign = d[1] > 0.8 ? .bottom : (d[1] < -0.8 ? .top : .middle)
+    }
+    else {
+        // 'end' (default)
+        ts.x = d[0] * distanceX + toPos[0]
+        ts.y = d[1] * distanceY + toPos[1]
+        ts.align = d[0] > 0.8 ? .left : (d[0] < -0.8 ? .right : .center)
+        ts.verticalAlign = d[1] > 0.8 ? .top : (d[1] < -0.8 ? .bottom : .middle)
+    }
+}
+
+// Default label text: the stashed line value rounded (upstream `round(rawVal, 10) + ''`), else the name.
+private func labelText(_ lineData: SeriesData, _ idx: Int) -> String? {
+    if let v = toNum(lineData.getItemVisual(idx, "__labelValue")) {
+        if v.isFinite { return number.jsString(number.round(v, 10)) }
+        return number.jsString(v)
+    }
+    let name = lineData.getName(idx)
+    return name.isEmpty ? nil : name
+}
+
+// Map the getLineStyle `lineDash` value ("solid"/"dashed"/"dotted" keyword or number[]) to the
+//   ZRenderKit `LineDash` enum (same bridge LineView.applyLineStyle uses).
+private func lineDashFrom(_ v: Any?) -> LineDash? {
+    if let s = v as? String {
+        if s == "dashed" { return .dashed }
+        if s == "dotted" { return .dotted }
+        if s == "solid" { return .solid }
+    }
+    if let arr = v as? [Double] { return .values(arr) }
+    if let arri = v as? [Int] { return .values(arri.map { Double($0) }) }
+    return nil
 }
 
 // ── local helpers (not in upstream; bridge dynamic option bags <-> MarkerPositionOption) ──────────

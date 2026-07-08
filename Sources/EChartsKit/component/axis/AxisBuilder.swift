@@ -790,13 +790,13 @@ func layOutAxisTickLabel(
     updateAxisLabelChangableProps(cfg, axisModel, labelLayoutList, transformGroup)
 
     // PORT-TODO: `adjustBreakLabels` (axis break label nudging) deferred.
-    // PORT-TODO: `fixMinMaxLabelShow` (min/max axis label hide when it overlaps its neighbour) still
-    //   deferred. Unlike `hideOverlap` (below), upstream runs it UNCONDITIONALLY (independent of
-    //   `optionHideOverlap`), so wiring it would change default axis rendering; and its
-    //   `!optionHideOverlap` branch needs `newLabelLayoutWithGeometry` (marginForce copy), not ported
-    //   yet. showMinLabel/showMaxLabel special-casing waits on that.
 
     let optionHideOverlap = cfg.optionHideOverlap
+
+    // Runs UNCONDITIONALLY (independent of `optionHideOverlap`): force-shows / hides the first & last
+    //   tick labels per `axisLabel.showMinLabel` / `showMaxLabel`, and resolves their overlap with the
+    //   inner neighbour. Must run before `hideOverlap` so the latter filters the labels it ignores.
+    fixMinMaxLabelShow(axisModel, labelLayoutList, optionHideOverlap)
 
     if truthy(optionHideOverlap) {
         // This bit fixes the label overlap issue for the time chart and dense category axes.
@@ -842,9 +842,107 @@ func endTextLayout(
     return (rotation: rotationDiff, textAlign: textAlign, textVerticalAlign: textVerticalAlign)
 }
 
-// PORT-TODO: `fixMinMaxLabelShow` (hide min/max axis label when it overlaps its neighbour) requires
-//   `labelLayoutHelper` (ensureLabelLayoutWithGeometry / labelIntersect / newLabelLayoutWithGeometry)
-//   and `scale/helper` (isTimeScale / isOrdinalScale). Deferred per task scope (line+ticks+labels only).
+/// Assume `labelLayoutList` has no `label.ignore: true`.
+/// Assume `labelLayoutList` have been sorted by value ascending order.
+func fixMinMaxLabelShow(
+    _ axisModel: AxisBaseModel,
+    _ labelLayoutList: [LabelLayoutData]?,
+    _ optionHideOverlap: Any?  // AxisBaseOption['axisLabel']['hideOverlap']
+) {
+    guard let labelLayoutList = labelLayoutList else { return }
+    let axis = axisModel.axis as! Axis
+    let customValuesOption = axisModel.get(["axisLabel", "customValues"])
+
+    if axisHelper.shouldShowAllLabels(axis) {
+        return
+    }
+
+    // FIXME
+    // Have not consider onBand yet, where tick els is more than label els.
+    // Assert no ignore in labels.
+
+    func deal(
+        _ showMinMaxLabelOption: Any?,  // AxisShowMinMaxLabelOption (boolean | NullUndefined)
+        _ outmostLabelIdx: Int,
+        _ innerLabelIdx: Int
+    ) {
+        // upstream indexes with `labelsLen - 1` / `labelsLen - 2`, which can go out of range (an empty
+        //   or single-label list). JS yields `undefined` there → `ensureLabelLayoutWithGeometry` returns
+        //   `undefined` → the guard below returns. Mirror that with a bounds-checked lookup.
+        let outmostSrc = (outmostLabelIdx >= 0 && outmostLabelIdx < labelLayoutList.count)
+            ? labelLayoutList[outmostLabelIdx] : nil
+        let innerSrc = (innerLabelIdx >= 0 && innerLabelIdx < labelLayoutList.count)
+            ? labelLayoutList[innerLabelIdx] : nil
+        var outmostLabelLayout = labelLayoutHelper.ensureLabelLayoutWithGeometry(outmostSrc)
+        var innerLabelLayout = labelLayoutHelper.ensureLabelLayoutWithGeometry(innerSrc)
+        let scale = axis.scale
+        guard let outmostLL = outmostLabelLayout, let innerLL = innerLabelLayout else {
+            return
+        }
+        if showMinMaxLabelOption == nil || showMinMaxLabelOption is NSNull {
+            if !truthy(optionHideOverlap) && truthy(customValuesOption) {
+                // In this case, users are unlikely to expect labels to be hidden.
+                return
+            }
+            let tick = getLabelInner(outmostLL.label).labelInfo.tick
+            if // TimeScale does not expand extent to "nice", so eliminate labels that are not nice.
+                (helper.isTimeScale(scale) && (tick.notNice ?? false))
+                // Category axis does not expect tick that out of axisLabel.internal to be displayed
+                // unless required.
+                || (helper.isOrdinalScale(scale) && (tick.offInterval ?? false)) {
+                ignoreEl(outmostLL.label)
+                return
+            }
+        }
+
+        if (showMinMaxLabelOption as? Bool) == false || outmostLL.suggestIgnore {
+            ignoreEl(outmostLL.label)
+            return
+        }
+        if innerLL.suggestIgnore {
+            ignoreEl(innerLL.label)
+            return
+        }
+        // PENDING: Originally we thought `optionHideOverlap === false` means do not hide anything,
+        //  since currently the bounding rect of text might not accurate enough and might slightly bigger,
+        //  which causes false positive. But `optionHideOverlap: null/undfined` is falsy and likely
+        //  be treated as false.
+
+        // In most fonts the glyph does not reach the boundary of the bounding rect.
+        // This is needed to avoid too aggressive to hide two elements that meet at the edge
+        // due to compact layout by the same bounding rect or OBB.
+        let touchThreshold = 0.1
+        // This treatment is for backward compatibility. And `!optionHideOverlap` implies that
+        // the user accepts the visual touch between adjacent labels, thus "hide min/max label"
+        // should be conservative, since the space might be sufficient in this case.
+        if !truthy(optionHideOverlap) {
+            // upstream copies with `marginForce: [0, 0, 0, 0]`; the margin machinery is a no-op in this
+            //   port (see `labelLayoutHelper.newLabelLayoutWithGeometry`), so this is an identity copy.
+            outmostLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(outmostLL)
+            innerLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(innerLL)
+        }
+        if labelLayoutHelper.labelIntersect(
+            outmostLabelLayout, innerLabelLayout, nil,
+            BoundingRectIntersectOpt(touchThreshold: touchThreshold)
+        ) {
+            if truthy(showMinMaxLabelOption) {
+                ignoreEl(innerLabelLayout?.label)
+            }
+            else {
+                ignoreEl(outmostLabelLayout?.label)
+            }
+        }
+    }
+
+    // If min or max are user set, we need to check
+    // If the tick on min(max) are overlap on their neighbour tick
+    // If they are overlapped, we need to hide the min(max) tick label
+    let showMinLabelOption = axisModel.get(["axisLabel", "showMinLabel"])
+    let showMaxLabelOption = axisModel.get(["axisLabel", "showMaxLabel"])
+    let labelsLen = labelLayoutList.count
+    deal(showMinLabelOption, 0, 1)
+    deal(showMaxLabelOption, labelsLen - 1, labelsLen - 2)
+}
 
 // Under default settings, it is visually odd to display a tick without its label ...
 func syncLabelIgnoreToMajorTicks(
@@ -1248,6 +1346,7 @@ func hasAxisName(_ axisName: String?) -> Bool {
 /// (CONVENTIONS §6: replicate JS truthiness explicitly for numbers/strings.)
 private func truthy(_ v: Any?) -> Bool {
     guard let v = v else { return false }
+    if v is NSNull { return false }   // JS `null` is falsy (option defaults box null as NSNull).
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }
     if let i = v as? Int { return i != 0 }

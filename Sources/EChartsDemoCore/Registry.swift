@@ -147,5 +147,9 @@ extension EChartsDemoRegistry {
         // gallery-decal — decal (repeating-texture) patterns (util/decal + aria.decal.show).
         EChartsDemoRegistry.demo_bar_decal,             // Bar (itemStyle.decal texture)
         EChartsDemoRegistry.demo_bar_aria_decal,        // Bar (aria.decal.show auto-texture)
+        // marker — markPoint / markLine / markArea (component/marker).
+        EChartsDemoRegistry.demo_marker_markpoint,      // Marker (markPoint max + min)
+        EChartsDemoRegistry.demo_marker_markline,       // Marker (markLine average + yAxis line)
+        EChartsDemoRegistry.demo_marker_markarea,       // Marker (markArea band)
     ]
 }

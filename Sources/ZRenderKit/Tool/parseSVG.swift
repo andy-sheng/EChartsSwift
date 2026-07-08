@@ -250,6 +250,35 @@ private let SELF_STYLE_ATTRIBUTES_MAP_KEYS = Array(SELF_STYLE_ATTRIBUTES_MAP.key
 // upstream: type DefsUsePending = [Displayable, 'fill' | 'stroke', DefsId][];
 private typealias DefsUsePending = [(Displayable, String, String)]
 
+// upstream: DefsMap = { [id]: LinearGradientObject | RadialGradientObject | PatternObject }.
+// A def is a gradient paint server or a tiled <pattern>. Modeled as a tagged enum (no untagged
+// unions in Swift).
+private enum SVGPaintServer {
+    case gradient(Gradient)
+    case pattern(Pattern)
+}
+
+// -----------------------------------------------------------------------------------------------
+// Renderer seam (CONVENTIONS §9) for the SVG `<pattern>` paint server.
+//
+// Upstream's `patternParser` is a TODO (commented out in parseSVG.ts). This port implements it, but
+// a `<pattern>` defines a *tiled graphic* and the port's `ZRenderKit.Pattern` fill only carries an
+// *image* (the `string`/data-URI arm — see Graphic/Pattern.swift); the native renderer likewise
+// tiles a decoded `CGImage` (CGRenderer.tilePattern), it cannot tile an arbitrary element tree.
+//
+// ZRenderKit has no pixel backend (the split keeps pixel-pushing in NativePainter), so rasterizing
+// the pattern's content group to an image tile is delegated across the renderer seam: a backend
+// installs `svgPatternRasterizer`, which rasterizes a `Group` of `width`×`height` points to a PNG
+// `data:` URI. When no backend is installed the `<pattern>` resolves to `nil` (the shape gets no
+// fill) — the same observable result as upstream's unimplemented TODO.
+//
+// DEVIATION: this rasterizes the tile eagerly while parsing, so a `<pattern>` whose *content* itself
+// references another paint server via `fill="url(#id)"` (resolved later in `applyDefs`) will not pick
+// up that nested paint; direct color fills in pattern content work. `patternUnits`/`patternTransform`
+// (objectBoundingBox coordinates, tile transforms) are not applied — width/height are read as user
+// (pixel) units.
+public var svgPatternRasterizer: ((Group, Double, Double) -> String?)?
+
 // =====================================================================================================
 // SVGParser
 // =====================================================================================================
@@ -257,7 +286,7 @@ private typealias DefsUsePending = [(Displayable, String, String)]
 private final class SVGParser {
 
     // upstream: private _defs: DefsMap = {}  (id -> Gradient/Pattern)
-    private var _defs: [String: Gradient] = [:]
+    private var _defs: [String: SVGPaintServer] = [:]
     // upstream: private _defsUsePending: DefsUsePending;
     private var _defsUsePending: DefsUsePending = []
     private var _root: Group?
@@ -622,9 +651,9 @@ private final class SVGParser {
     ]
 
     // -------------------------------------------------------------------------------------------------
-    // paintServerParsers (gradients).
+    // paintServerParsers (gradients + <pattern>).
     // -------------------------------------------------------------------------------------------------
-    private lazy var paintServerParsers: [String: (SVGParser, ZRXMLNode) -> Gradient?] = [
+    private lazy var paintServerParsers: [String: (SVGParser, ZRXMLNode) -> SVGPaintServer?] = [
         "lineargradient": { _, xmlNode in
             let x1 = Double(parseIntJS(xmlNode.getAttribute("x1") ?? "0"))
             let y1 = Double(parseIntJS(xmlNode.getAttribute("y1") ?? "0"))
@@ -633,7 +662,7 @@ private final class SVGParser {
             let gradient = LinearGradient(x1, y1, x2, y2)
             parsePaintServerUnit(xmlNode, gradient)
             parseGradientColorStops(xmlNode, gradient)
-            return gradient
+            return .gradient(gradient)
         },
         "radialgradient": { _, xmlNode in
             let cx = Double(parseIntJS(xmlNode.getAttribute("cx") ?? "0"))
@@ -642,10 +671,54 @@ private final class SVGParser {
             let gradient = RadialGradient(cx, cy, r)
             parsePaintServerUnit(xmlNode, gradient)
             parseGradientColorStops(xmlNode, gradient)
-            return gradient
+            return .gradient(gradient)
+        },
+        // A `<pattern>` defines a tiled graphic referenced via `fill="url(#id)"`. Upstream leaves this
+        // as a TODO; the port rasterizes the pattern content group to an image tile through the
+        // `svgPatternRasterizer` renderer seam (see the seam declaration above for the deviations).
+        "pattern": { this, xmlNode in
+            return this._parsePattern(xmlNode)
         }
-        // TODO 'pattern' (upstream TODO too).
     ]
+
+    // Build the pattern's content group (its child SVG elements) and rasterize it to an image tile
+    // Pattern via the renderer seam. Returns nil when the tile can't be produced (no seam installed,
+    // zero size, empty rasterization) — the referencing shape then gets no fill, matching upstream's
+    // unimplemented `<pattern>` TODO.
+    fileprivate func _parsePattern(_ xmlNode: ZRXMLNode) -> SVGPaintServer? {
+        // Tile size: read width/height as user (pixel) units (DEVIATION: patternUnits /
+        // objectBoundingBox coordinates are not resolved).
+        let width = svgParseFloat(xmlNode.getAttribute("width") ?? "0")
+        let height = svgParseFloat(xmlNode.getAttribute("height") ?? "0")
+        if width.isNaN || height.isNaN || width <= 0 || height <= 0 {
+            return nil
+        }
+
+        // Parse the pattern's children into a detached content group. `_parseNode` renders direct-color
+        // fills immediately (isInDefs=false); any nested `url(#id)` fill is deferred to `applyDefs` and
+        // therefore not reflected in the eagerly rasterized tile (noted deviation).
+        let contentGroup = Group()
+        var throwaway: [SVGParserResultNamedItem] = []
+        var child = xmlNode.firstChild
+        while let c = child {
+            if c.nodeType == ZRXMLNode.ELEMENT_NODE {
+                self._parseNode(c, contentGroup, &throwaway, nil, false, false)
+            }
+            child = c.nextSibling
+        }
+
+        guard let rasterize = svgPatternRasterizer,
+              let dataURI = rasterize(contentGroup, width, height) else {
+            return nil
+        }
+
+        let pattern = Pattern(dataURI, .repeat)
+        // <pattern x/y> offset (DEVIATION: patternTransform is ignored). The seam rasterizes at
+        // exactly width×height points, so the tile is tiled at native size (repeat).
+        pattern.x = svgParseFloat(xmlNode.getAttribute("x") ?? "0")
+        pattern.y = svgParseFloat(xmlNode.getAttribute("y") ?? "0")
+        return .pattern(pattern)
+    }
 
     // -------------------------------------------------------------------------------------------------
     // inheritStyle / parseAttributes / applyTextAlignment  — operate on the parser's style side-tables.
@@ -803,14 +876,19 @@ private final class SVGParser {
 }
 
 // upstream: applyDefs — resolve pending url(#id) fills/strokes to the parsed paint server.
-private func applyDefs(_ defs: [String: Gradient], _ defsUsePending: DefsUsePending) {
+private func applyDefs(_ defs: [String: SVGPaintServer], _ defsUsePending: DefsUsePending) {
     for item in defsUsePending {
         let (el, method, id) = item
-        guard let grad = defs[id] else { continue }
+        guard let def = defs[id] else { continue }
         let color: ZRColor?
-        if let lg = grad as? LinearGradient { color = .linearGradient(lg) }
-        else if let rg = grad as? RadialGradient { color = .radialGradient(rg) }
-        else { color = nil }
+        switch def {
+        case .gradient(let grad):
+            if let lg = grad as? LinearGradient { color = .linearGradient(lg) }
+            else if let rg = grad as? RadialGradient { color = .radialGradient(rg) }
+            else { color = nil }
+        case .pattern(let pattern):
+            color = .pattern(pattern)
+        }
         guard let color = color else { continue }
         if let path = el as? Path {
             var s = path.pathStyle ?? PathStyleProps()

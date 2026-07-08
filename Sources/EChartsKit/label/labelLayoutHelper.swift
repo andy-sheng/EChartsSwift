@@ -312,6 +312,33 @@ public enum labelLayoutHelper {
         return labelLayout
     }
 
+    /// upstream: export function newLabelLayoutWithGeometry(newBaseWithDefaults, source)
+    /// Duplicate a `LabelLayoutData` (sharing the same `label` element) and recompute its geometry, so
+    /// a caller can apply an `ignoreMargin`/`marginForce` variation without mutating the original.
+    ///
+    /// upstream copies `LABEL_LAYOUT_BASE_PROPS` (label, labelLine, layoutOption, priority, defaultAttr,
+    ///   marginForce, minMarginForce, marginDefault, suggestIgnore) from `source` into the partial
+    ///   `newBaseWithDefaults`, then calls `ensureLabelLayoutWithGeometry`. The MARGIN machinery
+    ///   (`marginForce`/`minMarginForce`/`marginDefault`) is a documented no-op in this port (see the
+    ///   note above `computeLabelGeometry`), so the only variation upstream drives through this
+    ///   function — a `marginForce` override — has no effect here; the copy carries the same geometry as
+    ///   `source`. Faithful for the default labels the axis path produces.
+    public static func newLabelLayoutWithGeometry(_ source: LabelLayoutData) -> LabelLayoutData? {
+        let out = LabelLayoutData(
+            label: source.label,
+            labelLine: source.labelLine,
+            layoutOption: source.layoutOption,
+            layoutCallback: source.layoutCallback,
+            dataIndex: source.dataIndex,
+            dataType: source.dataType,
+            seriesIndex: source.seriesIndex,
+            priority: source.priority,
+            defaultAttr: source.defaultAttr,
+            suggestIgnore: source.suggestIgnore
+        )
+        return ensureLabelLayoutWithGeometry(out)
+    }
+
     /// upstream: export function computeLabelGeometry(out, label, opt?)
     /// Fills `out`'s geometry props (transform / localRect / global rect / axisAligned / ignore) from
     /// the live label. See the MARGIN gap note above (no margin expansion in the port).

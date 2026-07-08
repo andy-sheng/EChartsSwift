@@ -320,10 +320,10 @@ open class TreemapSeriesModel: SeriesModel {
             //  which provides box layout container.
             "coordinateSystemUsage": "box",
 
-            "left": 16.0,       // tokens.size.l
-            "top": 40.0,        // tokens.size.xxxl
-            "right": 16.0,      // tokens.size.l
-            "bottom": 40.0,     // tokens.size.xxxl
+            "left": 20.0,       // tokens.size.l
+            "top": 50.0,        // tokens.size.xxxl
+            "right": 20.0,      // tokens.size.l
+            "bottom": 50.0,     // tokens.size.xxxl
 
             "sort": true,
 
@@ -351,7 +351,7 @@ open class TreemapSeriesModel: SeriesModel {
                 "show": true,
                 "height": 22.0,
                 "left": "center",
-                "bottom": 8.0,          // tokens.size.m
+                "bottom": 15.0,         // tokens.size.m
                 // right
                 // bottom
                 "emptyItemWidth": 25.0,             // Width of empty node.

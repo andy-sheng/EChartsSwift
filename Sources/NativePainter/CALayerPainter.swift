@@ -397,6 +397,9 @@ public final class CALayerPainter: Painter {
     private var _incrementalLayers: [ObjectIdentifier: CGContext] = [:]
 
     public init(size: CGSize, dpr: Double? = nil, backgroundColor: CGColor? = nil) {
+        // Make the SVG `<pattern>` renderer seam available as soon as a native backend exists, so
+        // parseSVG can resolve `url(#patternId)` fills to image-tile Patterns (idempotent).
+        installSVGPatternRasterizer()
         self.surfaceSize = size
         self.dpr = dpr ?? defaultDPR()
         self.backgroundColor = backgroundColor
