@@ -4,7 +4,7 @@ import ZRenderKit
 
 // A bar series whose data is supplied via a DataStore directly, bypassing the UNPORTED
 // `SourceManager.getSource` (data/helper/sourceManager.ts — Phase 6b). This mirrors the
-// `CartesianCoordTests` double: it lets the FULL EChartsSlim update cycle run end-to-end so we can
+// `CartesianCoordTests` double: it lets the FULL ECharts update cycle run end-to-end so we can
 // observe the grid + axis views emit elements. (Real bar Rects additionally need populated data
 // values, which requires the data-source layer — see the test notes.)
 private final class SmokeBarSeriesModel: BarSeriesModel {
@@ -16,7 +16,7 @@ private final class SmokeBarSeriesModel: BarSeriesModel {
     }
 }
 
-final class EChartsSlimSmokeTests: XCTestCase {
+final class EChartsSmokeTests: XCTestCase {
     // `registerClass` is a PROCESS-GLOBAL registration keyed by ComponentFullType ("series.bar"):
     // registering SmokeBarSeriesModel overwrites the real BarSeriesModel for EVERY later test in the
     // process. Its getInitialData returns an EMPTY DataStore, so without this restore, every
@@ -29,7 +29,7 @@ final class EChartsSlimSmokeTests: XCTestCase {
     }
 
     func testBarChartCycleRunsAndEmitsAxisElements() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         // Override the real (SourceManager-backed) bar model with the DataStore-backed double.
         ComponentModel.registerClass(SmokeBarSeriesModel.self)
 

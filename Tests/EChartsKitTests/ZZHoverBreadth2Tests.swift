@@ -18,7 +18,7 @@ final class ZZHoverBreadth2Tests: XCTestCase {
     override func setUp() {
         super.setUp()
         // Series model classes (idempotent global registry). RadarModel (the radar coord host component)
-        // is auto-registered by EChartsSlim, but re-registering is harmless.
+        // is auto-registered by ECharts, but re-registering is harmless.
         ComponentModel.registerClass(CandlestickSeriesModel.self)
         ComponentModel.registerClass(BoxplotSeriesModel.self)
         ComponentModel.registerClass(FunnelSeriesModel.self)

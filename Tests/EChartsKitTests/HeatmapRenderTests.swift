@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST — the Phase 22 milestone proof that a cartesian heatmap option renders through
-// ZRenderKit AND that heatmap + visualMap work together. Builds the slim driver (`EChartsSlim`) with a
+// ZRenderKit AND that heatmap + visualMap work together. Builds the slim driver (`ECharts`) with a
 // category×category heatmap ([x, y, value] data) + a CONTINUOUS visualMap, runs the full setOption/update
 // cycle, and inspects the produced scene graph: one `Rect` per data cell (the HeatmapView cartesian
 // colored-Rect path), each carrying a fill the visualMap VISUAL stage encoded. The KEY assertion is that
@@ -50,7 +50,7 @@ final class HeatmapRenderTests: XCTestCase {
 
     func testHeatmapRendersColoredCells() {
         let width = 400.0, height = 300.0
-        let ec = EChartsSlim(width: width, height: height)
+        let ec = ECharts(width: width, height: height)
         ec.setOption(heatmapOption())
 
         // The visualMap component resolved to the continuous subtype and loaded.
@@ -120,7 +120,7 @@ final class HeatmapRenderTests: XCTestCase {
     }
 
     // MARK: helpers
-    private func firstSeries(_ ec: EChartsSlim) -> SeriesModel? {
+    private func firstSeries(_ ec: ECharts) -> SeriesModel? {
         var found: SeriesModel?
         ec.getModel()?.eachSeries { s, _ in if found == nil { found = s } }
         return found

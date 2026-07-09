@@ -15,7 +15,7 @@ final class GaugeTransitionTests: XCTestCase {
          "series": [["type": "gauge", "min": 0.0, "max": 100.0, "data": [["value": 50.0]]]]]
     }
     func test_pointer_sweeps_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(true))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(true))
         guard let p = firstPointer(ec.getRoot()) else { return XCTFail("no gauge pointer (PointerPath)") }
         let anim = p.animators.first { $0.getTrack("rotation") != nil }
         XCTAssertNotNil(anim, "pointer should have a rotation animator when animation on")
@@ -26,7 +26,7 @@ final class GaugeTransitionTests: XCTestCase {
         }
     }
     func test_pointer_final_rotation_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(false))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(false))
         guard let p = firstPointer(ec.getRoot()) else { return XCTFail("no gauge pointer") }
         XCTAssertEqual(p.animators.count, 0, "no animator when animation off")
     }

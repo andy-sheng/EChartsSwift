@@ -43,7 +43,7 @@ final class AxisLabelHideOverlapTests: XCTestCase {
     }
 
     func testDenseAxisHidesOverlappingLabels() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(denseCategoryOption(hideOverlap: true))
 
         let labels = collectAxisLabels(ec.getRoot()) { $0.hasPrefix("Category-Label") }
@@ -72,7 +72,7 @@ final class AxisLabelHideOverlapTests: XCTestCase {
     }
 
     func testIntervalZeroShowsAllInteriorWhenHideOverlapOff() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         // Default: no hideOverlap. interval:0 → a label element for every category; the global
         //   `hideOverlap` pass does NOT run, so the interior (non-extreme) labels all overprint and
         //   stay shown. `fixMinMaxLabelShow` still runs unconditionally and may hide ONLY the extreme
@@ -104,7 +104,7 @@ final class AxisLabelHideOverlapTests: XCTestCase {
             "yAxis": ["type": "value"] as [String: Any],
             "series": [["type": "bar", "data": [10.0, 20.0, 30.0, 40.0]] as [String: Any]]
         ]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option)
 
         let cats = Set(["A", "B", "C", "D"])

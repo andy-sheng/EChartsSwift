@@ -1,6 +1,6 @@
 // END-TO-END RENDER TEST for the Phase-19 chord (circular flow) chart vertical: a Sector arc per node
 // placed around a ring + a filled ribbon ChordPath per edge, laid out by the coordless chord
-// circular-layout stage. Drives EChartsSlim with a real chord option and asserts BOTH node arc Sectors
+// circular-layout stage. Drives ECharts with a real chord option and asserts BOTH node arc Sectors
 // (one per node) and edge ribbon Paths (one per edge) reach the ZRenderKit scene graph, plus a GEOMETRY
 // guard: every node arc must sit inside the view rect and carry a positive radius (which is exactly what
 // the chord circular layout must compute from center ['50%','50%'] / radius).
@@ -11,7 +11,7 @@ import ZRenderKit
 final class ChordRenderTests: XCTestCase {
     func testChordRendersNodeArcsAndEdgeRibbons() {
         let width = 460.0, height = 360.0
-        let ec = EChartsSlim(width: width, height: height)
+        let ec = ECharts(width: width, height: height)
         ec.setOption([
             "series": [["type": "chord",
                         "center": ["50%", "50%"],

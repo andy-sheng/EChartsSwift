@@ -36,7 +36,7 @@ final class ZZGeoRoamTests: XCTestCase {
     }
 
     private func makeMapView(roam: Bool) -> EChartsView {
-        EChartsSlim.registerMap("toyRoam", makeToyGeoJSON())
+        ECharts.registerMap("toyRoam", makeToyGeoJSON())
         let view = EChartsView(width: 520, height: 320)
         var series: [String: Any] = [
             "type": "map",

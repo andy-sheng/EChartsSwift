@@ -24,7 +24,7 @@ final class LineTransitionTests: XCTestCase {
     }
 
     func test_line_clip_grows_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(true))
         guard let clip = firstClipRect(ec.getRoot()) else { return XCTFail("no line clip rect") }
         // NOTE: initProps' `enter` config sets `setToFinal: true` (basicTransition.swift), which jumps
@@ -47,7 +47,7 @@ final class LineTransitionTests: XCTestCase {
     }
 
     func test_line_clip_full_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(false))
         guard let clip = firstClipRect(ec.getRoot()) else { return XCTFail("no line clip rect") }
         XCTAssertEqual(clip.animators.count, 0, "no clip animator when animation off")

@@ -10,7 +10,7 @@ import ZRenderKit
 final class SymbolDrawTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(ScatterSeriesModel.self) }
 
-    private func symbolGroups(_ ec: EChartsSlim) -> [Symbol] {
+    private func symbolGroups(_ ec: ECharts) -> [Symbol] {
         var out: [Symbol] = []
         _ = ec.getRoot().traverse { el in
             if let s = el as? Symbol { out.append(s) }
@@ -20,7 +20,7 @@ final class SymbolDrawTests: XCTestCase {
     }
 
     func testEachDatumBecomesASymbolGroupWithAPathChild() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "animation": false,
             "xAxis": ["type": "value"] as [String: Any],
@@ -43,7 +43,7 @@ final class SymbolDrawTests: XCTestCase {
     }
 
     func testSeriesSymbolRotateReachesThePath() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "animation": false,
             "xAxis": ["type": "value"] as [String: Any],
@@ -61,7 +61,7 @@ final class SymbolDrawTests: XCTestCase {
     }
 
     func testPerItemSymbolSizeOverridesSeries() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "animation": false,
             "xAxis": ["type": "value"] as [String: Any],

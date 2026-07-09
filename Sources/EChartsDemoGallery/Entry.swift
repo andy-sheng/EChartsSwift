@@ -23,7 +23,7 @@ import EChartsDemoCore
 // with the iOS gallery (EChartsDemoGalleryiOS).
 
 // ---------------------------------------------------------------------------
-// NATIVE render: EChartsKit → EChartsSlim → ZRenderKit Group → NativePainter → CGImage.
+// NATIVE render: EChartsKit → ECharts → ZRenderKit Group → NativePainter → CGImage.
 // ---------------------------------------------------------------------------
 
 /// The headless render never ticks the animation loop, so looping effects (e.g. effectScatter
@@ -44,14 +44,14 @@ private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1
     _ = root.traverse { el in advance(el); return false }
 }
 
-/// Drive EChartsSlim with the demo option. Phase 6c: the real SourceManager builds each series' data
+/// Drive ECharts with the demo option. Phase 6c: the real SourceManager builds each series' data
 /// from the option's own `series[].data`, so the stock Bar/Line series models render directly — no
 /// data double is registered anymore.
 @MainActor
 func renderNativeGroup(_ demo: EChartsDemo) -> Group {
     var opt = demo.option
     opt["animation"] = false
-    let ec = EChartsSlim(width: demo.width, height: demo.height)
+    let ec = ECharts(width: demo.width, height: demo.height)
     ec.setOption(opt)
     let root = ec.getRoot()
     advanceAnimationsForStaticFrame(root)
@@ -295,7 +295,7 @@ final class ContentViewController: NSViewController {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let nativeHost = NSView()
-    // Live native render: the chart lays out at the demo's LOGICAL size (EChartsSlim has no resize
+    // Live native render: the chart lays out at the demo's LOGICAL size (ECharts has no resize
     // hook), so host a fresh EChartsHostView at that size inside a scroll view and fit-scale it via
     // `magnification` — the same trick DemoGallery uses for its 1000px zrender canvases.
     private let liveScroll = NSScrollView()

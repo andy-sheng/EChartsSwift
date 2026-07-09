@@ -35,7 +35,7 @@ final class HeatmapTransitionTests: XCTestCase {
          ] as [String: Any]]]
     }
     func test_cell_fades_in_when_animation_on() {
-        let ec = EChartsSlim(width: 480, height: 320); ec.setOption(option(true))
+        let ec = ECharts(width: 480, height: 320); ec.setOption(option(true))
         guard let rect = firstCell(ec.getRoot()) else { return XCTFail("no heatmap cell rect") }
         // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
         // targeted at "style" and carries an "opacity" leaf track.
@@ -43,7 +43,7 @@ final class HeatmapTransitionTests: XCTestCase {
         XCTAssertNotNil(anim, "heatmap cell should have a style (opacity) animator when animation on")
     }
     func test_cell_final_opacity_when_animation_off() {
-        let ec = EChartsSlim(width: 480, height: 320); ec.setOption(option(false))
+        let ec = ECharts(width: 480, height: 320); ec.setOption(option(false))
         guard let rect = firstCell(ec.getRoot()) else { return XCTFail("no heatmap cell rect") }
         XCTAssertEqual(rect.animators.count, 0, "no animator when animation off")
         XCTAssertGreaterThan(rect.pathStyle.opacity ?? 0, 0.0, "cell must be at final (visible) opacity when off — not invisible")

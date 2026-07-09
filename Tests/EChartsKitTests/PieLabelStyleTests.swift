@@ -17,7 +17,7 @@ final class PieLabelStyleTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(PieSeriesModel.self) }
 
     func testPieSectorsCarryAttachedLabelTextContent() {
-        let ec = EChartsSlim(width: 400, height: 320)
+        let ec = ECharts(width: 400, height: 320)
         ec.setOption([
             "series": [["type": "pie", "radius": "65%",
                         "label": ["show": true, "position": "outer"] as [String: Any],

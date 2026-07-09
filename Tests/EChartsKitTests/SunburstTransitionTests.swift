@@ -39,7 +39,7 @@ final class SunburstTransitionTests: XCTestCase {
     }
 
     func test_sector_sweeps_open_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(true))
         guard let sec = firstSector(ec.getRoot()) else { return XCTFail("no sunburst sector") }
         XCTAssertGreaterThan(sec.animators.count, 0, "sector should have an expansion animator when animation on")
@@ -64,7 +64,7 @@ final class SunburstTransitionTests: XCTestCase {
     }
 
     func test_sector_final_angle_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(false))
         guard let sec = firstSector(ec.getRoot()) else { return XCTFail("no sunburst sector") }
         XCTAssertEqual(sec.animators.count, 0, "no animator when animation off")

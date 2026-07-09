@@ -295,7 +295,7 @@ open class PieSeriesModel: SeriesModel {
 // global whose initializer runs the registration EXACTLY ONCE on first access (matching a load-time
 // side effect; `registerLayOutOnCoordSysUsage` asserts uniqueness, so it must not run twice). INTEGRATION
 // must reference this symbol once during pie install (e.g. `_ = pieLayOutOnCoordSysUsageRegistered`),
-// mirroring how the module's other registrations are wired in EChartsSlim.
+// mirroring how the module's other registrations are wired in ECharts.
 public let pieLayOutOnCoordSysUsageRegistered: Void = {
     registerLayOutOnCoordSysUsage(RegisterLayOutOnCoordSysUsageOpt(
         fullType: PieSeriesModel.type,

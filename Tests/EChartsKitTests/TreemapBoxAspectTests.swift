@@ -47,7 +47,7 @@ final class TreemapBoxAspectTests: XCTestCase {
 
     func test_box_aspect_and_node1_node2_stacked() {
         // Container 460x320 matches the `treemap-three` gallery demo.
-        let ec = EChartsSlim(width: 460, height: 320)
+        let ec = ECharts(width: 460, height: 320)
         ec.setOption(option())
 
         guard let series = ec.getModel()?.getSeriesByType("treemap").first as? TreemapSeriesModel else {

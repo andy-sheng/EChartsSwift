@@ -31,13 +31,13 @@ final class GraphForceLayoutTests: XCTestCase {
         ]
     }
 
-    private func graphSeries(_ ec: EChartsSlim) -> GraphSeriesModel? {
+    private func graphSeries(_ ec: ECharts) -> GraphSeriesModel? {
         var series: GraphSeriesModel?
         ec.getModel()?.eachSeriesByType("graph") { s, _ in series = s as? GraphSeriesModel }
         return series
     }
 
-    private func nodePoints(_ ec: EChartsSlim) -> [[Double]] {
+    private func nodePoints(_ ec: ECharts) -> [[Double]] {
         guard let s = graphSeries(ec) else { return [] }
         let graph = s.getGraph()
         var pts: [[Double]] = []
@@ -53,7 +53,7 @@ final class GraphForceLayoutTests: XCTestCase {
     // The force layout must produce FINITE, SPREAD node positions — not all NaN, not all collapsed
     // at a single point (the failure mode when the simulation never runs).
     func test_force_layout_produces_finite_spread_positions() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption(forceOption())
 
         let pts = nodePoints(ec)
@@ -87,8 +87,8 @@ final class GraphForceLayoutTests: XCTestCase {
     // Deterministic: two independent runs of the same option produce identical settled positions
     // (index-seeded initial cloud — no Date.now / Math.random).
     func test_force_layout_is_deterministic() {
-        let ec1 = EChartsSlim(width: 460, height: 360); ec1.setOption(forceOption())
-        let ec2 = EChartsSlim(width: 460, height: 360); ec2.setOption(forceOption())
+        let ec1 = ECharts(width: 460, height: 360); ec1.setOption(forceOption())
+        let ec2 = ECharts(width: 460, height: 360); ec2.setOption(forceOption())
 
         let a = nodePoints(ec1), b = nodePoints(ec2)
         XCTAssertEqual(a.count, b.count)
@@ -109,7 +109,7 @@ final class GraphForceLayoutTests: XCTestCase {
         // initLayout 'none' -> simpleLayout seeds n0 at [x, y]; fixed keeps it there.
         opt["series"] = series
 
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption(opt)
 
         let pts = nodePoints(ec)

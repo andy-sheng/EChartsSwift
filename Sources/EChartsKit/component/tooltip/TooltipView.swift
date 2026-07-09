@@ -47,11 +47,11 @@
 //
 // ARCHITECTURE (see MEMORY / phase brief):
 //   Upstream `TooltipView` is a `ComponentView` that reaches the live zrender via `api.getZr()`. In THIS
-//   port `EChartsSlim` is render-once with NO live zr; the live zr lives in `EChartsView`. So this view is
+//   port `ECharts` is render-once with NO live zr; the live zr lives in `EChartsView`. So this view is
 //   a PLAIN class OWNED by `EChartsView`, constructed over the live `zr` passed in. Its `TooltipRichContent`
 //   adds its `ZRText` to THAT zr, so the tooltip floats above the chart and is not cleared on re-render.
 //   PORT-TODO: re-unify with `ComponentView` (init/render(ecModel, api) + the `_componentViewFactories`
-//   registry) once `EChartsSlim` grows a live zr / `ExtensionAPI.getZr()`.
+//   registry) once `ECharts` grows a live zr / `ExtensionAPI.getZr()`.
 //
 // ============================================================================
 // INTEGRATION CONTRACT — TASK 1 `TooltipRichContent` (parallel task; reconcile at the single build)
@@ -501,7 +501,7 @@ private func asDouble(_ v: Any?) -> Double? {
 // noop handler (upstream `noop`).
 private let tooltipNoopAction: ActionHandler = { _, _, _ in nil }
 
-/// `tooltipInstall`-style registration the integrator invokes (from `EChartsSlim.installOnce` /
+/// `tooltipInstall`-style registration the integrator invokes (from `ECharts.installOnce` /
 ///   `EChartsView`). Idempotent: `registerAction` early-returns on a duplicate type.
 public func installTooltipActions(_ registers: EChartsExtensionInstallRegisters) {
     _ = registers   // mirror upstream signature; the slim `registerAction` is module-level (see below).

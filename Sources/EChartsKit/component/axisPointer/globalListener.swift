@@ -28,7 +28,7 @@
 // axisPointer both want to show/hide — the "final stage" resolves the conflict).
 //
 // ADAPTATION vs upstream: upstream reaches the live zr via `api.getZr()`. In this port the live zr lives
-// in `EChartsView` (EChartsSlim is zr-less), and ExtensionAPI has no `getZr()` yet, so `register` takes
+// in `EChartsView` (ECharts is zr-less), and ExtensionAPI has no `getZr()` yet, so `register` takes
 // the `ZRender` directly plus a `realDispatch` closure (the "actually dispatch" seam — upstream
 // `api.dispatchAction`). `EChartsView` owns the zr and wires `realDispatch` to
 // `ec.dispatchAction` + its tooltip view, and registers the axisTrigger as the `mousemove` handler:

@@ -2,7 +2,7 @@
 // each `parallelAxis` component is drawn by a registered ParallelAxisView (AxisBuilder → an axisLine Line
 // per axis, laid out left-to-right by the Parallel coord), and the chart-side ParallelView draws one
 // Polyline per data item connecting its value on every axis (points from Parallel.dataToPoint per
-// dimension). Drives EChartsSlim with a real parallel option (4 value axes × 3 data lines) and asserts
+// dimension). Drives ECharts with a real parallel option (4 value axes × 3 data lines) and asserts
 // BOTH the N-axis backdrop (axis Lines >= number of axes) AND the series polylines (one Polyline per data
 // item) reach the ZRenderKit scene graph, plus a GEOMETRY guard: the axis x-positions are distinct and
 // strictly increasing across the 4 axes (read off each polyline's per-axis vertices).
@@ -13,7 +13,7 @@ import ZRenderKit
 final class ParallelRenderTests: XCTestCase {
     func testParallelRendersAxisBackdropAndSeriesPolylines() {
         let w = 520.0, h = 380.0
-        let ec = EChartsSlim(width: w, height: h)
+        let ec = ECharts(width: w, height: h)
         // 4 value axes (Price/Amount/Volume/Score) × 3 data lines.
         let axisCount = 4
         let lineCount = 3

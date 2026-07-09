@@ -1,7 +1,7 @@
 // END-TO-END RENDER TEST for the Phase-16 themeRiver (streamgraph) vertical on the SINGLE coordinate
 // system: SingleAxisView draws the axis backdrop (an axisLine Line across the coord rect) and
 // ThemeRiverView draws one filled Polygon band per named layer, positioned by the themeRiverLayout stage
-// (each datum → {layerIndex,x,y0,y} band point via Single.dataToPoint). Drives EChartsSlim with a real
+// (each datum → {layerIndex,x,y0,y} band point via Single.dataToPoint). Drives ECharts with a real
 // themeRiver option on a singleAxis and asserts BOTH the singleAxis backdrop (an axis Line) AND the layer
 // stream bands (one Polygon per layer) reach the ZRenderKit scene graph, plus a GEOMETRY guard: every
 // band has a non-empty finite point ring that lands inside the chart view rect.
@@ -12,7 +12,7 @@ import ZRenderKit
 final class ThemeRiverRenderTests: XCTestCase {
     func testThemeRiverRendersAxisBackdropAndLayerBands() {
         let w = 520.0, h = 380.0
-        let ec = EChartsSlim(width: w, height: h)
+        let ec = ECharts(width: w, height: h)
         // 3 named layers (Alpha/Beta/Gamma) over 5 time points (0…4) on a value-type singleAxis.
         ec.setOption([
             "singleAxis": ["type": "value", "left": "10%", "right": "10%",

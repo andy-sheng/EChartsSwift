@@ -12,7 +12,7 @@ import ZRenderKit
 @testable import EChartsKit
 
 // A bar series whose data is supplied via an empty DataStore, bypassing the SourceManager source
-// layer (same double idiom as EChartsSlimSmokeTests). It lets the full EChartsSlim update cycle run
+// layer (same double idiom as EChartsSmokeTests). It lets the full ECharts update cycle run
 // so the legend view renders one item per named series.
 private final class LegendScrollBarSeriesModel: BarSeriesModel {
     override class var type: ComponentFullType { return "series.bar" }
@@ -32,9 +32,9 @@ final class ScrollableLegendRenderTests: XCTestCase {
     }
 
     // `LegendScrollBarSeriesModel` registers itself as "series.bar" with an EMPTY DataStore. Component
-    // registration is process-global and one-time (EChartsSlim does NOT re-register on each init), so
+    // registration is process-global and one-time (ECharts does NOT re-register on each init), so
     // without restoring the real model here, EVERY later bar chart in the suite resolves to this empty
-    // double and renders 0 bars (polluted SlimReRenderResetTests). Restore the real BarSeriesModel.
+    // double and renders 0 bars (polluted ReRenderResetTests). Restore the real BarSeriesModel.
     override func tearDown() {
         ComponentModel.registerClass(BarSeriesModel.self)
         super.tearDown()
@@ -76,7 +76,7 @@ final class ScrollableLegendRenderTests: XCTestCase {
     }
 
     func testScrollLegendShowsControlsAndClipsToOnePage() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             // Narrow width forces the 12 items to overflow → the controller (arrows + page text) shows.
             "legend": [
@@ -120,7 +120,7 @@ final class ScrollableLegendRenderTests: XCTestCase {
     }
 
     func testPlainLegendIsUnchangedNoControlsNoClip() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             // No `type` → plain legend. Even with a narrow width it must not paginate.
             "legend": [

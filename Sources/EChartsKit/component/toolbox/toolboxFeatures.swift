@@ -30,8 +30,8 @@ open class ToolboxSaveAsImageFeature: ToolboxFeature {
     // onclick(ecModel, api) { const url = api.getConnectedDataURL(...); ...download the data URL... }
     //   PORT: the SVG-painter branch + the browser download machinery (`<a download>` /
     //   `msSaveOrOpenBlob` / `window.open`) collapse to the host seam: `api.getConnectedDataURL` returns
-    //   the ENCODED PNG bytes (rendered by the host-injected `EChartsSlim.getRenderedImage`) and
-    //   `api.saveAsImage` hands them to the host (`EChartsSlim.onSaveImage`) — the download analog. Both
+    //   the ENCODED PNG bytes (rendered by the host-injected `ECharts.getRenderedImage`) and
+    //   `api.saveAsImage` hands them to the host (`ECharts.onSaveImage`) — the download analog. Both
     //   nil in pure headless → silent no-op. The URL-building option bag is faithful.
     open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
         let model = self.model!

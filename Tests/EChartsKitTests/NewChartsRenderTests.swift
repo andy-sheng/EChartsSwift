@@ -1,5 +1,5 @@
 // END-TO-END RENDER TESTS for the Phase-8 chart verticals: funnel (Polygon trapezoids), candlestick
-// (NormalBoxPath body+whiskers), boxplot (BoxPath box+median+whiskers). Each drives EChartsSlim with a
+// (NormalBoxPath body+whiskers), boxplot (BoxPath box+median+whiskers). Each drives ECharts with a
 // real option and asserts one shape per datum reaches the ZRenderKit scene. Also guards the ZRenderKit
 // getOutsideStroke __zr nil-unwrap fix (funnel labels exercise the outside-label color path).
 import XCTest
@@ -15,7 +15,7 @@ final class NewChartsRenderTests: XCTestCase {
     }
 
     func testFunnelRendersTrapezoids() {
-        let ec = EChartsSlim(width: 460, height: 340)
+        let ec = ECharts(width: 460, height: 340)
         ec.setOption([
             "series": [["type": "funnel", "left": "10%", "top": 20.0, "width": "80%", "height": 300.0,
                         "data": [["value": 100.0, "name": "Show"], ["value": 80.0, "name": "Click"],
@@ -35,7 +35,7 @@ final class NewChartsRenderTests: XCTestCase {
     }
 
     func testCandlestickRendersBoxes() {
-        let ec = EChartsSlim(width: 520, height: 340)
+        let ec = ECharts(width: 520, height: 340)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 440.0, "height": 260.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D", "E", "F"]] as [String: Any],
@@ -54,7 +54,7 @@ final class NewChartsRenderTests: XCTestCase {
     }
 
     func testBoxplotRendersBoxes() {
-        let ec = EChartsSlim(width: 520, height: 340)
+        let ec = ECharts(width: 520, height: 340)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 440.0, "height": 260.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["G1", "G2", "G3", "G4", "G5"]] as [String: Any],

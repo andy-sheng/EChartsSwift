@@ -1,5 +1,5 @@
 // Verifies the ported ARIA accessibility LABEL generator (Sources/EChartsKit/component/aria/
-// ariaVisual.swift, upstream echarts/src/visual/aria.ts). Drives the full EChartsSlim setOption/update
+// ariaVisual.swift, upstream echarts/src/visual/aria.ts). Drives the full ECharts setOption/update
 // cycle on real (SourceManager-backed) bar series and inspects `ec.getAriaLabel()` against the upstream
 // locale-template composition (langEN aria.*):
 //   general.withTitle  →  series.multiple.prefix + per-series withName  →  data.allData + data rows.
@@ -39,7 +39,7 @@ final class AriaLabelTests: XCTestCase {
 
     // A titled multi-series chart produces the composed aria label (title + series names + data sample).
     func testTitledMultiSeriesProducesAriaLabel() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: ["enabled": true] as [String: Any]))
 
         guard let label = ec.getAriaLabel() else {
@@ -61,7 +61,7 @@ final class AriaLabelTests: XCTestCase {
 
     // A single-series chart uses the single-series templates (withName + withoutTitle when no title).
     func testSingleSeriesWithoutTitle() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: ["enabled": true] as [String: Any], title: nil, singleSeries: true))
 
         guard let label = ec.getAriaLabel() else {
@@ -77,28 +77,28 @@ final class AriaLabelTests: XCTestCase {
 
     // aria is disabled by default (no aria option) => no label.
     func testNoAriaOptionYieldsNoLabel() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: nil))
         XCTAssertNil(ec.getAriaLabel(), "aria is disabled by default; no label should be generated")
     }
 
     // aria.enabled:false => no label.
     func testAriaEnabledFalseYieldsNoLabel() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: ["enabled": false] as [String: Any]))
         XCTAssertNil(ec.getAriaLabel(), "aria.enabled:false should produce no label")
     }
 
     // aria.show:false (deprecated) is migrated to aria.enabled:false by the preprocessor => no label.
     func testAriaShowFalseYieldsNoLabel() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: ["show": false] as [String: Any]))
         XCTAssertNil(ec.getAriaLabel(), "aria.show:false (deprecated) should map to enabled:false => no label")
     }
 
     // aria.label.description overrides the generated description string.
     func testAriaDescriptionOverride() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(baseOption(aria: [
             "enabled": true,
             "label": ["description": "Custom accessible summary"] as [String: Any]

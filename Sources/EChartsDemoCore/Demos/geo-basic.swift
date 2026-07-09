@@ -6,7 +6,7 @@
 // ([lng,lat] → [x,y]).
 //
 // The toy map MUST be registered before setOption (upstream `echarts.registerMap('toy', geoJson)`), so the
-// registration runs in the option initializer below (IIFE) via `EChartsSlim.registerMap`.
+// registration runs in the option initializer below (IIFE) via `ECharts.registerMap`.
 //
 // NATIVE-only note: the native pane (EChartsKit/GeoView) renders this fully. The HTML pane feeds the same
 // option to real echarts.js, which ALSO needs `echarts.registerMap('toy', ...)` injected into the page —
@@ -54,7 +54,7 @@ extension EChartsDemoRegistry {
         mapRegistrations: ["toy": toyGeoJSON],
         option: {
             // Register the toy map before the option is consumed (echarts.registerMap('toy', geoJson)).
-            EChartsSlim.registerMap("toy", toyGeoJSON)
+            ECharts.registerMap("toy", toyGeoJSON)
             return [
                 "geo": [
                     "map": "toy",

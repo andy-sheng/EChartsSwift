@@ -9,19 +9,19 @@ import XCTest
 // the series subtrees.
 final class L5TransitionTweenTests: XCTestCase {
 
-    private func chartAnimatorCount(_ ec: EChartsSlim) -> Int {
+    private func chartAnimatorCount(_ ec: ECharts) -> Int {
         var n = 0
         for v in ec.testChartViews { _ = v.group.traverse({ el in n += el.animators.count; return false }) }
         return n
     }
 
-    private func stopAllChartAnimations(_ ec: EChartsSlim) {
+    private func stopAllChartAnimations(_ ec: ECharts) {
         for v in ec.testChartViews { _ = v.group.traverse({ el in _ = el.stopAnimation(nil); return false }) }
     }
 
     private func assertTweenScheduled(_ name: String, _ option: [String: Any], update: [String: Any],
                                       file: StaticString = #filePath, line: UInt = #line) {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option)
         stopAllChartAnimations(ec)                          // clear the first render's enter animators
         XCTAssertEqual(chartAnimatorCount(ec), 0, "\(name): baseline animators not cleared", file: file, line: line)

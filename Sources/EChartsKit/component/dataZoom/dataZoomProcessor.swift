@@ -40,7 +40,7 @@ import ZRenderKit
 
 // upstream: const dataZoomProcessor: StageHandler = { ... }
 //   Exposed as a value so the integrator can invoke `dataZoomProcessor.overallReset?(ecModel, api, nil)`
-//   in `EChartsSlim.update()`'s PROCESSOR stage (like `graphCategoryFilterStageHandler`), BEFORE
+//   in `ECharts.update()`'s PROCESSOR stage (like `graphCategoryFilterStageHandler`), BEFORE
 //   `coordSysMgr.update` reads the (now filtered) series-data extents. It is a FILTER-priority processor.
 public let dataZoomProcessor: StageHandler = {
     var handler = StageHandler()

@@ -29,7 +29,7 @@ final class RadarPolygonGrowTests: XCTestCase {
     // ON: the polygon carries a `shape` (points) animator whose clip at t=0 collapses every point onto
     //   the radar center, and at t=1 lands on the real vertex ring.
     func test_polygon_points_grow_from_center_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(true))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(true))
         guard let poly = firstNamed(ec.getRoot(), "radarPolygon") else {
             return XCTFail("no radar polygon (name==\"radarPolygon\")")
         }
@@ -60,7 +60,7 @@ final class RadarPolygonGrowTests: XCTestCase {
 
     // OFF: no animator; the polygon points sit at their final vertex ring (a vertex != center).
     func test_polygon_points_final_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(false))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(false))
         guard let poly = firstNamed(ec.getRoot(), "radarPolygon") else {
             return XCTFail("no radar polygon")
         }

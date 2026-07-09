@@ -8,8 +8,8 @@ import ZRenderKit
 @testable import EChartsKit
 
 final class LegendSelectorButtonTests: XCTestCase {
-    private func makeTwoSeriesWithSelector() -> EChartsSlim {
-        let ec = EChartsSlim(width: 500, height: 300)
+    private func makeTwoSeriesWithSelector() -> ECharts {
+        let ec = ECharts(width: 500, height: 300)
         ec.setOption([
             "legend": [
                 "data": ["Alpha", "Beta"],
@@ -28,7 +28,7 @@ final class LegendSelectorButtonTests: XCTestCase {
         return ec
     }
 
-    private func renderedSeriesNames(_ ec: EChartsSlim) -> [String] {
+    private func renderedSeriesNames(_ ec: ECharts) -> [String] {
         var names: [String] = []
         ec.getModel()!.eachSeries { s, _ in names.append(s.name) }
         return names

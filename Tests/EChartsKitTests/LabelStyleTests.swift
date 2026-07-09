@@ -71,7 +71,7 @@ final class LabelStyleTests: XCTestCase {
     // ---- (c) a "{b}" formatter resolves through a real SeriesModel's getFormattedLabel ----
     func testSetLabelStyleResolvesFormatterThroughLabelFetcher() {
         ComponentModel.registerClass(PieSeriesModel.self)
-        let ec = EChartsSlim(width: 400, height: 320)
+        let ec = ECharts(width: 400, height: 320)
         ec.setOption([
             "series": [["type": "pie",
                         "data": [["value": 40.0, "name": "Alpha"],
@@ -81,7 +81,7 @@ final class LabelStyleTests: XCTestCase {
         var seriesModel: SeriesModel?
         ec.getModel()?.eachSeries { s, _ in seriesModel = s }
         guard let seriesModel = seriesModel else {
-            return XCTFail("EChartsSlim.setOption should have built a pie SeriesModel")
+            return XCTFail("ECharts.setOption should have built a pie SeriesModel")
         }
         XCTAssertEqual(seriesModel.getData().count(), 2)
 

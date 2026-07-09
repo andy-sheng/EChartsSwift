@@ -32,7 +32,7 @@ final class FunnelLabelTests: XCTestCase {
     // Primary: the label text is attached via the shared core (textContent on the piece polygon), the
     // normal text is the datum name, and funnel's textConfig (local + inside) is set on the polygon.
     func test_label_attached_with_name_text_and_textconfig() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option())
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option())
         let ps = pieces(ec.getRoot())
         XCTAssertEqual(ps.count, 2, "two funnel pieces")
 
@@ -52,7 +52,7 @@ final class FunnelLabelTests: XCTestCase {
     // emphasis-state label style on the ZRText. The previous inline implementation created no states
     // on the label text, so states["emphasis"] would be nil.
     func test_emphasis_label_state_populated_by_shared_core() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option())
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option())
         let ps = pieces(ec.getRoot())
         XCTAssertFalse(ps.isEmpty, "expected funnel pieces")
 

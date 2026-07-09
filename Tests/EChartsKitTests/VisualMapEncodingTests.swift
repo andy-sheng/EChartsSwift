@@ -1,5 +1,5 @@
 // END-TO-END ENCODING TEST for the visualMap VISUAL stage (Phase 21).
-// Drives EChartsSlim with a value×value scatter series + a CONTINUOUS visualMap that colors the series by
+// Drives ECharts with a value×value scatter series + a CONTINUOUS visualMap that colors the series by
 // value, then asserts that the visualEncoding stage actually SET the per-datum visual color — i.e. the
 // value->visual encoding ran end-to-end and the mapped `style.fill` VARIES across the value range (rather
 // than every datum sharing the single palette color). The ENCODING is the key deliverable of this phase;
@@ -13,7 +13,7 @@ final class VisualMapEncodingTests: XCTestCase {
     /// The continuous visualMap maps each datum's value dimension (y, the last non-calc dim) through the
     /// inRange color gradient, so the four ascending values must receive four DISTINCT colors.
     func testContinuousVisualMapColorsSeriesByValue() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],
@@ -67,7 +67,7 @@ final class VisualMapEncodingTests: XCTestCase {
     /// The `colorFromPalette` item-visual flag must be cleared once the encoding overwrites the color, so a
     /// later palette pass does not clobber the encoded color.
     func testEncodingClearsColorFromPalette() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],
@@ -87,7 +87,7 @@ final class VisualMapEncodingTests: XCTestCase {
     }
 
     // MARK: helpers
-    private func firstSeries(_ ec: EChartsSlim) -> SeriesModel? {
+    private func firstSeries(_ ec: ECharts) -> SeriesModel? {
         var found: SeriesModel?
         ec.getModel()?.eachSeries { s, _ in if found == nil { found = s } }
         return found

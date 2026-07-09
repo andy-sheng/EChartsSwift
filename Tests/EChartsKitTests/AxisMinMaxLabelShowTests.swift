@@ -41,7 +41,7 @@ final class AxisMinMaxLabelShowTests: XCTestCase {
     // showMinLabel:false → the first (min) tick label is force-hidden; showMaxLabel:false → last hidden.
     func testShowMinMaxLabelFalseHidesEnds() {
         let cats = ["A", "B", "C", "D", "E"]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(cats, axisLabel: ["showMinLabel": false, "showMaxLabel": false]))
 
         let visible = labelText(ec.getRoot(), ignored: false, among: Set(cats))
@@ -54,7 +54,7 @@ final class AxisMinMaxLabelShowTests: XCTestCase {
     // showMinLabel:false alone hides only the first; the last stays shown.
     func testShowMinLabelFalseKeepsMax() {
         let cats = ["A", "B", "C", "D", "E"]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(cats, axisLabel: ["showMinLabel": false]))
 
         let visible = labelText(ec.getRoot(), ignored: false, among: Set(cats))
@@ -66,7 +66,7 @@ final class AxisMinMaxLabelShowTests: XCTestCase {
     // Default (no showMinLabel/showMaxLabel): a sparse axis keeps every label, min & max included.
     func testDefaultKeepsMinMaxOnSparseAxis() {
         let cats = ["A", "B", "C", "D", "E"]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(cats, axisLabel: nil))
 
         let hidden = labelText(ec.getRoot(), ignored: true, among: Set(cats))
@@ -81,7 +81,7 @@ final class AxisMinMaxLabelShowTests: XCTestCase {
     // short and well-spaced (8 labels / 300px ≈ 37px band), so the extremes do not overlap → kept.
     func testDefaultKeepsMinMaxWithIntervalZero() {
         let cats = ["A", "B", "C", "D", "E", "F", "G", "H"]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(cats, axisLabel: ["interval": 0]))
 
         let visible = labelText(ec.getRoot(), ignored: false, among: Set(cats))

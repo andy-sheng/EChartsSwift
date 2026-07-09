@@ -1,6 +1,6 @@
 // END-TO-END RENDER TEST for the Phase-15 sankey (flow) chart vertical: a Rect per node + a filled
 // ribbon SankeyPath per edge, laid out by the coordless sankey box-layout stage (columns by depth).
-// Drives EChartsSlim with a real sankey option and asserts BOTH node Rects and edge ribbon Paths reach
+// Drives ECharts with a real sankey option and asserts BOTH node Rects and edge ribbon Paths reach
 // the ZRenderKit scene graph, plus a GEOMETRY guard: node x-positions must increase with depth (the
 // source column sits left of the target column), which is exactly what sankeyLayout must compute.
 import XCTest
@@ -9,7 +9,7 @@ import ZRenderKit
 
 final class SankeyRenderTests: XCTestCase {
     func testSankeyRendersNodesEdgesAndColumnOrder() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "sankey",
                         "left": "5%", "right": "20%", "top": "5%", "bottom": "5%",

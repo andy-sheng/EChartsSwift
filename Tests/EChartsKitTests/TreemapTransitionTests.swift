@@ -40,7 +40,7 @@ final class TreemapTransitionTests: XCTestCase {
     }
 
     func test_tile_fades_in_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(true))
         guard let tile = firstTile(ec.getRoot()) else { return XCTFail("no treemap tile") }
         // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
@@ -53,7 +53,7 @@ final class TreemapTransitionTests: XCTestCase {
     }
 
     func test_tile_final_opacity_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(false))
         guard let tile = firstTile(ec.getRoot()) else { return XCTFail("no treemap tile") }
         XCTAssertEqual(tile.animators.count, 0, "no animator when animation off")

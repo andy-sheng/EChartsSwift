@@ -29,7 +29,7 @@ import ZRenderKit
 //
 // The default-export free function maps to a top-level free function (CONVENTIONS). Mutates the
 // option bag in place (inout ECUnitOption == [String: Any]), mirroring the sibling preprocessors
-// wired into `EChartsSlim.setOption` (visualMapPreprocessor / timelinePreprocessor).
+// wired into `ECharts.setOption` (visualMapPreprocessor / timelinePreprocessor).
 public func ariaPreprocessor(_ option: inout [String: Any]) {
     // upstream: if (!option || !option.aria) { return; }
     guard var aria = option["aria"] as? [String: Any] else {

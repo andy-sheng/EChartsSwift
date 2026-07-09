@@ -37,7 +37,7 @@ public func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
 
     // Inject `echarts.registerMap(name, data)` for every map this demo registers, BEFORE setOption —
     // real echarts renders a `map`/`geo` series blank otherwise (no map is registered by the option
-    // alone; the native pane registers via EChartsSlim.registerMap, which never reaches the page).
+    // alone; the native pane registers via ECharts.registerMap, which never reaches the page).
     // Each value is a GeoJSON dict or `{ svg: "<string>" }`; both are valid registerMap payloads.
     var registerJS = ""
     for (mapName, mapData) in demo.mapRegistrations {

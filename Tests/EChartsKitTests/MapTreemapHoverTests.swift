@@ -53,7 +53,7 @@ final class MapTreemapHoverTests: XCTestCase {
     // MARK: - Map (region groups)
 
     func testMapRegionHoverEntersEmphasis() {
-        EChartsSlim.registerMap("hoverToy", makeToyGeoJSON())
+        ECharts.registerMap("hoverToy", makeToyGeoJSON())
 
         let view = EChartsView(width: 520, height: 320)
         view.setOption([

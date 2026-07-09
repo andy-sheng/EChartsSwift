@@ -45,7 +45,7 @@ final class SunburstDrillDownTests: XCTestCase {
     }
 
     func test_root_to_node_drills_down_and_center_rolls_up() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option())
 
         guard let model = ec.getModel()?.getSeriesByType("sunburst").first as? SunburstSeriesModel else {

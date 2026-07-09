@@ -4,7 +4,7 @@ import XCTest
 final class L5PrepareViewReuseTests: XCTestCase {
     // A merge-mode second setOption on the same structure must REUSE the chart view instance.
     func testChartViewReusedAcrossMerge() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         let opt: [String: Any] = [
             "xAxis": ["type": "category", "data": ["a", "b", "c"]],
             "yAxis": ["type": "value"],
@@ -22,7 +22,7 @@ final class L5PrepareViewReuseTests: XCTestCase {
     // A series that changes type (bar→line) in merge mode must NOT reuse the bar view — the old bar
     // view is orphaned (its _ec_<id>_bar viewId no longer resolves) and swept.
     func testDeadViewDisposedOnTypeChange() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "category", "data": ["a", "b"]],
                       "yAxis": ["type": "value"],
                       "series": [["type": "bar", "data": [1, 2]]]])

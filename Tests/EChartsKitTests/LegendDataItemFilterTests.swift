@@ -9,13 +9,13 @@ import XCTest
 
 final class LegendDataItemFilterTests: XCTestCase {
 
-    private func pieDataNames(_ ec: EChartsSlim) -> [String] {
+    private func pieDataNames(_ ec: ECharts) -> [String] {
         let data = ec.getModel()!.getSeriesByIndex(0)!.getData()
         return (0..<data.count()).map { data.getName($0) }
     }
 
     // Sum of every slice's laid-out sweep angle; a full doughnut fills 2π regardless of slice count.
-    private func pieAngleSum(_ ec: EChartsSlim) -> Double {
+    private func pieAngleSum(_ ec: ECharts) -> Double {
         let data = ec.getModel()!.getSeriesByIndex(0)!.getData()
         var sum = 0.0
         for idx in 0..<data.count() {
@@ -27,8 +27,8 @@ final class LegendDataItemFilterTests: XCTestCase {
         return sum
     }
 
-    private func makePieWithLegend() -> EChartsSlim {
-        let ec = EChartsSlim(width: 400, height: 300)
+    private func makePieWithLegend() -> ECharts {
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "legend": ["data": ["A", "B", "C", "D"]] as [String: Any],
             "series": [
@@ -71,7 +71,7 @@ final class LegendDataItemFilterTests: XCTestCase {
     }
 
     func testRadarLegendToggleHidesPolygon() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "legend": ["data": ["A", "B", "C"]] as [String: Any],
             "radar": ["indicator": [

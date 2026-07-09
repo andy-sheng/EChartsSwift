@@ -64,7 +64,7 @@ final class PieLabelLayoutTests: XCTestCase {
     }
 
     func testManySlicePieOuterLabelsDoNotOverlapAndOwnLeaderLines() {
-        let ec = EChartsSlim(width: 500, height: 400)
+        let ec = ECharts(width: 500, height: 400)
         // Many small adjacent slices force vertical crowding on one side → avoidOverlap must act.
         var data: [[String: Any]] = []
         for i in 0..<10 {

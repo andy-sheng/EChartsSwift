@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the CUSTOM series (renderItem) vertical (sibling of Bar/Scatter render tests).
-// Drives EChartsSlim with a custom series on a cartesian2d grid whose `renderItem` closure returns one
+// Drives ECharts with a custom series on a cartesian2d grid whose `renderItem` closure returns one
 // `rect` element per datum (a hand-rolled bar), then inspects the ZRenderKit scene: one `Rect` per datum,
 // each with a finite, in-view shape. Phase 26.
 import XCTest
@@ -11,7 +11,7 @@ final class CustomRenderTests: XCTestCase {
 
     func testCustomRendersOneRectPerDatum() {
         let W = 400.0, H = 300.0
-        let ec = EChartsSlim(width: W, height: H)
+        let ec = ECharts(width: W, height: H)
 
         // renderItem returns a rect bar per datum, sized from api.coord/api.size (cartesian2d).
         //   Carried directly on the series option under "renderItem" typed EXACTLY CustomSeriesRenderItem

@@ -23,7 +23,7 @@ final class SankeyTransitionTests: XCTestCase {
                                ["source": "c", "target": "d", "value": 2.0]]] as [String: Any]]]
     }
     func test_node_fades_in_when_animation_on() {
-        let ec = EChartsSlim(width: 460, height: 360); ec.setOption(option(true))
+        let ec = ECharts(width: 460, height: 360); ec.setOption(option(true))
         guard let rect = firstNode(ec.getRoot()) else { return XCTFail("no sankey node rect") }
         // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
         // targeted at "style" and carries an "opacity" leaf track.
@@ -31,7 +31,7 @@ final class SankeyTransitionTests: XCTestCase {
         XCTAssertNotNil(anim, "sankey node should have a style (opacity) animator when animation on")
     }
     func test_node_final_opacity_when_animation_off() {
-        let ec = EChartsSlim(width: 460, height: 360); ec.setOption(option(false))
+        let ec = ECharts(width: 460, height: 360); ec.setOption(option(false))
         guard let rect = firstNode(ec.getRoot()) else { return XCTFail("no sankey node rect") }
         XCTAssertEqual(rect.animators.count, 0, "no animator when animation off")
         XCTAssertGreaterThan(rect.pathStyle.opacity ?? 0, 0.0, "node must be at final (visible) opacity when off — not invisible")

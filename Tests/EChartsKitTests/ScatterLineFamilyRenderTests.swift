@@ -1,4 +1,4 @@
-// END-TO-END RENDER TESTS for the effectScatter + lines verticals (Phase 18). Drives EChartsSlim with a
+// END-TO-END RENDER TESTS for the effectScatter + lines verticals (Phase 18). Drives ECharts with a
 // cartesian option per chart and inspects the ZRenderKit scene:
 //   - effectScatter: one static symbol `Path` per datum (name "item"), at a finite point, palette fill.
 //   - lines: one Line/BezierCurve `Path` per data item (name "line"), at finite endpoints.
@@ -16,7 +16,7 @@ final class ScatterLineFamilyRenderTests: XCTestCase {
     }
 
     func testEffectScatterRendersOneSymbolPerDatum() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],
@@ -50,7 +50,7 @@ final class ScatterLineFamilyRenderTests: XCTestCase {
     }
 
     func testLinesRendersOnePathPerSegment() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value", "min": 0.0, "max": 50.0] as [String: Any],

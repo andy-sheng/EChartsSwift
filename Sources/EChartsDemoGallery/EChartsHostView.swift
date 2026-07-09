@@ -12,7 +12,7 @@
 //   - `EChartsView` has NO `.resize(_:_:_:)` method (that signature only exists on `HeadlessPainter`
 //     in EChartsKit/core/EChartsView.swift). The real resize path — exactly like macOS `ZRenderView`
 //     (NativePainter/ZRenderView.swift:378-388) — is `echartsView.zr.resize(ZRenderResizeOpt)` followed
-//     by `echartsView.zr.refresh()`; that resizes the painter + Handler. Note `EChartsSlim`'s own
+//     by `echartsView.zr.refresh()`; that resizes the painter + Handler. Note `ECharts`'s own
 //     width/height (the chart layout box) has no public resize hook, so the echarts layout itself does
 //     not re-flow on a live resize yet — out of scope for this task.
 //   - `ZRRawEvent` has NO `init(zrX:zrY:)` convenience initializer; it is a plain `ZRRawEvent()` with

@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the Phase-20 CALENDAR coordinate system (the 6th coord system) + its
-// component view. Drives EChartsSlim with a calendar option (a one-month range) and asserts the calendar
+// component view. Drives ECharts with a calendar option (a one-month range) and asserts the calendar
 // BACKDROP reaches the ZRenderKit scene graph: the month/grid outline (Polylines from _renderLines), the
 // day-cell Rect(s), and the day/week/month/year label texts (ZRText). Also guards the coord-sys wiring:
 // CoordinateSystemManager.register("calendar", ...) → Calendar.create builds the coord, CalendarView
@@ -11,7 +11,7 @@ import ZRenderKit
 
 final class CalendarRenderTests: XCTestCase {
     func testCalendarRendersBackdrop() {
-        let ec = EChartsSlim(width: 520, height: 300)
+        let ec = ECharts(width: 520, height: 300)
         ec.setOption([
             "calendar": [
                 "top": 60.0, "left": 40.0, "right": 40.0,

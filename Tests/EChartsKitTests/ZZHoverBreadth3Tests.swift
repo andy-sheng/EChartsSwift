@@ -20,7 +20,7 @@ final class ZZHoverBreadth3Tests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // Series model classes are auto-registered by EChartsSlim; re-registering is idempotent/harmless.
+        // Series model classes are auto-registered by ECharts; re-registering is idempotent/harmless.
         ComponentModel.registerClass(GraphSeriesModel.self)
         ComponentModel.registerClass(TreeSeriesModel.self)
         ComponentModel.registerClass(SankeySeriesModel.self)

@@ -177,7 +177,7 @@ extension DatasetView: ClassManageable {}
 // PORT: the Phase-6b `EChartsExtensionInstallRegisters` stub does not yet expose
 //   `registerComponentModel` / `registerComponentView`; register directly against the class
 //   registries the ported GlobalModel/echarts driver actually reads — the same reachable path
-//   `EChartsSlim` uses for models (`ComponentModel.registerClass(...)`). Swap the two bodies to
+//   `ECharts` uses for models (`ComponentModel.registerClass(...)`). Swap the two bodies to
 //   `registers.registerComponentModel(...)` / `registers.registerComponentView(...)` once the
 //   registrar surface lands. `registers` is threaded through now to keep the upstream call shape.
 public func datasetInstall(_ registers: EChartsExtensionInstallRegisters) {

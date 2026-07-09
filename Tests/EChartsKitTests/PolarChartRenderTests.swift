@@ -2,7 +2,7 @@
 // AngleAxis/RadiusAxis, the second non-cartesian coord sys wired) + the `angleAxis`/`radiusAxis`
 // component backdrop (AngleAxisView draws the angle ring axisLine Circle + split lines + labels;
 // RadiusAxisView draws the radial axis line + ticks + split lines) + ScatterView placing each datum
-// on polar via `dataToPoint([radius, angle])`. Drives EChartsSlim with a real polar option and asserts
+// on polar via `dataToPoint([radius, angle])`. Drives ECharts with a real polar option and asserts
 // BOTH the backdrop (the angle-axis ring Circle + split/tick Lines) and the scatter symbols reach the
 // ZRenderKit scene graph.
 import XCTest
@@ -11,8 +11,8 @@ import ZRenderKit
 
 final class PolarChartRenderTests: XCTestCase {
 
-    private func makePolarChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 460, height: 360)
+    private func makePolarChart() -> ECharts {
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "polar": [
                 "center": ["50%", "54%"],

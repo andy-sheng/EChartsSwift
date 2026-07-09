@@ -41,7 +41,7 @@ final class TreeTransitionTests: XCTestCase {
     }
 
     func test_node_scales_in_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(true))
         guard let sym = firstSymbol(ec.getRoot()) else { return XCTFail("no tree node symbol") }
         XCTAssertGreaterThan(sym.animators.count, 0, "node should have a scale-in animator when animation on")
@@ -60,7 +60,7 @@ final class TreeTransitionTests: XCTestCase {
     }
 
     func test_node_full_scale_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(false))
         guard let sym = firstSymbol(ec.getRoot()) else { return XCTFail("no tree node symbol") }
         XCTAssertEqual(sym.animators.count, 0, "no animator when animation off")

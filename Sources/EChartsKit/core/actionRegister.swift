@@ -2,7 +2,7 @@
 //
 // Upstream registers these at MODULE LOAD (top-level `registerAction({...}, noop)` calls at the bottom
 // of echarts.ts). The slim driver has no module-load side effects, so the equivalent is performed once
-// from `EChartsSlim.installOnce()` via `registerBuiltinActions()` below.
+// from `ECharts.installOnce()` via `registerBuiltinActions()` below.
 //
 // The ACTION HANDLERS are all `noop`: highlight/downplay/select carry no model-mutating `action` — the
 // real work is the LIGHT UPDATE performed by `updateDirectly` (echarts.ts:1772), driven off the
@@ -40,7 +40,7 @@ func registerBuiltinActions() {
     //                   action: noop, refineEvent: makeSelectChangedEvent, publishNonRefinedEvent: true });
     // PORT-TODO: `refineEvent: makeSelectChangedEvent` + `publishNonRefinedEvent` are DEFERRED — the
     //   refine-event producer (`makeSelectChangedEvent`, echarts.ts:3415) and the message-center emission
-    //   are not wired yet (see EChartsSlim.doDispatchAction). Registering with `refineEvent == nil`
+    //   are not wired yet (see ECharts.doDispatchAction). Registering with `refineEvent == nil`
     //   makes `nonRefinedEventType` resolve to 'selectchanged' instead of the action type; harmless while
     //   no events are emitted. The `update`/`action` fields (the parts `updateDirectly` consumes) are exact.
     for selType in [states.SELECT_ACTION_TYPE, states.UNSELECT_ACTION_TYPE, states.TOGGLE_SELECT_ACTION_TYPE] {

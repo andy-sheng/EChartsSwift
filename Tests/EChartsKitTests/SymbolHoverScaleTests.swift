@@ -12,7 +12,7 @@ import XCTest
 
 final class SymbolHoverScaleTests: XCTestCase {
     func testLineSymbolEmphasisEnlargesAndDownplayRestores() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],
             "yAxis": ["type": "value"] as [String: Any],

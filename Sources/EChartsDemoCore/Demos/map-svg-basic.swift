@@ -24,7 +24,7 @@ extension EChartsDemoRegistry {
         mapRegistrations: ["toySVG": ["svg": toySVG] as [String: Any]],
         option: {
             // Register the toy SVG map before the option is consumed (echarts.registerMap('toySVG', {svg})).
-            EChartsSlim.registerMap("toySVG", ["svg": toySVG] as [String: Any])
+            ECharts.registerMap("toySVG", ["svg": toySVG] as [String: Any])
             return [
                 "geo": [
                     "map": "toySVG",
@@ -47,7 +47,7 @@ extension EChartsDemoRegistry {
         width: 520, height: 340,
         mapRegistrations: ["toySVGSeries": ["svg": toySVG] as [String: Any]],
         option: {
-            EChartsSlim.registerMap("toySVGSeries", ["svg": toySVG] as [String: Any])
+            ECharts.registerMap("toySVGSeries", ["svg": toySVG] as [String: Any])
             return [
                 "visualMap": [
                     "type": "continuous",

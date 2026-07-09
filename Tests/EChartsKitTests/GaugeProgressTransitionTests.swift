@@ -28,7 +28,7 @@ final class GaugeProgressTransitionTests: XCTestCase {
     }
 
     func test_progress_sweeps_open_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(true))
         guard let sec = progressSector(ec.getRoot()) else { return XCTFail("no gauge progress Sector") }
         XCTAssertGreaterThan(sec.animators.count, 0, "progress should have an expansion animator when animation on")
@@ -50,7 +50,7 @@ final class GaugeProgressTransitionTests: XCTestCase {
     }
 
     func test_progress_final_angle_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(false))
         guard let sec = progressSector(ec.getRoot()) else { return XCTFail("no gauge progress Sector") }
         XCTAssertEqual(sec.animators.count, 0, "no animator when animation off")

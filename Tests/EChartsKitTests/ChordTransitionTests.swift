@@ -30,7 +30,7 @@ final class ChordTransitionTests: XCTestCase {
     }
 
     func test_node_arc_sweeps_open_when_animation_on() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption(option(true))
         guard let sec = firstChordPiece(ec.getRoot()) else { return XCTFail("no chord node arc") }
         XCTAssertGreaterThan(sec.animators.count, 0, "node arc should have an expansion animator when animation on")
@@ -55,7 +55,7 @@ final class ChordTransitionTests: XCTestCase {
     }
 
     func test_node_arc_final_angle_when_animation_off() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption(option(false))
         guard let sec = firstChordPiece(ec.getRoot()) else { return XCTFail("no chord node arc") }
         XCTAssertEqual(sec.animators.count, 0, "no animator when animation off")

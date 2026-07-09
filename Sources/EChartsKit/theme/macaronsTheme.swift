@@ -3,7 +3,7 @@
 // The built-in "macarons" theme (a widely-used ECharts extension theme). Upstream ships it as a
 // UMD module whose factory builds a `theme` object and calls `echarts.registerTheme('macarons', theme)`.
 // The Swift port exposes the same nested `[String: Any]` tree via `macaronsTheme.theme`, registered by
-// name in `EChartsSlim.installOnce()` (mirroring the upstream `registerTheme('macarons', ...)` call).
+// name in `ECharts.installOnce()` (mirroring the upstream `registerTheme('macarons', ...)` call).
 //
 // upstream: var colorPalette = [ ... ]; var theme = { ... }; echarts.registerTheme('macarons', theme);
 

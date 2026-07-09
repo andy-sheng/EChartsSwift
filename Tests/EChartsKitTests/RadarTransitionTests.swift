@@ -17,7 +17,7 @@ final class RadarTransitionTests: XCTestCase {
         ]
     }
     func test_vertex_scales_in_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(true))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(true))
         guard let v = firstVertex(ec.getRoot()) else { return XCTFail("no radar vertex (name==\"vertex\")") }
         let anim = v.animators.first { $0.getTrack("scaleX") != nil }
         XCTAssertNotNil(anim, "vertex should have a scaleX animator when animation on")
@@ -27,7 +27,7 @@ final class RadarTransitionTests: XCTestCase {
         }
     }
     func test_vertex_full_scale_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(false))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(false))
         guard let v = firstVertex(ec.getRoot()) else { return XCTFail("no radar vertex") }
         XCTAssertEqual(v.animators.count, 0, "no animator when animation off")
         XCTAssertEqual(v.scaleX, 1.0, accuracy: 1e-9, "vertex at full scale when off")

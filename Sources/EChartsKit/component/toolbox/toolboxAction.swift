@@ -52,7 +52,7 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
     //   `render`, which enables its BrushController). The port additionally records the `dataZoomSelect`
     //   arm state on the driver so the live host (`EChartsView`) can switch its rect-drag to a dataZoom
     //   box-select. (DEVIATION vs upstream, where the toolbox feature holds `_isZoomActive`; the slim
-    //   host has no live feature-owned BrushController at drag time — see EChartsSlim.dataZoomSelectActive.)
+    //   host has no live feature-owned BrushController at drag time — see ECharts.dataZoomSelectActive.)
     var cursorInfo = ActionInfo(type: "takeGlobalCursor")
     cursorInfo.event = "globalCursorTaken"
     cursorInfo.update = "update"

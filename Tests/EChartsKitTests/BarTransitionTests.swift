@@ -22,14 +22,14 @@ final class BarTransitionTests: XCTestCase {
     }
 
     func test_bar_enter_animates_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(true))
         guard let rect = firstBarRect(ec.getRoot()) else { return XCTFail("no bar Rect") }
         XCTAssertGreaterThan(rect.animators.count, 0, "bar should have an enter animator when animation is on")
     }
 
     func test_bar_no_animator_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(false))
         guard let rect = firstBarRect(ec.getRoot()) else { return XCTFail("no bar Rect") }
         XCTAssertEqual(rect.animators.count, 0, "bar should have no animator when animation is off")

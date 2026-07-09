@@ -158,7 +158,7 @@ final class DecalPatternTests: XCTestCase {
     }
 
     func testAriaDecalAssignsDistinctDecalsAcrossSeries() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(ariaDecalOption())
         guard let model = ec.getModel() else { return XCTFail("model") }
 
@@ -192,7 +192,7 @@ final class DecalPatternTests: XCTestCase {
         // Without aria.decal.show there is no auto decal.
         var opt = ariaDecalOption()
         opt["aria"] = ["decal": ["show": false] as [String: Any]] as [String: Any]
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(opt)
         let decal = ec.getModel()?.getSeriesByIndex(0)?.getData().getVisual("decal")
         XCTAssertNil(decal, "aria.decal.show:false should not assign a decal")
@@ -210,7 +210,7 @@ final class DecalPatternTests: XCTestCase {
     }
 
     func testBarItemStyleDecalSynthesizesDecalElement() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],
@@ -265,7 +265,7 @@ final class DecalPatternTests: XCTestCase {
                     "dashArrayX": [2, 2], "dashArrayY": [2, 2], "symbolSize": 1
                 ] as [String: Any]] as [String: Any]
             }
-            let ec = EChartsSlim(width: 400, height: 300)
+            let ec = ECharts(width: 400, height: 300)
             ec.setOption([
                 "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
                 "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],

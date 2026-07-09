@@ -19,14 +19,14 @@ import ZRenderKit
 
 final class TreeLabelStyleTests: XCTestCase {
 
-    private func firstSeries(_ ec: EChartsSlim) -> SeriesModel? {
+    private func firstSeries(_ ec: ECharts) -> SeriesModel? {
         var found: SeriesModel?
         ec.getModel()?.eachSeries { s, _ in if found == nil { found = s } }
         return found
     }
 
     func testTreeNodeLabelRoutesThroughSetLabelStyle() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "tree", "left": "10%", "right": "10%", "top": "10%", "bottom": "10%",
                         "orient": "LR",

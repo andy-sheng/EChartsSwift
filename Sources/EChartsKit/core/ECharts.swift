@@ -266,7 +266,7 @@ public struct DispatchActionOpt {
 // ============================================================================
 // The slim ECharts driver.
 // ============================================================================
-public final class EChartsSlim: EChartsType {
+public final class ECharts: EChartsType {
 
     // ---- owned state (mirrors the private fields on upstream `ECharts`) ----
     private var _model: GlobalModel?                             // upstream: this._model
@@ -328,7 +328,7 @@ public final class EChartsSlim: EChartsType {
         self._height = height
         self._userTheme = theme
         self._userLocale = locale
-        EChartsSlim.installOnce()
+        ECharts.installOnce()
         // `_api` needs `self`; all stored properties are initialized above, so it is safe now.
         self._api = SlimExtensionAPI(ec: self)
     }
@@ -348,7 +348,7 @@ public final class EChartsSlim: EChartsType {
     // upstream (echarts.init): theme = isString(theme) ? themeStorage[theme] : theme
     private func resolveTheme() -> [String: Any] {
         if let name = _userTheme as? String {
-            return EChartsSlim._themeStorage[name] ?? [:]
+            return ECharts._themeStorage[name] ?? [:]
         }
         return (_userTheme as? [String: Any]) ?? [:]
     }
@@ -433,7 +433,7 @@ public final class EChartsSlim: EChartsType {
         locale.registerDefaultLocales()
 
         // -- theme/dark.ts + echarts.ts `registerTheme('dark', darkTheme)` -- register the built-in dark
-        //   theme so `EChartsSlim(width:height:theme: "dark")` resolves it by name (mirrors the upstream
+        //   theme so `ECharts(width:height:theme: "dark")` resolves it by name (mirrors the upstream
         //   `themeStorage` lookup in `echarts.init(dom, theme)`).
         registerTheme("dark", darkTheme.theme)
         // Broadened built-in theme spread (ported from upstream/echarts/theme/*.js extension themes).
@@ -452,7 +452,7 @@ public final class EChartsSlim: EChartsType {
         //   `ComponentModel` registry (the path GlobalModel reads) and the view in the `ComponentView`
         //   registry; the slim path resolves the (no-op) DatasetView via the `_componentViewFactories`
         //   entry below (upstream `DatasetView` renders nothing).
-        datasetInstall(EChartsSlim._registers)
+        datasetInstall(ECharts._registers)
 
         // -- component/grid/installSimple.ts + coord/cartesian --
         ComponentModel.registerClass(GridModel.self)                       // registerComponentModel(GridModel)
@@ -775,7 +775,7 @@ public final class EChartsSlim: EChartsType {
         //   axis + tick symbols + control buttons + current-index checkpoint are what render here.
         ComponentModel.registerClass(SliderTimelineModel.self)
         ComponentModel.registerSubTypeDefaulter("timeline", { _ in "slider" })
-        installTimelineAction(EChartsSlim._registers)                      // registerAction('timelineChange'/'timelinePlayChange')
+        installTimelineAction(ECharts._registers)                      // registerAction('timelineChange'/'timelinePlayChange')
 
         // -- component/graphic/install.ts -- registerComponentModel(GraphicComponentModel) +
         //   registerComponentView(GraphicComponentView) + registerPreprocessor(graphicOptionPreprocessor).
@@ -822,7 +822,7 @@ public final class EChartsSlim: EChartsType {
         ComponentModel.registerClass(InsideZoomModel.self)                 // registerComponentModel(InsideZoomModel)
         ComponentModel.registerClass(SliderZoomModel.self)                 // registerComponentModel(SliderZoomModel)
         ComponentModel.registerSubTypeDefaulter("dataZoom", { _ in "slider" })
-        installDataZoomAction(EChartsSlim._registers)                      // registerAction('dataZoom', ...)
+        installDataZoomAction(ECharts._registers)                      // registerAction('dataZoom', ...)
 
         // -- component/tooltip/install.ts -- registerComponentModel(TooltipModel) +
         //   registerComponentView(TooltipView) + ... . Phase 31 ports ONLY the host-independent
@@ -831,7 +831,7 @@ public final class EChartsSlim: EChartsType {
         //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; the
         //   axisPointer model itself is a `[String: Any]` stub (see TooltipModel.swift PORT-TODO).
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
-        installTooltipActions(EChartsSlim._registers)                      // registerAction('showTip'/'hideTip', noop)
+        installTooltipActions(ECharts._registers)                      // registerAction('showTip'/'hideTip', noop)
 
         // -- component/axisPointer/install.ts (Phase 35) -- registerComponentModel(AxisPointerModel) +
         //   registerPreprocessor (ensure a global axisPointer option always exists — done in setOption) +
@@ -850,7 +850,7 @@ public final class EChartsSlim: EChartsType {
         //   out→outOfBrush → dim unselected via blur) execute in `update()`'s visual stage below, and
         //   a minimal rect-drag in EChartsView dispatches `type:"brush"` with the dragged coordRange.
         ComponentModel.registerClass(BrushModel.self)                       // registerComponentModel(BrushModel)
-        installBrushAction(EChartsSlim._registers)                          // registerAction('brush'/'brushSelect'/'brushEnd')
+        installBrushAction(ECharts._registers)                          // registerAction('brush'/'brushSelect'/'brushEnd')
 
         // -- component/toolbox/install.ts (Phase 49, ACTION core) -- registerComponentModel(ToolboxModel) +
         //   the `restore` (ecModel.resetOption('recreate')) + `changeMagicType` (ecModel.mergeOption) action
@@ -858,20 +858,20 @@ public final class EChartsSlim: EChartsType {
         //   brush button) are DEFERRED; the option-expressible feature DATA cores are wired.
         ComponentModel.registerClass(ToolboxModel.self)                     // registerComponentModel(ToolboxModel)
         registerToolboxFeatures()                                           // registerFeature('saveAsImage'/'magicType'/'dataZoom'/'restore')
-        installToolboxActions(EChartsSlim._registers)                       // registerAction('restore'/'changeMagicType')
+        installToolboxActions(ECharts._registers)                       // registerAction('restore'/'changeMagicType')
 
         // component/legend/legendAction.ts `installLegendAction` — registerAction('legendToggleSelect'/
         //   'legendSelect'/'legendUnSelect'/'legendAllSelect'/'legendInverseSelect', update:'update'). A
         //   legend item click dispatches legendToggleSelect (wired in LegendView._createItem); the handler
         //   toggles LegendModel.selected, and the driver's full update() re-runs legendFilter to show/hide.
-        installLegendAction(EChartsSlim._registers)
+        installLegendAction(ECharts._registers)
 
         // -- chart/sunburst/sunburstAction.ts `installSunburstAction` — registerAction('sunburstRootToNode',
         //   update:'updateView'). Clicking a sunburst sector dispatches sunburstRootToNode with the target
         //   node (wired per-piece in SunburstView._bindNodeClick); the handler re-roots the series' viewRoot
         //   (SunburstSeriesModel.resetViewRoot), and the driver's full update() re-runs the sunburst layout
         //   around the new root (drill-down / roll-up). sunburstHighlight/sunburstUnhighlight DEFERRED.
-        installSunburstAction(EChartsSlim._registers)
+        installSunburstAction(ECharts._registers)
 
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
         //   registerComponentModel(MarkPointModel/MarkLineModel/MarkAreaModel) + the auto-enable
@@ -890,7 +890,7 @@ public final class EChartsSlim: EChartsType {
         //   registry (data/helper/transform.swift); `transformInstall` registers both against it so a
         //   `dataset: { transform: { type: "filter" | "sort", config: {...} } }` resolves WITHOUT the
         //   user pre-registering. The "echarts:" namespace makes them callable via the bare "filter"/"sort".
-        transformInstall(EChartsSlim._registers)
+        transformInstall(ECharts._registers)
 
         // -- core/echarts.ts `Default actions` (echarts.ts:3373-3411) -- highlight/downplay/select/
         //   unselect/toggleSelect. Upstream registers these at module load; the slim driver has no
@@ -914,13 +914,13 @@ public final class EChartsSlim: EChartsType {
         // -- chart/tree/install.ts `installTreeAction(registers)` — registerAction('treeExpandAndCollapse')
         //   (node click → toggle node.isExpand, update:'update' re-lays-out) + registerTreeRoamAction()
         //   (the 'treeRoam' view-group roam action). See chart/tree/treeAction.swift.
-        installTreeAction(EChartsSlim._registers)
+        installTreeAction(ECharts._registers)
         registerTreemapRoamAction()
         // -- chart/sankey/install.ts `installSankeyAction(registers)` — registerAction('dragNode',
         //   update:'update') (node drag → SankeySeriesModel.setNodePosition persists localX/localY, the
         //   full update() re-renders the moved node + re-routes its edge ribbons) + registerSankeyRoamAction()
         //   (the 'sankeyRoam' view-group roam action). See chart/sankey/sankeyAction.swift.
-        installSankeyAction(EChartsSlim._registers)
+        installSankeyAction(ECharts._registers)
 
         // -- component/axis/parallelAxisAction.ts `installParallelActions(registers)` — registerAction(
         //   'axisAreaSelect', event 'axisAreaSelected') (sets each queried parallelAxis model's active
@@ -928,7 +928,7 @@ public final class EChartsSlim: EChartsType {
         //   full update) + registerAction('parallelAxisExpand') (the axis expand-window; the LIVE axis-drag
         //   BrushController that would emit these is still // PORT-TODO in ParallelAxisView). See
         //   component/axis/parallelAxisAction.swift.
-        installParallelActions(EChartsSlim._registers)
+        installParallelActions(ECharts._registers)
 
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)
@@ -1214,7 +1214,7 @@ public final class EChartsSlim: EChartsType {
         //   stacked bar/line series render overlaid at the shared baseline instead of stacked.
         dataStack(ecModel)
 
-        for processor in EChartsSlim._registers.capturedProcessors {
+        for processor in ECharts._registers.capturedProcessors {
             processor(ecModel)
         }
 
@@ -1223,7 +1223,7 @@ public final class EChartsSlim: EChartsType {
         //   number so a pie omits negative slices. A per-series `reset` handler; run it over each matching
         //   series (self-gates: no-op when a series has no negative values). Must run in the data-processor
         //   stage before the pie layout reads `getData()`.
-        for filter in EChartsSlim._negativeDataFilters {
+        for filter in ECharts._negativeDataFilters {
             ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
                 _ = filter.reset?(seriesModel, ecModel, api, nil)
             }
@@ -1238,7 +1238,7 @@ public final class EChartsSlim: EChartsType {
         //   shrinks the series' data store; `getData()` is rebuilt on the next update() (restoreData), so
         //   re-selecting restores the item. Must run in the data-processor stage before the pie/radar
         //   layout + visual + view stages read `getData()` (pie re-layouts remaining slices to fill 360).
-        for filter in EChartsSlim._dataFilters {
+        for filter in ECharts._dataFilters {
             ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
                 _ = filter.reset?(seriesModel, ecModel, api, nil)
             }
@@ -1252,7 +1252,7 @@ public final class EChartsSlim: EChartsType {
         //   visual + view stages read `getData()`. Self-gates to a no-op when `sampling` is unset, the series
         //   is not cartesian2d, or the data already fits (count <= 10 or rate <= 1). The axis pixel extent it
         //   reads is available because `Grid.create` resizes with `beforeDataProcessing: true`.
-        for sampler in EChartsSlim._dataSamplers {
+        for sampler in ECharts._dataSamplers {
             ecModel.eachSeriesByType(sampler.seriesType!) { seriesModel, _ in
                 _ = sampler.reset?(seriesModel, ecModel, api, nil)
             }
@@ -1554,13 +1554,13 @@ public final class EChartsSlim: EChartsType {
 
         // LAYOUT — bar cross-series layout (sets bandWidth/offset/size on each series' data layout).
         //   Depends on the axis statistics computed in stage (4).
-        EChartsSlim._barLayoutHandler.overallReset?(ecModel, api, nil)
+        ECharts._barLayoutHandler.overallReset?(ecModel, api, nil)
         // LAYOUT (per item) — the bar PROGRESSIVE_LAYOUT handler computes each bar's x/y/width/height
         //   from bandWidth/offset/size + the cartesian `dataToPoint`, and stores it via
         //   `data.setItemLayout`. This is a SERIES_STAGE_TASK (has `reset`), so drive it through the same
         //   `runSeriesStageHandler` used for the visual stages (the `next`-iterator fix above makes its
         //   `progress` executor actually iterate the data). `BarView.getLayoutCartesian2D` consumes it.
-        runSeriesStageHandler(EChartsSlim._barProgressiveLayoutHandler, ecModel, api)
+        runSeriesStageHandler(ECharts._barProgressiveLayoutHandler, ecModel, api)
 
         // LAYOUT — pictorialBar cross-series + per-item layout (upstream chart/bar/installPictorialBar.ts).
         //   Same two stages as bar (bandWidth/offset/size, then each item's rect x/y/width/height), gated on
@@ -1572,8 +1572,8 @@ public final class EChartsSlim: EChartsType {
         //   has no pictorialBar at all. Gating on presence keeps plain bar charts intact while still laying
         //   out pictorialBar when it is used.
         if !ecModel.getSeriesByType(SERIES_TYPE_PICTORIAL_BAR).isEmpty {
-            EChartsSlim._pictorialBarLayoutHandler.overallReset?(ecModel, api, nil)
-            runSeriesStageHandler(EChartsSlim._pictorialBarProgressiveLayoutHandler, ecModel, api)
+            ECharts._pictorialBarLayoutHandler.overallReset?(ecModel, api, nil)
+            runSeriesStageHandler(ECharts._pictorialBarProgressiveLayoutHandler, ecModel, api)
         }
 
         // LAYOUT — pie angle/radius layout (upstream `registerLayout(pieLayout)`). Pie has no cartesian
@@ -2386,8 +2386,8 @@ public final class EChartsSlim: EChartsType {
 // the abstract `fatalError` (never reached in the bar slice).
 // ============================================================================
 final class SlimExtensionAPI: ExtensionAPI {
-    private unowned let ec: EChartsSlim
-    init(ec: EChartsSlim) {
+    private unowned let ec: ECharts
+    init(ec: ECharts) {
         self.ec = ec
         super.init(ecInstance: ec)
     }
@@ -2432,17 +2432,17 @@ final class SlimExtensionAPI: ExtensionAPI {
     //   These forward to the ported `states.*` element-state helpers (TASK 1). Views + the payload-driven
     //   `updateDirectly` reach element state through these methods (echarts.ts `availableMethods`).
     // upstream: `api.getConnectedDataURL(opts)` — a data-URL string of the rendered chart. The port
-    //   returns the ENCODED PNG/JPEG bytes rendered by the host-injected `EChartsSlim.getRenderedImage`
-    //   (nil in pure headless). See the SaveAsImage host seam note on EChartsSlim.
+    //   returns the ENCODED PNG/JPEG bytes rendered by the host-injected `ECharts.getRenderedImage`
+    //   (nil in pure headless). See the SaveAsImage host seam note on ECharts.
     override func getConnectedDataURL(_ opts: [String: Any]) -> Data? {
         return ec.getRenderedImage?(opts)
     }
     // PORT SEAM: upstream downloads the data URL via a DOM `<a download>`; the port hands the encoded
-    //   bytes to the host's `EChartsSlim.onSaveImage` callback.
+    //   bytes to the host's `ECharts.onSaveImage` callback.
     override func saveAsImage(_ data: Data, _ filename: String) {
         ec.onSaveImage?(data, filename)
     }
-    // Toolbox DataZoom box-select arm state (see EChartsSlim.dataZoomSelectActive). Read by the feature's
+    // Toolbox DataZoom box-select arm state (see ECharts.dataZoomSelectActive). Read by the feature's
     //   `zoom` onclick (so the toggle survives the feature being rebuilt each render) + written by the
     //   `takeGlobalCursor` action handler.
     var dataZoomSelectActiveValue: Bool { ec.dataZoomSelectActive }

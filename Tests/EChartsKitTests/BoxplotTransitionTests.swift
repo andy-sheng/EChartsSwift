@@ -39,7 +39,7 @@ final class BoxplotGrowTests: XCTestCase {
     // ON: a points (shape) animator whose clip carries the collapsed box (all points on the median
     //     baseline along constDim) at t=0 out to the final ends at t=1.
     func test_box_points_grow_when_animation_on() {
-        let ec = EChartsSlim(width: 520, height: 340); ec.setOption(option(true))
+        let ec = ECharts(width: 520, height: 340); ec.setOption(option(true))
         guard let box = firstBox(ec.getRoot()) else { return XCTFail("no boxplot BoxPath") }
 
         let anim = box.animators.first { $0.targetName == "shape" }
@@ -75,7 +75,7 @@ final class BoxplotGrowTests: XCTestCase {
     // OFF: no animator, and the live box sits at its final ends (spans both dims — visible, has area,
     //      not left collapsed on the baseline).
     func test_box_final_points_when_animation_off() {
-        let ec = EChartsSlim(width: 520, height: 340); ec.setOption(option(false))
+        let ec = ECharts(width: 520, height: 340); ec.setOption(option(false))
         guard let box = firstBox(ec.getRoot()) else { return XCTFail("no boxplot BoxPath") }
         XCTAssertEqual(box.animators.count, 0, "no animator when animation off")
         let p = points(box)

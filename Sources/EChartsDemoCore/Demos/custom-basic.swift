@@ -48,7 +48,7 @@ private let customBasicRenderItem: CustomSeriesRenderItem = { _, api in
 }
 
 extension EChartsDemoRegistry {
-    // Lazily initialized on first access (before EChartsSlim.setOption reads demo.option) → registers the
+    // Lazily initialized on first access (before ECharts.setOption reads demo.option) → registers the
     //   closure as a side effect, keeping option JSON-clean.
     static let demo_custom_basic: EChartsDemo = makeCustomBasicDemo()
 }

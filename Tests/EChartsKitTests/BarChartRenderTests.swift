@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST — the milestone proof that an ECharts option renders a bar chart through
-// ZRenderKit. Builds the slim driver (`EChartsSlim`) with a cartesian bar option, runs the full
+// ZRenderKit. Builds the slim driver (`ECharts`) with a cartesian bar option, runs the full
 // setOption/update cycle, and inspects the produced ZRenderKit scene graph (the root `Group`): four
 // bar `Rect`s, each within the grid rect, with monotonic heights, left→right x order, and palette
 // fills. If NativePainter's `CALayerPainter` is reachable, the paint path is also exercised via
@@ -49,7 +49,7 @@ final class BarChartRenderTests: XCTestCase {
 
     func testBarChartRendersFourBars() {
         let width = 400.0, height = 300.0
-        let ec = EChartsSlim(width: width, height: height)
+        let ec = ECharts(width: width, height: height)
         ec.setOption(barChartOption())
 
         // ---- 1. Four bar Rects were emitted. ----

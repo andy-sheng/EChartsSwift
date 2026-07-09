@@ -13,7 +13,7 @@ final class ZZDatasetProbeTests: XCTestCase {
 
     // Series with NO own data -> must read rows from `dataset.source` via the wired SourceManager.
     func testSeriesReadsFromDatasetSource() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "dataset": [
                 ["source": [
@@ -56,7 +56,7 @@ final class ZZDatasetProbeTests: XCTestCase {
             }
         ))
 
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "dataset": [
                 ["source": [

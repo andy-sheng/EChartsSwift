@@ -11,7 +11,7 @@ import XCTest
 // __highByOuter flag — faithful to upstream — so it is not asserted here.)
 final class L5StatesOnReuseTests: XCTestCase {
     func testSelectPersistsAcrossMergeReRender() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["series": [["type": "pie", "selectedMode": true,
                                   "data": [["value": 1, "name": "a"], ["value": 2, "name": "b"]]]]])
         let series = ec.getModel()!.getSeriesByIndex(0)!

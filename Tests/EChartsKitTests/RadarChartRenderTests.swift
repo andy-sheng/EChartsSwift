@@ -2,7 +2,7 @@
 // IndicatorAxis, the first non-cartesian coord sys wired) + the `radar` component backdrop
 // (RadarComponentView draws one axis Line per indicator + merged split-line/area Paths) + RadarView
 // (one Polyline outline + one Polygon area per data item, vertex positions from the radarLayout stage).
-// Drives EChartsSlim with a real radar option and asserts BOTH the backdrop (axis Lines) and the
+// Drives ECharts with a real radar option and asserts BOTH the backdrop (axis Lines) and the
 // series geometry (Polyline outlines + Polygon areas) reach the ZRenderKit scene graph.
 //
 // This also guards the full radar pipeline wiring: the coord-sys creator register (Radar.create builds
@@ -15,7 +15,7 @@ import ZRenderKit
 
 final class RadarChartRenderTests: XCTestCase {
     func testRadarRendersBackdropAndSeries() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "radar": [
                 "center": ["50%", "55%"],

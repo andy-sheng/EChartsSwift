@@ -29,14 +29,14 @@ import ZRenderKit
 //   import { sunburstVisualStageHandler } from './sunburstVisual';           -> sibling sunburstVisual.swift (ported).
 //   import { installSunburstAction } from './sunburstAction';
 //       -> sibling sunburstAction.swift (ported: `sunburstRootToNode` drill-down/roll-up; the deprecated
-//          `sunburstHighlight`/`sunburstUnhighlight` aliases stay DEFERRED). Registered from EChartsSlim
+//          `sunburstHighlight`/`sunburstUnhighlight` aliases stay DEFERRED). Registered from ECharts
 //          .installOnce via `installSunburstAction(_registers)`.
 //   import { sunburstLayoutStageHandler } from './sunburstLayout';           -> sibling sunburstLayout.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
 // PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/boxplot/install.swift). `installSunburstAction`
-//   (`sunburstRootToNode`) IS now ported and called from EChartsSlim.installOnce. Preserved as
+//   (`sunburstRootToNode`) IS now ported and called from ECharts.installOnce. Preserved as
 //   commented source for the diffable surface:
 //
 //     export function install(registers) {

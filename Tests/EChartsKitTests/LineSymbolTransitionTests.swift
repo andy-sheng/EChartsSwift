@@ -23,7 +23,7 @@ final class LineSymbolTransitionTests: XCTestCase {
     }
 
     func test_symbol_scales_in_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(true))
         guard let sym = firstSymbol(ec.getRoot()) else { return XCTFail("no line symbol") }
         XCTAssertGreaterThan(sym.animators.count, 0, "symbol should have a scale-in animator when animation on")
@@ -40,7 +40,7 @@ final class LineSymbolTransitionTests: XCTestCase {
     }
 
     func test_symbol_full_scale_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(option(false))
         guard let sym = firstSymbol(ec.getRoot()) else { return XCTFail("no line symbol") }
         XCTAssertEqual(sym.animators.count, 0, "no animator when animation off")

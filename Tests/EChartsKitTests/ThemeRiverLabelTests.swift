@@ -3,7 +3,7 @@
 // inline ZRText path. Upstream ThemeRiverView.ts routes the layer/series name through
 // `setLabelStyle(polygon, getLabelStatesModels(seriesModel), { defaultText: data.getName(...) }, ...)`,
 // then overrides the textConfig with `{ position: null, local: true }` and positions the label element
-// manually at the band's left-edge vertical center. This test drives EChartsSlim with a real themeRiver
+// manually at the band's left-edge vertical center. This test drives ECharts with a real themeRiver
 // option and asserts, for every band, that:
 //   1. the band has a getTextContent() (setLabelStyle attached one),
 //   2. its textStyle.text == the layer name (the default label the core resolved from opt.defaultText),
@@ -16,7 +16,7 @@ import ZRenderKit
 final class ThemeRiverLabelTests: XCTestCase {
     func testThemeRiverBandLabelsRouteThroughSetLabelStyle() {
         let w = 520.0, h = 380.0
-        let ec = EChartsSlim(width: w, height: h)
+        let ec = ECharts(width: w, height: h)
         ec.setOption([
             "singleAxis": ["type": "value", "left": "10%", "right": "10%",
                            "top": "10%", "bottom": "10%"] as [String: Any],

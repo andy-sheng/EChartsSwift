@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the cartesian PICTORIAL BAR chart (sibling of Bar/ScatterChartRenderTests).
-// Drives EChartsSlim with a category×value pictorialBar option and inspects the ZRenderKit scene: one
+// Drives ECharts with a category×value pictorialBar option and inspects the ZRenderKit scene: one
 // symbol `Path` per datum (each bar draws a symbol sized/positioned to its bar), plus the symbolRepeat
 // variant (many symbols stacked per bar). Verifies the symbols carry a palette fill and sit within the
 // grid rect, and that the paint path executes.
@@ -32,7 +32,7 @@ final class PictorialBarRenderTests: XCTestCase {
         return symbols
     }
 
-    private func gridArea(_ ec: EChartsSlim) -> BoundingRect? {
+    private func gridArea(_ ec: ECharts) -> BoundingRect? {
         var area: BoundingRect?
         ec.getModel()?.eachSeries { s, _ in
             if let c = s.coordinateSystem as? Cartesian2D { area = c.getArea() }
@@ -43,7 +43,7 @@ final class PictorialBarRenderTests: XCTestCase {
     // ---- 1. A single symbol per bar (symbolRepeat off, the default). ----
     func testPictorialBarRendersOneSymbolPerBar() {
         let width = 400.0, height = 300.0
-        let ec = EChartsSlim(width: width, height: height)
+        let ec = ECharts(width: width, height: height)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],
@@ -112,7 +112,7 @@ final class PictorialBarRenderTests: XCTestCase {
 
     // ---- 2. symbolRepeat: many symbols stacked per bar (a taller bar → more symbols). ----
     func testPictorialBarSymbolRepeatEmitsMultipleSymbols() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],

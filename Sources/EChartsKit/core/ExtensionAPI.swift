@@ -146,8 +146,8 @@ open class ExtensionAPI {
     //   `ExtensionAPI.dispatchAction` is `zrUtil.bind(ecInstance.dispatchAction, ecInstance)`. Declared
     //   here as a faithful-signature abstract member so the action round-trip (a view/action handler
     //   calling `api.dispatchAction(...)`) type-checks; the concrete `SlimExtensionAPI` forwards it to
-    //   the driver's `EChartsSlim.dispatchAction`. `opt` models the upstream `boolean | {silent,flush}`
-    //   (see `DispatchActionOpt` in core/EChartsSlim.swift).
+    //   the driver's `ECharts.dispatchAction`. `opt` models the upstream `boolean | {silent,flush}`
+    //   (see `DispatchActionOpt` in core/ECharts.swift).
     open func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-TODO: abstract
     }
@@ -155,14 +155,14 @@ open class ExtensionAPI {
     // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getConnectedDataURL` /
     //   `getDataURL`). Upstream returns a DATA-URL STRING of the rendered chart (a `<canvas>.toDataURL`).
     //   The headless port returns the ENCODED image `Data` (PNG/JPEG bytes) produced by the host-injected
-    //   rasterizer (see EChartsSlim `getRenderedImage`); nil when no host renderer is wired. Only the
+    //   rasterizer (see ECharts `getRenderedImage`); nil when no host renderer is wired. Only the
     //   toolbox SaveAsImage feature reads this in the ported slice. `opts` = { type, backgroundColor,
     //   connectedBackgroundColor, excludeComponents, pixelRatio } (the upstream option bag).
     open func getConnectedDataURL(_ opts: [String: Any]) -> Data? { return nil }
 
     // PORT SEAM (no upstream analog on ExtensionAPI): the toolbox SaveAsImage `onclick` downloads the
     //   data URL via a DOM `<a download>` in the browser. Headless has no download, so the encoded bytes
-    //   are handed to the host via this seam (forwarded to `EChartsSlim.onSaveImage`). Default no-op.
+    //   are handed to the host via this seam (forwarded to `ECharts.onSaveImage`). Default no-op.
     open func saveAsImage(_ data: Data, _ filename: String) { }
 }
 

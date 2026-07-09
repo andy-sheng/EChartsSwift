@@ -2,7 +2,7 @@
 //
 // The iOS twin of the macOS gallery (Sources/EChartsDemoGallery/Entry.swift): the SAME demo
 // registry (EChartsDemoCore), rendered two ways per demo —
-//   - NATIVE:  EChartsKit → EChartsSlim → ZRenderKit → NativePainter, live in an EChartsHostView
+//   - NATIVE:  EChartsKit → ECharts → ZRenderKit → NativePainter, live in an EChartsHostView
 //   - REAL:    the same option fed to echarts.js (upstream/echarts/dist) in a WKWebView
 // as a UISplitViewController: primary = demo list, secondary = the two panes (side-by-side when
 // wide, stacked when narrow) + the same "Native 动画" toggle.
@@ -24,7 +24,7 @@ import EChartsDemoCore
 // ---------------------------------------------------------------------------
 // FitBox — scale-to-fit container for a fixed-logical-size content view.
 //
-// The native chart lays out at the demo's logical size (EChartsSlim has no resize hook), so the
+// The native chart lays out at the demo's logical size (ECharts has no resize hook), so the
 // host view keeps bounds = demo.width × demo.height and is transform-scaled to fit — the exact
 // visual analog of the web pane's `<meta viewport width=demo.width>` scaling. UIKit routes touches
 // through the transform, so interaction coordinates stay logical for free.
@@ -200,7 +200,7 @@ final class DemoDetailViewController: UIViewController {
         navigationItem.prompt = demo.summary
         updatePaneAspect()
 
-        // Native pane: a FRESH host per demo at the demo's logical size (EChartsSlim lays out at
+        // Native pane: a FRESH host per demo at the demo's logical size (ECharts lays out at
         // init size), scale-to-fit via FitBox. Recreating also clears the previous demo's scene.
         nativeFit?.removeFromSuperview()
         hostView = nil

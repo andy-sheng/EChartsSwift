@@ -2,7 +2,7 @@
 //
 // The ECharts analog of Sources/DemoGallery (which compares the ported ZRenderKit against zrender's
 // test/*.html). Here each demo is a REAL ECharts `option`, rendered two ways for a direct visual diff:
-//   - NATIVE:  EChartsKit (the ported echarts) → EChartsSlim driver → ZRenderKit scene graph →
+//   - NATIVE:  EChartsKit (the ported echarts) → ECharts driver → ZRenderKit scene graph →
 //              NativePainter (`renderToImage`) → CGImage.
 //   - HTML:    the SAME option fed to the REAL echarts (`upstream/echarts/dist/echarts.js`, 6.1.0)
 //              running in a WKWebView.
@@ -37,7 +37,7 @@ public struct EChartsDemo {
     /// HTML always renders. Non-bar demos set this false so the gallery shows an honest "native N/A".
     public let nativeSupported: Bool
     /// Maps this demo registers (name → GeoJSON dict, or `["svg": <string>]` for SVG maps).
-    /// The native pane registers these via `EChartsSlim.registerMap` (usually in the option IIFE); the
+    /// The native pane registers these via `ECharts.registerMap` (usually in the option IIFE); the
     /// HTML pane needs the SAME `echarts.registerMap(name, data)` injected into the page BEFORE
     /// setOption — real echarts has no map registered otherwise, so a `map`/`geo` demo renders blank.
     /// Declare a demo's maps here so BOTH panes register them. Order is not significant.

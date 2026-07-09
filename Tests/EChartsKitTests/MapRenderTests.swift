@@ -1,6 +1,6 @@
 // END-TO-END RENDER TEST for the Phase-24 MAP chart (a `series.map` on the geo coordinate system).
 // Registers a SMALL toy GeoJSON (three side-by-side rectangular regions) under map name "toy", drives
-// EChartsSlim with a `series:[{type:"map", map:"toy", data:[{name,value}...]}]` (+ a continuous visualMap),
+// ECharts with a `series:[{type:"map", map:"toy", data:[{name,value}...]}]` (+ a continuous visualMap),
 // and asserts the choropleth reaches the ZRenderKit scene graph:
 //   (1) one region-polygon CompoundPath per feature (MapView wraps each region's Polygon subpaths in a
 //       CompoundPath, same as GeoView), and
@@ -63,9 +63,9 @@ final class MapRenderTests: XCTestCase {
     }
 
     func testMapRendersOneRegionPolygonPerRegion() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
+        ECharts.registerMap("toy", makeToyGeoJSON())
 
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         // The map series must be wired onto a Geo coordinate system (geoCreator map-series-group path).
@@ -86,9 +86,9 @@ final class MapRenderTests: XCTestCase {
     }
 
     func testMapRegionFillsVaryWithValue() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
+        ECharts.registerMap("toy", makeToyGeoJSON())
 
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         var fills: [String] = []

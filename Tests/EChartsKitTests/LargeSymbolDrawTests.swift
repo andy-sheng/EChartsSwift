@@ -10,7 +10,7 @@ import ZRenderKit
 final class LargeSymbolDrawTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(ScatterSeriesModel.self) }
 
-    private func largePaths(_ ec: EChartsSlim) -> [LargeSymbolPath] {
+    private func largePaths(_ ec: ECharts) -> [LargeSymbolPath] {
         var out: [LargeSymbolPath] = []
         _ = ec.getRoot().traverse { el in
             if let p = el as? LargeSymbolPath { out.append(p) }
@@ -19,7 +19,7 @@ final class LargeSymbolDrawTests: XCTestCase {
         return out
     }
 
-    private func symbolGroups(_ ec: EChartsSlim) -> [Symbol] {
+    private func symbolGroups(_ ec: ECharts) -> [Symbol] {
         var out: [Symbol] = []
         _ = ec.getRoot().traverse { el in
             if let s = el as? Symbol { out.append(s) }
@@ -35,7 +35,7 @@ final class LargeSymbolDrawTests: XCTestCase {
         for i in 0..<n {
             data.append([Double(i % 100), Double((i * 7) % 100)])
         }
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "animation": false,
             "xAxis": ["type": "value"] as [String: Any],
@@ -59,7 +59,7 @@ final class LargeSymbolDrawTests: XCTestCase {
 
     // Below the threshold, a large:true series still uses the normal per-point SymbolDraw.
     func testBelowThresholdStaysNormalSymbolDraw() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "animation": false,
             "xAxis": ["type": "value"] as [String: Any],

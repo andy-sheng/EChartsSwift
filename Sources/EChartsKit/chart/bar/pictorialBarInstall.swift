@@ -30,7 +30,7 @@ import ZRenderKit
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> layout/barCommon.swift.
 
 // export function install(registers) { ... }
-// PORT-TODO: registration boilerplate lives in the slim Orchestrate/Integrate driver (EChartsSlim.swift),
+// PORT-TODO: registration boilerplate lives in the slim Orchestrate/Integrate driver (ECharts.swift),
 //   not this render-layer file (same convention as boxplotInstall.swift). The wiring is:
 //     registers.registerChartView(PictorialBarView);           → `_chartViewFactories["pictorialBar"]`
 //     registers.registerSeriesModel(PictorialBarSeriesModel);  → `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
@@ -42,5 +42,5 @@ import ZRenderKit
 //     registerBarGridAxisHandlers(registers);   → already invoked for 'pictorialBar' by the bar wiring
 //         (registerBarGridAxisHandlers registers BOTH 'bar' and 'pictorialBar' axis handlers).
 //
-//   The two layout handlers + the series/view registration are performed in EChartsSlim.installOnce()
+//   The two layout handlers + the series/view registration are performed in ECharts.installOnce()
 //   and the layout stage; see the `-- chart/bar/installPictorialBar.ts --` block there.

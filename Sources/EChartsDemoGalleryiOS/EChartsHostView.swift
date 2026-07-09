@@ -10,7 +10,7 @@
 //
 // Sizing: unlike the macOS host (which is created once and live-resized), the iOS gallery creates a
 // fresh host per demo at the demo's LOGICAL size and scale-to-fits it via transform (see FitBox in
-// Entry.swift). `EChartsSlim` has no public resize hook — the chart lays out at its init size — so
+// Entry.swift). `ECharts` has no public resize hook — the chart lays out at its init size — so
 // fixing the host at demo.width × demo.height keeps the native layout box identical to the web
 // pane's fixed-size div, which the viewport meta scales the same way. Touch coordinates stay in the
 // logical space automatically (UIKit routes touches through the transform).

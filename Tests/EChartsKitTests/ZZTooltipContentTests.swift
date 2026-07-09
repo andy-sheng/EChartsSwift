@@ -22,8 +22,8 @@ final class ZZTooltipContentTests: XCTestCase {
         ComponentModel.registerClass(TooltipModel.self)
     }
 
-    private func makeBarChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 400, height: 300)
+    private func makeBarChart() -> ECharts {
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "tooltip": ["trigger": "item"] as [String: Any],
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],

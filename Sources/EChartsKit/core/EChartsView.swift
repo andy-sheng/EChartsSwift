@@ -3,14 +3,14 @@
 // ============================================================================
 // WHAT THIS FILE IS
 // ============================================================================
-// Phase 33 makes interaction LIVE. `EChartsSlim` (core/EChartsSlim.swift) is the render driver — it
+// Phase 33 makes interaction LIVE. `ECharts` (core/ECharts.swift) is the render driver — it
 // builds a display list into its `storage`/`root` and owns `dispatchAction`. But upstream, the thing
 // that turns a POINTER MOVE into an emphasis highlight is `ECharts._initEvents` (echarts.ts:1290),
 // which binds `zr.on('mouseover' / 'mouseout' / 'click' / …)` against the LIVE zrender `Handler` and,
 // for each element event, walks up to the nearest highDown dispatcher and enters/leaves emphasis.
 //
-// `EChartsSlim` is deliberately zrender-less (it owns a bare `Storage`, not a `ZRender`, so it can be
-// unit-tested headlessly). This file is the missing seam: a HOST-BINDING that couples an `EChartsSlim`
+// `ECharts` is deliberately zrender-less (it owns a bare `Storage`, not a `ZRender`, so it can be
+// unit-tested headlessly). This file is the missing seam: a HOST-BINDING that couples an `ECharts`
 // to a LIVE ZRenderKit `ZRender` whose `Handler` hit-tests + dispatches over the echarts display list,
 // and reproduces the `_initEvents` binding so hovering a bar (etc.) enters emphasis end-to-end.
 //
@@ -70,7 +70,7 @@ public final class HeadlessPainter: PainterBase {
 public final class EChartsView {
 
     /// The render driver (owns the model → coord → view pipeline + `dispatchAction`).
-    public let ec: EChartsSlim
+    public let ec: ECharts
 
     /// The LIVE zrender instance whose `Handler` hit-tests + dispatches over the echarts display list.
     /// Exposed so a test can drive input directly (`view.zr.handler.mousemove(...)`) — see also
@@ -82,7 +82,7 @@ public final class EChartsView {
 
     // ------------------------------------------------------------------------
     // tooltipView — Phase 34. `EChartsView` OWNS the (slim, trigger:'item') `TooltipView`; upstream a
-    //   `ComponentView` reaches the live zr via `api.getZr()`, but `EChartsSlim` has no live zr, so the
+    //   `ComponentView` reaches the live zr via `api.getZr()`, but `ECharts` has no live zr, so the
     //   view is constructed over THIS view's live `zr` and its `TooltipRichContent` ZRText floats above
     //   `ec.getRoot()` (added to `zr` directly, NOT the ec render group — so a re-render does not wipe it
     //   and `findHover` still hit-tests the chart bars beneath). Built lazily on first hover (the global
@@ -96,7 +96,7 @@ public final class EChartsView {
     //   Upstream, `AxisView._doUpdateAxisPointerClass` instantiates a per-axis `CartesianAxisPointer`
     //   (registered via `AxisView.registerAxisPointerClass`) and the `updateAxisPointer` action routes
     //   each axis' render. In THIS slim port there is no live per-axis `AxisView` hosting a zr at render
-    //   time (EChartsSlim is zr-less), so — exactly like the Phase-34/35 tooltip — `EChartsView` OWNS the
+    //   time (ECharts is zr-less), so — exactly like the Phase-34/35 tooltip — `EChartsView` OWNS the
     //   pointer managers and drives them DIRECTLY on hover, PARALLEL to the axis tooltip.
     //
     //   `axisTrigger` (run on every hover mousemove in `_bindAxisPointerListeners`) already computes and
@@ -190,7 +190,7 @@ public final class EChartsView {
     //   `storage` hit-tests + paints the echarts elements.
     // ------------------------------------------------------------------------
     public init(width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
-        self.ec = EChartsSlim(width: width, height: height)
+        self.ec = ECharts(width: width, height: height)
         let painter = painter ?? HeadlessPainter(width: width, height: height)
         // Free `zrender.init(...)` helper (ZRender.swift). `proxy: nil` → Handler uses `EmptyProxy`,
         //   so synthetic input is driven directly through `zr.handler` (no native input bridge needed).
@@ -198,9 +198,9 @@ public final class EChartsView {
         _initEvents()
     }
 
-    /// Convenience: bind an already-built `EChartsSlim`. (The slim driver's size is fixed at its own
+    /// Convenience: bind an already-built `ECharts`. (The slim driver's size is fixed at its own
     /// init; `width`/`height` here only size the injected headless painter / zr surface.)
-    public init(ec: EChartsSlim, width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
+    public init(ec: ECharts, width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
         self.ec = ec
         let painter = painter ?? HeadlessPainter(width: width, height: height)
         self.zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
@@ -529,7 +529,7 @@ public final class EChartsView {
     //   `zr.on('mousewheel')` and, on a wheel, computes each inside-dataZoom's new range via
     //   `getRangeHandlers.zoom` (InsideZoomView.ts) and dispatches ONE throttled `{type:'dataZoom', batch}`.
     //   In THIS slim port there is no live per-component `InsideZoomView` hosting a zr at render time
-    //   (EChartsSlim is zr-less), so — exactly like the Phase-34/35 tooltip & Phase-36 axisPointer —
+    //   (ECharts is zr-less), so — exactly like the Phase-34/35 tooltip & Phase-36 axisPointer —
     //   `EChartsView` OWNS the wheel binding and reproduces the zoom MATH directly against the live `zr`.
     //
     //   FAITHFULNESS: the scale factor (`RoamController._mousewheelHandler`) and the range recompute

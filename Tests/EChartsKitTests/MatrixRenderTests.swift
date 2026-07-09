@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the Phase-25 MATRIX coordinate system (the 8th coord system) + its component
-// view. Drives EChartsSlim with a matrix option (a 3-column x 2-row table with header labels + body cells)
+// view. Drives ECharts with a matrix option (a 3-column x 2-row table with header labels + body cells)
 // and asserts the matrix BACKDROP reaches the ZRenderKit scene graph: the x/y header cell Rects + their
 // text labels (ZRText), the body intersection cell Rects, plus the outer border/background Rects. Also
 // guards the coord-sys wiring: CoordinateSystemManager.register("matrix", ...) → Matrix.create builds the
@@ -32,7 +32,7 @@ final class MatrixRenderTests: XCTestCase {
     }
 
     func testMatrixRendersTableCellsAndHeaderLabels() {
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         var rects = 0
@@ -58,7 +58,7 @@ final class MatrixRenderTests: XCTestCase {
     }
 
     func testMatrixGeometryViaDataToLayout() {
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         // Reach the Matrix coord instance via the matrix component model (proves the coord-sys wiring).

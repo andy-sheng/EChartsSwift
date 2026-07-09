@@ -82,7 +82,7 @@ public enum locale {
     //   registerLocale(LOCALE_EN, langEN);
     //   registerLocale(LOCALE_ZH, langZH);
     // A caseless enum has no module side-effect slot, so the default registration runs on
-    // first access via this idempotent installer (invoked from EChartsSlim.installOnce()).
+    // first access via this idempotent installer (invoked from ECharts.installOnce()).
     //
     // Upstream only side-effect-registers EN + ZH from core/locale.ts; the other i18n/langXX
     // bundles are opt-in in the browser build (the user imports the bundle, which calls

@@ -15,7 +15,7 @@ final class SunburstEmphasisTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // Canonical owner registration (idempotent; EChartsSlim.installOnce also registers it).
+        // Canonical owner registration (idempotent; ECharts.installOnce also registers it).
         ComponentModel.registerClass(SunburstSeriesModel.self)
     }
 

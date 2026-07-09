@@ -5,7 +5,7 @@
 // not a code defect.
 //
 // The chain verified here:
-//   EChartsView.setOption → EChartsSlim render (collapsed sector + initProps animator)
+//   EChartsView.setOption → ECharts render (collapsed sector + initProps animator)
 //     → _syncRoot (zr.add(root) → Group.addSelfToZr registers the animator with the LIVE zr.animation)
 //     → zr.animation.update() steps the clip → ShapeAnimationAccessor writes endAngle + dirtyShape
 //     → (in the app: stage.update → _flush → painter.refresh repaints).
@@ -28,7 +28,7 @@ final class LiveAnimationTickTests: XCTestCase {
             "series": [["type": "pie", "radius": "60%",
                         "data": [["value": 40.0, "name": "a"], ["value": 60.0, "name": "b"]]]]
         ]
-        let view = EChartsView(width: 400, height: 400)   // a REAL zr + _syncRoot, unlike the zr-less EChartsSlim
+        let view = EChartsView(width: 400, height: 400)   // a REAL zr + _syncRoot, unlike the zr-less ECharts
         view.setOption(opt)
         let sec = firstSector(view.ec.getRoot())!
         return (view, sec)

@@ -63,7 +63,7 @@ public enum aria {
     //
     // The upstream `ariaVisual` writes the generated label to the DOM (`dom.setAttribute('aria-label', ...)`).
     // There is no DOM in this native port, so the label is RETURNED (see `ariaLabel(...)`) and the driver
-    // (`EChartsSlim`) stores it on the ec instance + exposes it via `getAriaLabel()`. This stage handler is
+    // (`ECharts`) stores it on the ec instance + exposes it via `getAriaLabel()`. This stage handler is
     // kept for faithfulness (mirrors the upstream registration shape) and simply drives the generator; the
     // computed string is dropped here because a `StageHandler` returns Void — the driver calls
     // `aria.ariaLabel(ecModel, api)` directly so it can capture the result.

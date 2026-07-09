@@ -16,7 +16,7 @@ final class ZZRadarParallelHoverTests: XCTestCase {
 
     // ---- RADAR: each item Group is a dispatcher; highlight enters emphasis, downplay clears ----
     func testRadarPolygonHoverEntersEmphasis() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "radar": [
                 "center": ["50%", "55%"],
@@ -72,7 +72,7 @@ final class ZZRadarParallelHoverTests: XCTestCase {
 
     // ---- PARALLEL: each data Polyline is a dispatcher; highlight enters emphasis, downplay clears ----
     func testParallelLineHoverEntersEmphasis() {
-        let ec = EChartsSlim(width: 520, height: 380)
+        let ec = ECharts(width: 520, height: 380)
         ec.setOption([
             "parallelAxis": [
                 ["dim": 0, "name": "Price"]  as [String: Any],

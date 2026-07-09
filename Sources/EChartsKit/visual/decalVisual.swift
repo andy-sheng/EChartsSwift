@@ -30,7 +30,7 @@ import ZRenderKit
 // upstream: export const decalVisualStageHandler = createSimpleOverallStageHandler2(decalVisual);
 //   Registered at PRIORITY.VISUAL.DECAL (7000) — AFTER the style tasks (GLOBAL/CHART_DATA_CUSTOM) and
 //   the aria decal assignment (ARIA, 6000). The slim driver invokes its `overallReset` in the visual
-//   stage (see EChartsSlim.performVisualStage / the aria + decal calls in the update pipeline).
+//   stage (see ECharts.performVisualStage / the aria + decal calls in the update pipeline).
 public let decalVisualStageHandler: StageHandler =
     model.createSimpleOverallStageHandler2 { ecModel, api, _ in
         decalVisual(ecModel, api)

@@ -43,7 +43,7 @@ final class TreemapLabelStyleTests: XCTestCase {
     }
 
     func test_leaf_tile_label_routes_through_setLabelStyle() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option())
 
         var tiles: [ZRenderKit.Rect] = []

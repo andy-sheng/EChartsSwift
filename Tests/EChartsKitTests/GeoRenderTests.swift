@@ -1,6 +1,6 @@
 // END-TO-END RENDER TEST for the Phase-23 GEO coordinate system (the 7th coord system) + its component
 // view. Registers a SMALL toy GeoJSON (three side-by-side rectangular regions) under map name "toy",
-// drives EChartsSlim with `geo: { map: "toy" }`, and asserts the geo BACKDROP reaches the ZRenderKit
+// drives ECharts with `geo: { map: "toy" }`, and asserts the geo BACKDROP reaches the ZRenderKit
 // scene graph: one region polygon CompoundPath per feature (GeoView wraps each region's Polygon subpaths
 // in a CompoundPath). Also guards the coord-sys wiring: CoordinateSystemManager.register("geo", geoCreator)
 // → GeoCreator.create builds the Geo coord, geoModel.coordinateSystem is set, and Geo.dataToPoint projects
@@ -35,9 +35,9 @@ final class GeoRenderTests: XCTestCase {
     }
 
     func testGeoRendersRegionBackdrop() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
+        ECharts.registerMap("toy", makeToyGeoJSON())
 
-        let ec = EChartsSlim(width: 520, height: 300)
+        let ec = ECharts(width: 520, height: 300)
         ec.setOption([
             "geo": [
                 "map": "toy",
@@ -62,9 +62,9 @@ final class GeoRenderTests: XCTestCase {
     }
 
     func testGeoDataToPointProjectsAndOrders() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
+        ECharts.registerMap("toy", makeToyGeoJSON())
 
-        let ec = EChartsSlim(width: 520, height: 300)
+        let ec = ECharts(width: 520, height: 300)
         ec.setOption([
             "geo": [
                 "map": "toy",

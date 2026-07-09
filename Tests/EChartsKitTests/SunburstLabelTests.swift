@@ -38,7 +38,7 @@ final class SunburstLabelTests: XCTestCase {
     }
 
     func test_sector_labels_go_through_shared_label_core() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option())
 
         var labelTexts: [String] = []

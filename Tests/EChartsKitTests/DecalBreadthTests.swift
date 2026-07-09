@@ -6,7 +6,7 @@
 //   (b) SeriesModel.enableAriaDecal (chart/helper/enableAriaDecalForTree) — aria.decal.show assigns a
 //       per-node decal visual to a tree-structured series (treemap).
 //
-// EChartsSlim registers all built-in series in its init, so no manual registerClass is needed here
+// ECharts registers all built-in series in its init, so no manual registerClass is needed here
 // (avoids the process-global registry-pollution trap).
 
 import XCTest
@@ -29,7 +29,7 @@ final class DecalBreadthTests: XCTestCase {
     // ---- (a) pie ------------------------------------------------------------------------------
 
     func testPieItemStyleDecalSynthesizesDecalElement() {
-        let ec = EChartsSlim(width: 400, height: 320)
+        let ec = ECharts(width: 400, height: 320)
         ec.setOption([
             "series": [["type": "pie", "radius": "65%",
                         "data": [
@@ -71,7 +71,7 @@ final class DecalBreadthTests: XCTestCase {
     // ---- (a) funnel ---------------------------------------------------------------------------
 
     func testFunnelItemStyleDecalSynthesizesDecalElement() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption([
             "animation": false,
             "series": [["type": "funnel",
@@ -107,7 +107,7 @@ final class DecalBreadthTests: XCTestCase {
     func testScatterSymbolDecalIsDisabledFaithfully() {
         // Series-level itemStyle.decal — every symbol would receive it via barStyleFromDict, but the
         // Symbol path clears it (faithful to upstream).
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 40.0, "top": 20.0, "width": 320.0, "height": 220.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],
@@ -156,8 +156,8 @@ final class DecalBreadthTests: XCTestCase {
     }
 
     func testMapRegionItemStyleDecalSynthesizesDecalElement() {
-        EChartsSlim.registerMap("toyDecal", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toyDecal", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption([
             "series": [[
                 "type": "map",
@@ -194,7 +194,7 @@ final class DecalBreadthTests: XCTestCase {
     // ---- (b) enableAriaDecal for tree-structured series (treemap) ------------------------------
 
     func testAriaDecalAssignsDecalsToTreemapNodes() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption([
             "aria": ["decal": ["show": true] as [String: Any]] as [String: Any],
             "series": [[
@@ -255,7 +255,7 @@ final class DecalBreadthTests: XCTestCase {
     }
 
     func testAriaDecalDisabledLeavesTreemapNodesWithoutDecal() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption([
             "series": [[
                 "type": "treemap",

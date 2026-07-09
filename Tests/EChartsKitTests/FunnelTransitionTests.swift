@@ -15,7 +15,7 @@ final class FunnelTransitionTests: XCTestCase {
          "series": [["type": "funnel", "data": [["value": 60.0, "name": "a"], ["value": 40.0, "name": "b"]]]]]
     }
     func test_piece_fades_in_when_animation_on() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(true))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(true))
         guard let poly = firstPiece(ec.getRoot()) else { return XCTFail("no funnel polygon") }
         // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
         // targeted at "style" and carries an "opacity" leaf track (see EffectScatterAnimationTests'
@@ -24,7 +24,7 @@ final class FunnelTransitionTests: XCTestCase {
         XCTAssertNotNil(anim, "funnel piece should have a style (opacity) animator when animation on")
     }
     func test_piece_final_opacity_when_animation_off() {
-        let ec = EChartsSlim(width: 400, height: 400); ec.setOption(option(false))
+        let ec = ECharts(width: 400, height: 400); ec.setOption(option(false))
         guard let poly = firstPiece(ec.getRoot()) else { return XCTFail("no funnel polygon") }
         XCTAssertEqual(poly.animators.count, 0, "no animator when animation off")
         XCTAssertGreaterThan(poly.pathStyle.opacity ?? 0, 0.0, "piece must be at final (visible) opacity when off — not invisible")

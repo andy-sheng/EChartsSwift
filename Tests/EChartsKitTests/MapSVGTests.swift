@@ -26,9 +26,9 @@ final class MapSVGTests: XCTestCase {
     // MARK: (a) emphasis on a named region
 
     func test_geoSVG_namedRegion_entersEmphasisOnHighlight() {
-        EChartsSlim.registerMap("emphSVG", ["svg": toySVG] as [String: Any])
+        ECharts.registerMap("emphSVG", ["svg": toySVG] as [String: Any])
 
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption([
             "geo": [
                 "map": "emphSVG",
@@ -64,9 +64,9 @@ final class MapSVGTests: XCTestCase {
     // MARK: (b) region name labels
 
     func test_geoSVG_namedRegions_getNameLabels() {
-        EChartsSlim.registerMap("labelSVG", ["svg": toySVG] as [String: Any])
+        ECharts.registerMap("labelSVG", ["svg": toySVG] as [String: Any])
 
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption([
             "geo": [
                 "map": "labelSVG",
@@ -100,7 +100,7 @@ final class MapSVGTests: XCTestCase {
     }
 
     func test_geoSVG_roamShiftsSvgRootGroup() {
-        EChartsSlim.registerMap("roamSVG", ["svg": toySVG] as [String: Any])
+        ECharts.registerMap("roamSVG", ["svg": toySVG] as [String: Any])
 
         let view = EChartsView(width: 520, height: 320)
         view.setOption([
@@ -136,7 +136,7 @@ final class MapSVGTests: XCTestCase {
 
     // A geo SVG WITHOUT roam is inert to a drag.
     func test_geoSVG_noRoamIsInert() {
-        EChartsSlim.registerMap("inertSVG", ["svg": toySVG] as [String: Any])
+        ECharts.registerMap("inertSVG", ["svg": toySVG] as [String: Any])
 
         let view = EChartsView(width: 520, height: 320)
         view.setOption([
@@ -164,9 +164,9 @@ final class MapSVGTests: XCTestCase {
     // MARK: (d) series:"map" on an SVG map colours regions by value
 
     func test_mapSeriesSVG_bindsValueToNamedRegion_colorsByValue() {
-        EChartsSlim.registerMap("seriesSVG", ["svg": toySVG] as [String: Any])
+        ECharts.registerMap("seriesSVG", ["svg": toySVG] as [String: Any])
 
-        let ec = EChartsSlim(width: 520, height: 320)
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption([
             "visualMap": [
                 "type": "continuous",

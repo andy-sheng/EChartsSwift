@@ -3,7 +3,7 @@
 // The built-in "vintage" theme (a widely-used ECharts extension theme). Upstream ships it as a
 // UMD module whose factory calls `echarts.registerTheme('vintage', { color, backgroundColor, graph })`.
 // The Swift port exposes the same nested `[String: Any]` tree via `vintageTheme.theme`, registered by
-// name in `EChartsSlim.installOnce()` (mirroring the upstream `registerTheme('vintage', ...)` call).
+// name in `ECharts.installOnce()` (mirroring the upstream `registerTheme('vintage', ...)` call).
 //
 // upstream: var colorPalette = [ ... ]; echarts.registerTheme('vintage', { ... });
 

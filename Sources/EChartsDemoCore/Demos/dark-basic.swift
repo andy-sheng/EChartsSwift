@@ -4,7 +4,7 @@
 // echarts.js dist); the echarts.js dist does not bundle the separate `theme/dark` module, so this
 // demo INLINES the dark theme's key visuals (backgroundColor + light textStyle + dark axis colors,
 // taken straight from `tokens.darkColor`) into the option so both panes render an identical dark
-// chart. The full theme/dark.ts dictionary + `EChartsSlim(theme:"dark")` merge path is exercised by
+// chart. The full theme/dark.ts dictionary + `ECharts(theme:"dark")` merge path is exercised by
 // ThemeLocaleTests (dark backgroundColor + light textStyle via GlobalModel.mergeTheme).
 import EChartsKit
 

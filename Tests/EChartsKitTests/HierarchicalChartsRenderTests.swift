@@ -1,6 +1,6 @@
 // END-TO-END RENDER TESTS for the Phase-10 hierarchical chart verticals: sunburst (Sector per tree
 // node), treemap (Rect per tree node), tree (Symbol + parent/child edge per node). Each drives
-// EChartsSlim with a real hierarchical option and asserts elements reach the ZRenderKit scene. These
+// ECharts with a real hierarchical option and asserts elements reach the ZRenderKit scene. These
 // also guard the SeriesData.cloneShallow tree re-link fix: without firing linkSeriesData's cloneShallow
 // injection, `getData().tree` would be nil after dataTaskReset and every hierarchical series would
 // render empty (sunburst force-unwraps `tree!` and would crash).
@@ -10,7 +10,7 @@ import ZRenderKit
 
 final class HierarchicalChartsRenderTests: XCTestCase {
     func testSunburstRendersSectors() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption([
             "series": [["type": "sunburst", "radius": ["0%", "90%"],
                         "data": [["name": "A", "children": [["name": "A1", "value": 3.0],
@@ -23,7 +23,7 @@ final class HierarchicalChartsRenderTests: XCTestCase {
     }
 
     func testTreemapRendersRects() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "treemap", "left": "5%", "top": 20.0, "width": "90%", "height": 320.0,
                         "data": [["name": "a", "value": 10.0, "children": [["name": "a1", "value": 4.0],
@@ -36,7 +36,7 @@ final class HierarchicalChartsRenderTests: XCTestCase {
     }
 
     func testTreeRendersNodesAndEdges() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "tree", "left": "10%", "right": "10%", "top": "10%", "bottom": "10%",
                         "orient": "LR",
@@ -53,7 +53,7 @@ final class HierarchicalChartsRenderTests: XCTestCase {
     // the node symbols and the edge Lines reach the scene graph (the layout stage must run before the
     // GraphView render, and the edge Lines are straight — curveness 0 — under the default circular layout).
     func testGraphRendersNodesAndEdges() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "graph", "layout": "circular",
                         "left": "10%", "right": "10%", "top": "10%", "bottom": "10%",

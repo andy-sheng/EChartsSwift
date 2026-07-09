@@ -12,7 +12,7 @@ import XCTest
 //   fixed here  : any view whose test below failed and got a group-clear guard (see commit)
 final class L5ViewReuseSafetyTests: XCTestCase {
 
-    private func rootElementCount(_ ec: EChartsSlim) -> Int {
+    private func rootElementCount(_ ec: ECharts) -> Int {
         var n = 0
         _ = ec.root.traverse({ _ in n += 1; return false })
         return n
@@ -21,7 +21,7 @@ final class L5ViewReuseSafetyTests: XCTestCase {
     // Recursive element count of the SERIES (chart-view) subtrees only. Excludes component views so a
     // legitimately-rescaled value axis (more ticks/splitLines when the data range widens) is not
     // mistaken for a leak. Series-view reuse safety is exactly what this must isolate.
-    private func seriesElementCount(_ ec: EChartsSlim) -> Int {
+    private func seriesElementCount(_ ec: ECharts) -> Int {
         var n = 0
         for v in ec.testChartViews { _ = v.group.traverse({ _ in n += 1; return false }) }
         return n
@@ -29,7 +29,7 @@ final class L5ViewReuseSafetyTests: XCTestCase {
 
     private func assertNoDuplication(_ name: String, _ option: [String: Any], update: [String: Any],
                                      file: StaticString = #filePath, line: UInt = #line) {
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption(option)
 
         // (1) Identical-data reuse must be EXACTLY stable at the whole-root level — the strongest

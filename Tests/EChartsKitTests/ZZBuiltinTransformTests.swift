@@ -1,7 +1,7 @@
 // Phase 28 regression tests — BUILT-IN filter/sort data transforms wired via install.
 //
-// These drive both built-ins through a real `EChartsSlim.setOption` WITHOUT any manual
-// `registerExternalTransform` call. Creating an `EChartsSlim` runs `installOnce()`, which calls
+// These drive both built-ins through a real `ECharts.setOption` WITHOUT any manual
+// `registerExternalTransform` call. Creating an `ECharts` runs `installOnce()`, which calls
 // `transformInstall` and registers `echarts:filter` / `echarts:sort` (callable as bare "filter"/"sort").
 // If the install wiring regresses, `applyDataTransform` throws "Can not find transform on type ..."
 // and these tests fail — proving the transforms are auto-registered.
@@ -16,7 +16,7 @@ final class ZZBuiltinTransformTests: XCTestCase {
 
     // Built-in `filter`: keep rows whose dim-1 value > 15. NO manual registration.
     func testBuiltinFilterTransform() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "dataset": [
                 ["source": [
@@ -44,7 +44,7 @@ final class ZZBuiltinTransformTests: XCTestCase {
 
     // Built-in `sort`: order desc by dim-1. First row must be the max. NO manual registration.
     func testBuiltinSortTransform() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "dataset": [
                 ["source": [

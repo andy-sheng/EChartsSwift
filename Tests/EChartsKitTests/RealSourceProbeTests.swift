@@ -6,7 +6,7 @@ import ZRenderKit
 @testable import EChartsKit
 
 final class RealDataPipelineTests: XCTestCase {
-    // `ComponentModel.registerClass` is a GLOBAL registry; other suites (EChartsSlimSmokeTests,
+    // `ComponentModel.registerClass` is a GLOBAL registry; other suites (EChartsSmokeTests,
     // CartesianCoordTests) register empty-data `series.bar` doubles that persist across tests. Since
     // this suite deliberately exercises the REAL models, re-register them so the test is order-independent.
     override func setUp() {
@@ -16,7 +16,7 @@ final class RealDataPipelineTests: XCTestCase {
     }
 
     func testRealBarNoDouble() {
-        let ec = EChartsSlim(width: 400, height: 300)   // registers the REAL BarSeriesModel via installOnce
+        let ec = ECharts(width: 400, height: 300)   // registers the REAL BarSeriesModel via installOnce
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D"]] as [String: Any],
@@ -35,7 +35,7 @@ final class RealDataPipelineTests: XCTestCase {
     }
 
     func testRealLineNoDouble() {
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption([
             "grid": ["left": 40.0, "top": 20.0, "right": 20.0, "bottom": 30.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D", "E", "F"]] as [String: Any],

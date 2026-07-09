@@ -12,7 +12,7 @@ import ZRenderKit
 
 final class SankeyLabelTests: XCTestCase {
     func testSankeyNodeLabelUsesSharedLabelCore() {
-        let ec = EChartsSlim(width: 460, height: 360)
+        let ec = ECharts(width: 460, height: 360)
         ec.setOption([
             "series": [["type": "sankey",
                         "left": "5%", "right": "20%", "top": "5%", "bottom": "5%",

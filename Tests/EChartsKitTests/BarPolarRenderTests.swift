@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for polar-coordinate bar rendering (BarView.swift `_renderPolarBars`).
-// Drives EChartsSlim with the canonical bar-on-polar option (category angleAxis + value radiusAxis,
+// Drives ECharts with the canonical bar-on-polar option (category angleAxis + value radiusAxis,
 // mirrors the gallery `bar-polar-radial` demo) and asserts each datum becomes a ZRenderKit `Sector`
 // (named "item") in the scene graph, centered on the polar pole, extending radially from r0 (value 0)
 // to a per-value r, colored from the palette, and carrying the emphasis (highDown) state wiring.
@@ -15,8 +15,8 @@ final class BarPolarRenderTests: XCTestCase {
 
     private let values: [Double] = [4, 7, 5, 9, 6, 8]
 
-    private func makePolarBarChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 380, height: 360)
+    private func makePolarBarChart() -> ECharts {
+        let ec = ECharts(width: 380, height: 360)
         ec.setOption([
             "polar": [String: Any](),
             "angleAxis": ["type": "category", "data": ["a", "b", "c", "d", "e", "f"]] as [String: Any],

@@ -9,7 +9,7 @@ import ZRenderKit
 final class ZZDataZoomTests: XCTestCase {
     override func setUp() {
         super.setUp()
-        // The dataZoom classes are registered by EChartsSlim.installOnce(); the series class is not.
+        // The dataZoom classes are registered by ECharts.installOnce(); the series class is not.
         ComponentModel.registerClass(BarSeriesModel.self)
     }
 
@@ -34,7 +34,7 @@ final class ZZDataZoomTests: XCTestCase {
     }
 
     private func windowedCount(withDataZoom: Bool, intLiterals: Bool) -> Int {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(makeOption(withDataZoom: withDataZoom, intLiterals: intLiterals))
         return ec.getModel()?.getSeriesByIndex(0)?.getData().count() ?? -1
     }

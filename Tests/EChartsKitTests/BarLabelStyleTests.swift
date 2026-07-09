@@ -38,7 +38,7 @@ final class BarLabelStyleTests: XCTestCase {
     }
 
     func testBarLabelIsAttachedAsTextContentOnBarRect() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(barChartOptionWithLabel())
 
         let bars = collectBars(ec.getRoot())

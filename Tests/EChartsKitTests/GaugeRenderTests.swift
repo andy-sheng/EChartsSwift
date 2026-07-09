@@ -1,4 +1,4 @@
-// END-TO-END RENDER TEST for the Phase-14 gauge vertical (coordless). Drives EChartsSlim with a real
+// END-TO-END RENDER TEST for the Phase-14 gauge vertical (coordless). Drives ECharts with a real
 // gauge option and asserts the scene graph contains the axis arc (Sector), the split lines + ticks (Line),
 // the pointer needle (PointerPath) and the title/detail text (ZRText). The pointer-angle assertion guards
 // the Int-vs-Double startAngle trap (defaultOption startAngle:225 / endAngle:-45 are boxed as numbers): a
@@ -15,7 +15,7 @@ final class GaugeRenderTests: XCTestCase {
     }
 
     func testGaugeRendersSceneGraph() {
-        let ec = EChartsSlim(width: 460, height: 340)
+        let ec = ECharts(width: 460, height: 340)
         ec.setOption([
             "series": [["type": "gauge",
                         "min": 0.0, "max": 100.0,

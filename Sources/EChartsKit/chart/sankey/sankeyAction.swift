@@ -33,7 +33,7 @@ import ZRenderKit
 //   The port carries `dataIndex` / `localX` / `localY` (+ the `seriesId` query) on the dynamic `Payload.other` bag.
 
 // upstream: the `dragNode` action + roam action are registered inline inside `install(registers)`. Mirrored
-//   as an `installSankeyAction` helper (same shape as `installTreeAction`), invoked from EChartsSlim.installOnce.
+//   as an `installSankeyAction` helper (same shape as `installTreeAction`), invoked from ECharts.installOnce.
 public func installSankeyAction(_ registers: EChartsExtensionInstallRegisters) {
     _ = registers
 

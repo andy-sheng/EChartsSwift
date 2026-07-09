@@ -3,7 +3,7 @@
 //   - processor/negativeDataFilter.swift  (pie drops negative-value data)
 //
 // Two layers: (1) the pure per-bucket sampler functions (`dataSampleSamplers`), and (2) the wired
-// processor driven end-to-end through EChartsSlim (a cartesian line series with `sampling`).
+// processor driven end-to-end through ECharts (a cartesian line series with `sampling`).
 
 import XCTest
 import ZRenderKit
@@ -70,7 +70,7 @@ final class DataSampleProcessorTests: XCTestCase {
 
     /// Render the option and return the (post-processing) point count of the first series.
     private func renderedSeriesDataCount(_ option: [String: Any]) -> Int {
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption(option)
         var count = -1
         ec.getModel()?.eachSeries { s, _ in if count < 0 { count = s.getData().count() } }
@@ -78,7 +78,7 @@ final class DataSampleProcessorTests: XCTestCase {
     }
 
     /// Number of points on the rendered line Polyline (the actual drawn envelope).
-    private func polylinePointCount(_ ec: EChartsSlim) -> Int {
+    private func polylinePointCount(_ ec: ECharts) -> Int {
         var n = 0
         _ = ec.getRoot().traverse { el in
             if let p = el as? Polyline, p.name == "line", let s = p.shape as? PolylineShape {
@@ -96,7 +96,7 @@ final class DataSampleProcessorTests: XCTestCase {
         let count = renderedSeriesDataCount(lineOption(sampling: nil))
         XCTAssertEqual(count, DataSampleProcessorTests.bigCount, "no sampling keeps every point")
 
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption(lineOption(sampling: nil))
         XCTAssertEqual(polylinePointCount(ec), DataSampleProcessorTests.bigCount,
                        "polyline draws every point when sampling is unset")
@@ -106,7 +106,7 @@ final class DataSampleProcessorTests: XCTestCase {
     // extreme (envelope) points are preserved (lttb always keeps the first and last datum).
     func testLttbDownsamplesToPixelWidthPreservingEnvelope() {
         let gridWidth = 300.0
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption(lineOption(sampling: "lttb", gridWidth: gridWidth))
 
         var data: SeriesData?
@@ -149,7 +149,7 @@ final class DataSampleProcessorTests: XCTestCase {
 
     // Too-few-points guard: a small line series with `sampling` set is left untouched (count <= 10).
     func testSmallSeriesNotSampled() {
-        let ec = EChartsSlim(width: 480, height: 320)
+        let ec = ECharts(width: 480, height: 320)
         ec.setOption([
             "grid": ["left": 40.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],
@@ -166,7 +166,7 @@ final class DataSampleProcessorTests: XCTestCase {
 
     // A pie with a negative datum drops that slice (isNumber && < 0), keeping the rest.
     func testNegativeDataFilterDropsNegativePieSlices() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "series": [["type": "pie", "radius": "60%",
                         "data": [

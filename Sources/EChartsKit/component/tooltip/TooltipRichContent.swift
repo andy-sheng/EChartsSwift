@@ -33,7 +33,7 @@ import ZRenderKit
 //   import { throwError } from '../../util/log';            -> DEV-mode throw (see setContent PORT-TODO).
 
 // ARCHITECTURE (port): upstream `TooltipRichContent` reads the LIVE zrender via `api.getZr()`. In this
-//   port `EChartsSlim` is render-once with no live zr; the live zr lives in `EChartsView`. The caller
+//   port `ECharts` is render-once with no live zr; the live zr lives in `EChartsView`. The caller
 //   (TooltipView, driven by EChartsView) passes the LIVE `ZRender` to the ctor directly. `setContent`
 //   adds `el` to that zr; `show()`/`hide()` toggle its visibility; `dispose()` removes it. The `el`
 //   floats above the chart (added to the live zr, NOT to `ec.getRoot()`), so it survives chart re-render.

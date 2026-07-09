@@ -6,7 +6,7 @@ import XCTest
 // update() survives.
 final class L6UpdateMatrixTests: XCTestCase {
     func testUpdateViewReusesViewsAndKeepsDataStore() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "category", "data": ["a", "b"]],
                       "yAxis": ["type": "value"], "series": [["type": "bar", "data": [1, 2]]]])
         let view1 = ec.testChartViews.first
@@ -20,7 +20,7 @@ final class L6UpdateMatrixTests: XCTestCase {
     }
 
     func testUpdateTransformReusesViewsAndKeepsDataStore() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "value"], "yAxis": ["type": "value"],
                       "series": [["type": "scatter", "data": [[1, 1], [2, 2]]]]])
         let view1 = ec.testChartViews.first
@@ -35,7 +35,7 @@ final class L6UpdateMatrixTests: XCTestCase {
     // light updateView() — which reuses views and does NOT reprocess data. Proof: the series DataStore
     // instance is preserved across the dispatch (a full update() would recreate it via dataTaskReset).
     func testActionRoutesToUpdateViewPreservingDataStore() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(["series": [["type": "sunburst",
                                   "data": [["name": "a", "value": 5, "children": [["name": "a1", "value": 3]]],
                                            ["name": "b", "value": 4]]]]])
@@ -55,7 +55,7 @@ final class L6UpdateMatrixTests: XCTestCase {
     }
 
     func testUpdateVisualReusesViewsAndKeepsDataStore() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "category", "data": ["a", "b"]],
                       "yAxis": ["type": "value"], "series": [["type": "bar", "data": [1, 2]]]])
         let view1 = ec.testChartViews.first

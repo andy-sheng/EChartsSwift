@@ -30,7 +30,7 @@ final class GraphLabelStyleTests: XCTestCase {
     // The label text is produced by the series formatter ('node-{b}' → 'node-<name>'), which only the
     // shared core applies — the old inline block used the raw name and would fail this assertion.
     func test_node_label_uses_formatter_via_setLabelStyle() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(showLabel: true, formatter: "node-{b}"))
         guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node (name==\"item\")") }
         guard let label = node.getTextContent() else {
@@ -44,7 +44,7 @@ final class GraphLabelStyleTests: XCTestCase {
 
     // Default label (no formatter) resolves to the node's name via getDefaultLabel.
     func test_node_label_default_text_is_name() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(showLabel: true, formatter: nil))
         guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node") }
         // graph label default formatter is '{b}', so text is the name.
@@ -53,10 +53,10 @@ final class GraphLabelStyleTests: XCTestCase {
 
     // The node symbol path carries z2:100 (Symbol._createSymbol's retrieve2(z2, 100)); its label defaults
     // to z2:0, so WITHOUT the doUpdateZ lift it sorts BEHIND the opaque node and is invisible (the bug).
-    // EChartsSlim.updateZ lifts the graph node label to z2 = subtreeMaxZ2 + 2, so it paints over the node
+    // ECharts.updateZ lifts the graph node label to z2 = subtreeMaxZ2 + 2, so it paints over the node
     // — matching real echarts (whose default 'inside' node labels render on top of the node symbol).
     func test_node_label_z2_lifted_above_symbol() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(showLabel: true, formatter: nil))
         guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node") }
         XCTAssertEqual(node.z2, 100, "graph node symbol path z2 is retrieve2(z2, 100)")
@@ -68,7 +68,7 @@ final class GraphLabelStyleTests: XCTestCase {
 
     // label.show:false → setLabelStyle hides the label (no visible textContent).
     func test_node_label_hidden_when_show_false() {
-        let ec = EChartsSlim(width: 400, height: 400)
+        let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(showLabel: false, formatter: nil))
         guard let node = firstNode(ec.getRoot()) else { return XCTFail("no graph node") }
         // Either no textContent is created, or it is ignored.

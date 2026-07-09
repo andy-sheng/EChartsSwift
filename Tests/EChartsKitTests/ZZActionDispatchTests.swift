@@ -23,8 +23,8 @@ final class ZZActionDispatchTests: XCTestCase {
         ZZActionProbe.reset()
     }
 
-    private func makeBarChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 400, height: 300)
+    private func makeBarChart() -> ECharts {
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],

@@ -10,7 +10,7 @@
 // fall back to the series `itemStyle.areaColor`.
 //
 // The toy map MUST be registered before setOption (upstream `echarts.registerMap('toy', geoJson)`), so the
-// registration runs in the option initializer below (IIFE) via `EChartsSlim.registerMap`.
+// registration runs in the option initializer below (IIFE) via `ECharts.registerMap`.
 //
 // NATIVE-only note: the native pane (EChartsKit/MapView) renders this fully. The HTML pane feeds the same
 // option to real echarts.js, which ALSO needs `echarts.registerMap('toy', ...)` injected into the page —
@@ -58,7 +58,7 @@ extension EChartsDemoRegistry {
         mapRegistrations: ["toy": toyMapGeoJSON],
         option: {
             // Register the toy map before the option is consumed (echarts.registerMap('toy', geoJson)).
-            EChartsSlim.registerMap("toy", toyMapGeoJSON)
+            ECharts.registerMap("toy", toyMapGeoJSON)
             return [
                 "visualMap": [
                     "type": "continuous",

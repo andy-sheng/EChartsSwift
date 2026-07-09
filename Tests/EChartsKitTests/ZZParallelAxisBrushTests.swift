@@ -14,8 +14,8 @@ import ZRenderKit
 
 final class ParallelAxisBrushTests: XCTestCase {
 
-    private func makeChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 520, height: 380)
+    private func makeChart() -> ECharts {
+        let ec = ECharts(width: 520, height: 380)
         // 4 value axes × 3 data lines. Axis 0 (dim 0) values: line0=12, line1=24, line2=6.
         ec.setOption([
             "parallelAxis": [
@@ -40,7 +40,7 @@ final class ParallelAxisBrushTests: XCTestCase {
     // Read the per-line opacity that `parallelVisual` writes onto the item visual style (this is the value
     //   the ParallelView polyline then paints with — set synchronously by the visual stage, independent of
     //   any enter animation).
-    private func itemOpacity(_ ec: EChartsSlim, _ dataIndex: Int) -> Double? {
+    private func itemOpacity(_ ec: ECharts, _ dataIndex: Int) -> Double? {
         let data = ec.getModel()!.getSeriesByIndex(0)!.getData()
         let style = data.getItemVisual(dataIndex, "style") as? [String: Any]
         if let d = style?["opacity"] as? Double { return d }

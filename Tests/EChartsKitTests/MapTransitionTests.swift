@@ -54,8 +54,8 @@ final class MapTransitionTests: XCTestCase {
     }
 
     func test_region_fades_in_when_animation_on() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(option(true))
         guard let cp = firstRegion(ec.getRoot()) else { return XCTFail("no map region CompoundPath") }
 
@@ -79,8 +79,8 @@ final class MapTransitionTests: XCTestCase {
     }
 
     func test_region_final_opacity_when_animation_off() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(option(false))
         guard let cp = firstRegion(ec.getRoot()) else { return XCTFail("no map region CompoundPath") }
         XCTAssertEqual(cp.animators.count, 0, "no animator when animation off")

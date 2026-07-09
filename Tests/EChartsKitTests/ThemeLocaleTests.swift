@@ -2,7 +2,7 @@
 //
 // Covers the two new subsystems:
 //   (a) theme/dark.ts — the built-in "dark" theme, resolved by name via `registerTheme('dark', ...)`
-//       (installed in EChartsSlim.installOnce), merged into the option by GlobalModel.mergeTheme.
+//       (installed in ECharts.installOnce), merged into the option by GlobalModel.mergeTheme.
 //       Asserts the dark theme sets `backgroundColor` (dark) + `textStyle.color` (light), and that a
 //       chart renders through the full pipeline with the dark palette (the "dark-theme demo").
 //   (b) core/locale.ts + i18n/{langEN,langZH} — the locale registry. Asserts registerLocale ZH
@@ -38,7 +38,7 @@ final class ThemeLocaleTests: XCTestCase {
     /// The dark theme merges its `backgroundColor` (a dark color from tokens.darkColor) into the
     /// global option; without a theme the option has no backgroundColor.
     func testDarkThemeSetsBackgroundColor() {
-        let ec = EChartsSlim(width: 400, height: 300, theme: "dark")
+        let ec = ECharts(width: 400, height: 300, theme: "dark")
         ec.setOption(barOption())
 
         let bg = ec.getModel()?.get("backgroundColor") as? String
@@ -46,7 +46,7 @@ final class ThemeLocaleTests: XCTestCase {
                        "dark theme should set backgroundColor to tokens.darkColor.background")
 
         // Control: a chart WITHOUT a theme has no backgroundColor merged in.
-        let plain = EChartsSlim(width: 400, height: 300)
+        let plain = ECharts(width: 400, height: 300)
         plain.setOption(barOption())
         XCTAssertNil(plain.getModel()?.get("backgroundColor") as? String,
                      "no theme => no backgroundColor in the merged option")
@@ -54,7 +54,7 @@ final class ThemeLocaleTests: XCTestCase {
 
     /// The dark theme's light text: `textStyle.color` is the (light) secondary color.
     func testDarkThemeSetsLightTextColor() {
-        let ec = EChartsSlim(width: 400, height: 300, theme: "dark")
+        let ec = ECharts(width: 400, height: 300, theme: "dark")
         ec.setOption(barOption())
 
         let textColor = ec.getModel()?.get(["textStyle", "color"]) as? String
@@ -67,7 +67,7 @@ final class ThemeLocaleTests: XCTestCase {
     /// A dict theme (not a registered name) works too, and renders through the full pipeline.
     func testDarkThemeDemoRenders() {
         // Pass the theme dict directly (mirrors `echarts.init(dom, themeObject)`).
-        let ec = EChartsSlim(width: 400, height: 300, theme: darkTheme.theme)
+        let ec = ECharts(width: 400, height: 300, theme: darkTheme.theme)
         ec.setOption(barOption())
 
         // The full setOption/update cycle produced a scene graph (the dark-theme "demo").
@@ -125,7 +125,7 @@ final class ThemeLocaleTests: XCTestCase {
     /// The default locale (EN) drives GlobalModel.getLocaleModel() reads used by components
     /// (legend selector, toolbox titles, time-axis month names).
     func testDefaultLocaleIsEN() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(barOption())
 
         let localeModel = ec.getModel()?.getLocaleModel()
@@ -136,7 +136,7 @@ final class ThemeLocaleTests: XCTestCase {
 
     /// A ZH-locale chart drives getLocaleModel() with the Chinese strings.
     func testChartWithZHLocale() {
-        let ec = EChartsSlim(width: 400, height: 300, locale: "ZH")
+        let ec = ECharts(width: 400, height: 300, locale: "ZH")
         ec.setOption(barOption())
 
         let localeModel = ec.getModel()?.getLocaleModel()
@@ -149,8 +149,8 @@ final class ThemeLocaleTests: XCTestCase {
     /// exposes its toolbox / aria / time strings through the registered Model. Also checks the
     /// case-insensitive lookup key (registerLocale upper-cases the name).
     func testBroadenedLocalesRegistered() {
-        // Ensure the defaults are installed (constructing any EChartsSlim runs installOnce).
-        _ = EChartsSlim(width: 10, height: 10)
+        // Ensure the defaults are installed (constructing any ECharts runs installOnce).
+        _ = ECharts(width: 10, height: 10)
 
         // (locale code, saveAsImage title, aria withoutTitle, first monthAbbr, legend-all)
         let cases: [(String, String, String, String, String)] = [
@@ -180,7 +180,7 @@ final class ThemeLocaleTests: XCTestCase {
     /// createLocaleObject merges the EN default under the non-builtin locale (so untranslated keys
     /// still resolve).
     func testChartWithFRLocaleAndDefaultMerge() {
-        let ec = EChartsSlim(width: 400, height: 300, locale: "FR")
+        let ec = ECharts(width: 400, height: 300, locale: "FR")
         ec.setOption(barOption())
         let localeModel = ec.getModel()?.getLocaleModel()
         XCTAssertEqual(localeModel?.get(["toolbox", "dataZoom", "title", "zoom"]) as? String, "Zoom")
@@ -196,8 +196,8 @@ final class ThemeLocaleTests: XCTestCase {
 
     /// The vintage theme sets its documented backgroundColor + palette and resolves by name.
     func testVintageTheme() {
-        _ = EChartsSlim(width: 10, height: 10) // ensure installOnce ran
-        let ec = EChartsSlim(width: 400, height: 300, theme: "vintage")
+        _ = ECharts(width: 10, height: 10) // ensure installOnce ran
+        let ec = ECharts(width: 400, height: 300, theme: "vintage")
         ec.setOption(barOption())
 
         XCTAssertEqual(ec.getModel()?.get("backgroundColor") as? String, "#fef8ef",
@@ -210,8 +210,8 @@ final class ThemeLocaleTests: XCTestCase {
 
     /// The macarons theme sets its palette + tooltip/title colors and resolves by name.
     func testMacaronsTheme() {
-        _ = EChartsSlim(width: 10, height: 10) // ensure installOnce ran
-        let ec = EChartsSlim(width: 400, height: 300, theme: "macarons")
+        _ = ECharts(width: 10, height: 10) // ensure installOnce ran
+        let ec = ECharts(width: 400, height: 300, theme: "macarons")
         ec.setOption(barOption())
 
         // The palette (`color`) is a non-component theme key => merged into the global option.
@@ -234,7 +234,7 @@ final class ThemeLocaleTests: XCTestCase {
     /// A chart initialised with the vintage theme renders through the full pipeline with the theme
     /// palette + background.
     func testVintageThemeDemoRenders() {
-        let ec = EChartsSlim(width: 400, height: 300, theme: "vintage")
+        let ec = ECharts(width: 400, height: 300, theme: "vintage")
         ec.setOption(barOption())
 
         var barCount = 0

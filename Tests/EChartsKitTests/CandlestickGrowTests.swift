@@ -1,5 +1,5 @@
 // Proves the candlestick ENTRANCE is a FAITHFUL points-array GROW (not a snap). Drives a real
-// candlestick through EChartsSlim (the NewChartsRenderTests pattern) and inspects the first
+// candlestick through ECharts (the NewChartsRenderTests pattern) and inspects the first
 // NormalBoxPath candle:
 //
 //   ON  — the view builds the box with COLLAPSED points (every end flattened to itemLayout.initBaseline
@@ -22,8 +22,8 @@ final class CandlestickGrowTests: XCTestCase {
         ComponentModel.registerClass(CandlestickSeriesModel.self)
     }
 
-    private func makeSlim(animation: Bool) -> EChartsSlim {
-        let ec = EChartsSlim(width: 520, height: 340)
+    private func makeSlim(animation: Bool) -> ECharts {
+        let ec = ECharts(width: 520, height: 340)
         ec.setOption([
             "animation": animation,
             "animationDuration": 1000,
@@ -39,7 +39,7 @@ final class CandlestickGrowTests: XCTestCase {
         return ec
     }
 
-    private func firstBox(_ ec: EChartsSlim) -> NormalBoxPath? {
+    private func firstBox(_ ec: ECharts) -> NormalBoxPath? {
         var found: NormalBoxPath?
         _ = ec.getRoot().traverse { el in
             if found == nil, let b = el as? NormalBoxPath { found = b }

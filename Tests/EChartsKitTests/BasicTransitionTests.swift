@@ -16,13 +16,13 @@ final class BasicTransitionTests: XCTestCase {
         for (k, v) in extra { opt[k] = v }
         // A bar series needs a cartesian coordinate system to resolve against (setOption crashes
         // with "xAxis \"0\" not found" otherwise) — mirrors the xAxis/yAxis pair every other
-        // EChartsSlim-backed test in this target supplies (see BarChartRenderTests.barChartOption).
+        // ECharts-backed test in this target supplies (see BarChartRenderTests.barChartOption).
         let full: [String: Any] = [
             "xAxis": ["type": "category", "data": ["A"]] as [String: Any],
             "yAxis": ["type": "value"] as [String: Any],
             "series": [opt]
         ]
-        let ec = EChartsSlim(width: 200, height: 200)
+        let ec = ECharts(width: 200, height: 200)
         ec.setOption(full)
         return ec.getModel()!.getSeriesByType("bar").first!
     }

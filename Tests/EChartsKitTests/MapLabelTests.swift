@@ -4,7 +4,7 @@
 // added to the region group — the region compound-path element had NO `textContent`. After the retrofit
 // the label is attached to the region compound-path el via `labelStyle.setLabelStyle`, so the el exposes
 // a `getTextContent()` whose `style.text` is the region name and whose `el.textConfig.position` reflects
-// the (default "inside") label-model position. These tests assert that end-to-end (drive EChartsSlim →
+// the (default "inside") label-model position. These tests assert that end-to-end (drive ECharts →
 // walk the scene graph → inspect the CompoundPath's attached label).
 import XCTest
 import ZRenderKit
@@ -55,7 +55,7 @@ final class MapLabelTests: XCTestCase {
     }
 
     // Collect every region CompoundPath in render order.
-    private func compoundPaths(_ ec: EChartsSlim) -> [ZRenderKit.CompoundPath] {
+    private func compoundPaths(_ ec: ECharts) -> [ZRenderKit.CompoundPath] {
         var out: [ZRenderKit.CompoundPath] = []
         _ = ec.getRoot().traverse { el in
             if let cp = el as? ZRenderKit.CompoundPath { out.append(cp) }
@@ -66,8 +66,8 @@ final class MapLabelTests: XCTestCase {
 
     // ---- (1) after render, each region compound-path el carries the label as textContent ----
     func testRegionLabelAttachedAsTextContent() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         let paths = compoundPaths(ec)
@@ -88,8 +88,8 @@ final class MapLabelTests: XCTestCase {
 
     // ---- (2) textConfig.position defaults to "inside" for the region label ----
     func testRegionLabelDefaultPositionInside() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
 
         for cp in compoundPaths(ec) {
@@ -103,8 +103,8 @@ final class MapLabelTests: XCTestCase {
 
     // ---- (3) an explicit label.position flows through to el.textConfig.position ----
     func testRegionLabelExplicitPosition() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption(labelExtra: ["position": "top"]))
 
         for cp in compoundPaths(ec) {
@@ -118,8 +118,8 @@ final class MapLabelTests: XCTestCase {
     //   creates a textContent (needed for those states) but marks the NORMAL render as ignored — matching
     //   upstream. So the assertion is "normal label is not shown", i.e. textContent.ignore == true.
     func testRegionLabelHiddenWhenShowFalse() {
-        EChartsSlim.registerMap("toy", makeToyGeoJSON())
-        let ec = EChartsSlim(width: 520, height: 320)
+        ECharts.registerMap("toy", makeToyGeoJSON())
+        let ec = ECharts(width: 520, height: 320)
         var opt = makeOption()
         // Override the series label to show:false.
         var series = (opt["series"] as! [[String: Any]])

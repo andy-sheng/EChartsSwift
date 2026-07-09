@@ -24,8 +24,8 @@ final class ZZEmphasisTests: XCTestCase {
         ComponentModel.registerClass(BarSeriesModel.self)
     }
 
-    private func makeBarChart() -> EChartsSlim {
-        let ec = EChartsSlim(width: 400, height: 300)
+    private func makeBarChart() -> ECharts {
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
@@ -142,7 +142,7 @@ final class ZZEmphasisTests: XCTestCase {
     //          color, and downplay restores it. This proves the Element→textContent state propagation
     //          plus ZRText's per-state textStyle readback (label restyles on hover/emphasis). ----
     func testHighlightRestylesAttachedLabelPerEmphasis() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],

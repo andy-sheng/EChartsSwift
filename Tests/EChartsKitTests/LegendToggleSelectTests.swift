@@ -7,8 +7,8 @@ import XCTest
 @testable import ZRenderKit
 
 final class LegendToggleSelectTests: XCTestCase {
-    private func makeTwoSeriesWithLegend() -> EChartsSlim {
-        let ec = EChartsSlim(width: 400, height: 300)
+    private func makeTwoSeriesWithLegend() -> ECharts {
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "legend": ["data": ["Alpha", "Beta"]] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
@@ -21,7 +21,7 @@ final class LegendToggleSelectTests: XCTestCase {
         return ec
     }
 
-    private func renderedSeriesNames(_ ec: EChartsSlim) -> [String] {
+    private func renderedSeriesNames(_ ec: ECharts) -> [String] {
         var names: [String] = []
         ec.getModel()!.eachSeries { s, _ in names.append(s.name) }
         return names
@@ -91,7 +91,7 @@ final class LegendToggleSelectTests: XCTestCase {
     // icon color must come from the legend-computed itemStyle (grey inactiveColor), NOT the series data
     // visual (which is empty for a legend-filtered series → previously nil fill → invisible icon).
     func testScatterLegendIconGreysOutWhenUnselected() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "legend": ["data": ["S"]] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],

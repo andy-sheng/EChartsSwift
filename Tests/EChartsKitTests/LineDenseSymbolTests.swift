@@ -11,7 +11,7 @@ import ZRenderKit
 final class LineDenseSymbolTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(LineSeriesModel.self) }
 
-    private func symbolCount(_ ec: EChartsSlim) -> Int {
+    private func symbolCount(_ ec: ECharts) -> Int {
         var n = 0
         _ = ec.getRoot().traverse { el in
             if el is Symbol { n += 1 }
@@ -22,7 +22,7 @@ final class LineDenseSymbolTests: XCTestCase {
 
     // Sparse line (few, far-apart category points): every symbol is shown (none ignored).
     func testSparseLineKeepsAllSymbols() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C", "D", "E", "F"]] as [String: Any],
@@ -38,7 +38,7 @@ final class LineDenseSymbolTests: XCTestCase {
         let n = 200
         let cats = (0..<n).map { "c\($0)" }
         let values = (0..<n).map { Double(($0 * 7) % 50) }
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": cats] as [String: Any],
@@ -55,7 +55,7 @@ final class LineDenseSymbolTests: XCTestCase {
         let n = 60
         let cats = (0..<n).map { "c\($0)" }
         let values = (0..<n).map { Double(($0 * 3) % 50) }
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": cats] as [String: Any],

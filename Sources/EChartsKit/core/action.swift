@@ -59,7 +59,7 @@ internal var connectionEventRevertMap: [String: String] = [:]
 //   To remove duplication.  (value is the literal `1` in JS; a Bool flag here.)
 internal var publicEventTypeMap: [String: Bool] = [:]
 
-/// Read-only accessor for the module-global `actions` registry, so `EChartsSlim.doDispatchAction`
+/// Read-only accessor for the module-global `actions` registry, so `ECharts.doDispatchAction`
 /// (a different file) can look up a parsed action descriptor without touching internals directly.
 public func lookupAction(_ type: String) -> ActionInfoParsed? {
     return actions[type]

@@ -1,4 +1,4 @@
-// END-TO-END RENDER TEST for the PIE vertical (coordless box layout). Drives EChartsSlim with a pie
+// END-TO-END RENDER TEST for the PIE vertical (coordless box layout). Drives ECharts with a pie
 // option and inspects the ZRenderKit scene: one `Sector` per datum, each carrying a DISTINCT palette
 // fill (pie defaults `colorBy: 'data'`, so the per-item `dataColorPaletteTask` assigns palette[idx]).
 // This locks in the Phase-6d fix for the visual-task order + `getColorFromPalette` overload trap that
@@ -11,7 +11,7 @@ final class PieChartRenderTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(PieSeriesModel.self) }
 
     func testPieRendersDistinctlyColoredSectors() {
-        let ec = EChartsSlim(width: 400, height: 320)
+        let ec = ECharts(width: 400, height: 320)
         ec.setOption([
             "series": [["type": "pie", "radius": "65%",
                         "data": [["value": 40.0, "name": "A"],

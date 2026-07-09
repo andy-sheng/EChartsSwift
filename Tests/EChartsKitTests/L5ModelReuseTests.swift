@@ -5,7 +5,7 @@ final class L5ModelReuseTests: XCTestCase {
     // Two merge-mode setOption calls must REUSE the same GlobalModel + the same SeriesModel
     // instance (identity), so the series keeps its prior getData() reference for diffing.
     func testMergeReusesModelAndSeries() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "xAxis": ["type": "category", "data": ["a", "b", "c"]],
             "yAxis": ["type": "value"],
@@ -26,7 +26,7 @@ final class L5ModelReuseTests: XCTestCase {
 
     // notMerge:true must REPLACE the model (fresh instance) — the demo-switch path.
     func testNotMergeReplacesModel() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "category", "data": ["a", "b", "c"]],
                       "yAxis": ["type": "value"],
                       "series": [["type": "bar", "data": [1, 2, 3]]]])

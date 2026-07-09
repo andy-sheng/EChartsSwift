@@ -1,4 +1,4 @@
-// Guards against stale chart accumulation when ONE EChartsSlim/EChartsView instance is reused across
+// Guards against stale chart accumulation when ONE ECharts/EChartsView instance is reused across
 // successive setOption calls (the live EChartsHostView path — switching demos). Upstream `prepareView`
 // disposes views whose model is gone; the slim port originally skipped that ("fresh model each call"),
 // so switching from a bar demo to a pie demo left the bar Rects lingering in the root. render() now
@@ -7,7 +7,7 @@ import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
 
-final class SlimReRenderResetTests: XCTestCase {
+final class ReRenderResetTests: XCTestCase {
 
     private func countKind(_ el: Element, _ match: (Element) -> Bool) -> Int {
         var n = match(el) ? 1 : 0
@@ -28,7 +28,7 @@ final class SlimReRenderResetTests: XCTestCase {
     ]
 
     func test_switching_bar_to_pie_leaves_no_stale_bar_rects() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
 
         ec.setOption(barOption)
         let barsAfterBar = countKind(ec.getRoot()) { $0 is Rect }

@@ -45,7 +45,7 @@ import ZRenderKit
 //             chordCircularLayoutStageHandler                  // -> chordCircularLayoutStageHandler (chordLayout.swift)
 //         );
 //         // Add data filter processor
-//         registers.registerProcessor(dataFilter('chord'));   // -> legendDataFilter (processor/legendDataFilter.swift), wired in EChartsSlim `_dataFilters`
+//         registers.registerProcessor(dataFilter('chord'));   // -> legendDataFilter (processor/legendDataFilter.swift), wired in ECharts `_dataFilters`
 //     }
 //
 // INTEGRATION SURFACE (for the driver):
@@ -53,4 +53,4 @@ import ZRenderKit
 //   - registerChartView:   `ChordView`                           (chart/chord/ChordView.swift)
 //   - registerLayout:      `chordCircularLayoutStageHandler` at PRIORITY.VISUAL.POST_CHART_LAYOUT
 //                                                                 (chart/chord/chordLayout.swift)
-//   - registerProcessor:   `dataFilter("chord")`                 (processor/legendDataFilter.swift, wired in EChartsSlim `_dataFilters`)
+//   - registerProcessor:   `dataFilter("chord")`                 (processor/legendDataFilter.swift, wired in ECharts `_dataFilters`)

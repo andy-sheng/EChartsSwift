@@ -123,6 +123,6 @@ open class PictorialBarSeriesModel: BaseBarSeriesModel {
 // export default PictorialBarSeriesModel;  -> `open class PictorialBarSeriesModel` above.
 
 // SeriesModel.registerClass side effect (upstream runs it at install time). The EChartsKit registration
-//   entry point (`EChartsSlim.installOnce`) invokes `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
+//   entry point (`ECharts.installOnce`) invokes `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
 //   directly; the inherited `BaseBarSeriesModel.registerSeriesModelClass()` would register the WRONG
 //   (base) class, so it is intentionally NOT reused here.

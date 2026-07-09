@@ -21,7 +21,7 @@
 import ZRenderKit
 // import { EChartsExtensionInstallRegisters } from '../../extension';
 //   -> PORT-TODO: the registration registry (`EChartsExtensionInstallRegisters`) is owned by the slim
-//      Orchestrate driver (Integrate stage / core/EChartsSlim.swift), not this render-layer file (same
+//      Orchestrate driver (Integrate stage / core/ECharts.swift), not this render-layer file (same
 //      convention as component/title/install.swift and component/grid/installSimple.swift).
 // import checkMarkerInSeries from './checkMarkerInSeries';  -> sibling `checkMarkerInSeries` (ported).
 // import MarkAreaModel from './MarkAreaModel';              -> sibling `MarkAreaModel` (ported).

@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the cartesian SCATTER vertical (sibling of Bar/LineChartRenderTests).
-// Drives EChartsSlim with a value×value scatter option and inspects the ZRenderKit scene: one symbol
+// Drives ECharts with a value×value scatter option and inspects the ZRenderKit scene: one symbol
 // `Path` per datum, each within the grid rect, at the coordinate the data maps to, carrying a palette
 // fill. Phase 6d.
 import XCTest
@@ -10,7 +10,7 @@ final class ScatterChartRenderTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(ScatterSeriesModel.self) }
 
     func testScatterRendersOneSymbolPerDatum() {
-        let ec = EChartsSlim(width: 400, height: 300)
+        let ec = ECharts(width: 400, height: 300)
         ec.setOption([
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "value"] as [String: Any],

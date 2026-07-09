@@ -29,7 +29,7 @@ final class ParallelTransitionTests: XCTestCase {
         ]
     }
     func test_line_fades_in_when_animation_on() {
-        let ec = EChartsSlim(width: 520, height: 380); ec.setOption(option(true))
+        let ec = ECharts(width: 520, height: 380); ec.setOption(option(true))
         guard let line = firstLine(ec.getRoot()) else { return XCTFail("no parallel polyline") }
         // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is targeted
         // at "style" and carries an "opacity" leaf track (same idiom as FunnelTransitionTests).
@@ -37,7 +37,7 @@ final class ParallelTransitionTests: XCTestCase {
         XCTAssertNotNil(anim, "parallel line should have a style (opacity) animator when animation on")
     }
     func test_line_final_opacity_when_animation_off() {
-        let ec = EChartsSlim(width: 520, height: 380); ec.setOption(option(false))
+        let ec = ECharts(width: 520, height: 380); ec.setOption(option(false))
         guard let line = firstLine(ec.getRoot()) else { return XCTFail("no parallel polyline") }
         XCTAssertEqual(line.animators.count, 0, "no animator when animation off")
         XCTAssertGreaterThan(line.pathStyle.opacity ?? 0, 0.0,
