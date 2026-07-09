@@ -1378,6 +1378,27 @@ public final class EChartsSlim: EChartsType {
         updateView()
     }
 
+    /// upstream `updateMethods.updateTransform` (echarts.ts:1943): a coordinate-transform-only refresh
+    /// (roam / inside-dataZoom pan). Each component/chart view gets its `updateTransform` hook; a view
+    /// that returns `false` handled it in place and needs nothing more, otherwise it is re-rendered.
+    /// The base hook returns nil (no transform-only path), so a view without a real implementation
+    /// falls back to a full render — always correct output, matching upstream's "no hook -> dirty".
+    public func updateTransform() {
+        guard let ecModel = _model else { return }
+        let api = _api!
+        let payload = Payload(type: "")
+        var needRender = false
+        for cv in _componentsViews {
+            guard let m = cv.__model else { continue }
+            if cv.updateTransform(m, ecModel, api, payload) != false { needRender = true }
+        }
+        for sv in _chartsViews {
+            guard let m = sv.__model else { continue }
+            if sv.updateTransform(m, ecModel, api, payload) != false { needRender = true }
+        }
+        if needRender { render(ecModel, api) }
+    }
+
     // ------------------------------------------------------------------------
     // VISUAL stage — run the ported `visual/style.swift` handlers.
     // ------------------------------------------------------------------------

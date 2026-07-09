@@ -19,6 +19,18 @@ final class L6UpdateMatrixTests: XCTestCase {
         XCTAssertEqual(ec.testChartViews.count, 1, "no duplicate views")
     }
 
+    func testUpdateTransformReusesViewsAndKeepsDataStore() {
+        let ec = EChartsSlim(width: 400, height: 300)
+        ec.setOption(["xAxis": ["type": "value"], "yAxis": ["type": "value"],
+                      "series": [["type": "scatter", "data": [[1, 1], [2, 2]]]]])
+        let view1 = ec.testChartViews.first
+        let store1 = ec.testModel?.getSeries().first?.getData()
+        ec.updateTransform()
+        XCTAssertTrue(view1 === ec.testChartViews.first, "updateTransform reuses the chart view")
+        XCTAssertTrue(store1 === ec.testModel?.getSeries().first?.getData(),
+                      "updateTransform must not recreate the DataStore")
+    }
+
     func testUpdateVisualReusesViewsAndKeepsDataStore() {
         let ec = EChartsSlim(width: 400, height: 300)
         ec.setOption(["xAxis": ["type": "category", "data": ["a", "b"]],

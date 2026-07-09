@@ -139,9 +139,14 @@ open class ComponentView: ViewRootGroup {
     // ------------------------------------------------------------------
 
     // upstream (optional): updateTransform?(model, ecModel, api, payload): void | {update: true};
-    // PORT-TODO: optional hook — subclasses implement when they support transform-only updates.
     //   The `void | {update: true}` return is modeled as `Bool?` (`true` == upstream `{update: true}`,
-    //   `nil` == upstream `void`). Base class does not implement it.
+    //   `nil` == upstream `void`). Base returns nil (no transform-only path — the driver's
+    //   updateTransform() falls back to a full render for such a view).
+    open func updateTransform(
+        _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
+        return nil
+    }
 
     /**
      * Pass only when return `true`.
