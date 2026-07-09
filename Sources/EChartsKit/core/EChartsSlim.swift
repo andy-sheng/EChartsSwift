@@ -2164,11 +2164,17 @@ public final class EChartsSlim: EChartsType {
             //   updateMethods[updateMethod].call(this, payload);
             //   PENDING_UPDATE (a still-dirty setOption awaiting flush) is not tracked in the slim driver,
             //   so there is only the else-branch.
-            // PORT-TODO: partial-update — updateView/updateLayout/updateVisual/updateTransform/
-            //   prepareAndUpdate (echarts.ts:1868 updateMethods) all COLLAPSE to the full update() this
-            //   phase (the scheduler-driven fast paths are unported). 'update' & 'prepareAndUpdate' are
-            //   already a full pipeline pass, so this is exact for them and an over-render for the rest.
-            self.update()
+            // Route to the update method the action declares (L6). The light methods (updateView/
+            //   updateVisual/updateLayout/updateTransform) reuse the persistent views and skip data
+            //   reprocessing; 'update'/'prepareAndUpdate' run the full pipeline. (In the slim every
+            //   layout stage lives inside render(), so updateView/updateLayout re-lay-out too.)
+            switch updateMethod {
+            case "updateView":      updateView()
+            case "updateVisual":    updateVisual()
+            case "updateLayout":    updateLayout()
+            case "updateTransform": updateTransform()
+            default:                update()   // 'update' / 'prepareAndUpdate'
+            }
         }
 
         // Follow the rule of action batch (build the outer event object; kept for structural fidelity).
