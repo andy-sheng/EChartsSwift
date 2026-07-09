@@ -1342,6 +1342,43 @@ public final class EChartsSlim: EChartsType {
     }
 
     // ------------------------------------------------------------------------
+    // §UPDATE MATRIX (L6) — the lighter update methods `dispatchAction` routes to, per an action's
+    //   `update` field, instead of always re-running the full `update()`. Faithful to
+    //   `updateMethods.{updateView,updateVisual,updateLayout,updateTransform}` (echarts.ts:2011-2110).
+    //   All reuse the persistent views (L5); none re-derive series data (no restoreData /
+    //   performSeriesTasks), so the DataStore + coord systems from the last full update() are kept.
+    // ------------------------------------------------------------------------
+
+    /// upstream `updateMethods.updateView` (echarts.ts:2011): re-render series/components from the
+    /// current (already-processed) data, reusing views, without reprocessing data. In the slim the
+    /// per-series layout runs inside `render()`, so a bare `render()` is the faithful view-only refresh.
+    public func updateView() {
+        guard let ecModel = _model else { return }
+        render(ecModel, _api!)
+    }
+
+    /// upstream `updateMethods.updateVisual` (echarts.ts:2033): re-run the visual stages (style /
+    /// visualMap / aria / decal) then re-render, reusing views. No data reprocessing.
+    public func updateVisual() {
+        guard let ecModel = _model else { return }
+        let api = _api!
+        performVisualStage(ecModel, api)
+        performVisualMapStage(ecModel, api)
+        _ariaLabel = aria.ariaLabel(ecModel, api)
+        aria.setDecal(ecModel, api)
+        decalVisualStageHandler.overallReset?(ecModel, api, nil)
+        render(ecModel, api)
+    }
+
+    /// upstream `updateMethods.updateLayout` (echarts.ts:2080): re-run layout then re-render. In the
+    /// slim every layout stage runs inside `render()`, so this is the same view-only refresh as
+    /// updateView (which is exactly what upstream's updateLayout reduces to once the Scheduler-driven
+    /// layout tasks are folded into the render pass).
+    public func updateLayout() {
+        updateView()
+    }
+
+    // ------------------------------------------------------------------------
     // VISUAL stage — run the ported `visual/style.swift` handlers.
     // ------------------------------------------------------------------------
     private func performVisualStage(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
