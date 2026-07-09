@@ -118,13 +118,15 @@ let toolboxIconPathsInner: (Model) -> ToolboxIconPaths = model.makeInner { Toolb
 //     option.iconStatus[iconName] = status;
 //     if (iconPaths[iconName]) (status === 'emphasis' ? enterEmphasis : leaveEmphasis)(iconPaths[iconName]);
 // };
-// PORT: the option write is faithful; the `enterEmphasis`/`leaveEmphasis` flip on the icon path is
-//   DEFERRED (emphasis/blur interaction — same deferral as LegendView), a documented no-op here.
 public func toolboxSetIconStatus(_ featureModel: Model, _ iconName: String, _ status: String) {
     var option = (featureModel.option as? [String: Any]) ?? [:]
     var iconStatus = (option["iconStatus"] as? [String: Any]) ?? [:]
     iconStatus[iconName] = status
     option["iconStatus"] = iconStatus
     featureModel.option = option
-    // PORT-TODO: DEFERRED — `(status === 'emphasis' ? enterEmphasis : leaveEmphasis)(iconPaths[iconName])`.
+    // (status === 'emphasis' ? enterEmphasis : leaveEmphasis)(iconPaths[iconName]);  — flip the live icon.
+    if let path = toolboxIconPathsInner(featureModel).paths[iconName] {
+        if status == "emphasis" { states.enterEmphasis(path) }
+        else { states.leaveEmphasis(path) }
+    }
 }

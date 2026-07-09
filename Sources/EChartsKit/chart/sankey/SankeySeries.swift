@@ -174,6 +174,14 @@ open class SankeySeriesModel: SeriesModel {
         var newOption = optionBag ?? [:]
         newOption[key] = nodes
         self.option = newOption
+
+        // PORT bridge: upstream's option write above is visible to the render because the raw data provider
+        //   shares that SAME `option.data` array by reference. Swift value-type semantics break that link, so
+        //   also write localX/localY THROUGH to the provider's raw item — otherwise `node.getModel().get(
+        //   'localX')` (read by SankeyView.render for both the node rect AND its incident edge endpoints)
+        //   still returns the pre-drag value and the node would not move. `dataIndex` is the raw option index.
+        self.getData().setRawDataItemField(dataIndex, "localX", localPosition[0])
+        self.getData().setRawDataItemField(dataIndex, "localY", localPosition[1])
     }
 
     /**

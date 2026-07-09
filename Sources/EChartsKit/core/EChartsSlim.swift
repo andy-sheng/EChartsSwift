@@ -682,8 +682,11 @@ public final class EChartsSlim: EChartsType {
         //   (update() stages 3/5) build + update each Parallel; ParallelAxisView draws each axis backdrop (N
         //   registered 'parallelAxis' component views), ParallelView[component] is interaction-only, and the
         //   chart-side ParallelView draws one Polyline per data item. The parallelPreprocessor (creates
-        //   parallelAxis components from parallel.parallelAxisDefault) runs in setOption. The brush/axis-drag/
-        //   active-interval selection ACTIONS are DEFERRED (// PORT-TODO in ParallelComponentView/ParallelAxisModel).
+        //   parallelAxis components from parallel.parallelAxisDefault) runs in setOption. The `axisAreaSelect`
+        //   active-interval selection ACTION is now wired (installParallelActions below → sets
+        //   ParallelAxisModel.activeIntervals → Parallel.eachActiveState dims out-of-interval lines via
+        //   parallelVisual). The LIVE axis-drag BrushController that would EMIT axisAreaSelect (ParallelAxisView
+        //   ._refreshBrushController/_onBrush) + the axis-expand pointer roam remain // PORT-TODO.
         CoordinateSystemManager.register("parallel", ParallelCoordinateSystemCreator()) // registerCoordinateSystem('parallel', parallelCoordSysCreator)
         ComponentModel.registerClass(ParallelModel.self)                            // registerComponentModel(ParallelModel)
         ComponentModel.registerClass(ParallelAxisModel.self)                        // registerComponentModel(ParallelAxisModel) + axisModelCreator(..,'parallel',..)
@@ -904,7 +907,19 @@ public final class EChartsSlim: EChartsType {
         //   (the 'treeRoam' view-group roam action). See chart/tree/treeAction.swift.
         installTreeAction(EChartsSlim._registers)
         registerTreemapRoamAction()
-        registerSankeyRoamAction()
+        // -- chart/sankey/install.ts `installSankeyAction(registers)` — registerAction('dragNode',
+        //   update:'update') (node drag → SankeySeriesModel.setNodePosition persists localX/localY, the
+        //   full update() re-renders the moved node + re-routes its edge ribbons) + registerSankeyRoamAction()
+        //   (the 'sankeyRoam' view-group roam action). See chart/sankey/sankeyAction.swift.
+        installSankeyAction(EChartsSlim._registers)
+
+        // -- component/axis/parallelAxisAction.ts `installParallelActions(registers)` — registerAction(
+        //   'axisAreaSelect', event 'axisAreaSelected') (sets each queried parallelAxis model's active
+        //   intervals → Parallel.eachActiveState dims the out-of-interval lines via the visual stage on the
+        //   full update) + registerAction('parallelAxisExpand') (the axis expand-window; the LIVE axis-drag
+        //   BrushController that would emit these is still // PORT-TODO in ParallelAxisView). See
+        //   component/axis/parallelAxisAction.swift.
+        installParallelActions(EChartsSlim._registers)
 
         // View factories (upstream: registerComponentView / registerChartView; see header deviation).
         // (component views keyed by mainType; chart views keyed by subType.)

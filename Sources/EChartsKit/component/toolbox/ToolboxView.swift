@@ -218,8 +218,12 @@ open class ToolboxView: ComponentView {
             path.pathStyle.strokeNoScale = true
             path.dirtyStyle()
 
-            // const pathEmphasisState = path.ensureState('emphasis'); pathEmphasisState.style = iconStyleEmphasisModel.getItemStyle();
-            // PORT-TODO: DEFERRED — emphasis state (util/states hover flip) out of static-render scope.
+            // const pathEmphasisState = path.ensureState('emphasis');
+            // pathEmphasisState.style = iconStyleEmphasisModel.getItemStyle();
+            //   Wired: the icon's emphasis (hover) recolour is the emphasis icon style. `useStates` reads
+            //   this view-defined state directly (the highDown proxy only ADDS a default lift), and Path's
+            //   `PathStyleAnimationAccessor` writes the fill/stroke into `pathStyle` on state entry.
+            path.ensureState("emphasis").style = iconStyleEmphasisModel.getItemStyle()
 
             // Text position calculation → the title text content (hidden until hover).
             var textStyle = TextStyleProps()
@@ -233,17 +237,67 @@ open class ToolboxView: ComponentView {
                 fontSize: iconStyleEmphasisModel.get("textFontSize"),
                 fontFamily: iconStyleEmphasisModel.get("textFontFamily")
             ), ecModel)
-            // PORT-TODO: DEFERRED — textBorderRadius/textPadding (title chip) applied on the hover path.
+            // upstream normal textStyle also carries the title-chip borderRadius/padding (the fill /
+            //   backgroundColor are applied on the hover — see the emphasis text state below).
+            textStyle.borderRadius = toolboxNumberOrArray(iconStyleEmphasisModel.get("textBorderRadius"))
+            textStyle.padding = toolboxNumberOrArray(iconStyleEmphasisModel.get("textPadding"))
             let textContent = ZRText(["style": textStyle])
+            // Hidden until hover: normal = ignored (upstream `ignore: true` + `fill: null`).
             textContent.ignore = true
             path.setTextContent(textContent)
+
+            // Hover-title reveal — the port's faithful adaptation of upstream's mouseover
+            //   (`textContent.setStyle({fill, backgroundColor}); textContent.ignore = !showTitle;
+            //    api.enterEmphasis(this)`) / mouseout (`api.leaveEmphasis(this); textContent.hide()`):
+            //   attach an EMPHASIS state to the title text that is VISIBLE (`ignore: false`) and coloured,
+            //   while its normal state stays hidden. `Element.useState`/`useStates` propagates the icon's
+            //   state down to its `textContent` (Element.swift:983/1051), so the title appears exactly when
+            //   the icon enters emphasis and hides again on downplay — no per-element mouse handlers needed.
+            let hoverStyle = iconStyleEmphasisModel.getItemStyle()
+            // fill: iconStyleEmphasisModel.get('textFill') || hoverStyle.fill || hoverStyle.stroke
+            //       || tokens.color.neutral99
+            let titleFill = (iconStyleEmphasisModel.get("textFill") as? String)
+                ?? (hoverStyle["fill"] as? String)
+                ?? (hoverStyle["stroke"] as? String)
+                ?? tokens.color.neutral99
+            var emphasisTextStyle = TextStyleProps()
+            emphasisTextStyle.fill = titleFill
+            if let bg = iconStyleEmphasisModel.get("textBackgroundColor") as? String {
+                emphasisTextStyle.backgroundColor = .string(bg)
+            }
+            let textEmphasisState = textContent.ensureState("emphasis")
+            textEmphasisState.textStyle = emphasisTextStyle
+            textEmphasisState.ignore = false    // upstream: shown on hover (`!showTitle` → false here)
+
+            // Title default position. Upstream sets `path.setTextConfig({position})` on mouseover; the
+            //   default is bottom (horizontal) / right (vertical) unless the toolbox is anchored there.
+            //   PORT-TODO: still deferred — the emphasis title-overflow reposition (the `emphasisState
+            //   .textConfig` block in render()) reads api.getWidth/Height; the default position is used.
+            let defaultTextPosition: String = isVertical
+                ? ((toolboxModel.get("right") == nil && (toolboxModel.get("left") as? String) != "right")
+                    ? "right" : "left")
+                : ((toolboxModel.get("bottom") == nil && (toolboxModel.get("top") as? String) != "bottom")
+                    ? "bottom" : "top")
+            var titleTextConfig = ElementTextConfig()
+            titleTextConfig.position = (iconStyleEmphasisModel.get("textPosition") as? String) ?? defaultTextPosition
+            path.setTextConfig(titleTextConfig)
 
             // graphic.setTooltipConfig({ el: path, componentModel: toolboxModel, itemName: iconName, ... });
             // PORT-TODO: DEFERRED — tooltip wiring (`graphic.setTooltipConfig`) out of static-render scope.
 
-            // The hover handlers (mouseover: reveal title + enterEmphasis; mouseout: leaveEmphasis + hide)
-            //   are DEFERRED — emphasis/blur + hover-title reveal are out of static-render scope.
-            //   (featureModel.get(['iconStatus', iconName]) === 'emphasis' ? enterEmphasis : leaveEmphasis)(path);
+            // Mark the icon a highDown dispatcher so a live-host hover (mouseover → enterEmphasisWhenMouseOver)
+            //   enters emphasis (recolouring the icon + revealing the title). Replaces upstream's per-icon
+            //   mouseover/mouseout handlers with the ported states-engine hover binding (EChartsView).
+            states.toggleHoverEmphasis(path, nil, nil, false)
+
+            // (featureModel.get(['iconStatus', iconName]) === 'emphasis' ? enterEmphasis : leaveEmphasis)(path);
+            //   Apply the persisted icon status (e.g. magicType's active type is kept in `emphasis`).
+            if (featureModel.get(["iconStatus", iconName]) as? String) == "emphasis" {
+                states.enterEmphasis(path)
+            }
+            else {
+                states.leaveEmphasis(path)
+            }
 
             _ = group.add(path)
 
@@ -308,6 +362,16 @@ private func toolboxTruthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
+}
+
+/// Coerce a `number | number[]` option value into `TextStyleProps.borderRadius`/`padding`
+///   (the title-chip fields). Mirrors `labelStyle._coerceNumberOrNumberArray` (file-private there).
+private func toolboxNumberOrArray(_ v: Any?) -> NumberOrNumberArray? {
+    if let x = v as? NumberOrNumberArray { return x }
+    if let arr = v as? [Double] { return .array(arr) }
+    if let arr = v as? [Any] { return .array(arr.map { toolboxNum($0) ?? 0 }) }
+    if let d = toolboxNum(v) { return .number(d) }
+    return nil
 }
 
 /// `+toolboxModel.get('itemSize')` — coerce an option number boxed as Int OR Double (CRITICAL trap #2).

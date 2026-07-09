@@ -146,6 +146,31 @@ public final class DefaultDataProvider: DataProvider {
         return self._getItem(idx, out)
     }
 
+    // PORT bridge (not upstream): upstream mutates a raw option data item BY REFERENCE — e.g.
+    //   `SankeySeriesModel.setNodePosition` sets `option.data[i].localX/localY` — and because this
+    //   provider's `_data` IS that same array reference, the mutation is immediately visible through
+    //   `getItem`. Swift arrays/dicts are VALUE types, so a write to the series option never reaches this
+    //   provider's `_data` copy. This setter writes the field back into `_data` so `getItem(idx)[key]`
+    //   reflects it — reproducing the shared-reference semantics (same spirit as the `appendData` note
+    //   above, which reassigns `_data` because Swift arrays are value types). Object/original source only
+    //   (each raw item is a `[String: Any]` dict); a no-op otherwise.
+    public func setRawItemField(_ idx: Int, _ key: String, _ value: Any?) {
+        if var arr = self._data as? [Any?], idx >= 0, idx < arr.count {
+            if var dict = arr[idx] as? [String: Any] {
+                dict[key] = value
+                arr[idx] = dict
+                self._data = arr
+            }
+        }
+        else if var arr = self._data as? [Any], idx >= 0, idx < arr.count {
+            if var dict = arr[idx] as? [String: Any] {
+                dict[key] = value
+                arr[idx] = dict
+                self._data = arr
+            }
+        }
+    }
+
     public func fillStorage(
         _ start: Double, _ end: Double,
         _ out: inout [ArrayLike<ParsedValue>], _ extent: inout [[Double]]

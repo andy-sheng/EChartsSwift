@@ -103,6 +103,39 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertEqual(iconsWithText, 3, "every toolbox icon should carry a title textContent")
     }
 
+    // ---- (1e) hovering (highlight) an icon enters emphasis + reveals its title; downplay hides it ----
+    //   Faithful wiring test: the toolbox icon is a highDown dispatcher whose title textContent is
+    //   hidden normally (ignore=true) and visible in its emphasis state (ignore=false). Entering
+    //   emphasis on the icon propagates the state to the textContent (Element.useState→textContent),
+    //   so the title appears; leaving emphasis restores the hidden normal state.
+    func testIconHoverEntersEmphasisAndRevealsTitle() {
+        let view = makeChart()
+
+        // Grab the first toolbox icon path (the only SVGPaths that carry a title textContent).
+        var icon: SVGPath?
+        _ = view.ec.getRoot().traverse { el in
+            if icon == nil, let p = el as? SVGPath, p.getTextContent() != nil { icon = p }
+            return false
+        }
+        guard let path = icon, let title = path.getTextContent() else {
+            return XCTFail("expected a toolbox icon with a title textContent")
+        }
+
+        // Normal state: the title is hidden.
+        XCTAssertTrue(title.ignore, "title text is hidden before hover")
+        XCTAssertFalse(path.currentStates.contains("emphasis"), "icon is not emphasized initially")
+
+        // Hover / highlight the icon (same primitive the live-host mouseover fires).
+        view.ec.api.enterEmphasis(path)
+        XCTAssertTrue(path.currentStates.contains("emphasis"), "icon enters emphasis on hover")
+        XCTAssertFalse(title.ignore, "title text is revealed while the icon is emphasized")
+
+        // Downplay hides the title again.
+        view.ec.api.leaveEmphasis(path)
+        XCTAssertFalse(path.currentStates.contains("emphasis"), "icon leaves emphasis on downplay")
+        XCTAssertTrue(title.ignore, "title text is hidden again after downplay")
+    }
+
     // ---- (2) restore resets a magicType swap back to the original option ----
     func testRestoreResetsMagicType() {
         let view = makeChart()

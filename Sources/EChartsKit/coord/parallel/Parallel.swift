@@ -470,23 +470,65 @@ public final class Parallel: CoordinateSystemMaster {
      * @param end the next dataIndex of the last dataIndex will be travel.
      */
     // upstream: eachActiveState(data, callback, start?, end?): void { ... }
-    // PORT-TODO: DEFERRED — brush / active-interval selection path (CONVENTIONS §5 + task). The active
-    //   state depends on `ParallelAxisModel.getActiveState(value)` (the axis-brush selection), which is not
-    //   ported in the static-render phase. Upstream, when no axis is brushed (`hasAxisBrushed() === false`),
-    //   every datum is `'normal'` — which is exactly the static-render behavior — so the stub emits
-    //   `'normal'` for each index. Restore the full brush travel (see upstream) when the interaction lands.
+    //   Ported in full (parallel-axis-brush task): the active state of each datum is classified against the
+    //   per-axis `ParallelAxisModel.getActiveState(value)` (populated by the `axisAreaSelect` action —
+    //   component/axis/parallelAxisAction.swift). When no axis is brushed (`hasAxisBrushed() === false`)
+    //   every datum is `'normal'` (the static-render behavior); once an axis has an active interval a datum
+    //   is `'inactive'` as soon as ANY axis reports it out-of-interval, else `'active'`.
     public func eachActiveState(
         _ data: SeriesData,
         _ callback: (ParallelActiveState, Int) -> Void,
         _ start: Int? = nil,
         _ end: Int? = nil
     ) {
+        // start == null && (start = 0); end == null && (end = data.count());
         let start = start ?? 0
         let end = end ?? data.count()
 
+        // const axesMap = this._axesMap; const dimensions = this.dimensions;
+        let axesMap = self._axesMap
+        let dimensions = self.dimensions
+        // const dataDimensions = [] as DimensionName[]; const axisModels = [] as ParallelAxisModel[];
+        var dataDimensions: [DimensionName] = []
+        var axisModels: [ParallelAxisModel] = []
+
+        // each(dimensions, function (axisDim) {
+        //     dataDimensions.push(data.mapDimension(axisDim));
+        //     axisModels.push(axesMap.get(axisDim).model);
+        // });
+        //   Port deviation: a plain for-loop (upstream `each`) — `data.mapDimension` may be nil, so fall
+        //   back to `axisDim` to keep `dataDimensions` aligned with `dimensions` for the `values[j]` index.
+        //   `axesMap.get(axisDim)!.model` is always the injected `ParallelAxisModel` (see `_makeLayoutInfo`).
+        for axisDim in dimensions {
+            dataDimensions.append(data.mapDimension(axisDim) ?? axisDim)
+            axisModels.append(axesMap.get(axisDim)!.model as! ParallelAxisModel)
+        }
+
+        // const hasActiveSet = this.hasAxisBrushed();
+        let hasActiveSet = self.hasAxisBrushed()
+
         var dataIndex = start
         while dataIndex < end {
-            callback("normal", dataIndex)
+            var activeState: ParallelActiveState
+
+            if !hasActiveSet {
+                activeState = "normal"
+            }
+            else {
+                activeState = "active"
+                // const values = data.getValues(dataDimensions, dataIndex);
+                let values = data.getValues(dataDimensions, dataIndex)
+                for j in 0..<dimensions.count {
+                    // const state = axisModels[j].getActiveState(values[j]);
+                    let state = axisModels[j].getActiveState(j < values.count ? values[j] : nil)
+                    if state == "inactive" {
+                        activeState = "inactive"
+                        break
+                    }
+                }
+            }
+
+            callback(activeState, dataIndex)
             dataIndex += 1
         }
     }
@@ -495,10 +537,20 @@ public final class Parallel: CoordinateSystemMaster {
      * Whether has any activeSet.
      */
     // upstream: hasAxisBrushed(): boolean { ... }
-    // PORT-TODO: DEFERRED — brush / active-interval selection path. Depends on
-    //   `ParallelAxisModel.getActiveState()`; returns `false` (no brush) in the static-render phase.
+    //   Ported in full: true as soon as ANY parallel axis has a non-`'normal'` active state (i.e. its
+    //   `ParallelAxisModel.activeIntervals` is non-empty from an `axisAreaSelect` selection).
     public func hasAxisBrushed() -> Bool {
-        return false
+        let dimensions = self.dimensions
+        let axesMap = self._axesMap
+        var hasActiveSet = false
+
+        for j in 0..<dimensions.count {
+            if (axesMap.get(dimensions[j])!.model as! ParallelAxisModel).getActiveState() != "normal" {
+                hasActiveSet = true
+            }
+        }
+
+        return hasActiveSet
     }
 
     /**

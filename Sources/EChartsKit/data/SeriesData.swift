@@ -1017,6 +1017,14 @@ public final class SeriesData: DataStackSeriesData {
         return self._store.getRawDataItem(idx)
     }
 
+    // PORT bridge (not upstream): write a field onto the RAW option data item `rawIdx` in the underlying
+    //   provider, so a subsequent `getItemModel(idx).get(key)` reflects it WITHOUT rebuilding the data.
+    //   Reproduces upstream's shared-reference option mutation (see DefaultDataProvider.setRawItemField).
+    //   `rawIdx` is a RAW source index (== option data index); consumed by SankeySeriesModel.setNodePosition.
+    public func setRawDataItemField(_ rawIdx: Int, _ key: String, _ value: Any?) {
+        (self._store.getProvider() as? DefaultDataProvider)?.setRawItemField(rawIdx, key, value)
+    }
+
     /**
      * Get model of one data item.
      */

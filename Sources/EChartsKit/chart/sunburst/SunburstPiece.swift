@@ -130,7 +130,7 @@ open class SunburstPiece: Sector {
             return
         }
         // const emphasisModel = itemModel.getModel('emphasis');
-        _ = itemModel.getModel("emphasis")   // emphasisModel — consumed by the deferred emphasis wiring.
+        let emphasisModel = itemModel.getModel("emphasis")
         // const layout = node.getLayout();
         let layout = node.getLayout() as? [String: Any] ?? [:]
 
@@ -201,9 +201,44 @@ open class SunburstPiece: Sector {
         // this._ecModel = ecModel || this._ecModel;
         self._ecModel = ecModel ?? self._ecModel
 
-        // const focus = emphasisModel.get('focus'); ... toggleHoverEmphasis(...);
-        // PORT-TODO: emphasis focus (relative/ancestor/descendant indices) + toggleHoverEmphasis
-        //   DEFERRED (util/states not ported).
+        // ── Per-state (emphasis/blur/select) itemStyle on the sector body ──
+        //   upstream sets these inside the `SPECIAL_STATES` loop (ensureState(name).style =
+        //   itemModel.getModel([name,'itemStyle']).getItemStyle()); `setStatesStylesFromModel` is the
+        //   ported form of that loop (the per-state corner-radius augmentation stays deferred — see the
+        //   SPECIAL_STATES PORT-TODO above). The label's per-state text styles are already installed by
+        //   `setLabelStyle` in `_updateLabel` (getLabelStatesModels), so the sector body is all that
+        //   remains here. Mirrors PieView / GraphView.
+        // NOTE: `states` (the ported util/states enum) is qualified with the module name because a
+        //   `Sector` (this class's superclass) already has an inherited `states` element-state dictionary
+        //   that would otherwise shadow the enum inside instance methods.
+        EChartsKit.states.setStatesStylesFromModel(sector, itemModel)
+
+        // const focus = emphasisModel.get('focus');
+        // const focusOrIndices = focus === 'relative'
+        //     ? zrUtil.concatArray(node.getAncestorsIndices(), node.getDescendantIndices())
+        //     : focus === 'ancestor' ? node.getAncestorsIndices()
+        //         : focus === 'descendant' ? node.getDescendantIndices()
+        //             : focus;
+        //   Sunburst-specific focus modes ('relative'/'ancestor'/'descendant') resolve to a tree-adjacency
+        //   index list (like graph adjacency); any other value ('self'/'none'/'series' or an explicit
+        //   array) passes straight through to `toggleHoverEmphasis` unchanged.
+        let focus = emphasisModel.get("focus")
+        let focusOrIndices: InnerFocus?
+        switch focus as? String {
+        case "relative":
+            focusOrIndices = node.getAncestorsIndices() + node.getDescendantIndices()
+        case "ancestor":
+            focusOrIndices = node.getAncestorsIndices()
+        case "descendant":
+            focusOrIndices = node.getDescendantIndices()
+        default:
+            focusOrIndices = focus
+        }
+
+        // toggleHoverEmphasis(this, focusOrIndices, emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        EChartsKit.states.toggleHoverEmphasis(sector, focusOrIndices, blurScope, isDisabled)
     }
 
     // upstream: _updateLabel(seriesModel)

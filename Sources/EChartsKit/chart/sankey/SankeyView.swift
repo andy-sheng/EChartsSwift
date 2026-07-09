@@ -453,9 +453,50 @@ open class SankeyView: ChartView {
             ecNode.dataIndex = Double(node.dataIndex)
         })
 
-        // nodeData.eachItemGraphicEl(...) draggable → el.drift / api.dispatchAction('dragNode') ...
-        //   PORT-TODO: node dragging (drift + dispatchAction + draggable/cursor) DEFERRED (actions/roam
-        //   not ported).
+        // Node dragging. upstream:
+        //   nodeData.eachItemGraphicEl(function (el: graphic.Rect, dataIndex) {
+        //     const itemModel = nodeData.getItemModel(dataIndex);
+        //     if (itemModel.get('draggable')) {
+        //       el.drift = function (dx, dy) {
+        //         this.shape.x += dx; this.shape.y += dy; this.dirty();
+        //         api.dispatchAction({ type: 'dragNode', seriesId: seriesModel.id,
+        //           dataIndex: nodeData.getRawIndex(dataIndex),
+        //           localX: this.shape.x / width, localY: this.shape.y / height });
+        //       };
+        //       el.draggable = true; el.cursor = 'move';
+        //     }
+        //   });
+        // The assignable upstream `el.drift = fn` is the ported `Element.driftHandler` seam (Draggable's
+        //   `_drag` calls `draggingTarget.drift(dx,dy,e)`, which delegates to `driftHandler` when set —
+        //   fully replacing the default translate). The closure mutates the node rect's shape, then
+        //   dispatches `dragNode` (update:'update' → full update re-reads the persisted localX/localY and
+        //   re-routes the incident edge ribbons). `[weak el]` breaks the el → driftHandler → el cycle.
+        nodeData.eachItemGraphicEl({ el, dataIndex in
+            let itemModel = nodeData.getItemModel(dataIndex)
+            if (itemModel.get("draggable") as? Bool) == true {
+                guard el is Rect else { return }
+                let rawIndex = nodeData.getRawIndex(dataIndex)
+                el.driftHandler = { [weak el] dx, dy, _ in
+                    guard let rect = el as? Rect, var shape = rect.shape as? RectShape else { return }
+                    // this.shape.x += dx; this.shape.y += dy;
+                    shape.x += dx
+                    shape.y += dy
+                    _ = rect.setShape(shape)
+                    // this.dirty();
+                    rect.dirty()
+                    // api.dispatchAction({ type: 'dragNode', ... });
+                    var p = Payload(type: "dragNode")
+                    p.other["seriesId"] = seriesModel.id
+                    p.other["dataIndex"] = rawIndex
+                    p.other["localX"] = shape.x / width
+                    p.other["localY"] = shape.y / height
+                    api.dispatchAction(p)
+                }
+                el.draggable = .true
+                // el.cursor = 'move';  — cursor lives on Displayable (Rect is one).
+                (el as? Displayable)?.cursor = "move"
+            }
+        }, nil)
 
         // if (!this._data && seriesModel.isAnimationEnabled()) { mainGroup.setClipPath(createGridClipShape(...)); }
         //   PORT-TODO: the first-render grow-in clip animation (createGridClipShape + graphic.initProps)
