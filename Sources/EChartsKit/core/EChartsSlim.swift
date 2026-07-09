@@ -1802,10 +1802,34 @@ public final class EChartsSlim: EChartsType {
 
     // renderComponents (echarts.ts:2452) — minimal: clearStates/updateZ/updateStates dropped (states
     // system deferred). Just `componentView.render(model, ecModel, api, payload)`.
+    // upstream `clearStates(model, view)` (echarts.ts:2667): before a (possibly reused) view re-renders,
+    //   reset its rendered elements to the normal state so a lingering emphasis/select from before a
+    //   merge-mode setOption does not survive into the new render. Runs BEFORE render (walks the OLD
+    //   element tree). Skips elements fading out (a leave-scoped animator) so their fade is not
+    //   interrupted — the port's `isElementRemoved` also keys off `__zr == nil`, but in the headless
+    //   slim driver every element has a nil `__zr`, so only the leave-animator branch is meaningful here.
+    private func clearRenderedStates(_ eachRendered: (@escaping (Element) -> Bool) -> Void) {
+        eachRendered { el in
+            if el.animators.contains(where: { $0.scope == "leave" }) { return false }
+            if let tc = el.getTextContent() { tc.stateTransition = nil }
+            if let tg = el.getTextGuideLine() { tg.stateTransition = nil }
+            el.stateTransition = nil
+            if el.hasState() {
+                el.prevStates = el.currentStates
+                el.clearStates()
+            } else if el.prevStates != nil {
+                el.prevStates = nil
+            }
+            return false
+        }
+    }
+
     private func renderComponents(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let payload = Payload(type: "")
         for componentView in _componentsViews {
             guard let model = componentView.__model else { continue }
+            // upstream renderComponents wraps render with clearStates (before) — reset a reused view.
+            clearRenderedStates(componentView.eachRendered)
             componentView.render(model, ecModel, api, payload)
             // upstream echarts.ts renderComponents runs `updateZ(model, view)` after each render — set
             //   every rendered element's z/zlevel from the model. Coordinate components default z:0.
@@ -1914,10 +1938,17 @@ public final class EChartsSlim: EChartsType {
         let payload = Payload(type: "")
         ecModel.eachSeries { seriesModel, _ in
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
+            // upstream renderSeries clearStates (echarts.ts:2499) — reset a reused view's elements to
+            //   normal before re-render so emphasis/select from before a merge-mode setOption is gone.
+            self.clearRenderedStates(chartView.eachRendered)
             chartView.render(seriesModel, ecModel, api, payload)
             // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
             //   the coordinate components (default 2) so the data draws over the grid/axis/splitLine.
             self.updateZ(seriesModel, chartView.group, 2)
+            // upstream renderSeries `updateSeriesElementSelection(seriesModel)` (echarts.ts:2515) —
+            //   re-apply the select state from the model's selectedMap after render, so a selected
+            //   pie sector / bar stays selected across a merge-mode setOption re-render.
+            states.updateSeriesElementSelection(seriesModel)
             // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
             //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
             chartView.__alive = true
