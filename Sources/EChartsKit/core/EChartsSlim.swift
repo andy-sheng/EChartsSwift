@@ -303,6 +303,11 @@ public final class EChartsSlim: EChartsType {
     private var _componentViewByModel: [ObjectIdentifier: ComponentView] = [:]
     private var _chartViewByModel: [ObjectIdentifier: ChartView] = [:]
 
+    // Test-only accessors (assert reuse identity across setOption; assert no view duplication).
+    var testModel: GlobalModel? { _model }
+    var testChartViews: [ChartView] { _chartsViews }
+    var testComponentViews: [ComponentView] { _componentsViews }
+
     // ---- action-dispatch state (mirrors upstream `ECharts` action fields) ----
     /// Actions dispatched WHILE a render/update cycle is in progress are queued here and drained
     /// after it finishes (upstream: `private _pendingActions: Payload[] = []`).
@@ -1064,6 +1069,14 @@ public final class EChartsSlim: EChartsType {
     //   `update()`. Re-`setOption` merge/notMerge semantics are out of scope (each call rebuilds).
     // ------------------------------------------------------------------------
     public func setOption(_ option: [String: Any]) {
+        setOption(option, notMerge: false)
+    }
+
+    // upstream echarts.ts:770-777 — reuse `this._model` and MERGE unless first call or notMerge.
+    //   The default (notMerge:false) merge preserves each SeriesModel instance, so its prior
+    //   getData() survives for `data.diff`-driven cross-setOption tween transitions (L5). The
+    //   demo-switch host path passes notMerge:true to rebuild a fresh chart per demo.
+    public func setOption(_ option: [String: Any], notMerge: Bool) {
         var opt = option
         // Preprocessor from `installSimple.ts`: inject an (empty) grid if x+y axes are present but no
         //   grid was declared, so the axis models can resolve their coord-sys (`getCoordSysModel`).
@@ -1117,16 +1130,28 @@ public final class EChartsSlim: EChartsType {
             opt["axisPointer"] = [String: Any]()
         }
 
-        let ecModel = GlobalModel()
-        let om = OptionManager(_api)
-        // init(option, parentModel, ecModel, theme, locale, optionManager)
-        //   theme: resolved from the `init(theme:)` arg (a registered name or a dict); merged into the
-        //   option by GlobalModel.mergeTheme (backgroundColor / textStyle / axis colors / palette).
-        //   locale: `createLocaleObject(opts.locale || SYSTEM_LANG)` — the default (EN) locale Model
-        //   feeds getLocaleModel() reads (legend selector, time-axis month/day names, toolbox titles).
-        ecModel.`init`(nil, nil, nil, resolveTheme(), resolveLocale(), om)
-        ecModel.setOption(opt, nil, [])
-        self._model = ecModel
+        // First call or notMerge → fresh GlobalModel + init (upstream `new GlobalModel()`); else
+        //   reuse the persistent model and MERGE the new option into it (upstream
+        //   `this._model.setOption(option, {replaceMerge})`). GlobalModel.setOption already routes
+        //   first-vs-merge internally via its OptionManager (_resetOption → _mergeOption reuses each
+        //   component by id and sets __requireNewView on a type change), so reusing the same model
+        //   and calling setOption again performs the incremental merge that keeps SeriesModel
+        //   instances (and their getData()) alive for transitions.
+        if _model == nil || notMerge {
+            let ecModel = GlobalModel()
+            let om = OptionManager(_api)
+            // init(option, parentModel, ecModel, theme, locale, optionManager)
+            //   theme: resolved from the `init(theme:)` arg (a registered name or a dict); merged into
+            //   the option by GlobalModel.mergeTheme (backgroundColor / textStyle / axis colors /
+            //   palette). locale: `createLocaleObject(opts.locale || SYSTEM_LANG)` — the default (EN)
+            //   locale Model feeds getLocaleModel() (legend selector, time-axis names, toolbox titles).
+            ecModel.`init`(nil, nil, nil, resolveTheme(), resolveLocale(), om)
+            ecModel.setOption(opt, nil, [])
+            self._model = ecModel
+        }
+        else {
+            self._model!.setOption(opt, nil, [])
+        }
 
         update()
     }
