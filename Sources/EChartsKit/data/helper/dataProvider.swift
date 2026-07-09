@@ -200,6 +200,20 @@ private func mountMethods(_ provider: DefaultDataProvider, _ data: OptionSourceD
     }
     else {
         let rawItemGetter = getRawSourceItemGetter(sourceFormat, seriesLayoutBy)
+        // PORT PERF (no upstream analogue — JS is untyped): the row-indexed getters below read
+        //   `rawData[idx]` after `rawData as? [Any?]` (getItemSimply / countSimply). When `_data`
+        //   holds a concrete element type (e.g. an inline series `[[Double]]`), `array as? [Any?]`
+        //   bridges EVERY element into a fresh `[Any?]` — O(n) per call. Since `getItem` runs once
+        //   per datum during initData, that is O(n²) (measured: ~9 s for a 10k-point line-lttb).
+        //   Pre-bridge the outer array to `[Any?]` ONCE here so every subsequent per-call cast is a
+        //   same-type O(1) check. Only for the formats whose getters index a `[Any?]` outer array
+        //   (ORIGINAL — inline series data — and OBJECT_ROWS); ARRAY_ROWS/KEYED_COLUMNS getters cast
+        //   to other element types and must keep their raw storage. `appendData` for these formats
+        //   already reassigns `_data` as `[Any?]`, so this is consistent with the append path.
+        if (sourceFormat == SOURCE_FORMAT_ORIGINAL || sourceFormat == SOURCE_FORMAT_OBJECT_ROWS),
+           let bridged = provider._data as? [Any?] {
+            provider._data = bridged
+        }
         // PORT-TODO: upstream binds the `data` reference; we read `provider._data` live so that
         // `appendData` (which reassigns `_data`, since Swift arrays are value types) is visible.
         provider._getItem = { [unowned provider] idx, out in

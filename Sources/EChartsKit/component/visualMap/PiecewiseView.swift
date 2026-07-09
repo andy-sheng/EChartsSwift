@@ -65,6 +65,11 @@ public final class PiecewiseVisualMapView: VisualMapView {
 
     // visualMapModel: PiecewiseModel;  (narrowed; base stores the same instance)
 
+    // ---- test seam (no upstream analog): expose each rendered piece's clickable item symbol keyed by
+    //   its model-pieceList index, so a headless test can compute the symbol's global pixel centre and
+    //   inject a synthetic pointer click over it (mirrors ContinuousView._handleThumbForTest).
+    internal private(set) var _viewPieceSymbolsForTest: [(indexInModelPieceList: Int, symbol: Path)] = []
+
     // protected doRender()
     public override func doRender(
         _ visualMapModelIn: VisualMapModel,
@@ -75,6 +80,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
         let thisGroup = self.group
 
         _ = thisGroup.removeAll()
+        self._viewPieceSymbolsForTest = []
 
         // upstream `this.visualMapModel: PiecewiseModel`. The base stores it as VisualMapModel; narrow it.
         let visualMapModel = self.visualMapModel as! PiecewiseModel
@@ -101,7 +107,13 @@ public final class PiecewiseVisualMapView: VisualMapView {
 
             let itemGroup = Group()
             // itemGroup.onclick = zrUtil.bind(this._onItemClick, this, piece);
-            // PORT-TODO: DEFERRED — click selection (`_onItemClick`) is interaction (CONVENTIONS §5).
+            //   Wired faithfully via the live-host click seam (Group.on("click", ...)); the piece is
+            //   captured and toggled by `_onItemClick`, which dispatches `selectDataRange`. The headless
+            //   render pipeline never fires it; a test/host dispatch drives it end-to-end.
+            _ = itemGroup.on("click", { [weak self] _, _ in
+                self?._onItemClick(piece)
+                return nil
+            })
 
             // this._enableHoverLink(itemGroup, item.indexInModelPieceList);
             // PORT-TODO: DEFERRED — hover-link (`_enableHoverLink`) is interaction.
@@ -114,8 +126,11 @@ public final class PiecewiseVisualMapView: VisualMapView {
             //   to 0 here (out of the numeric static-render scope).
             let representValue = visualMapAsDouble(visualMapModel.getRepresentValue(piece)) ?? 0
 
-            self._createItemSymbol(
+            let itemSymbolPath = self._createItemSymbol(
                 itemGroup, representValue, [0, 0, itemSize[0], itemSize[1]], silent
+            )
+            self._viewPieceSymbolsForTest.append(
+                (indexInModelPieceList: item.indexInModelPieceList, symbol: itemSymbolPath)
             )
 
             if showLabel {
@@ -255,12 +270,13 @@ public final class PiecewiseVisualMapView: VisualMapView {
     }
 
     // private _createItemSymbol(group, representValue, shapeParam, silent?)
+    @discardableResult
     private func _createItemSymbol(
         _ group: Group,
         _ representValue: Double,
         _ shapeParam: [Double],
         _ silent: Bool = false
-    ) {
+    ) -> Path {
         // const itemSymbol = createSymbol(getControllerVisual(representValue, 'symbol'), x, y, w, h,
         //   getControllerVisual(representValue, 'color'));
         // PORT-TODO: upstream passes `getControllerVisual(...,'symbol') as string` directly; when the
@@ -278,11 +294,48 @@ public final class PiecewiseVisualMapView: VisualMapView {
         let itemSymbolPath = itemSymbol as! Path
         itemSymbolPath.silent = silent
         _ = group.add(itemSymbolPath)
+        return itemSymbolPath
     }
 
-    // private _onItemClick(piece)
-    // PORT-TODO: DEFERRED — piece selection toggle (`api.dispatchAction('selectDataRange', {selected})`)
-    //   is interaction (CONVENTIONS §5). Reproduce with the action layer.
+    // private _onItemClick(piece: VisualMappingOption['pieceList'][number])
+    private func _onItemClick(_ piece: [String: Any]) {
+        // const visualMapModel = this.visualMapModel;
+        let visualMapModel = self.visualMapModel as! PiecewiseModel
+        // const option = visualMapModel.option;
+        let option = (visualMapModel.option as? [String: Any]) ?? [:]
+        // const selectedMode = option.selectedMode;
+        let selectedMode = option["selectedMode"]
+        // if (!selectedMode) { return; }
+        if !visualMapJsTruthy(selectedMode) {
+            return
+        }
+        // const selected = zrUtil.clone(option.selected);
+        var selected = (util.clone(option["selected"] ?? [String: Any]()) as? [String: Any]) ?? [:]
+        // const newKey = visualMapModel.getSelectedMapKey(piece);
+        let newKey = visualMapModel.getSelectedMapKey(piece)
+
+        // if (selectedMode === 'single' || selectedMode === true) {
+        if (selectedMode as? String) == "single" || (selectedMode as? Bool) == true {
+            // selected[newKey] = true;
+            selected[newKey] = true
+            // zrUtil.each(selected, function (o, key) { selected[key] = key === newKey; });
+            for key in selected.keys {
+                selected[key] = (key == newKey)
+            }
+        }
+        else {
+            // selected[newKey] = !selected[newKey];
+            selected[newKey] = !visualMapJsTruthy(selected[newKey])
+        }
+
+        // this.api.dispatchAction({ type: 'selectDataRange', from: this.uid,
+        //     visualMapId: this.visualMapModel.id, selected: selected });
+        var payload = Payload(type: "selectDataRange")
+        payload.other["from"] = self.uid
+        payload.other["visualMapId"] = visualMapModel.id
+        payload.other["selected"] = selected
+        self.api!.dispatchAction(payload)
+    }
 }
 
 // export default PiecewiseVisualMapView;  → `final class PiecewiseVisualMapView` above.

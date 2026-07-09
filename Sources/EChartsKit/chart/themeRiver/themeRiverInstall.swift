@@ -29,7 +29,8 @@ import ZRenderKit
 //   import ThemeRiverSeriesModel, { SERIES_TYPE_THEME_RIVER } from './ThemeRiverSeries';
 //       -> sibling ThemeRiverSeries.swift (ported).
 //   import dataFilter from '../../processor/dataFilter';
-//       -> `dataFilter` (processor/dataFilter.swift) — the `SERIES_TYPE_THEME_RIVER` processor.
+//       -> `legendDataFilter` (processor/legendDataFilter.swift) — the `SERIES_TYPE_THEME_RIVER` processor,
+//          wired into the slim driver's data-processor stage (see EChartsSlim `_dataFilters`).
 //   import { themeRiverLayoutStageHandler } from './themeRiverLayout';
 //       -> sibling themeRiverLayout.swift (ported).
 
@@ -50,6 +51,6 @@ import ZRenderKit
 //   - registerSeriesModel: `ThemeRiverSeriesModel`        (chart/themeRiver/ThemeRiverSeries.swift)
 //   - registerChartView:   `ThemeRiverView`               (chart/themeRiver/ThemeRiverView.swift — ported)
 //   - registerLayout:      `themeRiverLayoutStageHandler` (chart/themeRiver/themeRiverLayout.swift — ported here)
-//   - registerProcessor:   `dataFilter(SERIES_TYPE_THEME_RIVER)`  // PORT-TODO: processor/dataFilter.ts NOT ported yet
+//   - registerProcessor:   `dataFilter(SERIES_TYPE_THEME_RIVER)`  // -> legendDataFilter (processor/legendDataFilter.swift), wired in EChartsSlim `_dataFilters`
 //   - DEPENDENCY: the `singleAxis` component + the Single coordinate system (coord/single/ — Single.swift /
 //     SingleAxis.swift land with the Single coord-sys phase; ThemeRiverSeriesModel.dependencies == ['singleAxis']).

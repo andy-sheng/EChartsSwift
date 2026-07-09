@@ -400,6 +400,18 @@ public final class EChartsSlim: EChartsType {
     static let _negativeDataFilters: [StageHandler] = [
         negativeDataFilter(SERIES_TYPE_PIE)
     ]
+    // The DATA-ITEM legend filter processors (upstream `registerProcessor(dataFilter(SERIES_TYPE))` in
+    //   chart/{pie,funnel,radar,themeRiver,chord}/install.ts). Each drops the data items whose NAME is
+    //   unselected in a legend — legend show/hide for charts whose legend entries are data-item names
+    //   (pie slices / radar polygons / funnel items / streams), not the series name. Run per matching
+    //   series in the data-processor stage (like negativeDataFilter), BEFORE the layout/visual/view stages.
+    static let _dataFilters: [StageHandler] = [
+        legendDataFilter(SERIES_TYPE_PIE),
+        legendDataFilter(SERIES_TYPE_FUNNEL),
+        legendDataFilter(SERIES_TYPE_RADAR),
+        legendDataFilter(SERIES_TYPE_THEME_RIVER),
+        legendDataFilter(SERIES_TYPE_CHORD)
+    ]
 
     static func installOnce() {
         if _installed { return }
@@ -569,8 +581,8 @@ public final class EChartsSlim: EChartsType {
         //   {cx,cy,r0,r,startAngle,endAngle,clockwise} + each edge's ribbon (s1/s2/t1/t2/angles) from the
         //   circular layout stage (chordCircularLayout). getDataParams/formatTooltip read
         //   `node.getLayout().value` written by the layout, so the layout MUST run first; it runs in
-        //   `render`/`update` below. The `dataFilter('chord')` processor is a no-op in this slim path
-        //   (no legend-select provider ported) — PORT-TODO; see chart/chord/chordInstall.swift.
+        //   `render`/`update` below. The `dataFilter('chord')` processor (data-item legend show/hide) is
+        //   wired via `legendDataFilter(SERIES_TYPE_CHORD)` in `_dataFilters`; see chart/chord/chordInstall.swift.
         ComponentModel.registerClass(ChordSeriesModel.self)
 
         // -- chart/lines/install.ts (minimal) -- registerChartView(LinesView) +
@@ -599,8 +611,9 @@ public final class EChartsSlim: EChartsType {
         //   coordinate system (dependencies ["singleAxis"]); its layout stage reads the Single coord rect +
         //   axis orient and writes each datum's {layerIndex,x,y0,y} band point, which ThemeRiverView reads
         //   back to draw one Polygon per layer. themeRiverLayout runs in render()/update() AFTER the coord
-        //   create/update (it casts seriesModel.coordinateSystem to Single). The dataFilter processor is a
-        //   no-op in this slim path (no legend-select provider); see themeRiverInstall.swift.
+        //   create/update (it casts seriesModel.coordinateSystem to Single). The dataFilter processor
+        //   (data-item legend show/hide) is wired via `legendDataFilter(SERIES_TYPE_THEME_RIVER)` in
+        //   `_dataFilters`; see themeRiverInstall.swift.
         ComponentModel.registerClass(ThemeRiverSeriesModel.self)                   // registerSeriesModel(ThemeRiverSeries)
 
         // -- component/radar/install.ts + chart/radar/install.ts (radar coordinate system) --
@@ -1157,6 +1170,21 @@ public final class EChartsSlim: EChartsType {
         //   series (self-gates: no-op when a series has no negative values). Must run in the data-processor
         //   stage before the pie layout reads `getData()`.
         for filter in EChartsSlim._negativeDataFilters {
+            ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
+                _ = filter.reset?(seriesModel, ecModel, api, nil)
+            }
+        }
+
+        // PROCESSOR — dataFilter (upstream `registerProcessor(dataFilter(SERIES_TYPE))` in
+        //   chart/{pie,funnel,radar,themeRiver,chord}/install.ts, PRIORITY_PROCESSOR_DEFAULT = 2000).
+        //   Legend show/hide for charts whose legend entries are DATA-ITEM names (pie slices / radar
+        //   polygons / funnel items): drops each datum whose NAME is unselected in a legend so a
+        //   legendToggleSelect (item click) hides/shows that slice/polygon. A per-series `reset` handler;
+        //   run over each matching series (self-gates to a no-op when no legend exists). `filterSelf`
+        //   shrinks the series' data store; `getData()` is rebuilt on the next update() (restoreData), so
+        //   re-selecting restores the item. Must run in the data-processor stage before the pie/radar
+        //   layout + visual + view stages read `getData()` (pie re-layouts remaining slices to fill 360).
+        for filter in EChartsSlim._dataFilters {
             ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
                 _ = filter.reset?(seriesModel, ecModel, api, nil)
             }

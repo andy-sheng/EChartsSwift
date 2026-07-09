@@ -557,33 +557,40 @@ open class VisualMapModel: ComponentModel {
         _ isCategory: Bool
     ) {
         let optExist = base[stateExist] as? [String: Any]
-        let optAbsent = base[stateAbsent]
+        // JS `!optAbsent` — absent when the key is missing OR null.
+        let optAbsentRaw = base[stateAbsent]
+        let optAbsentMissing = (optAbsentRaw == nil) || (optAbsentRaw is NSNull)
 
-        if let optExist = optExist, optAbsent == nil {
+        // if (optExist && !optAbsent) {
+        if let optExist = optExist, optAbsentMissing {
             // optAbsent = base[stateAbsent] = {};
-            let newAbsent: [String: Any] = [:]
-            // PORT-TODO: visualDefault.get / VisualMapping.isValidType NOT ported (visualDefault +
-            //   VisualMapping deferred). The upstream body walks `optExist`, and for each valid visual
-            //   type looks up `visualDefault.get(visualType, 'inactive', isCategory)`, assigning it to
-            //   `optAbsent[visualType]` (plus the ec2-compat `opacity = [0, 0]` when the type is
-            //   'color' and neither `opacity` nor `colorAlpha` is present). DEFERRED — the absent state
-            //   is created empty until visualDefault + VisualMapping land.
-            _ = optExist
-            _ = isCategory
+            var optAbsent: [String: Any] = [:]
             // each(optExist, function (visualData, visualType) {
-            //     if (!VisualMapping.isValidType(visualType)) { return; }
-            //     const defa = visualDefault.get(visualType, 'inactive', isCategory);
-            //     if (defa != null) {
-            //         optAbsent[visualType] = defa;
-            //         if (visualType === 'color'
-            //             && !optAbsent.hasOwnProperty('opacity')
-            //             && !optAbsent.hasOwnProperty('colorAlpha')) {
-            //             optAbsent.opacity = [0, 0];
-            //         }
-            //     }
-            // });
-            base[stateAbsent] = newAbsent
-            _ = newAbsent
+            // (JS iterates in insertion order; Swift dict order is unspecified. Each visualType is applied
+            //  independently to a distinct `optAbsent` key, so the result is order-independent.)
+            for (visualType, _) in optExist {
+                // if (!VisualMapping.isValidType(visualType)) { return; }
+                if !VisualMapping.isValidType(visualType) { continue }
+                // const defa = visualDefault.get(visualType, 'inactive', isCategory);
+                let defa = visualDefault.get(visualType, "inactive", isCategory)
+                // if (defa != null) {
+                if let defa = defa, !(defa is NSNull) {
+                    // optAbsent[visualType] = defa;
+                    optAbsent[visualType] = defa
+                    // Compatibility
+                    // if (visualType === 'color'
+                    //     && !optAbsent.hasOwnProperty('opacity')
+                    //     && !optAbsent.hasOwnProperty('colorAlpha')) {
+                    //     optAbsent.opacity = [0, 0];
+                    // }
+                    if visualType == "color"
+                        && optAbsent.index(forKey: "opacity") == nil
+                        && optAbsent.index(forKey: "colorAlpha") == nil {
+                        optAbsent["opacity"] = [0.0, 0.0]
+                    }
+                }
+            }
+            base[stateAbsent] = optAbsent
         }
     }
 

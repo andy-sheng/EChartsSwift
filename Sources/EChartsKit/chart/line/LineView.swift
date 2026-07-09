@@ -184,8 +184,12 @@ open class LineView: ChartView {
         //   hover-scale, symbolRotate/offset and the per-point label. The line's colour reaches the
         //   symbol via the item visual `style.fill` (line series uses itemStyle/fill), so emptyCircle
         //   (line default) auto-swaps to stroke=lineColor/fill=neutral00 inside Symbol.setColor.
-        // PORT-TODO: showAllSymbol / 'auto' density sampling (upstream hides symbols when points are
-        //   dense) and endLabel — the port shows all symbols when showSymbol != false.
+        // upstream: `showSymbol && !isCoordSysPolar && getIsIgnoreFunc(...)` gates the per-point symbol.
+        //   `showAllSymbol: 'auto'` (the LineSeries default) hides symbols when the category line is
+        //   dense — a symbol is IGNORED unless its category tick survives the label-interval strategy,
+        //   and the whole density check is short-circuited when the points comfortably fit (see
+        //   `lineGetIsIgnoreFunc` / `lineCanShowAllSymbolForCategory`). This is what keeps a 10k-point
+        //   line from materialising 10k Symbol groups. (endLabel remains a PORT-TODO.)
         let showSymbol = seriesModel.get("showSymbol")
         // upstream truthiness: draw unless showSymbol is explicitly false.
         if (showSymbol as? Bool) != false {
@@ -194,10 +198,14 @@ open class LineView: ChartView {
             symbolVisual.seriesSymbolTask(seriesModel, ecModel)
             symbolVisual.dataSymbolTask(seriesModel)
 
+            // upstream: const isIgnoreFunc = showSymbol && !isCoordSysPolar && getIsIgnoreFunc(...)
+            let isIgnoreFunc = lineGetIsIgnoreFunc(seriesModel, data, coord)
+
             // Re-project per datum (rather than reusing `points`) so each symbol tracks its own datum
             //   even where a non-finite coord was dropped from the polyline point array above.
             let symbolDraw = SymbolDraw()
             var opt = SymbolDrawUpdateOpt()
+            opt.isIgnore = isIgnoreFunc
             opt.getSymbolPoint = { i in
                 let baseVal = lineToNumber(store.get(baseDimIdx, i))
                 let value = lineToNumber(store.get(valueDimIdx, i))
@@ -318,6 +326,81 @@ private func lineStepPoints(_ points: [VectorArray], _ stepOpt: Any?, _ isValueA
         out.append(cur)
     }
     return out
+}
+
+// upstream: function getIsIgnoreFunc(seriesModel, data, coordSys) — returns the per-point "should this
+//   symbol be hidden?" predicate (or nil when every symbol is shown). `showAllSymbol === true` never
+//   ignores; `'auto'` (the default) ignores densely-packed category symbols so a 10k-point line does not
+//   materialise 10k Symbol groups. A non-category (value/time) axis returns nil (nothing to thin against).
+private func lineGetIsIgnoreFunc(
+    _ seriesModel: SeriesModel, _ data: SeriesData, _ coordSys: Cartesian2D
+) -> ((Int) -> Bool)? {
+    let showAllSymbol = seriesModel.get("showAllSymbol")
+    let isAuto = (showAllSymbol as? String) == "auto"
+
+    // showAllSymbol truthy and not 'auto' → explicit "show all" → never ignore.
+    if lineTruthyOpt(showAllSymbol) && !isAuto {
+        return nil
+    }
+
+    guard let categoryAxis = coordSys.getAxesByScale("ordinal").first else {
+        return nil
+    }
+
+    // Note that category label interval strategy might bring some weird effect in some scenario: users
+    //   may wonder why some of the symbols are not displayed. So we show all symbols as possible as we can.
+    if isAuto
+        // Simplify the logic, do not determine label overlap here.
+        && lineCanShowAllSymbolForCategory(categoryAxis, data) {
+        return nil
+    }
+
+    // Otherwise follow the label interval strategy on category axis.
+    guard let categoryDataDim = data.mapDimension(categoryAxis.dim) else { return nil }
+    var labelMap = Set<Double>()
+    for labelItem in categoryAxis.getViewLabels() {
+        if labelItem.tick.offInterval != true {
+            labelMap.insert(axisHelper.getTickValueOutermost(categoryAxis.scale, labelItem.tick))
+        }
+    }
+
+    return { dataIndex in
+        return !labelMap.contains(lineToNumber(data.get(categoryDataDim, dataIndex)))
+    }
+}
+
+// upstream: function canShowAllSymbolForCategory(categoryAxis, data) — estimate (by sampling ≤5 symbol
+//   sizes against the per-category available pixel width) whether every symbol fits without overlap.
+private func lineCanShowAllSymbolForCategory(_ categoryAxis: Axis2D, _ data: SeriesData) -> Bool {
+    // In most cases, line is monotonous on category axis, and the label size is close with each other.
+    //   So we check the symbol size and some of the label size alone with the category axis to estimate
+    //   whether all symbol can be shown without overlap.
+    let axisExtent = categoryAxis.getExtent()
+    let count = (categoryAxis.scale as? OrdinalScale)?.count() ?? 0
+    var availSize = abs(axisExtent[1] - axisExtent[0]) / count
+    if availSize.isNaN { availSize = 0 }   // 0/0 is NaN.
+
+    // Sampling some points, max 5.
+    let dataLen = data.count()
+    let step = Swift.max(1, Int((Double(dataLen) / 5).rounded()))
+    let sizeIdx = categoryAxis.isHorizontal() ? 1 : 0
+    var dataIndex = 0
+    while dataIndex < dataLen {
+        // Only for cartesian, where `isHorizontal` exists. Empirical number 1.5.
+        if Symbol.getSymbolSize(data, dataIndex)[sizeIdx] * 1.5 > availSize {
+            return false
+        }
+        dataIndex += step
+    }
+
+    return true
+}
+
+// JS truthiness for the `showAllSymbol` option: a non-empty string (e.g. 'auto') or `true` is truthy.
+private func lineTruthyOpt(_ v: Any?) -> Bool {
+    if let b = v as? Bool { return b }
+    if let s = v as? String { return !s.isEmpty }
+    return v != nil
 }
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric series data is stored as `Double`. Mirrors the

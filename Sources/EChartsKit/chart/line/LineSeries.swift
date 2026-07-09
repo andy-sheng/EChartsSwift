@@ -60,7 +60,10 @@ open class LineSeriesModel: SeriesModel {
             //   SymbolOptionMixin defaults deferred with the symbol subsystem.
             "symbol": "emptyCircle",
             "symbolSize": 6.0,
-            "showSymbol": true
+            "showSymbol": true,
+            // upstream LineSeries.ts:210 — 'auto' hides the point symbols when the line is dense (see
+            //   LineView's getIsIgnoreFunc / canShowAllSymbolForCategory density check).
+            "showAllSymbol": "auto"
         ] as [String: Any]
     }
 

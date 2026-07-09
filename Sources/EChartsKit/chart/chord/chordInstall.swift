@@ -27,7 +27,7 @@ import ZRenderKit
 //   import ChordView from './ChordView';
 //       -> chart/chord/ChordView.swift (sibling render-layer port — node Sector arcs + ribbon Path + labels).
 //   import ChordSeriesModel from './ChordSeries';                         -> sibling ChordSeries.swift (ported).
-//   import dataFilter from '../../processor/dataFilter';                  -> processor/dataFilter.swift.
+//   import dataFilter from '../../processor/dataFilter';                  -> processor/legendDataFilter.swift.
 //   import { chordCircularLayoutStageHandler } from './chordLayout';      -> chart/chord/chordLayout.swift
 //       (sibling layout-stage port — circular arc layout for nodes + edges).
 
@@ -45,7 +45,7 @@ import ZRenderKit
 //             chordCircularLayoutStageHandler                  // -> chordCircularLayoutStageHandler (chordLayout.swift)
 //         );
 //         // Add data filter processor
-//         registers.registerProcessor(dataFilter('chord'));   // -> dataFilter (processor/dataFilter.swift)
+//         registers.registerProcessor(dataFilter('chord'));   // -> legendDataFilter (processor/legendDataFilter.swift), wired in EChartsSlim `_dataFilters`
 //     }
 //
 // INTEGRATION SURFACE (for the driver):
@@ -53,4 +53,4 @@ import ZRenderKit
 //   - registerChartView:   `ChordView`                           (chart/chord/ChordView.swift)
 //   - registerLayout:      `chordCircularLayoutStageHandler` at PRIORITY.VISUAL.POST_CHART_LAYOUT
 //                                                                 (chart/chord/chordLayout.swift)
-//   - registerProcessor:   `dataFilter("chord")`                 (processor/dataFilter.swift)
+//   - registerProcessor:   `dataFilter("chord")`                 (processor/legendDataFilter.swift, wired in EChartsSlim `_dataFilters`)
