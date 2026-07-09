@@ -17,6 +17,17 @@ private final class SmokeBarSeriesModel: BarSeriesModel {
 }
 
 final class EChartsSlimSmokeTests: XCTestCase {
+    // `registerClass` is a PROCESS-GLOBAL registration keyed by ComponentFullType ("series.bar"):
+    // registering SmokeBarSeriesModel overwrites the real BarSeriesModel for EVERY later test in the
+    // process. Its getInitialData returns an EMPTY DataStore, so without this restore, every
+    // subsequently-run bar chart silently loses its data (no bars, no transitions). Restore the real
+    // BarSeriesModel in tearDown so test order can not corrupt other suites (see the
+    // swiftpm-port-mechanical-traps precedent).
+    override func tearDown() {
+        ComponentModel.registerClass(BarSeriesModel.self)
+        super.tearDown()
+    }
+
     func testBarChartCycleRunsAndEmitsAxisElements() {
         let ec = EChartsSlim(width: 400, height: 300)
         // Override the real (SourceManager-backed) bar model with the DataStore-backed double.
