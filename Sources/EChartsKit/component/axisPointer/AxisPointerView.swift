@@ -32,7 +32,7 @@ import Foundation
 //
 //   HOST-SEAM DEVIATION: upstream `render` registers the ONE global `axisPointer` zr listener set
 //   (`globalListener.register('axisPointer', api, handler)`) whose fan-out dispatches
-//   `updateAxisPointer`. In THIS slim port, `EChartsView._bindAxisPointerListeners` (Phase 35) ALREADY
+//   `updateAxisPointer`. In THIS port, `EChartsView._bindAxisPointerListeners` (Phase 35) ALREADY
 //   owns that `globalListener.register("axisPointer", ...)` binding against the live zr (documented in
 //   EChartsView — the views have no live zr at render time). Registering again here would double-bind
 //   the same key. So this view's `render` is a documented no-op: it exists to satisfy the component/view

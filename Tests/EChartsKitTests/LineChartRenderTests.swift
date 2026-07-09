@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST for the cartesian LINE vertical (sibling of BarChartRenderTests). Drives the
-// slim ECharts with a line option and inspects the ZRenderKit scene: one `Polyline` (name "line")
+// ECharts with a line option and inspects the ZRenderKit scene: one `Polyline` (name "line")
 // with a point per datum, within the grid rect, x strictly increasing, y monotone-ish with the data,
 // and a palette stroke. Phase 6c: uses the REAL LineSeriesModel (data built from the option's own
 // series.data via the ported SourceManager) — no test double.

@@ -24,7 +24,7 @@ import ZRenderKit
 // PORT SCOPE (L2c — the global label layout stage):
 //   This lands the per-frame label layout stage that upstream registers via `installLabelLayout`
 //   (the `series:layoutlabels` lifecycle → `LabelManager.updateLayoutConfig` + `.layout`), reduced to
-//   what the slim driver needs:
+//   what the driver needs:
 //     - `addLabelsOfSeries`: collect each series' label textContents when a `labelLayout` option is set.
 //     - `updateLayoutConfig`: apply the user `labelLayout` option (x / y / rotate / align / verticalAlign
 //        / width / height / fontSize / dx / dy) to each label.
@@ -40,9 +40,9 @@ import ZRenderKit
 //
 //   DEFERRED (documented gaps, faithful to the rest of the port):
 //     - `draggable` / drag handlers, `labelLinePoints`, and `processLabelsOverall` (label-line update +
-//        label value/fade animation) — the slim driver draws a static frame and has no per-frame label
+//        label value/fade animation) — the driver draws a static frame and has no per-frame label
 //        animation loop, and label lines are drawn by each chart view.
-//     - The `dummyTransformable` global-space decomposition of `defaultAttr` — since the slim driver
+//     - The `dummyTransformable` global-space decomposition of `defaultAttr` — since the driver
 //        renders each label fresh every frame, the label's CURRENT attrs ARE the defaults, so the
 //        "restore default" branches of `updateLayoutConfig` reduce to no-ops and are omitted.
 
@@ -201,7 +201,7 @@ public final class LabelManager {
             //   (`extend(this.textConfig, cfg)`), preserving unrelated fields like `inside`. The port's
             //   `setTextConfig` is a wholesale REPLACE stub, so start `cfg` from a COPY of the existing
             //   textConfig to reproduce the merge (keeps `inside`, and keeps `position`/`rotation` when
-            //   not overridden — which, on the slim driver's fresh-per-frame render, equal the saved
+            //   not overridden — which, on the driver's fresh-per-frame render, equal the saved
             //   `attachedPos`/`attachedRot` defaults upstream restores).
             if let hostEl = hostEl {
                 var cfg = hostEl.textConfig ?? ElementTextConfig()
@@ -263,7 +263,7 @@ public final class LabelManager {
     }
 
     /// upstream: registerUpdateLifecycle('series:layoutlabels', ...) in `installLabelLayout`.
-    /// The slim driver calls this ONCE per render, AFTER `renderSeries` (so every series has attached
+    /// The driver calls this ONCE per render, AFTER `renderSeries` (so every series has attached
     /// its label textContents). No-op unless some series set a `labelLayout` option.
     public static func runLabelLayoutStage(_ chartViews: [ChartView], _ api: ExtensionAPI) {
         let manager = LabelManager()

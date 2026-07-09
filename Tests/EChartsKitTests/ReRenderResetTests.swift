@@ -1,6 +1,6 @@
 // Guards against stale chart accumulation when ONE ECharts/EChartsView instance is reused across
 // successive setOption calls (the live EChartsHostView path — switching demos). Upstream `prepareView`
-// disposes views whose model is gone; the slim port originally skipped that ("fresh model each call"),
+// disposes views whose model is gone; the port originally skipped that ("fresh model each call"),
 // so switching from a bar demo to a pie demo left the bar Rects lingering in the root. render() now
 // resets the view registries + root each full render, so each setOption rebuilds clean.
 import XCTest

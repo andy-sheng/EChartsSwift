@@ -48,7 +48,7 @@ public let pieLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, api, _ in pieLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors how the bar layout handlers are invoked
+// Exposed for the driver to call directly (mirrors how the bar layout handlers are invoked
 // directly), matching upstream's module-private `function pieLayout(ecModel, api)`.
 public func pieLayout(
     _ ecModel: GlobalModel,

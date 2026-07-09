@@ -3,7 +3,7 @@
 // bar chart (a) SELECTS the in-rect bars (they keep their palette fill — `inBrush` state) and (b) DIMS
 // the out-of-rect bars (their fill is recolored to the brush `outOfBrush` color — `outOfBrush` state).
 //
-// Uses BAR (not scatter): the slim driver only populates `data.getItemLayout` for series with a layout
+// Uses BAR (not scatter): the driver only populates `data.getItemLayout` for series with a layout
 // stage (bar's progressive layout writes {x,y,width,height}); scatter computes points inline in its view,
 // so its item layout is nil at brush-visual time. The brush rect selector reads getItemLayout, so bar is
 // the series that exercises it end-to-end. The brush visual writes the state color into the item-visual

@@ -52,8 +52,8 @@ final class EChartsSmokeTests: XCTestCase {
             if name.contains("Text") || name.contains("TSpan") { textCount += 1 }
             return false
         }
-        print("SLIM-SMOKE total=\(total) rects=\(rectCount) lines/paths=\(lineOrPolyCount) texts=\(textCount)")
-        print("SLIM-SMOKE displayList=\(ec.getStorage().getDisplayList(true).count)")
+        print("ECHARTS-SMOKE total=\(total) rects=\(rectCount) lines/paths=\(lineOrPolyCount) texts=\(textCount)")
+        print("ECHARTS-SMOKE displayList=\(ec.getStorage().getDisplayList(true).count)")
 
         // The cycle must complete and produce a non-empty scene graph (grid rect + axis groups).
         XCTAssertGreaterThan(total, 0, "the update cycle should populate the root group")

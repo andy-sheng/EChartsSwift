@@ -202,7 +202,7 @@ open class CandlestickSeriesModel: SeriesModel {
             layout = "horizontal"
             // PORT-TODO: upstream's generated `CartesianAxisModel` implements `AxisModelExtendedInCreator`
             //   (getOrdinalMeta); the port supplies that surface via the axisModelCreator-generated subclass
-            //   (the slim driver's SlimXAxisModel), reachable through the protocol. Cast through it here.
+            //   (the driver's EChartsXAxisModel), reachable through the protocol. Cast through it here.
             ordinalMeta = (xAxisModel as? AxisModelExtendedInCreator)?.getOrdinalMeta()
             addOrdinal = !self._hasEncodeRule("x")
         }

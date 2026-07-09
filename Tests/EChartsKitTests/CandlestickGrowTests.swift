@@ -22,7 +22,7 @@ final class CandlestickGrowTests: XCTestCase {
         ComponentModel.registerClass(CandlestickSeriesModel.self)
     }
 
-    private func makeSlim(animation: Bool) -> ECharts {
+    private func makeChart(animation: Bool) -> ECharts {
         let ec = ECharts(width: 520, height: 340)
         ec.setOption([
             "animation": animation,
@@ -60,7 +60,7 @@ final class CandlestickGrowTests: XCTestCase {
 
     // ON: the entrance grows the points from a collapsed baseline to the final ends.
     func test_entrance_grows_points_from_collapsed_baseline_to_final_ends() {
-        let ec = makeSlim(animation: true)
+        let ec = makeChart(animation: true)
         guard let box = firstBox(ec) else { return XCTFail("no NormalBoxPath candle rendered") }
 
         // setToFinal already jumped the LIVE shape to the final ends — capture them first.
@@ -100,7 +100,7 @@ final class CandlestickGrowTests: XCTestCase {
 
     // OFF: animation disabled -> no entrance animator; the box is drawn at its final, visible ends.
     func test_entrance_off_no_animator_box_at_final_ends() {
-        let ec = makeSlim(animation: false)
+        let ec = makeChart(animation: false)
         guard let box = firstBox(ec) else { return XCTFail("no NormalBoxPath candle rendered") }
 
         XCTAssertTrue(box.animators.isEmpty, "animation off -> no entrance animator")

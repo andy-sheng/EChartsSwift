@@ -108,7 +108,7 @@ public struct LabelElementOption {
 ///   (TASK 1) which overrides `makeElOption` → `open class` (CONVENTIONS §2/§4).
 ///
 /// HOST SEAM (documented deviation): upstream `render` calls `api.getZr().add(group)` to host the
-///   crosshair on the LIVE zr, and `clear` calls `zr.remove(group)`. In THIS slim port the ported
+///   crosshair on the LIVE zr, and `clear` calls `zr.remove(group)`. In THIS port the ported
 ///   `ExtensionAPI` has no `getZr()` (there is no live axis view hosting pointers at render time), so
 ///   the pointer manager does NOT reach the zr itself. Instead it EXPOSES its crosshair `group` and
 ///   invokes the `hostAdd` / `hostRemove` seam closures at exactly the points upstream touches the zr,

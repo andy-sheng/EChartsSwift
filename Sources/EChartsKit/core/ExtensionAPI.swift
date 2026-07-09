@@ -145,7 +145,7 @@ open class ExtensionAPI {
     // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (see init note). Upstream
     //   `ExtensionAPI.dispatchAction` is `zrUtil.bind(ecInstance.dispatchAction, ecInstance)`. Declared
     //   here as a faithful-signature abstract member so the action round-trip (a view/action handler
-    //   calling `api.dispatchAction(...)`) type-checks; the concrete `SlimExtensionAPI` forwards it to
+    //   calling `api.dispatchAction(...)`) type-checks; the concrete `EChartsExtensionAPI` forwards it to
     //   the driver's `ECharts.dispatchAction`. `opt` models the upstream `boolean | {silent,flush}`
     //   (see `DispatchActionOpt` in core/ECharts.swift).
     open func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {

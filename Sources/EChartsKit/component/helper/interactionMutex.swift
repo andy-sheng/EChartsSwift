@@ -66,5 +66,5 @@ public enum interactionMutex {
 // PORT-TODO: upstream self-registers a `takeGlobalCursor` action (`echarts.registerAction(
 //   {type: 'takeGlobalCursor', event: 'globalCursorTaken', update: 'update'}, noop)`) at module load.
 //   The graph-roam path does not take the global cursor, so this no-op action registration is DEFERRED
-//   (registering it here would run at file scope, which the slim driver has no hook for). Add it if a
+//   (registering it here would run at file scope, which the driver has no hook for). Add it if a
 //   consumer of the global-pan cursor (brush / dataZoomSelect) is ported.

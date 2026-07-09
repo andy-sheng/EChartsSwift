@@ -45,7 +45,7 @@ public let sunburstLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, api, _ in sunburstLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors pie/funnel layout handlers), matching
+// Exposed for the driver to call directly (mirrors pie/funnel layout handlers), matching
 // upstream's module-private `function sunburstLayout(ecModel, api)`.
 public func sunburstLayout(
     _ ecModel: GlobalModel,

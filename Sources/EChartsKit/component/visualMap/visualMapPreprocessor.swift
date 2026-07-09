@@ -27,7 +27,7 @@ import ZRenderKit
 
 // upstream registration (installCommon.ts): `registers.registerPreprocessor(preprocessor)`.
 //   The preprocessor is real option-normalization logic, so it is ported as the standalone
-//   `visualMapPreprocessor` function below for the slim Orchestrate driver to register.
+//   `visualMapPreprocessor` function below for the Orchestrate driver to register.
 
 // export default function visualMapPreprocessor(option) { ... }
 //

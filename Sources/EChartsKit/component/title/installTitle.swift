@@ -45,7 +45,7 @@ import ZRenderKit
 //     -> PORT-TODO: `format.windowOpen` opens a URL — interaction only, deferred (see the `link`/
 //        `sublink` click handlers in `render`).
 //   import { EChartsExtensionInstallRegisters } from '../../extension';
-//     -> PORT-TODO: registration boilerplate deferred to the slim Orchestrate driver (see `install`
+//     -> PORT-TODO: registration boilerplate deferred to the Orchestrate driver (see `install`
 //        note at the bottom).
 //   import tokens from '../../visual/tokens';
 //     -> PORT-TODO: `visual/tokens.ts` is NOT ported yet. The `tokens.*` values consumed in
@@ -331,7 +331,7 @@ public final class TitleView: ComponentView {
 //     registers.registerComponentModel(TitleModel);
 //     registers.registerComponentView(TitleView);
 // }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate driver (Integrate stage), not
+// PORT-TODO: registration boilerplate belongs to the Orchestrate driver (Integrate stage), not
 //   this render-layer file (same convention as grid/installSimple.swift). Preserved as commented
 //   source for the diffable surface.
 

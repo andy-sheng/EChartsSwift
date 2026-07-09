@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports (mapped to this port; `->` marks the Swift symbol used):
 //   import { EChartsExtensionInstallRegisters, use } from '../../extension';
-//       -> registrar surface owned by the slim Orchestrate/Integrate driver (same convention as
+//       -> registrar surface owned by the Orchestrate/Integrate driver (same convention as
 //          chart/sankey/sankeyInstall.swift / chart/sunburst/sunburstInstall.swift).
 //   import MapView from './MapView';
 //       -> PORT-TODO: chart/map/MapView.swift is a SEPARATE port phase — the render layer that draws each
@@ -41,7 +41,7 @@ import ZRenderKit
 //       -> `mapDataStatisticStageHandler` (sibling mapDataStatistic.swift, ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sankey/sankeyInstall.swift). `MapView` and
 //   `mapSymbolLayoutStageHandler` land with their own (later) port phases; `createLegacyDataSelectAction`
 //   (select actions) is DEFERRED. Preserved as commented source for the diffable surface:

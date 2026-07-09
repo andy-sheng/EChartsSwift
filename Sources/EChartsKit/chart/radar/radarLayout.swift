@@ -45,7 +45,7 @@ public let radarLayoutStageHandler = model.createSimpleOverallStageHandler(
 )
 
 // upstream: function radarLayout(ecModel: GlobalModel)
-//   Exposed for the slim driver to invoke directly (mirrors pieLayout), matching upstream's
+//   Exposed for the driver to invoke directly (mirrors pieLayout), matching upstream's
 //   module-private `function radarLayout(ecModel)`.
 public func radarLayout(_ ecModel: GlobalModel) {
     ecModel.eachSeriesByType(SERIES_TYPE_RADAR) { seriesModelBase, _ in

@@ -1,7 +1,7 @@
 // upstream: src/core/echarts.ts — the built-in `Default actions` registration block (echarts.ts:3373-3411).
 //
 // Upstream registers these at MODULE LOAD (top-level `registerAction({...}, noop)` calls at the bottom
-// of echarts.ts). The slim driver has no module-load side effects, so the equivalent is performed once
+// of echarts.ts). The driver has no module-load side effects, so the equivalent is performed once
 // from `ECharts.installOnce()` via `registerBuiltinActions()` below.
 //
 // The ACTION HANDLERS are all `noop`: highlight/downplay/select carry no model-mutating `action` — the

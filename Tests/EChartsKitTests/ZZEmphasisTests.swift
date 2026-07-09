@@ -109,14 +109,14 @@ final class ZZEmphasisTests: XCTestCase {
         XCTAssertFalse(target!.hasState())
     }
 
-    // ---- (3) the SlimExtensionAPI emphasis seam forwards to the engine, and allLeaveBlur (called by
+    // ---- (3) the EChartsExtensionAPI emphasis seam forwards to the engine, and allLeaveBlur (called by
     //          doDispatchAction on every high-down dispatch) is no longer an abstract fatalError. ----
     func testExtensionApiEmphasisSeamAndAllLeaveBlurAreLive() {
         let ec = makeBarChart()
         let series = ec.getModel()!.getSeriesByIndex(0)!
         let el = series.getData().getItemGraphicEl(0)!
-        // The concrete slim ExtensionAPI (its emphasis seam is what views/updateDirectly reach through).
-        let api = SlimExtensionAPI(ec: ec)
+        // The concrete ExtensionAPI (its emphasis seam is what views/updateDirectly reach through).
+        let api = EChartsExtensionAPI(ec: ec)
 
         api.enterEmphasis(el, nil)
         XCTAssertTrue(el.currentStates.contains("emphasis"), "api.enterEmphasis forwards to states.enterEmphasis")

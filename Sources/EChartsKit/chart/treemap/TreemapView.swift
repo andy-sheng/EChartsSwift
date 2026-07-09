@@ -206,7 +206,7 @@ open class TreemapView: ChartView {
         //   rebuild already reflects the final state.
 
         // this._resetController(api);
-        //   The RoamController is wired live by EChartsView._setupTreemapRoam (the slim TreemapView is
+        //   The RoamController is wired live by EChartsView._setupTreemapRoam (the TreemapView is
         //   zr-less). DEVIATION: upstream treemap roam re-lays-out the tiles into a shifted/scaled
         //   `rootRect` (`treemapMove`/`treemapRender`); the port instead applies the accumulated roam as a
         //   TRANSFORM to the container group (see roamHelperViewGroup.swift). Base = (layoutInfo.x, .y)

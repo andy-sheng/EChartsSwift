@@ -28,7 +28,7 @@ import ZRenderKit
 //   - MagicType.ts `registerAction({ type: 'changeMagicType', event: 'magicTypeChanged', update:
 //       'prepareAndUpdate' }, function (payload, ecModel) { ecModel.mergeOption(payload.newOption); })`
 //
-// The slim `registerAction` is module-level (Phase-29), so — like installBrushAction — this only
+// The `registerAction` is module-level (Phase-29), so — like installBrushAction — this only
 // registers the actions; `update:'prepareAndUpdate'` collapses to the full `update()` the driver runs
 // after the handler (which is exactly what these two features need: resetOption / mergeOption mutate the
 // live ecModel in place, then the pipeline re-renders).
@@ -51,7 +51,7 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
     //   The upstream handler is a NO-OP (the cursor arming is consumed by the toolbox DataZoom feature's
     //   `render`, which enables its BrushController). The port additionally records the `dataZoomSelect`
     //   arm state on the driver so the live host (`EChartsView`) can switch its rect-drag to a dataZoom
-    //   box-select. (DEVIATION vs upstream, where the toolbox feature holds `_isZoomActive`; the slim
+    //   box-select. (DEVIATION vs upstream, where the toolbox feature holds `_isZoomActive`; the
     //   host has no live feature-owned BrushController at drag time — see ECharts.dataZoomSelectActive.)
     var cursorInfo = ActionInfo(type: "takeGlobalCursor")
     cursorInfo.event = "globalCursorTaken"
@@ -59,7 +59,7 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
     registerAction(cursorInfo) { payload, _, api in
         if (payload.other["key"] as? String) == "dataZoomSelect" {
             let active = (payload.other["dataZoomSelectActive"] as? Bool) ?? false
-            (api as? SlimExtensionAPI)?.setDataZoomSelectActive(active)
+            (api as? EChartsExtensionAPI)?.setDataZoomSelectActive(active)
         }
         return nil
     }

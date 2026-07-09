@@ -170,7 +170,7 @@ public func updateViewGroupRoamControllerSimply(
 // registerRoamActionSimply (VIEW-GROUP) — the `<sub>Roam` action.
 //   The handler accumulates the pan/zoom payload into the per-series roam state. See the DEVIATION note in
 //   the graph/geo slices: upstream registers `update: 'none'`/`'updateTransform'` and re-transforms the
-//   view via `__updateOnOwnRoam`; the slim driver has no partial updateTransform, so this registers the
+//   view via `__updateOnOwnRoam`; the driver has no partial updateTransform, so this registers the
 //   DEFAULT `update: 'update'` — after the handler writes the state, `doDispatchAction` runs the full
 //   `update()`, which re-renders the view and re-applies the roam state to the group (via
 //   viewGroupRoamApplyStateToGroup). Over-render, but faithful in result.

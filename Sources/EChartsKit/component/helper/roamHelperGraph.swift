@@ -110,7 +110,7 @@ public func createIsInSelfByGraphRect(
 //   The GRAPH form: enable the controller for the graph's roam option and wire pan/zoom → `graphRoam`.
 //   `onDispatched` is a port seam: after `api.dispatchAction` re-renders (full update() this phase), the
 //   caller (EChartsView) flushes the live zr display list + repaints. Upstream's view re-render is driven
-//   by the action's own `updateTransform`/`__updateOnOwnRoam`; the slim driver has no live per-view zr, so
+//   by the action's own `updateTransform`/`__updateOnOwnRoam`; the driver has no live per-view zr, so
 //   the host refreshes here (same seam as Phase 38/39 inside-dataZoom).
 public func updateGraphRoamControllerSimply(
     _ seriesModel: GraphSeriesModel,
@@ -176,7 +176,7 @@ public func updateGraphRoamControllerSimply(
 //   view coord sys and stores the resulting (center, zoom) roam state.
 //
 //   DEVIATION: upstream registers `update: 'none'` and re-renders via the view's `__updateOnOwnRoam`
-//   (partial `updateTransform`). The slim driver has no partial updateTransform, so this registers the
+//   (partial `updateTransform`). The driver has no partial updateTransform, so this registers the
 //   DEFAULT `update: 'update'` — after the handler writes the roam state, `doDispatchAction` runs the full
 //   `update()`, which rebuilds the graph coord sys (seeding it from the stored roam state via
 //   `graphRoamApplyStateToCoordSys`) and re-renders the shifted/scaled nodes + edges. Over-render, but

@@ -48,7 +48,7 @@ public let chordCircularLayoutStageHandler = model.createSimpleOverallStageHandl
     { ecModel, api, _ in chordCircularLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors sankeyLayout), matching upstream's module-private
+// Exposed for the driver to call directly (mirrors sankeyLayout), matching upstream's module-private
 // `function chordCircularLayout(ecModel, api)`.
 public func chordCircularLayout(
     _ ecModel: GlobalModel,

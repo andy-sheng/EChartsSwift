@@ -70,7 +70,7 @@ public let boxplotLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, _, _ in boxplotLayout(ecModel) }
 )
 
-// Exposed for the slim driver to call directly (mirrors how the pie/bar layout handlers are invoked
+// Exposed for the driver to call directly (mirrors how the pie/bar layout handlers are invoked
 // directly), matching upstream's module-private `function boxplotLayout(ecModel)`.
 public func boxplotLayout(_ ecModel: GlobalModel) {
     let axisStatKey = makeAxisStatKey(SERIES_TYPE_BOXPLOT)

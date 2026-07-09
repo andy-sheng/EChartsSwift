@@ -302,7 +302,7 @@ public final class GeoView: ComponentView {
     // dispatchers (hover-to-highlight) with a NAME LABEL, and add the group to the view.
     //
     // ROAM (task c): upstream copies the RAW transform onto `_svgGroup` and applies the ROAM transform to
-    //   the parent `_transformGroup` (net world transform = ROAM ∘ RAW). This slim driver has no separate
+    //   the parent `_transformGroup` (net world transform = ROAM ∘ RAW). This driver has no separate
     //   transformGroup (the group is rebuilt each render — see the roamHelperGeo header), so we copy the
     //   combined OVERALL transform (== ROAM ∘ RAW; @see viewCoordSysUpdateOverallTrans) DIRECTLY onto the
     //   single svg wrapper group. On `geoRoam` the full `update()` re-seeds the view roam state

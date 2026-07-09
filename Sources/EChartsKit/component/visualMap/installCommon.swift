@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // import { EChartsExtensionInstallRegisters } from '../../extension';
-//   -> registrar surface owned by the slim Orchestrate/Integrate driver (same convention as
+//   -> registrar surface owned by the Orchestrate/Integrate driver (same convention as
 //      chart/sankey/sankeyInstall.swift). The stub `EChartsExtensionInstallRegisters`
 //      (coord/axisStatistics.swift) does not yet model `registerVisual` / `registerAction` /
 //      `registerPreprocessor` / `registerSubTypeDefaulter(...)` / `PRIORITY.VISUAL.COMPONENT`, so the
@@ -67,7 +67,7 @@ import ZRenderKit
 //     registers.registerPreprocessor(preprocessor);
 // }
 //
-// PORT-TODO: registration boilerplate belongs to the later slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
 //   file (same convention as chart/sankey/sankeyInstall.swift). The `installed`-once guard is a JS
 //   module singleton; in Swift the driver should call each registration exactly once. The subtype
 //   defaulter is the SAME logic as `visualMapSubTypeDefaulter` (typeDefaulter.swift) — do not duplicate

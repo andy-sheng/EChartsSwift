@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> registrar surface owned by
-//       the slim Orchestrate/Integrate driver (same convention as chart/sunburst/sunburstInstall.swift).
+//       the Orchestrate/Integrate driver (same convention as chart/sunburst/sunburstInstall.swift).
 //   import SankeyView from './SankeyView';
 //       -> PORT-TODO: chart/sankey/SankeyView.swift is a SEPARATE (later) port phase — the render layer
 //          (node Rects + ribbon Path + labels) lands with it. Referenced here as the future chart view.
@@ -40,7 +40,7 @@ import ZRenderKit
 //   PORT-TODO: type-only payload shape for the `dragNode` action (roam/drag DEFERRED).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sunburst/sunburstInstall.swift). The `dragNode` action +
 //   `registerRoamActionSimply` (drag/roam) are DEFERRED. `SankeyView` and `sankeyLayoutStageHandler` land
 //   with their own (later) port phases. Preserved as commented source for the diffable surface:

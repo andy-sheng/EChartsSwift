@@ -40,7 +40,7 @@ import ZRenderKit
 //
 // Swift libraries have no top-level statements, so the defaulter closure is exposed as
 // `visualMapSubTypeDefaulter` and the registration is performed by `registerVisualMapSubTypeDefaulter()`
-// (called by the slim Orchestrate driver, or equivalently by installCommon).
+// (called by the Orchestrate driver, or equivalently by installCommon).
 //
 // NOTE: `installCommon.ts` registers the IDENTICAL defaulter through
 //   `registers.registerSubTypeDefaulter('visualMap', ...)`; both share this one closure so the two

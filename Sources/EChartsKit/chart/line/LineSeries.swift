@@ -1,7 +1,7 @@
 // Ported (MINIMAL SUBSET) from echarts/src/chart/line/LineSeries.ts — keep in sync with upstream.
 //
 // A deliberately minimal `series.line` model: enough for the cartesian line vertical (grid + x/y axis
-// + a polyline through the data points) to render end-to-end through the slim driver. The full
+// + a polyline through the data points) to render end-to-end through the driver. The full
 // LineSeries option surface (areaStyle, step, stack, emphasis, endLabel, sampling, …) is a documented
 // PORT-TODO — this mirrors how `ECharts`/`BarSeries` are minimal subsets of their upstream files.
 

@@ -232,7 +232,7 @@ open class TreeView: ChartView {
         //   TRANSFORM at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
 
         // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
-        //   live by EChartsView._setupTreeRoam (the slim TreeView is zr-less); the roam STATE it accumulates
+        //   live by EChartsView._setupTreeRoam (the TreeView is zr-less); the roam STATE it accumulates
         //   is re-applied to the group below.
 
         // ------------------------------------------------------------------------------------------

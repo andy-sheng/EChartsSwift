@@ -23,7 +23,7 @@ import ZRenderKit
 
 // import { isArray } from 'zrender/src/core/util';                    -> `util.isArray` (ZRenderKit).
 // import { EChartsExtensionInstallRegisters } from '../../extension'; -> PORT-TODO: registers/install
-//   boilerplate deferred to the slim Orchestrate driver (matches component/grid/installSimple.swift).
+//   boilerplate deferred to the Orchestrate driver (matches component/grid/installSimple.swift).
 // import { GraphicComponentModel, GraphicComponentOption } from './GraphicModel'; -> sibling GraphicModel.swift.
 // import { GraphicComponentView } from './GraphicView';               -> sibling GraphicView.swift.
 
@@ -35,7 +35,7 @@ import ZRenderKit
 //   }
 //
 // PORT-TODO: registration boilerplate (registerComponentModel / registerComponentView /
-//   registerPreprocessor) belongs to the later slim Orchestrate driver, not this render-layer file.
+//   registerPreprocessor) belongs to the later Orchestrate driver, not this render-layer file.
 //   The preprocessor is real option-normalization logic, so it is ported as the standalone
 //   `graphicOptionPreprocessor` function below for the driver to register.
 

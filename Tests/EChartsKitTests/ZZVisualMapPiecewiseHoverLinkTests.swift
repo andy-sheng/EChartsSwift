@@ -21,8 +21,8 @@ final class ZZVisualMapPiecewiseHoverLinkTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        ComponentModel.registerClass(SlimXAxisModel.self)
-        ComponentModel.registerClass(SlimYAxisModel.self)
+        ComponentModel.registerClass(EChartsXAxisModel.self)
+        ComponentModel.registerClass(EChartsYAxisModel.self)
         ComponentModel.registerClass(BarSeriesModel.self)
     }
 

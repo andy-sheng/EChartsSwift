@@ -20,7 +20,7 @@ final class AxisBreakUnitTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // Register the concrete break helper (idempotent). Also done by ECharts.installOnce, but
-        // the direct-scale tests below do not go through the slim driver.
+        // the direct-scale tests below do not go through the driver.
         installScaleBreakHelper()
     }
 

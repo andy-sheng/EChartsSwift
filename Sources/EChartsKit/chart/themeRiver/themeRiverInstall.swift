@@ -23,19 +23,19 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';    -> registrar surface owned by
-//       the slim Orchestrate/Integrate driver (same convention as chart/sankey/sankeyInstall.swift).
+//       the Orchestrate/Integrate driver (same convention as chart/sankey/sankeyInstall.swift).
 //   import ThemeRiverView from './ThemeRiverView';
 //       -> sibling ThemeRiverView.swift (ported — the streamgraph band Polygons + labels render layer).
 //   import ThemeRiverSeriesModel, { SERIES_TYPE_THEME_RIVER } from './ThemeRiverSeries';
 //       -> sibling ThemeRiverSeries.swift (ported).
 //   import dataFilter from '../../processor/dataFilter';
 //       -> `legendDataFilter` (processor/legendDataFilter.swift) — the `SERIES_TYPE_THEME_RIVER` processor,
-//          wired into the slim driver's data-processor stage (see ECharts `_dataFilters`).
+//          wired into the driver's data-processor stage (see ECharts `_dataFilters`).
 //   import { themeRiverLayoutStageHandler } from './themeRiverLayout';
 //       -> sibling themeRiverLayout.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sankey/sankeyInstall.swift). Preserved as commented
 //   source for the diffable surface:
 //

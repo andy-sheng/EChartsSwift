@@ -37,7 +37,7 @@ import ZRenderKit
 //   registration is Task-1 / later-phase wiring.
 //
 // PORT-NOTE: like `installDataZoomAction`, the `EChartsExtensionInstallRegisters` stub does not model
-//   `registerVisual`; the slim driver invokes `brushVisualStageHandler.overallReset?(ecModel, api, payload)`
+//   `registerVisual`; the driver invokes `brushVisualStageHandler.overallReset?(ecModel, api, payload)`
 //   directly in its visual stage (same pattern as the sunburst/tree overall visual handlers). Here we only
 //   register the three actions via the Phase-29 module-level `registerAction`.
 public func installBrushAction(_ registers: EChartsExtensionInstallRegisters) {

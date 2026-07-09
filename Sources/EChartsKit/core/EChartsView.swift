@@ -28,7 +28,7 @@
 //     MINIMAL click→dispatchAction; the full event-param assembly + the public ECharts event bus +
 //     the tooltip/axisPointer `mousemove`→axisTrigger path are DEFERRED (see PORT-TODO below).
 //   - The mouseover/mouseout → `enterEmphasisWhenMouseOver`/`leaveEmphasisWhenMouseOut` binding is done
-//     HERE directly against the zr handler (in the slim path the views do not self-register their zr
+//     HERE directly against the zr handler (in the path the views do not self-register their zr
 //     listeners — no live zr at render time — so `EChartsView` owns the binding; documented deviation).
 //     PORT-TODO (DEFERRED): upstream binds `handleGlobalMouseOverForHighDown`/`…OutForHighDown`
 //     (echarts.ts:2331/2338), which ALSO runs the FOCUS fan-out (`blurSeries`/`blurComponent` to dim
@@ -95,7 +95,7 @@ public final class EChartsView {
     // Phase 36 — the visual axisPointer CROSSHAIR. WIRING APPROACH (documented deviation):
     //   Upstream, `AxisView._doUpdateAxisPointerClass` instantiates a per-axis `CartesianAxisPointer`
     //   (registered via `AxisView.registerAxisPointerClass`) and the `updateAxisPointer` action routes
-    //   each axis' render. In THIS slim port there is no live per-axis `AxisView` hosting a zr at render
+    //   each axis' render. In THIS port there is no live per-axis `AxisView` hosting a zr at render
     //   time (ECharts is zr-less), so — exactly like the Phase-34/35 tooltip — `EChartsView` OWNS the
     //   pointer managers and drives them DIRECTLY on hover, PARALLEL to the axis tooltip.
     //
@@ -145,7 +145,7 @@ public final class EChartsView {
 
     // ------------------------------------------------------------------------
     // L3 Roam — GRAPH pan/zoom. A single live `RoamController` bound over the zr (upstream `GraphView`
-    //   owns `new RoamController(api.getZr())`; the slim `GraphView` is zr-less, so — like the Phase-38/39
+    //   owns `new RoamController(api.getZr())`; the `GraphView` is zr-less, so — like the Phase-38/39
     //   inside-dataZoom wheel/pan — `EChartsView` owns the controller and re-runs
     //   `updateRoamControllerSimply` on each `setOption`). On drag-pan / wheel-zoom the controller emits
     //   'pan'/'zoom', which dispatch `{type:'graphRoam', ...}` → the graph view coord sys shifts/scales and
@@ -155,12 +155,12 @@ public final class EChartsView {
     private var _graphRoamController: RoamController?
 
     // L3 Roam — GEO/MAP pan/zoom. Same host-owned-controller pattern as `_graphRoamController` (upstream
-    //   `MapDraw` owns `new RoamController(api.getZr())`; the slim MapView/GeoView are zr-less). Wired live
+    //   `MapDraw` owns `new RoamController(api.getZr())`; the MapView/GeoView are zr-less). Wired live
     //   on each `setOption` via `_setupGeoRoam` → pan/zoom emit `{type:'geoRoam', ...}` (see roamHelperGeo).
     private var _geoRoamController: RoamController?
 
     // L3 Roam — TREE / TREEMAP / SANKEY pan/zoom. Same host-owned-controller pattern as the graph/geo
-    //   controllers (upstream each view owns `new RoamController(api.getZr())`; the slim views are zr-less).
+    //   controllers (upstream each view owns `new RoamController(api.getZr())`; the views are zr-less).
     //   Wired live on each `setOption` via `_setupTreeRoam` / `_setupTreemapRoam` / `_setupSankeyRoam` →
     //   pan/zoom emit `{type:'treeRoam' | 'treemapRoam' | 'sankeyRoam', ...}` (see roamHelperViewGroup).
     private var _treeRoamController: RoamController?
@@ -198,7 +198,7 @@ public final class EChartsView {
         _initEvents()
     }
 
-    /// Convenience: bind an already-built `ECharts`. (The slim driver's size is fixed at its own
+    /// Convenience: bind an already-built `ECharts`. (The driver's size is fixed at its own
     /// init; `width`/`height` here only size the injected headless painter / zr surface.)
     public init(ec: ECharts, width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
         self.ec = ec
@@ -209,7 +209,7 @@ public final class EChartsView {
 
     // ------------------------------------------------------------------------
     // setOption. Upstream forwards to `ECharts.setOption` (which re-runs `update()` and repaints `zr`).
-    //   Here: forward to the slim driver, then sync `ec.getRoot()` into the zr storage + `zr.refresh()`.
+    //   Here: forward to the driver, then sync `ec.getRoot()` into the zr storage + `zr.refresh()`.
     // ------------------------------------------------------------------------
     public func setOption(_ option: [String: Any]) {
         ec.setOption(option)
@@ -236,7 +236,7 @@ public final class EChartsView {
         guard let ecModel = ec.getModel() else { return }
 
         // Find the first graph series with roam enabled (upstream enables a controller per graph series;
-        //   the slim host uses ONE controller — graph charts realistically have a single graph series).
+        //   the host uses ONE controller — graph charts realistically have a single graph series).
         var roamSeries: GraphSeriesModel?
         ecModel.eachSeriesByType("graph") { s, _ in
             guard roamSeries == nil, let gm = s as? GraphSeriesModel else { return }
@@ -429,7 +429,7 @@ public final class EChartsView {
             self._showTooltipForHover(e)
             // visualMap continuous hoverLink FROM series: hovering a data point shows the indicator on the
             //   bar (upstream ContinuousView binds `api.getZr().on('mouseover', _hoverLinkFromSeriesMouseOver)`;
-            //   the slim ExtensionAPI has no live getZr, so the host drives it here — see ContinuousView).
+            //   the ExtensionAPI has no live getZr, so the host drives it here — see ContinuousView).
             self._hoverLinkVisualMapFromSeries(e)
             return nil
         }, nil)
@@ -528,7 +528,7 @@ public final class EChartsView {
     //   `RoamController` PER coordinate system (`RoamController(api.getZr())`) that binds
     //   `zr.on('mousewheel')` and, on a wheel, computes each inside-dataZoom's new range via
     //   `getRangeHandlers.zoom` (InsideZoomView.ts) and dispatches ONE throttled `{type:'dataZoom', batch}`.
-    //   In THIS slim port there is no live per-component `InsideZoomView` hosting a zr at render time
+    //   In THIS port there is no live per-component `InsideZoomView` hosting a zr at render time
     //   (ECharts is zr-less), so — exactly like the Phase-34/35 tooltip & Phase-36 axisPointer —
     //   `EChartsView` OWNS the wheel binding and reproduces the zoom MATH directly against the live `zr`.
     //
@@ -540,7 +540,7 @@ public final class EChartsView {
     //     - pan/drag (`moveOnMouseMove` → getRangeHandlers.pan) and wheel-scroll-move (`moveOnMouseWheel`
     //       → getRangeHandlers.scrollMove); pinch/touch zoom (`_pinchHandler`).
     //     - the full `RoamController` state machine + `throttleUtil.createOrUpdate` throttle + the
-    //       `{easing:'cubicOut', duration:100}` animated dataZoom transition (the slim driver renders the
+    //       `{easing:'cubicOut', duration:100}` animated dataZoom transition (the driver renders the
     //       new window synchronously, so no animated tween yet).
     //     - polar / singleAxis coord systems (`getDirectionInfo.polar` / `.singleAxis`): only the grid
     //       (cartesian) direction info is ported here.
@@ -599,7 +599,7 @@ public final class EChartsView {
 
         if !batch.isEmpty {
             // upstream `roams.dispatchAction`: `{type:'dataZoom', animation:{easing:'cubicOut',
-            //   duration:100}, batch}`. The slim driver renders the new window synchronously (no animated
+            //   duration:100}, batch}`. The driver renders the new window synchronously (no animated
             //   dataZoom tween yet — PORT-TODO), so the animation part is omitted; the batch is faithful.
             var payload = Payload(type: "dataZoom")
             payload.batch = batch
@@ -617,7 +617,7 @@ public final class EChartsView {
     ///
     /// DEVIATION: upstream drives the recompute off `coordSysInfo.axisModels[0]` (from
     /// `collectReferCoordSysModelInfo`, which resolves the coord-sys via the axis model's
-    /// `getReferringComponents('grid')`). In this slim port the stand-in axis models don't carry a
+    /// `getReferringComponents('grid')`). In this port the stand-in axis models don't carry a
     /// model-level grid referring link, so `collectReferCoordSysModelInfo` yields no coord systems — we
     /// instead resolve the target axis via the dataZoom's REPRESENTATIVE axis proxy (the same path
     /// `dataZoomProcessor` uses). For a single-axis inside dataZoom (the common cartesian case) this IS
@@ -672,7 +672,7 @@ public final class EChartsView {
     //   for a non-cartesian (polar/single) axis — PORT-TODO, deferred.
     //
     //   DEVIATION (same as the wheel path): upstream drives the recompute off `coordSysInfo.axisModels[0]`
-    //   (from `collectReferCoordSysModelInfo`); in this slim port the stand-in axis models don't carry the
+    //   (from `collectReferCoordSysModelInfo`); in this port the stand-in axis models don't carry the
     //   model-level grid referring link, so we resolve the target axis via the dataZoom's REPRESENTATIVE
     //   axis proxy (the same path `dataZoomProcessor` uses). PORT-TODO: multi-axis-per-grid grouping.
     // ------------------------------------------------------------------------
@@ -1101,7 +1101,7 @@ public final class EChartsView {
     // _hoverLinkVisualMapFromSeries — the continuous visualMap's hoverLink "vice versa" direction.
     //   Upstream `ContinuousView` binds `api.getZr().on('mouseover', this._hoverLinkFromSeriesMouseOver)`
     //   so hovering a data point highlights the matching position on the visualMap bar (shows the
-    //   indicator). The slim ExtensionAPI has no live `getZr()`, so — like the tooltip / axisPointer —
+    //   indicator). The ExtensionAPI has no live `getZr()`, so — like the tooltip / axisPointer —
     //   this host forwards each series-element mouseover to every rendered `ContinuousView`, which
     //   internally guards on ECData / isTargetSeries and shows its indicator.
     // ------------------------------------------------------------------------
@@ -1189,7 +1189,7 @@ public final class EChartsView {
     }
 
     /// Dispose the live zr (releases the animation clock + input proxy + removes it from the module-global
-    /// zrender `instances` registry). The slim `ec` has no lifecycle.
+    /// zrender `instances` registry). The `ec` has no lifecycle.
     public func dispose() {
         zr.dispose()
     }

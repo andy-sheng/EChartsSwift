@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> registrar surface owned by
-//       the slim Orchestrate/Integrate driver (same convention as chart/boxplot/install.swift).
+//       the Orchestrate/Integrate driver (same convention as chart/boxplot/install.swift).
 //   import SunburstView from './SunburstView';                               -> sibling SunburstView.swift (ported).
 //   import SunburstSeriesModel from './SunburstSeries';                      -> sibling SunburstSeries.swift (ported).
 //   import { sunburstVisualStageHandler } from './sunburstVisual';           -> sibling sunburstVisual.swift (ported).
@@ -34,7 +34,7 @@ import ZRenderKit
 //   import { sunburstLayoutStageHandler } from './sunburstLayout';           -> sibling sunburstLayout.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/boxplot/install.swift). `installSunburstAction`
 //   (`sunburstRootToNode`) IS now ported and called from ECharts.installOnce. Preserved as
 //   commented source for the diffable surface:

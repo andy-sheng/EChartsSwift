@@ -1,23 +1,26 @@
-// Ported (SLIM SUBSET) from echarts/src/core/echarts.ts — keep in sync with upstream.
+// Ported from echarts/src/core/echarts.ts — the `ECharts` driver. Keep in sync with upstream.
 //
 // ============================================================================
 // WHAT THIS FILE IS
 // ============================================================================
-// `echarts/src/core/echarts.ts` is a 3400-line module. This file is a DELIBERATELY MINIMAL,
-// heavily-documented subset that renders ONE vertical slice — a cartesian **bar** chart (grid +
-// x/y axis + bar series) — end-to-end through the already-ported model → coord → view pipeline,
-// emitting a ZRenderKit `Group` of bar `Rect`s + axis line/tick/label elements.
+// A faithful port of the upstream `ECharts` instance/driver. It runs the full `updateMethods.update`
+// pipeline (see §UPDATE) — preprocessors → restoreData → data/processor stages → coord create/update
+// → visual stages → render — across ALL ported chart types (cartesian bar/line/scatter/candlestick/
+// boxplot/pictorialBar, pie/funnel/gauge/radar, graph/tree/treemap/sankey/sunburst, heatmap/lines/
+// themeRiver/parallel/map/custom, ...), emitting a ZRenderKit `Group` a host painter draws.
 //
-// It faithfully mirrors the STAGE ORDER of upstream `updateMethods.update` (see §UPDATE below),
-// but every stage that a bar chart does not strictly need is a documented `PORT-TODO` skip. The
-// heavy `ECharts` machinery that is intentionally NOT reproduced here:
-//   - The `Scheduler` task/pipeline graph. Upstream runs each stage as a `Task` (`performXxxTasks`
-//     / `renderTask.perform`). Here the stages are invoked DIRECTLY (documented deviation) — the
-//     scheduler's progressive/stream/incremental machinery is out of the bar scope.
+// Reproduced faithfully: setOption model reuse + incremental merge; `prepareView` view reuse
+// (mark-and-sweep) enabling cross-setOption `data.diff` tween transitions; the update matrix
+// (`updateView`/`updateVisual`/`updateLayout`/`updateTransform`) + `dispatchAction` routing;
+// actions/events substrate; the emphasis/blur/select state engine + `clearStates`/`updateStates`/
+// `updateZ`; coord systems, layout, visual (style/visualMap/aria/decal) and processor stages.
+//
+// Deliberate deviations from upstream (documented at each site):
+//   - The `Scheduler` task/pipeline graph. Upstream runs each stage as a `Task` (`performXxxTasks` /
+//     `renderTask.perform`); here the stages are invoked DIRECTLY. Its progressive/stream/incremental
+//     machinery (large-mode framing) is not reproduced — `renderTask.perform` runs synchronously.
 //   - `prepare()` + `restorePipelines`/`prepareStageTasks`/`plan` (Scheduler pipeline building).
-//   - `updateTransform`/`updateView`/`updateLayout`/`updateVisual` fast-path update methods.
-//   - Actions / events / lifecycle triggers / connect / loading / SSR / theme / media query.
-//   - `allocateZlevels`, `clearStates`/`updateStates`/`updateZ`/`updateBlend`, hover/emphasis.
+//   - `lazyUpdate` / media-query re-resolve on resize; `universalTransition` (cross-series morphing).
 //   - The DOM/zrender `init` facade + painter. EChartsKit depends only on ZRenderKit (NOT
 //     NativePainter), so this driver owns a `Storage` + a root `Group` and exposes them; a host
 //     with a painter (NativePainter's `CALayerPainter`) draws `getRoot()`.
@@ -44,7 +47,7 @@
 // NOTE on axis models: upstream `axisModelCreator` GENERATES a distinct `AxisModel` subclass per
 // axis type at runtime and registers it. Swift can not synthesize classes at runtime AND the
 // generated-factory registrar is not bridged to `GlobalModel` instantiation, so this file registers
-// two concrete stand-in subclasses (`SlimXAxisModel` / `SlimYAxisModel`) that add the
+// two concrete stand-in subclasses (`EChartsXAxisModel` / `EChartsYAxisModel`) that add the
 // `AxisModelExtendedInCreator` surface (`getOrdinalMeta` etc.) a category axis needs. This mirrors
 // exactly the working `CartesianCoordTests` doubles; it is the documented stand-in for
 // `axisModelCreator(registers, 'x'/'y', CartesianAxisModel, ...)` until the registrar↔instantiation
@@ -170,9 +173,9 @@ struct MatrixCoordinateSystemCreator: CoordinateSystemCreator {
 /// Merge the per-type `axisDefault` (show:true + axisLine/axisTick/axisLabel/splitLine sub-defaults)
 /// UNDER the model's own option, so `axisModel.get("show")` / the AxisBuilder's sub-option reads resolve.
 /// This stands in for the deferred `AxisModel.mergeDefaultAndTheme` default-merge (the real
-/// axisModelCreator path injects `getDefaultOption()`; the slim stand-in models never run through it).
+/// axisModelCreator path injects `getDefaultOption()`; the stand-in models never run through it).
 /// Overwrite=false → user option wins; nested dicts deep-merge (util.merge).
-private func slimMergeAxisDefaults(_ model: CartesianAxisModel, _ defaultType: String) {
+private func mergeAxisDefaults(_ model: CartesianAxisModel, _ defaultType: String) {
     guard var opt = model.option as? [String: Any] else { return }
     let axisType = (opt["type"] as? String) ?? defaultType
     guard let def = axisDefault.option[axisType] as? [String: Any] else { return }
@@ -181,12 +184,12 @@ private func slimMergeAxisDefaults(_ model: CartesianAxisModel, _ defaultType: S
 }
 
 /// `xAxis` model. `static type = 'xAxis'` so `ComponentModel.registerClass` keys it correctly.
-final class SlimXAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
+final class EChartsXAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     override class var type: ComponentFullType { return "xAxis" }
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
-        slimMergeAxisDefaults(self, "category")
+        mergeAxisDefaults(self, "category")
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
@@ -202,13 +205,13 @@ final class SlimXAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     }
 }
 
-/// `yAxis` model (value axis in a vertical bar chart; symmetric to `SlimXAxisModel`).
-final class SlimYAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
+/// `yAxis` model (value axis in a vertical bar chart; symmetric to `EChartsXAxisModel`).
+final class EChartsYAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     override class var type: ComponentFullType { return "yAxis" }
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
-        slimMergeAxisDefaults(self, "value")
+        mergeAxisDefaults(self, "value")
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
@@ -231,7 +234,7 @@ final class SlimYAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
 // (Calling `registerBarGridAxisHandlers` ALSO populates the module-global `clientsForLookup` in
 // axisStatistics.swift — that side effect is what makes the statistics collect the bar client.)
 // ============================================================================
-final class SlimInstallRegisters: EChartsExtensionInstallRegisters {
+final class EChartsInstallRegisters: EChartsExtensionInstallRegisters {
     var capturedProcessors: [(GlobalModel) -> Void] = []
     override func registerProcessor(_ priority: Double, _ processor: AxisStatProcessorRegistration) {
         capturedProcessors.append(processor.overallReset)
@@ -264,7 +267,7 @@ public struct DispatchActionOpt {
 // util/statesPayload.swift (which also drive the ported `updateDirectly` light update).
 
 // ============================================================================
-// The slim ECharts driver.
+// The ECharts driver.
 // ============================================================================
 public final class ECharts: EChartsType {
 
@@ -330,7 +333,7 @@ public final class ECharts: EChartsType {
         self._userLocale = locale
         ECharts.installOnce()
         // `_api` needs `self`; all stored properties are initialized above, so it is safe now.
-        self._api = SlimExtensionAPI(ec: self)
+        self._api = EChartsExtensionAPI(ec: self)
     }
 
     // ------------------------------------------------------------------------
@@ -382,7 +385,7 @@ public final class ECharts: EChartsType {
     // Registration (idempotent). Replaces the deferred `install(registers)` boilerplate.
     // ------------------------------------------------------------------------
     private static var _installed = false
-    private static let _registers = SlimInstallRegisters()
+    private static let _registers = EChartsInstallRegisters()
     // The bar cross-series layout handler (created once; run each layout stage).
     private static let _barLayoutHandler: StageHandler = createCrossSeriesLayoutHandler(SERIES_TYPE_BAR)
     // The bar PER-ITEM layout handler (upstream `registerLayout(PROGRESSIVE_LAYOUT, ...)`). Despite the
@@ -450,14 +453,14 @@ public final class ECharts: EChartsType {
         //   instantiates a `DatasetModelImpl` (its `init` builds a SourceManager); series then query
         //   it via `querySeriesUpstreamDatasetModel`. `datasetInstall` registers the model in the
         //   `ComponentModel` registry (the path GlobalModel reads) and the view in the `ComponentView`
-        //   registry; the slim path resolves the (no-op) DatasetView via the `_componentViewFactories`
+        //   registry; the path resolves the (no-op) DatasetView via the `_componentViewFactories`
         //   entry below (upstream `DatasetView` renders nothing).
         datasetInstall(ECharts._registers)
 
         // -- component/grid/installSimple.ts + coord/cartesian --
         ComponentModel.registerClass(GridModel.self)                       // registerComponentModel(GridModel)
-        ComponentModel.registerClass(SlimXAxisModel.self)                  // axisModelCreator(..,'x',..)  (stand-in)
-        ComponentModel.registerClass(SlimYAxisModel.self)                  // axisModelCreator(..,'y',..)  (stand-in)
+        ComponentModel.registerClass(EChartsXAxisModel.self)                  // axisModelCreator(..,'x',..)  (stand-in)
+        ComponentModel.registerClass(EChartsYAxisModel.self)                  // axisModelCreator(..,'y',..)  (stand-in)
         CoordinateSystemManager.register("cartesian2d", GridCoordinateSystemCreator()) // registerCoordinateSystem('cartesian2d', Grid)
 
         // -- chart/bar/install.ts --
@@ -650,7 +653,7 @@ public final class ECharts: EChartsType {
         //   cartesian2d/radar registers above (a CoordinateSystemCreator forwarding to polarCreator.create).
         //   The PolarModel is the coord-sys HOST component (like GridModel/RadarModel); its angleAxis +
         //   radiusAxis component models feed the AngleAxis/RadiusAxis the coord builds. Unlike the cartesian
-        //   x/y stand-ins (SlimXAxisModel), the polar axis models are the REAL AngleAxisModel/RadiusAxisModel
+        //   x/y stand-ins (EChartsXAxisModel), the polar axis models are the REAL AngleAxisModel/RadiusAxisModel
         //   (concrete PolarAxisModel subclasses), registered directly here — so `PolarModel.findAxisModel`'s
         //   `as? PolarAxisModel` + `getCoordSysModel()` resolve end-to-end (the axisModelCreator dynamic-
         //   subclass gap that blocks the cartesian path does not apply). The polar axis models carry the
@@ -893,7 +896,7 @@ public final class ECharts: EChartsType {
         transformInstall(ECharts._registers)
 
         // -- core/echarts.ts `Default actions` (echarts.ts:3373-3411) -- highlight/downplay/select/
-        //   unselect/toggleSelect. Upstream registers these at module load; the slim driver has no
+        //   unselect/toggleSelect. Upstream registers these at module load; the driver has no
         //   module-load side effects, so it happens here (see core/actionRegister.swift).
         registerBuiltinActions()
 
@@ -1330,7 +1333,7 @@ public final class ECharts: EChartsType {
 
         // NOTE (brush): upstream runs the brush visual at PRIORITY.VISUAL.BRUSH (5000) — AFTER the LAYOUT
         //   stages (1000–4600). The brush rect selector reads each datum's `getItemLayout` (pixel geometry),
-        //   which the slim driver only populates inside `render()`'s layout stages (bar/scatter/etc.). So the
+        //   which the driver only populates inside `render()`'s layout stages (bar/scatter/etc.). So the
         //   brush visual CANNOT run here (item layout is still nil at this point); it runs at the end of
         //   `render()`, right before `renderSeries` — see the `brushVisual(...)` call there.
 
@@ -1350,7 +1353,7 @@ public final class ECharts: EChartsType {
     // ------------------------------------------------------------------------
 
     /// upstream `updateMethods.updateView` (echarts.ts:2011): re-render series/components from the
-    /// current (already-processed) data, reusing views, without reprocessing data. In the slim the
+    /// current (already-processed) data, reusing views, without reprocessing data. In the the
     /// per-series layout runs inside `render()`, so a bare `render()` is the faithful view-only refresh.
     public func updateView() {
         guard let ecModel = _model else { return }
@@ -1371,7 +1374,7 @@ public final class ECharts: EChartsType {
     }
 
     /// upstream `updateMethods.updateLayout` (echarts.ts:2080): re-run layout then re-render. In the
-    /// slim every layout stage runs inside `render()`, so this is the same view-only refresh as
+    /// every layout stage runs inside `render()`, so this is the same view-only refresh as
     /// updateView (which is exactly what upstream's updateLayout reduces to once the Scheduler-driven
     /// layout tasks are folded into the render pass).
     public func updateLayout() {
@@ -1523,7 +1526,7 @@ public final class ECharts: EChartsType {
         //   demo switch still rebuilds cleanly with no stale-view bleed.
 
         // BACKGROUND — upstream `echarts._updateBackground` calls `zr.setBackgroundColor(backgroundColor)`
-        //   (a painter-level clear color). The slim driver renders into a bare Group and has no painter clear
+        //   (a painter-level clear color). The driver renders into a bare Group and has no painter clear
         //   hook (that is a host concern, e.g. CALayerPainter's white), so instead draw the resolved
         //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything. Now that render() no longer
         //   wipes `root`, the prior bg rect must be removed/reused each render so it never accumulates.
@@ -1593,7 +1596,7 @@ public final class ECharts: EChartsType {
         //   `candlestickVisual` (colors body/whiskers bull/bear FROM `itemLayout.sign`). candlestickVisual
         //   READS the sign written by candlestickLayout, so — unlike the generic visual stage, which runs
         //   before layout — the layout MUST run first. Upstream orders them by pipeline priority (layout
-        //   before visual); the slim driver reproduces that by running BOTH here (layout, then visual),
+        //   before visual); the driver reproduces that by running BOTH here (layout, then visual),
         //   after the generic performVisualStage (candlestickVisual only extends fill/stroke onto the
         //   existing item-visual style, so running it last is correct). Both are SERIES_STAGE_TASKs.
         runSeriesStageHandler(candlestickLayout, ecModel, api)
@@ -1672,7 +1675,7 @@ public final class ECharts: EChartsType {
         //   getCircleLayout, storing them on node/edge getLayout(). ChordView reads the per-node/per-edge
         //   layout back; getDataParams reads `node.getLayout().value`. `chordCircularLayout` is a bare
         //   2-arg fn (like graph/sankey layout); the stage-handler wrapper exists for the upstream registrar
-        //   but the slim driver invokes it directly (mirrors sankeyLayout).
+        //   but the driver invokes it directly (mirrors sankeyLayout).
         chordCircularLayout(ecModel, api)
 
         // LAYOUT — lines per-item point projection (upstream `registerLayout(linesLayout)`). A
@@ -1690,7 +1693,7 @@ public final class ECharts: EChartsType {
         //   `coordSys.dataToPoint` into a CLOSED point ring (axes+1 points, last == copy of first) and
         //   stores it with `data.setItemLayout`, which `RadarView.render` reads back. Bare 1-arg handler
         //   (like boxplotLayout); the radarLayoutStageHandler wrapper exists for the upstream registrar,
-        //   but the slim driver invokes `radarLayout(ecModel)` directly (mirrors pieLayout).
+        //   but the driver invokes `radarLayout(ecModel)` directly (mirrors pieLayout).
         radarLayout(ecModel)
 
         // LAYOUT — themeRiver stream bands (upstream `registerLayout(themeRiverLayoutStageHandler)`).
@@ -1699,7 +1702,7 @@ public final class ECharts: EChartsType {
         //   rect + axis orient and writes each datum's {layerIndex,x,y0,y} band point (+ a "layoutInfo" rect/
         //   boundaryGap) via `data.setItemLayout`/`data.setLayout`, which `ThemeRiverView.render` reads back
         //   to draw one Polygon per layer. Run AFTER the coord update (it casts seriesModel.coordinateSystem
-        //   to Single). `themeRiverLayoutStageHandler` wraps this for the upstream registrar, but the slim
+        //   to Single). `themeRiverLayoutStageHandler` wraps this for the upstream registrar, but the
         //   driver invokes `themeRiverLayout(ecModel, api)` directly (mirrors sankeyLayout / radarLayout).
         themeRiverLayout(ecModel, api)
 
@@ -1710,7 +1713,7 @@ public final class ECharts: EChartsType {
         //   the main series' data so label-less regions still get a name label. Reads `originalData` (set by
         //   the mapDataStatistic processor in stage 4) + the Geo coord (set by geoCreator in stage 3), so it
         //   runs here after both. `mapSymbolLayoutStageHandler` wraps this for the upstream registrar, but the
-        //   slim driver invokes `mapSymbolLayout(ecModel)` directly (mirrors sankeyLayout / radarLayout).
+        //   driver invokes `mapSymbolLayout(ecModel)` directly (mirrors sankeyLayout / radarLayout).
         mapSymbolLayout(ecModel)
 
         // VISUAL — parallel per-line opacity (upstream `registerVisual(PRIORITY.VISUAL.BRUSH, parallelVisual)`).
@@ -1865,7 +1868,7 @@ public final class ECharts: EChartsType {
     //   merge-mode setOption does not survive into the new render. Runs BEFORE render (walks the OLD
     //   element tree). Skips elements fading out (a leave-scoped animator) so their fade is not
     //   interrupted — the port's `isElementRemoved` also keys off `__zr == nil`, but in the headless
-    //   slim driver every element has a nil `__zr`, so only the leave-animator branch is meaningful here.
+    //   driver every element has a nil `__zr`, so only the leave-animator branch is meaningful here.
     private func clearRenderedStates(_ eachRendered: (@escaping (Element) -> Bool) -> Void) {
         eachRendered { el in
             if el.animators.contains(where: { $0.scope == "leave" }) { return false }
@@ -1907,7 +1910,7 @@ public final class ECharts: EChartsType {
     //   `defaultZ` fills a model with no explicit `z`: series default to 2 (echarts gives line 3,
     //   scatter/radar/pie/candlestick 2, and bar relies on z2 — a 2 floor keeps every series above the
     //   z:0 coordinate grid), components to 0.
-    private func zSlimNum(_ v: Any?) -> Double? {
+    private func zNum(_ v: Any?) -> Double? {
         if let d = v as? Double { return d }
         if let i = v as? Int { return Double(i) }
         if let n = v as? NSNumber { return n.doubleValue }
@@ -1915,8 +1918,8 @@ public final class ECharts: EChartsType {
     }
 
     private func updateZ(_ model: ComponentModel, _ group: Group, _ defaultZ: Double) {
-        let z = zSlimNum(model.get("z")) ?? defaultZ
-        let zlevel = zSlimNum(model.get("zlevel")) ?? 0
+        let z = zNum(model.get("z")) ?? defaultZ
+        let zlevel = zNum(model.get("zlevel")) ?? 0
         // upstream `updateZ` does `view.eachRendered(el => { traverseUpdateZ(el, z, zlevel); return true })`
         //   — `return true` stops descent, so `traverseUpdateZ` runs once per TOP-LEVEL rendered element
         //   (each with a fresh `maxZ2 = -Infinity`). Mirror that: run `doUpdateZ` on each direct child of
@@ -2023,7 +2026,7 @@ public final class ECharts: EChartsType {
     /// Ported from `ECharts.dispatchAction` (echarts.ts:1574-1624).
     public func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         // if (this._disposed) { disposedWarning(this.id); return; }
-        //   PORT-TODO: the slim driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
+        //   PORT-TODO: the driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
 
         // if (!isObject(opt)) { opt = {silent: !!opt}; }
         //   The `boolean | {silent,flush}` normalization is absorbed by `DispatchActionOpt` (nil → silent:false;
@@ -2056,7 +2059,7 @@ public final class ECharts: EChartsType {
         if flush == true {
             // upstream: this._zr.flush();
             // PORT-TODO: forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
-            //   this phase, and the slim driver's `update()` ALREADY renders synchronously inside
+            //   this phase, and the driver's `update()` ALREADY renders synchronously inside
             //   doDispatchAction, so there is no pending frame to flush → no-op.
         }
         else if flush != false {
@@ -2087,7 +2090,7 @@ public final class ECharts: EChartsType {
 
         _inEcCycle = true
         // updateECUpdateCycleVersion(this);
-        //   PORT-TODO: no EC update-cycle version counter tracked in the slim driver (used only by the
+        //   PORT-TODO: no EC update-cycle version counter tracked in the driver (used only by the
         //   deferred emphasis/blur state machine — util/states, Phase 30).
 
         // Batch action → one payload per batch item (`defaults(extend({}, item), payload); item.batch = null`).
@@ -2146,7 +2149,7 @@ public final class ECharts: EChartsType {
                     ? (pre.queryOptionMap.keys().first ?? "series")
                     : "series"
                 updateDirectly(updateMethod, batchItem, componentMainType)
-                // markStatusToUpdate(this); — PORT-TODO: no status-needs-update flag tracked in the slim
+                // markStatusToUpdate(this); — PORT-TODO: no status-needs-update flag tracked in the
                 //   driver; the dispatch caller repaints via the full `update()` when needed.
             }
             else if isSelectChange {
@@ -2162,11 +2165,11 @@ public final class ECharts: EChartsType {
         if updateMethod != "none" && !isHighDown && !isSelectChange && cptType == nil {
             // upstream: if (this[PENDING_UPDATE]) { prepare(this); updateMethods.update…; } else
             //   updateMethods[updateMethod].call(this, payload);
-            //   PENDING_UPDATE (a still-dirty setOption awaiting flush) is not tracked in the slim driver,
+            //   PENDING_UPDATE (a still-dirty setOption awaiting flush) is not tracked in the driver,
             //   so there is only the else-branch.
             // Route to the update method the action declares (L6). The light methods (updateView/
             //   updateVisual/updateLayout/updateTransform) reuse the persistent views and skip data
-            //   reprocessing; 'update'/'prepareAndUpdate' run the full pipeline. (In the slim every
+            //   reprocessing; 'update'/'prepareAndUpdate' run the full pipeline. (In the every
             //   layout stage lives inside render(), so updateView/updateLayout re-lay-out too.)
             switch updateMethod {
             case "updateView":      updateView()
@@ -2288,7 +2291,7 @@ public final class ECharts: EChartsType {
                     states.toggleSelectionFromPayload(seriesModel, payload, api)
                     states.updateSeriesElementSelection(seriesModel)
                     // markStatusToUpdate(ecIns);  — PORT-TODO: no status-needs-update flag tracked in the
-                    //   slim driver (upstream sets it so a later flush repaints; here the caller repaints).
+                    //   driver (upstream sets it so a later flush repaints; here the caller repaints).
                 }
             }
         })
@@ -2354,14 +2357,14 @@ public final class ECharts: EChartsType {
     //        host wires this to NativePainter's `renderToImage` — EChartsKit cannot import NativePainter).
     //     - `onSaveImage(data, filename)` receives the encoded bytes (the "download" — a live host saves
     //        them to disk / shares them). Both nil in pure headless (the export is then a silent no-op).
-    //   `SlimExtensionAPI.getConnectedDataURL` / `.saveAsImage` forward to these, so the ported feature
+    //   `EChartsExtensionAPI.getConnectedDataURL` / `.saveAsImage` forward to these, so the ported feature
     //   onclick stays faithful (build the URL via the api, hand the bytes to the host).
     public var getRenderedImage: ((_ opts: [String: Any]) -> Data?)?
     public var onSaveImage: ((_ data: Data, _ filename: String) -> Void)?
 
     // ------------------------------------------------------------------------
     // Toolbox DataZoom box-select arm state (component/toolbox/feature/DataZoom.ts). Upstream the feature
-    //   stores `_isZoomActive` and enables its `BrushController` cover-drag; the slim host has no live
+    //   stores `_isZoomActive` and enables its `BrushController` cover-drag; the host has no live
     //   feature-owned BrushController at drag time, so the arm flag lives on the driver: the
     //   `takeGlobalCursor` action (key 'dataZoomSelect') writes it, and the live host (`EChartsView`)
     //   reads it to switch its rect-drag from a `brush` action to a `dataZoom` box-select. Default off.
@@ -2381,11 +2384,11 @@ public final class ECharts: EChartsType {
 }
 
 // ============================================================================
-// Concrete ExtensionAPI backed by the slim driver (upstream: the `availableMethods` forwarding to
+// Concrete ExtensionAPI backed by the driver (upstream: the `availableMethods` forwarding to
 // the `ECharts` instance). Only the members the bar path reads are implemented; the rest inherit
 // the abstract `fatalError` (never reached in the bar slice).
 // ============================================================================
-final class SlimExtensionAPI: ExtensionAPI {
+final class EChartsExtensionAPI: ExtensionAPI {
     private unowned let ec: ECharts
     init(ec: ECharts) {
         self.ec = ec

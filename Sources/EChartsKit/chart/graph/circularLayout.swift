@@ -42,7 +42,7 @@ public let graphCircularLayoutStageHandler = model.createSimpleOverallStageHandl
 // `forceLayout.swift` (+ `forceHelper.swift`): `graphForceLayoutStageHandler`. It settles the
 // simulation synchronously for the static render (the live per-frame tick is a PORT-TODO there).
 
-// Exposed for the slim driver to call directly, matching upstream's module-private
+// Exposed for the driver to call directly, matching upstream's module-private
 // `function graphCircularLayout(ecModel)`.
 func graphCircularLayout(_ ecModel: GlobalModel) {
     ecModel.eachSeriesByType("graph") { seriesModelBase, _ in

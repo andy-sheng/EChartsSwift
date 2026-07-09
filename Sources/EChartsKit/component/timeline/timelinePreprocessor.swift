@@ -25,7 +25,7 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';  -> `util.*`.
 
 // PORT-DEVIATION: upstream `registerPreprocessor(timelinePreprocessor)` runs against the shared
-//   (mutable, by-reference) option object. The Swift slim driver calls the preprocessors directly in
+//   (mutable, by-reference) option object. The Swift driver calls the preprocessors directly in
 //   `ECharts.setOption` with `inout` write-back (same pattern as graphicOptionPreprocessor /
 //   markPointPreprocessor / …), because the OptionManager preprocessor seam is value-typed and inert
 //   (see OptionManager.swift parseRawOption §29). So this variant takes `inout` and rebuilds the

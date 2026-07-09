@@ -274,7 +274,7 @@ open class TreemapSeriesModel: SeriesModel {
     // getViewRoot() { return this._viewRoot; }
     public func getViewRoot() -> TreeNode? {
         // PORT-TODO: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
-        //   lifecycle hook). If the slim driver has not invoked `optionUpdated` yet, `_viewRoot` is nil;
+        //   lifecycle hook). If the driver has not invoked `optionUpdated` yet, `_viewRoot` is nil;
         //   lazily reset here so the layout/view see a valid root (safe fallback, mirrors SunburstSeries).
         if self._viewRoot == nil {
             self.resetViewRoot()

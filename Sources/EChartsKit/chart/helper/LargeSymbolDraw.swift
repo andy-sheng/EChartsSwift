@@ -32,7 +32,7 @@ import ZRenderKit
 //     boost branch never activates (there is no canvas `ctx` here). Every datum is emitted via the
 //     `symbolProxy.buildPath` loop (the non-boost path), which is the faithful geometry. The
 //     `_off`/`notClear` progressive cursor + `beforeBrush(reset)` are kept for provenance but stay
-//     inert (the slim driver has no incremental pipeline: `incremental == 0`), so the full point
+//     inert (the driver has no incremental pipeline: `incremental == 0`), so the full point
 //     range is drawn in ONE pass — a deliberate deviation from the progressive `incrementalUpdate`.
 //   - `incrementalPrepareUpdate` / `incrementalUpdate` / `eachRendered` are ported (single-pass
 //     semantics) so the ISymbolDraw surface stays complete, but the Scheduler task graph that would
@@ -140,7 +140,7 @@ public final class LargeSymbolPath: Path {
             symbolProxy.buildPath(path, proxyShape, true)
         }
         // DEVIATION: `if (this.incremental) { this._off = i; this.notClear = true; }` — inert here
-        //   (`incremental == 0` in the slim driver), so `_off` stays 0 and the full range re-draws.
+        //   (`incremental == 0` in the driver), so `_off` stays 0 and the full range re-draws.
     }
 
     // upstream: setColor (borrowed from symbolProxy). Runs with `this` == the LargeSymbolPath, so it
@@ -279,7 +279,7 @@ public final class LargeSymbolDraw {
         self._clear()
     }
 
-    // upstream: incrementalUpdate(...) — the slim driver has no task graph, so this renders the given
+    // upstream: incrementalUpdate(...) — the driver has no task graph, so this renders the given
     //   range as a single path in one pass (the merge-into-lastAdded / Float32Array split is dropped).
     public func incrementalUpdate(_ data: SeriesData, _ start: Int, _ end: Int, _ opt: SymbolDrawUpdateOpt? = nil) {
         let symbolEl = self._create()

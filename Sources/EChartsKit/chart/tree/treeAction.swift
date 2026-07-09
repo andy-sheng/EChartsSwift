@@ -38,7 +38,7 @@ public func installTreeAction(_ registers: EChartsExtensionInstallRegisters) {
 
     // registers.registerAction({ type: 'treeExpandAndCollapse', event: 'treeExpandAndCollapse',
     //     update: 'update' }, function (payload, ecModel) { ... })
-    //   The slim `registerAction` is module-level (Phase-29), so — like installToolboxActions — this only
+    //   The `registerAction` is module-level (Phase-29), so — like installToolboxActions — this only
     //   registers the action; `update:'update'` collapses to the full `update()` the driver runs after the
     //   handler (which re-runs treeLayout, so a now-collapsed subtree's nodes lose their layout and stop
     //   rendering — the symbolNeedsDraw gate in TreeView drops them).

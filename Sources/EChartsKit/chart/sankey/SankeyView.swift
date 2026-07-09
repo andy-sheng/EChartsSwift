@@ -240,7 +240,7 @@ open class SankeyView: ChartView {
         //   at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
 
         // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
-        //   live by EChartsView._setupSankeyRoam (the slim SankeyView is zr-less); the roam STATE it
+        //   live by EChartsView._setupSankeyRoam (the SankeyView is zr-less); the roam STATE it
         //   accumulates is re-applied to the group below.
 
         // generate a bezier curve (ribbon) for each edge

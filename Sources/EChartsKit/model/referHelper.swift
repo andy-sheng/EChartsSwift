@@ -277,7 +277,7 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
         //   `FetcherAxisModel` to the concrete `AxisBaseModel` (see the typealias above), and
         //   MatrixDimensionModel is NOT an AxisBaseModel — so it cannot be inserted into the
         //   `HashMap<AxisBaseModel>` axisMap here. No series is registered on the `matrix` coordinate
-        //   system in the slim port (matrix is a custom-series/nonSeriesBox coord — Phase 6b), so this
+        //   system in the port (matrix is a custom-series/nonSeriesBox coord — Phase 6b), so this
         //   fetcher is never invoked; the axisMap population is left as a PORT-TODO to be wired once
         //   FetcherAxisModel is widened to the structural (type + getOrdinalMeta) protocol.
         _ = matrixModel?.getDimensionModel("x")

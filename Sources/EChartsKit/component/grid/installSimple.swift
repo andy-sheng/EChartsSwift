@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // import { EChartsExtensionInstallRegisters } from '../../extension';   -> PORT-TODO: registers/install
-//   boilerplate deferred to the slim Orchestrate driver (see `install` note at the bottom).
+//   boilerplate deferred to the Orchestrate driver (see `install` note at the bottom).
 // import ComponentView from '../../view/Component';                     -> `ComponentView` (view/ComponentView.swift).
 // import GridModel from '../../coord/cartesian/GridModel';              -> `GridModel` (coord/cartesian/GridModel.swift).
 // import GlobalModel from '../../model/Global';                         -> `GlobalModel` (model/Global.swift).
@@ -108,7 +108,7 @@ private func truthy(_ value: Any?) -> Bool {
 
 // const extraOption: CartesianAxisOption = { /* gridIndex: 0, gridId: '', */ offset: 0 };
 // PORT-TODO: `extraOption` feeds `axisModelCreator` inside `install` below; both are registration
-//   wiring, deferred to the slim Orchestrate driver. Preserved as commented source for the diffable
+//   wiring, deferred to the Orchestrate driver. Preserved as commented source for the diffable
 //   surface:
 //     let extraOption: [String: Any] = ["offset": 0.0]
 
@@ -116,7 +116,7 @@ private func truthy(_ value: Any?) -> Bool {
 // PORT-TODO: registration boilerplate (registerComponentView/registerComponentModel/
 //   registerCoordinateSystem('cartesian2d', Grid), axisModelCreator for 'x'/'y', the
 //   CartesianXAxisView/CartesianYAxisView view registration, and the grid preprocessor that injects
-//   `option.grid = {}` when xAxis+yAxis are present) belongs to the later slim Orchestrate driver, not
+//   `option.grid = {}` when xAxis+yAxis are present) belongs to the later Orchestrate driver, not
 //   this render-layer file. Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {

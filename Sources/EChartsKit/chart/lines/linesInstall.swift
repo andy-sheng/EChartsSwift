@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';   -> registrar surface owned by the
-//       slim Orchestrate/Integrate driver (same convention as sankeyInstall.swift / sunburstInstall.swift).
+//       Orchestrate/Integrate driver (same convention as sankeyInstall.swift / sunburstInstall.swift).
 //   import LinesView from './LinesView';
 //       -> PORT-TODO: chart/lines/LinesView.swift is a SEPARATE (later) port phase — the STATIC render
 //          layer (one Polyline per polyline line, or a straight Line / quadratic BezierCurve per two-point
@@ -37,7 +37,7 @@ import ZRenderKit
 //          then the series relies on the shared visual/style stage (lineStyle -> stroke) like the line chart.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as sankeyInstall.swift). `LinesView` and `linesVisual` land with
 //   their own (later) port phases. Preserved as commented source for the diffable surface:
 //

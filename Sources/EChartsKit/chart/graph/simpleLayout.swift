@@ -40,7 +40,7 @@ public let graphSimpleLayoutStageHandler = model.createSimpleOverallStageHandler
     { ecModel, api, _ in graphSimpleLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors pie/funnel/sunburst layout handlers), matching
+// Exposed for the driver to call directly (mirrors pie/funnel/sunburst layout handlers), matching
 // upstream's module-private `function graphSimpleLayout(ecModel, api)`.
 func graphSimpleLayout(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
     ecModel.eachSeriesByType(SERIES_TYPE_GRAPH) { seriesModelBase, _ in

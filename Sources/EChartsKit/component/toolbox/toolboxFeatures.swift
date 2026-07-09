@@ -268,10 +268,10 @@ open class ToolboxDataZoomFeature: ToolboxFeature {
         case "zoom":
             // handlers.zoom: `const nextActive = !this._isZoomActive; api.dispatchAction({type:
             //   'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: nextActive});`
-            //   Read the CURRENT arm state off the driver (via the slim api) so the toggle is correct even
+            //   Read the CURRENT arm state off the driver (via the api) so the toggle is correct even
             //   though the feature instance is rebuilt each render (its `_isZoomActive` would otherwise
-            //   reset). Falls back to the per-feature copy for a non-slim api.
-            let current = (api as? SlimExtensionAPI)?.dataZoomSelectActiveValue ?? _isZoomActive
+            //   reset). Falls back to the per-feature copy for a non-api.
+            let current = (api as? EChartsExtensionAPI)?.dataZoomSelectActiveValue ?? _isZoomActive
             let nextActive = !current
             _isZoomActive = nextActive
             var payload = Payload(type: "takeGlobalCursor")

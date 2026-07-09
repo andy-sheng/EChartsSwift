@@ -30,7 +30,7 @@ import ZRenderKit
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> layout/barCommon.swift.
 
 // export function install(registers) { ... }
-// PORT-TODO: registration boilerplate lives in the slim Orchestrate/Integrate driver (ECharts.swift),
+// PORT-TODO: registration boilerplate lives in the Orchestrate/Integrate driver (ECharts.swift),
 //   not this render-layer file (same convention as boxplotInstall.swift). The wiring is:
 //     registers.registerChartView(PictorialBarView);           → `_chartViewFactories["pictorialBar"]`
 //     registers.registerSeriesModel(PictorialBarSeriesModel);  → `ComponentModel.registerClass(PictorialBarSeriesModel.self)`

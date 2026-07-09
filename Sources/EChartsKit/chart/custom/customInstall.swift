@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';   -> the registration surface is owned
-//       by the slim Orchestrate/Integrate driver (core/ECharts.swift), not this render-layer file
+//       by the Orchestrate/Integrate driver (core/ECharts.swift), not this render-layer file
 //       (same convention as chart/effectScatter/effectScatterInstall.swift, chart/boxplot/boxplotInstall.swift).
 //   import CustomSeriesModel from './CustomSeries';                       -> sibling CustomSeries.swift (ported).
 //   import CustomChartView from './CustomView';                          -> sibling CustomView.swift
@@ -35,7 +35,7 @@ import ZRenderKit
 //     registers.registerChartView(CustomChartView);
 //     registers.registerSeriesModel(CustomSeriesModel);
 // }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file. The integration points are:
 //     - ComponentModel.registerClass(CustomSeriesModel.self)      // registerSeriesModel(CustomSeriesModel)
 //     - _chartViewFactories["custom"] = { CustomView() }          // registerChartView(CustomChartView)

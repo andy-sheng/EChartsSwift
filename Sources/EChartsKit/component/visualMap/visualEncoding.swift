@@ -50,7 +50,7 @@ import ZRenderKit
 //
 // PORT-TODO: the reset bodies below are the faithful shells. The actual encoding is BLOCKED on the
 //   deferred VisualMapModel + visualSolution + VisualMapping subsystems (see imports). The `StageHandler`
-//   objects are still produced so the slim Orchestrate driver can register them at
+//   objects are still produced so the Orchestrate driver can register them at
 //   PRIORITY.VISUAL.COMPONENT once those land.
 public let visualMapEncodingHandlers: [StageHandler] = [
     // Handler #1 — incremental value->visual encoding for every target series/data point.
@@ -63,7 +63,7 @@ public let visualMapEncodingHandlers: [StageHandler] = [
                 guard let visualMapModel = componentModel as? VisualMapModel else { return }
                 // const pipelineContext = seriesModel.pipelineContext;
                 // if (!visualMapModel.isTargetSeries(seriesModel) || (pipelineContext && pipelineContext.large)) return;
-                //   PORT-TODO: pipelineContext.large (progressive/large mode) not modeled in the slim
+                //   PORT-TODO: pipelineContext.large (progressive/large mode) not modeled in the
                 //   pipeline; the large-mode short-circuit is omitted (a basic render is never `large`).
                 if !visualMapModel.isTargetSeries(seriesModel) {
                     return

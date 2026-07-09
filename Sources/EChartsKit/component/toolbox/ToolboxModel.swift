@@ -80,7 +80,7 @@ open class ToolboxModel: ComponentModel {
     // upstream `optionUpdated()` — merge each enabled feature's registered `getDefaultOption(ecModel)`
     //   (its icon/title/show/... default bag) into the user's `feature[name]` option, so the VIEW can
     //   read `featureModel.get('icon')` / `get('title')`. (The theme-feature merge is DEFERRED — no
-    //   toolbox theme option in the slim port.)
+    //   toolbox theme option in the port.)
     open override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
         guard var option = self.option as? [String: Any],
               var feature = option["feature"] as? [String: Any] else {

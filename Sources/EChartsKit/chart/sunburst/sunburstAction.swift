@@ -48,7 +48,7 @@ public func installSunburstAction(_ registers: EChartsExtensionInstallRegisters)
     _ = registers   // registration flows through the module-global `registerAction` (see legendAction.swift).
 
     // registers.registerAction({type: ROOT_TO_NODE_ACTION, update: 'updateView'}, handler)
-    //   `updateView` collapses to a full `update()` in the slim driver (partial-update fast paths
+    //   `updateView` collapses to a full `update()` in the driver (partial-update fast paths
     //   unported), which re-runs the layout stage around the new view root and re-renders — the exact
     //   re-root the drill-down needs.
     var rootToNodeInfo = ActionInfo(type: ROOT_TO_NODE_ACTION)

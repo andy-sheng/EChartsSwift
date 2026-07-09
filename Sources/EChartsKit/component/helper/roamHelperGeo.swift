@@ -33,7 +33,7 @@ import ZRenderKit
 //   The `View` sync-back-TO-MODEL / roaming-animation machinery stays DEFERRED (see View.swift). The roam
 //   state instead persists in a per-host-model inner store (below) that survives the full-`update()` rebuild
 //   `geoRoam` triggers — same architecture as the graph slice. DEVIATION (same as graph): upstream registers
-//   `update: 'updateTransform'` and re-transforms the region group via `MapDraw.__updateOnOwnRoam`; the slim
+//   `update: 'updateTransform'` and re-transforms the region group via `MapDraw.__updateOnOwnRoam`; the
 //   driver has no partial updateTransform, so this registers the DEFAULT `update: 'update'` — after the handler
 //   writes the roam state, the full `update()` rebuilds the Geo coord sys (seeded from the stored roam state
 //   via `geoRoamApplyStateToView` in geoCreator.resizeGeo) and re-renders the shifted/scaled regions.

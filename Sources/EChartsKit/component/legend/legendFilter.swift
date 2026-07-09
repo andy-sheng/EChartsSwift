@@ -2,7 +2,7 @@
 //
 // The SERIES_FILTER processor behind legend show/hide: a series is dropped from the rendered set when
 // its name is UNSELECTED in ANY legend component (a series absent from a legend is assumed selected).
-// Registered upstream at PRIORITY.PROCESSOR.SERIES_FILTER; the slim driver invokes `legendFilter(ecModel)`
+// Registered upstream at PRIORITY.PROCESSOR.SERIES_FILTER; the driver invokes `legendFilter(ecModel)`
 // directly in the data-processor stage (before coordSysMgr.update, so a hidden series contributes no axis
 // extent, and before the visual + view stages, so it does not render). `filterSeries` shrinks
 // `_seriesIndices`, which `eachSeries`/renderSeries honour; `restoreData()` (run at the top of each

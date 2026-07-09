@@ -45,7 +45,7 @@ public let sankeyLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, api, _ in sankeyLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors funnelLayout), matching upstream's module-private
+// Exposed for the driver to call directly (mirrors funnelLayout), matching upstream's module-private
 // `function sankeyLayout(ecModel, api)`.
 public func sankeyLayout(
     _ ecModel: GlobalModel,

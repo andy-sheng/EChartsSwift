@@ -273,7 +273,7 @@ public enum labelLayoutHelper {
     //   `style.__marginType` (textMargin/minMargin) plus the `marginForce`/`minMarginForce`/
     //   `marginDefault` overrides. `__marginType` is a documented gap in the port's `labelStyle`, so
     //   labels carry no explicit margin here and no margin expansion is applied (all four terms are
-    //   0). Faithful for the default labels the slim driver produces.
+    //   0). Faithful for the default labels the driver produces.
 
     // upstream:
     //   const LABEL_LAYOUT_DIRTY_BIT_OTHERS = 1;

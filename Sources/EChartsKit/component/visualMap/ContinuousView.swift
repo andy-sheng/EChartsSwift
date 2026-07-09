@@ -150,7 +150,7 @@ public final class ContinuousView: VisualMapView {
 
         self._enableHoverLinkToSeries()
         // PORT-TODO: `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
-        //   The slim ExtensionAPI has no live `getZr()`, so the series→bar hover indicator (the "and vice
+        //   The ExtensionAPI has no live `getZr()`, so the series→bar hover indicator (the "and vice
         //   versa" direction) is driven by the host `EChartsView` instead: it calls this view's public
         //   `_hoverLinkFromSeriesMouseOver(_:)` / `_hideIndicator()` on a series-element mouseover/mouseout.
 

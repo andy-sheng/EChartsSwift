@@ -23,7 +23,7 @@
 // ============================================================================
 // WHAT THIS FILE IS  (Phase 34, TASK 2)
 // ============================================================================
-// A SLIM `TooltipView` that makes the Phase-31 tooltip CONTENT actually APPEAR on hover: it hosts a
+// A `TooltipView` that makes the Phase-31 tooltip CONTENT actually APPEAR on hover: it hosts a
 // `TooltipRichContent` (Phase-34 TASK 1) — a ZRText box — in the LIVE `EChartsView.zr`, and on hover of
 // a series item resolves the tooltip model, builds the markup via `SeriesModel.formatTooltip` (Phase 31)
 // and shows + positions the box near the pointer.
@@ -222,7 +222,7 @@ public final class TooltipView {
     //
     //   DEFERRED (faithful PORT-TODOs):
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
-    //       label here is the slim `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
+    //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
     //     - `cbParams`/`getDataParams` marker pre-creation (only needed once a `formatter` override lands).
     //     - `_showOrMove` (showDelay) + `_updateContentNotChangedOnAxis` (no-change position-only update) —
@@ -312,7 +312,7 @@ public final class TooltipView {
         )
     }
 
-    // Slim `axisPointerViewHelper.getValueLabel` (viewHelper.ts:147 — the crosshair VIEW helper is Phase
+    // `axisPointerViewHelper.getValueLabel` (viewHelper.ts:147 — the crosshair VIEW helper is Phase
     //   36): parse the axis value and format it with the axis scale's label. For a category axis (Ordinal
     //   scale) this yields the category name (e.g. "B"); for a value axis (Interval scale) the numeric
     //   label (honouring the axisPointer `label.precision`). The `label.formatter` callback is DEFERRED.
@@ -365,7 +365,7 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
-    // _updatePosition — SLIM (upstream TooltipView.ts:905). Only the DEFAULT position is ported: place
+    // _updatePosition — (upstream TooltipView.ts:905). Only the DEFAULT position is ported: place
     //   the box just below/right of the pointer (upstream `refixTooltipPosition` with gap 20), then clamp
     //   inside the chart rect (upstream `confineTooltipPosition`). The position callback / string / box-
     //   layout exprs, `align`/`verticalAlign`, and the `shouldTooltipConfine` gate are DEFERRED.
@@ -415,9 +415,9 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
-    // manuallyShowTip — SLIM of upstream `manuallyShowTip` (TooltipView.ts:292), seriesIndex branch only.
+    // manuallyShowTip — of upstream `manuallyShowTip` (TooltipView.ts:292), seriesIndex branch only.
     //   This is the `update:'tooltip:manuallyShowTip'` target of the `showTip` action. `EChartsView`
-    //   invokes it when a `showTip` payload is dispatched (the slim analogue of the upstream per-instance
+    //   invokes it when a `showTip` payload is dispatched (the analogue of the upstream per-instance
     //   view routing). Reads `seriesIndex`/`dataIndex` (+ optional `x`/`y`) from the payload.
     // ------------------------------------------------------------------------
     public func manuallyShowTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
@@ -488,13 +488,13 @@ private func asDouble(_ v: Any?) -> Double? {
 //
 // upstream install.ts registers `showTip`/`hideTip` with a `noop` handler; the REAL work is the
 //   `update:'tooltip:manuallyShowTip'` / `'tooltip:manuallyHideTip'` routing to the per-instance view.
-//   In the slim port there is no view-update routing, so `EChartsView` (which owns the single
+//   In the port there is no view-update routing, so `EChartsView` (which owns the single
 //   `TooltipView`) calls `manuallyShowTip`/`manuallyHideTip` directly when it dispatches/observes these
 //   actions. The action DESCRIPTORS are still registered faithfully (type/event/update) so the payloads
 //   flow through the ported dispatchAction pipeline.
 //
 // PORT-TODO (DEFERRED): per-instance `update`-field routing (`tooltip:manuallyShowTip`) — needs the
-//   ComponentView update dispatch, which the slim path does not have. Multi-chart correctness (each
+//   ComponentView update dispatch, which the path does not have. Multi-chart correctness (each
 //   chart's own tooltip view) rides on that routing; the single-chart headless path is driven by
 //   `EChartsView` invoking `manuallyShowTip`/`manuallyHideTip` on its owned view.
 //
@@ -504,7 +504,7 @@ private let tooltipNoopAction: ActionHandler = { _, _, _ in nil }
 /// `tooltipInstall`-style registration the integrator invokes (from `ECharts.installOnce` /
 ///   `EChartsView`). Idempotent: `registerAction` early-returns on a duplicate type.
 public func installTooltipActions(_ registers: EChartsExtensionInstallRegisters) {
-    _ = registers   // mirror upstream signature; the slim `registerAction` is module-level (see below).
+    _ = registers   // mirror upstream signature; the `registerAction` is module-level (see below).
 
     // registers.registerAction({ type:'showTip', event:'showTip', update:'tooltip:manuallyShowTip' }, noop)
     var showTip = ActionInfo(type: "showTip")

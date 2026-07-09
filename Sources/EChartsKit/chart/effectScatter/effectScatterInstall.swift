@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> the registration surface is
-//       owned by the slim Orchestrate/Integrate driver (core/ECharts.swift), not this render-layer file.
+//       owned by the Orchestrate/Integrate driver (core/ECharts.swift), not this render-layer file.
 //   import EffectScatterView from './EffectScatterView';                      -> sibling EffectScatterView.swift (ported, STATIC).
 //   import EffectScatterSeriesModel from './EffectScatterSeries';             -> sibling EffectScatterSeries.swift (ported).
 //   import layoutPoints from '../../layout/points';
@@ -32,7 +32,7 @@ import ZRenderKit
 //          stage is not wired. Register once layout/points.swift lands.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file (same convention as chart/boxplot/boxplotInstall.swift).
 //   The integration points are:
 //     - ComponentModel.registerClass(EffectScatterSeriesModel.self)   // registerSeriesModel(EffectScatterSeriesModel)

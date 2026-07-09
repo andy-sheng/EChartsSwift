@@ -39,7 +39,7 @@ import ZRenderKit
 
 // upstream:
 //   const actionInfo = { type: 'axisAreaSelect', event: 'axisAreaSelected' /* update: 'updateVisual' */ };
-//   `update` is left undefined upstream → defaults to 'update' (EC_FULL_UPDATE): the slim driver re-runs a
+//   `update` is left undefined upstream → defaults to 'update' (EC_FULL_UPDATE): the driver re-runs a
 //   full update() after the handler, which re-runs `parallelVisual` (→ Parallel.eachActiveState reads the
 //   now-populated activeIntervals and writes each line's opacity) and re-renders the polylines (dimming the
 //   out-of-interval lines via the inactiveOpacity, keeping in-interval lines at activeOpacity).

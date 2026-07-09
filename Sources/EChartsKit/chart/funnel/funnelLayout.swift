@@ -277,7 +277,7 @@ public let funnelLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, api, _ in funnelLayout(ecModel, api) }
 )
 
-// Exposed for the slim driver to call directly (mirrors pieLayout), matching upstream's module-private
+// Exposed for the driver to call directly (mirrors pieLayout), matching upstream's module-private
 // `function funnelLayout(ecModel, api)`.
 public func funnelLayout(
     _ ecModel: GlobalModel,

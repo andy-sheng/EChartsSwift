@@ -44,7 +44,7 @@ public let mapSymbolLayoutStageHandler = model.createSimpleOverallStageHandler(
 
 // upstream: function mapSymbolLayout(ecModel: GlobalModel)
 //   Places the per-region legend symbol markers at the projected region CENTERS (and stamps `showLabel`
-//   on the main series so label-less regions still get a name label). Exposed for the slim driver, mirroring
+//   on the main series so label-less regions still get a name label). Exposed for the driver, mirroring
 //   sankeyLayout.
 public func mapSymbolLayout(_ ecModel: GlobalModel) {
 

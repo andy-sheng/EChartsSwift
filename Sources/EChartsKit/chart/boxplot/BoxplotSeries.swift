@@ -207,8 +207,8 @@ open class BoxplotSeriesModel: SeriesModel {
         // const yAxisModel = ecModel.getComponent('yAxis', this.get('yAxisIndex')) as CartesianAxisModel;
         // PORT-TODO: upstream casts to the generated `CartesianAxisModel` (which implements
         //   `AxisModelExtendedInCreator`). In the port, `xAxis`/`yAxis` are instantiated as
-        //   axisModelCreator-generated CartesianAxisModel subclasses (the slim driver's SlimXAxisModel);
-        //   cast to CartesianAxisModel here (NOT the standalone `AxisModel`, which the slim models are not),
+        //   axisModelCreator-generated CartesianAxisModel subclasses (the driver's EChartsXAxisModel);
+        //   cast to CartesianAxisModel here (NOT the standalone `AxisModel`, which the models are not),
         //   and reach `getOrdinalMeta()` through the `AxisModelExtendedInCreator` protocol below.
         let xAxisModel = ecModel.getComponent("xAxis", asOptDimIndex(self.get("xAxisIndex"))) as? CartesianAxisModel
         let yAxisModel = ecModel.getComponent("yAxis", asOptDimIndex(self.get("yAxisIndex"))) as? CartesianAxisModel

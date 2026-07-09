@@ -50,7 +50,7 @@ public let themeRiverLayoutStageHandler = model.createSimpleOverallStageHandler(
 )
 
 // function themeRiverLayout(ecModel: GlobalModel, api: ExtensionAPI)
-// Exposed for the slim driver to call directly (mirrors funnelLayout), matching upstream's module-private
+// Exposed for the driver to call directly (mirrors funnelLayout), matching upstream's module-private
 // `function themeRiverLayout(ecModel, api)`.
 public func themeRiverLayout(
     _ ecModel: GlobalModel,

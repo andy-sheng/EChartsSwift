@@ -1,5 +1,5 @@
 // END-TO-END RENDER TEST — the Phase 22 milestone proof that a cartesian heatmap option renders through
-// ZRenderKit AND that heatmap + visualMap work together. Builds the slim driver (`ECharts`) with a
+// ZRenderKit AND that heatmap + visualMap work together. Builds the driver (`ECharts`) with a
 // category×category heatmap ([x, y, value] data) + a CONTINUOUS visualMap, runs the full setOption/update
 // cycle, and inspects the produced scene graph: one `Rect` per data cell (the HeatmapView cartesian
 // colored-Rect path), each carrying a fill the visualMap VISUAL stage encoded. The KEY assertion is that
@@ -12,15 +12,15 @@ import ZRenderKit
 final class HeatmapRenderTests: XCTestCase {
 
     // Other suites register test doubles into the GLOBAL ComponentModel registry (e.g. CartesianCoordTests
-    // installs Test{X,Y}AxisModel, which — unlike the real Slim axis models — never merge the category
+    // installs Test{X,Y}AxisModel, which — unlike the real axis models — never merge the category
     // `boundaryGap: true` default, so their category axes are NOT onBand). Heatmap on cartesian REQUIRES two
-    // onBand category axes (the faithful __DEV__ guard traps otherwise), so re-register the real Slim axis
+    // onBand category axes (the faithful __DEV__ guard traps otherwise), so re-register the real axis
     // models + the heatmap series model here to make this suite order-independent (same pattern as
     // BarChartRenderTests re-registering BarSeriesModel).
     override func setUp() {
         super.setUp()
-        ComponentModel.registerClass(SlimXAxisModel.self)
-        ComponentModel.registerClass(SlimYAxisModel.self)
+        ComponentModel.registerClass(EChartsXAxisModel.self)
+        ComponentModel.registerClass(EChartsYAxisModel.self)
         ComponentModel.registerClass(HeatmapSeriesModel.self)
     }
 

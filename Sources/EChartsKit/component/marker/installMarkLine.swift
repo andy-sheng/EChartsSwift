@@ -26,7 +26,7 @@ import Foundation
 //   registers.registerPreprocessor(function (opt) {
 //       if (checkMarkerInSeries(opt.series, 'markLine')) { opt.markLine = opt.markLine || {}; }
 //   });
-// The registration + view-factory wiring lives in the slim driver (ECharts.installOnce); the
+// The registration + view-factory wiring lives in the driver (ECharts.installOnce); the
 // preprocessor (auto-enable the master markLine component when any series declares markLine) is here.
 public func markLinePreprocessor(_ opt: inout [String: Any]) {
     // if (checkMarkerInSeries(opt.series, 'markLine')) { opt.markLine = opt.markLine || {}; }

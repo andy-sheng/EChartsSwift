@@ -39,7 +39,7 @@ public func installSankeyAction(_ registers: EChartsExtensionInstallRegisters) {
 
     // registers.registerAction({ type: 'dragNode', event: 'dragnode', update: 'update' },
     //     function (payload, ecModel) { ... })
-    //   The slim `registerAction` is module-level (Phase-29), so — like installTreeAction — this only
+    //   The `registerAction` is module-level (Phase-29), so — like installTreeAction — this only
     //   registers the action; `update:'update'` collapses to the full `update()` the driver runs after the
     //   handler. That re-render re-reads each node's `localX`/`localY` (persisted by setNodePosition below),
     //   so the dragged node moves and its incident edge ribbons re-route to the new endpoints.

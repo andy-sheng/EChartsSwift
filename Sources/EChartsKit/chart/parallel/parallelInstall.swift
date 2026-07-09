@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters, use } from '../../extension';   -> registrar surface owned by
-//       the slim Orchestrate/Integrate driver (same convention as chart/boxplot/install.swift).
+//       the Orchestrate/Integrate driver (same convention as chart/boxplot/install.swift).
 //   import ParallelView from './ParallelView';                                 -> sibling ParallelView.swift
 //       (the CHART view — named ParallelView.swift; the COMPONENT view is ParallelComponentView.swift, to
 //       avoid the SwiftPM single-target basename collision).
@@ -33,7 +33,7 @@ import ZRenderKit
 //       -> component/parallel install surface (parallel COORDINATE SYSTEM + parallelAxis component).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
+// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/boxplot/install.swift, chart/sunburst/sunburstInstall.swift).
 //   Preserved as commented source for the diffable surface:
 //

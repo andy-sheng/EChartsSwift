@@ -49,7 +49,7 @@ public let graphForceLayoutStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, _, _ in graphForceLayout(ecModel) }
 )
 
-// Exposed for the slim driver to call directly (mirrors the sibling graph layout handlers), matching
+// Exposed for the driver to call directly (mirrors the sibling graph layout handlers), matching
 // upstream's module-private `function graphForceLayout(ecModel)`.
 func graphForceLayout(_ ecModel: GlobalModel) {
     ecModel.eachSeriesByType(SERIES_TYPE_GRAPH) { seriesModelBase, _ in

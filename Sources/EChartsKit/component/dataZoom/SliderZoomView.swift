@@ -553,7 +553,7 @@ open class SliderZoomView: ComponentView {
     }
 
     // `nonRealtime` (upstream _updateView(nonRealtime?)) only affects the animated-tween path, which is
-    //   DEFERRED — the slim driver repositions synchronously, so it is ignored here.
+    //   DEFERRED — the driver repositions synchronously, so it is ignored here.
     func _updateView(_ nonRealtime: Bool = false) {
         _ = nonRealtime
         let displayables = self._displayables

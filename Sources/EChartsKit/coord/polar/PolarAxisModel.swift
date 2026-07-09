@@ -101,8 +101,8 @@ open class PolarAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     // AxisModelExtendedInCreator conformance). Swift can not synthesize that runtime subclass, so the
     // faithful reduction lives on this base — driven by the overridable `polarAxisExtraOption` the
     // concrete AngleAxisModel/RadiusAxisModel supply (angle/radius extra defaults from
-    // component/polar/install.ts). Mirrors coord/axisModelCreator.swift `AxisModel` + the SlimXAxisModel
-    // stand-in pattern that drives the cartesian slim path.
+    // component/polar/install.ts). Mirrors coord/axisModelCreator.swift `AxisModel` + the EChartsXAxisModel
+    // stand-in pattern that drives the cartesian path.
     // ------------------------------------------------------------------------
 
     // The polar extra default option for this axis kind (startAngle/clockwise/… for angle, splitNumber
