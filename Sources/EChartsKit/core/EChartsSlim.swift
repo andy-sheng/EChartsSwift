@@ -303,6 +303,10 @@ public final class EChartsSlim: EChartsType {
     private var _componentViewByModel: [ObjectIdentifier: ComponentView] = [:]
     private var _chartViewByModel: [ObjectIdentifier: ChartView] = [:]
 
+    // The full-canvas background rect (upstream zr.setBackgroundColor). Removed/reused across renders
+    // so it never accumulates now that render() no longer wipes root (L5 view reuse).
+    private var _bgRect: Rect?
+
     // Test-only accessors (assert reuse identity across setOption; assert no view duplication).
     var testModel: GlobalModel? { _model }
     var testChartViews: [ChartView] { _chartsViews }
@@ -1451,32 +1455,22 @@ public final class EChartsSlim: EChartsType {
     private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // allocateZlevels(ecModel) — PORT-TODO skip (single grid + one series; default z ordering).
 
-        // Reset accumulated views + display before rebuilding. The slim driver rebuilds everything each
-        //   render (no notMerge/replaceMerge reuse, no incremental transitions), and `setOption` installs
-        //   a FRESH GlobalModel — but `root`, the view registries, and `storage` are instance state that
-        //   persists across calls. When ONE instance is reused across successive setOption calls (the live
-        //   EChartsHostView path — switching demos), the previous render's view groups otherwise linger in
-        //   `root` (and `renderComponents` would even re-render a stale component from its old model),
-        //   leaving the prior chart visible under the new one. `root.removeAll()` also unregisters each
-        //   removed child from the live zr (storage + animation). This is the slim stand-in for upstream
-        //   `prepareView`'s dead-view dispose pass (echarts.ts:1687); real view reuse/diff is deferred.
-        _ = root.removeAll()
-        storage.delAllRoots()
-        _componentsViews.removeAll()
-        _chartsViews.removeAll()
-        _componentsMap.removeAll()
-        _chartsMap.removeAll()
-        _componentViewByModel.removeAll()
-        _chartViewByModel.removeAll()
+        // View REUSE (L5): the driver no longer wipes root + the view registries each render.
+        //   `prepareView` now performs upstream's mark-and-sweep (echarts.ts:1687-1770): every view
+        //   is marked not-alive, re-marked alive if its model still resolves it (reused by
+        //   `_ec_<id>_<type>`), and `sweepDeadViews` disposes any left dead. This keeps a reused
+        //   view's prior element tree + `_data` so its `data.diff`/`updateProps` can tween across a
+        //   merge-mode `setOption`. The demo-switch host path passes `notMerge:true`, which installs
+        //   a fresh GlobalModel whose brand-new models force fresh views (old ones swept) — so a
+        //   demo switch still rebuilds cleanly with no stale-view bleed.
 
         // BACKGROUND — upstream `echarts._updateBackground` calls `zr.setBackgroundColor(backgroundColor)`
         //   (a painter-level clear color). The slim driver renders into a bare Group and has no painter clear
         //   hook (that is a host concern, e.g. CALayerPainter's white), so instead draw the resolved
-        //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything — added first so it paints
-        //   under all component/series groups, and host-independent (native PNG + live view both show it).
-        //   This is what makes the dark theme's dark ground actually visible. Transparent/absent → no rect
-        //   (the host clear shows through, preserving the default white). Gradient backgrounds: PORT-TODO
-        //   (only the string form is handled; the dark theme + explicit `backgroundColor` option are strings).
+        //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything. Now that render() no longer
+        //   wipes `root`, the prior bg rect must be removed/reused each render so it never accumulates.
+        //   Transparent/absent → no rect (the host clear shows through, preserving the default white).
+        if let old = _bgRect { _ = root.remove(old); _bgRect = nil }
         if let bg = ecModel.get("backgroundColor", true) as? String,
            !bg.isEmpty, bg != "transparent", bg != "rgba(0,0,0,0)" {
             var shape = RectShape()
@@ -1491,10 +1485,12 @@ public final class EChartsSlim: EChartsType {
                 "z2": -Double.greatestFiniteMagnitude
             ])
             _ = root.add(bgRect)
+            _bgRect = bgRect
         }
 
         prepareView(isComponent: true, ecModel: ecModel, api: api)
         prepareView(isComponent: false, ecModel: ecModel, api: api)
+        sweepDeadViews(ecModel, api)
 
         renderComponents(ecModel, api)
 
@@ -1692,10 +1688,21 @@ public final class EChartsSlim: EChartsType {
     // Faithful reduction of `prepareView` (echarts.ts:1687): no reuse across notMerge/replaceMerge
     // (each setOption rebuilds), no dispose of dead views (fresh model each call).
     private func prepareView(isComponent: Bool, ecModel: GlobalModel, api: ExtensionAPI) {
+        // (a) Mark every existing view of this kind not-alive (upstream prepareView 1695-1697).
+        //     doPrepare re-marks the reused/created ones alive; sweepDeadViews disposes the rest.
+        if isComponent { for v in _componentsViews { v.__alive = false } }
+        else { for v in _chartsViews { v.__alive = false } }
+
         func doPrepare(_ model: ComponentModel) {
-            let viewId = "_ec_\(model.componentIndex)_\(model.type)"
+            // By default a view is reused if possible (same id + type) so a merge-mode setOption can
+            //   transition. `__requireNewView` (set by _mergeOption on a brand-new/replaced model)
+            //   forces a fresh view. The flag must not work twice (upstream 1712-1714).
+            let requireNewView = model.__requireNewView ?? false
+            model.__requireNewView = false
+            let viewId = "_ec_\(model.id)_\(model.type)"   // upstream 1716: keyed by model.id (+type)
             if isComponent {
-                let view = _componentsMap[viewId] ?? {
+                let existing = requireNewView ? nil : _componentsMap[viewId]
+                let view = existing ?? {
                     // getClass(classType.main, classType.sub) → factory keyed by FULL type first (subtype
                     //   dispatch, e.g. 'visualMap.continuous'), then by mainType (e.g. 'legend' whose full
                     //   type is 'legend.plain'). Most components have full type == mainType, so the fallback
@@ -1713,12 +1720,15 @@ public final class EChartsSlim: EChartsType {
                     return v
                 }()
                 guard let componentView = view else { return }
+                model.__viewId = viewId
+                componentView.__alive = true
                 componentView.__model = model
                 _componentViewByModel[ObjectIdentifier(model)] = componentView
             }
             else {
                 guard let seriesModel = model as? SeriesModel else { return }
-                let view = _chartsMap[viewId] ?? {
+                let existing = requireNewView ? nil : _chartsMap[viewId]
+                let view = existing ?? {
                     // ChartView.getClass(classType.sub) → factory keyed by series subType.
                     guard let factory = _chartViewFactories[seriesModel.subType] else {
                         // PORT-TODO: no chart view registered for this subType (only 'bar' in scope).
@@ -1733,6 +1743,8 @@ public final class EChartsSlim: EChartsType {
                     return v
                 }()
                 guard let chartView = view else { return }
+                model.__viewId = viewId
+                chartView.__alive = true
                 chartView.__model = seriesModel
                 _chartViewByModel[ObjectIdentifier(seriesModel)] = chartView
                 // upstream: `scheduler.prepareView(view, model, ...)` builds the series pipeline and sets
@@ -1750,6 +1762,41 @@ public final class EChartsSlim: EChartsType {
         }
         else {
             ecModel.eachSeries { seriesModel, _ in doPrepare(seriesModel) }
+        }
+    }
+
+    // Dispose views left __alive == false after both prepareView passes: their model was removed or
+    // replaced by a different-type/brand-new model, so the old view instance is orphaned. Faithful to
+    // prepareView's tail sweep (echarts.ts:1754-1769) + renderSeries' dead-chart remove (2445-2449).
+    private func sweepDeadViews(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        var i = 0
+        while i < _componentsViews.count {
+            let v = _componentsViews[i]
+            if v.__alive != true {
+                _ = root.remove(v.group)
+                storage.delRoot(v.group)
+                v.dispose(ecModel, api)
+                _componentsViews.remove(at: i)
+                for (k, vv) in _componentsMap where vv === v { _componentsMap.removeValue(forKey: k) }
+                for (k, vv) in _componentViewByModel where vv === v { _componentViewByModel.removeValue(forKey: k) }
+            } else {
+                i += 1
+            }
+        }
+        i = 0
+        while i < _chartsViews.count {
+            let v = _chartsViews[i]
+            if !v.__alive {
+                v.remove(ecModel, api)          // upstream renderSeries also calls chart.remove for a dead view
+                _ = root.remove(v.group)
+                storage.delRoot(v.group)
+                v.dispose(ecModel, api)
+                _chartsViews.remove(at: i)
+                for (k, vv) in _chartsMap where vv === v { _chartsMap.removeValue(forKey: k) }
+                for (k, vv) in _chartViewByModel where vv === v { _chartViewByModel.removeValue(forKey: k) }
+            } else {
+                i += 1
+            }
         }
     }
 
