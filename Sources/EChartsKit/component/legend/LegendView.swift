@@ -409,16 +409,26 @@ open class LegendView: ComponentView {
         util.each(selector) { selectorItemAny, _ in
             let selectorItem = selectorItemAny as? [String: Any] ?? [:]
             // const type = selectorItem.type;
-            _ = selectorItem["type"] as? String   // PORT-TODO: `type` drives the DEFERRED onclick dispatch.
+            let selType = selectorItem["type"] as? String
 
             // const labelText = new graphic.Text({ style: {x,y,align,verticalAlign}, onclick() {...} });
-            // PORT-TODO: DEFERRED onclick — `api.dispatchAction({type: 'legendAllSelect'|'legendInverseSelect'})`.
             var textStyle = TextStyleProps()
             textStyle.x = 0
             textStyle.y = 0
             textStyle.align = .center
             textStyle.verticalAlign = .middle
             let labelText = ZRText(["style": textStyle])
+
+            // onclick() { api.dispatchAction({ type: type === 'all' ? 'legendAllSelect' : 'legendInverseSelect',
+            //   legendId: legendModel.id }); }
+            // The click BUBBLES from the label element up the parent chain; binding on the label works.
+            let legendId = legendModel.id
+            _ = labelText.on("click", { _, _ in
+                var p = Payload(type: selType == "all" ? "legendAllSelect" : "legendInverseSelect")
+                p.other["legendId"] = legendId
+                api.dispatchAction(p)
+                return nil
+            }, nil)
 
             _ = selectorGroup.add(labelText)
 

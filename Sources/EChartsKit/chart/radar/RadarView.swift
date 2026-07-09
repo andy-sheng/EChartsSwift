@@ -27,8 +27,10 @@ import ZRenderKit
 //       ported faithfully as a `points`-array grow (see the per-item ENTRANCE block). graphic.updateProps
 //       (update morph) + the data.diff add/update/remove pipeline remain DEFERRED (static rebuild below).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported — emphasis/select/blur state styles + hover dispatcher
-//       DEFERRED (per CONVENTIONS §5).
+//       -> `states` (util/states.swift). Wired: each item's polyline/polygon carry their emphasis/blur/
+//       select line/area state styles and the whole itemGroup is a highDown dispatcher (focus:self blurs
+//       the other polygons). PORT-TODO: the per-state symbol itemStyle clone + per-state polygon.ignore
+//       toggle remain deferred (styling niceties, not the dispatcher).
 //   import * as zrUtil from 'zrender/src/core/util';               -> `zrUtil.defaults` inlined (radarDefaults) / map dropped.
 //   import * as symbolUtil from '../../util/symbol';               -> `symbol` namespace (util/symbol.swift).
 //       DEVIATION: the vertex symbol is built inline with `symbol.createSymbol` (same deviation as

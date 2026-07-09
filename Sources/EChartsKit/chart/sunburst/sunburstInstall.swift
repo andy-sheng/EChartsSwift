@@ -28,13 +28,16 @@ import ZRenderKit
 //   import SunburstSeriesModel from './SunburstSeries';                      -> sibling SunburstSeries.swift (ported).
 //   import { sunburstVisualStageHandler } from './sunburstVisual';           -> sibling sunburstVisual.swift (ported).
 //   import { installSunburstAction } from './sunburstAction';
-//       -> PORT-TODO: chart/sunburst/sunburstAction.ts DEFERRED (rollup/highlight actions — task scope).
+//       -> sibling sunburstAction.swift (ported: `sunburstRootToNode` drill-down/roll-up; the deprecated
+//          `sunburstHighlight`/`sunburstUnhighlight` aliases stay DEFERRED). Registered from EChartsSlim
+//          .installOnce via `installSunburstAction(_registers)`.
 //   import { sunburstLayoutStageHandler } from './sunburstLayout';           -> sibling sunburstLayout.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
 // PORT-TODO: registration boilerplate belongs to the slim Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/boxplot/install.swift). `installSunburstAction`
-//   (rollup/highlight) is DEFERRED. Preserved as commented source for the diffable surface:
+//   (`sunburstRootToNode`) IS now ported and called from EChartsSlim.installOnce. Preserved as
+//   commented source for the diffable surface:
 //
 //     export function install(registers) {
 //         registers.registerChartView(SunburstView);

@@ -130,6 +130,13 @@ open class SunburstView: ChartView {
                 // For tooltip: data.setItemGraphicEl(newNode.dataIndex, piece);
                 //   TreeNode.dataIndex is already `Int`.
                 data.setItemGraphicEl(n.dataIndex, piece)
+
+                // upstream binds a single `group.on('click')` and matches `e.target` back to a node via
+                //   `node.piece === e.target`; this port has no `node.piece` slot (see DrawTreeNode
+                //   PORT-TODO), so — following the established per-element binding pattern — bind the
+                //   node's own SunburstPiece: the click BUBBLES from the hit child up to it. Same behaviour
+                //   as upstream `_initEvents` (nodeClick 'rootToNode' → `_rootToNode(node)`).
+                self._bindNodeClick(piece, n)
             }
         }
 
@@ -137,10 +144,32 @@ open class SunburstView: ChartView {
         renderRollUp(virtualRoot, newRoot, seriesModel, ecModel, api, group)
 
         // this._initEvents();
-        // PORT-TODO: click events (rootToNode / link / windowOpen) DEFERRED (actions not ported).
+        //   The upstream `group.on('click')` + `viewRoot.eachNode(node.piece === e.target)` dispatch is
+        //   realised here as a per-SunburstPiece `on('click')` binding (see `_bindNodeClick`, wired in the
+        //   render loop and in `renderRollUp`), because this port carries no `node.piece` slot. The `link`
+        //   branch (`windowOpen`) is DEFERRED (no URL side effects in the native host).
 
         // this._oldChildren = newChildren;
         self._oldChildren = newChildren
+    }
+
+    // Per-node click binding — the port's realisation of upstream `_initEvents()`. Reads the node's
+    //   `nodeClick` (defaults to 'rootToNode' via the series option) and, when it is 'rootToNode', drills
+    //   the view root to that node. The `'link'` branch (windowOpen) is DEFERRED. `false` disables it.
+    private func _bindNodeClick(_ piece: SunburstPiece, _ node: TreeNode) {
+        _ = piece.on("click", { [weak self] _, _ in
+            guard let self = self else { return nil }
+            // const nodeClick = node.getModel().get('nodeClick');
+            //   `node.getModel()` is `Model?`; fall back to the series-level option so a node without an
+            //   item model still honours the default ('rootToNode').
+            let nodeClick = (node.getModel()?.get("nodeClick")
+                ?? self.seriesModel?.get("nodeClick")) as? String
+            if nodeClick == "rootToNode" {
+                self._rootToNode(node)
+            }
+            // else if (nodeClick === 'link') { ... windowOpen(link, target) }  — DEFERRED.
+            return nil
+        }, nil)
     }
 
     // upstream: function renderRollUp(virtualRoot, viewRoot) { ... }  (nested in render)
@@ -156,17 +185,31 @@ open class SunburstView: ChartView {
             self.virtualPiece = SunburstPiece(virtualRoot, seriesModel, ecModel, api)
             _ = group.add(self.virtualPiece!)
 
-            // viewRoot.piece.off('click'); self.virtualPiece.on('click', ...);
-            // PORT-TODO: roll-up click (self._rootToNode(viewRoot.parentNode)) DEFERRED (events not ported).
+            // viewRoot.piece.off('click'); self.virtualPiece.on('click', () => self._rootToNode(viewRoot.parentNode));
+            //   Clicking the centre (the roll-up sector) roots back UP to the current view root's parent.
+            let parentNode = viewRoot.parentNode
+            _ = self.virtualPiece!.on("click", { [weak self] _, _ in
+                guard let self = self, let parent = parentNode else { return nil }
+                self._rootToNode(parent)
+                return nil
+            }, nil)
         }
         // else if (self.virtualPiece) { group.remove(...); self.virtualPiece = null; }  — subsumed by removeAll().
     }
 
-    // upstream: _initEvents()  — DEFERRED (group 'click' → nodeClick 'rootToNode' | 'link').
-    // PORT-TODO: events/actions not ported.
-
-    // upstream: _rootToNode(node)  — DEFERRED (dispatchAction ROOT_TO_NODE_ACTION).
-    // PORT-TODO: actions not ported.
+    // upstream: _rootToNode(node) { if (node !== this.seriesModel.getViewRoot()) { this.api.dispatchAction({
+    //   type: ROOT_TO_NODE_ACTION, from: this.uid, seriesId: this.seriesModel.id, targetNode: node }); } }
+    private func _rootToNode(_ node: TreeNode) {
+        guard let seriesModel = self.seriesModel, let api = self.api else { return }
+        // if (node !== this.seriesModel.getViewRoot())
+        if node !== seriesModel.getViewRoot() {
+            var payload = Payload(type: ROOT_TO_NODE_ACTION)
+            payload.other["from"] = self.uid
+            payload.other["seriesId"] = seriesModel.id
+            payload.other["targetNode"] = node
+            api.dispatchAction(payload)
+        }
+    }
 
     // upstream: containPoint(point, seriesModel): boolean  @implement
     open override func containPoint(_ point: [Double], _ seriesModelBase: SeriesModel) -> Bool {

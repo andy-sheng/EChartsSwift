@@ -854,6 +854,13 @@ public final class EChartsSlim: EChartsType {
         //   toggles LegendModel.selected, and the driver's full update() re-runs legendFilter to show/hide.
         installLegendAction(EChartsSlim._registers)
 
+        // -- chart/sunburst/sunburstAction.ts `installSunburstAction` — registerAction('sunburstRootToNode',
+        //   update:'updateView'). Clicking a sunburst sector dispatches sunburstRootToNode with the target
+        //   node (wired per-piece in SunburstView._bindNodeClick); the handler re-roots the series' viewRoot
+        //   (SunburstSeriesModel.resetViewRoot), and the driver's full update() re-runs the sunburst layout
+        //   around the new root (drill-down / roll-up). sunburstHighlight/sunburstUnhighlight DEFERRED.
+        installSunburstAction(EChartsSlim._registers)
+
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
         //   registerComponentModel(MarkPointModel/MarkLineModel/MarkAreaModel) + the auto-enable
         //   preprocessors (called in setOption). Markers render statically & faithfully: the Phase-51 axis
@@ -892,7 +899,10 @@ public final class EChartsSlim: EChartsType {
         //   <sub>)` (→ 'treeRoam' / 'sankeyRoam') + the port's 'treemapRoam' (upstream treemap re-lays-out
         //   via 'treemapMove'/'treemapRender'; the port applies a view-group TRANSFORM — see
         //   roamHelperViewGroup.swift). All three accumulate pan/zoom onto the per-series roam state.
-        registerTreeRoamAction()
+        // -- chart/tree/install.ts `installTreeAction(registers)` — registerAction('treeExpandAndCollapse')
+        //   (node click → toggle node.isExpand, update:'update' re-lays-out) + registerTreeRoamAction()
+        //   (the 'treeRoam' view-group roam action). See chart/tree/treeAction.swift.
+        installTreeAction(EChartsSlim._registers)
         registerTreemapRoamAction()
         registerSankeyRoamAction()
 

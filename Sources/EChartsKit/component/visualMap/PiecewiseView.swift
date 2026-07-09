@@ -116,8 +116,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
             })
 
             // this._enableHoverLink(itemGroup, item.indexInModelPieceList);
-            // PORT-TODO: DEFERRED — hover-link (`_enableHoverLink`) is interaction.
-            _ = item.indexInModelPieceList
+            self._enableHoverLink(itemGroup, item.indexInModelPieceList)
 
             // TODO Category
             // const representValue = visualMapModel.getRepresentValue(piece) as number;
@@ -181,9 +180,41 @@ public final class PiecewiseVisualMapView: VisualMapView {
         _ = visualMapModelIn
     }
 
-    // private _enableHoverLink(itemGroup, pieceIndex)
-    // PORT-TODO: DEFERRED — hover-link mouseover/mouseout → `api.dispatchAction('highlight'|'downplay')`
-    //   with `helper.makeHighDownBatch(visualMapModel.findTargetDataIndices(pieceIndex), ...)`. Interaction.
+    // private _enableHoverLink(itemGroup: graphic.Group, pieceIndex: number)
+    //   Wired faithfully via the live-host hover seam (Group.on("mouseover"/"mouseout", ...)); the event
+    //   BUBBLES from the hit child up to `itemGroup`. On mouseover the matching-value series data points
+    //   are HIGHLIGHTED (a batch built from `findTargetDataIndices(pieceIndex)`); mouseout downplays them.
+    private func _enableHoverLink(_ itemGroup: Group, _ pieceIndex: Int) {
+        // itemGroup
+        //     .on('mouseover', () => onHoverLink('highlight'))
+        //     .on('mouseout', () => onHoverLink('downplay'));
+        _ = itemGroup.on("mouseover", { [weak self] _, _ in
+            self?._onHoverLink("highlight", pieceIndex)
+            return nil
+        })
+        _ = itemGroup.on("mouseout", { [weak self] _, _ in
+            self?._onHoverLink("downplay", pieceIndex)
+            return nil
+        })
+    }
+
+    // upstream: const onHoverLink = (method?: 'highlight' | 'downplay') => { ... }
+    private func _onHoverLink(_ method: String, _ pieceIndex: Int) {
+        // const visualMapModel = this.visualMapModel;
+        let visualMapModel = self.visualMapModel as! PiecewiseModel
+
+        // visualMapModel.option.hoverLink && this.api.dispatchAction({ type: method, batch:
+        //     helper.makeHighDownBatch(visualMapModel.findTargetDataIndices(pieceIndex), visualMapModel) });
+        //   `get('hoverLink')` resolves the default (true) — equivalent to reading `option.hoverLink`.
+        guard visualMapJsTruthy(visualMapModel.get("hoverLink")) else { return }
+
+        var payload = Payload(type: method)
+        payload.batch = piecewiseMakeHighDownBatch(
+            visualMapModel.findTargetDataIndices(Double(pieceIndex)),
+            visualMapModel
+        )
+        self.api!.dispatchAction(payload)
+    }
 
     // private _getItemAlign(): helper.ItemAlign
     private func _getItemAlign() -> String {
@@ -339,3 +370,23 @@ public final class PiecewiseVisualMapView: VisualMapView {
 }
 
 // export default PiecewiseVisualMapView;  → `final class PiecewiseVisualMapView` above.
+
+// upstream helper.makeHighDownBatch(batch, visualMapModel) — take `findTargetDataIndices`' output
+//   ([{seriesId, dataIndex:[Double]}]) and, for each item, move dataIndex → dataIndexInside + stamp a
+//   `highlightKey`, emitting the `[PayloadItem]` batch consumed by the highlight/downplay actions.
+//   (The sibling ContinuousView.swift has an equivalent private helper over `[BatchItem]`; here the
+//   input is the raw dict form, so a Piecewise-local variant is kept.)
+private func piecewiseMakeHighDownBatch(_ batch: [[String: Any]], _ visualMapModel: VisualMapModel) -> [PayloadItem] {
+    var out: [PayloadItem] = []
+    for item in batch {
+        var p = PayloadItem()
+        // (seriesId is preserved; dataIndex != null → dataIndexInside = dataIndex, dataIndex = null.)
+        p.other["seriesId"] = item["seriesId"]
+        if let dataIndex = item["dataIndex"], !(dataIndex is NSNull) {
+            p.other["dataIndexInside"] = dataIndex
+        }
+        p.other["highlightKey"] = "visualMap" + String(Int(visualMapModel.componentIndex))
+        out.append(p)
+    }
+    return out
+}

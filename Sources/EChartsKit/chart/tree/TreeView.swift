@@ -288,8 +288,33 @@ open class TreeView: ChartView {
         // this._updateNodeAndLinkScale(seriesModel);
         //   PORT-TODO: DEFERRED — setSymbolScale / calcCompensationScaleToPreserveNodeSize (roam) not ported.
 
-        // if (seriesModel.get('expandAndCollapse') === true) { ... el.on('click', treeExpandAndCollapse) }
-        //   PORT-TODO: expand/collapse click action DEFERRED (actions not ported).
+        // if (seriesModel.get('expandAndCollapse') === true) {
+        //     data.eachItemGraphicEl(function (el, dataIndex) {
+        //         el.off('click').on('click', function () {
+        //             api.dispatchAction({ type: 'treeExpandAndCollapse', seriesId: seriesModel.id,
+        //                 dataIndex: dataIndex });
+        //         });
+        //     });
+        // }
+        //   Each node symbol (a Symbol Group) binds click → dispatch 'treeExpandAndCollapse' with the series
+        //   id + the node dataIndex. The click BUBBLES from the hit child (the symbol Path) up to this Group
+        //   via Handler.dispatchToElement — the same bubbling the legend click uses. The action toggles
+        //   node.isExpand (chart/tree/treeAction.swift) and re-runs the full update() (update:'update'), so a
+        //   now-collapsed subtree's nodes lose their layout and drop out on the next render.
+        if (seriesModel.get("expandAndCollapse", true) as? Bool) == true {
+            let seriesId = seriesModel.id
+            data.eachItemGraphicEl { el, dataIndex in
+                // upstream `el.off('click')` — the group is rebuilt each static render (no stale handler to
+                //   clear), so bind directly.
+                _ = el.on("click", { _, _ in
+                    var p = Payload(type: "treeExpandAndCollapse")
+                    p.other["seriesId"] = seriesId
+                    p.other["dataIndex"] = dataIndex
+                    api.dispatchAction(p)
+                    return nil
+                }, nil)
+            }
+        }
 
         self._data = data
 

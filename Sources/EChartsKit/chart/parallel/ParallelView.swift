@@ -26,9 +26,10 @@ import ZRenderKit
 //       PORT-TODO: graphic.updateProps / graphic.initProps (enter/update animation) NOT ported — the
 //       static render sets final geometry directly (same deviation as RadarView / FunnelView / GraphView).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported — emphasis/select/blur state styles + hover dispatcher
-//       DEFERRED (per CONVENTIONS §5). This also covers the parallelAxis brush-based highlight/fade
-//       interaction, which is DEFERRED per the phase brief.
+//       -> `states` (util/states.swift). Hover emphasis IS wired: each parallel line carries its
+//       emphasis/blur/select lineStyle state styles and is a highDown dispatcher (see updateElCommon).
+//       PORT-TODO: the parallelAxis brush-based highlight/fade interaction remains DEFERRED per the
+//       phase brief.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import ParallelSeriesModel, { ParallelSeriesDataItemOption } from './ParallelSeries';
@@ -278,8 +279,17 @@ private func updateElCommon(
     // const emphasisModel = itemModel.getModel('emphasis');
     // setStatesStylesFromModel(el, itemModel, 'lineStyle');
     // toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
-    //   PORT-TODO: emphasis/select/blur state styles + hover dispatcher DEFERRED (util/states not ported).
-    _ = (data.getItemModel(dataIndex))
+    //   Populate the line's emphasis/blur/select state styles from the item's lineStyle model, then mark
+    //   the polyline a highDown dispatcher (so a hover over it drives it into emphasis, and blurs the rest
+    //   when focus is set). Same idiom as GraphView edges / RadarView polygons. The per-state area/line
+    //   `ensureState(...).ignore` niceties in the radar path have no parallel analogue here.
+    let itemModel = data.getItemModel(dataIndex)
+    let emphasisModel = itemModel.getModel(["emphasis"])
+    states.setStatesStylesFromModel(el, itemModel, "lineStyle")
+    let focus: InnerFocus? = emphasisModel.get("focus")
+    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
 
     // Enter-fade toward the captured final opacity (see the opacity note above where it was zeroed).
     initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, dataIndex)
