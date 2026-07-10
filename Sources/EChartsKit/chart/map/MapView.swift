@@ -77,6 +77,34 @@ open class MapView: ChartView {
     // PORT-TODO: MapDraw NOT ported. The GeoJSON region backdrop (with data colouring) is built directly
     //   in `_buildGeoJSON`; this slot (and the roam controller / SVG map it owns) is deferred.
 
+    // ── Persistent GeoJSON region elements for the COLOR-MORPH path (L5 transition fidelity) ──────────
+    //   A map's region GEOMETRY is fixed (from the registered GeoJSON); a merge-mode value change only
+    //   re-colors each region via the visualMap encoding. So instead of `group.removeAll()`-rebuilding
+    //   (which snaps the recolor), the region compound paths are PERSISTED across renders and their FILL
+    //   is `updateProps`-morphed (as a color STRING, so the Animator's color-tween path runs) toward the
+    //   new visualMap color. `_geoJSONMapName` + the persisted region-name set gate morph-vs-rebuild: a
+    //   map-name change or a different region set (different geometry) rebuilds fresh and resets these.
+    //   Keyed by region NAME; a duplicated `properties.name` shares one region group but can own several
+    //   compound paths, so the path caches are name → [CompoundPath]. (SVG branch is NOT morphed — it
+    //   rebuilds as before, and clears this state so a later SVG→GeoJSON switch can't reuse stale paths.)
+    private var _geoJSONMapName: String? = nil
+    private var _regionGroups: [String: Group] = [:]
+    private var _regionPolyPaths: [String: [CompoundPath]] = [:]
+    private var _regionLinePaths: [String: [CompoundPath]] = [:]
+    // Legend-symbol circles added directly to `self.group` by `_renderSymbols` — tracked so they can be
+    //   cleared on a morph render (where the group is NOT wiped) without touching the region groups.
+    private var _symbolEls: [Element] = []
+
+    // Drop the persistent GeoJSON region state — called whenever a branch wipes the group (host-geo /
+    //   SVG / no-draw / a GeoJSON rebuild) so a later morph can't reuse detached paths.
+    private func _resetGeoJSONState() {
+        self._geoJSONMapName = nil
+        self._regionGroups = [:]
+        self._regionPolyPaths = [:]
+        self._regionLinePaths = [:]
+        self._symbolEls = []
+    }
+
     // upstream: render(mapModel: MapSeries, ecModel: GlobalModel, api: ExtensionAPI, payload: Payload)
     //   The base override is typed `(SeriesModel, ...)`; narrow `model` to `MapSeriesModel` (cf. FunnelView).
     open override func render(
@@ -94,12 +122,17 @@ open class MapView: ChartView {
         }
 
         let group = self.group
-        _ = group.removeAll()
+        // NOTE: the group is NO LONGER wiped up front — the GeoJSON region path MORPHS its fill on a
+        //   merge-mode value change (see `_buildGeoJSON`), so it keeps the persistent region groups. Each
+        //   branch that CANNOT morph (host-geo / SVG / no-draw) wipes the group + resets the morph state
+        //   itself, mirroring HeatmapView (cartesian morphs; other branches removeAll).
 
         // upstream: if (mapModel.getHostGeoModel()) { return; }
         //   When the series is hosted on a standalone `geo` component, the regions are drawn by `GeoView`
         //   (this view only contributes symbols in that case, which upstream also skips here).
         if mapModel.getHostGeoModel() != nil {
+            _ = group.removeAll()
+            self._resetGeoJSONState()
             return
         }
 
@@ -114,11 +147,20 @@ open class MapView: ChartView {
         if mapSeriesNeedsDrawMap(mapModel) {
             let geo = mapModel.coordinateSystem as! Geo
             if geo.resourceType == "geoSVG" {
+                // SVG branch rebuilds as-is (NOT morphed): wipe the group + drop the GeoJSON morph state.
+                _ = group.removeAll()
+                self._resetGeoJSONState()
                 self._buildSVG(mapModel, ecModel, api)
             }
             else {
+                // GeoJSON branch MORPHS: it manages its own morph-vs-rebuild + wipe (no up-front removeAll).
                 self._buildGeoJSON(mapModel, ecModel, api)
             }
+        }
+        else {
+            // No map to draw → clear everything (symbols may still be added below).
+            _ = group.removeAll()
+            self._resetGeoJSONState()
         }
 
         // upstream: mapModel.get('showLegendSymbol') && ecModel.getComponent('legend') && this._renderSymbols(mapModel);
@@ -149,6 +191,29 @@ open class MapView: ChartView {
 
         let geo = mapModel.coordinateSystem as! Geo
         let data = mapModel.getData()
+        let mapName = geo.map
+
+        // ── COLOR-MORPH decision (L5 transition fidelity) ────────────────────────────────────────────
+        //   A map's region GEOMETRY is fixed; a merge-mode value change only re-colors each region. So if
+        //   the region groups persist AND the map name + region set are unchanged (same geometry), MORPH
+        //   the region fills to the new visualMap color via `updateProps` instead of rebuilding + snapping.
+        var currentNames = Set<String>()
+        for region in geo.regions where region is GeoJSONRegion {
+            currentNames.insert(region.name)
+        }
+        let canMorph = !self._regionGroups.isEmpty
+            && self._geoJSONMapName == mapName
+            && Set(self._regionGroups.keys) == currentNames
+        if canMorph {
+            self._morphGeoJSON(mapModel, api, geo, data)
+            return
+        }
+
+        // REBUILD fresh (first render, map-name change, or region-set change): wipe the group + reset the
+        //   morph state, then (re)build the region groups below and repopulate the persistent path caches.
+        _ = self.group.removeAll()
+        self._resetGeoJSONState()
+        self._geoJSONMapName = mapName
 
         // upstream: const isVisualEncodedByVisualMap = data && data.getVisual('visualMeta')
         //     && data.getVisual('visualMeta').length > 0;
@@ -203,6 +268,8 @@ open class MapView: ChartView {
 
                 regionsGroupByName[regionName] = regionGroup
                 regionInfoByName[regionName] = (dataIdx, regionModel)
+                // Persist the region group for the color-morph path (keyed by region name).
+                self._regionGroups[regionName] = regionGroup
             }
 
             // upstream: const polygonSubpaths = []; const polylineSubpaths = [];
@@ -316,6 +383,11 @@ open class MapView: ChartView {
             let polyResult = createCompoundPath(polygonSubpaths, false)
             let lineResult = createCompoundPath(polylineSubpaths, true)
 
+            // Persist the region's compound path(s) for the color-morph path. A duplicated `properties.name`
+            //   shares the region group but can own several compound paths → append to a per-name list.
+            if let pr = polyResult { self._regionPolyPaths[regionName, default: []].append(pr.path) }
+            if let lr = lineResult { self._regionLinePaths[regionName, default: []].append(lr.path) }
+
             // upstream: resetLabelForRegion(...) attaches the region-name label as the compound path's
             //   textContent (via `setLabelStyle`). Prefer the polygon el; fall back to the polyline el.
             //   `_ = centerRaw` — with the label attached to the el (default position "inside"), the
@@ -347,6 +419,91 @@ open class MapView: ChartView {
             // resetStateTriggerForRegion: toggleHoverEmphasis(el, focus, blurScope, disabled).
             //   (highDownSilentOnTouch / geo enableComponentHighDownFeatures are geo-only — DEFERRED.)
             let emphasisModel = info.regionModel.getModel(["emphasis"])
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(regionGroup, focus, blurScope, isDisabled)
+        }
+    }
+
+    // ================================================================================================
+    // COLOR MORPH (L5 transition fidelity) — the merge-mode value-change path for the GeoJSON region
+    // backdrop. Called only when the map name + region set are unchanged (same geometry). For each
+    // PERSISTED region it recomputes the NORMAL style (itemStyle + visualMap-encoded data fill) and
+    // `updateProps`-morphs the region compound path's FILL toward its new visualMap color. The fill is
+    // passed as a color STRING so the Animator's color-tween path runs (a ZRColor struct/enum would
+    // snap). The GEOMETRY is untouched (no shape animation). Labels + emphasis states + the data↔el
+    // binding are re-run (they run each render; re-placing labels is fine).
+    // ================================================================================================
+    private func _morphGeoJSON(_ mapModel: MapSeriesModel, _ api: ExtensionAPI, _ geo: Geo, _ data: SeriesData) {
+        let visualMeta = data.getVisual("visualMeta")
+        let isVisualEncodedByVisualMap = (visualMeta as? [Any])?.isEmpty == false
+
+        for (regionName, regionGroup) in self._regionGroups {
+            // Data changed → re-resolve this region's data index + item model.
+            let dataIdx = data.indexOfName(regionName)
+            let regionModel = data.getItemModel(dataIdx)
+
+            // Resolve the region NORMAL style (itemStyle + visualMap data fill) — same as `_buildGeoJSON`.
+            var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
+            if dataIdx >= 0 {
+                if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
+                   isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
+                    normalStyle["fill"] = fill
+                }
+                let decal = data.getItemVisual(dataIdx, "decal")
+                if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
+                    normalStyle["decal"] = pat
+                }
+            }
+
+            let op = mapToNumber(normalStyle["opacity"]) ?? 1.0
+            let fillStr = mapColorString(normalStyle["fill"])
+            // A "line" compound uses stroke = stroke || fill (fixLineStyle); polygon uses fill.
+            let strokeStr = mapColorString(normalStyle["stroke"]) ?? fillStr
+
+            // ── polygon region path(s): MORPH the FILL (color STRING → Animator color-tween) + opacity ──
+            for poly in self._regionPolyPaths[regionName] ?? [] {
+                // Re-stamp the non-tweened paint keys (stroke/lineWidth/decal) INSTANTLY, PRESERVING the
+                //   current fill/opacity so `updateProps` tweens them (rather than `useStyle` snapping).
+                var s = poly.pathStyle ?? PathStyleProps()
+                if let v = mapColorString(normalStyle["stroke"]) { s.stroke = .string(v) }
+                if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
+                if let pat = normalStyle["decal"] as? ZRenderKit.Pattern { s.decal = pat }
+                s.strokeNoScale = true
+                poly.useStyle(s)
+                var styleProps: [String: Any] = ["opacity": op]
+                if let fillStr = fillStr { styleProps["fill"] = fillStr }
+                // Fill MUST be a STRING here so the Animator's color-tween path runs (mirrors HeatmapView).
+                updateProps(poly, ["style": styleProps], mapModel, dataIdx)
+            }
+            // ── polyline region path(s): MORPH the STROKE (== region color) + opacity ──
+            for line in self._regionLinePaths[regionName] ?? [] {
+                var styleProps: [String: Any] = ["opacity": op]
+                if let strokeStr = strokeStr { styleProps["stroke"] = strokeStr }
+                updateProps(line, ["style": styleProps], mapModel, dataIdx)
+            }
+
+            // Re-run the region-name label (value change may flip its NaN-driven visibility) + re-stamp
+            //   emphasis state styles from the (possibly changed) region model.
+            let inheritColor = fillStr
+            let target: CompoundPath? =
+                self._regionPolyPaths[regionName]?.first ?? self._regionLinePaths[regionName]?.first
+            if let target = target {
+                self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, inheritColor, target)
+            }
+            for poly in self._regionPolyPaths[regionName] ?? [] {
+                states.setStatesStylesFromModel(poly, regionModel)
+            }
+            for line in self._regionLinePaths[regionName] ?? [] {
+                states.setStatesStylesFromModel(line, regionModel)
+            }
+
+            // Re-bind the data item graphic el + hover-emphasis dispatcher (dataIdx may have shifted).
+            if dataIdx >= 0 {
+                data.setItemGraphicEl(dataIdx, regionGroup)
+            }
+            let emphasisModel = regionModel.getModel(["emphasis"])
             let focus: InnerFocus? = emphasisModel.get("focus")
             let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
             let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
@@ -553,6 +710,11 @@ open class MapView: ChartView {
         let originalData: SeriesData = mapModel.originalData
         let group = self.group
 
+        // The group is no longer wiped up front (the GeoJSON regions morph), so the symbol circles from a
+        //   previous render would linger — remove them before re-rendering (region groups are untouched).
+        for el in self._symbolEls { _ = group.remove(el) }
+        self._symbolEls = []
+
         // upstream: originalData.each(originalData.mapDimension('value'), function (value, originalDataIndex) {...})
         guard let valueDim = originalData.mapDimension("value") else {
             return
@@ -604,6 +766,7 @@ open class MapView: ChartView {
             }
 
             _ = group.add(circle)
+            self._symbolEls.append(circle)
         }
     }
 
@@ -665,13 +828,15 @@ open class MapView: ChartView {
 
     // upstream: remove() { this._clearMapDraw(); this.group.removeAll(); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // STATIC: nothing persistent to tear down (no MapDraw).
+        // Drop the persistent region state alongside wiping the group.
         _ = self.group.removeAll()
+        self._resetGeoJSONState()
     }
 
     // upstream: dispose() { this._clearMapDraw(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self.group.removeAll()
+        self._resetGeoJSONState()
     }
 
     // upstream: private _clearMapDraw() { this._mapDraw && this._mapDraw.remove(); this._mapDraw = null; }
