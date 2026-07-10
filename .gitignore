@@ -3,6 +3,9 @@
 # (To vendor them instead — e.g. for offline builds — delete these lines.)
 /upstream/echarts/
 /upstream/zrender/
+# ...including as SYMLINKS to another checkout (a trailing-slash pattern only matches directories).
+/upstream/echarts
+/upstream/zrender
 # Defensive: never commit echarts prebuilt dist or any stray nested checkout under upstream/.
 upstream/**/dist/
 upstream/upstream/
