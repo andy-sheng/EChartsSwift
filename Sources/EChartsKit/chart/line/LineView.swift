@@ -13,6 +13,15 @@ import ZRenderKit
 open class LineView: ChartView {
 
     private var _data: SeriesData?
+    // Persistent line elements (upstream `this._lineGroup`/`_polyline`/`_polygon`/`_symbolDraw`) so a
+    //   merge-mode setOption morphs the line rather than rebuilding it. Kept across renders; the outer
+    //   `group` is no longer wiped. `_prevPointCount` gates morph-vs-rebuild (a point add/remove or a
+    //   coord-system change rebuilds fresh with the draw-on clip; a same-count value change morphs).
+    private var _lineGroup: Group?
+    private var _polyline: Polyline?
+    private var _polygon: ThemeRiverBand?
+    private var _symbolDraw: SymbolDraw?
+    private var _prevPointCount: Int = -1
 
     open override func render(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
@@ -56,8 +65,16 @@ open class LineView: ChartView {
         }
 
         let group = self.group
-        group.removeAll()
-        if points.count < 2 { self._data = data; return }
+        // View REUSE (L5 fidelity): the outer group is NOT wiped; the line elements persist so a
+        //   same-count value change morphs. Too few points → drop any prior line elements and bail.
+        if points.count < 2 {
+            if let lg = _lineGroup { _ = group.remove(lg) }
+            if let sd = _symbolDraw { _ = group.remove(sd.group) }
+            _lineGroup = nil; _polyline = nil; _polygon = nil; _symbolDraw = nil
+            _prevPointCount = -1
+            self._data = data
+            return
+        }
 
         // smooth: a truthy `smooth` renders the line/area as a spline. echarts maps `true` → 0.5 and
         //   uses a number directly. `step` (below) takes precedence and disables smoothing.
@@ -87,18 +104,30 @@ open class LineView: ChartView {
             else if let f = colorString(style["fill"]) { stroke = f }
         }
 
-        // upstream: this._lineGroup — a child Group holding the polyline (and area), clipped by a
-        //   growing Rect so the line "draws on" when animation is enabled (LineView.ts `clip`/
-        //   `createGridClipPath` + `lineGroup.setClipPath`). Symbols are added to `group` directly
-        //   (unclipped) — see the PORT-TODO below.
-        let lineGroup = Group()
+        // upstream `this._lineGroup` — a child Group holding the polyline (+ area), clipped by a growing
+        //   Rect so the line "draws on" (createGridClipPath). PERSISTED across renders (L5 fidelity), so a
+        //   same-count value change morphs the line; a first render or a point add/remove (re)builds it
+        //   fresh (with the draw-on clip). Symbols are added to `group` directly (unclipped).
+        let linePoints = steppedPoints ?? points
+        let hasAnimation = seriesModel.isAnimationEnabled() ?? false
+        // Morph iff we already have a polyline with the same point count (values changed). A count change
+        //   or first render rebuilds fresh — the full add/remove point diff (lineAnimationDiff) is deferred.
+        let canMorph = _polyline != nil && _lineGroup != nil && _prevPointCount == linePoints.count
+        let lineGroup: Group
+        if canMorph {
+            lineGroup = _lineGroup!
+        } else {
+            if let old = _lineGroup { _ = group.remove(old) }
+            lineGroup = Group()
+            _lineGroup = lineGroup
+            _polyline = nil
+            _polygon = nil
+            _ = group.add(lineGroup)
+        }
 
         // ── areaStyle pass ──────────────────────────────────────────────────────────────────────
-        // upstream LineView builds an `ECPolygon` between the line points and `stackedOnPoints`
-        //   (the baseline). Minimal port: a Polygon whose ring is the line points followed by the
-        //   reversed baseline points. Baseline = the stackedOver value per datum for a stacked area,
-        //   else the value-axis origin (0 clamped into the scale extent). Added BEFORE the polyline so
-        //   it sits underneath. PORT-TODO: `origin` option ('start'/'end'/number), gradient decal.
+        //   Baseline = the stackedOver value per datum for a stacked area, else the value-axis origin
+        //   (0 clamped into the scale extent). The band morphs (upperPoints/lowerPoints) on reuse.
         let areaStyleModel = seriesModel.getModel("areaStyle")
         if !areaStyleModel.isEmpty() {
             let sExtent = valueAxis.scale.getExtent()
@@ -122,20 +151,11 @@ open class LineView: ChartView {
                 }
             }
             if baselinePts.count == points.count {
-                // Area top edge follows the same step staircase as the line (when stepped).
+                // Area top edge follows the same step staircase as the line (when stepped). Uses the
+                //   ECPolygon-style band (see ThemeRiverView): the top edge is smoothed while the baseline
+                //   edge and the vertical end caps stay straight.
                 let topPts = steppedPoints ?? points
-                // Use the ECPolygon-style band (see ThemeRiverView): the top edge is smoothed while the
-                //   baseline edge and the vertical end caps stay straight. A single closed Polygon ring
-                //   with `smooth` instead rounds the bottom corners into blobs that bulge below the
-                //   baseline at the first/last points (the line-area-gradient artifact). Step areas keep
-                //   smooth 0 (staircase). The degenerate branch of ThemeRiverBand also covers the stepped
-                //   case where the top edge has more points than the baseline.
-                var bandShape = ThemeRiverBandShape()
-                bandShape.upperPoints = topPts
-                bandShape.lowerPoints = baselinePts
-                bandShape.smooth = steppedPoints == nil ? smoothVal : 0
-                let areaPoly = ThemeRiverBand(["shape": bandShape as PathShape])
-                areaPoly.name = "area"
+                let areaSmooth = steppedPoints == nil ? smoothVal : 0
                 var areaDict = areaStyleModel.getAreaStyle()
                 if areaDict["opacity"] == nil { areaDict["opacity"] = 0.7 }
                 var aStyle = barStyleFromDict(areaDict)
@@ -143,53 +163,70 @@ open class LineView: ChartView {
                 //   back to the solid series color so the area is never the spurious black default.
                 if aStyle.fill == nil { aStyle.fill = .string(stroke) }
                 aStyle.stroke = nil
-                areaPoly.useStyle(aStyle)
-                areaPoly.pathStyle.stroke = nil
-                _ = lineGroup.add(areaPoly)
+                if let poly = _polygon, canMorph {
+                    poly.useStyle(aStyle)
+                    poly.pathStyle.stroke = nil
+                    // Target points as [[Double]] — the shape the Animator's 2D-array interpolation
+                    //   consumes (matches animationGet's return); a [VectorArray] target snaps instead.
+                    let upperD = topPts.map { [$0.x, $0.y] }
+                    let lowerD = baselinePts.map { [$0.x, $0.y] }
+                    updateProps(poly, ["shape": ["upperPoints": upperD, "lowerPoints": lowerD, "smooth": areaSmooth]], seriesModel)
+                } else {
+                    if let old = _polygon { _ = lineGroup.remove(old) }
+                    var bandShape = ThemeRiverBandShape()
+                    bandShape.upperPoints = topPts
+                    bandShape.lowerPoints = baselinePts
+                    bandShape.smooth = areaSmooth
+                    let areaPoly = ThemeRiverBand(["shape": bandShape as PathShape])
+                    areaPoly.name = "area"
+                    areaPoly.useStyle(aStyle)
+                    areaPoly.pathStyle.stroke = nil
+                    _ = lineGroup.add(areaPoly)
+                    _polygon = areaPoly
+                }
+            } else if let old = _polygon {
+                _ = lineGroup.remove(old); _polygon = nil
             }
+        } else if let old = _polygon {
+            _ = lineGroup.remove(old); _polygon = nil
         }
 
-        var shape = PolylineShape()
-        if let steppedPoints = steppedPoints {
-            shape.points = steppedPoints   // step overrides smooth
-        } else {
-            shape.points = points
-            shape.smooth = smoothVal
-        }
-        let polyline = Polyline()
-        polyline.setShape(shape)
-        polyline.name = "line"
-
+        // ── polyline ── (morph its shape.points on reuse, else create with the draw-on clip)
+        let lineSmooth = steppedPoints == nil ? smoothVal : 0
         var st = PathStyleProps()
         st.stroke = .string(stroke)
         st.fill = .string("none")
         st.lineWidth = 2
         applyLineStyleOption(&st, seriesModel)
-        polyline.useStyle(st)
-        polyline.z2 = 10   // upstream ECPolyline z2; keeps the line above a co-gridded bar series (z2 1)
-
-        _ = lineGroup.add(polyline)
-
-        // upstream: this._lineGroup.setClipPath(createGridClipPath(coordSys, hasAnimation, seriesModel));
-        //   the clip Rect is collapsed along the base axis and, when animation is enabled, grows to full
-        //   size via `initProps` (see createGridClipPath) — the cartesian line "draw on" entrance.
-        let hasAnimation = seriesModel.isAnimationEnabled() ?? false
-        let clipPath = createGridClipPath(coord, hasAnimation, seriesModel)
-        lineGroup.setClipPath(clipPath)
-        _ = group.add(lineGroup)
+        if let polyline = _polyline, canMorph {
+            polyline.useStyle(st)   // colour may have changed (visual/style re-ran)
+            // Target points as [[Double]] (Animator 2D-array interpolation shape); [VectorArray] snaps.
+            let ptsD = linePoints.map { [$0.x, $0.y] }
+            updateProps(polyline, ["shape": ["points": ptsD, "smooth": lineSmooth]], seriesModel)
+        } else {
+            var shape = PolylineShape()
+            shape.points = linePoints
+            shape.smooth = lineSmooth
+            let polyline = Polyline()
+            polyline.setShape(shape)
+            polyline.name = "line"
+            polyline.useStyle(st)
+            polyline.z2 = 10   // upstream ECPolyline z2; keeps the line above a co-gridded bar series (z2 1)
+            _ = lineGroup.add(polyline)
+            _polyline = polyline
+            // upstream: this._lineGroup.setClipPath(createGridClipPath(...)); the clip Rect grows to full
+            //   size via initProps — the "draw on" entrance. Set only on (re)build; a morph reuse leaves
+            //   the clip at full size (no re-collapse).
+            let clipPath = createGridClipPath(coord, hasAnimation, seriesModel)
+            lineGroup.setClipPath(clipPath)
+        }
+        _prevPointCount = linePoints.count
 
         // ── SymbolDraw pass ─────────────────────────────────────────────────────────────────────
-        // L2 breadth: the shared SymbolDraw (chart/helper) now draws the line's data-point symbols —
-        //   each a Symbol (Group) with the symbol Path child, carrying entrance scale-in, emphasis
-        //   hover-scale, symbolRotate/offset and the per-point label. The line's colour reaches the
-        //   symbol via the item visual `style.fill` (line series uses itemStyle/fill), so emptyCircle
-        //   (line default) auto-swaps to stroke=lineColor/fill=neutral00 inside Symbol.setColor.
+        // The shared SymbolDraw draws the line's data-point symbols — PERSISTED so the symbols morph via
+        //   their own data.diff (positions slide) on reuse rather than fading in fresh each render.
         // upstream: `showSymbol && !isCoordSysPolar && getIsIgnoreFunc(...)` gates the per-point symbol.
-        //   `showAllSymbol: 'auto'` (the LineSeries default) hides symbols when the category line is
-        //   dense — a symbol is IGNORED unless its category tick survives the label-interval strategy,
-        //   and the whole density check is short-circuited when the points comfortably fit (see
-        //   `lineGetIsIgnoreFunc` / `lineCanShowAllSymbolForCategory`). This is what keeps a 10k-point
-        //   line from materialising 10k Symbol groups. (endLabel remains a PORT-TODO.)
+        //   `showAllSymbol: 'auto'` (the LineSeries default) hides symbols when the category line is dense.
         let showSymbol = seriesModel.get("showSymbol")
         // upstream truthiness: draw unless showSymbol is explicitly false.
         if (showSymbol as? Bool) != false {
@@ -201,11 +238,18 @@ open class LineView: ChartView {
             // upstream: const isIgnoreFunc = showSymbol && !isCoordSysPolar && getIsIgnoreFunc(...)
             let isIgnoreFunc = lineGetIsIgnoreFunc(seriesModel, data, coord)
 
-            // Re-project per datum (rather than reusing `points`) so each symbol tracks its own datum
-            //   even where a non-finite coord was dropped from the polyline point array above.
-            let symbolDraw = SymbolDraw()
+            let symbolDraw: SymbolDraw
+            if let sd = _symbolDraw {
+                symbolDraw = sd
+            } else {
+                symbolDraw = SymbolDraw()
+                _symbolDraw = symbolDraw
+                _ = group.add(symbolDraw.group)   // added AFTER the lineGroup so symbols sit on top
+            }
             var opt = SymbolDrawUpdateOpt()
             opt.isIgnore = isIgnoreFunc
+            // Re-project per datum (rather than reusing `points`) so each symbol tracks its own datum
+            //   even where a non-finite coord was dropped from the polyline point array above.
             opt.getSymbolPoint = { i in
                 let baseVal = lineToNumber(store.get(baseDimIdx, i))
                 let value = lineToNumber(store.get(valueDimIdx, i))
@@ -213,7 +257,8 @@ open class LineView: ChartView {
                 return (p.count >= 2 && p[0].isFinite && p[1].isFinite) ? p : nil
             }
             symbolDraw.updateData(data, opt)
-            _ = group.add(symbolDraw.group)   // added AFTER the polyline so symbols sit on top
+        } else if let sd = _symbolDraw {
+            _ = group.remove(sd.group); _symbolDraw = nil
         }
 
         self._data = data
@@ -227,6 +272,9 @@ open class LineView: ChartView {
         let store = data.getStore()
         let group = self.group
         group.removeAll()
+        // The polar branch rebuilds into the bare group each render; drop the cartesian persistent
+        //   elements (they were just detached by removeAll) so a coord-system switch can't reuse them.
+        _lineGroup = nil; _polyline = nil; _polygon = nil; _symbolDraw = nil; _prevPointCount = -1
 
         guard let radiusDimName = data.mapDimension("radius"),
               let angleDimName = data.mapDimension("angle") else { return }

@@ -302,6 +302,30 @@ struct ThemeRiverBandShape: PathShape {
     var upperPoints: [VectorArray] = []
     var lowerPoints: [VectorArray] = []
     var smooth: Double = 0.4
+
+    // Keyed access for animateTo({shape:{...}}) — the line/area morph (LineView reuse). Both edges
+    //   are exposed as `[[Double]]` for the Animator's 2D-array interpolation (mirrors PolylineShape).
+    func animationGet(_ key: String) -> Any? {
+        switch key {
+        case "upperPoints": return upperPoints.map { [$0.x, $0.y] }
+        case "lowerPoints": return lowerPoints.map { [$0.x, $0.y] }
+        case "smooth": return smooth
+        default: return nil
+        }
+    }
+    mutating func animationSet(_ key: String, _ value: Any?) {
+        func toPts(_ v: Any?) -> [VectorArray]? {
+            if let arr = v as? [[Double]] { return arr.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) } }
+            if let arr = v as? [VectorArray] { return arr }
+            return nil
+        }
+        switch key {
+        case "upperPoints": if let p = toPts(value) { upperPoints = p }
+        case "lowerPoints": if let p = toPts(value) { lowerPoints = p }
+        case "smooth": if let v = value as? Double { smooth = v }
+        default: break
+        }
+    }
 }
 
 final class ThemeRiverBand: Path {
