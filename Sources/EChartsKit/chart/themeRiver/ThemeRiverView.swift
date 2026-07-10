@@ -316,13 +316,21 @@ open class ThemeRiverView: ChartView {
                 data.setItemGraphicEl(last, polygon)
             }
 
+            // upstream (ThemeRiverView.ts:102 + 168-171): the band's hover wiring — the SERIES-level
+            //   emphasis model (themeRiver has no per-item loop model here), state styles, and the
+            //   highDown-dispatcher mark. Runs on both the fresh-build and morph-reuse paths.
+            let emphasisModel = seriesModel.getModel(["emphasis"])
+            states.setStatesStylesFromModel(polygon, seriesModel)
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
+
             // PORT-TODO (DEFERRED):
             //   - Animation: DONE for the merge-mode UPDATE path (updateProps edge morph); the initial
             //     grid-clip reveal (`createGridClipShape`) is still an opacity fade.
             //   - Label: DONE — routed through the shared label core above (setLabelStyle + textConfig
             //     { position: null, local: true } + manual textLayout placement).
-            //   - Emphasis / states: `setStatesStylesFromModel(polygon, seriesModel)` +
-            //     `toggleHoverEmphasis(polygon, focus, blurScope, disabled)`.
         }
 
         // this._layersSeries = layersSeries;  this._layers = <persisted band groups>;

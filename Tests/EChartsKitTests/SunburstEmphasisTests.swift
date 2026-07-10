@@ -140,4 +140,49 @@ final class SunburstEmphasisTests: XCTestCase {
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(nancyIdx)),
                        "downplay must clear the blur on 'Nancy'")
     }
+
+    // ---- (3) MOUSE hover (not dispatchAction) runs the focus fan-out — the reported bug ----
+    // Default sunburst emphasis.focus is 'descendant': hovering "Uncle Leo" must keep Leo + his
+    // children bright and BLUR every unrelated sector, with the blur RENDERED (sunburst default
+    // blur.itemStyle.opacity = 0.2), then restore on mouseout.
+    func testSunburstMouseHoverAppliesDescendantFocus() {
+        let view = EChartsView(width: 400, height: 400)
+        var opt = option(focus: "ancestor")
+        var series0 = (opt["series"] as! [[String: Any]])[0]
+        series0.removeValue(forKey: "emphasis")   // exercise the DEFAULT focus:'descendant'
+        opt["series"] = [series0]
+        view.setOption(opt)
+        _ = view.zr.storage.getDisplayList(true)
+
+        let data = view.ec.getModel()!.getSeriesByIndex(0)!.getData()
+        guard let leoIdx = idx(data, "Uncle Leo"),
+              let jackIdx = idx(data, "Cousin Jack"),
+              let fatherIdx = idx(data, "Father"),
+              let nancyIdx = idx(data, "Nancy"),
+              let leo = data.getItemGraphicEl(leoIdx) as? Sector else {
+            XCTFail("sunburst must build named sector nodes"); return
+        }
+
+        // Pointer at the mid-angle / mid-radius of Leo's sector (shape cx/cy are absolute).
+        let s = leo.shape as! SectorShape
+        let a = (s.startAngle + s.endAngle) / 2, r = (s.r + s.r0) / 2
+        view._injectPointerForTest(type: "mousemove", zrX: s.cx + cos(a) * r, zrY: s.cy + sin(a) * r)
+
+        XCTAssertTrue(leo.currentStates.contains("emphasis"), "hovered sector enters emphasis")
+        XCTAssertFalse(isBlurred(leo), "hovered node must stay bright")
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(jackIdx)),
+                       "descendant 'Cousin Jack' must stay bright under focus:'descendant'")
+        XCTAssertTrue(isBlurred(data.getItemGraphicEl(fatherIdx)),
+                      "sibling 'Father' must blur on hover")
+        XCTAssertTrue(isBlurred(data.getItemGraphicEl(nancyIdx)),
+                      "unrelated subtree 'Nancy' must blur on hover")
+        let nancyOpacity = (data.getItemGraphicEl(nancyIdx) as? Path)?.pathStyle?.opacity
+        XCTAssertEqual(nancyOpacity ?? 1, 0.2, accuracy: 1e-6,
+                       "blur must RENDER (sunburst default blur.itemStyle.opacity 0.2), got \(String(describing: nancyOpacity))")
+
+        // Off the chart → allLeaveBlur restores everything.
+        view._injectPointerForTest(type: "mousemove", zrX: 2, zrY: 2)
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(fatherIdx)), "mouseout clears blur")
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(nancyIdx)), "mouseout clears blur")
+    }
 }

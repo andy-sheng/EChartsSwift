@@ -206,6 +206,12 @@ open class HeatmapView: ChartView {
         let dateDim = data.getDimension(0)   // dim 0 = the date/time value
         var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
 
+        // Hover wiring params (upstream shares the _renderOnGridLike state block; HeatmapView.ts:202-210).
+        let emphasisModel = seriesModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+
         for idx in 0..<data.count() {
             let point = calendar.dataToPoint(data.get(dateDim, idx))
             guard point.count >= 2, point[0].isFinite, point[1].isFinite else { continue }
@@ -229,6 +235,10 @@ open class HeatmapView: ChartView {
             rect.useStyle(cellStyle)
             initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
             rect.name = "item"
+            // upstream (HeatmapView.ts:329-333): the calendar cell gets the same hover wiring.
+            let stateModel: Model = data.hasItemOption ? data.getItemModel(idx) : seriesModel
+            states.setStatesStylesFromModel(rect, stateModel)
+            states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
             _ = group.add(rect)
             data.setItemGraphicEl(idx, rect)
         }
@@ -330,9 +340,15 @@ open class HeatmapView: ChartView {
             self._cellRects = [:]
         }
 
-        // upstream reads the emphasis/blur/select item styles + label state models here.
-        // PORT-TODO: emphasis/blur/select item styles + `getLabelStatesModels` + focus/blurScope/
-        //   emphasisDisabled are deferred (`util/states` + `label/labelStyle` not ported).
+        // upstream reads the emphasis/blur/select item styles + focus/blurScope/emphasisDisabled here
+        //   (HeatmapView.ts:202-210). The three per-state style bags are applied via
+        //   `setStatesStylesFromModel` at the cell (mirrors BarView.updateStyle).
+        //   PORT-TODO: `getLabelStatesModels` stays deferred with the cell label block below.
+        var stateModel: Model = seriesModel
+        var emphasisModel = seriesModel.getModel(["emphasis"])
+        var focus: InnerFocus? = emphasisModel.get("focus")
+        var blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        var emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
 
         // let borderRadius = seriesModel.get(['itemStyle', 'borderRadius']);
         var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
@@ -380,9 +396,14 @@ open class HeatmapView: ChartView {
 
             // Optimization for large dataset — if (data.hasItemOption) re-read per-item styles/borderRadius.
             if data.hasItemOption {
+                // upstream (HeatmapView.ts:290-308): per-item re-read of the emphasis params + state
+                //   styles (`stateModel` feeds setStatesStylesFromModel below).
                 let itemModel = data.getItemModel(idx)
-                // PORT-TODO: per-item emphasis/blur/select item styles + label state models deferred
-                //   (states/label subsystems not ported).
+                stateModel = itemModel
+                emphasisModel = itemModel.getModel(["emphasis"])
+                focus = emphasisModel.get("focus")
+                blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
                 // borderRadius = itemModel.get(['itemStyle', 'borderRadius']);
                 borderRadius = itemModel.get(["itemStyle", "borderRadius"])
             }
@@ -428,6 +449,10 @@ open class HeatmapView: ChartView {
                     ],
                     seriesModel, idx
                 )
+                // Keep the reused cell's hover wiring current (upstream re-runs the state block each
+                //   render pass — HeatmapView.ts:329-333).
+                states.setStatesStylesFromModel(rect, stateModel)
+                states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
                 data.setItemGraphicEl(idx, rect)
                 idx += 1
                 continue
@@ -462,8 +487,11 @@ open class HeatmapView: ChartView {
             //   leaves it unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
             rect.name = "item"
 
-            // upstream: ensureState('emphasis'|'blur'|'select') + toggleHoverEmphasis + incremental id +
-            //   hover layer. PORT-TODO: states/emphasis + incremental id deferred.
+            // upstream (HeatmapView.ts:329-333): ensureState('emphasis'|'blur'|'select').style +
+            //   toggleHoverEmphasis — the cell's hover wiring (setStatesStylesFromModel covers the three
+            //   ensureState style assignments). PORT-TODO: incremental id + hover layer deferred.
+            states.setStatesStylesFromModel(rect, stateModel)
+            states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
 
             _ = group.add(rect)
             // Persist the cell for a later morph (cartesian full-render path only).

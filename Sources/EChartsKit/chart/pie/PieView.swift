@@ -192,6 +192,14 @@ open class PieView: ChartView {
             states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
             states.setStatesStylesFromModel(sector, itemModel)
 
+            // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize`
+            //   when `emphasis.scale` is on — the hover "enlarge" effect. The getSectorCornerRadius
+            //   merge stays deferred with the normal-state corner radius (defaults 0).
+            let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
+            let scaleSizeRaw = emphasisModel.get("scaleSize")
+            let scaleSize = (scaleSizeRaw as? Double) ?? (scaleSizeRaw as? Int).map(Double.init) ?? 0
+            sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
+
             // Sweep the collapsed sector open to its final angle (shared basicTransition helper).
             //   Shape props MUST be a dict of animatable fields (a full SectorShape struct is opaque
             //   to the animator — the struct->dict rule). Instant (final angle, no animator) when the
