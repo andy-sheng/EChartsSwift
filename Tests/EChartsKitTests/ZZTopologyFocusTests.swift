@@ -245,4 +245,67 @@ final class ZZTopologyFocusTests: XCTestCase {
         XCTAssertFalse(el.currentStates.contains("emphasis"),
                        "moving off the sector must clear the emphasis state")
     }
+
+    // MARK: - Chord LIVE hover → the adjacency focus FAN-OUT (the reported bug: hover only emphasized
+    //   the sector; the unrelated nodes/ribbons never faded). Mouse-over a node must blur every
+    //   non-adjacent node + ribbon with a RENDERED opacity drop, and mouse-out must restore them.
+    func testChordLiveHoverBlursNonAdjacent() {
+        let view = EChartsView(width: 460, height: 380)
+        view.setOption([
+            "series": [["type": "chord",
+                        // No explicit emphasis: exercise the DEFAULT chord focus:'adjacency'.
+                        "data": [
+                            ["name": "a"] as [String: Any], ["name": "b"] as [String: Any],
+                            ["name": "c"] as [String: Any], ["name": "d"] as [String: Any]
+                        ],
+                        "links": [
+                            ["source": "a", "target": "b", "value": 5.0] as [String: Any],
+                            ["source": "c", "target": "d", "value": 3.0] as [String: Any]
+                        ]] as [String: Any]]
+        ])
+        _ = view.zr.storage.getDisplayList(true)
+        let series = view.ec.getModel()!.getSeriesByIndex(0)!
+        let data = series.getData()
+        func idx(of name: String) -> Int? {
+            for i in 0..<data.count() where (data.getName(i) == name) { return i }
+            return nil
+        }
+        guard let a = idx(of: "a"), let b = idx(of: "b"), let c = idx(of: "c"),
+              let sector = data.getItemGraphicEl(a) as? Path,
+              let shape = sector.shape as? SectorShape else {
+            XCTFail("chord must build named node sectors"); return
+        }
+        let edgeData = (series as! ChordSeriesModel).getEdgeData()
+        let unrelatedNode = data.getItemGraphicEl(c) as? Path
+        let unrelatedRibbon = edgeData.getItemGraphicEl(1) as? Path
+        let normalNodeOpacity = unrelatedNode?.pathStyle?.opacity ?? 1
+        let normalRibbonOpacity = unrelatedRibbon?.pathStyle?.opacity ?? 1
+
+        // Hover node a (mid-angle / mid-radius, local → global).
+        let midAngle = (shape.startAngle + shape.endAngle) / 2
+        let rMid = (shape.r0 + shape.r) / 2
+        let g = sector.transformCoordToGlobal(shape.cx + rMid * cos(midAngle),
+                                              shape.cy + rMid * sin(midAngle))
+        view._injectPointerForTest(type: "mousemove", zrX: g[0], zrY: g[1])
+
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(a)), "hovered node a must not be blurred")
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(b)), "adjacent target b must stay bright")
+        XCTAssertTrue(isBlurred(data.getItemGraphicEl(c)),
+                      "live hover must blur the unrelated node c (was the reported no-op)")
+        XCTAssertTrue(isBlurred(edgeData.getItemGraphicEl(1)), "unrelated ribbon c-d must blur")
+        XCTAssertFalse(isBlurred(edgeData.getItemGraphicEl(0)), "adjacent ribbon a-b must stay bright")
+        XCTAssertLessThan(unrelatedNode?.pathStyle?.opacity ?? 1, normalNodeOpacity,
+                          "the blur must RENDER on the unrelated node (opacity drop)")
+        XCTAssertLessThan(unrelatedRibbon?.pathStyle?.opacity ?? 1, normalRibbonOpacity,
+                          "the blur must RENDER on the unrelated ribbon (opacity drop)")
+
+        // Mouse-out → everything restores.
+        view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
+        XCTAssertFalse(isBlurred(data.getItemGraphicEl(c)), "mouseout must clear the node blur")
+        XCTAssertFalse(isBlurred(edgeData.getItemGraphicEl(1)), "mouseout must clear the ribbon blur")
+        XCTAssertEqual(unrelatedNode?.pathStyle?.opacity ?? -1, normalNodeOpacity, accuracy: 1e-6,
+                       "node opacity restored after mouseout")
+        XCTAssertEqual(unrelatedRibbon?.pathStyle?.opacity ?? -1, normalRibbonOpacity, accuracy: 1e-6,
+                       "ribbon opacity restored after mouseout")
+    }
 }

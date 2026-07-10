@@ -222,6 +222,33 @@ open class LineView: ChartView {
         }
         _prevPointCount = linePoints.count
 
+        // ── line/area hover wiring ── (upstream LineView.ts:827-851, 887-890)
+        let emphasisModel = seriesModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+
+        if let polyline = _polyline {
+            states.setStatesStylesFromModel(polyline, seriesModel, "lineStyle")
+            // `emphasis.lineStyle.width === 'bolder'` → normal width + 1 (LineView.ts:844-847).
+            if (polyline.pathStyle?.lineWidth ?? 0) > 0,
+               (seriesModel.get(["emphasis", "lineStyle", "width"]) as? String) == "bolder" {
+                let emphasisState = polyline.ensureState("emphasis")
+                var st = emphasisState.style ?? [:]
+                st["lineWidth"] = (polyline.pathStyle?.lineWidth ?? 0) + 1
+                emphasisState.style = st
+            }
+            // Needs seriesIndex for focus.
+            innerStore.getECData(polyline).seriesIndex = seriesModel.seriesIndex
+            states.toggleHoverEmphasis(polyline, focus, blurScope, emphasisDisabled)
+        }
+        if let polygon = _polygon {
+            states.setStatesStylesFromModel(polygon, seriesModel, "areaStyle")
+            // Needs seriesIndex for focus.
+            innerStore.getECData(polygon).seriesIndex = seriesModel.seriesIndex
+            states.toggleHoverEmphasis(polygon, focus, blurScope, emphasisDisabled)
+        }
+
         // ── SymbolDraw pass ─────────────────────────────────────────────────────────────────────
         // The shared SymbolDraw draws the line's data-point symbols — PERSISTED so the symbols morph via
         //   their own data.diff (positions slide) on reuse rather than fading in fresh each render.
@@ -261,7 +288,52 @@ open class LineView: ChartView {
             _ = group.remove(sd.group); _symbolDraw = nil
         }
 
+        // upstream (LineView.ts:893-900): a data symbol's hover-state change flips the polyline/area
+        //   with it (and the polyline's own change flips the area) — the "hover a point highlights
+        //   the whole line" link.
+        data.eachItemGraphicEl { el, _ in
+            states.getHighDownInner(el).onHoverStateChange = { [weak self] toState in
+                self?._changePolyState(toState)
+            }
+        }
+        if let polyline = _polyline {
+            states.getHighDownInner(polyline).onHoverStateChange = { [weak self] toState in
+                self?._changePolyState(toState)
+            }
+        }
+
         self._data = data
+    }
+
+    // upstream: `_changePolyState(toState)` (LineView.ts:1029-1033) — flag the polyline + area polygon.
+    //   Upstream is flag-only (applyChangedStates runs next frame); this port applies states eagerly
+    //   (see the states.swift doChangeHoverState deviation), so apply here too.
+    private func _changePolyState(_ toState: DisplayState) {
+        if let polyline = _polyline {
+            states.setStatesFlag(polyline, toState)
+            states.applyElementStates(polyline)
+        }
+        if let polygon = _polygon {
+            states.setStatesFlag(polygon, toState)
+            states.applyElementStates(polygon)
+        }
+    }
+
+    // upstream: `highlight`/`downplay` (LineView.ts:937-1023) also flip the poly state before the
+    //   base per-datum symbol highlight. PORT-TODO: the temporary-symbol branch (creating a Symbol
+    //   for a dataIndex whose point has no element, #11360 clip guard) is deferred.
+    open override func highlight(
+        _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        _changePolyState(.emphasis)
+        super.highlight(seriesModel, ecModel, api, payload)
+    }
+
+    open override func downplay(
+        _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) {
+        _changePolyState(.normal)
+        super.downplay(seriesModel, ecModel, api, payload)
     }
 
     // Minimal polar line: project each datum through the polar coord (radius/angle dims, like
