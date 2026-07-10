@@ -310,10 +310,18 @@ public final class ECharts: EChartsType {
     // so it never accumulates now that render() no longer wipes root (L5 view reuse).
     private var _bgRect: Rect?
 
+    // The Scheduler task/pipeline graph (upstream `this._scheduler`). Built lazily on the first
+    //   setOption (after installOnce() has populated the registries); `restorePipelines` +
+    //   `prepareStageTasks` run each setOption to (re)build the per-series pipelines. Sub-project C1
+    //   routes update()'s perform-stages through it; C2 wires progressive render via prepareView.
+    private var _scheduler: Scheduler!
+
     // Test-only accessors (assert reuse identity across setOption; assert no view duplication).
     var testModel: GlobalModel? { _model }
     var testChartViews: [ChartView] { _chartsViews }
     var testComponentViews: [ComponentView] { _componentsViews }
+    // Sub-project C: assert the Scheduler pipelines are built on setOption (one per series).
+    var testScheduler: Scheduler? { _scheduler }
 
     // ---- action-dispatch state (mirrors upstream `ECharts` action fields) ----
     /// Actions dispatched WHILE a render/update cycle is in progress are queued here and drained
@@ -424,6 +432,83 @@ public final class ECharts: EChartsType {
         legendDataFilter(SERIES_TYPE_THEME_RIVER),
         legendDataFilter(SERIES_TYPE_CHORD)
     ]
+
+    // ========================================================================
+    // Sub-project C — Scheduler handler assembly.
+    // Wraps every processor/visual handler that `update()` currently hand-calls into a
+    //   `StageHandlerInternal` the Scheduler can run through its task/pipeline graph.
+    //
+    // C1 TEMPORARY ORDERING: the returned array order == the current `update()` hand-call SOURCE order,
+    //   NOT upstream `PRIORITY.PROCESSOR.*`. The ported `_performStageTasks` iterates ARRAY order (it
+    //   does not sort by `__prio`), so routing through the Scheduler reproduces today's output exactly.
+    //   A later reorder task realigns `__prio` to the real upstream priorities (see the priority table in
+    //   docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md) and re-sorts the array, gated
+    //   separately against the web oracle. Isolating "does the Scheduler machinery reproduce the
+    //   hand-calls?" from "does upstream order differ?" keeps each landing debuggable.
+    // ========================================================================
+
+    private static func _mkOverallHandler(_ prio: Double,
+                                          _ reset: @escaping StageHandlerOverallReset) -> StageHandlerInternal {
+        var h = StageHandler()
+        h.overallReset = reset
+        return StageHandlerInternal(uid: component.getUID("stageHandler"), visualType: nil,
+                                    __prio: prio, __raw: h, isVisual: nil, isLayout: nil, handler: h)
+    }
+
+    private static func _mkHandler(_ prio: Double, _ h: StageHandler) -> StageHandlerInternal {
+        return StageHandlerInternal(uid: component.getUID("stageHandler"), visualType: nil,
+                                    __prio: prio, __raw: h, isVisual: nil, isLayout: nil, handler: h)
+    }
+
+    /// The data-processor StageHandlers the Scheduler runs in `performDataProcessorTasks`, assembled in
+    /// the current `update()` hand-call order (see the block header). Mirrors update() step (3)/(4).
+    static func buildDataProcessorHandlers() -> [StageHandlerInternal] {
+        var list: [StageHandlerInternal] = []
+        var p = 0.0
+        func nextPrio() -> Double { p += 100; return p }
+
+        // 1. dataZoom (FILTER). StageHandler with getTargetSeries (the AxisProxy-creation side-effect,
+        //    which now runs at prepareStageTasks/setOption time — safe: AxisProxy reads only models) +
+        //    overallReset (window calc + filter, at performDataProcessorTasks/update time).
+        list.append(_mkHandler(nextPrio(), dataZoomProcessor))
+        // 2. dataStack (DATASTACK). Global overall.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in dataStack(ecModel) }))
+        // 3. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
+        //    EChartsInstallRegisters.registerProcessor, so wrap each as a global overall (no seriesType).
+        for cp in ECharts._registers.capturedProcessors {
+            list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in cp(ecModel) }))
+        }
+        // 4. negativeDataFilter (DEFAULT, per-series reset+seriesType).
+        for h in ECharts._negativeDataFilters { list.append(_mkHandler(nextPrio(), h)) }
+        // 5. dataFilter — data-item legend show/hide (DEFAULT, per-series).
+        for h in ECharts._dataFilters { list.append(_mkHandler(nextPrio(), h)) }
+        // 6. dataSample down-sampling (STATISTIC, per-series).
+        for h in ECharts._dataSamplers { list.append(_mkHandler(nextPrio(), h)) }
+        // 7. legendFilter — series show/hide (SERIES_FILTER). Global overall.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in legendFilter(ecModel) }))
+        // 8. graph categoryFilter (FILTER). StageHandler (createSimpleOverallStageHandler).
+        list.append(_mkHandler(nextPrio(), graphCategoryFilterStageHandler))
+        // 9. map data statistic (STATISTIC). StageHandler.
+        list.append(_mkHandler(nextPrio(), mapDataStatisticStageHandler))
+        // 10. axisPointer coordSysAxesInfo (STATISTIC). Global overall; stashes the association tree.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, api, _ in
+            if let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel {
+                apModel.coordSysAxesInfo = collect(ecModel, api)
+            }
+        }))
+        return list
+    }
+
+    /// The visual StageHandlers the Scheduler would run in `performVisualTasks`. EMPTY: the visual stage
+    /// stays a DIRECT call (performVisualStage/performVisualMapStage in update()) because the visual
+    /// encoders do their work in the task PROGRESS callback over the pipeline-threaded `context.data`,
+    /// and the overall-processor STUBs piped ahead of the visual tasks do not thread the series data
+    /// through as outputData under the current dirty/perform ordering (a routed visual task pulled nil
+    /// context.data and skipped encoding). Populating this + routing performVisualTasks is deferred to
+    /// C2, together with the stub outputData passthrough fix (also required for progressive render).
+    func buildVisualHandlers() -> [StageHandlerInternal] {
+        return []
+    }
 
     static func installOnce() {
         if _installed { return }
@@ -1160,6 +1245,22 @@ public final class ECharts: EChartsType {
             self._model!.setOption(opt, nil, [])
         }
 
+        // Sub-project C — build the Scheduler pipelines (upstream `prepare()`, echarts.ts:1675-1676:
+        //   `scheduler.restorePipelines(zr, model); scheduler.prepareStageTasks();`). Built lazily on
+        //   the first setOption (installOnce() has run in init, so the registries are populated) and
+        //   re-primed each setOption. `restorePipelines` rebuilds a per-series pipeline (head = the
+        //   series dataTask); `prepareStageTasks` creates the overall/series stage tasks + stubs and
+        //   pipes them. `prepareView` (the series RENDER task) is deferred to C2 (ChartView.renderTask
+        //   is still a stub). No update() routing yet in C1-T2 — the scheduler is built but unused, so
+        //   this is a pure additive change (getTargetSeries's AxisProxy side-effect now runs here at
+        //   setOption instead of in update(), where update()'s own getTargetSeries call then no-ops
+        //   via the `getAxisProxyFromModel == nil` guard).
+        if _scheduler == nil {
+            _scheduler = Scheduler(self, _api, ECharts.buildDataProcessorHandlers(), buildVisualHandlers())
+        }
+        _scheduler.restorePipelines(nil, _model!)
+        _scheduler.prepareStageTasks()
+
         update()
     }
 
@@ -1177,17 +1278,27 @@ public final class ECharts: EChartsType {
         //     check in associateSeriesWithAxis) carry stale state and trip an assert.
         resetCachePerECFullUpdate(ecModel)
 
-        // (1) restoreData — re-derive component/series state (upstream: scheduler.restoreData).
-        ecModel.restoreData()
+        // (1) restoreData — re-derive component/series state (upstream echarts.ts:1896
+        //   `scheduler.restoreData(ecModel, payload)`). Route through the Scheduler (not bare
+        //   `ecModel.restoreData()`): besides `ecModel.restoreData(payload)` (which dirties the PIPELINE
+        //   tasks), the scheduler ALSO marks every OVERALL stage task dirty. This is REQUIRED now that
+        //   `performDataProcessorTasks` runs the overall tasks (dataZoom filter / legendFilter / map
+        //   statistic / axisPointer collect): a dispatchAction-driven 2nd update() does not re-run
+        //   prepareStageTasks, so without re-dirtying, the overall tasks would be clean and skip — the
+        //   dataZoom/legend/toolbox interactions would silently stop re-filtering. The empty payload
+        //   restores ALL series (isNotTargetSeries is false with no seriesIndex/Id/Name), == the old
+        //   `ecModel.restoreData()`.
+        _scheduler.restoreData(ecModel, Payload(type: ""))
 
-        // (2) performSeriesTasks — perform each series' DATA task. Its reset (`dataTaskReset`) is
-        //     `setData(getRawData().cloneShallow())`, which populates the `getData()` result (the inner
-        //     data slot). Upstream drives this through the Scheduler pipeline (`renderTask.perform`);
-        //     with the Scheduler unported (`getCurrentTask` returns nil), the task reset is invoked
-        //     directly here — otherwise `getData()` force-unwraps a nil inner data (Series.swift:387).
-        ecModel.eachSeries { seriesModel, _ in
-            _ = dataTaskReset(seriesModel.dataTask.context)
-        }
+        // (2) performSeriesTasks — perform each series' DATA task through the Scheduler (upstream
+        //   echarts.ts:1897 `scheduler.performSeriesTasks(ecModel)` = `seriesModel.dataTask.perform()`).
+        //   The dataTask is the HEAD of each series pipeline (restorePipelines pipes it), so `perform()`
+        //   runs its reset (`dataTaskReset` — `setData(getRawData().cloneShallow())`) AND threads its
+        //   output DOWN the pipeline to the per-series data-processor stage tasks (negativeDataFilter /
+        //   data-item legendDataFilter / dataSample). The old hand-called `dataTaskReset(context)` ran
+        //   the reset but skipped that threading, so downstream per-series filter tasks received stale/
+        //   disconnected input and a legend data-item toggle failed to re-filter on the 2nd update().
+        _scheduler.performSeriesTasks(ecModel)
 
         // (3) coordSysMgr.create — build the Grid coordinate system(s), lay them out on the container
         //     rect, and inject `coordinateSystem` into each series (Grid.create → injectCoordSysByOption).
@@ -1195,114 +1306,35 @@ public final class ECharts: EChartsType {
         // lifecycle.trigger('coordsys:aftercreate', ...) — PORT-TODO: lifecycle not ported (no listeners
         //     needed for a bar chart).
 
-        // PROCESSOR (FILTER) — dataZoom (upstream `registerProcessor(PRIORITY.PROCESSOR.FILTER,
-        //   dataZoomProcessor)`). Calculates each dataZoom's window, resets the target axes' raw-extent
-        //   zoom bounds, and FILTERS each target series' data to the window. Runs at FILTER priority, i.e.
-        //   BEFORE the STATISTIC processors below and BEFORE `coordSysMgr.update` reads the (now filtered)
-        //   series-data extents, so the axes rescale to the zoomed subset. Self-gates to a no-op when there
-        //   is no `dataZoom` component (it iterates `ecModel.eachComponent("dataZoom")`).
-        //   `getTargetSeries` must run FIRST: upstream the scheduler calls it during pipeline setup, and it
-        //   carries the side-effect of CREATING each `AxisProxy` and stashing it via `setAxisProxyToModel`
-        //   (per-ec-prepare cache). `overallReset` then looks those proxies up via `getAxisProxy`. Without
-        //   this call the proxies never exist and `overallReset` filters nothing.
-        _ = dataZoomProcessor.getTargetSeries?(ecModel, api)
-        dataZoomProcessor.overallReset?(ecModel, api, nil)
-
-        // (4) performDataProcessorTasks — the processor subset a bar needs = axis STATISTICS (feeds the
-        //     cross-series bar layout). Run the captured processor overallResets.
-        // PROCESSOR (dataStack) — upstream `registerProcessor(PRIORITY.PROCESSOR.STATISTIC, dataStackStageHandler)`.
-        //   Computes the cumulative `stackResultDimension` / `stackedOverDimension` values for `stack`-grouped
-        //   series. MUST run BEFORE the axis-statistics processors + coord update (axis extent reads the
-        //   stacked totals) and before the cross-series bar layout (reads the stacked base). Without this,
-        //   stacked bar/line series render overlaid at the shared baseline instead of stacked.
-        dataStack(ecModel)
-
-        for processor in ECharts._registers.capturedProcessors {
-            processor(ecModel)
-        }
-
-        // PROCESSOR — negativeDataFilter (upstream pie `registerProcessor(negativeDataFilter('pie'))`,
-        //   PRIORITY_PROCESSOR_DEFAULT = 2000). Drops each datum whose 'value' dimension is a negative
-        //   number so a pie omits negative slices. A per-series `reset` handler; run it over each matching
-        //   series (self-gates: no-op when a series has no negative values). Must run in the data-processor
-        //   stage before the pie layout reads `getData()`.
-        for filter in ECharts._negativeDataFilters {
-            ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
-                _ = filter.reset?(seriesModel, ecModel, api, nil)
-            }
-        }
-
-        // PROCESSOR — dataFilter (upstream `registerProcessor(dataFilter(SERIES_TYPE))` in
-        //   chart/{pie,funnel,radar,themeRiver,chord}/install.ts, PRIORITY_PROCESSOR_DEFAULT = 2000).
-        //   Legend show/hide for charts whose legend entries are DATA-ITEM names (pie slices / radar
-        //   polygons / funnel items): drops each datum whose NAME is unselected in a legend so a
-        //   legendToggleSelect (item click) hides/shows that slice/polygon. A per-series `reset` handler;
-        //   run over each matching series (self-gates to a no-op when no legend exists). `filterSelf`
-        //   shrinks the series' data store; `getData()` is rebuilt on the next update() (restoreData), so
-        //   re-selecting restores the item. Must run in the data-processor stage before the pie/radar
-        //   layout + visual + view stages read `getData()` (pie re-layouts remaining slices to fill 360).
-        for filter in ECharts._dataFilters {
-            ecModel.eachSeriesByType(filter.seriesType!) { seriesModel, _ in
-                _ = filter.reset?(seriesModel, ecModel, api, nil)
-            }
-        }
-
-        // PROCESSOR (STATISTIC) — dataSample (upstream bar/line `registerProcessor(PRIORITY.PROCESSOR.STATISTIC,
-        //   dataSample(seriesType))`, priority 5000). "Down sample after filter": when a cartesian2d series sets
-        //   `sampling` and its point count exceeds the base-axis pixel width, replace `getData()` with a
-        //   downsampled view (lttb / minmax / average / sum / max / min / nearest). MUST run BEFORE
-        //   `coordSysMgr.update` (the value-axis extent is recomputed from the sampled data) and before the
-        //   visual + view stages read `getData()`. Self-gates to a no-op when `sampling` is unset, the series
-        //   is not cartesian2d, or the data already fits (count <= 10 or rate <= 1). The axis pixel extent it
-        //   reads is available because `Grid.create` resizes with `beforeDataProcessing: true`.
-        for sampler in ECharts._dataSamplers {
-            ecModel.eachSeriesByType(sampler.seriesType!) { seriesModel, _ in
-                _ = sampler.reset?(seriesModel, ecModel, api, nil)
-            }
-        }
-
-        // PROCESSOR — legend show/hide (upstream component/legend/legendFilter.ts, registered at
-        //   PRIORITY.PROCESSOR.SERIES_FILTER). Drops any series whose name is unselected in a legend, so a
-        //   legendToggleSelect (from a legend item click) hides/shows the series. `filterSeries` shrinks
-        //   `_seriesIndices` (honoured by eachSeries/renderSeries + skipped by the axis-extent processors);
-        //   `restoreData()` at the top of update() reset it, so re-selecting restores the series. Must run
-        //   BEFORE coordSysMgr.update + the visual/view stages. Self-gates to a no-op when no legend exists.
-        legendFilter(ecModel)
-
-        // PROCESSOR — graph categoryFilter (upstream `registerProcessor(PROCESSOR.FILTER, categoryFilter)`).
-        //   Filters graph nodes by legend selection; self-gates to a no-op when no legend component is
-        //   present. Must run BEFORE the graph layout stage (layout reads the filtered data), so it lives
-        //   in the data-processor stage like upstream. OVERALL handler — invoke its overallReset directly.
-        graphCategoryFilterStageHandler.overallReset?(ecModel, api, nil)
-
-        // PROCESSOR (STATISTIC) — map data statistic (upstream `registerProcessor(PROCESSOR.STATISTIC,
-        //   mapDataStatisticStageHandler)`). For each map-series group it merges the per-region values across
-        //   the sibling series (sum/average/min/max per `mapValueCalculation`), stamps each series'
-        //   `seriesGroup` + `originalData`, and replaces `getData()` with the shared/merged statistic data.
-        //   MUST run in the data-processor stage (before coord update + visual), so mapSymbolLayout/MapView see
-        //   the merged data + `originalData`. OVERALL handler — invoke its overallReset directly.
-        mapDataStatisticStageHandler.overallReset?(ecModel, api, nil)
-
-        // PROCESSOR (STATISTIC) — axisPointer coordSysAxesInfo (upstream component/axisPointer/install.ts
-        //   `registerProcessor(PRIORITY.PROCESSOR.STATISTIC, { overallReset(ecModel, api) {
-        //     (ecModel.getComponent('axisPointer')).coordSysAxesInfo = collect(ecModel, api); } })`).
-        //   Builds the axisPointerModel/axis/coordSys/series association tree that axisTrigger consumes for
-        //   the tooltip trigger:"axis" path. Must run after coord systems are created (stage 3) and series
-        //   data processed (stage 2/4). Self-gates: `collect` returns an (empty) result when no axisPointer
-        //   component exists; the stash is a no-op when the component is absent.
-        if let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel {
-            apModel.coordSysAxesInfo = collect(ecModel, api)
-        }
-
+        // (4) performDataProcessorTasks — run every data-processor stage task through the Scheduler
+        //   (upstream echarts.ts:1909 `scheduler.performDataProcessorTasks(ecModel, payload)`). The
+        //   handlers are assembled in `buildDataProcessorHandlers()` in the SAME order this block used to
+        //   hand-call them — dataZoom (FILTER; window calc + filter) → dataStack → axis-statistics captured
+        //   processors → negativeDataFilter → data-item legend filters → dataSample → legendFilter (series
+        //   show/hide) → graph categoryFilter → map data statistic → axisPointer coordSysAxesInfo — so the
+        //   output is unchanged (the ported `_performStageTasks` iterates array order, not `__prio`; a
+        //   later task realigns to the real upstream PRIORITY and gates that reorder separately). dataZoom's
+        //   AxisProxy was already created by prepareStageTasks' getTargetSeries at setOption, so this only
+        //   runs its overallReset. Runs BETWEEN coordSysMgr.create (3) and coordSysMgr.update (5), faithful.
         // updateStreamModes(...) — PORT-TODO skip (progressive/stream rendering out of scope).
+        _scheduler.performDataProcessorTasks(ecModel)
 
         // (5) coordSysMgr.update — update axis pixel + data extents from the (now processed) series data,
         //     and build the axis tick/label geometry (Grid.update → resize → createAxisBiulders).
         _coordSysMgr.update(ecModel, api)
 
         // (6) VISUAL — resolve series/data styles (fill/stroke from palette + itemStyle).
-        //     Upstream: clearColorPalette + scheduler.performVisualTasks. Here: run the ported visual
-        //     stage handlers directly (visual/style.swift), in upstream registration order.
+        //   KEPT DIRECT (not routed through _scheduler.performVisualTasks): the visual encoders do their
+        //   per-datum work in the task PROGRESS callback over `context.data`, which the pipeline threads
+        //   from the immediate upstream task's outputData. For visual tasks that upstream is an overall-
+        //   processor STUB (dataZoom/dataStack/legendFilter/… stubs are piped into every series pipeline
+        //   ahead of the visual tasks), and the ported stub does not thread the series data through as its
+        //   outputData under the current dirty/perform ordering, so a routed visual task pulled nil
+        //   context.data and skipped encoding (visualMap slices lost their colors). The data-processor and
+        //   series stages route fine because their work is in the RESET (reading getData() directly), not
+        //   the progress callback. Fixing the stub outputData passthrough end-to-end is C2-level pipeline
+        //   work (also required for real progressive render); until then the visual stage stays direct.
+        //   See docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md (C2 prerequisite).
         performVisualStage(ecModel, api)
 
         // VISUAL (component) — visualMap value->visual encoding. Registered upstream at
