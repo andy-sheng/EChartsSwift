@@ -727,17 +727,25 @@ let singleSeriesTaskProgress = makeSeriesTaskProgress(0)
 
 func makeSeriesTaskProgress(_ resetDefineIdx: Double) -> TaskProgressCallback<SeriesTaskContext> {
     return { (this: SeriesTask, params: TaskProgressParams, context: SeriesTaskContext) in
-        let data = context.data!
-        let resetDefine = context.resetDefines![Int(resetDefineIdx)]
+        // upstream guards `if (resetDefine && resetDefine.dataEach)` — `resetDefines[idx]` is `undefined`
+        //   when the handler's `reset` returned nothing (e.g. dataSample with no `sampling`:
+        //   normalizeToArray(undefined) == [] so singleSeriesTaskProgress reads resetDefines[0] ==
+        //   undefined). JS no-ops via the `resetDefine &&` truthy check; the Swift port must guard the
+        //   index + optionals instead of force-unwrapping (dropping the guard trapped on every plain
+        //   bar/line series once the Scheduler drives the pipeline live). Faithful to upstream.
+        let idx = Int(resetDefineIdx)
+        guard let resetDefines = context.resetDefines, idx < resetDefines.count else { return }
+        let resetDefine = resetDefines[idx]
+        let data = context.data
 
-        if let dataEach = resetDefine.dataEach {
+        if let dataEach = resetDefine.dataEach, let data = data {
             var i = params.start
             while i < params.end {
                 dataEach(data, i)
                 i += 1
             }
         }
-        else if let progress = resetDefine.progress {
+        else if let progress = resetDefine.progress, let data = data {
             progress(params, data)
         }
     }
