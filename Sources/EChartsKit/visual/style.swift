@@ -244,19 +244,31 @@ let dataColorPaletteTask: StageHandler = {
             dataAll.each { (args: [ParsedValue]) in
                 let rawIdx = Int(args[0] as! Double)
                 let idx = idxMap[rawIdx]
-                let fromPalette = idx != nil ? data.getItemVisual(idx!, "colorFromPalette") : nil
+                // upstream `data.getItemVisual(idx, 'colorFromPalette')` is called even for a
+                //   legend-FILTERED item (idx undefined) and falls back to the series-level visual
+                //   (true) — so the hidden item still CONSUMES its palette slot and the remaining
+                //   items keep their colors on toggle. An `idx != nil ? … : nil` guard here made
+                //   every later item slide one slot down (radar-multi: hide B → C took B's color).
+                let fromPalette = idx != nil
+                    ? data.getItemVisual(idx!, "colorFromPalette")
+                    : data.getVisual("colorFromPalette")
                 // Get color from palette for each data only when the color is inherited from series color, which is
                 // also picked from color palette. So following situation is not in the case:
                 // 1. series.itemStyle.color is set
                 // 2. color is encoded by visualMap
                 if (fromPalette as? Bool) == true {
-                    // PORT-TODO: value-type writeback (CONVENTIONS §3) — upstream mutates the stored
-                    //   item-visual object in place; here we copy, set the key, and write it back.
-                    var itemStyle = (data.ensureUniqueItemVisual(idx!, "style") as? [String: Any]) ?? [:]
                     let name = !dataAll.getName(rawIdx).isEmpty ? dataAll.getName(rawIdx) : String(rawIdx)
                     let dataCount = dataAll.count()
-                    itemStyle[colorKey] = seriesModel.getColorFromPalette(name, colorScope, Double(dataCount))
-                    data.setItemVisual(idx!, "style", itemStyle)
+                    // ALWAYS draw the slot (advances the palette cursor + registers the name)…
+                    let paletteColor = seriesModel.getColorFromPalette(name, colorScope, Double(dataCount))
+                    // …but only write the item visual for a VISIBLE (unfiltered) item.
+                    if let idx = idx {
+                        // PORT-TODO: value-type writeback (CONVENTIONS §3) — upstream mutates the stored
+                        //   item-visual object in place; here we copy, set the key, and write it back.
+                        var itemStyle = (data.ensureUniqueItemVisual(idx, "style") as? [String: Any]) ?? [:]
+                        itemStyle[colorKey] = paletteColor
+                        data.setItemVisual(idx, "style", itemStyle)
+                    }
                 }
             }
         }

@@ -62,7 +62,7 @@ public final class SliderZoomDisplayables {
     public var moveHandle: Rect?
     public var moveHandleIcon: Path?
     public var moveZone: Rect?
-    // public var brushRect: Rect?        // DEFERRED (brush select — TASK 2)
+    public var brushRect: Rect?          // brush-select rubber band (upstream Displayables.brushRect).
     // public var dataShadowSegs: [Group] // DEFERRED (data shadow)
     public init() {}
 }
@@ -96,6 +96,12 @@ open class SliderZoomView: ComponentView {
 
     // [length, thick]
     var _size: [Double] = [0, 0]
+
+    // Brush-select state (upstream `_brushing` / `_brushStart` / `_brushStartTime`; consumed by the
+    // brush handlers in SliderZoomViewDrag.swift — the HOST forwards zr mousemove/mouseup while brushing).
+    var _brushing = false
+    var _brushStart: (x: Double, y: Double)?
+    var _brushStartTime: Double = 0
 
     // Drag state (consumed by the drag slice in SliderZoomViewDrag.swift).
     var _dragging: Bool = false
@@ -158,7 +164,9 @@ open class SliderZoomView: ComponentView {
 
         _ = thisGroup.removeAll()
 
-        // this._brushing = false; this._displayables.brushRect = null;  — DEFERRED (brush).
+        // upstream: this._brushing = false; this._displayables.brushRect = null;
+        self._brushing = false
+        self._displayables.brushRect = nil
 
         self._resetLocation()
         self._resetInterval()
@@ -301,7 +309,25 @@ open class SliderZoomView: ComponentView {
         let clickPanel = Rect(["shape": panelShape as PathShape])
         clickPanel.pathStyle.fill = .string("transparent")
         clickPanel.z2 = 0
-        // onclick: this._onClickPanel; brushSelect mousedown/zr mousemove/mouseup — DEFERRED (TASK 2).
+        // upstream: onclick: bind(this._onClickPanel, this) — click recenters the window; and when
+        //   brushSelect, `clickPanel.on('mousedown', this._onBrushStart)` + crosshair cursor starts a
+        //   brush (the zr-level mousemove/mouseup legs are forwarded by the HOST — EChartsView, which
+        //   owns the live zr; SliderZoomView.ts:346-355 binds them directly upstream).
+        _ = clickPanel.on("click", { [weak self] _, args in
+            guard let self = self, let e = args.first as? ZRenderKit.ElementEvent,
+                  let local = self._displayables.sliderGroup?.transformCoordToLocal(e.offsetX, e.offsetY)
+            else { return nil }
+            self._onClickPanel(local[0], local[1])
+            return nil
+        })
+        if jsTruthy(self.dataZoomModel.get("brushSelect")) {
+            clickPanel.cursor = "crosshair"
+            _ = clickPanel.on("mousedown", { [weak self] _, args in
+                guard let self = self, let e = args.first as? ZRenderKit.ElementEvent else { return nil }
+                self._onBrushStart(e.offsetX, e.offsetY)
+                return nil
+            })
+        }
         self._displayables.panel = clickPanel
         _ = barGroup.add(clickPanel)
     }
@@ -360,8 +386,10 @@ open class SliderZoomView: ComponentView {
             // createSymbol returns the `ECSymbol` protocol; the concrete type is a `Path` (SymbolPath).
             let path = symbol.createSymbol(iconStr, -1, 0, 2, 2, nil, true) as! Path
             path.cursor = getCursor(self._orient)
-            // draggable + drift/ondragend/onmouseover/onmouseout bindings — TASK 2 wires drift; mark draggable now.
-            path.draggable = .true
+            // upstream: handle.attr({ draggable: true, drift: bind(this._onDragMove, this, handleIndex),
+            //   ondragend: bind(this._onDragEnd, this), ... }) — the resize-drag wiring.
+            self._wireDrift(path, .at(handleIndex))
+            _ = path.on("dragend", { [weak self] _, _ in self?._onDragEnd(); return nil })
             path.z2 = 5
 
             let bRect = path.getBoundingRect()!
@@ -450,8 +478,15 @@ open class SliderZoomView: ComponentView {
             _ = sliderGroup.add(moveZone)
         }
 
-        // actualMoveZone.attr({ draggable, cursor, drift, ondragstart, ondragend, onmouseover/out }) —
-        //   drift + listeners are TASK 2. `draggable`/`cursor` set above (moveZone when brushSelect, else filler).
+        // upstream: actualMoveZone.attr({ draggable: true, cursor, drift: bind(this._onDragMove, this,
+        //   'all'), ondragend: bind(this._onDragEnd, this), ... }) — the pan-drag ('all') wiring on the
+        //   moveZone when brushSelect, else on the filler. `draggable`/`cursor` set above.
+        //   PORT-TODO: ondragstart→_showDataInfo(true) + onmouseover/out label toggles stay deferred
+        //   (_showDataInfo is a stub).
+        if let actualMoveZone: Element = brushSelect ? displayables.moveZone : displayables.filler {
+            self._wireDrift(actualMoveZone, .all)
+            _ = actualMoveZone.on("dragend", { [weak self] _, _ in self?._onDragEnd(); return nil })
+        }
     }
 
     // upstream: _prepareDataShadowInfo() — pick the first target series (of a shadow-able type) whose

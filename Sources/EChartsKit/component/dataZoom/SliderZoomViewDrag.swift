@@ -219,6 +219,110 @@ extension SliderZoomView {
 
         self.api.dispatchAction(payload, nil)
     }
+
+    // ------------------------------------------------------------------------
+    // Brush select (upstream SliderZoomView.ts:987-1086). `_onBrushStart` fires from the clickPanel's
+    //   element mousedown; the mousemove/mouseup legs are zr-level listeners upstream — here the HOST
+    //   (EChartsView, which owns the live zr) forwards them to `_onBrush`/`_onBrushEnd` while
+    //   `_brushing` is set.
+    // ------------------------------------------------------------------------
+
+    // upstream: _onBrushStart(e) — record the down point and arm the brush.
+    public func _onBrushStart(_ x: Double, _ y: Double) {
+        self._brushStart = (x: x, y: y)
+        self._brushing = true
+        self._brushStartTime = Date().timeIntervalSince1970 * 1000
+        // this._updateBrushRect(x, y);  (upstream keeps this commented too)
+    }
+
+    // upstream: _onBrush(e) — grow the rubber band while armed.
+    public func _onBrush(_ x: Double, _ y: Double) {
+        if self._brushing {
+            // upstream also `eventTool.stop(e.event)` (mobile scroll suppression) — no-op here.
+            self._updateBrushRect(x, y)
+        }
+    }
+
+    // upstream: _onBrushEnd(e) — commit the brushed span as the new window.
+    public func _onBrushEnd() {
+        if !self._brushing {
+            return
+        }
+
+        let brushRect = self._displayables.brushRect
+        self._brushing = false
+
+        guard let brushRect = brushRect else {
+            return
+        }
+
+        brushRect.ignore = true
+
+        guard let brushShape = brushRect.shape as? RectShape else { return }
+
+        let brushEndTime = Date().timeIntervalSince1970 * 1000
+        if brushEndTime - self._brushStartTime < 200 && Swift.abs(brushShape.width) < 5 {
+            // Will treat it as a click
+            return
+        }
+
+        let viewExtend = self._getViewExtent()
+        let percentExtent: [Double] = [0, 100]
+
+        var handleEnds = [brushShape.x, brushShape.x + brushShape.width]
+        let minMaxSpan = self.dataZoomModel.findRepresentativeAxisProxy()?.getMinMaxSpan()
+        // Restrict range.
+        var minSpanPx: Double? = nil
+        var maxSpanPx: Double? = nil
+        if let mms = minMaxSpan {
+            if let ms = mms.minSpan { minSpanPx = number.linearMap(ms, percentExtent, viewExtend, true) }
+            if let xs = mms.maxSpan { maxSpanPx = number.linearMap(xs, percentExtent, viewExtend, true) }
+        }
+        sliderMove(0, &handleEnds, viewExtend, .at(0), minSpanPx, maxSpanPx)
+        self._handleEnds = handleEnds
+
+        self._range = number.asc([
+            number.linearMap(handleEnds[0], viewExtend, percentExtent, true),
+            number.linearMap(handleEnds[1], viewExtend, percentExtent, true)
+        ])
+
+        self._updateView(false)
+
+        self._dispatchZoomAction(false)
+    }
+
+    // upstream: _updateBrushRect(mouseX, mouseY) — lazily build the rubber-band Rect (brushStyle) and
+    //   stretch it from the down point to the cursor in slider-local coords.
+    func _updateBrushRect(_ mouseX: Double, _ mouseY: Double) {
+        let displayables = self._displayables
+        let dataZoomModel: SliderZoomModel = self.dataZoomModel
+        var brushRect = displayables.brushRect
+        if brushRect == nil {
+            let rect = Rect()
+            rect.silent = true
+            rect.useStyle(barStyleFromDict(dataZoomModel.getModel("brushStyle").getItemStyle()))
+            displayables.brushRect = rect
+            brushRect = rect
+            _ = displayables.sliderGroup?.add(rect)
+        }
+
+        brushRect!.ignore = false
+
+        guard let brushStart = self._brushStart, let sliderGroup = displayables.sliderGroup else { return }
+
+        let endPoint = sliderGroup.transformCoordToLocal(mouseX, mouseY)
+        let startPoint = sliderGroup.transformCoordToLocal(brushStart.x, brushStart.y)
+
+        let size = self._size
+        let endX = Swift.max(Swift.min(size[0], endPoint[0]), 0)
+
+        var shape = RectShape()
+        shape.x = startPoint[0]
+        shape.y = 0
+        shape.width = endX - startPoint[0]
+        shape.height = size[1]
+        _ = brushRect!.setShape(shape)
+    }
 }
 
 // ---- local helpers (file-private) ----------------------------------------------------------------

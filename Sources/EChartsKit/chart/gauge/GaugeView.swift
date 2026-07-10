@@ -564,8 +564,12 @@ open class GaugeView: ChartView {
             // upstream: data.each(function (idx) { ... styling + emphasis/states ... })
             for idx in 0..<data.count() {
                 let itemModel = data.getItemModel(idx)
-                // const emphasisModel = itemModel.getModel('emphasis'); focus/blurScope/disabled
-                //   PORT-TODO: emphasis/blur/focus states deferred (util/states not ported).
+                // upstream (GaugeView.ts:529-532): the per-item emphasis params feeding the
+                //   pointer/progress hover wiring below.
+                let emphasisModel = itemModel.getModel(["emphasis"])
+                let focus: InnerFocus? = emphasisModel.get("focus")
+                let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
                 let autoColor = getColor(number.linearMap(asDouble(data.get(valueDim!, idx)), valueExtent, [0, 1], true))
                 if showPointer {
                     let pointer = data.getItemGraphicEl(idx) as? Path
@@ -586,7 +590,14 @@ open class GaugeView: ChartView {
                         styleDict["fill"] = autoColor
                     }
                     pointer?.useStyle(barStyleFromDict(styleDict))
-                    // PORT-TODO: z2EmphasisLift = 0; setStatesStylesFromModel; toggleHoverEmphasis — deferred.
+                    // upstream (GaugeView.ts:558-560): the pointer's hover wiring. `z2EmphasisLift = 0`
+                    //   suppresses the default z2 bump (the visible effect is the emphasis itemStyle /
+                    //   default fill lift).
+                    if let pointer = pointer {
+                        states.getHighDownInner(pointer).z2EmphasisLift = 0
+                        states.setStatesStylesFromModel(pointer, itemModel)
+                        states.toggleHoverEmphasis(pointer, focus, blurScope, emphasisDisabled)
+                    }
                 }
 
                 if showProgress {
@@ -598,7 +609,12 @@ open class GaugeView: ChartView {
                         styleDict["fill"] = autoColor
                     }
                     progress?.useStyle(barStyleFromDict(styleDict))
-                    // PORT-TODO: z2EmphasisLift = 0; setStatesStylesFromModel; toggleHoverEmphasis — deferred.
+                    // upstream (GaugeView.ts:570-572): the progress arc's hover wiring.
+                    if let progress = progress {
+                        states.getHighDownInner(progress).z2EmphasisLift = 0
+                        states.setStatesStylesFromModel(progress, itemModel)
+                        states.toggleHoverEmphasis(progress, focus, blurScope, emphasisDisabled)
+                    }
                 }
             }
 

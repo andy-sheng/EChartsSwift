@@ -730,11 +730,13 @@ public enum color {
         case .string(let s):  // if (isString(color))
             var liftedColor = liftedColorCache.get(.string(s))
             if liftedColor == nil {
-                // PORT-TODO: upstream `lift` is typed `string` but returns `undefined` when
-                // `parse` fails; here `lift` is `String?`. Force-unwrap mirrors the optimistic
-                // typing (the LRU stores a non-optional). Revisit if unparseable input must round-trip.
-                liftedColor = lift(s, -0.1)
-                liftedColorCache.put(.string(s), liftedColor!)
+                // upstream `lift` is typed `string` but returns `undefined` when `parse` fails
+                // (e.g. the sankey/chord edge sentinel "source"/"target"/"gradient" surviving on a
+                // stroke). A failed lift must round-trip the input unchanged — a force-unwrap here
+                // SIGTRAPped the demo app on hover (createEmphasisDefaultState → liftZRColor).
+                guard let lifted = lift(s, -0.1) else { return color }
+                liftedColor = lifted
+                liftedColorCache.put(.string(s), lifted)
             }
             return .string(liftedColor!)
         case .gradient(let g):  // else if (isGradientObject(color))
@@ -746,7 +748,9 @@ public enum color {
             // Wire up a proper Gradient clone when the graphic layer's copy seam lands.
             var ret = g
             ret.colorStops = util.map(g.colorStops) { stop, _ in
-                GradientColorStop(offset: stop.offset, color: lift(stop.color, -0.1)!)
+                // A stop whose color fails to parse keeps its original value (upstream would write
+                // `undefined`; round-tripping is the crash-safe Swift analogue).
+                GradientColorStop(offset: stop.offset, color: lift(stop.color, -0.1) ?? stop.color)
             }
             return .gradient(ret)
         }

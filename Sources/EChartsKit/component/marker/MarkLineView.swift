@@ -622,23 +622,56 @@ final class LineDraw: MarkerDraw {
             line.useStyle(st)
             _ = lineGroup.add(line)
 
+            // upstream (Line.ts:243-264): emphasis/blur/select lineStyle states on the polyline.
+            //   An empty emphasis style still creates the state, so the render pass's
+            //   `savePathStates` seam picks the line up and the default stroke lift applies.
+            let hoverItemModel = lineData.getItemModel(idx)
+            let emphasisModel = hoverItemModel.getModel(["emphasis"])
+            line.ensureState("emphasis").style = emphasisModel.getModel("lineStyle").getLineStyle()
+            line.ensureState("blur").style = hoverItemModel.getModel(["blur", "lineStyle"]).getLineStyle()
+            line.ensureState("select").style = hoverItemModel.getModel(["select", "lineStyle"]).getLineStyle()
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+
             // from/to end symbols with the Line.ts tangent rotation. For a straight 2-point line the
             //   tangent is constant = normalize(toPos − fromPos).
             var d = [p1[0] - p0[0], p1[1] - p0[1]]
             let dlen = (d[0] * d[0] + d[1] * d[1]).squareRoot()
             if dlen > 0 { d = [d[0] / dlen, d[1] / dlen] }
             let baseAtan = atan2(d[1], d[0])
+            var endSymbols: [Path] = []
             if let sym = makeEndSymbol(lineData, idx, "from", strokeColor, style?["opacity"] as? Double) {
                 sym.x = p0[0]; sym.y = p0[1]
                 // percent 0: `1 * PI/2 − atan2(tangent)`
                 sym.rotation = Double.pi / 2 - baseAtan
                 _ = lineGroup.add(sym)
+                endSymbols.append(sym)
             }
             if let sym = makeEndSymbol(lineData, idx, "to", strokeColor, style?["opacity"] as? Double) {
                 sym.x = p1[0]; sym.y = p1[1]
                 // percent 1: `-1 * PI/2 − atan2(tangent)`
                 sym.rotation = -Double.pi / 2 - baseAtan
                 _ = lineGroup.add(sym)
+                endSymbols.append(sym)
+            }
+
+            // upstream (Line.ts:274-292): share the line's per-state stroke/opacity with the end
+            //   symbols (an empty-brush symbol takes it on `stroke`, a solid one on `fill`).
+            for sym in endSymbols {
+                for stateName in ["emphasis", "blur", "select"] {
+                    guard let lineStateStyle = line.getState(stateName)?.style else { continue }
+                    let state = sym.ensureState(stateName)
+                    var stateStyle = state.style ?? [:]
+                    if let stroke = lineStateStyle["stroke"] {
+                        let isEmpty = (sym as? ECSymbol)?.__isEmptyBrush ?? false
+                        stateStyle[isEmpty ? "stroke" : "fill"] = stroke
+                    }
+                    if let opacity = lineStateStyle["opacity"] {
+                        stateStyle["opacity"] = opacity
+                    }
+                    state.style = stateStyle
+                }
             }
 
             // default value LABEL (label.show/position/distance resolve from the markLine model via the
@@ -658,6 +691,10 @@ final class LineDraw: MarkerDraw {
                 label.z2 = 10
                 _ = lineGroup.add(label)
             }
+
+            // upstream (Line.ts:336): the whole line group is the highDown dispatcher — hovering the
+            //   polyline OR an end symbol emphasizes them together.
+            states.toggleHoverEmphasis(lineGroup, focus, blurScope, emphasisDisabled)
 
             _ = self.group.add(lineGroup)
             lineData.setItemGraphicEl(idx, lineGroup)

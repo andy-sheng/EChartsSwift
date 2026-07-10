@@ -471,18 +471,21 @@ public final class MarkAreaView: MarkerView {
             //   fills/strokes the area. Gradient/pattern fills are not bridged yet.
             polygon.useStyle(barStyleFromDict(style))
 
+            // upstream (MarkAreaView.ts:388-390): the area polygon's hover wiring — emphasis/blur/
+            //   select state styles + the highDown-dispatcher mark (focus/blurScope are not options
+            //   on markArea; upstream passes null/null).
+            states.setStatesStylesFromModel(polygon, itemModel)
+            let emphasisDisabled = (itemModel.get(["emphasis", "disabled"]) as? Bool) ?? false
+            states.toggleHoverEmphasis(polygon, nil, nil, emphasisDisabled)
+
             // setLabelStyle(polygon, getLabelStatesModels(itemModel), { labelFetcher: maModel,
             //     labelDataIndex: idx, defaultText: areaData.getName(idx) || '',
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
-            // setStatesStylesFromModel(polygon, itemModel);
-            // toggleHoverEmphasis(polygon, null, null, itemModel.get(['emphasis', 'disabled']));
             // getECData(polygon).dataModel = maModel;
-            // PORT-TODO: the label + emphasis/states + tooltip-model wiring is deferred (CONVENTIONS §5):
-            //   `label/labelStyle` (setLabelStyle/getLabelStatesModels), `util/states`
-            //   (setStatesStylesFromModel/toggleHoverEmphasis), `visual/tokens` (neutral99), and
-            //   `getECData(...).dataModel = maModel` (MarkerModel does not yet conform to `DataModel`;
-            //   see MarkerModel.swift class header) are not ported.
-            _ = itemModel
+            // PORT-TODO: the label + tooltip-model wiring is deferred (CONVENTIONS §5):
+            //   `label/labelStyle` (setLabelStyle/getLabelStatesModels), `visual/tokens` (neutral99),
+            //   and `getECData(...).dataModel = maModel` (MarkerModel does not yet conform to
+            //   `DataModel`; see MarkerModel.swift class header) are not ported.
         })
 
         inner(polygonGroup).data = areaData
