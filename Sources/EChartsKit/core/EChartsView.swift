@@ -767,27 +767,37 @@ public final class EChartsView {
     //   mousedown leg is the clickPanel's own element event (bound in _renderBackground).
     // ------------------------------------------------------------------------
     private func _bindSliderZoomBrush() {
+        // The zr-level "mousedown" fires AFTER the element dispatch (Handler.commonHandler →
+        //   dispatchToElement bubbles to the clickPanel's _onBrushStart first, then triggers the
+        //   zr event), so an armed view is visible here. Caching it keeps the per-pixel mousemove
+        //   an O(1) gate instead of an every-move walk over _componentsViews.
+        _ = zr.on("mousedown", { [weak self] _, _ in
+            guard let self = self else { return nil }
+            self._sliderBrushView = self.ec._componentsViews
+                .first(where: { ($0 as? SliderZoomView)?._brushing == true }) as? SliderZoomView
+            return nil
+        }, nil)
         _ = zr.on("mousemove", { [weak self] _, args in
-            guard let self = self, let e = args.first as? ElementEvent else { return nil }
-            for cv in self.ec._componentsViews {
-                if let sz = cv as? SliderZoomView, sz._brushing {
-                    sz._onBrush(e.offsetX, e.offsetY)
-                    self.zr.refresh()
-                }
-            }
+            guard let self = self, let sz = self._sliderBrushView, sz._brushing,
+                  let e = args.first as? ElementEvent else { return nil }
+            sz._onBrush(e.offsetX, e.offsetY)
+            self.zr.refresh()
             return nil
         }, nil)
         _ = zr.on("mouseup", { [weak self] _, _ in
-            guard let self = self else { return nil }
-            for cv in self.ec._componentsViews {
-                if let sz = cv as? SliderZoomView, sz._brushing {
-                    sz._onBrushEnd()
-                    self.zr.refresh()
-                }
+            guard let self = self, let sz = self._sliderBrushView else { return nil }
+            self._sliderBrushView = nil
+            if sz._brushing {
+                sz._onBrushEnd()
+                self.zr.refresh()
             }
             return nil
         }, nil)
     }
+
+    /// The slider-dataZoom view whose brush is armed for the CURRENT mousedown→mouseup gesture
+    /// (weak: the view is owned by `ec._componentsViews`; nil when no brush is in progress).
+    private weak var _sliderBrushView: SliderZoomView?
 
     private func _bindBrush() {
         _ = zr.on("mousedown", { [weak self] _, args in
