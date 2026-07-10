@@ -208,6 +208,9 @@ public final class Scheduler {
         self._allHandlers = self._dataProcessorHandlers + self._visualHandlers
     }
 
+    /// Test-only: number of per-series pipelines built by `restorePipelines` (one per series).
+    var testPipelineCount: Int { return _pipelineMap?.keys().count ?? 0 }
+
     public func restoreData(_ ecModel: GlobalModel, _ payload: Payload) {
         // TODO: Only restore needed series and components, but not all components.
         // Currently `restoreData` of all of the series and component will be called.
@@ -301,14 +304,18 @@ public final class Scheduler {
         seriesModel.pipelineContext = context
     }
 
-    public func restorePipelines(_ zr: ZRenderType, _ ecModel: GlobalModel) {
+    // `zr` is optional in this port: the host-independent `ECharts` driver owns no ZRender instance
+    //   (the live `zr` lives on the host, e.g. EChartsView). Its only use here is `zr.painter.type ==
+    //   "canvas"` to gate progressive rendering; the native painter reports `"native"`, so progressive
+    //   is disabled either way in C1. C2 (when the live host drives the pipeline) can pass a real zr.
+    public func restorePipelines(_ zr: ZRenderType?, _ ecModel: GlobalModel) {
         let scheduler = self
         let pipelineMap: HashMap<Pipeline> = createHashMap()
         scheduler._pipelineMap = pipelineMap
 
         ecModel.eachSeries { seriesModel, _ in
             // upstream: const progressive = zr.painter.type === 'canvas' && seriesModel.getProgressive();
-            let progressive: Any? = (zr.painter.type == "canvas") ? seriesModel.getProgressive() : false
+            let progressive: Any? = (zr?.painter.type == "canvas") ? seriesModel.getProgressive() : false
             let pipelineId = seriesModel.uid
 
             pipelineMap.set(pipelineId, Pipeline(

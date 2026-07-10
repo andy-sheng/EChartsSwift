@@ -310,10 +310,18 @@ public final class ECharts: EChartsType {
     // so it never accumulates now that render() no longer wipes root (L5 view reuse).
     private var _bgRect: Rect?
 
+    // The Scheduler task/pipeline graph (upstream `this._scheduler`). Built lazily on the first
+    //   setOption (after installOnce() has populated the registries); `restorePipelines` +
+    //   `prepareStageTasks` run each setOption to (re)build the per-series pipelines. Sub-project C1
+    //   routes update()'s perform-stages through it; C2 wires progressive render via prepareView.
+    private var _scheduler: Scheduler!
+
     // Test-only accessors (assert reuse identity across setOption; assert no view duplication).
     var testModel: GlobalModel? { _model }
     var testChartViews: [ChartView] { _chartsViews }
     var testComponentViews: [ComponentView] { _componentsViews }
+    // Sub-project C: assert the Scheduler pipelines are built on setOption (one per series).
+    var testScheduler: Scheduler? { _scheduler }
 
     // ---- action-dispatch state (mirrors upstream `ECharts` action fields) ----
     /// Actions dispatched WHILE a render/update cycle is in progress are queued here and drained
@@ -424,6 +432,79 @@ public final class ECharts: EChartsType {
         legendDataFilter(SERIES_TYPE_THEME_RIVER),
         legendDataFilter(SERIES_TYPE_CHORD)
     ]
+
+    // ========================================================================
+    // Sub-project C — Scheduler handler assembly.
+    // Wraps every processor/visual handler that `update()` currently hand-calls into a
+    //   `StageHandlerInternal` the Scheduler can run through its task/pipeline graph.
+    //
+    // C1 TEMPORARY ORDERING: the returned array order == the current `update()` hand-call SOURCE order,
+    //   NOT upstream `PRIORITY.PROCESSOR.*`. The ported `_performStageTasks` iterates ARRAY order (it
+    //   does not sort by `__prio`), so routing through the Scheduler reproduces today's output exactly.
+    //   A later reorder task realigns `__prio` to the real upstream priorities (see the priority table in
+    //   docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md) and re-sorts the array, gated
+    //   separately against the web oracle. Isolating "does the Scheduler machinery reproduce the
+    //   hand-calls?" from "does upstream order differ?" keeps each landing debuggable.
+    // ========================================================================
+
+    private static func _mkOverallHandler(_ prio: Double,
+                                          _ reset: @escaping StageHandlerOverallReset) -> StageHandlerInternal {
+        var h = StageHandler()
+        h.overallReset = reset
+        return StageHandlerInternal(uid: component.getUID("stageHandler"), visualType: nil,
+                                    __prio: prio, __raw: h, isVisual: nil, isLayout: nil, handler: h)
+    }
+
+    private static func _mkHandler(_ prio: Double, _ h: StageHandler) -> StageHandlerInternal {
+        return StageHandlerInternal(uid: component.getUID("stageHandler"), visualType: nil,
+                                    __prio: prio, __raw: h, isVisual: nil, isLayout: nil, handler: h)
+    }
+
+    /// The data-processor StageHandlers the Scheduler runs in `performDataProcessorTasks`, assembled in
+    /// the current `update()` hand-call order (see the block header). Mirrors update() step (3)/(4).
+    static func buildDataProcessorHandlers() -> [StageHandlerInternal] {
+        var list: [StageHandlerInternal] = []
+        var p = 0.0
+        func nextPrio() -> Double { p += 100; return p }
+
+        // 1. dataZoom (FILTER). StageHandler with getTargetSeries (the AxisProxy-creation side-effect,
+        //    which now runs at prepareStageTasks/setOption time — safe: AxisProxy reads only models) +
+        //    overallReset (window calc + filter, at performDataProcessorTasks/update time).
+        list.append(_mkHandler(nextPrio(), dataZoomProcessor))
+        // 2. dataStack (DATASTACK). Global overall.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in dataStack(ecModel) }))
+        // 3. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
+        //    EChartsInstallRegisters.registerProcessor, so wrap each as a global overall (no seriesType).
+        for cp in ECharts._registers.capturedProcessors {
+            list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in cp(ecModel) }))
+        }
+        // 4. negativeDataFilter (DEFAULT, per-series reset+seriesType).
+        for h in ECharts._negativeDataFilters { list.append(_mkHandler(nextPrio(), h)) }
+        // 5. dataFilter — data-item legend show/hide (DEFAULT, per-series).
+        for h in ECharts._dataFilters { list.append(_mkHandler(nextPrio(), h)) }
+        // 6. dataSample down-sampling (STATISTIC, per-series).
+        for h in ECharts._dataSamplers { list.append(_mkHandler(nextPrio(), h)) }
+        // 7. legendFilter — series show/hide (SERIES_FILTER). Global overall.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in legendFilter(ecModel) }))
+        // 8. graph categoryFilter (FILTER). StageHandler (createSimpleOverallStageHandler).
+        list.append(_mkHandler(nextPrio(), graphCategoryFilterStageHandler))
+        // 9. map data statistic (STATISTIC). StageHandler.
+        list.append(_mkHandler(nextPrio(), mapDataStatisticStageHandler))
+        // 10. axisPointer coordSysAxesInfo (STATISTIC). Global overall; stashes the association tree.
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, api, _ in
+            if let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel {
+                apModel.coordSysAxesInfo = collect(ecModel, api)
+            }
+        }))
+        return list
+    }
+
+    /// The visual StageHandlers the Scheduler runs in `performVisualTasks`. C1-T4 populates this
+    /// (style / visualMap / aria / decal); until then it is empty and `update()` still runs
+    /// `performVisualStage`/`performVisualMapStage`/aria/decal directly, so an empty list is correct.
+    func buildVisualHandlers() -> [StageHandlerInternal] {
+        return []
+    }
 
     static func installOnce() {
         if _installed { return }
@@ -1159,6 +1240,22 @@ public final class ECharts: EChartsType {
         else {
             self._model!.setOption(opt, nil, [])
         }
+
+        // Sub-project C — build the Scheduler pipelines (upstream `prepare()`, echarts.ts:1675-1676:
+        //   `scheduler.restorePipelines(zr, model); scheduler.prepareStageTasks();`). Built lazily on
+        //   the first setOption (installOnce() has run in init, so the registries are populated) and
+        //   re-primed each setOption. `restorePipelines` rebuilds a per-series pipeline (head = the
+        //   series dataTask); `prepareStageTasks` creates the overall/series stage tasks + stubs and
+        //   pipes them. `prepareView` (the series RENDER task) is deferred to C2 (ChartView.renderTask
+        //   is still a stub). No update() routing yet in C1-T2 — the scheduler is built but unused, so
+        //   this is a pure additive change (getTargetSeries's AxisProxy side-effect now runs here at
+        //   setOption instead of in update(), where update()'s own getTargetSeries call then no-ops
+        //   via the `getAxisProxyFromModel == nil` guard).
+        if _scheduler == nil {
+            _scheduler = Scheduler(self, _api, ECharts.buildDataProcessorHandlers(), buildVisualHandlers())
+        }
+        _scheduler.restorePipelines(nil, _model!)
+        _scheduler.prepareStageTasks()
 
         update()
     }
