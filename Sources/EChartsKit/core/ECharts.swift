@@ -499,9 +499,13 @@ public final class ECharts: EChartsType {
         return list
     }
 
-    /// The visual StageHandlers the Scheduler runs in `performVisualTasks`. C1-T4 populates this
-    /// (style / visualMap / aria / decal); until then it is empty and `update()` still runs
-    /// `performVisualStage`/`performVisualMapStage`/aria/decal directly, so an empty list is correct.
+    /// The visual StageHandlers the Scheduler would run in `performVisualTasks`. EMPTY: the visual stage
+    /// stays a DIRECT call (performVisualStage/performVisualMapStage in update()) because the visual
+    /// encoders do their work in the task PROGRESS callback over the pipeline-threaded `context.data`,
+    /// and the overall-processor STUBs piped ahead of the visual tasks do not thread the series data
+    /// through as outputData under the current dirty/perform ordering (a routed visual task pulled nil
+    /// context.data and skipped encoding). Populating this + routing performVisualTasks is deferred to
+    /// C2, together with the stub outputData passthrough fix (also required for progressive render).
     func buildVisualHandlers() -> [StageHandlerInternal] {
         return []
     }
@@ -1320,8 +1324,17 @@ public final class ECharts: EChartsType {
         _coordSysMgr.update(ecModel, api)
 
         // (6) VISUAL — resolve series/data styles (fill/stroke from palette + itemStyle).
-        //     Upstream: clearColorPalette + scheduler.performVisualTasks. Here: run the ported visual
-        //     stage handlers directly (visual/style.swift), in upstream registration order.
+        //   KEPT DIRECT (not routed through _scheduler.performVisualTasks): the visual encoders do their
+        //   per-datum work in the task PROGRESS callback over `context.data`, which the pipeline threads
+        //   from the immediate upstream task's outputData. For visual tasks that upstream is an overall-
+        //   processor STUB (dataZoom/dataStack/legendFilter/… stubs are piped into every series pipeline
+        //   ahead of the visual tasks), and the ported stub does not thread the series data through as its
+        //   outputData under the current dirty/perform ordering, so a routed visual task pulled nil
+        //   context.data and skipped encoding (visualMap slices lost their colors). The data-processor and
+        //   series stages route fine because their work is in the RESET (reading getData() directly), not
+        //   the progress callback. Fixing the stub outputData passthrough end-to-end is C2-level pipeline
+        //   work (also required for real progressive render); until then the visual stage stays direct.
+        //   See docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md (C2 prerequisite).
         performVisualStage(ecModel, api)
 
         // VISUAL (component) — visualMap value->visual encoding. Registered upstream at

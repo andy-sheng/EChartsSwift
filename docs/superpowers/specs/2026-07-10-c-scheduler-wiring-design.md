@@ -142,6 +142,34 @@ sampled line-lttb, map, graph legend).
 - **This is a sequential single-file rewire** of the render hot path; do NOT
   parallelize. Execute task-by-task with the gate.
 
+## Status (2026-07-10)
+
+**C1 spine LANDED** (commits b080922, 187dffc): setOption builds the Scheduler +
+restorePipelines + prepareStageTasks; update() routes stages (1) restoreData
+[`_scheduler.restoreData`, which also dirties overall tasks], (2) performSeriesTasks
+[`dataTask.perform()`, pipeline-threading], and (4) performDataProcessorTasks through
+the Scheduler. 656 tests green; all 140 demos render; 24 PNGs differ only by
+sub-pixel AA (verified visually identical to the web oracle). Two faithful-port bugs
+fixed along the way: (a) `scheduler.restoreData` must dirty overall tasks or a 2nd
+update() skips them (dataZoom/legend interactions broke); (b)
+`makeSeriesTaskProgress` had dropped upstream's `if (resetDefine && …)` guard and
+force-unwrapped, trapping on any handler whose reset returned nothing (dataSample
+with no sampling) once the pipeline ran live.
+
+**C1-T4 (route performVisualTasks) DEFERRED TO C2.** Root cause found: the visual
+encoders (style, visualMap) do their per-datum work in the task PROGRESS callback
+over `context.data`, which the pipeline threads from the immediate upstream task's
+`outputData`. The overall data-processor STUBs (dataZoom/dataStack/legendFilter/…)
+are piped into EVERY series pipeline AHEAD of the visual tasks, and the ported stub
+does not thread the series data through as its `outputData` under the current
+dirty/perform ordering — so a routed visual task pulled nil `context.data` and
+skipped encoding (visualMap slices lost their colors). The data-processor + series
+stages route fine because their work is in the RESET (reads `getData()` directly),
+not the progress callback. Fixing the stub `outputData` passthrough end-to-end is
+the same pipeline-threading correctness C2 needs for progressive render, so T4 rides
+with C2. The visual stage stays a direct `performVisualStage`/`performVisualMapStage`
+call (it is correct and unchanged).
+
 ## Out of scope (deferred)
 
 Sub-project E (lifecycle/events: bindRenderedEvent, connect, loading, media
