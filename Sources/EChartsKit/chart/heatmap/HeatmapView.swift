@@ -207,17 +207,25 @@ open class HeatmapView: ChartView {
         var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
 
         // Hover wiring params (upstream shares the _renderOnGridLike state block; HeatmapView.ts:202-210).
-        let emphasisModel = seriesModel.getModel(["emphasis"])
-        let focus: InnerFocus? = emphasisModel.get("focus")
-        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-        let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        var stateModel: Model = seriesModel
+        var emphasisModel = seriesModel.getModel(["emphasis"])
+        var focus: InnerFocus? = emphasisModel.get("focus")
+        var blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        var emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
 
         for idx in 0..<data.count() {
             let point = calendar.dataToPoint(data.get(dateDim, idx))
             guard point.count >= 2, point[0].isFinite, point[1].isFinite else { continue }
 
             if data.hasItemOption {
-                borderRadius = data.getItemModel(idx).get(["itemStyle", "borderRadius"])
+                // Per-item re-read (upstream HeatmapView.ts:290-308 — the shared grid-like state block).
+                let itemModel = data.getItemModel(idx)
+                stateModel = itemModel
+                emphasisModel = itemModel.getModel(["emphasis"])
+                focus = emphasisModel.get("focus")
+                blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                borderRadius = itemModel.get(["itemStyle", "borderRadius"])
             }
 
             var shape = RectShape()
@@ -236,7 +244,6 @@ open class HeatmapView: ChartView {
             initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
             rect.name = "item"
             // upstream (HeatmapView.ts:329-333): the calendar cell gets the same hover wiring.
-            let stateModel: Model = data.hasItemOption ? data.getItemModel(idx) : seriesModel
             states.setStatesStylesFromModel(rect, stateModel)
             states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
             _ = group.add(rect)

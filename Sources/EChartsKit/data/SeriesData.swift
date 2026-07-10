@@ -1216,8 +1216,10 @@ public final class SeriesData: DataStackSeriesData {
      */
     public func setItemGraphicEl(_ idx: Int, _ el: Element?) {
         // const seriesIndex = this.hostModel && (this.hostModel as any).seriesIndex;
-        // PORT-TODO: `Model` placeholder (model layer, Phase 5c) has no `seriesIndex`; default 0.
-        let seriesIndex: Double = 0
+        //   (was a PORT-TODO defaulting to 0 — with a live SeriesModel host the real index is stamped,
+        //   so the focus/blur fan-out targets the right series in MULTI-series charts; a hardcoded 0
+        //   made hovering series 1 blur against series 0's identity.)
+        let seriesIndex: Double = (self.hostModel as? SeriesModel)?.seriesIndex ?? 0
 
         // PORT-TODO: `innerStore.setCommonECData` requires a non-optional `SeriesDataType`
         //   (sibling port); upstream `this.dataType` may be undefined for main series data.

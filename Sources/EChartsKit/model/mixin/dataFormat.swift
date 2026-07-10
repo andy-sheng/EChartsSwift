@@ -60,12 +60,13 @@ extension DataFormatMixin {
 
     // upstream accesses `(this as any).seriesIndex` in `getDataParams`. `seriesIndex` is only
     // defined on `SeriesModel`, not on the `DataFormatMixin` contract, so upstream reaches it
-    // dynamically. Modeled as an extension property defaulting to `nil`.
-    // PORT-TODO: `SeriesModel` must shadow/override this to surface its real `seriesIndex`.
-    //   Because this is a protocol-extension member (not a requirement), access through a
-    //   `DataFormatMixin`-typed `self` statically dispatches here (always `nil`) even on a
-    //   `SeriesModel`; revisit once the sibling `SeriesModel` API is final.
-    public var seriesIndex: Double? { return nil }
+    // dynamically — modeled below as a `(self as? SeriesModel)` read at the use site.
+    //   (Was a protocol-extension `var seriesIndex: Double? { nil }` — the classic protocol-witness
+    //   trap: on a `SeriesModel`-typed OPTIONAL CHAIN, overload resolution preferred this nil-returning
+    //   `Double?` member over the class's stored `Double`, so
+    //   `(hostModel as? SeriesModel)?.seriesIndex` silently read nil → ECData.seriesIndex stamped 0
+    //   for EVERY series and the focus/blur fan-out targeted series 0. Do not reintroduce a same-name
+    //   optional member on a protocol extension.)
 
     /**
      * Get params for formatter
@@ -97,7 +98,7 @@ extension DataFormatMixin {
             componentSubType: self.subType,
             componentIndex: self.componentIndex,
             seriesType: isSeries ? self.subType : nil,
-            seriesIndex: self.seriesIndex,
+            seriesIndex: (self as? SeriesModel)?.seriesIndex,   // upstream `(this as any).seriesIndex`
             seriesId: isSeries ? self.id : nil,
             seriesName: isSeries ? self.name : nil,
             name: name,

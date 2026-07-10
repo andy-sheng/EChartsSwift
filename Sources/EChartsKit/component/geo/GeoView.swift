@@ -482,7 +482,14 @@ public final class GeoView: ComponentView {
 
     // upstream: findHighDownDispatchers(name, geoModel) — the geoSVG branch returns the dispatcher elements
     //   registered for a region name (hover-link / highlight-by-name). Exposed for the high-down driver.
+    //   nil-vs-[] contract: `findComponentHighDownDispatchers` treats non-nil (even empty) as "the
+    //   feature is supported here" and then SKIPS the series-style fallback emphasis of the hovered
+    //   element. Only the geoSVG branch is ported (upstream MapDraw's geoJSON branch returns the
+    //   region group from `_regionsGroupByName` — PORT-TODO, deferred with geo highDown wiring), so a
+    //   geoJSON map (empty `_svgDispatcherMap`) must return nil = unsupported, or it would silently
+    //   swallow all region hover emphasis once geo regions become highDown dispatchers.
     public override func findHighDownDispatchers(_ name: String?) -> [Element]? {
+        if self._svgDispatcherMap.isEmpty { return nil }   // no SVG map built → unsupported
         guard let name = name else { return [] }
         return self._svgDispatcherMap[name] ?? []
     }
@@ -544,7 +551,7 @@ public final class GeoView: ComponentView {
     // PORT-TODO (DEFERRED — select states): select highlight traversal. Not wired.
 
     // upstream: findHighDownDispatchers(name) { return this._mapDraw && this._mapDraw.findHighDownDispatchers(...); }
-    // PORT-TODO (DEFERRED — emphasis): hover-link dispatchers. Not wired.
+    //   → ported as the `ComponentView` override above (geoSVG branch only; geoJSON returns nil).
 
     // upstream: dispose() { this._mapDraw && this._mapDraw.remove(); }
     public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {

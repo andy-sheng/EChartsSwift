@@ -195,9 +195,10 @@ open class PieView: ChartView {
             // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize`
             //   when `emphasis.scale` is on — the hover "enlarge" effect. The getSectorCornerRadius
             //   merge stays deferred with the normal-state corner radius (defaults 0).
+            //   PORT-TODO: the `select` state's {x: dx, y: dy} selectedOffset translate (the exploded
+            //   slice, PieView.ts:146-150) + the select/blur corner-radius shapes are still deferred.
             let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
-            let scaleSizeRaw = emphasisModel.get("scaleSize")
-            let scaleSize = (scaleSizeRaw as? Double) ?? (scaleSizeRaw as? Int).map(Double.init) ?? 0
+            let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
             sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
 
             // Sweep the collapsed sector open to its final angle (shared basicTransition helper).

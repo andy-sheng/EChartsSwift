@@ -186,6 +186,13 @@ open class ThemeRiverView: ChartView {
             _bands = []
         }
 
+        // upstream (ThemeRiverView.ts:102): the SERIES-level emphasis model, read once outside the
+        //   layer loop (themeRiver has no per-item loop model) — feeds the per-band hover wiring below.
+        let emphasisModel = seriesModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+
         // for each drawable layer (the diff 'add'→rebuild / 'update'→morph collapse to this branch)
         for (layerIdx, r) in renders.enumerated() {
             let points0 = r.points0
@@ -316,14 +323,9 @@ open class ThemeRiverView: ChartView {
                 data.setItemGraphicEl(last, polygon)
             }
 
-            // upstream (ThemeRiverView.ts:102 + 168-171): the band's hover wiring — the SERIES-level
-            //   emphasis model (themeRiver has no per-item loop model here), state styles, and the
+            // upstream (ThemeRiverView.ts:168-171): the band's hover wiring — state styles + the
             //   highDown-dispatcher mark. Runs on both the fresh-build and morph-reuse paths.
-            let emphasisModel = seriesModel.getModel(["emphasis"])
             states.setStatesStylesFromModel(polygon, seriesModel)
-            let focus: InnerFocus? = emphasisModel.get("focus")
-            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
 
             // PORT-TODO (DEFERRED):

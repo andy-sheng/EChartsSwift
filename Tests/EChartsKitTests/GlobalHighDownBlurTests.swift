@@ -47,4 +47,34 @@ final class GlobalHighDownBlurTests: XCTestCase {
         XCTAssertFalse(s1.currentStates.contains("blur"), "mouseout must leave blur")
         XCTAssertEqual(opacity(s1) ?? 1, 1, accuracy: 1e-6, "opacity restored after mouseout")
     }
+
+    // MULTI-series focus:'series' — the blur must target the HOVERED element's series. Regression for
+    // the setItemGraphicEl seriesIndex-hardcoded-0 gap: hovering a series-1 bar ran the fan-out against
+    // series 0's identity, keeping the OTHER series bright and blurring the hovered one (inverted).
+    func testBarFocusSeriesBlursOtherSeriesNotOwn() {
+        let v = EChartsView(width: 480, height: 360)
+        v.setOption(["animation": false,
+                     "xAxis": ["type": "category", "data": ["A", "B"]] as [String: Any],
+                     "yAxis": ["type": "value"],
+                     "series": [["type": "bar", "data": [10, 20],
+                                 "emphasis": ["focus": "series"]] as [String: Any],
+                                ["type": "bar", "data": [15, 25],
+                                 "emphasis": ["focus": "series"]] as [String: Any]]])
+        _ = v.zr.storage.getDisplayList(true)
+        let model = v.ec.getModel()!
+        let bar0 = model.getSeriesByIndex(0)!.getData().getItemGraphicEl(0) as! Rect
+        let bar1 = model.getSeriesByIndex(1)!.getData().getItemGraphicEl(0) as! Rect
+
+        // Hover a SERIES-1 bar.
+        let s = bar1.shape as! RectShape
+        v._injectPointerForTest(type: "mousemove", zrX: s.x + s.width / 2, zrY: s.y + s.height / 2)
+
+        XCTAssertTrue(bar1.currentStates.contains("emphasis"), "hovered series-1 bar enters emphasis")
+        XCTAssertFalse(bar1.currentStates.contains("blur"), "hovered bar's OWN series must stay bright")
+        XCTAssertTrue(bar0.currentStates.contains("blur"),
+                      "focus:'series' must blur the OTHER series (states=\(bar0.currentStates))")
+
+        v._injectPointerForTest(type: "mousemove", zrX: 2, zrY: 2)
+        XCTAssertFalse(bar0.currentStates.contains("blur"), "mouseout restores the other series")
+    }
 }
