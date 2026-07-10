@@ -189,6 +189,17 @@ open class SankeyView: ChartView {
     // upstream: private _firstRender: boolean;
     private var _firstRender: Bool = true
 
+    // View REUSE (L5 fidelity): PERSIST the node rects (keyed by node dataIndex) and link ribbons (keyed
+    //   by edge dataIndex) across renders — the `_mainGroup` is no longer `removeAll()`-ed every pass —
+    //   so a merge-mode setOption value change (same node+edge count, same orient; the sankey layout only
+    //   re-placed the node boxes / re-sized the ribbon bands) MORPHS each shape in place instead of
+    //   rebuild-and-snap. `_prevNodeCount`/`_prevEdgeCount`/`_prevOrient` gate morph-vs-rebuild.
+    private var _nodeEls: [Int: Rect] = [:]
+    private var _linkEls: [Int: SankeyPath] = [:]
+    private var _prevNodeCount: Int = -1
+    private var _prevEdgeCount: Int = -1
+    private var _prevOrient: String = ""
+
     // upstream: init(ecModel: GlobalModel, api: ExtensionAPI): void {
     //     this._controller = new RoamController(api.getZr());
     //     this.group.add(this._mainGroup);
@@ -223,7 +234,20 @@ open class SankeyView: ChartView {
         // const orient = seriesModel.get('orient');
         let orient: String = (seriesModel.get("orient", false) as? String) ?? "horizontal"
 
-        _ = mainGroup.removeAll()
+        // Morph iff we already drew the same number of nodes + edges in the same orient (only the layout
+        //   geometry changed). A node/edge add/remove or an orient flip (or a first render) rebuilds fresh
+        //   with the per-node entrance fade; a same-count/same-orient change morphs each rect + ribbon via
+        //   `updateProps`. dragNode re-renders through this same path — moving one node is a same-count
+        //   geometry change, so it morphs too.
+        let nodeCount = nodeData.count()
+        let edgeCount = edgeData.count()
+        let canMorph = !_nodeEls.isEmpty && _prevNodeCount == nodeCount
+            && _prevEdgeCount == edgeCount && _prevOrient == orient
+        if !canMorph {
+            _ = mainGroup.removeAll()
+            _nodeEls.removeAll()
+            _linkEls.removeAll()
+        }
 
         // L3 Roam: capture the base (roam-free) placement; the roam transform is applied on top of it at
         //   the END of render (viewGroupRoamApplyStateToGroup). Identity roam state → mainGroup.x = baseX.
@@ -245,7 +269,6 @@ open class SankeyView: ChartView {
 
         // generate a bezier curve (ribbon) for each edge
         graph.eachEdge({ edge, _ in
-            let curve = SankeyPath()
             // const ecData = getECData(curve); ecData.dataIndex/seriesIndex/dataType = ...
             //   PORT-TODO: innerStore (getECData) NOT ported — ECData tagging DEFERRED.
             guard let edgeModel = edge.getModel() else { return }
@@ -319,7 +342,26 @@ open class SankeyView: ChartView {
             shape.cpy1 = cpy1
             shape.cpx2 = cpx2
             shape.cpy2 = cpy2
-            _ = curve.setShape(shape)
+
+            // Reuse the persisted ribbon (same count/orient) → MORPH its shape; else build fresh.
+            let reuseCurve = canMorph ? self._linkEls[edge.dataIndex] : nil
+            let curve: SankeyPath
+            if let c = reuseCurve {
+                curve = c
+                // Animate the two cubic endpoints + control points + band `extent` to the new layout.
+                //   SankeyPathShape.animationGet/Set expose exactly these numeric keys; `orient` is a mode
+                //   flag (part of the morph gate, so unchanged) and need not be tweened. Targets are bare
+                //   Doubles (not a VectorArray/[[Double]]), matching animationGet's scalar returns.
+                updateProps(curve, ["shape": [
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "cpx1": cpx1, "cpy1": cpy1, "cpx2": cpx2, "cpy2": cpy2,
+                    "extent": Swift.max(1, edgeDy)
+                ]], seriesModel)
+            } else {
+                curve = SankeyPath()
+                // curve.setShape({ x1, y1, x2, y2, cpx1, cpy1, cpx2, cpy2 });
+                _ = curve.setShape(shape)
+            }
 
             // curve.useStyle(lineStyleModel.getItemStyle());
             //   getItemStyle maps the lineStyle `color` option → `fill`; for sankey edges that option is a
@@ -351,7 +393,10 @@ open class SankeyView: ChartView {
             states.toggleHoverEmphasis(curve, edgeFocus, edgeBlurScope, edgeDisabled)
             states.setStatesStylesFromModel(curve, edgeModel, "lineStyle")
 
-            _ = mainGroup.add(curve)
+            if reuseCurve == nil {
+                _ = mainGroup.add(curve)
+                self._linkEls[edge.dataIndex] = curve
+            }
             edgeData.setItemGraphicEl(edge.dataIndex, curve)
             let ecEdge = innerStore.getECData(curve)
             ecEdge.dataType = .edge
@@ -377,15 +422,30 @@ open class SankeyView: ChartView {
             // const rect = new graphic.Rect({ shape: { x, y, width: dx, height: dy, r: borderRadius },
             //     style: itemModel.getModel('itemStyle').getItemStyle(), z2: 10 });
             var rectShape = RectShape()
-            rectShape.x = dragX != nil ? dragX! * width : lx
-            rectShape.y = dragY != nil ? dragY! * height : ly
+            let rx = dragX != nil ? dragX! * width : lx
+            let ry = dragY != nil ? dragY! * height : ly
+            rectShape.x = rx
+            rectShape.y = ry
             rectShape.width = ldx
             rectShape.height = ldy
             rectShape.r = borderRadius
-            let rect = Rect([
-                "shape": rectShape as PathShape,
-                "z2": Double(10)
-            ])
+
+            // Reuse the persisted node rect (same count/orient) → MORPH its box; else build fresh.
+            let reuseRect = canMorph ? self._nodeEls[node.dataIndex] : nil
+            let rect: Rect
+            if let r = reuseRect {
+                rect = r
+                // Animate the rect box to its new layout. RectShape.animationGet/Set cover x/y/width/height;
+                //   the corner radius `r` is a mode value (left as-is on reuse — not tweened).
+                updateProps(rect, ["shape": [
+                    "x": rx, "y": ry, "width": ldx, "height": ldy
+                ]], seriesModel, node.dataIndex)
+            } else {
+                rect = Rect([
+                    "shape": rectShape as PathShape,
+                    "z2": Double(10)
+                ])
+            }
             rect.useStyle(sankeyStyleFromDict(itemModel.getModel("itemStyle").getItemStyle()))
 
             // Node label — retrofitted onto the SHARED label core (label/labelStyle.swift). Upstream:
@@ -424,9 +484,12 @@ open class SankeyView: ChartView {
             //   opacity: capture the final opacity BEFORE zeroing, set the construction-time opacity to
             //   0, then animate (or, with animation off, instantly `attr` via Path.attrKV's partial
             //   "style"-dict merge) toward the final opacity via `initProps`.
-            let finalNodeOpacity = rect.pathStyle.opacity ?? 1
-            rect.pathStyle.opacity = 0
-            initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
+            //   Only on a FRESH build — a morph reuse keeps the node at its final opacity (no re-fade).
+            if reuseRect == nil {
+                let finalNodeOpacity = rect.pathStyle.opacity ?? 1
+                rect.pathStyle.opacity = 0
+                initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
+            }
             // rect.setStyle('decal', node.getVisual('style').decal);
             //   PORT-TODO: node decal (Pattern) not bridged (decal out of the static-render scope).
 
@@ -445,7 +508,10 @@ open class SankeyView: ChartView {
             states.setStatesStylesFromModel(rect, itemModel)
 
             rect.name = "node"
-            _ = mainGroup.add(rect)
+            if reuseRect == nil {
+                _ = mainGroup.add(rect)
+                self._nodeEls[node.dataIndex] = rect
+            }
 
             nodeData.setItemGraphicEl(node.dataIndex, rect)
             let ecNode = innerStore.getECData(rect)     // Phase 45: dataType tag → blurSeries getData(.node)
@@ -504,6 +570,11 @@ open class SankeyView: ChartView {
 
         self._data = seriesModel.getData()
 
+        // Record the morph gate for the next render.
+        _prevNodeCount = nodeCount
+        _prevEdgeCount = edgeCount
+        _prevOrient = orient
+
         // L3 Roam: re-apply the accumulated roam transform to the main group (upstream applies center/zoom
         //   through the View coord sys; the port transforms the group directly — see roamHelperViewGroup).
         //   On first render / roam off, the state is identity → the placement above is left exactly as-is.
@@ -532,6 +603,13 @@ open class SankeyView: ChartView {
     //   but the mainGroup is a child of `group`, so removeAll cascades. Kept for _data reset symmetry.
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self._mainGroup.removeAll()
+        // The persisted node/link elements were just detached by removeAll — clear the bookkeeping so a
+        //   subsequent render rebuilds fresh rather than reusing orphaned elements.
+        self._nodeEls.removeAll()
+        self._linkEls.removeAll()
+        self._prevNodeCount = -1
+        self._prevEdgeCount = -1
+        self._prevOrient = ""
         self._data = nil
     }
 }

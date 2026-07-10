@@ -76,6 +76,14 @@ open class ParallelView: ChartView {
     // PORT-TODO: progressive/large render path DEFERRED — kept for structural parity.
     private var _progressiveEls: [Element] = []
 
+    // Persistent per-item polylines (index-keyed) so a merge-mode setOption VALUE change MORPHS each
+    //   line (its shape.points slide) instead of rebuild-and-snap. The static port has no `data.diff`
+    //   add/update/remove pipeline, so `_prevItemCount` gates morph-vs-rebuild: a same-count value
+    //   change morphs the persisted lines; an item add/remove (or coord loss) rebuilds fresh (keeping
+    //   the opacity-fade entrance). Reset to `[]` / `-1` whenever a branch wipes `_dataGroup`.
+    private var _lines: [Polyline] = []
+    private var _prevItemCount: Int = -1
+
     // upstream: init() { this.group.add(this._dataGroup); }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self.group.add(self._dataGroup)
@@ -95,33 +103,57 @@ open class ParallelView: ChartView {
 
         // Clear previously rendered progressive elements.
         self._progressiveEls = []
-        _ = dataGroup.removeAll()
 
         let data = seriesModel.getData()
         // const oldData = this._data;
-        //   PORT-TODO: `data.diff(oldData)` add/update/remove pipeline DEFERRED — the group is rebuilt
-        //   from scratch each render (same static deviation as RadarView / GraphView). The upstream
-        //   add/update/remove closures below are inlined into a single rebuild loop.
+        //   PORT-TODO: full `data.diff(oldData)` add/update/remove pipeline still DEFERRED. The reuse
+        //   slice below implements the upstream `update` path (updateProps shape morph) for the
+        //   same-item-count case; a count change falls back to the static rebuild (`add` path only).
         // const coordSys = seriesModel.coordinateSystem;
         guard let coordSys = seriesModel.coordinateSystem as? Parallel else {
-            // PORT-TODO: no parallel coord attached — nothing to render.
+            // PORT-TODO: no parallel coord attached — nothing to render. Drop persisted lines so a later
+            //   coord re-attach rebuilds fresh (can't morph against a stale group).
+            _ = dataGroup.removeAll()
+            self._lines = []
+            self._prevItemCount = -1
             self._data = data
             return
         }
         let dimensions = coordSys.dimensions
         let seriesScope = makeSeriesScope(seriesModel)
 
-        // upstream:
-        //   data.diff(oldData).add(add).update(update).remove(remove).execute();
-        //   function add(newDataIndex) { const line = addEl(...); updateElCommon(line, ...); }
-        //   function update(newDataIndex, oldDataIndex) { … updateProps(line, {shape:{points}}) … saveOldStyle … }
-        //   function remove(oldDataIndex) { dataGroup.remove(oldData.getItemGraphicEl(oldDataIndex)); }
-        // PORT-TODO: the diff + update-transition (updateProps/saveOldStyle) + remove are DEFERRED; the
-        //   static rebuild replays only the `add` path for every current data item.
-        for dataIndex in 0..<data.count() {
-            let line = addEl(data, dataGroup, dataIndex, dimensions, coordSys)
-            updateElCommon(line, data, dataIndex, seriesScope, seriesModel)
+        let itemCount = data.count()
+        // MORPH iff we already drew a line per current item and the item COUNT is unchanged (only values
+        //   moved). Then reuse each persisted polyline and animate its shape.points to the new geometry
+        //   (upstream's `update` closure: updateProps(line, {shape:{points}})). Otherwise rebuild fresh.
+        let canMorph = !self._lines.isEmpty && self._prevItemCount == itemCount && self._lines.count == itemCount
+
+        if canMorph {
+            for dataIndex in 0..<itemCount {
+                let line = self._lines[dataIndex]
+                let points = createLinePoints(data, dataIndex, dimensions, coordSys)
+                // Re-apply style/emphasis (parallelVisual may have re-dimmed the line via item-visual
+                //   `style.opacity`; color/state styles may have changed) WITHOUT the enter fade — the
+                //   line is already on-screen, so land its final opacity directly.
+                updateElCommon(line, data, dataIndex, seriesScope, seriesModel, morph: true)
+                data.setItemGraphicEl(dataIndex, line)
+                // Morph the polyline: target as [[Double]] (Animator 2D-array interpolation shape) — a
+                //   [VectorArray] target SNAPS (0 animators). PolylineShape.animationGet/Set("points")
+                //   already round-trips [[Double]].
+                let ptsD = points.map { [$0.x, $0.y] }
+                updateProps(line, ["shape": ["points": ptsD]], seriesModel, dataIndex)
+            }
+        } else {
+            // Rebuild fresh: wipe the group, drop stale lines, replay the `add` path (with enter fade).
+            _ = dataGroup.removeAll()
+            self._lines = []
+            for dataIndex in 0..<itemCount {
+                let line = addEl(data, dataGroup, dataIndex, dimensions, coordSys)
+                updateElCommon(line, data, dataIndex, seriesScope, seriesModel, morph: false)
+                self._lines.append(line)
+            }
         }
+        self._prevItemCount = itemCount
 
         // First create
         // upstream:
@@ -151,6 +183,8 @@ open class ParallelView: ChartView {
         self._initialized = true
         self._data = nil
         _ = self._dataGroup.removeAll()
+        self._lines = []
+        self._prevItemCount = -1
     }
 
     // upstream: incrementalRender(taskParams, seriesModel, ecModel)
@@ -176,6 +210,8 @@ open class ParallelView: ChartView {
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self._dataGroup.removeAll()
         self._data = nil
+        self._lines = []
+        self._prevItemCount = -1
     }
 }
 
@@ -247,7 +283,8 @@ private func updateElCommon(
     _ data: SeriesData,
     _ dataIndex: Int,
     _ seriesScope: ParallelDrawSeriesScope,
-    _ seriesModel: ParallelSeriesModel
+    _ seriesModel: ParallelSeriesModel,
+    morph: Bool = false
 ) {
     // el.useStyle(data.getItemVisual(dataIndex, 'style'));
     // el.style.fill = null;
@@ -259,8 +296,12 @@ private func updateElCommon(
     //   BEFORE zeroing it (invisible-line guard), build the line at opacity 0, then animate toward the
     //   final opacity via `initProps` (instant `attr` when animation is off — `Path.attrKV`'s partial
     //   "style"-dict merge lands the final opacity so the line is never left invisible).
+    // On a MORPH reuse the line is already on-screen: skip the zero/fade and land the final opacity
+    //   directly so brush/emphasis re-dimming (parallelVisual's item-visual `style.opacity`) still lands.
     let finalOpacity = style.opacity ?? 1.0
-    style.opacity = 0
+    if !morph {
+        style.opacity = 0
+    }
     el.useStyle(style)
     // `useStyle`→createStyle lays the style over DEFAULT_PATH_STYLE (fill '#000') and SKIPS the nil
     // `fill`, so `el.style.fill = null` is dropped and each polyline fills as a solid black polygon
@@ -291,8 +332,11 @@ private func updateElCommon(
     let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
     states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
 
-    // Enter-fade toward the captured final opacity (see the opacity note above where it was zeroed).
-    initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, dataIndex)
+    // Enter-fade toward the captured final opacity (see the opacity note above where it was zeroed). On
+    //   a morph reuse the style already carries the final opacity (no zeroing), so no fade is scheduled.
+    if !morph {
+        initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, dataIndex)
+    }
 }
 
 // upstream: function isEmptyValue(val: ParsedValue, axisType: OptionAxisType)

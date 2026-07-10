@@ -178,8 +178,26 @@ open class SunburstPiece: Sector {
         else {
             // graphic.updateProps(sector, { shape: sectorShape }, seriesModel);
             // saveOldStyle(sector);
-            // PORT-TODO: animation/transition DEFERRED — apply the target shape directly.
-            _ = sector.setShape(sectorShape)
+            // MORPH: a merge-mode value change (or a same-count drill re-root) recomputes this node's
+            //   angular span; animate the numeric Sector shape keys (SectorShape.animationSet tweens
+            //   cx/cy/r0/r/startAngle/endAngle) so the wedge SWEEPS to its new geometry rather than
+            //   snapping. The non-animated fields (clockwise, cornerRadius) are stamped onto the CURRENT
+            //   shape first (angles preserved) so updateProps only tweens the numeric span, then animate.
+            //   Instant (duration 0) when the series' animation is disabled — same as `attr`.
+            if var cur = sector.shape as? SectorShape {
+                cur.clockwise = sectorShape.clockwise
+                cur.cornerRadius = sectorShape.cornerRadius
+                _ = sector.setShape(cur)
+            }
+            updateProps(sector, ["shape": [
+                "cx": sectorShape.cx,
+                "cy": sectorShape.cy,
+                "r0": sectorShape.r0,
+                "r": sectorShape.r,
+                "startAngle": sectorShape.startAngle,
+                "endAngle": sectorShape.endAngle
+            ] as [String: Any]], seriesModel, node.dataIndex)
+            // saveOldStyle(sector);  — PORT-TODO: universalTransition style save DEFERRED (no-op stub).
         }
 
         // sector.useStyle(normalStyle);

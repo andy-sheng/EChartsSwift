@@ -59,6 +59,13 @@ open class SunburstView: ChartView {
     // upstream: private _oldChildren: DrawTreeNode[];
     private var _oldChildren: [TreeNode]?
 
+    // Persistent per-node SunburstPiece sectors (view REUSE, L5 fidelity) so a merge-mode setOption
+    //   value change — or a same-count drill re-root — MORPHS each wedge to its new angular span rather
+    //   than rebuilding-and-snapping. In emission order (preorder, virtualRoot + zero-value nodes
+    //   skipped). Reused when the emitted-node count is unchanged (`canMorph`); a node-count change
+    //   rebuilds fresh (with the sweep-open entrance). NOT the DataDiffer add/update/remove (deferred).
+    private var _sectorPieces: [SunburstPiece] = []
+
     open override func render(
         _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
@@ -102,27 +109,45 @@ open class SunburstView: ChartView {
         _ = self._oldChildren ?? []
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream `dualTravel(newChildren, oldChildren)` runs a `DataDiffer`
+        // MORPH render (view reuse): upstream `dualTravel(newChildren, oldChildren)` runs a `DataDiffer`
         //   (add/update/remove) keyed by `node.getId()`, mutating `node.piece` and reusing SunburstPiece
-        //   instances. The diff + SunburstPiece reuse + click events are DEFERRED (see PORT-TODOs), so the
-        //   group is rebuilt from scratch each render: one SunburstPiece Sector per node.
+        //   instances. The full add/update/remove DIFF is still deferred, but the reuse+morph is realised
+        //   here: emit the drawable nodes (skip the virtualRoot and, unless renderLabelForZeroData, the
+        //   zero-value nodes — the `doRenderNode` `newNode = null` filter), then reuse the persisted
+        //   SunburstPieces positionally when the emitted-node count is unchanged (`canMorph`) — each piece
+        //   morphs its sector to the new angular span via `updateData(firstCreate: false)`. A node-count
+        //   change rebuilds fresh (sweep-open entrance).
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
-        self.virtualPiece = nil
 
-        // dualTravel(newChildren, oldChildren);  →  static per-node emit (doRenderNode inlined below).
-        for newNode0 in newChildren {
-            // function doRenderNode(newNode, oldNode) { ... }  — static form (no oldNode):
-            var newNode: TreeNode? = newNode0
+        // Drawable nodes in preorder emission order (`doRenderNode`'s filter, statically applied):
+        //   skip the virtualRoot, and (unless renderLabelForZeroData) any zero/NaN-value node.
+        var emitNodes: [TreeNode] = []
+        for n in newChildren {
+            if n === virtualRoot { continue }
+            // if (!renderLabelForZeroData && !newNode.getValue()) { newNode = null; }  — not drawn.
+            if !renderLabelForZeroData, !zrValueTruthy(n.getValue()) { continue }
+            emitNodes.append(n)
+        }
 
-            // if (!renderLabelForZeroData && newNode && !newNode.getValue()) { newNode = null; }
-            if !renderLabelForZeroData, let n = newNode, !zrValueTruthy(n.getValue()) {
-                // Not render data with value 0
-                newNode = nil
+        // Morph iff we already have pieces and the drawable-node count is unchanged (values/angles
+        //   changed, or a same-count re-root). A count change (or first render) rebuilds fresh.
+        let canMorph = !self._sectorPieces.isEmpty && self._sectorPieces.count == emitNodes.count
+        if canMorph {
+            for (i, n) in emitNodes.enumerated() {
+                let piece = self._sectorPieces[i]
+                // updateData(false, ...) morphs the sector shape (updateProps sweep) and refreshes
+                //   style/label/states + the live `node` (so the persisted click binding drills to the
+                //   CURRENT node — see `_bindNodeClick`, which reads `piece.node`).
+                piece.updateData(false, n, seriesModel, ecModel, api)
+                // For tooltip: data.setItemGraphicEl(newNode.dataIndex, piece);
+                data.setItemGraphicEl(n.dataIndex, piece)
             }
-
-            // if (newNode !== virtualRoot && oldNode !== virtualRoot) { ... Add: new SunburstPiece ... }
-            if let n = newNode, n !== virtualRoot {
+        } else {
+            // Rebuild fresh: drop the persisted pieces (and the roll-up) and re-create.
+            _ = group.removeAll()
+            self.virtualPiece = nil
+            self._sectorPieces = []
+            for n in emitNodes {
                 // const piece = new SunburstPiece(newNode, seriesModel, ecModel, api);
                 let piece = SunburstPiece(n, seriesModel, ecModel, api)
                 // group.add(piece);
@@ -136,7 +161,8 @@ open class SunburstView: ChartView {
                 //   PORT-TODO), so — following the established per-element binding pattern — bind the
                 //   node's own SunburstPiece: the click BUBBLES from the hit child up to it. Same behaviour
                 //   as upstream `_initEvents` (nodeClick 'rootToNode' → `_rootToNode(node)`).
-                self._bindNodeClick(piece, n)
+                self._bindNodeClick(piece)
+                self._sectorPieces.append(piece)
             }
         }
 
@@ -156,9 +182,13 @@ open class SunburstView: ChartView {
     // Per-node click binding — the port's realisation of upstream `_initEvents()`. Reads the node's
     //   `nodeClick` (defaults to 'rootToNode' via the series option) and, when it is 'rootToNode', drills
     //   the view root to that node. The `'link'` branch (windowOpen) is DEFERRED. `false` disables it.
-    private func _bindNodeClick(_ piece: SunburstPiece, _ node: TreeNode) {
-        _ = piece.on("click", { [weak self] _, _ in
-            guard let self = self else { return nil }
+    private func _bindNodeClick(_ piece: SunburstPiece) {
+        // Read the node off the PIECE (not a captured `node`) so the binding — installed once at create
+        //   time and NOT re-installed when the piece is reused/morphed — always drills to the piece's
+        //   CURRENT node (updateData refreshes `piece.node`). This keeps one handler per piece (no
+        //   duplicate-handler accumulation across morphs).
+        _ = piece.on("click", { [weak self, weak piece] _, _ in
+            guard let self = self, let piece = piece, let node = piece.node else { return nil }
             // const nodeClick = node.getModel().get('nodeClick');
             //   `node.getModel()` is `Model?`; fall back to the series-level option so a node without an
             //   item model still honours the default ('rootToNode').
@@ -179,9 +209,15 @@ open class SunburstView: ChartView {
         _ virtualRoot: TreeNode, _ viewRoot: TreeNode,
         _ seriesModel: SunburstSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ group: Group
     ) {
+        // Drop any previously drawn roll-up sector first. The rebuild path already cleared it (removeAll
+        //   + virtualPiece = nil, so this is a no-op there); the MORPH path leaves the old roll-up in the
+        //   group, so remove it here before re-adding for the current view root.
+        if let vp = self.virtualPiece {
+            _ = group.remove(vp)
+            self.virtualPiece = nil
+        }
         // if (viewRoot.depth > 0) { ... Add virtualPiece ... }
         if viewRoot.depth > 0 {
-            // self.virtualPiece already cleared by the static rebuild → always Add.
             self.virtualPiece = SunburstPiece(virtualRoot, seriesModel, ecModel, api)
             _ = group.add(self.virtualPiece!)
 

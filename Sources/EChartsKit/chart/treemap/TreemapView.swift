@@ -149,6 +149,13 @@ open class TreemapView: ChartView {
     // private _storage = createStorage();
     private var _storage = RenderElementStorage()
 
+    // View REUSE (L5 fidelity, batch-A idiom): the per-node graphic elements in `_storage` PERSIST
+    //   across renders so a merge-mode setOption value change MORPHS the tiles (each node group slides
+    //   and its bg/content rect resizes to the new squarify slot) instead of rebuild-and-snap. This
+    //   holds the node count of the last render; a same-count value change morphs, a count change
+    //   rebuilds fresh (mirrors LineView's `_prevPointCount`). -1 before the first render.
+    private var _prevNodeCount: Int = -1
+
     // seriesModel; api; ecModel; (injected in render)
     public var seriesModel: TreemapSeriesModel?
     public var api: ExtensionAPI?
@@ -250,19 +257,36 @@ open class TreemapView: ChartView {
         }
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream builds new/old element storage, runs a hierarchical
-        //   `DataDiffer` (`dualTravel`) that reuses graphic elements by rawIndex/id and records
-        //   `lastsForAnimation` for `_doAnimation`, then defers removal via `renderFinally`. The diff +
-        //   element reuse + animation are DEFERRED, so the container is rebuilt from scratch each render
-        //   (SunburstView/PieView convention): one nodeGroup (background + optional content) per node,
-        //   travelled from the tree root.
+        // REUSE render deviation (batch-A morph idiom): upstream builds new/old element storage, runs a
+        //   hierarchical `DataDiffer` (`dualTravel`) that reuses graphic elements by rawIndex/id and
+        //   records `lastsForAnimation` for `_doAnimation`, then defers removal via `renderFinally`. The
+        //   full diff + `_doAnimation` (fade/drill re-root) are still DEFERRED, but the per-node elements
+        //   in `_storage` now PERSIST so a same-node-count value change MORPHS: each nodeGroup animates
+        //   to its new (x,y) and its bg/content rect resizes to the new layout slot (renderNode reuses by
+        //   rawIndex and `updateProps` the shape). A node-count change (or the first render) rebuilds
+        //   fresh — the container is wiped and the storage reset (SunburstView/PieView convention).
         // ------------------------------------------------------------------------------------------
-        _ = containerGroup.removeAll()
-        self._storage = RenderElementStorage()
+        // Count the view nodes of the new tree (structure is stable for a value-only merge). Compared to
+        //   the previous render's count to gate morph-vs-rebuild — consistent with `_prevNodeCount`
+        //   being stored as this same count below.
+        func countNodes(_ node: TreeNode) -> Int {
+            var n = 1
+            for child in node.viewChildren { n += countNodes(child) }
+            return n
+        }
+        let newNodeCount = countNodes(thisTree.root)
+        // Morph iff we already hold persistent node elements AND the node count is unchanged (values
+        //   changed → the layout re-laid the same tiles). Else rebuild fresh.
+        let canMorph = !self._storage.nodeGroup.isEmpty && self._prevNodeCount == newNodeCount
+
+        if !canMorph {
+            _ = containerGroup.removeAll()
+            self._storage = RenderElementStorage()
+        }
 
         // dualTravel([thisTree.root], ...) collapsed to a static pre-order travel.
         func travel(_ thisNode: TreeNode, _ parentGroup: Group, _ depth: Double) {
-            let group = self.renderNode(seriesModel, thisNode, parentGroup, depth)
+            let group = self.renderNode(seriesModel, thisNode, parentGroup, depth, canMorph)
             // group && dualTravel(thisNode.viewChildren || [], group, depth + 1);
             if let group = group {
                 for child in thisNode.viewChildren {
@@ -274,6 +298,7 @@ open class TreemapView: ChartView {
 
         // this._oldTree = thisTree; this._storage = thisStorage;
         self._oldTree = thisTree
+        self._prevNodeCount = newNodeCount
     }
 
     // upstream: _doAnimation(...) — DEFERRED (util/animation not ported; static render is the final state).
@@ -332,6 +357,9 @@ open class TreemapView: ChartView {
         _ = self._containerGroup?.removeAll()
         // this._storage = createStorage();
         self._storage = RenderElementStorage()
+        // Persistent-element reuse invariant: a cleared storage must not be treated as morphable next
+        //   render, so drop the remembered node count (a subsequent render rebuilds fresh).
+        self._prevNodeCount = -1
         // this._state = 'ready';
         self._state = "ready"
         // this._breadcrumb && this._breadcrumb.remove();
@@ -397,7 +425,8 @@ open class TreemapView: ChartView {
         _ seriesModel: TreemapSeriesModel,
         _ thisNode: TreeNode,
         _ parentGroup: Group,
-        _ depth: Double
+        _ depth: Double,
+        _ canMorph: Bool = false
     ) -> Group? {
         // Whether under viewRoot. (Static: thisNode is always non-null.)
 
@@ -428,6 +457,13 @@ open class TreemapView: ChartView {
 
         let thisRawIndex = thisNode.getRawIndex()
 
+        // MORPH reuse: on a same-node-count value change the storage persists, so the prior render's
+        //   node group / bg / content for this rawIndex are still present — capture them BEFORE the
+        //   creation blocks overwrite the storage slots, then animate (rather than recreate) them.
+        let oldGroup = canMorph ? self._storage.nodeGroup[thisRawIndex] : nil
+        let oldBg = canMorph ? self._storage.background[thisRawIndex] : nil
+        let oldContent = canMorph ? self._storage.content[thisRawIndex] : nil
+
         // const thisViewChildren = thisNode.viewChildren;
         let thisViewChildren = thisNode.viewChildren
         let upperHeight = (thisLayout["upperHeight"] as? Double) ?? 0
@@ -442,23 +478,32 @@ open class TreemapView: ChartView {
 
         // Node group
         // const group = giveGraphic('nodeGroup', Group);
+        // x,y are not set when el is above view root.
+        // group.x = thisLayout.x || 0; group.y = thisLayout.y || 0;
+        let layoutX = (thisLayout["x"] as? Double) ?? 0
+        let layoutY = (thisLayout["y"] as? Double) ?? 0
         let group: Group
-        if thisInvisible {
+        if let g = oldGroup {
+            // MORPH: reuse the node group (already parented in the container hierarchy) and SLIDE it to
+            //   the new layout slot via updateProps (animates x/y when the series has animation on, else
+            //   snaps). Storage slot already holds `g`.
+            group = g
+            updateProps(group, ["x": layoutX, "y": layoutY], seriesModel, thisNode.dataIndex)
+            group.markRedraw()
+        }
+        else if thisInvisible {
             // If invisible and no old element, do not create new element (for optimizing).
             return nil
         }
         else {
             group = Group()
             self._storage.nodeGroup[thisRawIndex] = group
+            // parentGroup.add(group);
+            _ = parentGroup.add(group)
+            group.x = layoutX
+            group.y = layoutY
+            group.markRedraw()
         }
-
-        // parentGroup.add(group);
-        _ = parentGroup.add(group)
-        // x,y are not set when el is above view root.
-        // group.x = thisLayout.x || 0; group.y = thisLayout.y || 0;
-        group.x = (thisLayout["x"] as? Double) ?? 0
-        group.y = (thisLayout["y"] as? Double) ?? 0
-        group.markRedraw()
         // inner(group).nodeWidth = thisWidth; inner(group).nodeHeight = thisHeight;  -> DEFERRED (animation).
 
         // if (thisLayout.isAboveViewRoot) { return group; }
@@ -468,12 +513,23 @@ open class TreemapView: ChartView {
 
         // Background
         // const bg = giveGraphic('background', Rect, depth, Z2_BG);
-        let bg = Rect()
-        bg.z2 = calculateZ2(depth, Z2_BG)
-        self._storage.background[thisRawIndex] = bg
+        // MORPH: reuse the existing bg rect (already added to `group`) so its shape resizes rather than
+        //   snapping; else create fresh.
+        let bg: Rect
+        let bgReuse: Bool
+        if let oldBg = oldBg {
+            bg = oldBg
+            bgReuse = true
+        }
+        else {
+            bg = Rect()
+            bg.z2 = calculateZ2(depth, Z2_BG)
+            self._storage.background[thisRawIndex] = bg
+            bgReuse = false
+        }
         // bg && renderBackground(group, bg, isParent && thisLayout.upperLabelHeight);
         let upperLabelHeight = (thisLayout["upperLabelHeight"] as? Double) ?? 0
-        renderBackground(group, bg, isParent && upperLabelHeight != 0)
+        renderBackground(group, bg, isParent && upperLabelHeight != 0, bgReuse)
 
         // Phase 49 (hover-emphasis): upstream TreemapView.ts:817-825.
         //   const emphasisModel = nodeModel.getModel('emphasis');
@@ -500,11 +556,22 @@ open class TreemapView: ChartView {
         }
         else {
             // const content = giveGraphic('content', Rect, depth, Z2_CONTENT);
-            let content = Rect()
-            content.z2 = calculateZ2(depth, Z2_CONTENT)
-            self._storage.content[thisRawIndex] = content
+            // MORPH: reuse the existing content rect (already added to `group`) so its shape resizes
+            //   rather than snapping; else create fresh.
+            let content: Rect
+            let contentReuse: Bool
+            if let oldContent = oldContent {
+                content = oldContent
+                contentReuse = true
+            }
+            else {
+                content = Rect()
+                content.z2 = calculateZ2(depth, Z2_CONTENT)
+                self._storage.content[thisRawIndex] = content
+                contentReuse = false
+            }
             // content && renderContent(group, content);
-            renderContent(group, content)
+            renderContent(group, content, contentReuse)
 
             // (bg as ECElement).disableMorphing = true;  -> DEFERRED (morph/animation not ported).
             // Leaf node: the whole node GROUP is the highDown dispatcher (upstream TreemapView.ts:852-859) —
@@ -525,14 +592,23 @@ open class TreemapView: ChartView {
         // | Procedures in renderNode |
         // ----------------------------
 
-        func renderBackground(_ group: Group, _ bg: Rect, _ useUpperLabel: Bool) {
+        func renderBackground(_ group: Group, _ bg: Rect, _ useUpperLabel: Bool, _ reuse: Bool) {
             // const ecData = getECData(bg); ecData.dataIndex = thisNode.dataIndex; ecData.seriesIndex = ...;
             let ecData = innerStore.getECData(bg)
             ecData.dataIndex = Double(thisNode.dataIndex)
             ecData.seriesIndex = seriesModel.seriesIndex
 
             // bg.setShape({x: 0, y: 0, width: thisWidth, height: thisHeight, r: borderRadius});
-            _ = bg.setShape(makeRectShape(0, 0, thisWidth, thisHeight, borderRadius))
+            if reuse {
+                // MORPH: keep the rect identity and RESIZE via updateProps (RectShape.animationGet/Set
+                //   tween x/y/width/height as scalar Doubles). The corner radius `r` is not tweened, so
+                //   fold it onto the current shape directly before animating.
+                applyRectRadius(bg, borderRadius)
+                updateProps(bg, ["shape": ["x": 0.0, "y": 0.0, "width": thisWidth, "height": thisHeight]], seriesModel, thisNode.dataIndex)
+            }
+            else {
+                _ = bg.setShape(makeRectShape(0, 0, thisWidth, thisHeight, borderRadius))
+            }
 
             if thisInvisible {
                 // processInvisible(bg);  -> DEFERRED (delayed-invisible is an animation concern).
@@ -568,10 +644,17 @@ open class TreemapView: ChartView {
                 //   lands it instantly when off. Upstream treemap's own rect enter transition (position/size
                 //   morph via util/animation) is DEFERRED; this mirrors the shipped Funnel/heatmap fade.
                 var bgStyle = barStyleFromDict(normalStyle)
-                let bgFinalOpacity = bgStyle.opacity ?? 1
-                bgStyle.opacity = 0
-                bg.useStyle(bgStyle)
-                initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
+                if reuse {
+                    // MORPH: the tile is already on-screen at full opacity — set the (possibly recoloured)
+                    //   style directly; do NOT re-run the 0→final entrance fade (it would re-collapse it).
+                    bg.useStyle(bgStyle)
+                }
+                else {
+                    let bgFinalOpacity = bgStyle.opacity ?? 1
+                    bgStyle.opacity = 0
+                    bg.useStyle(bgStyle)
+                    initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
+                }
                 // Phase 49 (hover-emphasis): upstream stamps the emphasis/blur/select itemStyle states +
                 //   setDefaultStateProxy on the bg rect (TreemapView.ts:910-914). `setStatesStylesFromModel`
                 //   is the ported equivalent (ensureState(state).style = model.getItemStyle()); the state
@@ -581,10 +664,13 @@ open class TreemapView: ChartView {
             }
 
             // group.add(bg);
-            _ = group.add(bg)
+            // MORPH: a reused bg is already parented — only add a freshly-created rect.
+            if !reuse {
+                _ = group.add(bg)
+            }
         }
 
-        func renderContent(_ group: Group, _ content: Rect) {
+        func renderContent(_ group: Group, _ content: Rect, _ reuse: Bool) {
             let ecData = innerStore.getECData(content)
             ecData.dataIndex = Double(thisNode.dataIndex)
             ecData.seriesIndex = seriesModel.seriesIndex
@@ -595,7 +681,14 @@ open class TreemapView: ChartView {
 
             content.culling = true
             // content.setShape({x: borderWidth, y: borderWidth, width, height, r: borderRadius});
-            _ = content.setShape(makeRectShape(borderWidth, borderWidth, contentWidth, contentHeight, borderRadius))
+            if reuse {
+                // MORPH: resize the reused content rect (see renderBackground).
+                applyRectRadius(content, borderRadius)
+                updateProps(content, ["shape": ["x": borderWidth, "y": borderWidth, "width": contentWidth, "height": contentHeight]], seriesModel, thisNode.dataIndex)
+            }
+            else {
+                _ = content.setShape(makeRectShape(borderWidth, borderWidth, contentWidth, contentHeight, borderRadius))
+            }
 
             if thisInvisible {
                 content.invisible = true
@@ -616,17 +709,26 @@ open class TreemapView: ChartView {
                 // content.setStyle(normalStyle);
                 // PORT ADDITION (entrance animation): heatmap-style opacity fade-in (see renderBackground).
                 var contentStyle = barStyleFromDict(normalStyle)
-                let contentFinalOpacity = contentStyle.opacity ?? 1
-                contentStyle.opacity = 0
-                content.useStyle(contentStyle)
-                initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
+                if reuse {
+                    // MORPH: keep the on-screen opacity; do not re-run the entrance fade.
+                    content.useStyle(contentStyle)
+                }
+                else {
+                    let contentFinalOpacity = contentStyle.opacity ?? 1
+                    contentStyle.opacity = 0
+                    content.useStyle(contentStyle)
+                    initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
+                }
                 // Phase 49 (hover-emphasis): emphasis/blur/select itemStyle states + setDefaultStateProxy on
                 //   the content rect (TreemapView.ts:961-962). See renderBackground for the port equivalence.
                 states.setStatesStylesFromModel(content, nodeModel)
             }
 
             // group.add(content);
-            _ = group.add(content)
+            // MORPH: a reused content rect is already parented — only add a freshly-created rect.
+            if !reuse {
+                _ = group.add(content)
+            }
         }
 
         // upstream: processInvisible(element) — DEFERRED (delayed invisible is an animation concern).
@@ -734,6 +836,16 @@ private func rectRadiusFromOption(_ r: Any?) -> RectRadius? {
     }
     let d = (r as? Double) ?? Double((r as? Int) ?? 0)
     return d != 0 ? .number(d) : nil
+}
+
+// MORPH helper: fold the (possibly changed) corner radius onto a reused rect's CURRENT shape without
+//   disturbing its x/y/width/height — those are animated separately by updateProps and must keep their
+//   current values as the tween's start. `r` is not a tweened field, so it is applied directly.
+private func applyRectRadius(_ rect: Rect, _ r: Any?) {
+    guard var shape = rect.shape as? RectShape else { return }
+    shape.r = rectRadiusFromOption(r)
+    rect.shape = shape
+    rect.dirtyShape()
 }
 
 private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {

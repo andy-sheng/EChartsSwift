@@ -71,7 +71,16 @@ open class ThemeRiverView: ChartView {
     //   structural fidelity / a future diff port.
     private var _layersSeries: [[String: Any]]?
     // upstream: private _layers: graphic.Group[] = [];
-    private var _layers: [Group] = []
+    //   VIEW REUSE (L5 fidelity): the per-layer band groups AND the bands themselves are PERSISTED across
+    //   renders (the outer `group` is no longer wiped every time) so a merge-mode setOption value change
+    //   MORPHS each band's edges (updateProps shape) instead of rebuild-and-snap. `_bandGroups` holds the
+    //   per-layer child Groups (upstream `_layers`); `_bands` holds their single ThemeRiverBand each,
+    //   index-keyed by drawable-layer order. `_prevSampleCounts` gates morph-vs-rebuild: a layer add/remove
+    //   or a per-layer time-sample count change rebuilds fresh (the edge arrays interpolate element-wise,
+    //   so the counts must match to morph); a same-shape value change morphs.
+    private var _bandGroups: [Group] = []
+    private var _bands: [ThemeRiverBand] = []
+    private var _prevSampleCounts: [Int] = []
 
     // upstream: render(seriesModel: ThemeRiverSeriesModel, ecModel: GlobalModel, api: ExtensionAPI)
     open override func render(
@@ -100,7 +109,9 @@ open class ThemeRiverView: ChartView {
             // An unlaid-out series can not be positioned; render nothing (upstream assumes layout ran).
             _ = group.removeAll()
             self._layersSeries = layersSeries
-            self._layers = []
+            self._bandGroups = []
+            self._bands = []
+            self._prevSampleCounts = []
             return
         }
 
@@ -112,16 +123,21 @@ open class ThemeRiverView: ChartView {
         group.y = rect.y + (numOpt(boundaryGap.first) ?? 0)
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream drives a `DataDiffer` (keyGetter = layer name) that adds /
-        //   updates / removes per-layer `graphic.Group`s each holding one `ECPolygon`, then animates
-        //   (`updateProps` / grid clip) and attaches an emphasis-aware label. The diff + ECPolygon +
-        //   smoothing + label + emphasis + animation are all deferred (see the import PORT-TODOs), so
-        //   the group is rebuilt from scratch and every layer is drawn as a plain filled band.
+        // VIEW REUSE deviation from the earlier STATIC rebuild: upstream drives a `DataDiffer` (keyGetter =
+        //   layer name) that adds / updates / removes per-layer `graphic.Group`s each holding one
+        //   `ECPolygon`, then animates. The full add/remove diff is still collapsed, but the UPDATE path is
+        //   now faithful: the per-layer bands are PERSISTED and, on a same-shape (same drawable-layer count
+        //   AND same per-layer sample count) merge-mode value change, each band's edges MORPH via
+        //   `updateProps({shape})` — the stream slides to the new values instead of rebuild-and-snap. A
+        //   layer add/remove or a per-layer sample-count change rebuilds fresh (the edge arrays interpolate
+        //   element-wise, so their lengths must be stable to morph), keeping the opacity-fade entrance.
+        //   Label + emphasis + grid-clip reveal remain as documented in the PORT-TODOs.
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
 
-        var newLayersGroups: [Group] = []
-
+        // Gather the drawable per-layer render info first (skipping empty layers), so the morph gate can
+        //   compare the DRAWABLE band count + per-layer sample counts against the persisted bands.
+        struct LayerRender { var points0: [VectorArray]; var points1: [VectorArray]; var styleBag: Any?; var indices: [Int] }
+        var renders: [LayerRender] = []
         // for each layer (upstream: dataDiffer.add/update, both run `process`)
         for layer in layersSeries {
             // const indices = layersSeries[idx].indices;
@@ -154,46 +170,86 @@ open class ThemeRiverView: ChartView {
                 // style = data.getItemVisual(indices[j], 'style');
                 styleBag = data.getItemVisual(idx, "style")
             }
+            renders.append(LayerRender(points0: points0, points1: points1, styleBag: styleBag, indices: indices))
+        }
 
-            // upstream 'add' branch: new graphic.Group() holding a new ECPolygon; the 'update' branch
-            //   reuses the old group's child. Both collapse to: build the band group fresh.
-            //   const layerGroup = new graphic.Group();
-            let layerGroup = Group()
+        // Morph iff we already drew the same number of bands AND each band's time-sample count is unchanged
+        //   (upperPoints/lowerPoints interpolate element-wise, so their lengths must match). Otherwise
+        //   rebuild fresh — wipe the group and drop the persisted bands.
+        let sampleCounts = renders.map { $0.points0.count }
+        let canMorph = !_bands.isEmpty
+            && _bands.count == renders.count
+            && _prevSampleCounts == sampleCounts
+        if !canMorph {
+            _ = group.removeAll()
+            _bandGroups = []
+            _bands = []
+        }
+
+        // for each drawable layer (the diff 'add'→rebuild / 'update'→morph collapse to this branch)
+        for (layerIdx, r) in renders.enumerated() {
+            let points0 = r.points0
+            let points1 = r.points1
+            let styleBag = r.styleBag
+            let indices = r.indices
 
             // polygon = new ECPolygon({ shape: { points: points0, stackedOnPoints: points1,
             //   smooth: 0.4, stackedOnSmooth: 0.4, smoothConstraint: false }, z2: 0 });
-            //   STATIC reproduction: a plain Polygon whose ring is the top edge forward + the bottom
-            //   edge reversed (the closed area ECPolygon fills; smoothing deferred).
             // upstream ECPolygon smooths the top edge (points0) and the bottom edge (stackedOnPoints)
-            //   as SEPARATE open splines joined by straight end caps. A single closed Polygon ring with
-            //   `smooth` instead rounds the caps into bulbous blobs AND makes each band's shared boundary
-            //   diverge from its neighbour's (white gaps), because the same edge is smoothed in two
-            //   different ring contexts. The `ThemeRiverBand` path below reproduces ECPolygon's dual-edge
-            //   smoothing so adjacent bands share an identical boundary curve (contiguous stream).
-            var bandShape = ThemeRiverBandShape()
-            bandShape.upperPoints = points1   // (x, y0 + y) — the band's far edge
-            bandShape.lowerPoints = points0   // (x, y0)     — the band's near edge (== the band below's far edge)
-            bandShape.smooth = 0.4
-            let polygon = ThemeRiverBand(["shape": bandShape as PathShape])
-            polygon.z2 = 0
-
-            // polygon.useStyle(style);
+            //   as SEPARATE open splines joined by straight end caps. The `ThemeRiverBand` path reproduces
+            //   that dual-edge smoothing so adjacent bands share an identical boundary curve (contiguous
+            //   stream). `upperPoints` = points1 (far edge), `lowerPoints` = points0 (near edge).
             //   The item visual 'style' bag → typed `PathStyleProps` via the shared bridge (BarView).
-            // Entrance animation (OPACITY FADE, mirroring FunnelView/HeatmapView/MapView/TreemapView):
-            //   upstream ThemeRiverView reveals each band via a grid-clip `Rect` that expands under
-            //   `initProps` (createGridClipShape). The grid-clip `Rect` + `updateProps` clip port is
-            //   deferred (see the createGridClipShape PORT-TODO); the closest existing-infra entrance is
-            //   the shared opacity fade — set `style.opacity = 0` before `useStyle`, then animate toward
-            //   the captured final opacity via `initProps({style:{opacity}})`. Capture the final opacity
-            //   BEFORE zeroing so the band lands visible (the animation-off path relies on `Path.attrKV`'s
-            //   partial-"style"-dict merge to actually set it — without it the band would stay invisible).
             var bandStyle = barStyleFromDict(styleBag)
             let finalOpacity = bandStyle.opacity ?? 1
-            bandStyle.opacity = 0
-            polygon.useStyle(bandStyle)
-            // Key the fade to the layer's last data index (the same index upstream labels / keys the band
-            //   by — `indices[j - 1]` — used below for the label and setItemGraphicEl).
-            initProps(polygon, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, indices.last)
+
+            let polygon: ThemeRiverBand
+            if canMorph {
+                // upstream 'update' branch: reuse the layer's existing band and MORPH its edges. The band
+                //   is already visible, so land the style at its final opacity (no re-fade), then schedule
+                //   the shape-morph animator. TRAP: the updateProps shape-array targets MUST be [[Double]]
+                //   (matching ThemeRiverBandShape.animationGet) — a [VectorArray] target snaps (0 animators).
+                polygon = _bands[layerIdx]
+                bandStyle.opacity = finalOpacity
+                polygon.useStyle(bandStyle)
+                let upperD = points1.map { [$0.x, $0.y] }
+                let lowerD = points0.map { [$0.x, $0.y] }
+                updateProps(
+                    polygon,
+                    ["shape": ["upperPoints": upperD, "lowerPoints": lowerD, "smooth": 0.4] as [String: Any]],
+                    seriesModel
+                )
+            } else {
+                // upstream 'add' branch: new graphic.Group() holding a new ECPolygon.
+                //   const layerGroup = new graphic.Group();
+                let layerGroup = Group()
+
+                var bandShape = ThemeRiverBandShape()
+                bandShape.upperPoints = points1   // (x, y0 + y) — the band's far edge
+                bandShape.lowerPoints = points0   // (x, y0)     — the band's near edge (== band below's far edge)
+                bandShape.smooth = 0.4
+                polygon = ThemeRiverBand(["shape": bandShape as PathShape])
+                polygon.z2 = 0
+
+                // Entrance animation (OPACITY FADE, mirroring FunnelView/HeatmapView/MapView/TreemapView):
+                //   set `style.opacity = 0` before `useStyle`, then animate toward the captured final
+                //   opacity via `initProps({style:{opacity}})`. Capture the final opacity BEFORE zeroing so
+                //   the band lands visible (the animation-off path relies on `Path.attrKV`'s partial-"style"-
+                //   dict merge to actually set it — without it the band would stay invisible).
+                bandStyle.opacity = 0
+                polygon.useStyle(bandStyle)
+                // Key the fade to the layer's last data index (the same index upstream labels / keys by).
+                initProps(polygon, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, indices.last)
+
+                // Name the band 'item' (per-datum element name, matching FunnelView/PieView).
+                polygon.name = "item"
+
+                // layerGroup.add(polygon);  group.add(layerGroup);
+                _ = layerGroup.add(polygon)
+                _ = group.add(layerGroup)
+                _bandGroups.append(layerGroup)
+                _bands.append(polygon)
+            }
 
             // Per-layer label via the SHARED LABEL CORE (labelStyle.setLabelStyle), faithful to upstream
             //   ThemeRiverView: route the layer/series name through the core (it creates/updates the band's
@@ -254,15 +310,6 @@ open class ThemeRiverView: ChartView {
                 }
             }
 
-            // Name the band 'item' (per-datum element name, matching FunnelView/PieView; upstream leaves
-            //   it unset — harmless, for hit-testing/debug parity).
-            polygon.name = "item"
-
-            // layerGroup.add(polygon);  group.add(layerGroup);
-            _ = layerGroup.add(polygon)
-            _ = group.add(layerGroup)
-            newLayersGroups.append(layerGroup)
-
             // data.setItemGraphicEl(idx, polygon);  (upstream keys by the diff `idx`; the last data index
             //   of the layer is the closest static analogue — upstream also labels indices[j - 1]).
             if let last = indices.last {
@@ -270,17 +317,17 @@ open class ThemeRiverView: ChartView {
             }
 
             // PORT-TODO (DEFERRED):
-            //   - Animation: `polygon.setClipPath(createGridClipShape(...))` grid-reveal + `updateProps`
-            //     + `saveOldStyle` (basicTransition / initProps). `createGridClipShape` is NOT ported.
+            //   - Animation: DONE for the merge-mode UPDATE path (updateProps edge morph); the initial
+            //     grid-clip reveal (`createGridClipShape`) is still an opacity fade.
             //   - Label: DONE — routed through the shared label core above (setLabelStyle + textConfig
             //     { position: null, local: true } + manual textLayout placement).
             //   - Emphasis / states: `setStatesStylesFromModel(polygon, seriesModel)` +
             //     `toggleHoverEmphasis(polygon, focus, blurScope, disabled)`.
         }
 
-        // this._layersSeries = layersSeries;  this._layers = newLayersGroups;
+        // this._layersSeries = layersSeries;  this._layers = <persisted band groups>;
         self._layersSeries = layersSeries
-        self._layers = newLayersGroups
+        self._prevSampleCounts = sampleCounts
     }
 
     // The base `ChartView.remove`/`dispose` carry (ecModel, api); upstream ThemeRiverView does not

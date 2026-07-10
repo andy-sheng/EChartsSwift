@@ -112,6 +112,22 @@ open class HeatmapView: ChartView {
     // upstream: private _progressiveEls: Element[];
     private var _progressiveEls: [Element]?
 
+    // Persistent per-cell rects for the CARTESIAN grid morph path (L5 transition fidelity). Keyed by
+    //   DATA index. On a merge-mode setOption value change that keeps the same cell count, the existing
+    //   cell Rect is REUSED and its fill (and geometry, if the grid resized) is `updateProps`-morphed to
+    //   the new visualMap color instead of `group.removeAll()`-rebuilding and snapping. `_prevCellCount`
+    //   (the DATA count of the previous cartesian render) gates morph-vs-rebuild; a cell-count change (or
+    //   a first render / incremental render / a non-cartesian branch) rebuilds fresh and resets these.
+    private var _cellRects: [Int: Rect] = [:]
+    private var _prevCellCount: Int = -1
+
+    // Drop the persistent cartesian cell state — called when a non-cartesian branch (calendar/geo) or an
+    //   incremental render wipes the group, so a later cartesian render can't reuse detached rects.
+    private func _resetCellState() {
+        self._cellRects = [:]
+        self._prevCellCount = -1
+    }
+
     // upstream: render(seriesModel, ecModel, api) { ... }
     open override func render(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
@@ -149,18 +165,24 @@ open class HeatmapView: ChartView {
         // Clear previously rendered progressive elements.
         self._progressiveEls = nil
 
-        _ = self.group.removeAll()
-
         // const coordSys = seriesModel.coordinateSystem;
         // if (coordSys.type === 'cartesian2d' || 'calendar' || 'matrix') { this._renderOnGridLike(...); }
         // else if (isGeoLikeCoordSys(coordSys)) { this._renderOnGeo(...); }
         if seriesModel.coordinateSystem is Cartesian2D {
+            // NOTE: the cartesian path does NOT `group.removeAll()` up front — it morphs the persistent
+            //   cell rects when the cell count is unchanged (see `_renderOnGridLike`), and only wipes on a
+            //   rebuild (cell-count change / first render).
             self._renderOnGridLike(seriesModel, api, 0, seriesModel.getData().count(), false)
         }
         else if let calendar = seriesModel.coordinateSystem as? Calendar {
+            // Non-cartesian branches rebuild fresh: wipe the group and drop the cartesian cell state.
+            _ = self.group.removeAll()
+            self._resetCellState()
             self._renderOnCalendar(seriesModel, calendar)
         }
         else if let geo = seriesModel.coordinateSystem as? Geo {
+            _ = self.group.removeAll()
+            self._resetCellState()
             // else if (isGeoLikeCoordSys(coordSys)) { this._renderOnGeo(coordSys, seriesModel, vm, api); }
             if let vm = visualMapOfThisSeries {
                 self._renderOnGeo(geo, seriesModel, vm, api)
@@ -168,6 +190,8 @@ open class HeatmapView: ChartView {
         }
         else {
             // PORT-TODO: matrix `_renderOnGridLike` branch is deferred.
+            _ = self.group.removeAll()
+            self._resetCellState()
         }
     }
 
@@ -215,6 +239,8 @@ open class HeatmapView: ChartView {
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
         _ = self.group.removeAll()
+        // Incremental mode appends rects untracked; drop the morph state so a later full render rebuilds.
+        self._resetCellState()
     }
 
     // upstream: incrementalRender(params, seriesModel, ecModel, api) { ... }
@@ -293,6 +319,17 @@ open class HeatmapView: ChartView {
         let group = self.group
         let data = seriesModel.getData()
 
+        // ── Morph decision (L5 transition fidelity, cartesian only) ──────────────────────────────
+        //   A full (non-incremental) render REUSES the persistent per-cell rects when the cell count is
+        //   unchanged (a merge-mode value change → same cells, new colors). Then per cell the fill (and
+        //   geometry, if the grid resized) is `updateProps`-morphed toward its new value. Otherwise (first
+        //   render, cell-count change, or incremental) rebuild fresh: wipe the group and drop the state.
+        let canMorph = !useIncremental && !self._cellRects.isEmpty && self._prevCellCount == data.count()
+        if !useIncremental && !canMorph {
+            _ = group.removeAll()
+            self._cellRects = [:]
+        }
+
         // upstream reads the emphasis/blur/select item styles + label state models here.
         // PORT-TODO: emphasis/blur/select item styles + `getLabelStatesModels` + focus/blurScope/
         //   emphasisDisabled are deferred (`util/states` + `label/labelStyle` not ported).
@@ -328,6 +365,12 @@ open class HeatmapView: ChartView {
                 || xVal > xAxisExtent[1]
                 || yVal < yAxisExtent[0]
                 || yVal > yAxisExtent[1] {
+                // On morph, a cell that WAS valid but is now empty/out-of-extent must be removed so it
+                //   doesn't linger with its old color.
+                if let old = self._cellRects[idx] {
+                    _ = group.remove(old)
+                    self._cellRects[idx] = nil
+                }
                 idx += 1
                 continue
             }
@@ -344,10 +387,57 @@ open class HeatmapView: ChartView {
                 borderRadius = itemModel.get(["itemStyle", "borderRadius"])
             }
 
+            // Cell geometry (grid position fixed by the coord; band width/height + 0.5px).
+            let cellX = point[0] - width / 2
+            let cellY = point[1] - height / 2
+
+            // el.useStyle(style) — the fill color the visualMap encoding wrote + the itemStyle border.
+            // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
+            //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
+            //   keys (fill/stroke/lineWidth/opacity/...) — same deviation as BarView.
+            var cellStyle = heatmapStyleFromDict(style)
+            let finalOpacity = cellStyle.opacity ?? 1
+            // Extract the visualMap-encoded fill as a color STRING (the shape the Animator's color-tween
+            //   path consumes) so it can be morphed via `updateProps({style:{fill:...}})`.
+            let fillColorStr: String? = { if case let .string(s)? = cellStyle.fill { return s }; return nil }()
+
+            if canMorph, let rect = self._cellRects[idx] {
+                // ── MORPH the reused cell (merge-mode value change) ──────────────────────────────────
+                //   For heatmap the meaningful transition is the FILL COLOR (and geometry if the grid
+                //   resized). Apply the non-animated paint keys (stroke/lineWidth/borderRadius) instantly
+                //   while PRESERVING the current fill/opacity, then `updateProps` tweens fill (current →
+                //   new visualMap color), opacity, and the rect geometry to the new value.
+                var instantStyle = cellStyle
+                instantStyle.fill = rect.pathStyle?.fill        // keep current color — animate it below
+                instantStyle.opacity = rect.pathStyle?.opacity  // keep current opacity — animate it below
+                rect.useStyle(instantStyle)
+                // Corner radii are not tweened (RectShape.animationSet omits `r`); set instantly on the
+                //   shape struct (setShape(key,value) is a no-op for typed shapes, so mutate + replace).
+                if var rectShape = rect.shape as? RectShape {
+                    rectShape.r = heatmapRectRadius(borderRadius)
+                    _ = rect.setShape(rectShape)
+                }
+
+                var styleProps: [String: Any] = ["opacity": finalOpacity]
+                if let fc = fillColorStr { styleProps["fill"] = fc }
+                updateProps(
+                    rect,
+                    [
+                        "shape": ["x": cellX, "y": cellY, "width": width, "height": height] as [String: Any],
+                        "style": styleProps
+                    ],
+                    seriesModel, idx
+                )
+                data.setItemGraphicEl(idx, rect)
+                idx += 1
+                continue
+            }
+
+            // ── BUILD a fresh cell (first render / rebuild / newly-valid cell on morph) ───────────────
             // rect = new graphic.Rect({ shape: { x, y, width, height }, style });
             var shape = RectShape()
-            shape.x = point[0] - width / 2
-            shape.y = point[1] - height / 2
+            shape.x = cellX
+            shape.y = cellY
             shape.width = width
             shape.height = height
             // rect.shape.r = borderRadius;
@@ -360,16 +450,10 @@ open class HeatmapView: ChartView {
             // upstream: setLabelStyle(...) — the value label on each cell.
             // PORT-TODO: label block deferred (`label/labelStyle` + `getRawValue` not ported).
 
-            // el.useStyle(style) — the fill color the visualMap encoding wrote + the itemStyle border.
-            // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
-            //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
-            //   keys (fill/stroke/lineWidth/opacity/...) — same deviation as BarView.
             // Entrance animation (opacity fade-in, mirroring FunnelPiece): construct the cell at opacity 0,
             //   then `initProps({style:{opacity}})` toward the intended (visualMap-encoded) final opacity.
             //   With series animation off, `initProps` falls back to an instant `attr` of the partial
             //   "style" dict (Path.attrKV merge) so the cell lands at its final, VISIBLE opacity.
-            var cellStyle = heatmapStyleFromDict(style)
-            let finalOpacity = cellStyle.opacity ?? 1
             cellStyle.opacity = 0
             rect.useStyle(cellStyle)
             initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
@@ -382,6 +466,10 @@ open class HeatmapView: ChartView {
             //   hover layer. PORT-TODO: states/emphasis + incremental id deferred.
 
             _ = group.add(rect)
+            // Persist the cell for a later morph (cartesian full-render path only).
+            if !useIncremental {
+                self._cellRects[idx] = rect
+            }
             // data.setItemGraphicEl(idx, rect);
             data.setItemGraphicEl(idx, rect)
 
@@ -393,7 +481,10 @@ open class HeatmapView: ChartView {
             idx += 1
         }
 
-        _ = useIncremental
+        // Record the DATA count driving the next morph-vs-rebuild decision (full cartesian render only).
+        if !useIncremental {
+            self._prevCellCount = data.count()
+        }
     }
 
     // upstream: _renderOnGeo(geo, seriesModel, visualMapModel, api) { ... }
