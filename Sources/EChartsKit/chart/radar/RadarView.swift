@@ -66,6 +66,19 @@ open class RadarView: ChartView {
     // upstream: private _data: SeriesData<RadarSeriesModel>;
     private var _data: SeriesData?
 
+    // Persistent per-item elements (upstream keeps them across renders via the `data.diff` add/update/
+    //   remove pipeline). Persisting them lets a merge-mode setOption value change MORPH each polygon/
+    //   polyline `shape.points` (the data ring slides to its new vertices) instead of rebuilding-and-
+    //   snapping. `_prevItemCount`/`_prevPointCount` gate morph-vs-rebuild: a same-count value change
+    //   (same #items + same #indicators) morphs; an item add/remove or an indicator count change rebuilds
+    //   fresh with the collapse-to-center entrance. Index-aligned with `data` (one entry per drawn item).
+    private var _itemGroups: [Group] = []
+    private var _polylines: [Polyline] = []
+    private var _polygons: [Polygon] = []
+    private var _symbolGroups: [Group] = []
+    private var _prevItemCount: Int = -1
+    private var _prevPointCount: Int = -1
+
     // upstream: render(seriesModel: RadarSeriesModel, ecModel: GlobalModel, api: ExtensionAPI)
     open override func render(
         _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
@@ -74,45 +87,126 @@ open class RadarView: ChartView {
         let seriesModel = seriesModelBase as! RadarSeriesModel
 
         // const polar = seriesModel.coordinateSystem;
-        //   PORT-TODO: `polar` (the radar coord) is only read by `getInitialPoints` — the collapse-to-
-        //   center enter animation — which is DROPPED with graphic.initProps (animation DEFERRED). The
-        //   final vertex positions come from `data.getItemLayout(idx)` (the radarLayout stage already
-        //   stored the closed point ring via data.setItemLayout), so the coord is not needed here.
+        //   Read here for the collapse-to-center entrance (`getInitialPoints`). The final vertex positions
+        //   come from `data.getItemLayout(idx)` (the radarLayout stage stored the closed ring), so the
+        //   coord is only needed for the enter animation's collapsed "from" state.
         let group = self.group
 
         let data = seriesModel.getData()
-        // const oldData = this._data;  — PORT-TODO: diff against previous render DEFERRED (rebuild below).
-
-        // -------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream runs a `data.diff(oldData)` add/update/remove pipeline
-        //   (create polyline+polygon+symbolGroup per new item, morph points on update, remove on leave)
-        //   then a second `data.eachItemGraphicEl` pass that styles line/area/symbols and wires emphasis.
-        //   The diff + enter/update/remove animation (initProps/updateProps/saveOldStyle) + emphasis
-        //   states (setStatesStylesFromModel/ensureState/toggleHoverEmphasis) + vertex value labels
-        //   (setLabelStyle) are all DEFERRED (see PORT-TODOs), so the group is rebuilt from scratch each
-        //   render: per data item, one Polyline (outline) + one Polygon (area fill) + one symbol per
-        //   vertex, all read from `data.getItemLayout(idx)` (exactly what the diff pipeline consumes).
-        // -------------------------------------------------------------------------------------------
-        _ = group.removeAll()
 
         // Series-level fallbacks for the vertex symbol type/size (the visual stage that populates the
         //   per-item 'symbol'/'symbolSize' visuals falls back to the series option when absent).
         let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
         let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 4.0
 
+        // Collect every item's layout ring up front. Morph requires every item to have a ring of the SAME
+        //   vertex count as the previous render; any missing layout or count mismatch forces a rebuild.
+        var pointsList: [[VectorArray]] = []
+        var allHaveLayout = true
+        for idx in 0..<data.count() {
+            if let pts = radarPointsFromLayout(data.getItemLayout(idx)), pts.count > 0 {
+                pointsList.append(pts)
+            } else {
+                allHaveLayout = false
+                break
+            }
+        }
+        let pointCount = pointsList.first?.count ?? 0
+
+        // Morph iff we already have persistent per-item elements aligned 1:1 with `data`, the item count is
+        //   unchanged, and every item's vertex (indicator) count matches the previous render (values only
+        //   changed). Otherwise (first render / item add-remove / indicator count change) rebuild fresh.
+        let canMorph = allHaveLayout
+            && !_polygons.isEmpty
+            && _polygons.count == data.count()
+            && _polylines.count == data.count()
+            && _symbolGroups.count == data.count()
+            && _itemGroups.count == data.count()
+            && _prevItemCount == data.count()
+            && _prevPointCount == pointCount
+            && pointsList.allSatisfy { $0.count == pointCount }
+
+        if canMorph {
+            for idx in 0..<data.count() {
+                let points = pointsList[idx]
+                let itemModel = data.getItemModel(idx)
+                let itemStyle = data.getItemVisual(idx, "style") as? [String: Any]
+                let color = itemStyle?["fill"]
+
+                let polyline = _polylines[idx]
+                let polygon = _polygons[idx]
+                let symbolGroup = _symbolGroups[idx]
+
+                // Restyle (color/lineStyle/areaStyle may have changed) then MORPH the shape points. Target
+                //   points as `[[Double]]` — the shape the Animator's 2D-array interpolation consumes; a
+                //   `[VectorArray]` target is not recognised and SNAPS (schedules 0 animators) instead.
+                applyRadarItemStyles(polyline, polygon, itemModel, color)
+                let finalPoints: [[Double]] = points.map { [$0.x, $0.y] }
+                updateProps(polyline, ["shape": ["points": finalPoints] as [String: Any]], seriesModel, idx)
+                updateProps(polygon, ["shape": ["points": finalPoints] as [String: Any]], seriesModel, idx)
+
+                // Vertex symbols: re-run the visual fallbacks and morph each symbol's SymbolShape x/y to the
+                //   new vertex (skip the closing duplicate). A symbol-type/count change per item rebuilds
+                //   this item's symbol group fresh.
+                let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? seriesSymbol
+                let vertexCount = points.count - 1
+                var fill: ZRenderKit.ZRColor? = nil
+                if let cs = radarColorString(color) { fill = .string(cs) }
+                let (sizeW, sizeH) = symbol.normalizeSymbolSize(
+                    data.getItemVisual(idx, "symbolSize") ?? seriesSymbolSize
+                )
+                let existing = symbolGroup.childrenRef().compactMap { $0 as? Path }
+                let canMorphSymbols = symbolType != "none"
+                    && existing.count == vertexCount
+                    && existing.allSatisfy { $0.shape is SymbolShape }
+                if canMorphSymbols {
+                    for i in 0..<vertexCount {
+                        let pt = points[i]
+                        let path = existing[i]
+                        path.originX = pt.x
+                        path.originY = pt.y
+                        updateProps(path, ["shape": [
+                            "x": pt.x - sizeW / 2, "y": pt.y - sizeH / 2,
+                            "width": sizeW, "height": sizeH
+                        ] as [String: Any]], seriesModel, idx)
+                    }
+                } else {
+                    _ = symbolGroup.removeAll()
+                    if symbolType != "none" {
+                        buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
+                                          seriesModel, idx, animateIn: false)
+                    }
+                }
+            }
+            self._data = data
+            return
+        }
+
+        // -------------------------------------------------------------------------------------------
+        // REBUILD (first render / item add-remove / indicator count change): drop the previous elements
+        //   and rebuild from scratch with the collapse-to-center entrance. Per data item, one Polyline
+        //   (outline) + one Polygon (area fill) + one symbol per vertex, all read from `getItemLayout`.
+        // -------------------------------------------------------------------------------------------
+        _ = group.removeAll()
+        // The persistent elements were just detached by removeAll — drop the stale references so a later
+        //   morph never reuses a detached element.
+        _itemGroups = []; _polylines = []; _polygons = []; _symbolGroups = []
+        _prevItemCount = -1; _prevPointCount = -1
+
         // ENTRANCE (faithful): upstream animates the polyline/polygon `points` from a ring collapsed at
-        //   the radar center (`getInitialPoints` → initProps with the shape). The keyed points animator
-        //   seam now exists (PolygonShape/PolylineShape expose `points` to animationGet/animationSet), so
-        //   the collapse-to-center points GROW is ported below (see the per-item block). The radar center
-        //   (cx/cy) is the collapsed target. The vertex symbols keep their own per-vertex scale-in (B4).
+        //   the radar center (`getInitialPoints` → initProps with the shape).
         let radarCoord = seriesModel.radarCoordinateSystem
         let radarCx = radarCoord?.cx ?? 0
         let radarCy = radarCoord?.cy ?? 0
 
+        // Track whether any item was skipped (missing layout). A skip breaks the idx↔array alignment the
+        //   morph path relies on, so leave `_prevItemCount` at -1 to force a rebuild next render.
+        var skipped = false
         for idx in 0..<data.count() {
             // const points = data.getItemLayout(idx);  → closed ring `[[x,y], … , [x,y]]` (last == first copy).
             // if (!points) { return; }
             guard let points = radarPointsFromLayout(data.getItemLayout(idx)), points.count > 0 else {
+                skipped = true
                 continue
             }
 
@@ -145,50 +239,8 @@ open class RadarView: ChartView {
             let polygon = Polygon(polygonProps)
             polygon.name = "radarPolygon"
 
-            // polyline.useStyle(zrUtil.defaults(
-            //     itemModel.getModel('lineStyle').getLineStyle(), { fill: 'none', stroke: color }));
-            //   `getLineStyle()` already carries PathStyleProps-keyed values (stroke/lineWidth/opacity/…);
-            //   `defaults` fills the missing `stroke` with `color`; `fill: 'none'` maps to a nil fill.
-            var lineStyleDict = itemModel.getModel("lineStyle").getLineStyle()
-            if lineStyleDict["stroke"] == nil, let color = color { lineStyleDict["stroke"] = color }
-            var polylineStyle = barStyleFromDict(lineStyleDict)
-            polylineStyle.fill = nil   // upstream default `fill: 'none'`
-            polyline.useStyle(polylineStyle)
-            // The Polyline vertices close into a pentagon; `useStyle` runs `createStyle` which lays the
-            // style over DEFAULT_PATH_STYLE (fill '#000') via `extendPathStyle`, and that helper SKIPS a
-            // nil `fill` — so the intended `fill: 'none'` is dropped and the outline fills solid black
-            // UNDER the area polygon (visual-parity trap class 1). Clear it directly to bypass the merge.
-            polyline.pathStyle.fill = nil
-
-            // setStatesStylesFromModel(polyline, itemModel, 'lineStyle');
-            // setStatesStylesFromModel(polygon, itemModel, 'areaStyle');
-            //   Populate each shape's emphasis/blur/select state styles from the item's lineStyle/areaStyle
-            //   models. The hover dispatcher (toggleHoverEmphasis on itemGroup below) then restyles them.
-            states.setStatesStylesFromModel(polyline, itemModel, "lineStyle")
-            states.setStatesStylesFromModel(polygon, itemModel, "areaStyle")
-
-            // const areaStyleModel = itemModel.getModel('areaStyle');
-            // const polygonIgnore = areaStyleModel.isEmpty() && areaStyleModel.parentModel.isEmpty();
-            // polygon.ignore = polygonIgnore;
-            let areaStyleModel = itemModel.getModel("areaStyle")
-            let polygonIgnore = areaStyleModel.isEmpty() && (areaStyleModel.parentModel?.isEmpty() ?? true)
-            polygon.ignore = polygonIgnore
-
-            // zrUtil.each(['emphasis', 'select', 'blur'], function (stateName) { … ensureState … });
-            //   PORT-TODO: per-state area/line/item styles + `ensureState(stateName).ignore` DEFERRED
-            //   (util/states not ported).
-
-            // polygon.useStyle(zrUtil.defaults(
-            //     itemModel.getModel('areaStyle').getAreaStyle(),
-            //     { fill: color, opacity: 0.7, decal: itemStyle.decal }));
-            //   PORT-TODO: `decal: itemStyle.decal` NOT applied (decal/pattern out of scope).
-            var areaStyleDict = areaStyleModel.getAreaStyle()
-            if areaStyleDict["fill"] == nil, let color = color { areaStyleDict["fill"] = color }
-            if areaStyleDict["opacity"] == nil { areaStyleDict["opacity"] = 0.7 }
-            polygon.useStyle(barStyleFromDict(areaStyleDict))
-            // Same class-1 guard: when the area has no explicit fill (and no series color), don't let the
-            // default black survive the createStyle merge.
-            if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
+            // Style line + area (color, lineStyle, areaStyle, emphasis/blur/select states, polygon.ignore).
+            applyRadarItemStyles(polyline, polygon, itemModel, color)
 
             // ENTRANCE points-grow (faithful upstream `getInitialPoints`): collapse the whole point ring
             //   onto the radar center [cx, cy] as the starting shape, then initProps the shape `points`
@@ -196,10 +248,6 @@ open class RadarView: ChartView {
             //   from the center to its final position, so the polygon/polyline GROW from the middle (not a
             //   transform scale). Same point count on both ends (map preserves length). When animation is
             //   off, initProps snaps the live shape straight to the final ring.
-            //     upstream: polygon.shape.points = getInitialPoints(points);  // map(points, () => [cx, cy])
-            //               polyline.shape.points = getInitialPoints(points);
-            //               initProps(polygon, { shape: { points } }, seriesModel, idx);
-            //               initProps(polyline, { shape: { points } }, seriesModel, idx);
             let finalPoints: [[Double]] = points.map { [$0.x, $0.y] }
             let collapsedPoints: [[Double]] = points.map { _ in [radarCx, radarCy] }
             for shapeEl in [polyline, polygon] {
@@ -216,56 +264,21 @@ open class RadarView: ChartView {
             _ = itemGroup.add(polygon)
             _ = itemGroup.add(symbolGroup)
 
-            // --- symbols: updateSymbols(polyline.shape.points, points, symbolGroup, data, idx) --------
-            //   Upstream draws one symbol per vertex over `points.length - 1` (the last point is the
-            //   closing copy of the first, so it is skipped). Each `createSymbol('… ', -1,-1,2,2)` is
-            //   scaled to `symbolSize/2` and centered on the vertex via setPosition; the static build
-            //   inlines that as `createSymbol(type, x - w/2, y - h/2, w, h)` (same deviation as Scatter/
-            //   Graph). PORT-TODO: symbolRotate / z2:100 / emphasis scale / vertex value labels DEFERRED.
+            // --- symbols: one per vertex (skip the closing duplicate), scale-in entrance ---------------
             let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? seriesSymbol
             if symbolType != "none" {
                 let (sizeW, sizeH) = symbol.normalizeSymbolSize(
                     data.getItemVisual(idx, "symbolSize") ?? seriesSymbolSize
                 )
-                // symbolPath.useStyle(itemStyle); symbolPath.setColor(color); — fill routed through createSymbol.
                 var fill: ZRenderKit.ZRColor? = nil
                 if let cs = radarColorString(color) { fill = .string(cs) }
-
-                let count = points.count - 1   // skip the closing duplicate vertex
-                for i in 0..<count {
-                    let pt = points[i]
-                    let el = symbol.createSymbol(
-                        symbolType, pt.x - sizeW / 2, pt.y - sizeH / 2, sizeW, sizeH, fill
-                    )
-                    if let path = el as? Path {
-                        path.name = "vertex"
-                        // upstream: symbolPath.attr({ z2: 100 }) — lift the vertex markers above the radar
-                        //   coordinate axis lines (AxisBuilder axisLine z2 1), which otherwise cross over
-                        //   the data points (the coordinate-over-data z-order defect).
-                        path.z2 = 100
-                        // PORT-TODO: symbolPath.style.strokeNoScale = true — not applied (same deviation as
-                        //   Scatter/Graph; the symbol style is set inside createSymbol via setColor).
-                        // upstream Symbol.ts first-create: symbolPath.attr({ scaleX: 0, scaleY: 0 });
-                        //   initProps(symbolPath, { scaleX: 1, scaleY: 1 }, seriesModel, dataIndex) — same
-                        //   scale-in entrance as Scatter/Graph symbols, centered on the vertex point.
-                        path.originX = pt.x
-                        path.originY = pt.y
-                        path.scaleX = 0
-                        path.scaleY = 0
-                        initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
-                        _ = symbolGroup.add(path)
-                    }
-                    // PORT-TODO: setLabelStyle(symbolPath, …) — vertex value label DEFERRED (labelStyle not ported).
-                }
+                buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
+                                  seriesModel, idx, animateIn: true)
             }
 
             // const emphasisModel = itemModel.getModel('emphasis');
             // toggleHoverEmphasis(itemGroup, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
             //     emphasisModel.get('disabled'));
-            //   Marks the whole itemGroup (line + area + vertex symbols) a highDown dispatcher; a hover
-            //   over any child resolves up to this group and drives the series row into emphasis.
-            //   PORT-TODO: the per-state symbol itemStyle clone (symbolPath.ensureState(...).style) and the
-            //   per-state polygon.ignore toggle are still deferred (styling niceties, not the dispatcher).
             let emphasisModel = itemModel.getModel(["emphasis"])
             let focus: InnerFocus? = emphasisModel.get("focus")
             let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
@@ -275,16 +288,105 @@ open class RadarView: ChartView {
             // group.add(itemGroup);  data.setItemGraphicEl(idx, itemGroup);
             _ = group.add(itemGroup)
             data.setItemGraphicEl(idx, itemGroup)
+
+            // Persist for a later morph (index-aligned; only reached when no item was skipped).
+            _itemGroups.append(itemGroup)
+            _polylines.append(polyline)
+            _polygons.append(polygon)
+            _symbolGroups.append(symbolGroup)
+        }
+
+        // A clean, skip-free build enables morphing on the next render; a skip disables it (idx misaligned).
+        if skipped {
+            _itemGroups = []; _polylines = []; _polygons = []; _symbolGroups = []
+            _prevItemCount = -1; _prevPointCount = -1
+        } else {
+            _prevItemCount = data.count()
+            _prevPointCount = pointCount
         }
 
         // this._data = data;
         self._data = data
     }
 
+    // Shared line/area styling (color, lineStyle, areaStyle, emphasis/blur/select state styles,
+    //   polygon.ignore) — used by both the rebuild and the morph path so a value change restyles too.
+    private func applyRadarItemStyles(
+        _ polyline: Polyline, _ polygon: Polygon, _ itemModel: Model, _ color: Any?
+    ) {
+        // polyline.useStyle(zrUtil.defaults(
+        //     itemModel.getModel('lineStyle').getLineStyle(), { fill: 'none', stroke: color }));
+        var lineStyleDict = itemModel.getModel("lineStyle").getLineStyle()
+        if lineStyleDict["stroke"] == nil, let color = color { lineStyleDict["stroke"] = color }
+        var polylineStyle = barStyleFromDict(lineStyleDict)
+        polylineStyle.fill = nil   // upstream default `fill: 'none'`
+        polyline.useStyle(polylineStyle)
+        // The Polyline vertices close into a pentagon; `useStyle` runs `createStyle` which lays the style
+        // over DEFAULT_PATH_STYLE (fill '#000') via `extendPathStyle`, and that helper SKIPS a nil `fill`
+        // — so the intended `fill: 'none'` is dropped and the outline fills solid black UNDER the area
+        // polygon (visual-parity trap class 1). Clear it directly to bypass the merge.
+        polyline.pathStyle.fill = nil
+
+        // setStatesStylesFromModel(polyline, itemModel, 'lineStyle');
+        // setStatesStylesFromModel(polygon, itemModel, 'areaStyle');
+        states.setStatesStylesFromModel(polyline, itemModel, "lineStyle")
+        states.setStatesStylesFromModel(polygon, itemModel, "areaStyle")
+
+        // const areaStyleModel = itemModel.getModel('areaStyle');
+        // const polygonIgnore = areaStyleModel.isEmpty() && areaStyleModel.parentModel.isEmpty();
+        let areaStyleModel = itemModel.getModel("areaStyle")
+        let polygonIgnore = areaStyleModel.isEmpty() && (areaStyleModel.parentModel?.isEmpty() ?? true)
+        polygon.ignore = polygonIgnore
+
+        // polygon.useStyle(zrUtil.defaults(
+        //     itemModel.getModel('areaStyle').getAreaStyle(),
+        //     { fill: color, opacity: 0.7, decal: itemStyle.decal }));
+        //   PORT-TODO: `decal: itemStyle.decal` NOT applied (decal/pattern out of scope).
+        var areaStyleDict = areaStyleModel.getAreaStyle()
+        if areaStyleDict["fill"] == nil, let color = color { areaStyleDict["fill"] = color }
+        if areaStyleDict["opacity"] == nil { areaStyleDict["opacity"] = 0.7 }
+        polygon.useStyle(barStyleFromDict(areaStyleDict))
+        // Same class-1 guard: when the area has no explicit fill (and no series color), don't let the
+        // default black survive the createStyle merge.
+        if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
+    }
+
+    // Build one vertex symbol per ring point (skipping the closing duplicate) into `symbolGroup`. On a
+    //   fresh rebuild the symbols scale-in from 0 (upstream Symbol.ts entrance); on a morph rebuild
+    //   (symbol count/type changed) they appear at full scale.
+    private func buildRadarSymbols(
+        _ points: [VectorArray], _ symbolType: String, _ sizeW: Double, _ sizeH: Double,
+        _ fill: ZRenderKit.ZRColor?, _ symbolGroup: Group, _ seriesModel: SeriesModel, _ idx: Int,
+        animateIn: Bool
+    ) {
+        let count = points.count - 1   // skip the closing duplicate vertex
+        guard count > 0 else { return }
+        for i in 0..<count {
+            let pt = points[i]
+            let el = symbol.createSymbol(symbolType, pt.x - sizeW / 2, pt.y - sizeH / 2, sizeW, sizeH, fill)
+            if let path = el as? Path {
+                path.name = "vertex"
+                // upstream: symbolPath.attr({ z2: 100 }) — lift the vertex markers above the radar axis lines.
+                path.z2 = 100
+                path.originX = pt.x
+                path.originY = pt.y
+                if animateIn {
+                    // upstream Symbol.ts first-create scale-in entrance, centered on the vertex point.
+                    path.scaleX = 0
+                    path.scaleY = 0
+                    initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
+                }
+                _ = symbolGroup.add(path)
+            }
+        }
+    }
+
     // upstream: remove() { this.group.removeAll(); this._data = null; }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         self.group.removeAll()
         self._data = nil
+        _itemGroups = []; _polylines = []; _polygons = []; _symbolGroups = []
+        _prevItemCount = -1; _prevPointCount = -1
     }
 }
 

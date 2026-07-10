@@ -57,41 +57,65 @@ open class BoxplotView: ChartView {
         let seriesModel = seriesModel as! BoxplotSeriesModel
 
         let data = seriesModel.getData()
+        let oldData = self._data
         let group = self.group
-        // let oldData = this._data;   -> unused below (the diff machinery is DEFERRED).
 
         // There is no old data only when first rendering or switching from
         // stream mode to normal mode, where previous elements should be removed.
-        // PORT-TODO: `data.diff(oldData)` incremental enter/update/remove is DEFERRED — we clear the
-        //   group and rebuild every datum from scratch each render (same static strategy as LineView).
-        //   Preserved upstream structure for the diffable surface; see the commented `.diff()` chain below.
         if self._data == nil {
             _ = group.removeAll()
         }
-        _ = group.removeAll()
 
         let constDim = seriesModel.getWhiskerBoxesLayout() == "horizontal" ? 1 : 0
         // upstream: needClip / coordSys / clipArea / clipPath — clipping is DEFERRED.
         // PORT-TODO: `needClip = seriesModel.get('clip', true)`, `createClipPath(...)`, and
         //   `resolveNormalBoxClipping(clipArea, itemLayout)` (SHAPE_CLIP_KIND_* + updateClipPath) DEFERRED.
 
-        // upstream (diff chain), ported as a straight loop over every datum:
-        //   data.diff(oldData)
-        //     .add(newIdx => { if (data.hasValue(newIdx)) { ...createNormalBox(..., true)... } })
-        //     .update(...).remove(...).execute();
-        for newIdx in 0..<data.count() {
-            if data.hasValue(newIdx) {
+        // upstream (diff chain): incremental enter/update/remove so a same-count merge-mode value
+        //   change MORPHS each box to its new whisker/box geometry (identity-reused element +
+        //   updateProps points tween) instead of a clear-and-rebuild snap. Mirrors CandlestickView.
+        data.diff(oldData)
+            .add({ newIdx in
+                if data.hasValue(newIdx) {
+                    let itemLayout = data.getItemLayout(newIdx) as! BoxplotItemLayout
+
+                    // PORT-TODO: clipKind (resolveNormalBoxClipping) DEFERRED — always NOT_CLIPPED.
+                    let symbolEl = createNormalBox(itemLayout, data, newIdx, constDim, true)
+                    // PORT-TODO: updateClipPath(partiallyClipped, symbolEl, clipPath) DEFERRED.
+
+                    data.setItemGraphicEl(newIdx, symbolEl)
+                    _ = group.add(symbolEl)
+                }
+            })
+            .update({ newIdx, oldIdx in
+                // Reuse the old box element (identity preserved) so updateProps can morph it.
+                var symbolEl = oldData?.getItemGraphicEl(oldIdx) as? BoxPath
+
+                // Empty data — drop the old element.
+                if !data.hasValue(newIdx) {
+                    if let symbolEl = symbolEl { _ = group.remove(symbolEl) }
+                    return
+                }
+
                 let itemLayout = data.getItemLayout(newIdx) as! BoxplotItemLayout
 
-                // PORT-TODO: clipKind (resolveNormalBoxClipping) DEFERRED — always treated as NOT_CLIPPED.
+                if symbolEl == nil {
+                    symbolEl = createNormalBox(itemLayout, data, newIdx, constDim, false)
+                }
+                else {
+                    // Morph the reused box's `points` array from its current ends toward the new
+                    //   `itemLayout.ends` (updateNormalBoxData passes the raw [[Double]] dict value so
+                    //   the Animator's 2D-array interpolation carries old → new — NOT a snap).
+                    updateNormalBoxData(itemLayout, symbolEl!, data, newIdx, false)
+                }
 
-                let symbolEl = createNormalBox(itemLayout, data, newIdx, constDim, true)
-                // PORT-TODO: updateClipPath(partiallyClipped, symbolEl, clipPath) DEFERRED.
-
-                data.setItemGraphicEl(newIdx, symbolEl)
-                _ = group.add(symbolEl)
-            }
-        }
+                data.setItemGraphicEl(newIdx, symbolEl!)
+                _ = group.add(symbolEl!)
+            })
+            .remove({ oldIdx in
+                if let el = oldData?.getItemGraphicEl(oldIdx) { _ = group.remove(el) }
+            })
+            .execute()
 
         self._data = data
     }
