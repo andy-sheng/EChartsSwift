@@ -27,14 +27,12 @@
 //     event bus. The Phase-33 brief scopes this to the EMPHASIS binding (mouseover/mouseout) plus a
 //     MINIMAL click→dispatchAction; the full event-param assembly + the public ECharts event bus +
 //     the tooltip/axisPointer `mousemove`→axisTrigger path are DEFERRED (see PORT-TODO below).
-//   - The mouseover/mouseout → `enterEmphasisWhenMouseOver`/`leaveEmphasisWhenMouseOut` binding is done
+//   - The mouseover/mouseout → `handleGlobalMouseOverForHighDown`/`…OutForHighDown` binding is done
 //     HERE directly against the zr handler (in the path the views do not self-register their zr
 //     listeners — no live zr at render time — so `EChartsView` owns the binding; documented deviation).
-//     PORT-TODO (DEFERRED): upstream binds `handleGlobalMouseOverForHighDown`/`…OutForHighDown`
-//     (echarts.ts:2331/2338), which ALSO runs the FOCUS fan-out (`blurSeries`/`blurComponent` to dim
-//     the non-focused siblings when `emphasis.focus` is set) + `allLeaveBlur` on mouseout. This phase
-//     wires only the enter/leave-emphasis of the hovered element; the focus-blur fan-out is deferred
-//     (the `blurSeries` engine is ported — Phase 30 — but the global mouse-over focus handler is not).
+//     Mirrors upstream echarts.ts:2331/2338: the handlers run the FOCUS fan-out (`blurSeries`/
+//     `blurComponent` to dim the non-focused siblings when `emphasis.focus` is set) + `allLeaveBlur`
+//     on mouseout, then enter/leave-emphasis of the hovered dispatcher (util/states.ts:638-695).
 
 import Foundation
 import ZRenderKit
@@ -419,8 +417,10 @@ public final class EChartsView {
             if self._insideZoomDrag != nil || self._brushDrag != nil { return nil }
             // upstream binds `findEventDispatcher(el, isHighDownDispatcher)` WITHOUT returnFirstMatch →
             //   the OUTERMOST matching ancestor is emphasized (matters for nested dispatchers).
+            // upstream `handleGlobalMouseOverForHighDown(dispatcher, e, ecIns._api)` (echarts.ts:2331) —
+            //   the focus/blur fan-out (blurSeries per `ecData.focus`) + enterEmphasisWhenMouseOver.
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
-                states.enterEmphasisWhenMouseOver(dispatcher, e)
+                states.handleGlobalMouseOverForHighDown(dispatcher, e, self.ec.api)
                 self.zr.refresh()
             }
             // Phase 34: ALSO drive the tooltip. Independent of the emphasis dispatcher walk (upstream the
@@ -439,8 +439,10 @@ public final class EChartsView {
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
             // Phase 39: suppress the leave-emphasis/tooltip-hide while dragging (see the mouseover gate).
             if self._insideZoomDrag != nil || self._brushDrag != nil { return nil }
+            // upstream `handleGlobalMouseOutForHighDown(dispatcher, e, ecIns._api)` (echarts.ts:2338) —
+            //   `allLeaveBlur` + leaveEmphasisWhenMouseOut.
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
-                states.leaveEmphasisWhenMouseOut(dispatcher, e)
+                states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
                 self.zr.refresh()
             }
             // Phase 34: hide the tooltip when the pointer leaves the element (upstream `_hide`).

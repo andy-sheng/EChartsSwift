@@ -42,7 +42,7 @@ final class MapSVGTests: XCTestCase {
         }
 
         // The named <rect> region is registered as a highDown dispatcher.
-        let dispatchers = geoView.findHighDownDispatchers("alpha")
+        let dispatchers = geoView.findHighDownDispatchers("alpha") ?? []
         XCTAssertEqual(dispatchers.count, 1, "one dispatcher element registered for the named region 'alpha'")
         guard let el = dispatchers.first else { return XCTFail("no dispatcher for 'alpha'") }
 
@@ -81,7 +81,7 @@ final class MapSVGTests: XCTestCase {
         }
 
         for name in ["alpha", "beta", "gamma"] {
-            guard let el = geoView.findHighDownDispatchers(name).first else {
+            guard let el = geoView.findHighDownDispatchers(name)?.first else {
                 XCTFail("no region element for '\(name)'"); continue
             }
             guard let text = el.getTextContent() else {

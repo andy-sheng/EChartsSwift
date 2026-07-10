@@ -368,8 +368,8 @@ public enum states {
     //   LIVE — the mouse-driven emphasis entry points bound by `EChartsView._initEvents`. They gate on
     //   `shouldSilent` (touch-silent) and on `__highByOuter` (an "emphasis" event highlight, set by
     //   `enterEmphasis`, has higher priority than a mouse hover), then apply/clear the single emphasis
-    //   flag via `traverseUpdateState`. PORT-TODO (still deferred): `handleGlobalMouseOver/OutForHighDown`
-    //   (states.ts:638-695) — the global-out blur/focus fan-out.
+    //   flag via `traverseUpdateState`. `handleGlobalMouseOver/OutForHighDown` (states.ts:638-695) —
+    //   the global blur/focus fan-out — are ported below and bound by `EChartsView._initEvents`.
 
     // upstream: `enterEmphasisWhenMouseOver(el, e)` (states.ts:360). Mouse-over emphasis entry.
     //   `!shouldSilent(el, e) && !el.__highByOuter && traverseUpdateState(el, singleEnterEmphasis)`.
@@ -598,6 +598,107 @@ public enum states {
             if !isNullish(focus) {
                 blurSeries(seriesIndex, focus, blurScope, api)
             }
+        }
+    }
+
+    // upstream: `findComponentHighDownDispatchers(componentMainType, componentIndex, name, api)`
+    //   (states.ts:588). `dispatchers == nil` ⇔ upstream `dispatchers: null` = "feature not supported
+    //   for this target" (the series path / a view without `findHighDownDispatchers`).
+    public struct ComponentHighDownDispatchers {
+        public var focusSelf: Bool
+        // If nil, do not support this feature.
+        public var dispatchers: [Element]?
+    }
+
+    public static func findComponentHighDownDispatchers(
+        _ componentMainType: ComponentMainType?,
+        _ componentIndex: Double?,
+        _ name: String?,
+        _ api: ExtensionAPI
+    ) -> ComponentHighDownDispatchers {
+        let ret = ComponentHighDownDispatchers(focusSelf: false, dispatchers: nil)
+        guard let componentMainType = componentMainType,
+              componentMainType != "series",
+              let componentIndex = componentIndex,
+              let name = name else {
+            return ret
+        }
+
+        guard let componentModel = api.getModel().getComponent(componentMainType, componentIndex) else {
+            return ret
+        }
+
+        guard let view = api.getViewOfComponentModel(componentModel),
+              let dispatchers = view.findHighDownDispatchers(name) else {
+            return ret
+        }
+
+        // At present, the component (like Geo) only blurs inside itself. So we do not use
+        // `blurScope` in component.
+        var focusSelf = false
+        for i in 0..<dispatchers.count {
+            if focusString(innerStore.getECData(dispatchers[i]).focus) == "self" {
+                focusSelf = true
+                break
+            }
+        }
+
+        return ComponentHighDownDispatchers(focusSelf: focusSelf, dispatchers: dispatchers)
+    }
+
+    // upstream: `handleGlobalMouseOverForHighDown(dispatcher, e, api)` (states.ts:638). The zr
+    //   mouseover fan-out: blur every non-focused element (per the dispatcher's `ecData.focus` /
+    //   `blurScope`) THEN emphasize the hovered dispatcher.
+    public static func handleGlobalMouseOverForHighDown(
+        _ dispatcher: Element,
+        _ e: ZRenderKit.ElementEvent,
+        _ api: ExtensionAPI
+    ) {
+        let ecData = innerStore.getECData(dispatcher)
+
+        let found = findComponentHighDownDispatchers(
+            ecData.componentMainType, ecData.componentIndex, ecData.componentHighDownName, api
+        )
+        // If `findHighDownDispatchers` is supported on the component,
+        // highlight/downplay elements with the same name.
+        if let dispatchers = found.dispatchers {
+            if found.focusSelf {
+                blurComponent(ecData.componentMainType, ecData.componentIndex, api)
+            }
+            util.each(dispatchers) { d, _ in enterEmphasisWhenMouseOver(d, e) }
+        }
+        else {
+            // Try blur all in the related series. Then emphasis the hoverred.
+            // TODO. progressive mode.
+            blurSeries(ecData.seriesIndex, ecData.focus, ecData.blurScope, api)
+            if focusString(ecData.focus) == "self" {
+                blurComponent(ecData.componentMainType, ecData.componentIndex, api)
+            }
+            // Other than series, component that not support `findHighDownDispatcher` will
+            // also use it. But in this case, highlight/downplay are only supported in
+            // mouse hover but not in dispatchAction.
+            enterEmphasisWhenMouseOver(dispatcher, e)
+        }
+    }
+
+    // upstream: `handleGlobalMouseOutForHighDown(dispatcher, e, api)` (states.ts:674). The zr
+    //   mouseout fan-out: leave every blur, then de-emphasize the dispatcher(s).
+    public static func handleGlobalMouseOutForHighDown(
+        _ dispatcher: Element,
+        _ e: ZRenderKit.ElementEvent,
+        _ api: ExtensionAPI
+    ) {
+        allLeaveBlur(api)
+
+        let ecData = innerStore.getECData(dispatcher)
+        let found = findComponentHighDownDispatchers(
+            ecData.componentMainType, ecData.componentIndex, ecData.componentHighDownName, api
+        )
+        if let dispatchers = found.dispatchers {
+            util.each(dispatchers) { d, _ in leaveEmphasisWhenMouseOut(d, e) }
+        }
+        else {
+            leaveEmphasisWhenMouseOut(dispatcher, e)
         }
     }
 

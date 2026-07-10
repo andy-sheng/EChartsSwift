@@ -2295,18 +2295,20 @@ public final class ECharts: EChartsType {
                     }
                 }
                 else {
-                    // Component (non-series) high-down dispatch.
-                    // PORT-TODO (Phase 30, DEFERRED — needs the live pointer/dispatcher host):
-                    //   `findComponentHighDownDispatchers` reads `ComponentView.findHighDownDispatchers`,
-                    //   which is not wired yet, so the component enterEmphasis/blurComponent path is a
-                    //   no-op. The upstream body is preserved here for the re-sync; the SERIES high-down
-                    //   path (the primary target of this phase) is fully applied above.
-                    //     const { focusSelf, dispatchers } = findComponentHighDownDispatchers(
-                    //         m.mainType, m.componentIndex, payload.name, api);
-                    //     if (type === HIGHLIGHT && focusSelf && !notBlur)
-                    //         blurComponent(m.mainType, m.componentIndex, api);
-                    //     if (dispatchers) each(dispatchers, d =>
-                    //         type === HIGHLIGHT ? enterEmphasis(d) : leaveEmphasis(d));
+                    // Component (non-series) high-down dispatch (upstream echarts.ts:1820-1834).
+                    let notBlur = (payload.other["notBlur"] as? Bool) ?? false
+                    let found = states.findComponentHighDownDispatchers(
+                        m.mainType, m.componentIndex, payload.other["name"] as? String, api
+                    )
+                    if payload.type == states.HIGHLIGHT_ACTION_TYPE && found.focusSelf && !notBlur {
+                        states.blurComponent(m.mainType, m.componentIndex, api)
+                    }
+                    if let dispatchers = found.dispatchers {
+                        util.each(dispatchers) { d, _ in
+                            payload.type == states.HIGHLIGHT_ACTION_TYPE
+                                ? states.enterEmphasis(d) : states.leaveEmphasis(d)
+                        }
+                    }
                 }
             }
             else if states.isSelectChangePayload(payload) {

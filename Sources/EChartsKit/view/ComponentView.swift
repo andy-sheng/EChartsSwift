@@ -162,8 +162,13 @@ open class ComponentView: ViewRootGroup {
     }
 
     // upstream (optional): findHighDownDispatchers?(name): Element[];
-    // PORT-TODO: optional hook enabling component-level hover link. Deferred with emphasis/states
-    //   (out of scope). Subclasses that need it override to return the dispatcher elements.
+    //   Optional hook enabling component-level hover link (upstream only Geo implements it). `nil`
+    //   models the upstream "method absent" check in `findComponentHighDownDispatchers`
+    //   (states.ts:615 `if (!view || !view.findHighDownDispatchers)`); subclasses that support the
+    //   feature override to return the dispatcher elements.
+    open func findHighDownDispatchers(_ name: String?) -> [Element]? {
+        return nil
+    }
 
     // upstream (optional): focusBlurEnabled?: boolean;
     // PORT-TODO: optional flag consulted by the emphasis/blur system. Deferred with states.

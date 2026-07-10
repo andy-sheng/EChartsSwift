@@ -482,7 +482,7 @@ public final class GeoView: ComponentView {
 
     // upstream: findHighDownDispatchers(name, geoModel) — the geoSVG branch returns the dispatcher elements
     //   registered for a region name (hover-link / highlight-by-name). Exposed for the high-down driver.
-    func findHighDownDispatchers(_ name: String?) -> [Element] {
+    public override func findHighDownDispatchers(_ name: String?) -> [Element]? {
         guard let name = name else { return [] }
         return self._svgDispatcherMap[name] ?? []
     }
