@@ -83,15 +83,12 @@ open class ThemeRiverSeriesModel: SeriesModel {
         // super.init.apply(this, arguments as any);
         super.`init`(option, parentModel, ecModel)
 
-        // Put this function here is for the sake of consistency of code style.
-        // Enable legend selection for each data item
-        // Use a function instead of direct access because data reference may changed
-        // this.legendVisualProvider = new LegendVisualProvider(
-        //     zrUtil.bind(this.getData, this), zrUtil.bind(this.getRawData, this)
-        // );
-        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported — the legend-select provider wiring is
-        //   DEFERRED (base `legendVisualProvider` stays nil). Once it lands, both accessors resolve to
-        //   `self.getData` / `self.getRawData` respectively.
+        // Enable legend selection for each DATA ITEM (themeRiver legend entries are layer names). Use
+        //   functions (not direct data refs) because the data reference may change.
+        self.legendVisualProvider = LegendVisualProvider(
+            { [unowned self] in self.getData() },
+            { [unowned self] in self.getRawData() }
+        )
     }
 
     /**

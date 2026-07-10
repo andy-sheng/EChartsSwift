@@ -105,13 +105,12 @@ open class GraphSeriesModel: SeriesModel {
 
         self.hasSymbolVisual = true
 
-        // const self = this;
-        // function getCategoriesData() { return self._categoriesData; }
-        // Provide data for legend select
-        // this.legendVisualProvider = new LegendVisualProvider(getCategoriesData, getCategoriesData);
-        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported — the legend-select provider wiring is
-        //   deferred (base `legendVisualProvider` stays nil). The two `getCategoriesData` accessors would
-        //   both resolve to `self._categoriesData` once LegendVisualProvider lands.
+        // Provide data for legend select — graph legend entries are CATEGORY names, so both the encoded
+        //   and raw accessors resolve to the categories data (upstream passes getCategoriesData for both).
+        self.legendVisualProvider = LegendVisualProvider(
+            { [unowned self] in self.getCategoriesData() },
+            { [unowned self] in self.getCategoriesData() }
+        )
 
         // this.fillDataTextStyle(option.edges || option.links);
         let opt = option as? [String: Any]

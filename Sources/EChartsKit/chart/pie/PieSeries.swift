@@ -30,7 +30,7 @@ import ZRenderKit
 //   import { makeSeriesEncodeForNameBased } from '../../data/helper/sourceHelper';
 //       -> `sourceHelper.makeSeriesEncodeForNameBased` (data/helper/sourceHelper.swift).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend deferred).
+//       -> visual/LegendVisualProvider.swift (PORTED). Wired below (init sets self.legendVisualProvider).
 //   import SeriesModel from '../../model/Series';                  -> SeriesModel (model/Series.swift).
 //   import { ... } from '../../util/types';                        -> util/types.swift (type-only; the dynamic
 //       option tree is the `[String: Any]` bag per CONVENTIONS §2).
