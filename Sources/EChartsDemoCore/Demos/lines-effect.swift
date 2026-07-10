@@ -15,10 +15,15 @@ extension EChartsDemoRegistry {
             "series": [[
                 "type": "lines",
                 "coordinateSystem": "cartesian2d",
+                // A distinct zlevel puts the lines + flying dots on their OWN painter layer, so the effect's
+                //   motion-blur trail (configLayer(zlevel, {motionBlur})) fades on that layer only while the
+                //   axes/grid (zlevel 0) stay crisp — the live host shows the fading trail behind each dot.
+                "zlevel": 1.0,
                 "lineStyle": ["width": 2.0, "opacity": 0.6, "color": "#409eff"] as [String: Any],
                 "effect": [
                     "show": true,
                     "period": 4.0,
+                    "trailLength": 0.6,
                     "symbol": "circle",
                     "symbolSize": 8.0,
                     "color": "#ff7043"

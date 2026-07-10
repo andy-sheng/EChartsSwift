@@ -46,10 +46,10 @@ import ZRenderKit
 //        tokens.color.quaternary  = color.neutral50 = '#86878c'
 //        tokens.size.m            = 15
 
-// PORT-TODO: visual/LegendVisualProvider.ts not ported. `seriesModel.legendVisualProvider` is
-//   typed `Any?` on SeriesModel and is currently never assigned (see PieSeries PORT-TODO). This is
-//   the minimal shape `_updateData` consumes; nothing conforms yet, so the provider branch is
-//   effectively `isPotential = true` (safe fallback). Integrate: conform the real provider to this.
+// visual/LegendVisualProvider.swift (PORTED). `seriesModel.legendVisualProvider` is typed `Any?` on
+//   SeriesModel; pie/radar/funnel/chord/themeRiver assign a data-item `LegendVisualProvider` and graph a
+//   category one, all conforming to `LegendVisualProviderLike` (the shape `_updateData` consumes below).
+//   A series with no provider falls back to `isPotential = true` (the series name as the legend entry).
 // `LegendVisualProviderLike` is declared in visual/LegendVisualProvider.swift (the full surface:
 //   getAllNames / containName / indexOfName / getItemVisual).
 

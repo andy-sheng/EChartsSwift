@@ -63,13 +63,11 @@ open class ChordSeriesModel: SeriesModel {
         let opt = option as? [String: Any]
         self.fillDataTextStyle(opt?["edges"] ?? opt?["links"])
 
-        // Enable legend selection for each data item
-        // this.legendVisualProvider = new LegendVisualProvider(
-        //     zrUtil.bind(this.getData, this), zrUtil.bind(this.getRawData, this)
-        // );
-        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported — the legend-select provider wiring is
-        //   deferred (base `legendVisualProvider` stays nil). The two bound accessors would resolve to
-        //   `self.getData` / `self.getRawData` once LegendVisualProvider lands.
+        // Enable legend selection for each DATA ITEM (chord legend entries are node names).
+        self.legendVisualProvider = LegendVisualProvider(
+            { [unowned self] in self.getData() },
+            { [unowned self] in self.getRawData() }
+        )
     }
 
     // mergeOption(option: ChordSeriesOption) { super.mergeOption.apply(this, arguments); ... }

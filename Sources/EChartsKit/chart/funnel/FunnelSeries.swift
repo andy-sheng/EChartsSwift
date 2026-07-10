@@ -66,14 +66,12 @@ open class FunnelSeriesModel: SeriesModel {
         // super.init.apply(this, arguments as any);
         super.`init`(option, parentModel, ecModel)
 
-        // Enable legend selection for each data item
-        // Use a function instead of direct access because data reference may changed
-        // this.legendVisualProvider = new LegendVisualProvider(
-        //     zrUtil.bind(this.getData, this), zrUtil.bind(this.getRawData, this)
-        // );
-        // PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend component deferred). Restore this
-        //   assignment once LegendVisualProvider lands; `legendVisualProvider` slot already exists on
-        //   SeriesModel (typed `Any?`).
+        // Enable legend selection for each DATA ITEM (funnel legend entries are item names). Use functions
+        //   (not direct data refs) because the data reference may change; the provider defers access.
+        self.legendVisualProvider = LegendVisualProvider(
+            { [unowned self] in self.getData() },
+            { [unowned self] in self.getRawData() }
+        )
 
         // Extend labelLine emphasis
         // this._defaultLabelLine(option);

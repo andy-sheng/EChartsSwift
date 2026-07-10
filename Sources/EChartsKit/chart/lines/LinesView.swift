@@ -142,6 +142,11 @@ open class LinesView: ChartView {
         for s in _effectSymbols { _ = group.remove(s) }
         _effectSymbols.removeAll()
 
+        // NOTE: the per-zlevel motion-blur config (upstream LinesView.render's `zr.configLayer(zlevel,
+        //   {motionBlur, lastFrameAlpha})`) is applied by the LIVE host, not here: this driver is zr-less
+        //   at render time (`group.__zr` is nil until EChartsView._syncRoot runs AFTER render), the same
+        //   reason roam is wired in EChartsView. See EChartsView._setupLinesEffectLayers.
+
         // Morph iff we already drew the same number of lines in the same polyline mode (only values
         //   changed). A line add/remove, a polyline-mode flip, or a first render rebuilds fresh — the
         //   full add/remove diff (LineDraw) is deferred, matching LineView's morph-vs-rebuild gate.
