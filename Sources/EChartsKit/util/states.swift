@@ -328,13 +328,25 @@ public enum states {
             guard let el = el else { return nil }
             return elementStateProxy(el, stateName, targetStates)
         }
-        // PORT-TODO: `getTextContent()` returns a `ZRText` and `getTextGuideLine()` a `Polyline`; both
-        //   are `Displayable` subclasses but ZRenderKit's `stateProxy` lives on `Element`. Assigning a
-        //   proxy that up-casts to `Displayable` for the text/guide is deferred with the ZRText state
-        //   integration (the bar slice's default emphasis derives from the item element itself).
-        //   Faithful body:
-        //     el.getTextContent()?.stateProxy = { … elementStateProxy(textContent, …) }
-        //     el.getTextGuideLine()?.stateProxy = { … elementStateProxy(textGuide, …) }
+        // upstream states.ts:350-353 — install the SAME default-state proxy on the attached text/guide so
+        //   they enter emphasis alongside the host. This is what applies `createEmphasisDefaultState`'s
+        //   z2 lift (state.z2 = textContent.z2 + Z2_EMPHASIS_LIFT) to the LABEL: without it the host's z2
+        //   lifts to 10 on hover while the label stays at 0, so the emphasized fill/area then sorts ABOVE
+        //   the label and OCCLUDES it (themeRiver band hiding its own name, and any labeled emphasis
+        //   element). `useState`/`useStates` already propagate the state name to textContent+textGuide
+        //   (Element.useState), so once the proxy is installed the label restyles AND lifts with the host.
+        if let textContent = el.getTextContent() {
+            textContent.stateProxy = { [weak textContent] stateName, targetStates in
+                guard let textContent = textContent else { return nil }
+                return elementStateProxy(textContent, stateName, targetStates)
+            }
+        }
+        if let textGuide = el.getTextGuideLine() {
+            textGuide.stateProxy = { [weak textGuide] stateName, targetStates in
+                guard let textGuide = textGuide else { return nil }
+                return elementStateProxy(textGuide, stateName, targetStates)
+            }
+        }
     }
 
     // upstream `savePathStates(el)` (states.ts:910). Snapshot the current + select fill/stroke so the
