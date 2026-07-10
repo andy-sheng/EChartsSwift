@@ -387,10 +387,21 @@ public final class CALayerPainter: Painter {
     private var _frameRenderer: CGRenderer?
 
     // Motion-blur layer config (zr.configLayer): instead of clearing each frame, the previous frame is
-    // composited at `_lastFrameAlpha`, leaving fading trails. Native is single-layer, so this is global.
+    // composited at `_lastFrameAlpha`, leaving fading trails. Retained per-zlevel below.
     private var _motionBlur = false
     private var _lastFrameAlpha: Double = 0
     private var _lastFrameImage: CGImage?
+
+    // ---- Per-zlevel LAYERS (faithful to zrender's one-canvas-per-zlevel model, canvas/Layer.ts). ----
+    // A chart that calls `configLayer(zlevel, {motionBlur})` (only the lines flying-trail effect does)
+    // switches `refresh` from the single-buffer fast path to a per-zlevel path: each distinct zlevel is
+    // composited into its OWN transparent CALayer sublayer of `rootLayer`, and motion-blur (the previous
+    // frame retained at `lastFrameAlpha`) applies ONLY to the configured zlevel's sublayer — so the effect
+    // trail fades on its own layer while the axes/grid/other series (a lower zlevel) stay crisp. Charts
+    // that never call configLayer keep the single `rootLayer.contents` bitmap (byte-identical behavior).
+    private var _layerConfigs: [Double: LayerConfig] = [:]
+    private var _zSublayers: [Double: CALayer] = [:]
+    private var _zLastFrame: [Double: CGImage] = [:]   // per-zlevel motion-blur retained frame
 
     // Retained per-`IncrementalDisplayable` device-pixel bitmaps (keyed by element identity). Accumulate
     // dots across frames so only the pending ones are drawn each flush. See `drawIncrementalRetained`.
@@ -540,12 +551,20 @@ public final class CALayerPainter: Painter {
         _frameRenderer = nil
     }
 
-    /// upstream painter.configLayer(zLevel, config) — enable/disable motion blur for the (single) layer.
+    /// upstream painter.configLayer(zLevel, config) — per-zlevel motion-blur config. Storing a config with
+    /// `motionBlur == true` for any zlevel switches `refresh` to the per-zlevel layer path (see the
+    /// `_layerConfigs` note). `motionBlur == false` clears that zlevel's config + retained frame, so a
+    /// series that turns its effect OFF (upstream sets `motionBlur:false` on the old zlevel) reverts the
+    /// layer to normal clear-each-frame compositing.
     public func configLayer(_ zLevel: Double, _ config: Any?) {
         guard let c = config as? LayerConfig else { return }
-        _motionBlur = c.motionBlur
-        _lastFrameAlpha = c.lastFrameAlpha
-        if !_motionBlur { _lastFrameImage = nil }
+        if c.motionBlur {
+            _layerConfigs[zLevel] = c
+        }
+        else {
+            _layerConfigs[zLevel] = nil
+            _zLastFrame[zLevel] = nil
+        }
     }
 
     /// Composite `root` into the offscreen frame buffer and publish it to `rootLayer.contents`.
@@ -570,18 +589,125 @@ public final class CALayerPainter: Painter {
 extension CALayerPainter: PainterBase {
 
     public func refresh(_ displayList: [Displayable]) {
+        // No per-zlevel motion-blur config → single-buffer fast path (byte-identical to before). Every
+        // chart except the lines flying-trail effect stays here.
+        if _layerConfigs.isEmpty {
+            if !_zSublayers.isEmpty { _teardownZLayers() }   // a prior frame used layers; revert cleanly
+            _singleLayerRefresh(displayList)
+            return
+        }
+        _perZLevelRefresh(displayList)
+    }
+
+    private func _singleLayerRefresh(_ displayList: [Displayable]) {
         let renderer = beginFrame()
         if let cg = renderer as? CGRenderer {
-            for el in displayList {
-                if let inc = el as? IncrementalDisplayable {
-                    drawIncrementalRetained(inc, into: cg)   // retained bitmap — O(pending), not O(total)
-                }
-                else {
-                    drawDisplayable(el, into: cg)
-                }
-            }
+            for el in displayList { _drawOne(el, into: cg) }
         }
         endFrame()
+    }
+
+    /// Draw one live-path element: an `IncrementalDisplayable` through its retained bitmap (O(pending)),
+    /// everything else one-shot. Shared by the single-buffer and per-zlevel paths.
+    private func _drawOne(_ el: Displayable, into cg: CGRenderer) {
+        if let inc = el as? IncrementalDisplayable {
+            drawIncrementalRetained(inc, into: cg)
+        }
+        else {
+            drawDisplayable(el, into: cg)
+        }
+    }
+
+    /// Faithful per-zlevel render (zrender canvas/Layer.ts): each distinct zlevel composites into its own
+    /// transparent sublayer of `rootLayer`; motion-blur (previous frame retained at `lastFrameAlpha`)
+    /// applies ONLY to a zlevel that was `configLayer`-ed, so the lines effect trail fades on its own layer
+    /// while a lower-zlevel base (axes/grid/other series) stays crisp. The display list is already z-sorted,
+    /// so same-zlevel elements are contiguous.
+    private func _perZLevelRefresh(_ displayList: [Displayable]) {
+        let pxW = Int((surfaceSize.width * CGFloat(dpr)).rounded())
+        let pxH = Int((surfaceSize.height * CGFloat(dpr)).rounded())
+        guard pxW > 0, pxH > 0 else { return }
+
+        var order: [Double] = []
+        var byZ: [Double: [Displayable]] = [:]
+        for el in displayList {
+            let z = el.zlevel
+            if byZ[z] == nil { byZ[z] = []; order.append(z) }
+            byZ[z]!.append(el)
+        }
+        let sortedZ = order.sorted()
+
+        // The single-buffer path may have published a bitmap to rootLayer.contents on a prior frame; clear
+        // it so the per-zlevel sublayers are what shows.
+        rootLayer.contents = nil
+
+        // Drop sublayers + retained frames for zlevels no longer present.
+        let present = Set(sortedZ)
+        for (z, sub) in _zSublayers where !present.contains(z) {
+            sub.removeFromSuperlayer(); _zSublayers[z] = nil; _zLastFrame[z] = nil
+        }
+
+        for (i, z) in sortedZ.enumerated() {
+            let cfg = _layerConfigs[z]
+            guard let ctx = CGContext(
+                data: nil, width: pxW, height: pxH, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { continue }
+
+            // Background on the LOWEST zlevel only (drawn in raw pixel space, like beginFrame).
+            if i == 0, let bg = backgroundColor {
+                ctx.saveGState(); ctx.setFillColor(bg)
+                ctx.fill(CGRect(x: 0, y: 0, width: pxW, height: pxH)); ctx.restoreGState()
+            }
+            // Motion blur: composite THIS zlevel's previous frame at its lastFrameAlpha (raw pixel space).
+            if let cfg = cfg, cfg.motionBlur, cfg.lastFrameAlpha > 0, let prev = _zLastFrame[z] {
+                ctx.saveGState(); ctx.setAlpha(CGFloat(cfg.lastFrameAlpha))
+                ctx.draw(prev, in: CGRect(x: 0, y: 0, width: pxW, height: pxH)); ctx.restoreGState()
+            }
+
+            // Flip to y-down + dpr, then draw this zlevel's elements (same base CTM as beginFrame).
+            ctx.translateBy(x: 0, y: CGFloat(pxH))
+            ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
+            let cg = CGRenderer(ctx, flipped: true)
+            for el in byZ[z]! { _drawOne(el, into: cg) }
+
+            guard let image = ctx.makeImage() else { continue }
+            _zLastFrame[z] = (cfg?.motionBlur ?? false) ? image : nil
+
+            let sub = _ensureSublayer(z)
+            sub.contents = image
+            sub.zPosition = CGFloat(i)
+        }
+    }
+
+    private func _ensureSublayer(_ z: Double) -> CALayer {
+        if let s = _zSublayers[z] { return s }
+        let s = CALayer()
+        s.frame = CGRect(origin: .zero, size: surfaceSize)
+        s.contentsScale = CGFloat(dpr)
+        #if canImport(AppKit) && !canImport(UIKit)
+        s.isGeometryFlipped = true   // match rootLayer so the pre-rendered frame image is upright
+        #endif
+        rootLayer.addSublayer(s)
+        _zSublayers[z] = s
+        return s
+    }
+
+    private func _teardownZLayers() {
+        for (_, s) in _zSublayers { s.removeFromSuperlayer() }
+        _zSublayers.removeAll()
+        _zLastFrame.removeAll()
+    }
+
+    /// Test-only: number of live per-zlevel sublayers, and whether a zlevel has a retained motion-blur
+    /// frame (proves the trail accumulates on that layer). See LayeredRenderingTests.
+    public var _testZSublayerCount: Int { _zSublayers.count }
+    public func _testHasRetainedFrame(_ z: Double) -> Bool { _zLastFrame[z] != nil }
+    public func _testLayerConfigured(_ z: Double) -> Bool { _layerConfigs[z] != nil }
+    public func _testRetainedFrameImage(_ z: Double) -> CGImage? { _zLastFrame[z] }
+    public func _testSublayerContents(_ z: Double) -> CGImage? {
+        guard let c = _zSublayers[z]?.contents else { return nil }
+        return (c as! CGImage)
     }
 
     /// Render an `IncrementalDisplayable` through a per-element RETAINED device-pixel bitmap: only its

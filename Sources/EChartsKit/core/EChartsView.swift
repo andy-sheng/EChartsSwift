@@ -222,6 +222,41 @@ public final class EChartsView {
         _setupTreeRoam()
         _setupTreemapRoam()
         _setupSankeyRoam()
+        // lines flying-trail effect: per-zlevel motion-blur (upstream LinesView.render `zr.configLayer`).
+        _setupLinesEffectLayers()
+    }
+
+    // ------------------------------------------------------------------------
+    // _setupLinesEffectLayers — lines flying-trail motion blur. For each `lines` series with the effect on
+    //   and a positive `trailLength`, configure the painter layer at the series' zlevel to keep a faded
+    //   copy of the previous frame (`configLayer(zlevel, {motionBlur, lastFrameAlpha})`), so the moving
+    //   dots leave a fading trail on their OWN layer (updateZ propagates series.zlevel to every element),
+    //   while the axes/grid/other series on a lower zlevel stay crisp. Faithful to upstream LinesView.render;
+    //   done here (not in LinesView) because the driver is zr-less at render time, like roam.
+    // ------------------------------------------------------------------------
+    private func _setupLinesEffectLayers() {
+        guard let ecModel = ec.getModel() else { return }
+        ecModel.eachSeriesByType("lines") { s, _ in
+            let zlevel = _linesLayerNumber(s.get("zlevel")) ?? 0
+            let show = _viewRoamTruthy(s.get(["effect", "show"]))
+            let trailLength = _linesLayerNumber(s.get(["effect", "trailLength"])) ?? 0.2
+            if show && trailLength > 0 {
+                let alpha = Swift.max(Swift.min(trailLength / 10 + 0.9, 1), 0)
+                zr.configLayer(zlevel, LayerConfig(motionBlur: true, lastFrameAlpha: alpha))
+            }
+            else {
+                // Effect off → revert that zlevel to normal clear-each-frame (upstream sets motionBlur:false).
+                zr.configLayer(zlevel, LayerConfig(motionBlur: false))
+            }
+        }
+    }
+
+    // INT-vs-DOUBLE-safe read for a lines layer option (zlevel / trailLength may arrive as Int or Double).
+    private func _linesLayerNumber(_ v: Any?) -> Double? {
+        if let d = v as? Double { return d }
+        if let i = v as? Int { return Double(i) }
+        if let n = v as? NSNumber { return n.doubleValue }
+        return nil
     }
 
     // ------------------------------------------------------------------------
