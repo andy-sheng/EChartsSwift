@@ -1885,6 +1885,23 @@ public final class ECharts: EChartsType {
         }
     }
 
+    // upstream `updateStates(model, view)` (echarts.ts:2697): AFTER render, for each rendered element that
+    //   has an emphasis state, save its NORMAL fill/stroke via `savePathStates`. This is the seam that
+    //   makes hover-emphasis VISIBLE: the default-emphasis stateProxy (`createEmphasisDefaultState`) LIFTS
+    //   (brightens) the saved normal fill when a datum has no explicit `emphasis.itemStyle`. Without this
+    //   save, `getSavedStates(el).normalFill` is nil, the lift is skipped, the emphasis style stays empty,
+    //   and hovering enters the emphasis state but the element is visually unchanged (the "no hover effect"
+    //   bug). Runs after `clearRenderedStates` reset each element to normal, so `pathStyle.fill` is the
+    //   normal (un-lifted) colour here. Skips elements fading out (a leave-scoped animator).
+    private func updateRenderedStates(_ eachRendered: (@escaping (Element) -> Bool) -> Void) {
+        eachRendered { el in
+            guard el.states["emphasis"] != nil else { return false }
+            if el.animators.contains(where: { $0.scope == "leave" }) { return false }
+            if let p = el as? Path { states.savePathStates(p) }
+            return false
+        }
+    }
+
     private func renderComponents(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let payload = Payload(type: "")
         for componentView in _componentsViews {
@@ -1895,6 +1912,9 @@ public final class ECharts: EChartsType {
             // upstream echarts.ts renderComponents runs `updateZ(model, view)` after each render — set
             //   every rendered element's z/zlevel from the model. Coordinate components default z:0.
             updateZ(model, componentView.group, 0)
+            // upstream renderComponents `updateStates(model, view)` (echarts.ts:2464) — save each
+            //   emphasis-capable element's normal fill so hover lifts it (see updateRenderedStates).
+            updateRenderedStates(componentView.eachRendered)
             // upstream (echarts.ts renderComponents): a rendered view is marked alive so the
             //   `updateDirectly` light-update path (callView's `view.__alive` guard) can dispatch
             //   highlight/downplay/updateView to it. Without this, all light-update dispatch no-ops.
@@ -2006,6 +2026,10 @@ public final class ECharts: EChartsType {
             // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
             //   the coordinate components (default 2) so the data draws over the grid/axis/splitLine.
             self.updateZ(seriesModel, chartView.group, 2)
+            // upstream renderSeries `updateStates(seriesModel, view)` (echarts.ts:2532) — save each
+            //   emphasis-capable element's normal fill so a hover LIFTS it (see updateRenderedStates).
+            //   THIS is what makes hover-emphasis visible for a datum with no explicit emphasis.itemStyle.
+            self.updateRenderedStates(chartView.eachRendered)
             // upstream renderSeries `updateSeriesElementSelection(seriesModel)` (echarts.ts:2515) —
             //   re-apply the select state from the model's selectedMap after render, so a selected
             //   pie sector / bar stays selected across a merge-mode setOption re-render.

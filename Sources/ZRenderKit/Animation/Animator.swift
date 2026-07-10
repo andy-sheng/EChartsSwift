@@ -985,7 +985,21 @@ public final class Animator<T> {
             for i in 0..<self._trackKeys.count {
                 let track = self._tracks[self._trackKeys[i]]!
                 if track.needsAnimate(), let lastKf = track.keyframes.last {
-                    (self._target as? AnimationTarget)?.animationSet(track.propName, lastKf.rawValue)
+                    // Resolve the real per-track target. For a SUB-BAG animator (targetName "style" /
+                    //   "shape") the base `Element.animate(key)` deferred the sub-target, so `self._target`
+                    //   is the host ELEMENT — writing `element.animationSet("fill", ...)` is a no-op (the
+                    //   fill lives on the pathStyle accessor). The non-zero step path is saved by
+                    //   `_updateAnimationTargets` re-pointing, but that runs AFTER this settle. So fetch the
+                    //   live accessor here (via the host's `animationGet(targetName)`), exactly as
+                    //   `_updateAnimationTargets` would — without it, a duration-0 state jump (the
+                    //   stateTransition-off emphasis/select) never applies its style, which is the
+                    //   "hover has no visible effect" bug.
+                    var applyTarget = self._target as? AnimationTarget
+                    if let host = self._target as? Element, let tn = self.targetName, !tn.isEmpty,
+                       let acc = host.animationGet(tn) as? AnimationTarget {
+                        applyTarget = acc
+                    }
+                    applyTarget?.animationSet(track.propName, lastKf.rawValue)
                 }
                 track.setFinished()
             }

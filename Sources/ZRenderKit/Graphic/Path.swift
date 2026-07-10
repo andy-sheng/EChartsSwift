@@ -201,6 +201,13 @@ private func zrColorToAnimValue(_ c: ZRColor?) -> Any? {
     }
 }
 private func animValueToZRColor(_ v: Any?) -> ZRColor? {
+    // A ZRColor passthrough: a duration-0 state jump (the emphasis/select default-lift) settles the
+    //   track with the RAW target value, which for a lifted default-emphasis fill is a `ZRColor`
+    //   (not the interpolated rgba-string the animated path produces). Without this case the lifted
+    //   fill was dropped and hover had no visible colour change.
+    if let c = v as? ZRColor {
+        return c
+    }
     if let s = v as? String {
         return .string(s)
     }

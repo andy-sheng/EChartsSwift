@@ -424,7 +424,11 @@ open class Displayable: Element {
             }
             return
         }
-        super.animationSet(key, value)
+        // Displayable's own props (z2/z/zlevel/culling/...) are handled by `attrKV`, NOT by Element's
+        //   `_setKnownKV` (which only knows the base Element props). Route through `attrKV` so an animated
+        //   or state-jumped `z2` (the emphasis z-lift) actually applies — Element.animationSet's
+        //   `_setKnownKV("z2", ...)` was a silent no-op, leaving hovered elements un-lifted.
+        self.attrKV(key, value)
     }
 
     internal override func attrKV(_ key: String, _ value: Any?) {  // upstream: protected
