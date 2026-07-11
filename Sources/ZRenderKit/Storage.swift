@@ -12,7 +12,7 @@ import Foundation
 // import { REDRAW_BIT } from './graphic/constants';            → REDRAW_BIT
 // import { NullUndefined } from './core/types';                → modeled as Optional (CONVENTIONS §6)
 
-// PORT-TODO: upstream uses `timsort` ("because in most case elements are partially sorted").
+// PORT-NOTE: upstream uses `timsort` ("because in most case elements are partially sorted").
 //   No timsort has been ported (Phase 0 has none). We use Swift's standard-library sort, which
 //   is GUARANTEED STABLE as of Swift 5 (SE-0372) — so equal-priority elements keep their
 //   insertion order, matching timsort's stable behavior that this code relies on for the
@@ -49,7 +49,7 @@ public final class Storage {
     public init() {}
 
     // upstream: traverse<T>(cb: (this: T, el: Element) => void, context?: T)
-    // PORT-TODO: the `<T>`/`this: T` context binding is dropped (Swift closures don't rebind
+    // PORT-NOTE: the `<T>`/`this: T` context binding is dropped (Swift closures don't rebind
     //   `this`); `context` is forwarded as `Any?`.
     public func traverse(
         _ cb: (_ el: Element) -> Void,
@@ -280,7 +280,7 @@ public final class Storage {
      * 清空并且释放Storage
      */
     public func dispose() {
-        // PORT-TODO: upstream sets `_displayList = null; _roots = null`. The Swift fields are
+        // PORT-NOTE: upstream sets `_displayList = null; _roots = null`. The Swift fields are
         //   non-optional arrays; cleared to empty rather than nil.
         self._displayList = []
         self._roots = []

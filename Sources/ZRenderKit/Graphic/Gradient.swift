@@ -13,8 +13,9 @@ public protocol GradientObject {
 }
 
 public protocol InnerGradientObject: GradientObject {
-    // PORT-TODO: __canvasGradient: CanvasGradient — canvas backend type (CONVENTIONS §9),
-    // created by the canvas painter; routed through the Renderer/Painter seam in a later phase.
+    // PORT-NOTE: upstream `__canvasGradient: CanvasGradient` is a canvas-backend cache field with no
+    // native analogue — NativePainter renders gradients directly via `CGGradient`
+    // (CGRenderer.makeCGGradient), so this field is intentionally omitted.
     var __width: Double { get set }
     var __height: Double { get set }
 }

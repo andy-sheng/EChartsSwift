@@ -353,8 +353,10 @@ public final class TooltipView {
         content.setEnterable(tooltipModel.get("enterable") as? Bool)
 
         // upstream `_getNearestPoint` (item branch): `borderColor || params.color || params.borderColor`.
-        //   PORT-TODO (DEFERRED): `params.color`/`params.borderColor` (the series visual color) — needs
-        //   `getDataParams`. Slim: border color from the model, else the default border color.
+        //   PORT-TODO: the `params.color`/`params.borderColor` fallback needs the hovered datum's
+        //   getDataParams (now available), but `_showTooltipContent` is not passed the dataIndex — wiring
+        //   it requires threading dataIndex from the caller. Until then: border color from the model,
+        //   else the default border color.
         let nearPointColor: String? = (tooltipModel.get("borderColor") as? String)
             ?? (tooltipModel.get("defaultBorderColor", true) as? String)
         _ = seriesModel

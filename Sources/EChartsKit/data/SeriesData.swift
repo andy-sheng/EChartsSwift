@@ -36,11 +36,11 @@ import ZRenderKit
 //   import { ... } from '../util/types';                             -> sibling util/types.swift
 //   import {convertOptionIdName, isDataItemOption} from '../util/model';  -> model.convertOptionIdName / model.isDataItemOption
 //   import { setCommonECData } from '../util/innerStore';            -> innerStore.setCommonECData
-//   import type Graph from './Graph';                                -> PORT-TODO: Graph not ported (Phase 5+)
-//   import type Tree from './Tree';                                  -> PORT-TODO: Tree not ported (Phase 5+)
-//   import type { VisualMeta } from '../component/visualMap/VisualMapModel';  -> PORT-TODO: not ported
+//   import type Graph from './Graph';                                -> sibling data/Graph.swift
+//   import type Tree from './Tree';                                  -> sibling data/Tree.swift
+//   import type { VisualMeta } from '../component/visualMap/VisualMapModel';  -> component/visualMap/VisualMapModel.swift (struct VisualMeta)
 //   import {isSourceInstance, Source} from './Source';               -> sibling data/Source.swift
-//   import { LineStyleProps } from '../model/mixin/lineStyle';       -> PORT-TODO: not ported
+//   import { LineStyleProps } from '../model/mixin/lineStyle';       -> model/mixin/lineStyle.swift
 //   import DataStore, { DataStoreDimensionDefine, DimValueGetter } from './DataStore';  -> sibling data/DataStore.swift
 //   import { isSeriesDataSchema, SeriesDataSchema } from './helper/SeriesDataSchema';   -> sibling data/helper/SeriesDataSchema.swift
 //   import { DataSanitizationFilter } from './helper/dataValueHelper';  -> sibling data/helper/dataValueHelper.swift
@@ -50,7 +50,7 @@ import ZRenderKit
 //   -> referenced as `util.isObject` / `util.map` at call sites.
 
 // const CtorInt32Array = typeof Int32Array === 'undefined' ? Array : Int32Array;
-//   -> PORT-TODO: Swift always has typed storage; the feature-detection branch is dropped.
+//   -> PORT-NOTE: Swift always has typed storage; the feature-detection branch is dropped.
 //      Inverted-index buffers are modeled as `ContiguousArray<Int>` (CONVENTIONS §1).
 
 // Use prefix to avoid index to be the same as otherIdList[idx],
@@ -68,7 +68,7 @@ public typealias ItrParamDims = Any
 // type CtxOrList / EachCb0..2 / FilterCb0..2 / MapArrayCb0..2 / MapCb1..2
 //   -> the arity-specialized + `this`-bound callbacks are collapsed to the array-arg forms
 //      already declared on `DataStore` (EachCb / FilterCb / MapCb). The last array element is
-//      the data index (as Double). The `ctx`/`this`-binding argument is dropped (PORT-TODO).
+//      the data index (as Double). The `ctx`/`this`-binding argument is dropped (PORT-NOTE).
 public typealias MapArrayCb = (_ args: [ParsedValue]) -> Any?
 
 // type SeriesDimensionDefineLoose = string | object | SeriesDimensionDefine;
@@ -109,10 +109,10 @@ public struct DefaultDataVisual {
     public var liftZ: Double?
     // For legend.
     public var legendIcon: String?
-    public var legendLineStyle: Any?   // PORT-TODO: LineStyleProps (model/mixin/lineStyle, not ported)
+    public var legendLineStyle: Any?   // PORT-NOTE: concrete type is LineStyleProps (model/mixin/lineStyle); typed loosely as Any here
 
     // visualMap will inject visualMeta data
-    public var visualMeta: [Any]?      // PORT-TODO: VisualMeta[] (component/visualMap, not ported)
+    public var visualMeta: [Any]?      // PORT-NOTE: element type is VisualMeta (component/visualMap/VisualMapModel.swift); typed loosely as [Any] here
 
     // If color is encoded from palette
     public var colorFromPalette: Bool?
@@ -120,13 +120,13 @@ public struct DefaultDataVisual {
     public var decal: DecalObject?
 }
 
-public struct DataCalculationInfo {   // PORT-TODO: upstream generic <SERIES_MODEL>
+public struct DataCalculationInfo {   // PORT-NOTE: upstream generic <SERIES_MODEL>
     public var stackedDimension: DimensionName
     public var stackedByDimension: DimensionName
     public var isStackedByIndex: Bool
     public var stackedOverDimension: DimensionName
     public var stackResultDimension: DimensionName
-    public var stackedOnSeries: Model?   // PORT-TODO: SERIES_MODEL (model layer, Phase 5c)
+    public var stackedOnSeries: Model?   // PORT-NOTE: SERIES_MODEL (model layer, Phase 5c)
 }
 
 // -----------------------------
@@ -212,11 +212,11 @@ public final class SeriesData: DataStackSeriesData {
     private var _dimSummary: DimensionSummary!
 
     // key: dim, value: extent
-    // PORT-TODO: upstream `Record<SeriesDimensionName, ArrayLike<number>>` (the value is a
+    // PORT-NOTE: upstream `Record<SeriesDimensionName, ArrayLike<number>>` (the value is a
     //   `CtorInt32Array`). Modeled as `ContiguousArray<Int>` (CONVENTIONS §1).
     private var _invertedIndicesMap: [SeriesDimensionName: ContiguousArray<Int>] = [:]
 
-    // PORT-TODO: upstream `DataCalculationInfo<HostModel>`; stored as a dynamic bag so
+    // PORT-NOTE: upstream `DataCalculationInfo<HostModel>`; stored as a dynamic bag so
     //   `getCalculationInfo(key)`/`setCalculationInfo(kvObject)` (and `dataStackHelper`) can
     //   read/write by string key. See `DataCalculationInfo` struct above for the documented shape.
     private var _calculationInfo: [String: Any] = [:]
@@ -259,7 +259,7 @@ public final class SeriesData: DataStackSeriesData {
      *        For example, ['someDimName', {name: 'someDimName', type: 'someDimType'}, ...].
      *        Dimensions should be concrete names like x, y, z, lng, lat, angle, radius
      */
-    // PORT-TODO: upstream is generic `SeriesData<HostModel extends Model, Visual extends
+    // PORT-NOTE: upstream is generic `SeriesData<HostModel extends Model, Visual extends
     //   DefaultDataVisual>`. The generics are dropped (the type is referenced as a plain
     //   `SeriesData` throughout the codebase): `HostModel` -> the `Model` placeholder, and
     //   `Visual` -> dynamic `[String: Any]` visual storage (`getVisual`/`setVisual` take String).
@@ -290,7 +290,7 @@ public final class SeriesData: DataStackSeriesData {
         var invertedIndicesMap: [SeriesDimensionName: ContiguousArray<Int>] = [:]
         let needsHasOwn = false
         // const emptyObj = {};
-        //   PORT-TODO: upstream uses `(emptyObj as any)[dimensionName] != null` to detect a
+        //   PORT-NOTE: upstream uses `(emptyObj as any)[dimensionName] != null` to detect a
         //   dimension name that collides with `Object.prototype` (e.g. 'constructor') and then
         //   switches `_getDimInfo` to a `hasOwnProperty` form. Swift `Dictionary` has no
         //   prototype, so this collision never happens; `needsHasOwn` stays `false`.
@@ -465,7 +465,7 @@ public final class SeriesData: DataStackSeriesData {
     private func _getStoreDimIndex(_ dim: DimensionLoose) -> DimensionIndex {
         let dimIdx = self.getDimensionIndex(dim)
         // if __DEV__ { if (dimIdx == null) throw new Error('Unknown dimension ' + dim); }
-        //   PORT-TODO: `getDimensionIndex` returns a non-optional `DimensionIndex` (-1 if not
+        //   PORT-NOTE: `getDimensionIndex` returns a non-optional `DimensionIndex` (-1 if not
         //   found) so the null check can never fire here.
         return dimIdx
     }
@@ -616,7 +616,7 @@ public final class SeriesData: DataStackSeriesData {
 
     private func _shouldMakeIdFromName() -> Bool {
         let provider = self._store.getProvider()
-        // PORT-TODO: upstream final term is `!provider.fillStorage` (method presence). In the
+        // PORT-NOTE: upstream final term is `!provider.fillStorage` (method presence). In the
         //   ported `DataProvider`, `fillStorage` is a no-op default and is only meaningfully
         //   mounted for the typed-array source format — which is already excluded by the
         //   `sourceFormat !== TYPED_ARRAY` term — so the `!provider.fillStorage` term is dropped.
@@ -729,7 +729,7 @@ public final class SeriesData: DataStackSeriesData {
         let ordinalMeta = self._store.getOrdinalMeta(dimIdx)
         if let ordinalMeta = ordinalMeta {
             // ordinalMeta.categories[ordinal as OrdinalNumber]
-            let oi = (ordinal as? Double) ?? Double.nan   // PORT-TODO: numeric coercion (CONVENTIONS §1)
+            let oi = (ordinal as? Double) ?? Double.nan   // PORT-NOTE: numeric coercion (CONVENTIONS §1)
             if oi.isFinite {
                 let i = Int(oi)
                 if i >= 0 && i < ordinalMeta.categories.count {
@@ -877,7 +877,7 @@ public final class SeriesData: DataStackSeriesData {
      *  list.each(function (idx) {})
      */
     public func each(_ cb: @escaping EachCb) {
-        // ctxCompat / ctx dropped (PORT-TODO: Swift closures have no `this` binding).
+        // ctxCompat / ctx dropped (PORT-NOTE: Swift closures have no `this` binding).
         self._store.each([], cb)
     }
     public func each(_ dims: ItrParamDims, _ cb: @escaping EachCb) {
@@ -1036,7 +1036,7 @@ public final class SeriesData: DataStackSeriesData {
         // (model/Model has landed — Phase 5c — so this is now the faithful implementation.)
         let hostModel = self.hostModel
         // upstream: `getRawDataItem(idx) as ModelOption`. `OptionDataItem` and `ModelOption` are both the
-        //   `Any` PORT-TODO alias, so the TS assertion cast is a no-op here — pass through directly
+        //   `Any` PORT-NOTE alias, so the TS assertion cast is a no-op here — pass through directly
         //   (a conditional `as?` between two `Any` aliases always succeeds → warning).
         let dataItem: ModelOption = self.getRawDataItem(idx)
         return Model(dataItem, hostModel, hostModel?.ecModel)
@@ -1216,7 +1216,7 @@ public final class SeriesData: DataStackSeriesData {
      */
     public func setItemGraphicEl(_ idx: Int, _ el: Element?) {
         // const seriesIndex = this.hostModel && (this.hostModel as any).seriesIndex;
-        //   (was a PORT-TODO defaulting to 0 — with a live SeriesModel host the real index is stamped,
+        //   (was a PORT-NOTE defaulting to 0 — with a live SeriesModel host the real index is stamped,
         //   so the focus/blur fan-out targets the right series in MULTI-series charts; a hardcoded 0
         //   made hovering series 1 blur against series 0's identity.)
         let seriesIndex: Double = (self.hostModel as? SeriesModel)?.seriesIndex ?? 0
@@ -1234,7 +1234,7 @@ public final class SeriesData: DataStackSeriesData {
 
     public func eachItemGraphicEl(
         _ cb: (_ el: Element, _ idx: Int) -> Void,
-        _ context: Any? = nil   // PORT-TODO: `this`-binding dropped (Swift closures capture)
+        _ context: Any? = nil   // PORT-NOTE: `this`-binding dropped (Swift closures capture)
     ) {
         util.each(self._graphicEls) { el, idx in
             if let el = el {

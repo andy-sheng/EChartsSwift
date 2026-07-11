@@ -30,9 +30,9 @@ import ZRenderKit
 //       RadiusAxisView). `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath).
 //       `graphic.subPixelOptimizeLine` → the file-private value-returning wrapper below (delegates to
 //       `subPixelOptimizeNS.subPixelOptimizeLine`, mirroring CartesianAxisView). `graphic.groupTransition`
-//       (anid-matched transition animation) is deferred (see the PORT-TODO in `render`).
+//       (anid-matched transition animation) is deferred (see the PORT-NOTE in `render`).
 //   import * as singleAxisHelper from '../../coord/single/singleAxisHelper';
-//     → PORT-TODO: `coord/single/singleAxisHelper` is a sibling landing this SINGLE-coord phase. Assumed
+//     → PORT-NOTE: `coord/single/singleAxisHelper` is ported (singleAxisHelper.swift). Its
 //       API (free-function module → caseless enum, CONVENTIONS §2): `enum singleAxisHelper { static func
 //       layout(_ axisModel: SingleAxisModel, _ opt: SingleAxisLayoutOpt? = nil) -> AxisBuilderCfg }`.
 //       Upstream `layout` returns a `LayoutResult` (position/rotation/labelRotate/labelDirection/
@@ -42,9 +42,9 @@ import ZRenderKit
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
 //     → PORT-TODO: `component/axis/axisSplitHelper` NOT ported (splitArea alternating colors + inner-store
 //       cache). `rectCoordAxisBuildSplitArea` (splitArea builder) and `rectCoordAxisHandleRemove` (remove)
-//       are deferred with documented PORT-TODOs below (same deviation as CartesianAxisView).
+//       are deferred with documented PORT-NOTEs below (same deviation as CartesianAxisView).
 //   import SingleAxisModel from '../../coord/single/AxisModel';
-//     → PORT-TODO: `coord/single/AxisModel` (SingleAxisModel) is a sibling landing this SINGLE-coord phase.
+//     → PORT-NOTE: `coord/single/AxisModel` (SingleAxisModel) is ported (SingleAxisModel.swift).
 //       Named `SingleAxisModel.swift` (NOT `AxisModel.swift`) to avoid the SwiftPM object-name collision
 //       with the cartesian/polar `AxisModel`. Assumed API (mirrors CartesianAxisModel / RadiusAxisModel):
 //         open class SingleAxisModel: AxisBaseModel   // → so AxisBuilder(singleAxisModel, …) type-checks
@@ -57,10 +57,10 @@ import ZRenderKit
 //   import { getAxisBreakHelper } from './axisBreakHelper';        → PORT-TODO: `component/axis/axisBreakHelper`
 //     NOT ported (axis break feature); `getAxisBreakHelper()` returns nil, so `breakArea` is a no-op.
 //
-//   The sibling `Single` (SingleAxisModel.coordinateSystem) is a PORT-TODO SINGLE-coord sibling — the 4th
+//   The sibling `Single` (SingleAxisModel.coordinateSystem) is ported (Single.swift) — the 4th
 //   coordinate system (one axis), analogue of Grid/Polar. Assumed API:
 //     final class Single: CoordinateSystemMaster { func getRect() -> LayoutRect }
-//   The sibling `SingleAxis` (SingleAxisModel.axis) is a PORT-TODO SINGLE-coord sibling — a 1D cartesian-
+//   The sibling `SingleAxis` (SingleAxisModel.axis) is ported (SingleAxis.swift) — a 1D cartesian-
 //   like axis extending the ported `open class Axis`. Assumed API:
 //     open class SingleAxis: Axis {
 //         var position: String            // SingleAxisPosition: 'top'|'bottom'|'left'|'right'
@@ -299,7 +299,7 @@ private let axisElementBuilders: [String: SingleAxisElementBuilder] = [
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of SingleAxisView.ts upstream. They reproduce the
+// PORT-NOTE helpers — NOT part of SingleAxisView.ts upstream. They reproduce the
 // dynamic-option-read coercions, the `util/graphic` style-bag bridge, and the
 // value-returning `subPixelOptimizeLine` wrapper referenced above so the split
 // lines are actually drawn. Delete each when its real sibling lands and call the
@@ -328,7 +328,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
+/// PORT-NOTE: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
 ///   ([String: Any] — the `defaults(...)` merge of the split color over `getLineStyle(['color'])`) onto the
 ///   typed `PathStyleProps`. Same deviation as RadiusAxisView.pathStyleFromDict. Numbers are read with
 ///   `styleNum` (Int|Double|NSNumber) to avoid the Int-drop trap. Delete when the graphic bridge lands.

@@ -39,8 +39,9 @@ import ZRenderKit
 // import type CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> CartesianAxisModel
 // import Model from '../../model/Model';                           -> Model (model/Model.swift)
 // import { PathStyleProps } from 'zrender/src/graphic/Path';       -> PathStyleProps (ZRenderKit Graphic/Path.swift)
-// import { createTextStyle } from '../../label/labelStyle';        -> label/labelStyle.swift NOT ported; the label
-//   TextStyleProps is built directly here (see buildLabelElOption; PORT-TODO on rich-text/textBorder).
+// import { createTextStyle } from '../../label/labelStyle';        -> label/labelStyle.swift is ported
+//   (createTextStyle); the label TextStyleProps is nonetheless built directly here rather than routed
+//   through it (see buildLabelElOption; PORT-TODO on rich-text/textBorder at that call site).
 // import { calcBandWidth } from '../../coord/axisBand';            -> calcBandWidth (coord/axisBand.swift)
 // import { mathMax, mathMin } from '../../util/number';            -> number.mathMax / number.mathMin
 //
@@ -298,7 +299,7 @@ public enum viewHelper {
     }
 
     // upstream: makeSectorShape(cx, cy, r0, r, startAngle, endAngle)
-    //   PORT-TODO: polar-only (Circle/Sector pointer). CartesianAxisPointer never calls this; kept faithful
+    //   PORT-NOTE: polar-only (Circle/Sector pointer). CartesianAxisPointer never calls this; kept faithful
     //   as a plain object for when PolarAxisPointer lands (no `SectorShape` bridge needed yet).
     public static func makeSectorShape(
         _ cx: Double, _ cy: Double, _ r0: Double, _ r: Double,

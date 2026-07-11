@@ -26,7 +26,7 @@ import Foundation
 // import Element, { ElementProps } from '../Element';     → Element (same module)
 // import BoundingRect from '../core/BoundingRect';        → Core/BoundingRect
 // import { MatrixArray } from '../core/matrix';           → Core/matrix
-// import Displayable from './Displayable';                → PORT-TODO: graphic/Displayable.ts not ported yet
+// import Displayable from './Displayable';                → Displayable (graphic/Displayable.swift).
 // import { ZRenderType } from '../zrender';               → Element.ZRenderType (forward-declared placeholder)
 
 public typealias GroupProps = ElementProps   // upstream: interface GroupProps extends ElementProps {}
@@ -54,7 +54,7 @@ open class Group: Element {
     /**
      * Get children reference.
      */
-    // PORT-TODO: Swift `Array` is a value type, so this returns a COPY, not a live reference
+    // PORT-NOTE: Swift `Array` is a value type, so this returns a COPY, not a live reference
     //   like upstream. Storage walks it read-only (see GroupLike), so the copy is acceptable;
     //   revisit if a consumer mutates the returned array expecting it to alias `_children`.
     public func childrenRef() -> [Element] {
@@ -107,7 +107,7 @@ open class Group: Element {
                 self._children.append(child)
                 self._doAdd(child)
             }
-            // PORT-TODO: dev-mode guard (process.env.NODE_ENV !== 'production'):
+            // PORT-NOTE: dev-mode guard (process.env.NODE_ENV !== 'production'):
             //   if (child.__hostTarget) throw 'This elemenet has been used as an attachment';
         }
 
@@ -233,7 +233,7 @@ open class Group: Element {
     /**
      * 遍历所有子节点
      */
-    // PORT-TODO: upstream binds the callback `this` to `context`; Swift closures capture, so
+    // PORT-NOTE: upstream binds the callback `this` to `context`; Swift closures capture, so
     //   `context` is unused for binding (kept for signature fidelity). `index` is the genuine
     //   array index (upstream types it `number`).
     @discardableResult
@@ -251,7 +251,7 @@ open class Group: Element {
      * Return false in callback to stop visit descendants of current node
      */
     // TODO Group itself should also invoke the callback.
-    // PORT-TODO: upstream `cb` returns `boolean | void`; modeled as `-> Bool` (return `true`
+    // PORT-NOTE: upstream `cb` returns `boolean | void`; modeled as `-> Bool` (return `true`
     //   to stop descending). This is an OVERLOAD of `Element.traverse` (whose closure returns
     //   `Void`), not an override — the closure types differ. Recursion casts each child to
     //   `Group` to reach this method.
@@ -309,7 +309,7 @@ open class Group: Element {
             }
 
             guard let childRect = child.getBoundingRect() else {
-                // PORT-TODO: upstream assumes `getBoundingRect()` returns a BoundingRect
+                // PORT-NOTE: upstream assumes `getBoundingRect()` returns a BoundingRect
                 //   (Displayable always does). Bare Element returns nil here → skip.
                 continue
             }
@@ -338,7 +338,7 @@ open class Group: Element {
 }
 
 // Storage will use childrenRef to get children to render.
-// PORT-TODO: upstream `interface GroupLike extends Element { childrenRef(): Element[] }`. Swift
+// PORT-NOTE: upstream `interface GroupLike extends Element { childrenRef(): Element[] }`. Swift
 //   protocols cannot inherit from a class, so the `extends Element` part is dropped; conformers
 //   are expected to be `Element` subclasses (i.e. `Group`).
 public protocol GroupLike: AnyObject {

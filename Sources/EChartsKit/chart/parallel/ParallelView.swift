@@ -23,8 +23,8 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                 -> `Polyline` / `Group` / `Rect` (ZRenderKit).
-//       PORT-TODO: graphic.updateProps / graphic.initProps (enter/update animation) NOT ported — the
-//       static render sets final geometry directly (same deviation as RadarView / FunnelView / GraphView).
+//       PORT-NOTE: graphic.updateProps / graphic.initProps ARE ported (animation/basicTransition.swift),
+//       but the parallel static render sets final geometry directly (same deviation as RadarView / FunnelView / GraphView).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Hover emphasis IS wired: each parallel line carries its
 //       emphasis/blur/select lineStyle state styles and is a highDown dispatcher (see updateElCommon).
@@ -111,7 +111,7 @@ open class ParallelView: ChartView {
         //   same-item-count case; a count change falls back to the static rebuild (`add` path only).
         // const coordSys = seriesModel.coordinateSystem;
         guard let coordSys = seriesModel.coordinateSystem as? Parallel else {
-            // PORT-TODO: no parallel coord attached — nothing to render. Drop persisted lines so a later
+            // PORT-NOTE: no parallel coord attached — nothing to render. Drop persisted lines so a later
             //   coord re-attach rebuilds fresh (can't morph against a stale group).
             _ = dataGroup.removeAll()
             self._lines = []

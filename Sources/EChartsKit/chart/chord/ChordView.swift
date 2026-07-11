@@ -37,7 +37,7 @@ import ZRenderKit
 //   import { parsePercent } from '../../util/number';
 //       -> only used by the DEFERRED first-render scale animation (center origin). See render().
 //   import { getECData } from '../../util/innerStore';
-//       -> PORT-TODO: innerStore NOT ported (ECData `dataIndex` tagging DEFERRED, same as SankeyView/GraphView).
+//       -> PORT-NOTE: innerStore (getECData/ECData) is ported; the ECData `dataIndex` tagging is not wired in this view yet.
 
 // upstream: const RADIAN = Math.PI / 180;
 private let RADIAN: Double = Double.pi / 180
@@ -107,7 +107,7 @@ open class ChordView: ChartView {
             // if (layout) { const el = new ChordPiece(data, newIdx, startAngle); ... group.add(el); }
             if chordTruthy(layout) {
                 let el = ChordPiece(data, newIdx, startAngle)
-                // getECData(el).dataIndex = newIdx;  — PORT-TODO: innerStore (ECData) DEFERRED.
+                // getECData(el).dataIndex = newIdx;  — PORT-NOTE: innerStore (ECData) is ported; tagging not wired here yet.
                 _ = group.add(el)
             }
         }
@@ -146,7 +146,7 @@ open class ChordView: ChartView {
         for newIdx in 0..<edgeData.count() {
             // const el = new ChordEdge(nodeData, edgeData, newIdx, startAngle);
             let el = ChordEdge(nodeData, edgeData, newIdx, startAngle)
-            // getECData(el).dataIndex = newIdx;  — PORT-TODO: innerStore (ECData) DEFERRED.
+            // getECData(el).dataIndex = newIdx;  — PORT-NOTE: innerStore (ECData) is ported; tagging not wired here yet.
             _ = group.add(el)
         }
 

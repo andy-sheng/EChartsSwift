@@ -26,13 +26,13 @@ public let ITEM_STYLE_KEY_MAP: [[String]] = [
 
 private let getItemStyle = makeStyleMapper(ITEM_STYLE_KEY_MAP)
 
-// PORT-TODO: upstream `type ItemStyleKeys = 'fill' | 'stroke' | 'decal' | 'lineWidth'
+// PORT-NOTE: upstream `type ItemStyleKeys = 'fill' | 'stroke' | 'decal' | 'lineWidth'
 //   | 'opacity' | 'shadowBlur' | 'shadowOffsetX' | 'shadowOffsetY' | 'shadowColor'
 //   | 'lineDash' | 'lineDashOffset' | 'lineCap' | 'lineJoin' | 'miterLimit';`
 //   Swift has no string-literal union type; the key set is captured by ITEM_STYLE_KEY_MAP above.
 
 // upstream: export type ItemStyleProps = Pick<PathStyleProps, ItemStyleKeys>;
-// PORT-TODO: makeStyleMapper builds a dynamic `Dictionary<Any>` ([String: Any]) bag rather than a
+// PORT-NOTE: makeStyleMapper builds a dynamic `Dictionary<Any>` ([String: Any]) bag rather than a
 //   typed `PathStyleProps` struct (see makeStyleMapper.swift), so ItemStyleProps aliases that bag.
 public typealias ItemStyleProps = Dictionary<Any>
 

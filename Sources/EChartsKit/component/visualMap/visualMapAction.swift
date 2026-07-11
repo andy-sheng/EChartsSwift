@@ -22,8 +22,8 @@ import Foundation
 import ZRenderKit
 
 // import VisualMapModel from './VisualMapModel';
-//   -> PORT-TODO: component/visualMap/VisualMapModel.swift is a SEPARATE (later) port phase; the
-//      `setSelected` mutation below is deferred with it.
+//   -> PORT-NOTE: VisualMapModel is ported (component/visualMap/VisualMapModel.swift); the
+//      `setSelected` mutation below is wired live.
 // import { Payload } from '../../util/types';   -> `Payload` (util/types.swift).
 // import GlobalModel from '../../model/Global';  -> `GlobalModel` (model/Global.swift).
 

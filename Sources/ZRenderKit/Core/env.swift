@@ -11,7 +11,7 @@ final class Browser {
     var newEdge = false
     var weChat = false
     // upstream: `version: string | number` — left undefined (Optional) until detect() sets it.
-    // PORT-TODO: upstream union string|number; modeled as String? here. Numeric uses convert
+    // PORT-NOTE: upstream union string|number; modeled as String? here. Numeric uses convert
     // with Double(version) at the boundary (see detect()).
     var version: String?
 }
@@ -88,7 +88,7 @@ func configureNativeEnv(_ env: Env) {
     env.node = true
     env.svgSupported = true
 
-    // PORT-TODO: not faithful, native deviation — upstream's node branch leaves these at the
+    // PORT-NOTE: not faithful, native deviation — upstream's node branch leaves these at the
     // `Env` default `false`; we override them for the native Core Graphics / touch backend.
     // Confined to here so the rest of `env` mirrors upstream's node env exactly.
     env.touchEventsSupported = true     // native touch is the input model (vs. browser DOM events)
@@ -166,7 +166,7 @@ func detect(_ ua: String, _ env: Env) {
     }
 }
 
-// PORT-TODO: helper replacing JS `String.prototype.match`. Returns an array-like where
+// PORT-NOTE: helper replacing JS `String.prototype.match`. Returns an array-like where
 // index 0 is the full match and index 1+ are capture-group substrings, or nil on no match.
 private func firstMatch(_ s: String, _ pattern: String) -> [String]? {
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
@@ -184,4 +184,4 @@ private func firstMatch(_ s: String, _ pattern: String) -> [String]? {
 }
 
 // export default env;
-// PORT-TODO: `env` is exposed as the module-level singleton (see `let env = Env()` above).
+// PORT-NOTE: `env` is exposed as the module-level singleton (see `let env = Env()` above).

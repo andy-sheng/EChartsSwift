@@ -455,9 +455,9 @@ private func brushModelNotControll(_ brushOption: [String: Any], _ seriesIndex: 
 // Upstream defines `brushSelector` on each series prototype:
 //   scatter/effectScatter: return selectors.point(data.getItemLayout(dataIndex))
 //   bar:                   return selectors.rect(data.getItemLayout(dataIndex))
-// Those overrides are not yet ported onto the Swift series subclasses (see the PORT-TODOs in
+// Those overrides are not yet ported onto the Swift series subclasses (see the PORT-NOTEs in
 // ScatterSeries.swift / BarSeries.swift), so the dispatch is centralized here, keyed by subType.
-// PORT-TODO: move each branch onto its series subclass once `brushSelector` lands there.
+// PORT-NOTE: move each branch onto its series subclass once `brushSelector` lands there.
 // ---------------------------------------------------------------------------
 private func brushSelectorSupported(_ seriesModel: SeriesModel) -> Bool {
     switch seriesModel.subType {

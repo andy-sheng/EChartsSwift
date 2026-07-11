@@ -2,8 +2,8 @@
 // cartesian option per chart and inspects the ZRenderKit scene:
 //   - effectScatter: one static symbol `Path` per datum (name "item"), at a finite point, palette fill.
 //   - lines: one Line/BezierCurve `Path` per data item (name "line"), at finite endpoints.
-// The animated ripple (effectScatter) and moving-dot effect (lines) are documented PORT-TODOs, so only the
-// static geometry is asserted.
+// The animated ripple (effectScatter, EffectSymbolElement) and moving-dot effect (lines, EffectLine) are
+// now ported; this test deliberately asserts only the static geometry.
 import XCTest
 import ZRenderKit
 @testable import EChartsKit

@@ -40,9 +40,9 @@ import ZRenderKit
 //          `model` parameter of several functions here; util-namespace calls are qualified as
 //          `EChartsKit.model.*` to disambiguate.
 //   import { discourageOnAxisZero, getDataDimensionsOnAxis, isAxisOnBand } from './axisHelper';
-//       -> coord/axisHelper.swift NOT yet ported (Phase 6b) — call sites marked PORT-TODO.
+//       -> coord/axisHelper.swift is ported; called at the getDataDimensionsOnAxis/isAxisOnBand/discourageOnAxisZero sites below.
 //   import { getCoordForCoordSysUsageKindBox } from '../core/CoordinateSystem';
-//       -> core/CoordinateSystem.swift NOT yet ported (Phase 6b) — box-coord-sys branch marked PORT-TODO.
+//       -> `getCoordForCoordSysUsageKindBox` is ported (core/CoordinateSystemManager.swift); the box-coord-sys branch here is still deferred (see the PORT-TODO ~698).
 //   import type GlobalModel from '../model/Global';         -> model/Global.swift (same module)
 //   import { error } from '../util/log';                    -> `log.error` (util/log.swift)
 //   import type Axis from './Axis';                         -> the `Axis` placeholder in coord/axisStatistics.swift
@@ -502,7 +502,7 @@ private func sanitizeExtent(
     let dataMM = internalBag.dataMM
     if let sanitize = scale.sanitize {
         // upstream: mm[0] = scale.sanitize(mm[0], dataMM); mm[1] = scale.sanitize(mm[1], dataMM);
-        // PORT-TODO: sanitize returns `Double?` (optional slot); upstream returns a number — keep the
+        // PORT-NOTE: sanitize returns `Double?` (optional slot); upstream returns a number — keep the
         //   existing value if a nil is returned.
         if let s0 = sanitize(mm[0], dataMM) { mm[0] = s0 }
         if let s1 = sanitize(mm[1], dataMM) { mm[1] = s1 }

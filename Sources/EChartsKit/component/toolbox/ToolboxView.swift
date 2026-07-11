@@ -338,7 +338,7 @@ private func isUserFeatureName(_ featureName: String) -> Bool {
 // export default ToolboxView;  -> `open class ToolboxView` above.
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// PORT-TODO helpers — NOT part of toolbox/ToolboxView.ts upstream. They reproduce out-of-phase
+// PORT-NOTE helpers — NOT part of toolbox/ToolboxView.ts upstream. They reproduce out-of-phase
 // sibling APIs / JS idioms so the static toolbox render compiles. Delete each when its real sibling
 // lands and call the sibling directly.
 // ════════════════════════════════════════════════════════════════════════════════════════════

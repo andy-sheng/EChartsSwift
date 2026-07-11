@@ -32,10 +32,10 @@ import ZRenderKit
 //       -> ZRenderKit caseless enum `util` (`util.isObject` / `util.each` / `util.indexOf` / ...). `hasOwn`
 //          on a `HashMap` is always true for enumerated keys, so it is dropped where iterating keys.
 //   import {BoxLayoutReferenceResult, createBoxLayoutReference, getLayoutRect, LayoutRect} from '../../util/layout';
-//       -> util/layout.swift (SIBLING — NOT yet landed). Referenced by its conventional public API:
+//       -> util/layout.swift (SIBLING). Referenced by its conventional public API:
 //          free-function module -> caseless enum `layout` (`layout.createBoxLayoutReference` /
 //          `layout.getLayoutRect`); the types `LayoutRect` / `BoxLayoutReferenceResult` stay top-level.
-//          PORT-TODO: reconcile the exact namespacing once util/layout.swift lands.
+//          PORT-NOTE: util/layout.swift is landed; namespacing follows the caseless-enum convention above.
 //   import {
 //       createScaleByModel, getScaleValuePositionKind, isNameLocationCenter, shouldAxisShow,
 //       retrieveAxisBreaksOption, determineAxisType, isOnAxisZeroDiscouraged,
@@ -76,7 +76,7 @@ import ZRenderKit
 //          only in the stubbed AxisBuilder label-overlap path below.
 //   import {AxisBuilderSharedContext, resolveAxisNameOverlapDefault, moveIfOverlapByLinearLabels, getLabelInner}
 //       from '../../component/axis/AxisBuilder';
-//       -> component/axis/AxisBuilder (Phase 6b, OUT OF SCOPE). The label-overlap path is PORT-TODO stubbed.
+//       -> component/axis/AxisBuilder.swift (ported). Axis-elements building is wired; only the outerBounds-shrink / cross-axis name-overlap refinement remains deferred (see below).
 //   import { error, log } from '../../util/log';                            -> `log.error` / `log.log` (util/log.swift)
 //   import { AxisTickLabelComputingKind } from '../axisTickLabelBuilder';   -> coord/axisTickLabelBuilder.swift
 //   import { injectCoordSysByOption } from '../../core/CoordinateSystem';
@@ -91,20 +91,17 @@ import ZRenderKit
 //   import { associateSeriesWithAxis } from '../axisStatistics';            -> `associateSeriesWithAxis` (coord/axisStatistics.swift)
 //
 // ============================================================================
-// PORT-TODO (CROSS-SIBLING HIERARCHY): Upstream `CartesianAxisModel implements AxisBaseModel<...>`, i.e. it
-//   IS an `AxisBaseModel`. In the current Swift port hierarchy, `CartesianAxisModel: ComponentModel,
-//   AxisModelCommonMixin` is a *sibling* of `AxisBaseModel: ComponentModel` (both conform to the same mixin
-//   protocol) rather than a subclass. Grid relies on the upstream relation in two places:
+// PORT-NOTE (CROSS-SIBLING HIERARCHY): Upstream `CartesianAxisModel implements AxisBaseModel<...>`, i.e. it
+//   IS an `AxisBaseModel`. The Swift port matches this: `CartesianAxisModel: AxisBaseModel`
+//   (coord/cartesian/AxisModel.swift). Grid relies on the relation in two places:
 //     - `axis.model = axisModel` (base `Axis.model: AxisBaseModel!`), and
 //     - `axisHelper.isAxisOnBand(axis.scale, axisModel)` (param typed `AxisBaseModel`).
-//   These are written faithfully below; they type-check once the integrator aligns
-//   `CartesianAxisModel` to subclass `AxisBaseModel` (matching upstream's `implements`).
+//   Both type-check against the aligned hierarchy.
 // ============================================================================
 //
-// PORT-TODO (AXIS NAME CLASH): coord/axisStatistics.swift still declares a placeholder `public protocol Axis`
-//   alongside the real `open class Axis` in coord/Axis.swift. Until the integrator removes that placeholder,
-//   the bare name `Axis` is ambiguous in this module; this file therefore uses the concrete `Axis2D`
-//   for local axis references and only names `Axis` where the `CoordinateSystemMaster` protocol requires it.
+// PORT-NOTE (AXIS NAME CLASH): the former placeholder `public protocol Axis` in coord/axisStatistics.swift
+//   was removed once the real `open class Axis` (coord/Axis.swift) landed. This file still uses the concrete
+//   `Axis2D` for local axis references and names `Axis` only where the `CoordinateSystemMaster` protocol requires it.
 
 
 // upstream: type Cartesian2DDimensionName = 'x' | 'y';  (no string union -> String alias)
@@ -193,7 +190,7 @@ public final class Grid: CoordinateSystemMaster {
     // upstream: static dimIdxMap = createDimNameMap(cartesian2DDimensions);
     public static let dimIdxMap: HashMap<DimensionIndex> = createDimNameMap(cartesian2DDimensions)
 
-    // PORT-TODO: `CoordinateSystemMaster.boxCoordinateSystem` (optional, default nil) is not used by Grid.
+    // PORT-NOTE: `CoordinateSystemMaster.boxCoordinateSystem` (optional, default nil) is not used by Grid.
 
     // upstream: constructor(gridModel: GridModel, ecModel: GlobalModel, api: ExtensionAPI)
     public init(_ gridModel: GridModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -240,7 +237,7 @@ public final class Grid: CoordinateSystemMaster {
                     axisNeedsAlign.append(axis)
                 }
                 else {
-                    // PORT-TODO: upstream `scaleCalcNice(axis)`; the landed `scaleCalcNice` takes a
+                    // PORT-NOTE: upstream `scaleCalcNice(axis)`; the landed `scaleCalcNice` takes a
                     //   `ScaleCalcNiceAxisLike` (its own `axis` is re-derived from `model.axis` internally).
                     scaleCalcNice(ScaleCalcNiceAxisLike(scale: axis.scale, model: axis.model))
                 }
@@ -509,7 +506,7 @@ public final class Grid: CoordinateSystemMaster {
         if let coord = coord {
             return coord.containPoint(point)
         }
-        // PORT-TODO: upstream implicitly returns `undefined` (falsy) when no coord exists.
+        // PORT-NOTE: upstream implicitly returns `undefined` (falsy) when no coord exists.
         return false
     }
 
@@ -568,8 +565,8 @@ public final class Grid: CoordinateSystemMaster {
                     axisPosition
                 )
 
-                // PORT-TODO (CROSS-SIBLING): `isAxisOnBand` / `axis.model = axisModel` require
-                //   `CartesianAxisModel: AxisBaseModel` (see file header).
+                // PORT-NOTE (CROSS-SIBLING): `isAxisOnBand` / `axis.model = axisModel` rely on
+                //   `CartesianAxisModel: AxisBaseModel`, which the port now satisfies (see file header).
                 axis.onBand = axisHelper.isAxisOnBand(axis.scale, axisModel)
                 axis.inverse = (axisModel.get("inverse") as? Bool) ?? false
 
@@ -952,13 +949,13 @@ public func registerLegacyGridContainLabelImpl(_ impl: @escaping LegacyLayOutGri
 }
 
 // ============================================================================
-// PORT-TODO (OUT OF SCOPE — component/axis AxisBuilder label-overlap path, Phase 6b):
-//   `createAxisBiulders` / `layOutGridByOuterBounds` / `createOrUpdateAxesView` / `resolveAxisNameOverlapForGrid`
-//   depend on `AxisBuilderSharedContext` / `AxisBuilder` (component/axis/AxisBuilder.ts), `expandOrShrinkRect`
-//   / `XY` / `WH` (util/graphic.swift), and the `*CommonPartBuilder` helpers (cartesianAxisHelper.swift).
-//   These are stubbed here per the phase scope; the axis-elements-building / outerBounds-shrink logic must be
-//   ported when component/axis lands. The shared context is modeled as an opaque `Any?` placeholder so the
-//   `resize` control flow (which threads it through) stays structurally faithful.
+// PORT-NOTE (component/axis AxisBuilder label-overlap path):
+//   `AxisBuilderSharedContext` / `AxisBuilder` (component/axis/AxisBuilder.swift), `expandOrShrinkRect` / `XY`
+//   / `WH` (util/graphic.swift), and the `*CommonPartBuilder` helpers (cartesianAxisHelper.swift) are ported.
+//   `createAxisBiulders` / `createOrUpdateAxesView` build the real axis elements. Still DEFERRED: the
+//   `layOutGridByOuterBounds` outerBounds-shrink and the grid-specific `resolveAxisNameOverlapForGrid`
+//   name-overlap resolver (a refinement, not axisLine/tick/label geometry). `layOutGridByOuterBounds` threads
+//   the shared context as an opaque `Any?` while stubbed so the `resize` control flow stays structurally faithful.
 // ============================================================================
 
 // Return noPxChange.
@@ -970,7 +967,7 @@ func layOutGridByOuterBounds(
     _ outerBoundsClamp: [Double]?,
     _ gridRect: LayoutRect,
     _ axesMap: AxesMap,
-    _ axisBuilderSharedCtx: Any?,  // PORT-TODO: AxisBuilderSharedContext (component/axis, Phase 6b)
+    _ axisBuilderSharedCtx: Any?,  // PORT-NOTE: real type is AxisBuilderSharedContext (component/axis); kept Any? while layOutGridByOuterBounds is stubbed
     _ layoutRef: BoxLayoutReferenceResult
 ) -> Bool {
     // PORT-TODO: full outerBounds shrink (createOrUpdateAxesView estimate + fillLabelNameOverflowOnOneDimension
@@ -1114,7 +1111,7 @@ func prepareOuterBounds(
 //   (`resolveAxisNameOverlapDefault` / `moveIfOverlapByLinearLabels` / `AxisBuilderSharedContext`). Deferred to Phase 6b.
 
 // JS truthiness for a dynamic option value (used where upstream relies on `if (x)` / `!x`).
-// PORT-TODO: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).
+// PORT-NOTE: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).
 private func isTruthy(_ value: Any?) -> Bool {
     switch value {
     case nil: return false

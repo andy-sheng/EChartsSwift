@@ -1,9 +1,10 @@
 // Ported (MINIMAL SUBSET) from echarts/src/chart/line/LineSeries.ts — keep in sync with upstream.
 //
 // A deliberately minimal `series.line` model: enough for the cartesian line vertical (grid + x/y axis
-// + a polyline through the data points) to render end-to-end through the driver. The full
-// LineSeries option surface (areaStyle, step, stack, emphasis, endLabel, sampling, …) is a documented
-// PORT-TODO — this mirrors how `ECharts`/`BarSeries` are minimal subsets of their upstream files.
+// + a polyline through the data points) to render end-to-end through the driver. Options are read from
+// the dynamic option bag, so areaStyle, step, stack and symbols now render via LineView; only the
+// exhaustive option surface (endLabel, sampling, …) stays minimal — mirroring how `ECharts`/`BarSeries`
+// keep minimal defaultOption subsets of their upstream files.
 
 import Foundation
 import ZRenderKit
@@ -56,7 +57,7 @@ open class LineSeriesModel: SeriesModel {
             // LOAD-BEARING for LineView's showSymbol pass: upstream defaultOption defaults
             //   `symbol: 'emptyCircle'`, `symbolSize: 6`, `showSymbol: true` (LineSeries.ts:202 — echarts
             //   6.x bumped the default from 4 to 6). Without these the symbol pass reads nil and draws
-            //   nothing. PORT-TODO: symbolRotate / symbolKeepAspect and the rest of upstream's
+            //   nothing. PORT-NOTE: symbolRotate / symbolKeepAspect and the rest of upstream's
             //   SymbolOptionMixin defaults deferred with the symbol subsystem.
             "symbol": "emptyCircle",
             "symbolSize": 6.0,

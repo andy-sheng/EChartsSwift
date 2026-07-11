@@ -442,7 +442,7 @@ public final class IntervalScale: Scale, ClassManageable {
 }
 
 // upstream: Scale.registerClass(IntervalScale);
-// PORT-TODO: upstream runs this side-effecting registration at module import time. Swift libraries
+// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries
 //  have no import-time hook, and a lazy `let` global only initializes on first access (so it would
 //  never run). Exposed instead as an idempotent static bootstrap that the EChartsKit registration
 //  entry point must invoke once (mirroring how other "register at load" side effects are wired).

@@ -9,7 +9,7 @@ import Foundation
 
 // upstream models `shape` as an inline anonymous type `{ points, smooth?, smoothConstraint? }`.
 //   Shared by Polygon and Polyline shapes — modeled as a protocol both conform to.
-// PORT-TODO: upstream's inline structural type → a Swift protocol (no structural typing).
+// PORT-NOTE: upstream's inline structural type → a Swift protocol (no structural typing).
 public protocol PolyBuildPathShape {
     var points: [VectorArray]? { get }
     var smooth: Double? { get }

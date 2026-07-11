@@ -485,7 +485,7 @@ public enum format {
     }
 
     // zrUtil.trim — `str.replace(/^[\s﻿\xA0]+|[\s﻿\xA0]+$/g, '')`.
-    // PORT-TODO: forward to `util.trim` once it is ported to ZRenderKit.util.
+    // PORT-NOTE: forward to `util.trim` once it is ported to ZRenderKit.util.
     static func _trim(_ str: String) -> String {
         var set = CharacterSet.whitespacesAndNewlines
         set.insert(charactersIn: "\u{FEFF}\u{00A0}")

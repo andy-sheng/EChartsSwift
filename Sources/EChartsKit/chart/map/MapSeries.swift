@@ -39,16 +39,16 @@ import ZRenderKit
 //   import Model from '../../model/Model';                         -> Model (model/Model.swift).
 //   import Geo from '../../coord/geo/Geo';                         -> Geo (coord/geo/Geo.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift); used in `formatTooltip` below.
 //   import {createSymbol, ECSymbol} from '../../util/symbol';
-//       -> PORT-TODO: util/symbol.ts NOT ported (legend icon deferred).
-//   import {LegendIconParams} from '../../component/legend/LegendModel';  -> PORT-TODO: legend NOT ported.
+//       -> createSymbol / ECSymbol (util/symbol.swift). Consumed by getLegendIcon (still a stub, see below).
+//   import {LegendIconParams} from '../../component/legend/LegendModel';  -> LegendIconParams (component/legend/LegendView.swift).
 //   import {Group} from '../../util/graphic';                      -> ZRenderKit.Group.
 //   import { COORD_SYS_USAGE_KIND_BOX, decideCoordSysUsageKind } from '../../core/CoordinateSystem';
 //       -> `COORD_SYS_USAGE_KIND_BOX` + `decideCoordSysUsageKind` (core/CoordinateSystemManager.swift).
 //   import { GeoJSONRegion } from '../../coord/geo/Region';        -> GeoJSONRegion (coord/geo/Region.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts NOT ported; consumed color values are inlined verbatim below.
+//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; consumed color values are inlined verbatim below.
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 
 // ============================================================================
@@ -258,11 +258,9 @@ open class MapSeriesModel: SeriesModel {
      * Map tooltip formatter
      */
     // upstream: formatTooltip(dataIndex, multipleSeries, dataType)
-    //   Overrides the base `formatTooltip(...) -> TooltipFormatResult?`.
-    // PORT-TODO (DEFERRED — tooltip component): depends on `createTooltipMarkup`
-    //   (component/tooltip/tooltipMarkup.ts NOT ported). The faithful body below computes the section
+    //   Overrides the base `formatTooltip(...) -> TooltipFormatResult?`. The body computes the section
     //   header (names of the sibling map series that have a non-NaN value for this region) and the
-    //   name/value block; restore the `createTooltipMarkup(...)` build when tooltip lands. Returns nil.
+    //   name/value block.
     open override func formatTooltip(
         _ dataIndex: Double,
         _ multipleSeries: Bool? = nil,
@@ -294,14 +292,26 @@ open class MapSeriesModel: SeriesModel {
             }
         }
 
-        _ = (multipleSeries, dataType, value, seriesNames)
+        _ = (multipleSeries, dataType)
 
         // return createTooltipMarkup('section', {
         //     header: seriesNames.join(', '),
         //     noHeader: !seriesNames.length,
         //     blocks: [createTooltipMarkup('nameValue', { name: name, value: value })]
         // });
-        return nil
+        return createTooltipMarkup(
+            "section",
+            TooltipMarkupSection(
+                header: seriesNames.joined(separator: ", "),
+                noHeader: seriesNames.isEmpty,
+                blocks: [
+                    createTooltipMarkup(
+                        "nameValue",
+                        TooltipMarkupNameValueBlock(name: name, value: value)
+                    )
+                ]
+            )
+        )
     }
 
     // upstream: getTooltipPosition = function (this: MapSeries, dataIndex: number): number[] { ... }

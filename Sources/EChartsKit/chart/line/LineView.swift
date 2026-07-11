@@ -1,10 +1,10 @@
 // Ported (MINIMAL SUBSET) from echarts/src/chart/line/LineView.ts — keep in sync with upstream.
 //
-// Draws a cartesian line series as a single `Polyline` through the data points. This is the minimal
-// slice: no symbols, areaStyle, step, stacking, clipping, or draw-on animation (all documented
-// PORT-TODOs). It mirrors upstream's core — build the point array from `coord.dataToPoint` per datum,
-// create the polyline, and stroke it with the series' visual color — enough for the line vertical to
-// render end-to-end (matching the echarts.js reference in EChartsDemoGallery).
+// Draws a cartesian (and polar) line series as a `Polyline` through the data points. Symbols, areaStyle,
+// step, stacking, clipping, and the draw-on reveal animation are now ported. It mirrors upstream's core
+// — build the point array from `coord.dataToPoint` per datum, create the polyline, and stroke it with
+// the series' visual color — rendering the line vertical end-to-end (matching the echarts.js reference
+// in EChartsDemoGallery).
 
 import Foundation
 import ZRenderKit

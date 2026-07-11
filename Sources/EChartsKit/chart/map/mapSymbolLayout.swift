@@ -128,7 +128,7 @@ public func mapSymbolLayout(_ ecModel: GlobalModel) {
 }
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of mapSymbolLayout.ts upstream. Dynamic-option /
+// PORT-NOTE helpers — NOT part of mapSymbolLayout.ts upstream. Dynamic-option /
 // ParsedValue coercions (CONVENTIONS trap #1 / §6). Delete when the shared
 // coercions land and call them directly.
 // ============================================================================

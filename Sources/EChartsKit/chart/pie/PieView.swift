@@ -25,45 +25,49 @@ import ZRenderKit
 //   import { clone, extend, retrieve3 } from 'zrender/src/core/util';  -> `util.clone` / `util.extend` /
 //       `util.retrieve3` (ZRenderKit).
 //   import * as graphic from '../../util/graphic';
-//       -> `Sector` / `Text` / `Polyline` are the ZRenderKit shapes. PORT-TODO: `util/graphic` (which
-//          re-exports `initProps`/`updateProps` from animation/basicTransition + `removeElementWithFadeOut`)
-//          is NOT ported; the animation calls are deferred (see the PiePiece PORT-TODO block).
+//       -> `Sector` / `Text` / `Polyline` are the ZRenderKit shapes. PORT-NOTE: `util/graphic` (util/graphic.swift,
+//          which re-exports `initProps`/`updateProps` from animation/basicTransition + `removeElementWithFadeOut`)
+//          is ported; the PieView static render still omits the animation calls (see the PiePiece PORT-NOTE block).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
+//       -> util/states.swift (ported); the PieView static render omits states/emphasis wiring.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
 //   import { Payload, ColorString } from '../../util/types';       -> util/types.swift.
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import PieSeriesModel, {PieDataItemOption, SERIES_TYPE_PIE} from './PieSeries';  -> sibling PieSeries.swift.
-//   import labelLayout from './labelLayout';                       -> PORT-TODO: chart/pie/labelLayout.ts NOT
-//       ported (label placement deferred).
+//   import labelLayout from './labelLayout';                       -> `pieLabelLayout` (sibling
+//       labelLayout.swift); wired in render() after every sector is built.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> PORT-TODO: label/labelGuideHelper NOT ported (labelLine deferred).
+//       -> label/labelGuideHelper.swift. The leader-line Polyline IS drawn (line style inlined in
+//          `_updateLabel`, points filled by `pieLabelLayout`); the state-driven `setLabelLineStyle`/
+//          `getLabelLineStatesModels` helpers themselves remain DEFERRED.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported (labels deferred).
+//       -> label/labelStyle.swift (`setLabelStyle`/`getLabelStatesModels`); wired in `_updateLabel`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
-//       -> PORT-TODO: chart/helper/sectorHelper NOT ported; cornerRadius defaults to `0`, so the plain
-//          SectorShape from the item layout suffices for a static render.
+//       -> chart/helper/sectorHelper.swift (ported); PieView still defaults cornerRadius to `0` (getSectorCornerRadius
+//          not wired here), so the plain SectorShape from the item layout suffices for a static render.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> PORT-TODO: NOT ported (deferred).
 //   import { getSeriesLayoutData } from './pieLayout';             -> `getSeriesLayoutData` (sibling pieLayout.swift).
 
 // ================================================================================================
 // upstream: class PiePiece extends graphic.Sector { constructor(...); updateData(...); _updateLabel(...) }
 //
-// PORT-TODO (DEFERRED — separate upstream subsystems; a STATIC render faithfully omits them):
+// PORT-NOTE (a STATIC render faithfully omits these; the underlying subsystems are now ported):
 //   - `PiePiece` (a Sector carrying a Text child + labelLine Polyline) collapses, for the static render,
 //     to a plain ZRenderKit `Sector` built directly in `PieView.render` (see below).
-//   - Label / labelLine: `_updateLabel`, `setLabelStyle`, `getLabelStatesModels`, `setLabelLineStyle`,
-//     `getLabelLineStatesModels`, `getTextGuideLine`/`setTextGuideLine` (Polyline), `setTextConfig`,
-//     and the module-level `labelLayout(seriesModel)` call are all deferred with the label subsystem.
+//   - Label / labelLine: `_updateLabel`, `setLabelStyle`, `getLabelStatesModels`, `setTextConfig`, the
+//     leader-line `setTextGuideLine` (Polyline), and the module-level `labelLayout(seriesModel)` call are
+//     now PORTED and wired (see `_updateLabel` + `pieLabelLayout` below). Only the state-driven
+//     `setLabelLineStyle`/`getLabelLineStatesModels` labelGuideHelper helpers remain DEFERRED.
 //   - States / emphasis: `setStatesStylesFromModel`, `ensureState('emphasis'|'select'|'blur')`,
-//     `toggleHoverEmphasis`, and the `selectedOffset` dx/dy select-state offset are deferred with
-//     util/states.
+//     `toggleHoverEmphasis`, and the `selectedOffset` dx/dy select-state offset are omitted by the
+//     static render (util/states is ported).
 //   - Animation: `graphic.initProps`/`updateProps` (expansion/scale draw-on), `saveOldStyle`,
-//     `removeElementWithFadeOut`, and the SSR `scaleX/scaleY` branch are deferred with basicTransition.
+//     `removeElementWithFadeOut`, and the SSR `scaleX/scaleY` branch are omitted by the static render
+//     (animation/basicTransition is ported).
 //   - `getSectorCornerRadius(itemModel.getModel('itemStyle'), layout, true)` corner-radius merge is
-//     deferred (chart/helper/sectorHelper not ported); cornerRadius defaults to `0`.
+//     omitted (chart/helper/sectorHelper is ported but not wired here); cornerRadius defaults to `0`.
 // Faithful upstream `PiePiece.updateData` body preserved above in the .ts oracle for the eventual port.
 // ================================================================================================
 

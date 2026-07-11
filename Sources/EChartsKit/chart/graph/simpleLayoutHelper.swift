@@ -24,11 +24,11 @@ import ZRenderKit
 // upstream imports:
 //   import * as vec2 from 'zrender/src/core/vector';                 -> `vector.*` (ZRenderKit).
 //   import GraphSeriesModel, { GraphNodeItemOption, GraphEdgeItemOption } from './GraphSeries';
-//       -> GraphSeriesModel (PORT-TODO: chart/graph/GraphSeries.ts not ported yet).
-//   import Graph from '../../data/Graph';                            -> Graph (PORT-TODO: data/Graph.ts not ported yet).
+//       -> GraphSeriesModel (PORT-NOTE: chart/graph/GraphSeries.swift ported).
+//   import Graph from '../../data/Graph';                            -> Graph (data/Graph.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util.*` (ZRenderKit).
 //   import {getCurvenessForEdge} from '../helper/multipleGraphEdgeHelper';
-//       -> `multipleGraphEdgeHelper.getCurvenessForEdge` (PORT-TODO: chart/helper/multipleGraphEdgeHelper.ts not ported yet).
+//       -> `multipleGraphEdgeHelper.getCurvenessForEdge` (chart/helper/multipleGraphEdgeHelper.swift).
 
 public func simpleLayout(_ seriesModel: GraphSeriesModel) {
     let coordSys = seriesModel.coordinateSystem as? CoordinateSystem

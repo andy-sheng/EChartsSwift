@@ -26,26 +26,25 @@ import ZRenderKit
 //   import View, { useLegacyViewCoordSysCenterBase, viewCoordSysCopyViewRect, viewCoordSysSetBoundingRect }
 //       from '../View';                                                 -> coord/View.swift (ported sibling).
 //   import geoSourceManager from './geoSourceManager';
-//       -> PORT-TODO: coord/geo/geoSourceManager.ts is a sibling NOT yet landed. This file references its
-//          conventional public API: a caseless namespace `geoSourceManager` with
+//       -> coord/geo/geoSourceManager.swift (ported sibling). Public API: a caseless namespace `geoSourceManager` with
 //          `.load(map, nameMap?, nameProperty?) -> GeoSourceLoadResult` and `.getGeoResource(map) -> GeoResource?`.
 //   import { GeoJSONRegion, Region } from './Region';
-//       -> PORT-TODO: coord/geo/Region.ts sibling NOT yet landed. Referenced API: `Region` (base, `.type: String`,
+//       -> coord/geo/Region.swift (ported sibling). Referenced API: `Region` (base, `.type: String`,
 //          `.getCenter() -> [Double]`) and `GeoJSONRegion` (`.contain([Double]) -> Bool`,
 //          `.getBoundingRect(_ projection: GeoProjection?) -> BoundingRect`).
 //   import { GeoProjection, GeoResource, NameMap } from './geoTypes';
-//       -> PORT-TODO: coord/geo/geoTypes.ts sibling NOT yet landed. Referenced API: `GeoProjection`
+//       -> coord/geo/geoTypes.swift (ported sibling). Referenced API: `GeoProjection`
 //          (`project([Double]) -> [Double]?` / `unproject([Double]) -> [Double]?`), `GeoResource` (`.type: String`),
 //          `NameMap` (== `[String: String]`).
 //   import GlobalModel from '../../model/Global';                       -> GlobalModel.
 //   import { ParsedModelFinder, ParsedModelFinderKnown, SINGLE_REFERRING } from '../../util/model';
 //       -> ParsedModelFinder / ParsedModelFinderKnown (`[String: Any]`). SINGLE_REFERRING used only by the
-//          getReferringComponents fallback in `getCoordSys` (PORT-TODO below).
+//          getReferringComponents fallback in `getCoordSys` (PORT-NOTE below).
 //   import type GeoModel from './GeoModel';
-//       -> PORT-TODO: coord/geo/GeoModel.ts sibling NOT yet landed (a `ComponentModel` whose
+//       -> coord/geo/GeoModel.swift (ported sibling) (a `ComponentModel` whose
 //          `.coordinateSystem` is a `Geo`).
 //   import { resizeGeoType } from './geoCreator';
-//       -> PORT-TODO: coord/geo/geoCreator.ts sibling NOT yet landed. `resize` is injected there
+//       -> coord/geo/geoCreator.swift (ported sibling). `resize` is injected there
 //          (`geo.resize = resizeGeo`); modeled here as the stored closure `resize` (see Polar.updateHook precedent).
 //   import { warn } from '../../util/log';                              -> log.warn.
 //   import type ExtensionAPI from '../../core/ExtensionAPI';            -> core/ExtensionAPI.swift.
@@ -60,7 +59,7 @@ import ZRenderKit
 // PORT SCOPE (CONVENTIONS §5, and per task brief): the geo COORDINATE SYSTEM (the projection) — the
 //   GeoJSON path + the raw-rect -> view-rect linear transform (via `View`), and `projection.project` when
 //   a projection is configured. ROAM (pan/zoom) interaction and the SVG-map path (GeoSVGResource) are
-//   DEFERRED behind // PORT-TODO. `resize` (regions-bbox fit) is INJECTED by geoCreator (deferred sibling).
+//   DEFERRED. `resize` (regions-bbox fit) is INJECTED by geoCreator (coord/geo/geoCreator.swift, now landed).
 // -----------------------------------------------------------------------------------------------------
 
 // upstream:
@@ -125,7 +124,8 @@ public struct GeoConstructorOption {
  *   and every consumer in this phase holds the concrete `Geo` type. `Transformable` subclassing is
  *   preserved because VIEW_COORD_SYS_TRANS_OVERALL is copied onto the Geo instance itself for backward
  *   compatibility (View passes `self` as legacyGeo → view.lgGeo = geo; see View.legacyCopyOverallTrans).
- *   PORT-TODO: re-add protocol conformance + CoordinateSystemManager registration when geoCreator lands.
+ *   PORT-NOTE: geoCreator has landed — registration is wired (ECharts: `registerCoordinateSystem('geo', geoCreator)`)
+ *   and `CoordinateSystemMaster` conformance is present (see class decl below); only `GeoLikeCoordSys` remains dropped.
  */
 public final class Geo: Transformable, CoordinateSystemMaster {
 
@@ -171,7 +171,7 @@ public final class Geo: Transformable, CoordinateSystemMaster {
     public var model: GeoModel?
 
     // upstream: resize: resizeGeoType;  // Injected outside (by geoCreator: `geo.resize = resizeGeo`).
-    //   PORT-TODO: geoCreator (deferred) assigns this. Signature mirrors `resizeGeo(this: Geo, geoModel, api)`.
+    //   PORT-NOTE: geoCreator assigns this (coord/geo/geoCreator.swift: `geo.resize = resizeGeo`). Signature mirrors `resizeGeo(this: Geo, geoModel, api)`.
     //   `geoModel` is `MapOrGeoModel` (map series model | GeoModel) — erased to `ComponentModel` here.
     public var resize: ((Geo, ComponentModel, ExtensionAPI) -> Void)!
 
@@ -216,7 +216,7 @@ public final class Geo: Transformable, CoordinateSystemMaster {
                     projection = nil
                 }
                 // upstream: if (!(projection.project && projection.unproject)) { warn(...); projection = null; }
-                //   PORT-TODO: `GeoProjection` requires both `project` and `unproject`, so this check is
+                //   PORT-NOTE: `GeoProjection` requires both `project` and `unproject`, so this check is
                 //   vacuous in Swift — the protocol guarantees both members exist.
             }
         }

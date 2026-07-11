@@ -92,7 +92,7 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
 // MARK: - Immediate-mode scene walk (CGRenderer)
 
 /// Draw the scene rooted at `root` into `renderer`'s context, in display-list order.
-/// Only `Path` displayables are painted this phase (Text / Image are PORT-TODO).
+/// `Path`, Text (`TSpan`) and `Image` displayables are all painted (see `drawDisplayable`).
 public func renderScene(_ root: Element, into renderer: CGRenderer) {
     let list = flattenDisplayList(root)
     for el in list {

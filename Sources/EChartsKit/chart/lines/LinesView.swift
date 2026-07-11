@@ -28,22 +28,22 @@ import ZRenderKit
 //       markers (ECLinePath) + label + emphasis/blur state. The static render inlines it: one
 //       ZRenderKit `Line` / `BezierCurve` / `Polyline` per data item, geometry set directly (same
 //       deviation as GraphView's edge loop / TreeView's links).
-//   import EffectLine from '../helper/EffectLine';        -> PORT-TODO: EffectLine NOT ported.
-//       The moving-dot / trail EFFECT is ANIMATED (CONVENTIONS §5) — DEFERRED behind PORT-TODO.
-//   import Line from '../helper/Line';                    -> PORT-TODO: helper/Line NOT ported (inline shape).
-//   import Polyline from '../helper/Polyline';            -> PORT-TODO: helper/Polyline NOT ported (inline shape).
-//   import EffectPolyline from '../helper/EffectPolyline';-> PORT-TODO: EffectPolyline NOT ported (effect DEFERRED).
+//   import EffectLine from '../helper/EffectLine';        -> PORT-NOTE: ported as chart/lines/EffectLine.swift.
+//       The moving-dot / trail EFFECT is ANIMATED (CONVENTIONS §5) and is wired (see render + EffectLine.swift).
+//   import Line from '../helper/Line';                    -> PORT-NOTE: helper/Line NOT ported (inline shape).
+//   import Polyline from '../helper/Polyline';            -> PORT-NOTE: helper/Polyline NOT ported (inline shape).
+//   import EffectPolyline from '../helper/EffectPolyline';-> PORT-NOTE: ported (in chart/lines/EffectLine.swift); effect wired.
 //   import LargeLineDraw from '../helper/LargeLineDraw';  -> PORT-TODO: LargeLineDraw NOT ported (large/progressive DEFERRED).
 //   import linesLayout from './linesLayout';              -> the per-item dataToPoint + curveness-control-point
 //       math is inlined below (see `render`); the layout STAGE is not run — the view projects coords
 //       itself, exactly as ScatterView inlines pointsLayout and LineView inlines dataToPoint.
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';
-//       -> PORT-TODO: createClipPathFromCoordSys NOT ported — the `clip` option is DEFERRED (no clip path set).
+//       -> PORT-NOTE: createClipPathFromCoordSys is ported; the `clip` option is not wired in this static view (no clip path set).
 //   import ChartView from '../../view/Chart';             -> ChartView (view/Chart.swift).
 //   import LinesSeriesModel from './LinesSeries';         -> sibling LinesSeries.swift (assumed ported alongside).
 //   import GlobalModel from '../../model/Global';         -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';   -> ExtensionAPI.
-//   import CanvasPainter from 'zrender/src/canvas/Painter';   -> PORT-TODO: motion-blur layer config (effect trail) DEFERRED.
+//   import CanvasPainter from 'zrender/src/canvas/Painter';   -> PORT-NOTE: motion-blur layer config (effect trail) is applied by the live host (EChartsView._setupLinesEffectLayers / configLayer).
 //   import { StageHandlerProgressParams, StageHandlerProgressExecutor } from '../../util/types';
 //       -> PORT-TODO: incremental/progressive pipeline (incrementalRender/updateTransform) DEFERRED.
 //   import SeriesData from '../../data/SeriesData';       -> SeriesData.
@@ -51,8 +51,8 @@ import ZRenderKit
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';   -> Cartesian2D.
 //   import Element from 'zrender/src/Element';            -> Element (eachRendered — DEFERRED).
 //   import { getIncrementalId } from '../../util/model';  -> PORT-TODO: incremental pipeline DEFERRED.
-//   import { getCurrentCanvasPainter } from '../../util/graphic';   -> PORT-TODO: canvas-layer clear (effect) DEFERRED.
-//   import { ILineDraw } from '../helper/baseDraw';       -> PORT-TODO: helper/baseDraw NOT ported.
+//   import { getCurrentCanvasPainter } from '../../util/graphic';   -> PORT-NOTE: motion-blur layer config is host-managed (EChartsView.configLayer); getCurrentCanvasPainter is unused natively.
+//   import { ILineDraw } from '../helper/baseDraw';       -> PORT-NOTE: helper/baseDraw NOT ported.
 
 // upstream: class LinesView extends ChartView
 open class LinesView: ChartView {
@@ -101,11 +101,11 @@ open class LinesView: ChartView {
         //   projects each data-space coord through the coord system itself (like ScatterView/LineView),
         //   then adds one shape per item to `this.group` (rebuilt from scratch each render).
         //
-        // PORT-TODO: `getCurrentCanvasPainter` layer clear + `configLayer` motion-blur (the trail effect's
-        //   `lastFrameAlpha`) — DEFERRED (effect is animated, CONVENTIONS §5).
-        // PORT-TODO: `_showEffect`/`trailLength` → EffectLine/EffectPolyline moving-dot render — DEFERRED.
-        // PORT-TODO: `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath — DEFERRED
-        //   (helper/createClipPathFromCoordSys not ported).
+        // PORT-NOTE: `configLayer` motion-blur (the trail effect's `lastFrameAlpha`) is applied by the
+        //   live host (EChartsView._setupLinesEffectLayers); no in-view `getCurrentCanvasPainter` clear.
+        // PORT-NOTE: `_showEffect`/`trailLength` → EffectLine/EffectPolyline moving-dot render is wired (see below).
+        // PORT-NOTE: `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath is not wired
+        //   in this static view (helper/createClipPathFromCoordSys IS ported).
 
         // PORT-TODO: polar / geo lines DEFERRED (only Cartesian2D wired). Upstream's coord system is
         //   `Polar | Cartesian2D | Geo`; linesLayout calls `coordSys.dataToPoint(coord)` generically —
@@ -348,11 +348,11 @@ open class LinesView: ChartView {
     }
 
     // upstream: incrementalPrepareRender / incrementalRender / updateTransform / eachRendered
-    //   -> PORT-TODO: incremental/progressive pipeline + updateLayout DEFERRED (core/task not ported).
+    //   -> PORT-NOTE: incremental/progressive pipeline + updateLayout are not wired in this static view (the core/task pipeline itself is ported).
 
     // upstream: remove(ecModel, api) { this._lineDraw && this._lineDraw.remove(); this._lineDraw = null; this._clearLayer(api); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: _clearLayer (canvas motion-blur layer clear) DEFERRED — effect not ported.
+        // PORT-NOTE: _clearLayer (canvas motion-blur layer clear) is host-managed (EChartsView configLayer); the trail symbols are dropped by group.removeAll() below.
         _ = self.group.removeAll()
         // The persisted line/effect elements were just detached by removeAll — clear the bookkeeping so
         //   a subsequent render rebuilds fresh rather than trying to reuse orphaned elements.

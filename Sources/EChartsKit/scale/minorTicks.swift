@@ -76,7 +76,7 @@ public enum minorTicks {
             }
 
             let scaleBreakHelper = `break`.getScaleBreakHelper()
-            // PORT-TODO: depends on sibling break.swift `BreakScaleHelper.pruneTicksByBreak`, which
+            // PORT-NOTE: depends on sibling break.swift `BreakScaleHelper.pruneTicksByBreak`, which
             //  mutates `ticks` in place (upstream `void` return); ported as `inout`. `value => value`
             //  is the identity `getValue` for the `number[]` (TItem = number) specialization.
             scaleBreakHelper?.pruneTicksByBreak(

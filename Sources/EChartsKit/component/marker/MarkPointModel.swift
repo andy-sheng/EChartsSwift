@@ -31,7 +31,7 @@ import ZRenderKit
 //     label?: SeriesLabelOption
 //     z2?: number
 // }
-// PORT-TODO: the `MarkPointStateOption` / `MarkPointDataItemOption` / `MarkPointOption` typed
+// PORT-NOTE: the `MarkPointStateOption` / `MarkPointDataItemOption` / `MarkPointOption` typed
 //   interfaces (a documentation/type surface over the dynamic `[String: Any]` option bag, per
 //   CONVENTIONS §4) are not modeled as Swift structs here — the runtime option is the dynamic bag on
 //   `ComponentModel.option`, and the per-item data flows as `MarkerPositionOption` (see MarkerModel.swift).

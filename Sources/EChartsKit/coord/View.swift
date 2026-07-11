@@ -51,7 +51,7 @@ import ZRenderKit
 // PORT SCOPE (CONVENTIONS §5): only the STATIC transform machinery of View is ported here —
 //   the VIEW_COORD_SYS_TRANS_RAW / _ROAM / _OVERALL transform chain and the raw-rect -> view-rect
 //   linear map that `dataToPoint`/`pointToData` rely on. ROAM interaction (pan/zoom actions), the
-//   sync-back to model, and roaming animation are DEFERRED. See PORT-TODO markers below.
+//   sync-back to model, and roaming animation are DEFERRED. See PORT-NOTE markers below.
 // -----------------------------------------------------------------------------------------------------
 
 // upstream: VIEW_COORD_SYS_TRANS_RAW / _ROAM / _OVERALL — index into `ViewInner['trans']`.
@@ -86,7 +86,7 @@ public struct ViewCoordSysLegacyCenterBase {
  *   holds the concrete `View` type and calls the concrete methods. `Transformable` subclassing is
  *   preserved because VIEW_COORD_SYS_TRANS_OVERALL is copied onto the View/Geo instance itself for
  *   backward compatibility (see legacyCopyOverallTrans).
- *   PORT-TODO: re-add `CoordinateSystem`/`CoordinateSystemMaster` conformance when graph/tree/sankey
+ *   PORT-NOTE: re-add `CoordinateSystem`/`CoordinateSystemMaster` conformance when graph/tree/sankey
  *   (which use View as their `coordinateSystem`) are ported.
  *
  * ViewInner state: upstream stashes private props on the instance via `inner(this)` casting. Here they
@@ -113,7 +113,7 @@ open class View: Transformable {
 
     // upstream: lgGeo?: Transformable;
     //   weak to break the Geo<->View retain cycle (Geo owns `view` strongly and passes itself as
-    //   legacyGeo → view.lgGeo = geo). PORT-TODO: upstream holds a plain (strong) reference.
+    //   legacyGeo → view.lgGeo = geo). PORT-NOTE: upstream holds a plain (strong) reference.
     weak var lgGeo: Transformable?
 
     // upstream: centerOption: RoamOptionMixin['center'] | NullUndefined;  (ROAM input, DEFERRED — stays nil)
@@ -686,7 +686,7 @@ public func viewCoordSysApplyRoamPayloadSyncBack(
 // upstream: import { decomposeTransform } from '../util/graphic';
 //   Reproduced here (util/graphic.swift has not landed this export yet). Decomposes an affine matrix
 //   into x/y/scaleX/scaleY/rotation/skewX/skewY on `out`, using a parent-less tmp Transformable to
-//   avoid parent effects (upstream `tmpDTR`). PORT-TODO: dedupe once util/graphic.decomposeTransform lands.
+//   avoid parent effects (upstream `tmpDTR`). PORT-NOTE: dedupe once util/graphic.decomposeTransform lands.
 private let tmpDTR: Transformable = {
     let t = Transformable()
     t.transform = matrix.create()

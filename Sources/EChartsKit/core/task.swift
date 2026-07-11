@@ -25,7 +25,7 @@ import ZRenderKit
 //   import {assert, isArray} from 'zrender/src/core/util';  -> ZRenderKit `util` (`util.assert`;
 //       `isArray` is not called directly — the `Cb | Cb[]` unions are modeled with enums below).
 //   import SeriesModel from '../model/Series';               -> sibling model/Series.swift (`SeriesModel`).
-//   import { Pipeline } from './Scheduler';                  -> type-only fwd ref (PORT-TODO stub below; Phase 6b).
+//   import { Pipeline } from './Scheduler';                  -> real `Pipeline` class in core/Scheduler.swift (see note below).
 //   import { Payload } from '../util/types';                 -> sibling util/types.swift (`Payload`).
 //   import SeriesData from '../data/SeriesData';             -> sibling data/SeriesData.swift (`SeriesData`).
 
@@ -38,7 +38,7 @@ import ZRenderKit
 //   `Task<TaskContext>` is not expressible (a protocol does not conform to itself), so the
 //   cross-context pipeline wiring (`_upstream`/`_downstream`/`pipe`/`getUpstream`/`getDownstream`)
 //   is erased through this protocol. `core/Scheduler.swift` aliases `GeneralTask = any AnyTask`.
-//   PORT-TODO: `_upstream`/`_downstream`/`_disposed`/`_outputDueEnd` are `private` upstream; they are
+//   PORT-NOTE: `_upstream`/`_downstream`/`_disposed`/`_outputDueEnd` are `private` upstream; they are
 //   exposed here (public / public-private(set)) only to satisfy the erased protocol witnesses.
 public protocol AnyTask: AnyObject {
     var __pipeline: Pipeline? { get set }

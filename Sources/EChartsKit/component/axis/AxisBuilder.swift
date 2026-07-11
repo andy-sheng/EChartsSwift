@@ -30,8 +30,9 @@ import ZRenderKit
 //       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred (see PORT-TODO).
 //   import {getECData} from '../../util/innerStore';                    → `innerStore.getECData` (deferred; event wiring)
 //   import {createTextStyle} from '../../label/labelStyle';
-//     → PORT-TODO: `label/labelStyle` NOT ported. A faithful minimal reproduction `createTextStyle`
-//       lives at the bottom of this file (delete once label/labelStyle.swift lands and call it directly).
+//     → `label/labelStyle.swift` IS ported (`LabelStyle.createTextStyle`, labelStyle.swift:417). AxisBuilder
+//       still uses a local keyword-arg convenience shim `createTextStyle` (bottom of file) whose fields map
+//       1:1 to the two AxisLabel call sites. Deferred cleanup: rewire those to the ported `opt`-dict signature.
 //   import Model from '../../model/Model';                              → `Model`
 //   import {isRadianAroundZero, remRadian} from '../../util/number';    → `number.isRadianAroundZero` / `number.remRadian`
 //   import {createSymbol, normalizeSymbolOffset} from '../../util/symbol';
@@ -49,9 +50,9 @@ import ZRenderKit
 //   import { hideOverlap, LabelLayoutWithGeometry, labelIntersect, LabelGeometry, computeLabelGeometry2,
 //       ensureLabelLayoutWithGeometry, labelLayoutApplyTranslation, setLabelLayoutDirty,
 //       newLabelLayoutWithGeometry, LabelLayoutData } from '../../label/labelLayoutHelper';
-//     → PORT-TODO: `label/labelLayoutHelper` NOT ported (OBB overlap machinery). Deferred per task scope;
-//       a MINIMAL local `LabelLayoutData` placeholder + `ensureLabelLayoutWithGeometry` identity shim
-//       (bottom of file) keep line+ticks+labels working. Replace when labelLayoutHelper.swift lands.
+//     → PORT-NOTE: `label/labelLayoutHelper` is ported (labelLayoutHelper.swift). The real OBB-carrying
+//       `LabelLayoutData` + `ensureLabelLayoutWithGeometry` landed in the L2c pass; the axis label path
+//       now calls the real sibling directly (see the bottom-of-file note).
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 → `ExtensionAPI`
 //   import { makeInner } from '../../util/model';                       → `model.makeInner` (util/modelUtil.swift)
 //   import { getAxisBreakHelper } from './axisBreakHelper';             → PORT-TODO: axisBreak deferred
@@ -1381,10 +1382,11 @@ func pathStyleFromLineStyleDict(_ dict: [String: Any]) -> PathStyleProps {
     return s
 }
 
-/// PORT-TODO: faithful minimal reproduction of `label/labelStyle.createTextStyle`. Only the fields used
-///   by AxisBuilder (text/font/align/verticalAlign/fill/overflow/width/ellipsis) are populated; the full
-///   rich-text / state / ecModel-driven behavior is in labelStyle.ts. Delete when label/labelStyle.swift
-///   lands and call `createTextStyle(textStyleModel, opts)` directly.
+/// Local keyword-arg convenience shim mirroring the subset of `label/labelStyle.createTextStyle` AxisBuilder
+///   needs. Only text/font/align/verticalAlign/fill/overflow/width/ellipsis are populated; the full
+///   rich-text / state / ecModel-driven behavior lives in `LabelStyle.createTextStyle` (labelStyle.swift:417,
+///   now ported). Deferred cleanup: rewire the two axis call sites to the ported `opt`-dict signature and drop
+///   this shim.
 func createTextStyle(
     _ textStyleModel: Model,
     text: String? = nil,

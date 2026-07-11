@@ -35,7 +35,7 @@ import ZRenderKit
 //       zeroIfNull?: boolean
 //   )
 //
-// PORT-TODO: upstream returns `{ cornerRadius: number | number[] } | { cornerRadius: 0 } | null`; the
+// PORT-NOTE: upstream returns `{ cornerRadius: number | number[] } | { cornerRadius: 0 } | null`; the
 //   callers `zrUtil.extend(sectorShape, cornerRadius)` merge it onto a `SectorShape`. The Swift
 //   `SectorShape.cornerRadius` is the `CornerRadius` union enum, so this returns `CornerRadius?`
 //   (nil == upstream `null`) and callers assign it onto `sectorShape.cornerRadius` when non-nil.

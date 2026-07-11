@@ -27,7 +27,7 @@ import ZRenderKit
 //       chart/helper/createSeriesDataSimply.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                        -> `util.*` (ZRenderKit).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend component deferred).
+//       -> LegendVisualProvider (visual/LegendVisualProvider.swift).
 //   import { ... option mixins ... } from '../../util/types';               -> util/types.swift (type-only; the
 //       dynamic option tree is `[String: Any]`, CONVENTIONS §2).
 //   import GlobalModel from '../../model/Global';                           -> GlobalModel (model/Global.swift).
@@ -35,7 +35,7 @@ import ZRenderKit
 //   import Radar from '../../coord/radar/Radar';                            -> Radar (coord/radar/Radar.swift — the
 //       radar coordinate system; see integration notes).
 //   import { createTooltipMarkup, retrieveVisualColorForTooltipMarker } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> createTooltipMarkup / retrieveVisualColorForTooltipMarker (component/tooltip/tooltipMarkup.swift).
 
 // ============================================================================
 // The following upstream `interface`/`type` declarations describe the (dynamic) option tree.
@@ -132,32 +132,29 @@ open class RadarSeriesModel: SeriesModel {
         _ multipleSeries: Bool? = nil,
         _ dataType: SeriesDataType? = nil
     ) -> TooltipFormatResult? {
-        // const data = this.getData();
-        // const coordSys = this.coordinateSystem;
-        // const indicatorAxes = coordSys.getIndicatorAxes();
-        // const name = this.getData().getName(dataIndex);
-        // const nameToDisplay = name === '' ? this.name : name;
-        // const markerColor = retrieveVisualColorForTooltipMarker(this, dataIndex);
-        //
-        // return createTooltipMarkup('section', {
-        //     header: nameToDisplay,
-        //     sortBlocks: true,
-        //     blocks: zrUtil.map(indicatorAxes, axis => {
-        //         const val = data.get(data.mapDimension(axis.dim), dataIndex);
-        //         return createTooltipMarkup('nameValue', {
-        //             markerType: 'subItem',
-        //             markerColor: markerColor,
-        //             name: axis.name,
-        //             value: val,
-        //             sortParam: val
-        //         });
-        //     })
-        // });
-        // PORT-TODO: component/tooltip/tooltipMarkup.ts (createTooltipMarkup /
-        //   retrieveVisualColorForTooltipMarker) NOT ported — the markup return is deferred (returns nil,
-        //   matching the base stub). The faithful body is preserved above.
-        _ = (dataIndex, multipleSeries, dataType)
-        return nil
+        _ = (multipleSeries, dataType)
+        let data = self.getData()
+        // upstream `coordinateSystem` is the non-optional `Radar`; here it is `Radar?`.
+        guard let coordSys = self.radarCoordinateSystem else { return nil }
+        let indicatorAxes = coordSys.getIndicatorAxes()
+        let name = data.getName(Int(dataIndex))
+        let nameToDisplay = name == "" ? self.name : name
+        let markerColor = retrieveVisualColorForTooltipMarker(self, Int(dataIndex))
+
+        return createTooltipMarkup("section", TooltipMarkupSection(
+            header: nameToDisplay,
+            blocks: util.map(indicatorAxes) { axis, _ -> TooltipMarkupBlockFragment in
+                let val = data.mapDimension(axis.dim).flatMap { data.get($0, Int(dataIndex)) }
+                return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                    markerType: .subItem,
+                    markerColor: markerColor,
+                    name: axis.name,
+                    value: val,
+                    sortParam: val
+                ))
+            },
+            sortBlocks: true
+        ))
     }
 
     // upstream (declaration-merged optional method): getTooltipPosition(dataIndex: number): number[]

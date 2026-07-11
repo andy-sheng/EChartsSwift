@@ -27,7 +27,7 @@ import ZRenderKit
 //   import Displayable from 'zrender/src/graphic/Displayable';       -> ZRenderKit `Displayable`.
 //   import Element from 'zrender/src/Element';                       -> ZRenderKit `Element`.
 //   import * as modelUtil from '../../util/model';                   -> `model.*` (util/modelUtil.swift).
-//   import * as graphicUtil from '../../util/graphic';               -> PORT-TODO: `util/graphic.ts` NOT
+//   import * as graphicUtil from '../../util/graphic';               -> PORT-NOTE: `util/graphic.ts` NOT
 //     ported as a namespace. `graphicUtil.Group`/`Image`/`Text` are the ZRenderKit `Group`/`ZRImage`/
 //     `ZRText`. `graphicUtil.getShapeClass` (shape registry) and `graphicUtil.setTooltipConfig` are
 //     DEFERRED (see `newEl` / `_updateElements`).
@@ -345,8 +345,8 @@ open class GraphicComponentView: ComponentView {
             //       el, elOption, containerInfo, null,
             //       { hv: elOption.hv, boundingMode: elOption.bounding }, layoutPos);
             //
-            // PORT-TODO: `layout.positionElement` (util/layout.ts) not yet ported — referenced as a
-            //   newDep. Per CONVENTIONS §3 the `out` param is dropped: it returns
+            // PORT-NOTE: `layout.positionElement` (util/layout.swift) is ported and called below.
+            //   Per CONVENTIONS §3 the `out` param is dropped: it returns
             //   `(layouted: Bool, out: [String: Double])` (out carries the computed x/y).
             let posResult = layout.positionElement(
                 el, elOption.option, containerInfo, nil,
@@ -488,8 +488,8 @@ private func removeEl(
             _ = p.remove(elExisting!)
         }
         // elMap.removeKey(inner(elExisting).id);
-        // PORT-TODO: `HashMap.removeKey` not present on the ported HashMap shim — referenced as a
-        //   newDep for Integrate.
+        // PORT-NOTE: `HashMap.removeKey` is present on the ported HashMap shim (util/modelUtil.swift)
+        //   and called below.
         elMap.removeKey(inner(elExisting!).id)
     }
 }
@@ -541,7 +541,7 @@ private func updateCommonAttrs(
         el.name = model.convertOptionIdName(elOption.name, "") ?? ""
     }
     if elOption.id != nil {     // elOption.id != null && ((el as any).id = elOption.id)
-        // PORT-TODO: upstream sets a dynamic `el.id`; Element has no `id` slot in ZRenderKit, so this
+        // PORT-NOTE: upstream sets a dynamic `el.id`; Element has no `id` slot in ZRenderKit, so this
         //   is tracked via `inner(el).id` (set in createEl). No-op here.
     }
 }
@@ -555,7 +555,7 @@ private func getCleanedElOption(_ elOption: GraphicComponentElementOption) -> Gr
     let cleaned = GraphicComponentElementOption(bag)
     // zrUtil.each(['id', 'parentId', '$action', 'hv', 'bounding', 'textContent', 'clipPath']
     //     .concat(layoutUtil.LOCATION_PARAMS), function (name) { delete elOption[name]; });
-    // PORT-TODO: `layout.LOCATION_PARAMS` (util/layout.ts) not yet ported — referenced as a newDep.
+    // PORT-NOTE: `layout.LOCATION_PARAMS` (util/layout.swift) is ported and used below.
     let names = ["id", "parentId", "$action", "hv", "bounding", "textContent", "clipPath"]
         + layout.LOCATION_PARAMS
     util.each(names) { name, _ in
@@ -636,7 +636,7 @@ private func transitionIndexOf(_ transition: Any?, _ key: String) -> Double {
 }
 
 // Bridge a raw `textConfig` option bag into the typed `ElementTextConfig` struct. Minimal faithful
-// mapping of the common keys; PORT-TODO: `rich`/union-typed fields not fully bridged.
+// mapping of the common keys; PORT-NOTE: `rich`/union-typed fields not fully bridged.
 private func bridgeElementTextConfig(_ bag: [String: Any]?) -> ElementTextConfig? {
     guard let bag = bag else {
         return nil

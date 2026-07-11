@@ -37,7 +37,7 @@ import ZRenderKit
 
 // Caution: MUST not use `new CtorUint32Array(arr, 0, len)`, because the Ctor of array is
 // different from the Ctor of typed array.
-// PORT-TODO: upstream `CtorUint32Array/CtorUint16Array/CtorInt32Array/CtorFloat64Array` are
+// PORT-NOTE: upstream `CtorUint32Array/CtorUint16Array/CtorInt32Array/CtorFloat64Array` are
 //   typed-array constructors selected via `typeof X === UNDEFINED_STR ? Array : X` runtime
 //   feature detection. Swift always has the typed storage, so the feature-detection branch
 //   is dropped; columns are modeled as `[ParsedValue]` (= `ArrayLike<ParsedValue>`, the
@@ -54,7 +54,7 @@ import ZRenderKit
 //   -> already declared in util/types.swift (`enum DataStoreDimensionType`); referenced here.
 
 // type DataTypedArray / DataTypedArrayConstructor / DataArrayLikeConstructor
-//   -> not modeled as distinct Swift types; see PORT-TODO above.
+//   -> not modeled as distinct Swift types; see PORT-NOTE above.
 
 // type DataValueChunk = ArrayLike<ParsedValue>;
 //   -> `[ParsedValue]`. Columns are heterogeneous and may transiently hold ordinal raw
@@ -64,7 +64,7 @@ import ZRenderKit
 
 // If Ctx not specified, use List as Ctx
 // type EachCb0 = (idx) => void; EachCb1 = (x, idx) => void; EachCb2 = (x, y, idx) => void;
-// PORT-TODO: the arity-specialized callback types (EachCb0/1/2, FilterCb0/1) are collapsed
+// PORT-NOTE: the arity-specialized callback types (EachCb0/1/2, FilterCb0/1) are collapsed
 //   to a single array-arg form. The last array element is the data index (as `Double`).
 public typealias EachCb = (_ args: [ParsedValue]) -> Void
 public typealias FilterCb = (_ args: [ParsedValue]) -> Bool
@@ -130,7 +130,7 @@ fileprivate var defaultDimValueGetters: [String: DimValueGetter] = DataStore.int
 
 fileprivate func getIndicesCtor(_ rawCount: Int) -> (Int) -> ContiguousArray<Int> {
     // The possible max value in this._indicies is always this._rawCount despite of filtering.
-    // PORT-TODO: Uint32Array vs Uint16Array distinction collapsed to ContiguousArray<Int>.
+    // PORT-NOTE: Uint32Array vs Uint16Array distinction collapsed to ContiguousArray<Int>.
     return rawCount > 65535
         ? { ContiguousArray<Int>(repeating: 0, count: $0) }   // CtorUint32Array
         : { ContiguousArray<Int>(repeating: 0, count: $0) }   // CtorUint16Array
@@ -192,7 +192,7 @@ public final class DataStore {
     private var _provider: DataProvider!
 
     // It will not be calculated until needed.
-    // PORT-TODO: an "unset" entry is the empty array `[]` (upstream `undefined`).
+    // PORT-NOTE: an "unset" entry is the empty array `[]` (upstream `undefined`).
     private var _rawExtent: [[Double]] = []
 
     // structure:
@@ -431,7 +431,7 @@ public final class DataStore {
             prepareStore(&self._chunks, i, dim.type, end, append)
         }
 
-        // PORT-TODO: upstream branches on `if (provider.fillStorage)` (method presence). The
+        // PORT-NOTE: upstream branches on `if (provider.fillStorage)` (method presence). The
         //   ported `DataProvider` models `fillStorage` as a required method with a no-op
         //   default, so method presence cannot be queried; gate on the typed-array source
         //   format instead — the only provider that mounts `fillStorage` upstream
@@ -621,7 +621,7 @@ public final class DataStore {
         if let indices = self._indices {
             let thisCount = self._count
             // `new Array(a, b, c)` is different from `new Uint32Array(a, b, c)`.
-            // PORT-TODO: `Ctor === Array` vs typed-buffer-share distinction collapsed to copy.
+            // PORT-NOTE: `Ctor === Array` vs typed-buffer-share distinction collapsed to copy.
             newIndices = ContiguousArray<Int>(repeating: 0, count: thisCount)
             for i in 0..<thisCount {
                 newIndices[i] = indices[i]
@@ -715,7 +715,7 @@ public final class DataStore {
             return self
         }
 
-        // PORT-TODO: upstream `keys(range)` iterates object keys in ascending numeric order;
+        // PORT-NOTE: upstream `keys(range)` iterates object keys in ascending numeric order;
         //   Swift `Dictionary.keys` is unordered. Only the dim0/dim1 quick-path selection is
         //   affected (the result is order-independent).
         let dims = Array(range.keys)
@@ -1337,7 +1337,7 @@ public final class DataStore {
 
     private func _cloneIndices() -> ContiguousArray<Int>? {
         if let indices = self._indices {
-            // PORT-TODO: `Ctor === Array` vs typed distinction collapsed to copy.
+            // PORT-NOTE: `Ctor === Array` vs typed distinction collapsed to copy.
             let thisCount = indices.count
             var newIndices = ContiguousArray<Int>(repeating: 0, count: thisCount)
             for i in 0..<thisCount {
@@ -1359,7 +1359,7 @@ public final class DataStore {
     }
 
     private func _updateGetRawIdx() {
-        // PORT-TODO: verify capture — `getRawIndex` is stored on `self` and captures `self`
+        // PORT-NOTE: verify capture — `getRawIndex` is stored on `self` and captures `self`
         //   unowned to avoid a retain cycle.
         self.getRawIndex = self._indices != nil
             ? { [unowned self] idx in self._getRawIdx(idx) }

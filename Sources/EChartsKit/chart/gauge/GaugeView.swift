@@ -26,14 +26,16 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     → `Sector` / `Arc` / `Line` / `Circle` / `Text`(==ZRText) / `Group` are the ZRenderKit scene-graph
 //       shapes (used directly — the sanctioned DRAWING deviation; cf. PieView / AngleAxisView).
-//       PORT-TODO: `graphic.initProps` / `graphic.updateProps` (animation) are NOT ported — the diff-based
-//       enter/update/remove + rotation/endAngle draw-on tweens are deferred (CONVENTIONS §5: STATIC render).
+//       PORT-NOTE: `graphic.initProps` / `graphic.updateProps` are ported (animation/basicTransition.swift), but
+//       the diff-based enter/update/remove + rotation/endAngle draw-on tweens are not wired here (CONVENTIONS §5: STATIC render).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//     → PORT-TODO: util/states NOT ported (emphasis/blur/focus states deferred).
+//     → PORT-NOTE: util/states.swift is ported; emphasis/blur/focus states just aren't wired here yet.
 //   import {createTextStyle, setLabelValueAnimation, animateLabelValue} from '../../label/labelStyle';
-//     → PORT-TODO: label/labelStyle NOT ported. Text styles are built with a minimal plain reproduction
-//       (`gaugeTextStyle` below — font/fill/align only), same deviation as FunnelView/Breadcrumb.
-//       `setLabelValueAnimation` / `animateLabelValue` (detail number roll-up) are deferred.
+//     → createTextStyle / setLabelValueAnimation / animateLabelValue are PORTED
+//       (label/labelStyle.swift:417 / :819 / :858). DRAWING DEVIATION: the gauge title/detail text is still
+//       built with the minimal local `gaugeTextStyle` (font/fill/align only) below, same as FunnelView/Breadcrumb.
+//       The detail number roll-up (setLabelValueAnimation/animateLabelValue) is deferred with the rest of this
+//       view's STATIC render (no initProps/updateProps enter/update tweens — see §5 above).
 //   import ChartView from '../../view/Chart';                         → ChartView (view/Chart.swift).
 //   import {parsePercent, round, linearMap, DEFAULT_PRECISION_FOR_ROUNDING_ERROR} from '../../util/number';
 //     → `number.parsePercent` / `number.round` / `number.linearMap` / `number.DEFAULT_PRECISION_FOR_ROUNDING_ERROR`.
@@ -667,7 +669,9 @@ open class GaugeView: ChartView {
         var newTitleEls: [ZRText] = []
         var newDetailEls: [ZRText] = []
         // const hasAnimation = seriesModel.isAnimationEnabled();
-        //   PORT-TODO: the detail number roll-up animation is deferred.
+        //   setLabelValueAnimation/animateLabelValue (the detail number roll-up) ARE ported
+        //   (label/labelStyle.swift:819 / :858); wiring the roll-up is deferred here with the rest of this
+        //   view's STATIC render (no initProps/updateProps enter/update tweens — see file header §5).
         _ = seriesModel.isAnimationEnabled()
 
         let showPointerAbove = jsTruthy(seriesModel.get(["pointer", "showAbove"]))
@@ -732,7 +736,8 @@ open class GaugeView: ChartView {
                 ts.width = width.isNaN ? nil : width
                 ts.height = height.isNaN ? nil : height
                 labelEl.useStyle(ts)
-                // PORT-TODO: setLabelValueAnimation / animateLabelValue (detail number roll-up) deferred.
+                // setLabelValueAnimation / animateLabelValue (detail number roll-up) ARE ported
+                //   (label/labelStyle.swift:819 / :858); wiring them is deferred with this view's STATIC render.
 
                 _ = itemGroup.add(labelEl)
             }
@@ -849,10 +854,12 @@ private func styleToDict(_ style: Any?) -> [String: Any] {
     return (style as? [String: Any]) ?? [:]
 }
 
-/// PORT-TODO: minimal reproduction of `label/labelStyle.createTextStyle(textStyleModel, opts, {inheritColor})`.
-///   Only text/font/fill/align/verticalAlign are modeled (the geometry the gauge needs); x/y/width/height
-///   and rotation are set by the caller on the returned struct / element. Same deviation as
-///   FunnelView / Breadcrumb / AxisBuilder.createTextStyle. Delete when label/labelStyle.swift lands.
+/// Minimal local reproduction of `label/labelStyle.createTextStyle(textStyleModel, opts, {inheritColor})`
+///   (the real one is now PORTED at label/labelStyle.swift:417). Only text/font/fill/align/verticalAlign are
+///   modeled (the geometry the gauge needs); x/y/width/height and rotation are set by the caller on the
+///   returned struct / element. This local stand-in is still used by the title/detail draw path (a deliberate
+///   DRAWING DEVIATION, same as FunnelView / Breadcrumb / AxisBuilder.createTextStyle); replace with
+///   labelStyle.createTextStyle if the gauge label path is fully wired.
 private func gaugeTextStyle(
     _ textStyleModel: Model,
     text: String?,

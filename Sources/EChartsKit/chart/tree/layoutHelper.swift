@@ -44,7 +44,7 @@ import Foundation
 //   Modeled as a `final class` (reference semantics, mutated in place like the JS object). See the
 //   `TreeNode.hierNode` extension below for how it is attached to a node.
 public final class HierNode {
-    // PORT-TODO: upstream `defaultAncestor: TreeLayoutNode` is initialized to `null`; modeled Optional.
+    // PORT-NOTE: upstream `defaultAncestor: TreeLayoutNode` is initialized to `null`; modeled Optional.
     public var defaultAncestor: TreeNode?
     public var ancestor: TreeNode
     public var prelim: Double = 0
@@ -52,7 +52,7 @@ public final class HierNode {
     public var change: Double = 0
     public var shift: Double = 0
     public var i: Double = 0
-    // PORT-TODO: upstream `thread: TreeLayoutNode` is initialized to `null`; modeled Optional.
+    // PORT-NOTE: upstream `thread: TreeLayoutNode` is initialized to `null`; modeled Optional.
     public var thread: TreeNode?
 
     public init(defaultAncestor: TreeNode?, ancestor: TreeNode, i: Double, thread: TreeNode?) {

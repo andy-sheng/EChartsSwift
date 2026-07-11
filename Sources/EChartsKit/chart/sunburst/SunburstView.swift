@@ -30,12 +30,12 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> `ExtensionAPI`.
 //   import { TreeNode } from '../../data/Tree';                    -> sibling `TreeNode` / `Tree` (data/Tree.swift).
-//   import { ROOT_TO_NODE_ACTION } from './sunburstAction';        -> PORT-TODO: sunburstAction NOT ported (actions deferred).
+//   import { ROOT_TO_NODE_ACTION } from './sunburstAction';        -> sunburstAction.swift (ROOT_TO_NODE_ACTION exists); click-driven dispatch deferred.
 //   import { windowOpen } from '../../util/format';                -> PORT-TODO: only used by click events (deferred).
 
 // upstream: interface DrawTreeNode extends TreeNode { parentNode; piece; children }
-// PORT-TODO: TreeNode is not externally augmentable in Swift (see SunburstPiece.swift DrawTreeNode
-//   PORT-TODO). The static render does not consult `node.piece`, so `TreeNode` is used directly.
+// PORT-NOTE: TreeNode is not externally augmentable in Swift (see SunburstPiece.swift DrawTreeNode
+//   PORT-NOTE). The static render does not consult `node.piece`, so `TreeNode` is used directly.
 
 // upstream: class SunburstView extends ChartView
 open class SunburstView: ChartView {
@@ -158,7 +158,7 @@ open class SunburstView: ChartView {
 
                 // upstream binds a single `group.on('click')` and matches `e.target` back to a node via
                 //   `node.piece === e.target`; this port has no `node.piece` slot (see DrawTreeNode
-                //   PORT-TODO), so — following the established per-element binding pattern — bind the
+                //   PORT-NOTE), so — following the established per-element binding pattern — bind the
                 //   node's own SunburstPiece: the click BUBBLES from the hit child up to it. Same behaviour
                 //   as upstream `_initEvents` (nodeClick 'rootToNode' → `_rootToNode(node)`).
                 self._bindNodeClick(piece)

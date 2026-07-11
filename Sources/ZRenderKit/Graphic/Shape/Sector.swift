@@ -38,7 +38,7 @@ public struct SectorShape: PathShape {
 
     // Keyed access for animateTo({shape: {...}}) — exposes the animatable numeric fields
     //   (mirrors RectShape). `clockwise` (Bool) and `cornerRadius` (union) are not tweened.
-    // PORT-TODO: `cornerRadius` (number | number[]) is not exposed for keyed animation.
+    // PORT-NOTE: `cornerRadius` (number | number[]) is not exposed for keyed animation.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "cx": return cx
@@ -65,7 +65,7 @@ public struct SectorShape: PathShape {
     }
 }
 
-// PORT-TODO: upstream `interface SectorProps extends PathProps { shape?: Partial<SectorShape> }`.
+// PORT-NOTE: upstream `interface SectorProps extends PathProps { shape?: Partial<SectorShape> }`.
 //   The typed-props interface collapses onto `PathProps == DisplayableProps` (the dynamic prop bag);
 //   see Path.swift's `PathProps` note. Kept as an alias for provenance.
 public typealias SectorProps = PathProps

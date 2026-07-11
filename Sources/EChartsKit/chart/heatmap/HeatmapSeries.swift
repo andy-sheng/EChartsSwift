@@ -29,14 +29,13 @@ import ZRenderKit
 //                                                                    option tree is `[String: Any]`, CONVENTIONS §2).
 //   import GlobalModel from '../../model/Global';                 -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';               -> SeriesData (data/SeriesData.swift).
-//   import type Geo from '../../coord/geo/Geo';                   -> PORT-TODO: geo coord not ported (geo path is deferred, see below).
+//   import type Geo from '../../coord/geo/Geo';                   -> coord/geo/Geo.swift (geo coord is ported; heatmap's geo render path is deferred, see below).
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';  -> coord/cartesian/Cartesian2D.swift (the required render path).
-//   import type Calendar from '../../coord/calendar/Calendar';    -> PORT-TODO: calendar coord not ported.
-//   import Matrix from '../../coord/matrix/Matrix';               -> PORT-TODO: matrix coord not ported.
+//   import type Calendar from '../../coord/calendar/Calendar';    -> coord/calendar/Calendar.swift (ported; not wired into heatmap's render path yet).
+//   import Matrix from '../../coord/matrix/Matrix';               -> coord/matrix/Matrix.swift (ported; not wired into heatmap's render path yet).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet. `tokens.color.primary` is inlined verbatim as its
-//          resolved constant in `defaultOption` (same convention as ScatterSeries.swift);
-//          re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+//       -> PORT-NOTE: visual/tokens.swift is ported; `tokens.color.primary` is still inlined verbatim as its
+//          resolved constant in `defaultOption` (same convention as ScatterSeries.swift).
 //            tokens.color.primary = color.neutral80 = '#3c3c41'
 
 // ============================================================================
@@ -85,7 +84,8 @@ open class HeatmapSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.heatmap" }
 
     // upstream: static readonly dependencies = ['grid', 'geo', 'calendar', 'matrix'];
-    //   PORT-TODO: only grid/cartesian2d is renderable now (geo/calendar/matrix coord systems not ported);
+    //   PORT-NOTE: only grid/cartesian2d is renderable in heatmap now (the geo/calendar/matrix coord
+    //   systems are ported, but heatmap's render path doesn't wire them yet);
     //   the dependency list is kept verbatim so registration/topo order matches.
     public override class var dependencies: [String] {
         return ["grid", "geo", "calendar", "matrix"]
@@ -128,7 +128,7 @@ open class HeatmapSeriesModel: SeriesModel {
             // yAxisIndex: 0,
 
             // Geo coordinate system
-            // PORT-TODO: geo coord not ported; kept verbatim for the diffable surface / geo-path deferral.
+            // PORT-NOTE: geo coord is ported; kept verbatim for the diffable surface / geo-path deferral.
             "geoIndex": 0.0,
 
             // The following four are for the geo/large blurred-canvas path (HeatmapLayer.ts),
@@ -143,8 +143,8 @@ open class HeatmapSeriesModel: SeriesModel {
 
             "select": [
                 "itemStyle": [
-                    // PORT-TODO: tokens.color.primary inlined as resolved constant (color.neutral80);
-                    //   re-wire to `tokens.color.primary` once visual/tokens.swift lands.
+                    // PORT-NOTE: tokens.color.primary inlined as resolved constant (color.neutral80);
+                    //   visual/tokens.swift is ported — could re-wire to `tokens.color.primary`.
                     "borderColor": "#3c3c41"   // tokens.color.primary
                 ] as [String: Any]
             ] as [String: Any]

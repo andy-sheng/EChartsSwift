@@ -3,8 +3,9 @@ import XCTest
 @testable import ZRenderKit
 
 // Regression: markLine / markArea had NO hover effect — upstream wires emphasis on the marker
-// elements (Line.ts:243-336 for the markLine group; MarkAreaView.ts:388-392 for the area polygon);
-// the port left both as PORT-TODO stubs (no dispatcher, no emphasis states).
+// elements (Line.ts:243-336 for the markLine group; MarkAreaView.ts:388-392 for the area polygon).
+// PORT-NOTE: both are now wired (MarkLineView.swift:698 / MarkAreaView.swift:479-481) as highDown
+// dispatchers carrying emphasis states; this test guards that.
 final class MarkerHoverTests: XCTestCase {
     private func strokeString(_ el: Path?) -> String? {
         if case let .string(s)? = el?.pathStyle?.stroke { return s }

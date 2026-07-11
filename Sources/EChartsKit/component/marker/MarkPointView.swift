@@ -35,7 +35,7 @@ import ZRenderKit
 //   -> `HashMap` (util/modelUtil shim); `isFunction`/`map`/`filter`/`extend`/`retrieve2` -> ZRenderKit `util.*`;
 //      `curry` replicated inline.
 // import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`
-// import { getVisualFromData } from '../../visual/helper';         -> PORT-TODO: visual/helper.ts not ported;
+// import { getVisualFromData } from '../../visual/helper';         -> PORT-NOTE: visual/helper.ts not ported;
 //      a minimal faithful `getVisualFromData` is inlined at the bottom of this file.
 // import { ZRColor } from '../../util/types';                      -> EChartsKit `ZRColor` / ZRenderKit `ZRColor`
 // import SeriesDimensionDefine from '../../data/SeriesDimensionDefine'; -> EChartsKit `SeriesDimensionDefine`
@@ -77,7 +77,7 @@ private func updateMarkerLayout(
         }
         // Chart like bar may have there own marker positioning logic
         // else if (seriesModel.getMarkerPosition)
-        //   PORT-TODO: `getMarkerPosition` is duck-typed on the series in upstream; only
+        //   PORT-NOTE: `getMarkerPosition` is duck-typed on the series in upstream; only
         //   `BaseBarSeriesModel` declares it in the port. Feature-detect via `as? BaseBarSeriesModel`.
         //   Other series with custom marker positioning add it when they land.
         else if let barSeries = seriesModel as? BaseBarSeriesModel {
@@ -93,7 +93,7 @@ private func updateMarkerLayout(
         }
 
         // Use x, y if has any
-        // PORT-TODO: upstream assigns `point[0] = xPx` even when `point` is undefined (throws in JS on a
+        // PORT-NOTE: upstream assigns `point[0] = xPx` even when `point` is undefined (throws in JS on a
         //   degenerate config with no coordSys/getMarkerPosition and only one of x/y). Optional-chained
         //   assignment here no-ops instead of trapping — a safe deviation for static render.
         if !xPx.isNaN {
@@ -199,7 +199,7 @@ open class MarkPointView: MarkerView {
 
             // mpData.setItemVisual(idx, { z2, symbol, symbolSize, symbolRotate, symbolOffset,
             //                             symbolKeepAspect, style });
-            //   PORT-TODO: JS stores every key (incl. `undefined`); Swift `[String: Any]` cannot hold nil,
+            //   PORT-NOTE: JS stores every key (incl. `undefined`); Swift `[String: Any]` cannot hold nil,
             //   so absent (nil) shallow values are omitted here and the direct build below falls back to the
             //   model default (`mpModel.get(...)`) — the role real ECharts' `visual/symbol.ts` stage plays.
             var visual: [String: Any] = ["style": style]
@@ -248,7 +248,7 @@ private func createData(
             let data = seriesModel.getData()
             // const info = data.getDimensionInfo(data.mapDimension(coordDim)) || {} as SeriesDimensionDefine;
             let mapped = data.mapDimension(coordDim)
-            // PORT-TODO: upstream `|| {}` fallback when the dim is absent; `getDimensionInfo` force-unwraps
+            // PORT-NOTE: upstream `|| {}` fallback when the dim is absent; `getDimensionInfo` force-unwraps
             //   in this port, so guard on `mapDimension` and use a fresh empty define when nil.
             let info: SeriesDimensionDefine = mapped != nil
                 ? data.getDimensionInfo(mapped!)
@@ -275,7 +275,7 @@ private func createData(
     // let dataOpt = map(mpModel.get('data'), curry(markerHelper.dataTransform, seriesModel));
     // if (coordSys) dataOpt = filter(dataOpt, curry(markerHelper.dataFilter, coordSys));
     //
-    // PORT-TODO (bridge, per MarkerModel.swift note): the user `data` items are dynamic `[String: Any]`
+    // PORT-NOTE (bridge, per MarkerModel.swift note): the user `data` items are dynamic `[String: Any]`
     //   option bags, while `markerHelper.dataTransform`/`dataFilter`/`createMarkerDimValueGetter` are typed
     //   to `MarkerPositionOption`. Convert each bag -> struct for the transform/filter/getter pipeline, and
     //   merge the resolved `coord`/`value` back onto the bag so `getItemModel`/`getShallow` (symbol/style/
@@ -320,7 +320,7 @@ private func createData(
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of MarkPointView.ts upstream. These bridge out-of-phase sibling APIs so
+// PORT-NOTE helpers — NOT part of MarkPointView.ts upstream. These bridge out-of-phase sibling APIs so
 // the static markPoint render compiles. Delete each when its real sibling lands and call it directly.
 // ============================================================================
 

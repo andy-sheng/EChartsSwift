@@ -23,16 +23,16 @@ import ZRenderKit
 
 // import * as zrUtil from 'zrender/src/core/util';        -> `util.bind` (ZRenderKit).
 // import * as visualSolution from '../../visual/visualSolution';
-//   -> PORT-TODO: visual/visualSolution.swift is a SEPARATE (later) port phase. Its
+//   -> visualSolution IS ported (visual/visualSolution.swift). Its
 //      `incrementalApplyVisual(stateList, visualMappings, getValueState, dim)` builds the
 //      per-data-point `StageHandlerProgressExecutor` that actually walks the store and
-//      `setItemVisual`s the mapped visual. Deferred with VisualMapping/VisualMapModel.
+//      `setItemVisual`s the mapped visual.
 // import VisualMapping from '../../visual/VisualMapping';
-//   -> PORT-TODO: visual/VisualMapping.swift is a SEPARATE (later) port phase. `prepareVisualTypes` and
+//   -> VisualMapping IS ported (visual/VisualMapping.swift). `prepareVisualTypes` and
 //      `mapping.applyVisual(value, getVisual, setVisual)` (the value->color/opacity/symbol/... encoder)
-//      are deferred with it — this is the color-math core (zrColor.parse / fastLerp / lift / stringify).
+//      are available — this is the color-math core (zrColor.parse / fastLerp / lift / stringify).
 // import VisualMapModel, { VisualMeta } from './VisualMapModel';
-//   -> PORT-TODO: component/visualMap/VisualMapModel.swift is a SEPARATE (later) port phase. The
+//   -> VisualMapModel IS ported (component/visualMap/VisualMapModel.swift). The
 //      component model that owns `stateList` / `targetVisuals` / `getValueState` / `isTargetSeries` /
 //      `getDataDimensionIndex` / `getVisualMeta`.
 // import { StageHandlerProgressExecutor, BuiltinVisualProperty, ParsedValue, StageHandler } from '../../util/types';
@@ -48,8 +48,8 @@ import ZRenderKit
 //   `registers.registerVisual(registers.PRIORITY.VISUAL.COMPONENT, handler)` — i.e. AFTER each series'
 //   own visual stage, so they overwrite the palette color with the value->visual encoding.
 //
-// PORT-TODO: the reset bodies below are the faithful shells. The actual encoding is BLOCKED on the
-//   deferred VisualMapModel + visualSolution + VisualMapping subsystems (see imports). The `StageHandler`
+// PORT-NOTE: the reset bodies below run the real encoding, using the now-ported VisualMapModel +
+//   visualSolution + VisualMapping subsystems (see imports). The `StageHandler`
 //   objects are still produced so the Orchestrate driver can register them at
 //   PRIORITY.VISUAL.COMPONENT once those land.
 public let visualMapEncodingHandlers: [StageHandler] = [
@@ -174,11 +174,11 @@ private func getColorVisual(
 // performance and export for heatmap?
 // value can be Infinity or -Infinity
 //
-// PORT-TODO (BLOCKED on VisualMapping — later phase): `getColorVisual` maps one parsed value in a given
+// PORT-NOTE: `getColorVisual` (implemented above) maps one parsed value in a given
 //   valueState to a color, by running each of the mapping's visual types through
 //   `mapping.applyVisual(value, getVisual, setVisual)` over a local `resultVisual` bag seeded with the
 //   series' default color (`getVisualFromData(data, 'color')`). It is the callback `getVisualMeta` uses
-//   to sample the gradient. Faithful upstream source preserved; wire once VisualMapping lands.
+//   to sample the gradient. Faithful upstream source preserved below for reference.
 //
 //   function getColorVisual(
 //       seriesModel: SeriesModel,

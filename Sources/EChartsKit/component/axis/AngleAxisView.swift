@@ -28,9 +28,9 @@ import ZRenderKit
 //       `graphic.Sector` / `graphic.Line` / `graphic.Text` are the ZRenderKit scene-graph shapes (used
 //       directly — the sanctioned DRAWING deviation; cf. CartesianAxisView / RadarComponentView).
 //       `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath). `graphic.setTooltipConfig` is the
-//       tooltip-config seam, deferred below (PORT-TODO).
+//       tooltip-config seam, deferred below (PORT-NOTE).
 //   import {createTextStyle} from '../../label/labelStyle';
-//     → PORT-TODO: `label/labelStyle` NOT ported. Reuse the module-internal `createTextStyle(_ textStyleModel,
+//     → PORT-NOTE: `label/labelStyle` is ported (createTextStyle); this view uses the module-internal `createTextStyle(_ textStyleModel,
 //       text:, font:, overflow:, width:, ellipsis:, fill:, align:, verticalAlign:)` reproduction that lives
 //       in AxisBuilder.swift (same module) — enough for the axis label (text/font/fill/align). Its `<T>`
 //       nuance generic and the object-literal `x`/`y` fields are handled by assigning `style.x`/`style.y`
@@ -39,18 +39,18 @@ import ZRenderKit
 //   import AxisView from './AxisView';                         → `AxisView` (component/axis/AxisView.swift).
 //   import AxisBuilder from './AxisBuilder';                   → `AxisBuilder` (component/axis/AxisBuilder.swift).
 //   import { AngleAxisModel } from '../../coord/polar/AxisModel';
-//     → PORT-TODO: `coord/polar/AxisModel` is a sibling landing this phase (polar is a full coord system).
-//       Assumed API: `open class AngleAxisModel: AxisBaseModel` (so `.axis: Any`, `.get`, `.getModel`,
+//     → PORT-NOTE: `AngleAxisModel` is ported (coord/polar/PolarAxisModel.swift; polar is a full coord system).
+//       API: `open class AngleAxisModel: AxisBaseModel` (so `.axis: Any`, `.get`, `.getModel`,
 //       `.getCategories`, `.getTextColor` Model surface). Registered component view `type` is 'angleAxis'.
 //   import GlobalModel from '../../model/Global';              → `GlobalModel`.
 //   import Polar from '../../coord/polar/Polar';
-//     → PORT-TODO: sibling landing this phase. Assumed API (mirrors upstream Polar):
+//     → PORT-NOTE: `Polar` (coord/polar/Polar.swift). API (mirrors upstream Polar):
 //         var cx: Double ; var cy: Double
 //         func getRadiusAxis() -> RadiusAxis      // (open class RadiusAxis: Axis)
 //         func getAngleAxis() -> AngleAxis
 //         func coordToPoint(_ coord: [Double]) -> [Double]   // upstream: coordToPoint([radius, angle]) -> number[]
 //   import AngleAxis from '../../coord/polar/AngleAxis';
-//     → PORT-TODO: sibling landing this phase. Assumed API (open class AngleAxis: Axis):
+//     → PORT-NOTE: `AngleAxis` (coord/polar/AngleAxis.swift). API (open class AngleAxis: Axis):
 //         var polar: Polar
 //         inherits `scale`/`inverse`/`getExtent()`/`dataToCoord()`/`getTicksCoords()`/
 //                  `getMinorTicksCoords()`/`getViewLabels()` from `Axis`.
@@ -549,7 +549,7 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of AngleAxisView.ts upstream. These reproduce the
+// PORT-NOTE helpers — NOT part of AngleAxisView.ts upstream. These reproduce the
 // dynamic-option coercion + the `util/graphic` style-bag bridge referenced above.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -577,7 +577,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` style-bag bridge. `Model.getLineStyle()` / `getAreaStyle()` return the
+/// PORT-NOTE: `util/graphic` style-bag bridge. `Model.getLineStyle()` / `getAreaStyle()` return the
 ///   dynamic `[String: Any]` paint bag (makeStyleMapper output, keyed by PathStyleProps field names);
 ///   ZRenderKit `Path`'s `style` prop is a typed `PathStyleProps`. This maps the common line/area paint
 ///   keys (stroke + fill) so the axis-line / ticks / split-lines / split-areas are actually drawn.

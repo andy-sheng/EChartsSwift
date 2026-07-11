@@ -166,7 +166,7 @@ private func createPathProxyFromString(_ data: String?) -> PathProxy {
 
         // Following code will convert string to number. So convert type to number here
         // upstream: const p = cmdText.match(numberReg) ... ; for (...) p[i] = parseFloat(p[i]);
-        // PORT-TODO: `parseFloat` fallback — numberReg yields clean tokens; `Double(_:)` parses
+        // PORT-NOTE: `parseFloat` fallback — numberReg yields clean tokens; `Double(_:)` parses
         //   '.5' / '-2.43e-1' etc. Unparsable tokens fall back to 0 (should not occur).
         let p: [Double] = (matchAll(numberRegPattern, [], cmdText) ?? []).map { Double($0) ?? 0 }
         let pLen = p.count
@@ -514,7 +514,7 @@ public func makePath(
 // upstream returns `typeof SVGPath` (a NEW Path subclass synthesized at runtime). Swift has no
 //   runtime class synthesis (CONVENTIONS §2 / §8); return a factory closure that builds configured
 //   `SVGPath` instances — the call-site replacement for `const Sub = extendFromString(...); new Sub(opts)`.
-// PORT-TODO: factory-closure stand-in for the synthesized `class Sub extends SVGPath`.
+// PORT-NOTE: factory-closure stand-in for the synthesized `class Sub extends SVGPath`.
 public func extendFromString(_ str: String?, _ defaultOpts: SVGPathOption? = nil) -> (SVGPathOption?) -> SVGPath {
     let innerOpts = createPathOptions(str, defaultOpts)
     return { (opts: SVGPathOption?) -> SVGPath in
@@ -585,7 +585,7 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
         path.setShape(sourcePath.shape)
     }
     // path.setStyle(sourcePath.style);
-    // PORT-TODO: upstream `setStyle` MERGES `sourcePath.style` (PathStyleProps) into the fresh
+    // PORT-NOTE: upstream `setStyle` MERGES `sourcePath.style` (PathStyleProps) into the fresh
     //   default style. Our rich style lives in `pathStyle`; `useStyle` assigns it (the source style
     //   is already a created/magic style, so it round-trips by value). Merge-vs-replace edge cases
     //   on a partially-specified source style are deferred.

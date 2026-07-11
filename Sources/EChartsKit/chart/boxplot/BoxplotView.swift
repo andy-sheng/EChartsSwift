@@ -25,7 +25,7 @@ import ZRenderKit
 //   import ChartView from '../../view/Chart';                             -> ChartView (view/Chart.swift).
 //   import * as graphic from '../../util/graphic';                        -> initProps/updateProps (DEFERRED, see below).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: emphasis/hover states DEFERRED per task scope.
+//       -> util/states.swift (`states.setStatesStylesFromModel` / `states.toggleHoverEmphasis`), wired in setBoxCommon.
 //   import Path, { PathProps } from 'zrender/src/graphic/Path';           -> Path / PathProps (ZRenderKit).
 //   import BoxplotSeriesModel, { SERIES_TYPE_BOXPLOT, BoxplotDataItemOption } from './BoxplotSeries';
 //       -> sibling BoxplotSeries.swift (SERIES_TYPE_BOXPLOT / BoxplotSeriesModel).
@@ -121,7 +121,7 @@ open class BoxplotView: ChartView {
     }
 
     // upstream: remove(ecModel: GlobalModel)
-    // PORT-TODO: the ported ChartView.remove signature is `(ecModel, api)`; the `api` param is unused
+    // PORT-NOTE: the ported ChartView.remove signature is `(ecModel, api)`; the `api` param is unused
     //   here (dropped upstream). Faithful body below.
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let group = self.group
@@ -160,7 +160,7 @@ public struct BoxPathShape: PathShape {
 }
 
 // upstream: interface BoxPathProps extends PathProps { shape?: Partial<BoxPathShape> }
-// PORT-TODO: the typed-props interface collapses onto the dynamic PathProps bag (see Sector.swift).
+// PORT-NOTE: the typed-props interface collapses onto the dynamic PathProps bag (see Sector.swift).
 public typealias BoxPathProps = PathProps
 
 // upstream: class BoxPath extends Path<BoxPathProps>

@@ -30,8 +30,8 @@ import ZRenderKit
 //   import createGraphFromNodeEdge from '../helper/createGraphFromNodeEdge';
 //       -> the sibling free function `createGraphFromNodeEdge` (chart/helper/createGraphFromNodeEdge.swift).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (base SeriesModel already types
-//          `legendVisualProvider: Any?`). The legend-provider wiring in `init` is deferred.
+//       -> LegendVisualProvider (visual/LegendVisualProvider.swift); wired in `init` (base SeriesModel
+//          types the slot `legendVisualProvider: Any?`).
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2. The interface/type declarations
 //       (GraphEdgeLineStyleOption, GraphNodeStateOption, GraphNodeItemOption, GraphEdgeItemOption,
@@ -43,17 +43,18 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import { VectorArray } from 'zrender/src/core/vector';           -> `[Double]`.
 //   import { ForceLayoutInstance } from './forceLayout';
-//       -> PORT-TODO: forceLayout (iterative physics) DEFERRED this phase; the `forceLayout` slot is `Any?`.
+//       -> forceLayout (iterative physics) IS ported (chart/graph/forceLayout.swift, returning the concrete
+//          `ForceLayoutInstance`); the `forceLayout` slot stays `Any?` (that concrete type isn't bound here).
 //   import { LineDataVisual } from '../../visual/commonVisualTypes';  -> type-only.
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift).
 //   import { defaultSeriesFormatTooltip } from '../../component/tooltip/seriesFormatTooltip';
-//       -> PORT-TODO: component/tooltip/seriesFormatTooltip.ts NOT ported (tooltip component deferred).
+//       -> defaultSeriesFormatTooltip (component/tooltip/seriesFormatTooltip.swift).
 //   import {initCurvenessList, createEdgeMapForCurveness} from '../helper/multipleGraphEdgeHelper';
-//       -> PORT-TODO: chart/helper/multipleGraphEdgeHelper.ts NOT ported (auto-curveness for multiple
-//          edges DEFERRED); the two calls in `getInitialData` are commented out below.
+//       -> multipleGraphEdgeHelper IS ported (chart/helper/multipleGraphEdgeHelper.swift — auto-curveness
+//          for multiple edges); the two calls in `getInitialData` are commented out below.
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts NOT ported; the consumed values are inlined verbatim in
+//       -> visual/tokens.ts IS ported (visual/tokens.swift); the consumed values are still inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
 //   import { isViewCoordSys } from '../../coord/View';
 //       -> PORT-TODO: coord/View.ts NOT ported (the graph's `View` box coordinate system + roam are
@@ -91,7 +92,8 @@ open class GraphSeriesModel: SeriesModel {
     open var preservedPoints: [String: [Double]]?
 
     // forceLayout?: ForceLayoutInstance;
-    // PORT-TODO: forceLayout (iterative physics) DEFERRED this phase — typed `Any?`.
+    // PORT-NOTE: forceLayout (iterative physics) IS ported (chart/graph/forceLayout.swift); this slot
+    //   stays typed `Any?` (the concrete `ForceLayoutInstance` type isn't bound here).
     open var forceLayout: Any?
 
     // hasSymbolVisual = true;
@@ -274,9 +276,7 @@ open class GraphSeriesModel: SeriesModel {
             // const nodeData = this.getData();
             let nodeData = self.getData()
             // const params = this.getDataParams(dataIndex, dataType);
-            // PORT-TODO: SeriesModel does not yet conform to DataFormatMixin (see model/Series.swift),
-            //   so `getDataParams` / `params.value` are unavailable — the `value`/`noValue` fields of
-            //   the markup are deferred with the markup construction below.
+            let params = self.getDataParams(dataIndex, dataType)
 
             // const edge = nodeData.graph.getEdgeByIndex(dataIndex);
             let edge = nodeData.graph!.getEdgeByIndex(Int(dataIndex))!
@@ -292,23 +292,31 @@ open class GraphSeriesModel: SeriesModel {
             var nameArr: [String] = []
             nameArr.append(sourceName)
             nameArr.append(targetName)
-            _ = nameArr
 
             // return createTooltipMarkup('nameValue', {
             //     name: nameArr.join(' > '),
             //     value: params.value,
             //     noValue: params.value == null
             // });
-            // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — the markup return is deferred
-            //   (returns nil, matching the base stub). The name walk above is faithful.
-            return nil
+            let value = params.value
+            // `params.value` is typed `Any`; `getDataParams` boxes a nil raw value as
+            //   `Optional.none as Any` (or `NSNull`). Detect both to mirror `value == null`.
+            let valueIsNull: Bool = {
+                if value is NSNull { return true }
+                let m = Mirror(reflecting: value)
+                return m.displayStyle == .optional && m.children.isEmpty
+            }()
+            return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                name: nameArr.joined(separator: " > "),
+                value: value,
+                noValue: valueIsNull
+            ))
         }
         // dataType === 'node' or empty
         // const nodeMarkup = defaultSeriesFormatTooltip({ series: this, dataIndex, multipleSeries });
         // return nodeMarkup;
-        // PORT-TODO: component/tooltip/seriesFormatTooltip.ts NOT ported — defers to the base stub (nil).
-        _ = multipleSeries
-        return nil
+        let nodeMarkup = defaultSeriesFormatTooltip(series: self, dataIndex: dataIndex, multipleSeries: multipleSeries ?? false)
+        return nodeMarkup
     }
 
     // _updateCategoriesData() { ... }

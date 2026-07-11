@@ -446,9 +446,7 @@ open class LinesSeriesModel: SeriesModel {
         // const data = this.getData();
         let data = self.getData()
         // const value = this.getRawValue(dataIndex);
-        // PORT-TODO: SeriesModel does not yet conform to DataFormatMixin (see GraphSeries.swift), so
-        //   `getRawValue` is unavailable — the `value`/`noValue` markup fields are deferred with the
-        //   markup construction below.
+        let value = self.getRawValue(dataIndex)
 
         // const itemModel = data.getItemModel<LinesDataItemOption>(dataIndex);
         let itemModel = data.getItemModel(Int(dataIndex))
@@ -469,18 +467,12 @@ open class LinesSeriesModel: SeriesModel {
             // itemName = nameArr.join(' > ');
             itemName = nameArr.joined(separator: " > ")
         }
-        _ = itemName
-
-        // return createTooltipMarkup('nameValue', {
-        //     name: itemName,
-        //     value,
-        //     // NOTE: `value` may be `coords` (a 2D-array) — do not display in that case.
-        //     noValue: value == null || isNaN(value as number)
-        // });
-        // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — the markup return is deferred (returns
-        //   nil, matching the base stub). The itemName walk above is faithful.
         _ = (multipleSeries, dataType)
-        return nil
+
+        // NOTE: `value` may be `coords` (a 2D-array) — do not display in that case.
+        let noValue = value == nil || value is NSNull || (value as? Double).map { $0.isNaN } == true
+        return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+            name: itemName, value: value, noValue: noValue))
     }
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }

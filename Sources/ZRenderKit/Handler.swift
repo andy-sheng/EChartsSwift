@@ -388,7 +388,7 @@ public final class Handler: DraggableHandler {
 
         while let cur = el {
             // el[eventKey]
-            //     && (eventPacket.cancelBubble = !!el[eventKey].call(el, eventPacket));   // PORT-TODO above
+            //     && (eventPacket.cancelBubble = !!el[eventKey].call(el, eventPacket));   // PORT-NOTE above
 
             cur.trigger(eventName.rawValue, eventPacket)
 

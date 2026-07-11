@@ -32,7 +32,7 @@ import ZRenderKit
 //        reproduced by the local no-animation shim `updateProps` at the bottom (same deviation as
 //        BarView.swift).
 //   import { toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
-//     -> PORT-TODO: `util/states.ts` NOT ported — emphasis/states deferred (CONVENTIONS §5).
+//     -> states.toggleHoverEmphasis / states.setStatesStylesFromModel (util/states.swift).
 //   import * as markerHelper from './markerHelper';                 -> sibling `markerHelper`.
 //   import MarkerView from './MarkerView';                          -> sibling `MarkerView`.
 //   import { retrieve, mergeAll, map, curry, filter, HashMap, extend, isString, retrieve2 }
@@ -54,12 +54,14 @@ import ZRenderKit
 //     -> PORT-TODO: `visual/helper.ts` NOT ported. Faithful minimal `getVisualFromData` at the bottom
 //        of this file (delete once visual/helper.swift lands and call it directly).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//     -> PORT-TODO: `label/labelStyle.ts` NOT ported — the label block is deferred (CONVENTIONS §5).
+//     -> `label/labelStyle.swift` (`labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels`).
+//        labelStyle IS ported; the label block below is still deferred, but NOT for lack of it —
+//        see the deferral note at the label block (MarkerModel is not a DataFormatMixin/DataModel).
 //   import { getECData } from '../../util/innerStore';              -> `innerStore.getECData`.
 //   import Axis2D from '../../coord/cartesian/Axis2D';              -> `Axis2D`.
 //   import { parseDataValue } from '../../data/helper/dataValueHelper'; -> `dataValueHelper.parseDataValue`.
 //   import tokens from '../../visual/tokens';
-//     -> PORT-TODO: `visual/tokens.ts` NOT ported — only referenced by the deferred label block.
+//     -> `visual/tokens.swift` (`tokens.color.neutral99`); only referenced by the deferred label block.
 
 // interface MarkAreaDrawGroup { group: graphic.Group }
 //   The per-series draw group. Conforms to `MarkerDraw` (MarkerView.swift) so it can be stored in the
@@ -482,10 +484,13 @@ public final class MarkAreaView: MarkerView {
             //     labelDataIndex: idx, defaultText: areaData.getName(idx) || '',
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
             // getECData(polygon).dataModel = maModel;
-            // PORT-TODO: the label + tooltip-model wiring is deferred (CONVENTIONS §5):
-            //   `label/labelStyle` (setLabelStyle/getLabelStatesModels), `visual/tokens` (neutral99),
-            //   and `getECData(...).dataModel = maModel` (MarkerModel does not yet conform to
-            //   `DataModel`; see MarkerModel.swift class header) are not ported.
+            // PORT-TODO: `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens`
+            //   (neutral99) ARE ported now — but this label block stays deferred for a different reason:
+            //   `labelFetcher: maModel` requires `maModel` (a MarkerModel) to be a `DataFormatMixin`
+            //   (for the getFormattedLabel the fetcher provides), and `getECData(polygon).dataModel =
+            //   maModel` requires MarkerModel to conform to `DataModel`. MarkerModel conforms to neither
+            //   yet (only SeriesModel is a DataFormatMixin; see MarkerModel.swift class header). Wire this
+            //   block once MarkerModel gains DataFormatMixin/DataModel conformance.
         })
 
         inner(polygonGroup).data = areaData

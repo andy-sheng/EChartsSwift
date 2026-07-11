@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // import { isArray } from 'zrender/src/core/util';                    -> `util.isArray` (ZRenderKit).
-// import { EChartsExtensionInstallRegisters } from '../../extension'; -> PORT-TODO: registers/install
+// import { EChartsExtensionInstallRegisters } from '../../extension'; -> PORT-NOTE: registers/install
 //   boilerplate deferred to the Orchestrate driver (matches component/grid/installSimple.swift).
 // import { GraphicComponentModel, GraphicComponentOption } from './GraphicModel'; -> sibling GraphicModel.swift.
 // import { GraphicComponentView } from './GraphicView';               -> sibling GraphicView.swift.
@@ -34,9 +34,10 @@ import ZRenderKit
 //       registers.registerPreprocessor(function (option) { ... });
 //   }
 //
-// PORT-TODO: registration boilerplate (registerComponentModel / registerComponentView /
-//   registerPreprocessor) belongs to the later Orchestrate driver, not this render-layer file.
-//   The preprocessor is real option-normalization logic, so it is ported as the standalone
+// PORT-NOTE: registration boilerplate (registerComponentModel / registerComponentView /
+//   registerPreprocessor) lives in the driver (`core/ECharts.swift` registers `GraphicComponentModel`
+//   + the `graphic` view + calls `graphicOptionPreprocessor`), not this render-layer file.
+//   The preprocessor is real option-normalization logic, ported as the standalone
 //   `graphicOptionPreprocessor` function below for the driver to register.
 
 /// Normalizes the `graphic` option into its canonical `[{ elements: [...] }]` shape. Mutates the raw

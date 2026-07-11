@@ -32,11 +32,11 @@ import ZRenderKit
 //       -> sibling number.swift caseless enum `number` (`number.mathCeil`, `number.nice`, etc.).
 //   import type { AxisBaseModel } from './AxisBaseModel';         -> sibling AxisBaseModel.swift (`AxisBaseModel`).
 //   import type { AxisScaleType, NumericAxisBaseOptionCommon } from './axisCommonTypes';
-//       -> sibling axisCommonTypes.swift (`AxisScaleType` = String alias). PORT-TODO: `NumericAxisBaseOptionCommon`
+//       -> sibling axisCommonTypes.swift (`AxisScaleType` = String alias). PORT-NOTE: `NumericAxisBaseOptionCommon`
 //          (the generic option bag) is dropped per CONVENTIONS §2 — the option tree is the dynamic
 //          `Any` bag on Model, read via `model.get(...)`.
 //   import { updateIntervalOrLogScaleForNiceOrAligned } from './axisHelper';
-//       -> sibling axisHelper.swift (same tier, other agent this phase). PORT-TODO: referenced as a
+//       -> sibling axisHelper.swift (same tier, other agent this phase). PORT-NOTE: referenced as a
 //          caseless enum namespace `axisHelper` per CONVENTIONS §2 (pure free-function module); if the
 //          sibling exposes it as a bare free function instead, drop the `axisHelper.` qualifier.
 //   import { calcNiceForTimeScale } from '../scale/Time';         -> sibling TimeScale.swift, exposed as a
@@ -45,7 +45,7 @@ import ZRenderKit
 //   import Scale from '../scale/Scale';                           -> sibling Scale.swift (`Scale`).
 //   import { adoptScaleExtentKindMapping, adoptScaleRawExtentInfoAndPrepare, ScaleExtentFixMinMax,
 //            ScaleRawExtentResultFinal } from './scaleRawExtentInfo';
-//       -> sibling scaleRawExtentInfo.swift (same tier, other agent this phase). PORT-TODO: the `adopt*`
+//       -> sibling scaleRawExtentInfo.swift (same tier, other agent this phase). PORT-NOTE: the `adopt*`
 //          functions are referenced as bare free functions (scaleRawExtentInfo is not a pure
 //          free-function module — it carries the ScaleRawExtentInfo class — so it mirrors the
 //          scaleMapper/break free-function deviation). `ScaleExtentFixMinMax` / `ScaleRawExtentResultFinal`
@@ -54,8 +54,8 @@ import ZRenderKit
 //       -> sibling scaleMapper.swift, exposed as a bare free function `getScaleLinearSpanEffective(_:)`.
 //   import { NullUndefined } from '../util/types';                -> collapses to Optional (CONVENTIONS §6).
 //   import type GlobalModel from '../model/Global';               -> sibling Global.swift (`GlobalModel`).
-//   import type Axis from './Axis';                               -> coord/Axis.swift (PORT-TODO: not yet ported
-//          this phase — typed `Any`).
+//   import type Axis from './Axis';                               -> coord/Axis.swift (ported; `scaleCalcNice`'s
+//          `axisLike` uses the narrow ScaleCalcNiceAxisLike struct below rather than the full Axis).
 
 
 // ------ START: LinearIntervalScaleStub Nice ------
@@ -116,7 +116,7 @@ func calcNiceForIntervalOrLogScale(
         config.niceExtent = newIntervalExtent   // newIntervalExtent.slice() (Swift arrays are value types)
     }
 
-    // PORT-TODO: `axisHelper.updateIntervalOrLogScaleForNiceOrAligned` — enum-namespace assumption; see import note.
+    // PORT-NOTE: `axisHelper.updateIntervalOrLogScaleForNiceOrAligned` — enum-namespace assumption; see import note.
     axisHelper.updateIntervalOrLogScaleForNiceOrAligned(
         scale,
         fixMinMax,
@@ -250,7 +250,8 @@ public struct ScaleCalcNiceMethodOpt {
 
 // upstream: the inline object type `{ scale: Scale, model: AxisBaseModel }` of `scaleCalcNice`'s
 //   `axisLike` param. Modeled as a small struct so call sites keep `axisLike.scale` / `axisLike.model`.
-//   PORT-TODO: upstream passes an `Axis` here (Axis has `scale`/`model`); re-model once coord/Axis.swift lands.
+//   PORT-NOTE: upstream passes an `Axis` here (Axis has `scale`/`model`); modeled as this narrow struct
+//   to keep call sites `axisLike.scale` / `axisLike.model`.
 public struct ScaleCalcNiceAxisLike {
     public var scale: Scale
     public var model: AxisBaseModel
@@ -278,7 +279,7 @@ public func scaleCalcNice(
     let axis = model.axis
     let ecModel = model.ecModel
     if __DEV__ {
-        // upstream: assert(axis && ecModel). PORT-TODO: `model.axis` is a non-optional `Any` in this
+        // upstream: assert(axis && ecModel). PORT-NOTE: `model.axis` is a non-optional `Any` in this
         //   port (see AxisBaseModel.swift), so only `ecModel` truthiness is asserted here.
         util.assert(ecModel != nil)
     }
@@ -301,7 +302,7 @@ public func scaleCalcNice2(
     _ externalDataExtent: [Double]?
 ) {
 
-    // PORT-TODO: `adoptScaleRawExtentInfoAndPrepare` — bare free function in sibling scaleRawExtentInfo.swift.
+    // PORT-NOTE: `adoptScaleRawExtentInfoAndPrepare` — bare free function in sibling scaleRawExtentInfo.swift.
     let rawExtentResult = adoptScaleRawExtentInfoAndPrepare(scale, model, ecModel, axis, externalDataExtent)
 
     let isIntervalOrTime = helper.isIntervalScale(scale) || helper.isTimeScale(scale)

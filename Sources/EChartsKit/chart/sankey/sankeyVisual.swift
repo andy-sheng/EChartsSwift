@@ -24,12 +24,12 @@ import ZRenderKit
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';                        -> `util.each` (ZRenderKit).
 //   import VisualMapping from '../../visual/VisualMapping';
-//       -> PORT-TODO: visual/VisualMapping.ts NOT ported. The per-node linear color mapping
+//       -> PORT-NOTE: visual/VisualMapping.swift is ported. This file still uses a local stand-in,
+//          `sankeyMapValueToColor`, for the per-node linear color mapping
 //          (`new VisualMapping({ type:'color', mappingMethod:'linear', dataExtent:[min,max], visual:… })`
-//          + `mapping.mapValueToVisual(value)`) is DEFERRED — `sankeyMapValueToColor` returns nil, so a
-//          node with no explicit itemStyle.color receives no palette color yet. Wire once VisualMapping
-//          lands (same deferral as treemapVisual.swift). The min/max value walk below is kept faithful so
-//          the `dataExtent` is ready for the mapping.
+//          + `mapping.mapValueToVisual(value)`); the stand-in does the linear palette interpolation
+//          directly, so a node's fill is computed here. It could be re-wired to the real VisualMapping.
+//          The min/max value walk below is kept faithful so the `dataExtent` is ready for the mapping.
 //   import GlobalModel from '../../model/Global';                           -> GlobalModel (model/Global.swift).
 //   import SankeySeriesModel, { SankeyEdgeItemOption, SankeyNodeItemOption, SERIES_TYPE_SANKEY } from './SankeySeries';
 //       -> sibling SankeySeries.swift (SankeySeriesModel / SERIES_TYPE_SANKEY). The two *ItemOption
@@ -74,9 +74,9 @@ func sankeyVisual(_ ecModel: GlobalModel) {
                 //     dataExtent: [minValue, maxValue], visual: seriesModel.get('color')
                 // });
                 // const mapValueToColor = mapping.mapValueToVisual(node.getLayout().value);
-                // PORT-TODO: VisualMapping DEFERRED — see the top-of-file import PORT-TODO. The mapped color
-                //   resolves to nil; `dataExtent` [minValue, maxValue] and the series `color` palette are
-                //   passed through for when the mapping lands.
+                // PORT-NOTE: uses the local `sankeyMapValueToColor` stand-in (see the top-of-file import
+                //   note); `dataExtent` [minValue, maxValue] and the series `color` palette are passed
+                //   through. Could be re-wired to the real (ported) VisualMapping.
                 let mapValueToColor = sankeyMapValueToColor(
                     [minValue, maxValue],
                     seriesModel.get("color"),
@@ -126,10 +126,10 @@ private func sankeyLayoutValue(_ layout: Any?) -> Double {
     }
 }
 
-// PORT-TODO: stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})
-//   .mapValueToVisual(value)`. visual/VisualMapping.ts NOT ported, so the linear palette interpolation is
-//   DEFERRED and this returns nil (a node with no explicit itemStyle.color gets no computed fill yet).
-//   The signature carries the exact upstream inputs so the body can be filled in once VisualMapping lands.
+// PORT-NOTE: local stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})
+//   .mapValueToVisual(value)`. visual/VisualMapping.swift is ported; this local implementation does the
+//   linear palette interpolation itself and could be re-wired to the real VisualMapping.
+//   The signature carries the exact upstream inputs.
 // Faithful stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})`
 //   `.mapValueToVisual(value)`: normalize `value` into [0,1] over `dataExtent`, then linear-interpolate
 //   across the palette color list (zrColor.lerp). The full VisualMapping subsystem is deferred; this is

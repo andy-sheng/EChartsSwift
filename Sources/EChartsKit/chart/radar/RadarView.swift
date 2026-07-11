@@ -45,7 +45,11 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import { VectorArray } from 'zrender/src/core/vector';         -> VectorArray (ZRenderKit).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported — vertex value labels DEFERRED.
+//       -> label/labelStyle.swift (setLabelStyle + getLabelStatesModels ARE ported). PORT-TODO: the
+//          vertex value-label block (upstream RadarView.ts:235-265) remains DEFERRED — it needs the
+//          per-symbol `__dimIdx` tag + a symbolGroup styling loop (neither ported; symbols are drawn
+//          untagged by buildRadarSymbols) to source defaultText via
+//          getStore().get(getDimensionIndex(__dimIdx), idx) and pass it through SetLabelStyleOpt.
 //   import ZRImage from 'zrender/src/graphic/Image';               -> PORT-TODO: image-symbol branch DEFERRED (inline createSymbol only).
 //   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: update-transition NOT ported (DEFERRED).
 

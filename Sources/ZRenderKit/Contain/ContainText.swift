@@ -43,7 +43,7 @@ public final class FontMeasureInfo {
 // upstream: `export interface TextPositionCalculationResult { x, y, align, verticalAlign }`.
 // `final class` so `calculateTextPosition`'s out-param mutation propagates to the caller
 // (Element reuses a shared `tmpTextPosCalcRes` instance), CONVENTIONS §4.
-// PORT-TODO: upstream types `align`/`verticalAlign` as non-optional (strictNullChecks off),
+// PORT-NOTE: upstream types `align`/`verticalAlign` as non-optional (strictNullChecks off),
 // but the array-position branch assigns them `null`; modeled as Optional per CONVENTIONS §6.
 public final class TextPositionCalculationResult {
     public var x: Double

@@ -109,7 +109,7 @@ public let candlestickVisual: StageHandler = {
 
                 // const existsStyle = data.ensureUniqueItemVisual(dataIndex, 'style');
                 // extend(existsStyle, style);
-                // PORT-TODO: upstream `existsStyle` is the very object stored in the item visual and
+                // PORT-NOTE: upstream `existsStyle` is the very object stored in the item visual and
                 //   `extend` mutates it IN PLACE. Swift dictionaries are value types, so extend a local
                 //   copy and write it back via setItemVisual (CONVENTIONS §3; same as visual/style.swift).
                 var existsStyle = (data.ensureUniqueItemVisual(dataIndex, "style") as? [String: Any]) ?? [:]

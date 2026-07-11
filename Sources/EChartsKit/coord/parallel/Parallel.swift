@@ -34,7 +34,7 @@ import ZRenderKit
 //   import * as layoutUtil from '../../util/layout';                      -> `layout.*` (util/layout.swift).
 //   import * as axisHelper from '../../coord/axisHelper';                 -> `axisHelper.*` (coord/axisHelper.swift).
 //   import ParallelAxis from './ParallelAxis';
-//       -> ParallelAxis (sibling ParallelAxis.swift). PORT-TODO: lands this phase — `class ParallelAxis:
+//       -> ParallelAxis (sibling ParallelAxis.swift). PORT-NOTE: lands this phase — `class ParallelAxis:
 //          Axis` with `axisIndex: Double`, injected `model: ParallelAxisModel`, `coordinateSystem: Parallel`.
 //   import * as graphic from '../../util/graphic';
 //       -> `graphic.applyTransform([coord,0], m)` maps to `vector.applyTransform(_ v:VectorArray, _ m:)`
@@ -43,11 +43,11 @@ import ZRenderKit
 //       -> `number.mathCeil` / `number.mathFloor` / `number.mathMax` / `number.mathMin` / `number.mathPI`
 //          / `number.round` (util/number.swift).
 //   import sliderMove from '../../component/helper/sliderMove';
-//       -> sliderMove (component/helper/sliderMove.swift). PORT-TODO: only used by the DEFERRED
+//       -> sliderMove (component/helper/sliderMove.swift). PORT-NOTE: only used by the DEFERRED
 //          `getSlidedAxisExpandWindow` (axis-drag interaction).
 //   import ParallelModel, { COORD_SYS_TYPE_PARALLEL, ParallelLayoutDirection } from './ParallelModel';
 //       -> ParallelModel + COORD_SYS_TYPE_PARALLEL + ParallelLayoutDirection (sibling ParallelModel.swift).
-//          PORT-TODO: lands this phase — `class ParallelModel: ComponentModel` with `dimensions:
+//          PORT-NOTE: lands this phase — `class ParallelModel: ComponentModel` with `dimensions:
 //          [DimensionName]`, `parallelAxisIndex: [Double]`, `coordinateSystem: Parallel`. Constant
 //          `COORD_SYS_TYPE_PARALLEL = "parallel"`; `typealias ParallelLayoutDirection = String`.
 //   import GlobalModel from '../../model/Global';                         -> GlobalModel.
@@ -59,7 +59,7 @@ import ZRenderKit
 //   import ParallelAxisModel, { ParallelActiveState } from './AxisModel';
 //       -> ParallelAxisModel + ParallelActiveState (sibling ParallelAxisModel.swift — named
 //          `ParallelAxisModel.swift`, NOT `AxisModel.swift`, to avoid colliding with coord/cartesian's).
-//          PORT-TODO: lands this phase; `typealias ParallelActiveState = String` ('normal'|'active'|'inactive').
+//          PORT-NOTE: lands this phase; `typealias ParallelActiveState = String` ('normal'|'active'|'inactive').
 //   import SeriesData from '../../data/SeriesData';                       -> SeriesData (data/SeriesData.swift).
 //   import { scaleCalcNice } from '../axisNiceTicks';
 //       -> scaleCalcNice + ScaleCalcNiceAxisLike (coord/axisNiceTicks.swift).
@@ -67,8 +67,8 @@ import ZRenderKit
 //       -> scaleRawExtentInfoCreate / AXIS_EXTENT_INFO_BUILD_FROM_COORD_SYS_UPDATE (coord/scaleRawExtentInfo.swift).
 //
 // Static-render scope (CONVENTIONS §5 + task): the layout math + `dataToPoint` polyline mapping are ported
-// in full; the brush / active-interval / axis-drag INTERACTION paths (`eachActiveState`, `hasAxisBrushed`,
-// `getSlidedAxisExpandWindow`) are DEFERRED and stubbed with `// PORT-TODO`.
+// in full; the brush / active-interval paths (`eachActiveState`, `hasAxisBrushed`) are now ported too. Only
+// the axis-drag expand-window slide (`getSlidedAxisExpandWindow`) remains DEFERRED (see PORT-TODO below).
 
 // upstream: interface ParallelCoordinateSystemLayoutInfo { ... }
 //   Internal data bag → private struct (CONVENTIONS §4).

@@ -26,11 +26,10 @@ import ZRenderKit
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
 //   import * as graphic from '../../util/graphic';                   -> ZRenderKit shapes + graphic shims.
 //     `initProps` / `updateProps` resolve to the shared `animation/basicTransition.swift` module
-//     functions (see PORT-TODO at the call sites re: struct-shape snap-to-final deviation);
+//     functions (see PORT-NOTE at the call sites re: struct-shape snap-to-final deviation);
 //     `traverseElements` is not used here.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//     -> PORT-TODO: `util/states` NOT ported (states/emphasis prerequisite); the states block in
-//        `setBoxCommon` is deferred (same deviation as BarView.swift `updateStyle`).
+//     -> util/states.swift (`states.setStatesStylesFromModel` / `states.toggleHoverEmphasis`), wired in setBoxCommon.
 //   import Path, { PathProps } from 'zrender/src/graphic/Path';      -> ZRenderKit `Path` / `PathProps`.
 //   import { createClipPath, SHAPE_CLIP_KIND_FULLY_CLIPPED, SHAPE_CLIP_KIND_NOT_CLIPPED,
 //            SHAPE_CLIP_KIND_PARTIALLY_CLIPPED, updateClipPath } from '../helper/createClipPathFromCoordSys';
@@ -123,7 +122,7 @@ open class CandlestickView: ChartView {
     // upstream: eachRendered(cb: (el: Element) => boolean | void)
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-TODO: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
+        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
         //   each (large/progressive mode, deferred); otherwise traverse the group via `Group.traverse`
         //   (same note as BarView.swift `eachRendered`).
         if let progressiveEls = self._progressiveEls {
@@ -331,7 +330,7 @@ public struct NormalBoxPathShape: PathShape {
 }
 
 // upstream: interface NormalBoxPathProps extends PathProps { shape?: Partial<NormalBoxPathShape> }
-// PORT-TODO: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
+// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
 //   (== DisplayableProps); the `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias NormalBoxPathProps = PathProps
 
@@ -534,7 +533,7 @@ private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) 
 // export default CandlestickView;  -> `open class CandlestickView` above.
 
 // ================================================================================================
-// PORT-TODO: local helpers (NOT in upstream CandlestickView.ts).
+// PORT-NOTE: local helpers (NOT in upstream CandlestickView.ts).
 // ================================================================================================
 
 // PORT-TODO: `resolveNormalBoxClipping` from `chart/helper/whiskerBoxCommon.ts` is not ported (the
@@ -546,7 +545,7 @@ private func resolveNormalBoxClipping(_ clipArea: Any?, _ itemLayout: Candlestic
     return SHAPE_CLIP_KIND_NOT_CLIPPED
 }
 
-// PORT-TODO: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`
+// PORT-NOTE: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`
 //   bag (candlestickVisual.swift stores `fill`/`stroke` via getColor/getBorderColor); ZRenderKit
 //   `Path.useStyle` takes a typed `PathStyleProps`. Mirrors BarView.swift's `barStyleFromDict`.
 private func candlestickStyleFromDict(_ style: Any?) -> PathStyleProps {

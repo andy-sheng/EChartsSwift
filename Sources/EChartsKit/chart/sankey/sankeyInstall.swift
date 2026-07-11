@@ -25,31 +25,31 @@ import ZRenderKit
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> registrar surface owned by
 //       the Orchestrate/Integrate driver (same convention as chart/sunburst/sunburstInstall.swift).
 //   import SankeyView from './SankeyView';
-//       -> PORT-TODO: chart/sankey/SankeyView.swift is a SEPARATE (later) port phase — the render layer
-//          (node Rects + ribbon Path + labels) lands with it. Referenced here as the future chart view.
+//       -> PORT-NOTE: chart/sankey/SankeyView.swift is a sibling port (the render layer:
+//          node Rects + ribbon Path + labels). Registered via ECharts.installOnce.
 //   import SankeySeriesModel, { SERIES_TYPE_SANKEY } from './SankeySeries';   -> sibling SankeySeries.swift (ported).
 //   import { COMPONENT_MAIN_TYPE_SERIES, Payload } from '../../util/types';   -> util/types.swift.
 //   import GlobalModel from '../../model/Global';                             -> GlobalModel (model/Global.swift).
 //   import { registerRoamActionSimply } from '../../component/helper/roamHelper';
-//       -> PORT-TODO: component/helper/roamHelper.ts NOT ported (roam DEFERRED).
+//       -> PORT-NOTE: ported as registerSankeyRoamAction() (component/helper/roamHelperViewGroup.swift).
 //   import { sankeyLayoutStageHandler } from './sankeyLayout';
-//       -> PORT-TODO: chart/sankey/sankeyLayout.swift is a SEPARATE (later) port phase (box layout stage).
+//       -> PORT-NOTE: chart/sankey/sankeyLayout.swift is a sibling port (box layout stage).
 //   import { sankeyVisualStageHandler } from './sankeyVisual';                -> sibling sankeyVisual.swift (ported).
 
 // interface SankeyDragNodePayload extends Payload { localX: number; localY: number }
-//   PORT-TODO: type-only payload shape for the `dragNode` action (roam/drag DEFERRED).
+//   PORT-NOTE: type-only payload shape for the `dragNode` action (implemented in sankeyAction.swift installSankeyAction).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sunburst/sunburstInstall.swift). The `dragNode` action +
-//   `registerRoamActionSimply` (drag/roam) are DEFERRED. `SankeyView` and `sankeyLayoutStageHandler` land
-//   with their own (later) port phases. Preserved as commented source for the diffable surface:
+//   `registerRoamActionSimply` (drag/roam) are wired in ECharts.installOnce (installSankeyAction). `SankeyView`
+//   and `sankeyLayoutStageHandler` are likewise registered there. Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {
-//         registers.registerChartView(SankeyView);                // PORT-TODO: SankeyView (later phase)
+//         registers.registerChartView(SankeyView);                // -> SankeyView (SankeyView.swift)
 //         registers.registerSeriesModel(SankeySeriesModel);       // -> SankeySeriesModel (SankeySeries.swift)
 //
-//         registers.registerLayout(sankeyLayoutStageHandler);     // PORT-TODO: sankeyLayout (later phase)
+//         registers.registerLayout(sankeyLayoutStageHandler);     // -> sankeyLayoutStageHandler (sankeyLayout.swift)
 //         registers.registerVisual(sankeyVisualStageHandler);     // -> sankeyVisualStageHandler (sankeyVisual.swift)
 //
 //         registers.registerAction({

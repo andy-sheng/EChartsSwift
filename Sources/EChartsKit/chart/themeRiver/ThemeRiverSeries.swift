@@ -31,21 +31,19 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';                 -> ZRenderKit.util (+ `createHashMap`/`HashMap` shim, util/modelUtil.swift).
 //   import {groupData, SINGLE_REFERRING} from '../../util/model';    -> `model.groupData` / `model.SINGLE_REFERRING` (util/modelUtil.swift).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (base SeriesModel already types
-//          `legendVisualProvider: Any?`); the legend-provider wiring in `init` is DEFERRED (same as GraphSeries).
+//       -> visual/LegendVisualProvider.swift (ported). Wired in `init` (self.legendVisualProvider = LegendVisualProvider(...)).
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2. The interface/type declarations
 //       (ThemeRiverSeriesLabelOption, ThemerRiverDataItem, ThemeRiverStatesMixin, ThemeRiverStateOption,
 //       ThemeRiverSeriesOption, …) describe the option tree — kept as documentation only, no Swift types emitted.
 //   import SingleAxis from '../../coord/single/SingleAxis';
-//       -> PORT-TODO: coord/single/SingleAxis.swift lands with the Single coord-sys phase; `getAxisTooltipData`
-//          types `baseAxis` loosely as `Any?` until then.
+//       -> coord/single/SingleAxis.swift (ported); `getAxisTooltipData` still types `baseAxis` loosely as `Any?`.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import Single from '../../coord/single/Single';
-//       -> PORT-TODO: coord/single/Single.swift (the coord-sys master) lands with the Single coord-sys phase;
+//       -> coord/single/Single.swift (the coord-sys master, ported);
 //          `coordinateSystem` uses the inherited `Any?` slot (model/Series.swift) — cast to `Single` at layout time.
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component DEFERRED).
+//       -> component/tooltip/tooltipMarkup.swift (ported); `createTooltipMarkup` used below.
 
 // const DATA_NAME_INDEX = 2;
 private let DATA_NAME_INDEX = 2
@@ -70,9 +68,9 @@ open class ThemeRiverSeriesModel: SeriesModel {
     public var nameMap: HashMap<Double> = createHashMap()
 
     // coordinateSystem: Single;
-    //   PORT-TODO: upstream types `coordinateSystem: Single`; coord/single/Single.swift lands with the
-    //   Single coord-sys phase, so the inherited `open var coordinateSystem: Any?` slot (model/Series.swift)
-    //   is used unchanged and cast to `Single` in themeRiverLayout.
+    //   PORT-NOTE: upstream types `coordinateSystem: Single`; coord/single/Single.swift is ported, but the
+    //   inherited `open var coordinateSystem: Any?` slot (model/Series.swift) is used unchanged here and cast
+    //   to `Single` in themeRiverLayout.
 
     /**
      * @override
@@ -313,7 +311,7 @@ open class ThemeRiverSeriesModel: SeriesModel {
      * Get data indices for show tooltip content
      */
     // getAxisTooltipData(dim: string | string[], value: number, baseAxis: SingleAxis)
-    //   PORT-TODO: `baseAxis: SingleAxis` typed loosely as `Any?` until coord/single/SingleAxis lands.
+    //   PORT-NOTE: `baseAxis: SingleAxis` (coord/single/SingleAxis.swift, ported) typed loosely as `Any?` here.
     open func getAxisTooltipData(_ dimIn: Any?, _ value: Double, _ baseAxis: Any?) -> (dataIndices: [Int], nestestValue: Double?) {
         // if (!zrUtil.isArray(dim)) { dim = dim ? [dim] : []; }
         var dim: [String]
@@ -376,16 +374,11 @@ open class ThemeRiverSeriesModel: SeriesModel {
         _ multipleSeries: Bool? = nil,
         _ dataType: SeriesDataType? = nil
     ) -> TooltipFormatResult? {
-        // const data = this.getData();
-        // const name = data.getName(dataIndex);
-        // const value = data.get(data.mapDimension('value'), dataIndex);
-        // return createTooltipMarkup('nameValue', { name: name, value: value });
-        // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — the markup return is DEFERRED
-        //   (returns nil, matching the base stub). The name/value reads are:
-        //     name  = data.getName(dataIndex)
-        //     value = data.get(data.mapDimension('value'), dataIndex)
-        _ = (dataIndex, multipleSeries, dataType)
-        return nil
+        _ = (multipleSeries, dataType)
+        let data = self.getData()
+        let name = data.getName(Int(dataIndex))
+        let value = data.mapDimension("value").flatMap { data.get($0, Int(dataIndex)) }
+        return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(name: name, value: value))
     }
 
     // static defaultOption: ThemeRiverSeriesOption = { ... }

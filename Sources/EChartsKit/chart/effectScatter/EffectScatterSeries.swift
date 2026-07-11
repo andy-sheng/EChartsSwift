@@ -77,7 +77,7 @@ open class EffectScatterSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.effectScatter" }
 
     // upstream: static readonly dependencies = ['grid', 'polar'];
-    //   PORT-TODO: only grid/cartesian2d is renderable now (polar coord system is wired via the ported
+    //   PORT-NOTE: only grid/cartesian2d is renderable now (polar coord system is wired via the ported
     //   Polar, but the effectScatter static render below only guards cartesian2d + polar); the dependency
     //   list is kept verbatim so registration/topo order matches.
     public override class var dependencies: [String] {
@@ -106,8 +106,8 @@ open class EffectScatterSeriesModel: SeriesModel {
     //   brushSelector(dataIndex, data, selectors): boolean {
     //       return selectors.point(data.getItemLayout(dataIndex));
     //   }
-    // PORT-TODO: component/brush/selector.ts (BrushCommonSelectorsForSeries) not ported — brush is out of
-    //   scope for the effectScatter milestone. Restore this override when the brush component lands.
+    // PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); this
+    //   brushSelector override is simply not restored here yet (brush out of scope for this milestone).
 
     // upstream: static defaultOption: EffectScatterSeriesOption = { ... }
     open override class var defaultOption: ModelOption? {
@@ -126,9 +126,9 @@ open class EffectScatterSeriesModel: SeriesModel {
             "clip": true,
 
             // Ripple effect config
-            // PORT-TODO: rippleEffect is the ANIMATED expanding-ring config consumed by helper/EffectSymbol
-            //   (period/scale/brushType/number). The static render (EffectScatterView.swift) ignores it —
-            //   ported verbatim as the diffable option surface; wire once EffectSymbol lands.
+            // PORT-NOTE: rippleEffect is the ANIMATED expanding-ring config consumed by helper/EffectSymbol
+            //   (period/scale/brushType/number) — EffectSymbolElement.swift has landed and EffectScatterView
+            //   routes through SymbolDraw(EffectSymbol), which renders these rings.
             "rippleEffect": [
                 "period": 4.0,
                 // Scale of ripple

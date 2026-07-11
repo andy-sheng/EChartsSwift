@@ -43,7 +43,8 @@ import ZRenderKit
 //        collapsed into the dynamic `[String: Any]` option bag (CONVENTIONS §2); the interface is
 //        preserved as commented source below.
 //   import { DataTransformOption, PipedDataTransformOption } from '../../data/helper/transform';
-//     -> PORT-TODO: data/helper/transform.ts not ported (only referenced by the collapsed option shape).
+//     -> PORT-NOTE: `data/helper/transform.swift` is ported; here these types are only referenced by the
+//        collapsed option shape (the dynamic bag), so there is no direct use of them in this file.
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel` (model/Global.swift).
 //   import Model from '../../model/Model';                           -> `Model` (model/Model.swift).
 //   import { disableTransformOptionMerge, SourceManager } from '../../data/helper/sourceManager';

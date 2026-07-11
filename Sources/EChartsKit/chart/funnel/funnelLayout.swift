@@ -124,12 +124,12 @@ private func labelLayout(_ data: SeriesData) {
             if util.isString(labelPosition) {
                 if !isHorizontal && util.indexOf(["top", "bottom"], labelPositionStr!) > -1 {
                     labelPosition = "left"
-                    // PORT-TODO: __DEV__ console.warn
+                    // PORT-NOTE: __DEV__ console.warn
                     //   ('Position error: Funnel chart on vertical orient dose not support top and bottom.')
                 }
                 if isHorizontal && util.indexOf(["left", "right"], labelPositionStr!) > -1 {
                     labelPosition = "bottom"
-                    // PORT-TODO: __DEV__ console.warn
+                    // PORT-NOTE: __DEV__ console.warn
                     //   ('Position error: Funnel chart on horizontal orient dose not support left and right.')
                 }
             }

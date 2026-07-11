@@ -28,7 +28,8 @@ import ZRenderKit
 //   center/zoom to that coord sys (`updateRoamControllerSimply` + `registerRoamActionSimply('series',<sub>)`
 //   → `treeRoam` / `sankeyRoam`; treemap historically dispatches `treemapMove`/`treemapRender` with a
 //   `rootRect` that RE-LAYS-OUT the tiles). The `View` sync-back / rootRect-relayout machinery stays
-//   DEFERRED (coord/View is a PORT-TODO). Instead — exactly as the task frames it — these three views are
+//   DEFERRED (these views are not wired onto `coord/View`, though `View.swift` is ported). Instead —
+//   exactly as the task frames it — these three views are
 //   NOT on a coord system in the port: each renders into a single VIEW GROUP (`_mainGroup` for tree/sankey,
 //   `_containerGroup` for treemap) placed at `layoutInfo.x/y`. This slice ports the roam as a TRANSFORM on
 //   that view group:

@@ -34,7 +34,7 @@ import ZRenderKit
 //   import { isNullableNumberFinite } from '../util/number';                 -> `number.isNullableNumberFinite` (util/number.swift)
 
 
-// PORT-TODO: upstream `BaseBarSeriesSubType = typeof SERIES_TYPE_BAR | typeof SERIES_TYPE_PICTORIAL_BAR`
+// PORT-NOTE: upstream `BaseBarSeriesSubType = typeof SERIES_TYPE_BAR | typeof SERIES_TYPE_PICTORIAL_BAR`
 //   (a union of string literals). The literal-union brand is dropped in Swift (aliased to String),
 //   matching `ComponentSubType = String` used by `AxisStatKeyedClient.seriesType`.
 public typealias BaseBarSeriesSubType = String
@@ -43,7 +43,7 @@ public let SERIES_TYPE_BAR = "bar"
 public let SERIES_TYPE_PICTORIAL_BAR = "pictorialBar"
 
 
-// PORT-TODO: upstream `coordSysType: 'cartesian2d' | 'polar'` (string-literal union) modeled as String.
+// PORT-NOTE: upstream `coordSysType: 'cartesian2d' | 'polar'` (string-literal union) modeled as String.
 public func requireAxisStatisticsForBaseBar(
     _ registers: EChartsExtensionInstallRegisters,
     _ axisStatKey: AxisStatKey,

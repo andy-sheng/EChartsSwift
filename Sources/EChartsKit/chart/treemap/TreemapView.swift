@@ -28,14 +28,14 @@ import ZRenderKit
 //   import {getECData} from '../../util/innerStore';                -> `innerStore.getECData`.
 //   import { isHighDownDispatcher, setAsHighDownDispatcher, setDefaultStateProxy, enableHoverFocus,
 //            Z2_EMPHASIS_LIFT } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis/high-down dispatch DEFERRED). `Z2_EMPHASIS_LIFT`
-//          is inlined below as its upstream literal (10).
+//       -> util/states IS ported (util/states.swift); treemap's states/emphasis/high-down dispatch is
+//          still DEFERRED here. `Z2_EMPHASIS_LIFT` is inlined below as its upstream literal (10).
 //   import DataDiffer from '../../data/DataDiffer';                 -> PORT-TODO: DataDiffer diff DEFERRED (static rebuild).
-//   import * as helper from '../helper/treeHelper';                 -> PORT-TODO: chart/helper/treeHelper NOT ported
-//       (retrieveTargetInfo / aboveViewRoot used by drill-down/roll-up actions — DEFERRED).
+//   import * as helper from '../helper/treeHelper';                 -> treeHelper IS ported (chart/helper/treeHelper.swift);
+//       its retrieveTargetInfo / aboveViewRoot (drill-down/roll-up actions) are still DEFERRED here.
 //   import Breadcrumb from './Breadcrumb';                          -> sibling Breadcrumb.swift.
 //   import RoamController, { RoamEventParams } from '../../component/helper/RoamController';
-//       -> PORT-TODO: RoamController NOT ported (pan/zoom roam DEFERRED).
+//       -> RoamController IS ported (component/helper/RoamController.swift); pan/zoom roam is still DEFERRED here.
 //   import BoundingRect, { RectLike } from 'zrender/src/core/BoundingRect';  -> `BoundingRect` (ZRenderKit).
 //   import * as matrix from 'zrender/src/core/matrix';             -> `matrix` (ZRenderKit) — used by the deferred zoom.
 //   import * as animationUtil from '../../util/animation';         -> PORT-TODO: util/animation NOT ported (DEFERRED).
@@ -58,11 +58,11 @@ import ZRenderKit
 //   import { TreeSeriesNodeItemOption } from '../tree/TreeSeries';  -> type-only (link click; DEFERRED).
 //   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> PORT-TODO: treemapAction NOT ported (actions DEFERRED).
 //   import { ColorString, ECElement } from '../../util/types';     -> type-only.
-//   import { windowOpen } from '../../util/format';                -> PORT-TODO: only used by the deferred link click.
+//   import { windowOpen } from '../../util/format';                -> PORT-NOTE: only used by the deferred link click.
 //   import { TextStyleProps } from 'zrender/src/graphic/Text';     -> `TextStyleProps`.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported. A MINIMAL faithful NORMAL-state label (node name,
-//          centered) replaces the full setLabelStyle path (see `prepareText`).
+//       -> label/labelStyle IS ported (label/labelStyle.swift); treemap still uses a MINIMAL faithful
+//          NORMAL-state label (node name, centered) instead of the full setLabelStyle path (see `prepareText`).
 
 // const Group = graphic.Group;  /  const Rect = graphic.Rect;  -> ZRenderKit `Group` / `Rect` used directly.
 
@@ -72,7 +72,7 @@ private let DRAG_THRESHOLD: Double = 3
 private let PATH_LABEL_NOAMAL = "label"
 // const PATH_UPPERLABEL_NORMAL = 'upperLabel';
 private let PATH_UPPERLABEL_NORMAL = "upperLabel"
-// PORT-TODO: util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
+// PORT-NOTE: util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
 private let Z2_EMPHASIS_LIFT: Double = 10
 // Should larger than emphasis states lift z
 // const Z2_BASE = Z2_EMPHASIS_LIFT * 10;  // Should bigger than every z2.
@@ -98,7 +98,7 @@ private func getItemStyleNormal(_ model: Model) -> [String: Any] {
 }
 
 // interface RenderElementStorage { nodeGroup: Group[]; background: Rect[]; content: Rect[] }
-// PORT-TODO: upstream arrays are indexed by rawIndex and iterated by the deferred diff/animation. The
+// PORT-NOTE: upstream arrays are indexed by rawIndex and iterated by the deferred diff/animation. The
 //   static rebuild only needs by-rawIndex lookup (findTarget), so `[Int: T]` (keyed by rawIndex) is used;
 //   lookup semantics (nil when absent) match `array[rawIndex]`.
 private final class RenderElementStorage {
@@ -435,7 +435,7 @@ open class TreemapView: ChartView {
         // const data = seriesModel.getData();
         let data = seriesModel.getData()
         // const nodeModel = thisNode.getModel<TreemapSeriesNodeItemOption>();
-        //   PORT-TODO: `Model?` — nil for dataIndex < 0; upstream assumes non-null. Guard defensively.
+        //   PORT-NOTE: `Model?` — nil for dataIndex < 0; upstream assumes non-null. Guard defensively.
         let nodeModel = thisNode.getModel()
 
         // Only for enabling highlight/downplay. Clear firstly.

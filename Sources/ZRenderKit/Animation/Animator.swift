@@ -16,7 +16,7 @@ import Foundation
 //   and is wired as the `easingFuncs[easing] || createCubicEasingFunc(easing)` fallback at
 //   Animator.swift:471 and Clip.swift:187 — named/cubic easings no longer fall through to nil.
 // upstream: import { isLinearGradient, isRadialGradient } from '../svg/helper';
-//   PORT-TODO: svg/helper.ts not ported — modeled as local `.type` checks below.
+//   PORT-NOTE: svg/helper.ts not ported — modeled as local `.type` checks below.
 
 // upstream: type NumberArray = ArrayLike<number>     → [Double]
 // upstream: type InterpolatableType = string | number | NumberArray | NumberArray[];
@@ -29,10 +29,11 @@ public typealias InterpolatableType = Any
 /// Swift has no dynamic member access on an arbitrary `T`, so the animation target conforms
 /// to this protocol and `Track.step` / `Animator.whenWithKeys` / `saveTo` route keyed
 /// get/set through it.
-/// PORT-TODO: Element / style-bag / shape-bag will conform when the Element animate wiring
-/// lands (PORT_STATUS §11a). Until a target conforms, `whenWithKeys` reads `nil` for every
-/// initial value and builds no tracks (the animator is inert), which is the safe render-only
-/// default.
+/// PORT-NOTE: the Element animate wiring has landed — `Element` conforms directly, and the
+/// style-bag / shape-bag conform via `StyleAnimationAccessor` (Displayable.swift) and
+/// `ShapeAnimationAccessor` / `PathStyleAnimationAccessor` (Path.swift). If a target does NOT
+/// conform, `whenWithKeys` reads `nil` for every initial value and builds no tracks (the
+/// animator is inert), which is the safe render-only default.
 public protocol AnimationTarget: AnyObject {
     func animationGet(_ key: String) -> Any?
     func animationSet(_ key: String, _ value: Any?)
@@ -52,8 +53,8 @@ public struct ParsedColorStop {
 //   / ParsedRadialGradientObject { r }). The TS subtype hierarchy is flattened into one
 //   `final class` (reference type — `fillColorStops` mutates `.colorStops` in place); the
 //   linear-only (x2/y2) and radial-only (r) fields coexist as optionals.
-// PORT-TODO: confirm the flattened gradient parse against svg/helper once gradient tweening
-//   is wired (this whole gradient path is currently dead — `util.isGradientObject` returns false).
+// PORT-NOTE: gradient tweening is wired — `util.isGradientObject` (Core/util.swift) detects the
+//   `Gradient` base and the parse path below (see the `isGradientObject` branch) is live.
 public final class ParsedGradientObject {
     public var colorStops: [ParsedColorStop] = []
     public var x: Double = 0
@@ -243,7 +244,7 @@ public func cloneValue(_ value: InterpolatableType?) -> InterpolatableType? {
             return ret
         }
         if util.isArrayLike(firstElement(value)) {
-            // PORT-TODO: a generic array-of-arrays that isn't [[Double]] (e.g. nested [Any])
+            // PORT-NOTE: a generic array-of-arrays that isn't [[Double]] (e.g. nested [Any])
             //   is value-copied shallowly; exact nested-clone fidelity unverified.
             if let vAny = value as? [Any] {
                 var ret: [Any] = []
@@ -626,7 +627,8 @@ public final class Track {
         //   value-returning interpolation this scratch is unneeded; each branch assigns the
         //   returned value to `_additiveValue` (additive) or to target[propName] directly.
 
-        // PORT-TODO: see AnimationTarget — without a conforming target, keyed set/get no-op.
+        // PORT-NOTE: see AnimationTarget — Element / the style & shape bags now conform, so keyed
+        //   set/get routes through them; a non-conforming target still no-ops (safe default).
         let t = target as? AnimationTarget
 
         if self.discrete {
@@ -645,7 +647,7 @@ public final class Track {
             }
         }
         else if isGradientValueType(valType) {
-            // PORT-TODO: gradient output is a plain dictionary mirroring the JS object literal;
+            // PORT-NOTE: gradient output is a plain dictionary mirroring the JS object literal;
             //   wire to a real LinearGradient/RadialGradient once gradient tweening lands.
             guard let val = valOf(frame) as? ParsedGradientObject,
                   let nextVal = valOf(nextFrame) as? ParsedGradientObject else {
@@ -1298,7 +1300,7 @@ fileprivate func asNumber(_ v: Any?) -> Double {
         return d
     }
     if let s = v as? String {
-        // PORT-TODO: not a complete ECMAScript ToNumber (subset matching color/number tweens).
+        // PORT-NOTE: not a complete ECMAScript ToNumber (subset matching color/number tweens).
         return Double(s) ?? Double.nan
     }
     return Double.nan
@@ -1326,7 +1328,7 @@ fileprivate func asArray2D(_ v: Any?) -> [[Double]] {
     return []
 }
 
-// PORT-TODO: svg/helper.ts not ported — upstream `isLinearGradient`/`isRadialGradient` test
+// PORT-NOTE: svg/helper.ts not ported — upstream `isLinearGradient`/`isRadialGradient` test
 //   `gradient.type === 'linear'` / `=== 'radial'`; replicated as local `.type` checks.
 fileprivate func isLinearGradient(_ g: GradientObject) -> Bool {
     return g.type == "linear"

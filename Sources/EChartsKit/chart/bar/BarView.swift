@@ -26,7 +26,7 @@ import ZRenderKit
 //   import Group from 'zrender/src/graphic/Group';                   -> ZRenderKit `Group`.
 //   import {extend, each, map} from 'zrender/src/core/util';         -> `util.extend` / `util.each` / `util.map`.
 //   import {BuiltinTextPosition} from 'zrender/src/core/types';      -> type-only (label block deferred).
-//   import {SectorProps} from 'zrender/src/graphic/shape/Sector';    -> PORT-TODO: polar Sector deferred.
+//   import {SectorProps} from 'zrender/src/graphic/shape/Sector';    -> PORT-NOTE: ZRenderKit `Sector` is ported; the polar Sector branch is deferred in this cartesian-only bar view.
 //   import {RectProps} from 'zrender/src/graphic/shape/Rect';        -> ZRenderKit `RectProps`.
 //   import { Rect, Sector, updateProps, initProps, removeElementWithFadeOut, traverseElements }
 //       from '../../util/graphic';
@@ -40,7 +40,7 @@ import ZRenderKit
 //        itemStyle so hover highlights it end-to-end.
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
-//     -> PORT-TODO: `label/labelStyle` NOT ported; the label block in `updateStyle` is deferred.
+//     -> PORT-NOTE: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
 //   import {throttle} from '../../util/throttle';                    -> PORT-TODO: NOT ported (large mode only).
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';  -> sibling `createClipPath`.
 //   import Sausage from '../../util/shape/sausage';                  -> PORT-TODO: NOT ported (polar roundCap only).
@@ -53,14 +53,14 @@ import ZRenderKit
 //   import BarSeriesModel, {BarDataItemOption, PolarBarLabelPosition} from './BarSeries';  -> `BarSeriesModel`.
 //   import type Axis2D from '../../coord/cartesian/Axis2D';          -> `Axis2D`.
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D'; -> `Cartesian2D`.
-//   import type Polar from '../../coord/polar/Polar';                -> PORT-TODO: coord/polar NOT ported.
+//   import type Polar from '../../coord/polar/Polar';                -> PORT-NOTE: coord/polar is ported; polar bars deferred in this view.
 //   import type Model from '../../model/Model';                      -> `Model`.
 //   import { isCoordinateSystemType } from '../../coord/CoordinateSystem';  -> coord/CoordinateSystem.swift.
 //   import { getDefaultLabel, getDefaultInterpolatedLabel } from '../helper/labelHelper';
-//     -> PORT-TODO: `chart/helper/labelHelper` NOT ported (label block deferred).
+//     -> PORT-NOTE: `chart/helper/labelHelper` is ported (label block still deferred in this view).
 //   import OrdinalScale from '../../scale/Ordinal';                  -> scale/Ordinal.swift (realtimeSort only).
 //   import SeriesModel from '../../model/Series';                    -> `SeriesModel`.
-//   import {AngleAxisModel, RadiusAxisModel} from '../../coord/polar/AxisModel';  -> PORT-TODO: polar deferred.
+//   import {AngleAxisModel, RadiusAxisModel} from '../../coord/polar/AxisModel';  -> PORT-NOTE: ported (coord/polar/PolarAxisModel.swift); polar bars deferred in this view.
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> coord/cartesian/AxisModel.swift.
 //   import {LayoutRect} from '../../util/layout';                    -> util/layout.swift.
 //   import {EventCallback} from 'zrender/src/core/Eventful';         -> `EventCallback` (ZRenderKit).
@@ -69,7 +69,7 @@ import ZRenderKit
 //       from '../../label/sectorLabel';                              -> PORT-TODO: polar/label deferred.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (still a no-op stub; see Task 1 PORT-TODO).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
-//   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-TODO: polar deferred.
+//   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-NOTE: sectorHelper is ported; polar bars deferred in this view.
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
 //   import { SERIES_TYPE_BAR } from '../../layout/barCommon';        -> `SERIES_TYPE_BAR`.
 
@@ -92,10 +92,10 @@ private func rectShapeAnimShape(_ s: RectShape) -> [String: Any] {
 // upstream:
 //   type CoordSysOfBar = BarSeriesModel['coordinateSystem'];   // Cartesian2D | Polar
 //   type RectShape = Rect['shape'];                            // == ZRenderKit RectShape
-//   type SectorShape = Sector['shape'];                        // PORT-TODO: polar deferred
-//   type SectorLayout = SectorShape;                           // PORT-TODO: polar deferred
+//   type SectorShape = Sector['shape'];                        // PORT-NOTE: Sector ported; polar bars deferred in this view
+//   type SectorLayout = SectorShape;                           // PORT-NOTE: Sector ported; polar bars deferred in this view
 //   type RectLayout = RectShape;
-// PORT-TODO: `Polar` and `Sector` are not ported; the bar milestone is cartesian-only, so
+// PORT-NOTE: `Polar` and `Sector` are ported, but the bar milestone is cartesian-only, so
 //   `CoordSysOfBar` collapses to `Cartesian2D` and `RectLayout` to the ZRenderKit `RectShape`.
 typealias CoordSysOfBar = Cartesian2D
 typealias RectLayout = RectShape
@@ -106,7 +106,7 @@ typealias BarPossiblePath = Path
 
 // upstream:
 //   type CartesianCoordArea = ReturnType<Cartesian2D['getArea']>;   // == Cartesian2DArea (BoundingRect)
-//   type PolarCoordArea = ReturnType<Polar['getArea']>;             // PORT-TODO: polar deferred
+//   type PolarCoordArea = ReturnType<Polar['getArea']>;             // PORT-NOTE: Polar ported; polar bars deferred in this view
 typealias CartesianCoordArea = Cartesian2DArea
 
 // upstream:
@@ -143,7 +143,7 @@ open class BarView: ChartView {
     private var _backgroundGroup: Group?
 
     // upstream: private _backgroundEls: (Rect | Sector)[];
-    // PORT-TODO: upstream is a sparse array indexed by dataIndex; modeled as `[Int: Rect]` (cartesian,
+    // PORT-NOTE: upstream is a sparse array indexed by dataIndex; modeled as `[Int: Rect]` (cartesian,
     //   `Rect` only). `.length === 0` → `.isEmpty`; `oldBgEls[oldIndex]` → dict lookup.
     private var _backgroundEls: [Int: Rect] = [:]
 
@@ -213,7 +213,7 @@ open class BarView: ChartView {
 
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-TODO: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
+        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
         //   each (large mode, deferred); otherwise traverse the group via `Group.traverse` (visits
         //   children only — see the same note in view/Chart.swift `eachRendered`).
         if let progressiveEls = self._progressiveEls {
@@ -693,7 +693,7 @@ func elementCreatorCartesian2D(
     }
     return rect
 }
-// PORT-TODO: `elementCreator.polar` (Sector / Sausage, sector text position) deferred (polar not ported).
+// PORT-NOTE: `elementCreator.polar` (Sector / Sausage, sector text position) deferred in this cartesian-only bar view (coord/polar itself is ported).
 
 func shouldRealtimeSort(
     _ seriesModel: BarSeriesModel,
@@ -755,7 +755,7 @@ private func checkPropertiesNotValidCartesian2D(_ layout: RectLayout) -> Bool {
 
 // upstream:
 //   const rectPropties = ['x', 'y', 'width', 'height'] as const;
-//   const polarPropties = ['cx', 'cy', 'r', 'startAngle', 'endAngle'] as const;  // PORT-TODO: polar deferred.
+//   const polarPropties = ['cx', 'cy', 'r', 'startAngle', 'endAngle'] as const;  // PORT-NOTE: polar bars deferred in this view.
 //   const isValidLayout: Record<'cartesian2d' | 'polar', (layout) => boolean> = { ... }
 func isValidLayoutCartesian2D(_ layout: RectLayout) -> Bool {
     return !checkPropertiesNotValidCartesian2D(layout)
@@ -791,7 +791,7 @@ func getLayoutCartesian2D(_ data: SeriesData, _ dataIndex: Int, _ itemModel: Mod
     out.height = layout.height - signY * fixedLineWidth
     return out
 }
-// PORT-TODO: `getLayout.polar` deferred (polar not ported).
+// PORT-NOTE: `getLayout.polar` deferred in this cartesian-only bar view (coord/polar itself is ported).
 
 // upstream: function isZeroOnPolar(layout: SectorLayout) { ... }
 // PORT-TODO: polar deferred; cartesian rect layout has no startAngle/endAngle → always false.

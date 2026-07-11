@@ -32,12 +32,12 @@
 //     registerMetricImpl
 // } from './axisStatistics';
 // NOTE: `./axisStatistics` and `../util/vendor` land together with this file (same phase, other agents).
-// This file references their conventional public API. `Axis`/`Scale` members (axis.scale, axis.dim,
-// scale.needTransform/getFilter/transformIn) are Phase 6b — see PORT-TODOs below.
+// This file references their conventional public API. The `Axis`/`Scale` members it uses (axis.scale,
+// axis.dim, scale.needTransform/getFilter/transformIn) are available on the ported Scale/axis types.
 
 
 public func registerMetricImplLiPosMinGap() {
-    // PORT-TODO: upstream first arg is `keyof AxisStatMetrics`; passed as String key here.
+    // PORT-NOTE: upstream first arg is `keyof AxisStatMetrics`; passed as String key here.
     registerMetricImpl("liPosMinGap", metricLiPosMinGapImpl)
 }
 
@@ -55,7 +55,8 @@ private func metricLiPosMinGapImpl(
     let scale = axis.scale
     // const linearValueExtent = initExtentForUnion();
     let needTransform = scale.needTransform()
-    // PORT-TODO: upstream `scale.getFilter ? scale.getFilter() : null` — Scale.getFilter is Phase 6b.
+    // PORT-NOTE: `scale.getFilter?()` mirrors upstream `scale.getFilter ? scale.getFilter() : null`
+    //   (getFilter is an optional slot on the ported Scale).
     let filter: DataSanitizationFilter? = scale.getFilter?()
     let filterParsed = dataValueHelper.parseSanitizationFilter(filter)
 
@@ -114,7 +115,7 @@ private func metricLiPosMinGapImpl(
         while i < cnt {
             // Manually inline some code for performance, since no other optimization
             // (such as, progressive) can be applied here.
-            // PORT-TODO: ParsedValue is `Any`; upstream casts `store.get(...) as number`.
+            // PORT-NOTE: ParsedValue is `Any`; upstream casts `store.get(...) as number`.
             var val = store.get(dimStoreIdx, i) as? Double ?? Double.nan
             // NOTE: in most cases, filter does not exist.
             if val.isFinite
@@ -135,7 +136,7 @@ private func metricLiPosMinGapImpl(
     // Indicatively, retrieving values above costs 40ms for 1e6 values in a certain platform.
     // timeRetrieve[1] = Date.now(); // _EC_PERF_
 
-    // PORT-TODO: upstream slices a shared subarray view `(arr as Float64Array).subarray(0, writeIdx)`
+    // PORT-NOTE: upstream slices a shared subarray view `(arr as Float64Array).subarray(0, writeIdx)`
     // (typed branch) / truncates `arr.length = writeIdx` (number[] branch). Swift value semantics: we
     // copy the `[0, writeIdx)` window into `tmpValueBufferView`; the sort below then reads from it.
     var tmpValueBufferView: ContiguousArray<Double> = tmpValueBuffer.typed

@@ -29,7 +29,7 @@ import ZRenderKit
 //   import OrdinalScale from '../../scale/Ordinal';                    -> OrdinalScale (scale/Ordinal.swift).
 //   import Polar from './Polar';                                       -> Polar (sibling, this phase).
 //   import { AngleAxisModel } from './AxisModel';                      -> AngleAxisModel.
-//       PORT-TODO: coord/polar/AxisModel.ts (AngleAxisModel) is a sibling not yet landed. The inherited
+//       PORT-NOTE: AngleAxisModel is ported (coord/polar/PolarAxisModel.swift). The inherited
 //       `Axis.model: AxisBaseModel!` already provides the model slot — no re-declaration needed.
 
 // upstream:

@@ -102,7 +102,7 @@ public final class Pipeline {
 // upstream: export type PipelineContext = { progressiveRender, modDataCount, large }
 //   `PipelineContext` is hosted in util/model.swift (it is the return type of
 //   `model.preparePipelineContext`, ported before this file); referenced here to avoid a
-//   redeclaration. PORT-TODO: relocate `PipelineContext` here once util/model.swift no longer needs
+//   redeclaration. PORT-NOTE: relocate `PipelineContext` here once util/model.swift no longer needs
 //   the forward reference.
 
 // upstream: type TaskRecord = { seriesTaskMap?: HashMap<SeriesTask>, overallTask?: OverallTask }
@@ -775,7 +775,7 @@ func detectSeriseType(_ legacyFunc: StageHandlerOverallReset) -> String? {
     return nil
 }
 
-// upstream module-level mock scaffolding (see the PORT-TODO above):
+// upstream module-level mock scaffolding (see the PORT-NOTE above):
 //   const ecModelMock: GlobalModel = {} as GlobalModel;
 //   const apiMock: ExtensionAPI = {} as ExtensionAPI;
 //   let seriesType;

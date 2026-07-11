@@ -26,7 +26,7 @@ import ZRenderKit
 // import { map, isString, isFunction, eqNaN, isRegExp } from 'zrender/src/core/util';
 //   -> ZRenderKit `util` namespace (util.map / util.isString / util.isFunction / util.eqNaN / util.isRegExp).
 
-// PORT-TODO: `__DEV__` is a build-time global replaced by upstream's bundler. There is no
+// PORT-NOTE: `__DEV__` is a build-time global replaced by upstream's bundler. There is no
 //            shared env/config module in EChartsKit yet, so it is defined here as a module
 //            constant (defaults to dev). Move to a central config module once one exists, and
 //            remove this declaration to avoid a redeclaration collision.

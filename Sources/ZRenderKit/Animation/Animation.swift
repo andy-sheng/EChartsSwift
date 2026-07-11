@@ -61,7 +61,7 @@ public struct AnimationOption {
 // NOTE (CONVENTIONS §2): `Eventful` is a `final class` and is applied as a MIXIN elsewhere
 // (see Element), so it cannot be subclassed. Animation composes an Eventful and forwards the
 // event surface (`on`/`off`/`trigger`) — the same pattern Element uses for its Eventful mixin.
-// PORT-TODO: complete the Eventful surface forwarding if more event methods are needed.
+// PORT-NOTE: complete the Eventful surface forwarding if more event methods are needed.
 public final class Animation {
 
     // upstream: mixin via `extends Eventful` — composed + forwarded here.
@@ -292,7 +292,7 @@ public final class Animation {
         )
 
         // upstream: this.addAnimator(animator)
-        // PORT-TODO: `addAnimator` is typed `Animator<Any>` (matching the Element drive); inline
+        // PORT-NOTE: `addAnimator` is typed `Animator<Any>` (matching the Element drive); inline
         //   the body here so the generic `Animator<T>` can be registered without an unsafe cast.
         animator.animation = self
         let clip = animator.getClip()
@@ -303,7 +303,7 @@ public final class Animation {
         return animator
     }
 
-    // ---- Eventful mixin forwarding (PORT-TODO: composed `_eventful`, see class note) ----
+    // ---- Eventful mixin forwarding (PORT-NOTE: composed `_eventful`, see class note) ----
 
     @discardableResult
     public func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject? = nil) -> Animation {
@@ -326,7 +326,7 @@ public final class Animation {
         case 1:
             self._eventful.trigger(eventType, args[0])
         default:
-            // PORT-TODO: Swift cannot splat `args` into the variadic forward; Animation only
+            // PORT-NOTE: Swift cannot splat `args` into the variadic forward; Animation only
             //   triggers 'frame' with a single delta arg, so >1 is unused here.
             self._eventful.trigger(eventType, args[0])
         }

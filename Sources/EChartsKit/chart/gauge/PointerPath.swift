@@ -63,7 +63,7 @@ public struct PointerShape: PathShape {
 }
 
 // upstream: interface PointerPathProps extends PathProps { shape?: Partial<PointerShape> }
-// PORT-TODO: the typed-props interface collapses onto the dynamic `PathProps == DisplayableProps`
+// PORT-NOTE: the typed-props interface collapses onto the dynamic `PathProps == DisplayableProps`
 //   prop bag (see Sector.swift `SectorProps`). Kept as an alias for provenance.
 public typealias PointerPathProps = PathProps
 

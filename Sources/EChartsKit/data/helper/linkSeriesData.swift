@@ -198,7 +198,7 @@ public enum linkSeriesData {
      * @public
      * @param [dataType] If not specified, return mainData.
      */
-    // PORT-TODO(linkSeriesData.ts:134): upstream attaches this to `data.getLinkedData`; Swift
+    // PORT-NOTE(linkSeriesData.ts:134): upstream attaches this to `data.getLinkedData`; Swift
     //   cannot add an instance method dynamically, so it is exposed as a static helper.
     static func getLinkedData(_ thisData: SeriesData, _ dataType: SeriesDataType? = nil) -> SeriesData? {
         let mainData = inner(thisData).mainData
@@ -210,7 +210,7 @@ public enum linkSeriesData {
     /**
      * Get list of all linked data
      */
-    // PORT-TODO(linkSeriesData.ts:144): upstream attaches this to `data.getLinkedDataAll`.
+    // PORT-NOTE(linkSeriesData.ts:144): upstream attaches this to `data.getLinkedDataAll`.
     static func getLinkedDataAll(_ thisData: SeriesData) -> [(data: SeriesData?, type: SeriesDataType?)] {
         let mainData = inner(thisData).mainData
         if mainData == nil {
@@ -267,7 +267,7 @@ public enum linkSeriesData {
         }
 
         // Supplement method.
-        // PORT-TODO(linkSeriesData.ts:182-183): `data.getLinkedData` / `data.getLinkedDataAll`
+        // PORT-NOTE(linkSeriesData.ts:182-183): `data.getLinkedData` / `data.getLinkedDataAll`
         //   cannot be assigned as instance methods in Swift; use the static helpers above.
     }
 

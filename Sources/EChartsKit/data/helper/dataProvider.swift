@@ -27,11 +27,11 @@ import ZRenderKit
 // import {isTypedArray, extend, assert, each, isObject, bind, isArray} from 'zrender/src/core/util';
 // import {getDataItemValue} from '../../util/model';      -> model.getDataItemValue (EChartsKit)
 // import { createSourceFromSeriesDataOption, Source, isSourceInstance } from '../Source';
-//   PORT-TODO: `Source`, `createSourceFromSeriesDataOption`, `isSourceInstance` live in
+//   PORT-NOTE: `Source`, `createSourceFromSeriesDataOption`, `isSourceInstance` live in
 //   data/Source.swift (ported by a sibling agent this phase); referenced by conventional API.
 // import {ArrayLike, Dictionary} from 'zrender/src/core/types';   -> ZRenderKit
 // import SeriesData from '../SeriesData';
-//   PORT-TODO: `SeriesData` (+ its `DataStore`) ported by a sibling agent this phase.
+//   PORT-NOTE: `SeriesData` (+ its `DataStore`) ported by a sibling agent this phase.
 // import { error } from '../../util/log';                          -> log.error (EChartsKit)
 
 public protocol DataProvider: AnyObject {
@@ -61,7 +61,7 @@ public protocol DataProvider: AnyObject {
     func clean()
 }
 
-// PORT-TODO: model the upstream optional interface members with default no-op impls so
+// PORT-NOTE: model the upstream optional interface members with default no-op impls so
 // conformers need not implement them (TS `fillStorage?`/`appendData?`/`clean?`).
 extension DataProvider {
     public func fillStorage(
@@ -90,7 +90,7 @@ public final class DefaultDataProvider: DataProvider {
 
     public var persistent: Bool = true  // static protoInitialize: proto.persistent = true
 
-    // PORT-TODO: upstream replaces `getItem`/`count`/`fillStorage`/`appendData`/`clean`
+    // PORT-NOTE: upstream replaces `getItem`/`count`/`fillStorage`/`appendData`/`clean`
     // on the instance at runtime (via `extend(provider, methods)` + `bind(...)`). Swift cannot
     // re-bind methods, so the mounted implementations are stored as closures here and the
     // instance methods below forward to them.
@@ -239,7 +239,7 @@ private func mountMethods(_ provider: DefaultDataProvider, _ data: OptionSourceD
            let bridged = provider._data as? [Any?] {
             provider._data = bridged
         }
-        // PORT-TODO: upstream binds the `data` reference; we read `provider._data` live so that
+        // PORT-NOTE: upstream binds the `data` reference; we read `provider._data` live so that
         // `appendData` (which reassigns `_data`, since Swift arrays are value types) is visible.
         provider._getItem = { [unowned provider] idx, out in
             rawItemGetter(provider._data ?? [], startIndex, dimsDef, idx, out)
@@ -362,7 +362,7 @@ private let providerMethods: [String: ProviderMethods] = [
         persistent: false,
         appendData: { provider, newData in
             if __DEV__ {
-                // PORT-TODO: upstream asserts `isTypedArray(newData)`; Swift typed arrays are
+                // PORT-NOTE: upstream asserts `isTypedArray(newData)`; Swift typed arrays are
                 // `[Double]`/`ContiguousArray<Double>`, which `util.isTypedArray` does not detect.
                 // assert(isTypedArray(newData),
                 //     'Added data must be TypedArray if data in initialization is TypedArray');
@@ -392,7 +392,7 @@ private func appendDataSimply(_ provider: DefaultDataProvider, _ newDataAny: Opt
 // upstream module-level types/maps below ----------------------------------
 
 // type RawSourceDataValidator
-// PORT-TODO: dimsDef typed `{ name?: DimensionName }[]` -> `[DimensionDefinition]`.
+// PORT-NOTE: dimsDef typed `{ name?: DimensionName }[]` -> `[DimensionDefinition]`.
 private typealias RawSourceDataValidator = (_ rawData: OptionSourceData, _ dimsDef: [DimensionDefinition]) -> Void
 
 private let validateSimply: RawSourceDataValidator = { rawData, _ in
@@ -429,7 +429,7 @@ public typealias RawSourceItemGetter = (
     _ out: ArrayLike<OptionDataValue>?
 ) -> OptionDataItem
 
-// PORT-TODO: `out` parameter added to unify the closure arity (upstream `getItemSimply`
+// PORT-NOTE: `out` parameter added to unify the closure arity (upstream `getItemSimply`
 // omits it). Callers that pass `out` must read the returned value — Swift arrays are value
 // types, so in-place buffer reuse is not preserved.
 private let getItemSimply: RawSourceItemGetter = { rawData, _, _, idx, _ in
@@ -676,7 +676,7 @@ public func retrieveRawAttr(_ data: SeriesData?, _ dataIndex: Double, _ attr: St
 }
 
 
-// PORT-TODO: helpers — JS arrays auto-extend on out-of-range assignment; Swift arrays do not.
+// PORT-NOTE: helpers — JS arrays auto-extend on out-of-range assignment; Swift arrays do not.
 // `ensureSize`/`ensureSizeParsed` grow a buffer (with `nil`/`NaN`) to match JS `undefined` holes.
 private func ensureSize(_ arr: inout ArrayLike<OptionDataValue>, _ size: Int) {
     while arr.count < size {

@@ -31,7 +31,7 @@ public struct PolylineShape: PathShape, PolyBuildPathShape {
     //   interpolation consumes — see Animator.interpolate2DArray) and accepts `[[Double]]` or
     //   `[VectorArray]` on set. This is the line/area morph case. `percent` (draw-on) and `smooth`
     //   are numeric fields.
-    // PORT-TODO: `smoothConstraint` ([VectorArray]) is not exposed for keyed animation.
+    // PORT-NOTE: `smoothConstraint` ([VectorArray]) is not exposed for keyed animation.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "points":
@@ -62,7 +62,7 @@ public struct PolylineShape: PathShape, PolyBuildPathShape {
 }
 
 // upstream: export interface PolylineProps extends PathProps { shape?: Partial<PolylineShape> }
-// PORT-TODO: PolylineProps (typed-interface fidelity) collapses onto the dynamic PathProps bag.
+// PORT-NOTE: PolylineProps (typed-interface fidelity) collapses onto the dynamic PathProps bag.
 public typealias PolylineProps = PathProps
 
 // upstream: class Polyline extends Path<PolylineProps>

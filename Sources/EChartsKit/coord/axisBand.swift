@@ -5,7 +5,7 @@ import ZRenderKit
 
 // import { assert, each } from 'zrender/src/core/util';           -> `util.assert` / `util.each` (ZRenderKit)
 // import { NullUndefined } from '../util/types';                  -> NullUndefined -> nil (CONVENTIONS §6)
-// import type Axis from './Axis';                                 -> Axis (PORT-TODO placeholder in coord/axisStatistics.swift; coord/Axis.ts is Phase 6b)
+// import type Axis from './Axis';                                 -> `open class Axis` (coord/Axis.swift)
 // import { isOrdinalScale } from '../scale/helper';               -> helper.isOrdinalScale (scale/helper.swift)
 // import { isNullableNumberFinite, mathAbs, mathMax } from '../util/number';
 //   -> number.isNullableNumberFinite / number.mathAbs / number.mathMax (util/number.swift)
@@ -153,7 +153,7 @@ private func calcBandWidthForCategoryAxis(
     //  - When `scaleLinearSpan === 0`, no need to expand extent.
     //  - `onBand: true` (`boundaryGap: true`) does not need to support `containShape`,
     //    thereby no `invRatio`.
-    // PORT-TODO: `scaleLinearSpan`/`pxSpan` used as JS truthy (`0` and `NaN` are falsy) — replicated explicitly.
+    // PORT-NOTE: `scaleLinearSpan`/`pxSpan` used as JS truthy (`0` and `NaN` are falsy) — replicated explicitly.
     if !onBand
         && (scaleLinearSpan != 0 && !scaleLinearSpan.isNaN)
         && (pxSpan != 0 && !pxSpan.isNaN) {

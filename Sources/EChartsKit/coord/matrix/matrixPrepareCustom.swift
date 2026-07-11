@@ -25,11 +25,9 @@ import ZRenderKit
 
 // import type Matrix from './Matrix';                                  -> Matrix (coord/matrix/Matrix.swift; coord-sys master)
 //
-// PORT-TODO: `Matrix` (coord/matrix/Matrix.swift) is NOT ported yet — it is the coordinate-system master
-//   (registered via CoordinateSystemManager.register("matrix", ...)) and lands in a later phase. The
-//   surface referenced below (getRect(), dataToPoint(_ , _), dataToLayout(_ , _)) mirrors upstream
-//   Matrix.ts; re-narrow once the sibling lands. Until then this file references the forward `Matrix`
-//   type and does not compile standalone (staged, like the other matrix coord pieces).
+// PORT-NOTE: `Matrix` (coord/matrix/Matrix.swift) is the coordinate-system master (registered via
+//   CoordinateSystemManager.register("matrix", ...)) and is ported. The surface referenced below
+//   (getRect(), dataToPoint(_ , _), dataToLayout(_ , _)) mirrors upstream Matrix.ts.
 
 // upstream: export default function matrixPrepareCustom(coordSys: Matrix) { ... }
 public func matrixPrepareCustom(_ coordSys: Matrix) -> [String: Any] {

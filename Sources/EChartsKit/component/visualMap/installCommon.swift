@@ -27,9 +27,9 @@ import ZRenderKit
 //      (coord/axisStatistics.swift) does not yet model `registerVisual` / `registerAction` /
 //      `registerPreprocessor` / `registerSubTypeDefaulter(...)` / `PRIORITY.VISUAL.COMPONENT`, so the
 //      registration is expressed as the INTEGRATION SURFACE below rather than live calls.
-// import { VisualMapOption } from './VisualMapModel';          -> PORT-TODO: VisualMapModel not ported.
-// import { PiecewiseVisualMapOption } from './PiecewiseModel'; -> PORT-TODO: PiecewiseModel not ported.
-// import { ContinuousVisualMapOption } from './ContinuousModel'; -> PORT-TODO: ContinuousModel not ported.
+// import { VisualMapOption } from './VisualMapModel';          -> VisualMapModel (VisualMapModel.swift).
+// import { PiecewiseVisualMapOption } from './PiecewiseModel'; -> PiecewiseModel (PiecewiseModel.swift).
+// import { ContinuousVisualMapOption } from './ContinuousModel'; -> ContinuousModel (ContinuousModel.swift).
 // import { visualMapActionInfo, visualMapActionHander } from './visualMapAction';
 //   -> sibling visualMapAction.swift (`visualMapActionInfo` / `visualMapActionHander`).
 // import { visualMapEncodingHandlers } from './visualEncoding';
@@ -67,7 +67,7 @@ import ZRenderKit
 //     registers.registerPreprocessor(preprocessor);
 // }
 //
-// PORT-TODO: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate lives in the Orchestrate/Integrate driver (ECharts.swift), not this
 //   file (same convention as chart/sankey/sankeyInstall.swift). The `installed`-once guard is a JS
 //   module singleton; in Swift the driver should call each registration exactly once. The subtype
 //   defaulter is the SAME logic as `visualMapSubTypeDefaulter` (typeDefaulter.swift) — do not duplicate

@@ -23,15 +23,15 @@ import ZRenderKit
 // import { SeriesOption } from '../../util/types';    -> EChartsKit util/types.swift (dynamic option bag)
 
 // type MarkerTypes = 'markPoint' | 'markLine' | 'markArea';
-// PORT-TODO: string-literal union modeled as `String` (values: "markPoint" | "markLine" | "markArea").
+// PORT-NOTE: string-literal union modeled as `String` (values: "markPoint" | "markLine" | "markArea").
 public typealias MarkerTypes = String
 
 // type SeriesWithMarkerOption = SeriesOption & Partial<Record<MarkerTypes, unknown>>;
-// PORT-TODO: `SeriesOption` (a typed option interface) is the dynamic option bag `[String: Any]` in
+// PORT-NOTE: `SeriesOption` (a typed option interface) is the dynamic option bag `[String: Any]` in
 //   the port; the `Partial<Record<MarkerTypes, unknown>>` intersection is a dynamic keyed lookup.
 
 // upstream: export default function checkMarkerInSeries(seriesOpts, markerType): boolean
-// PORT-TODO: `seriesOpts: SeriesOption | SeriesOption[]` modeled as `Any?` (a dict or an array of
+// PORT-NOTE: `seriesOpts: SeriesOption | SeriesOption[]` modeled as `Any?` (a dict or an array of
 //   dicts) matching the dynamic option bag; `!seriesOpts` -> `nil` check (CONVENTIONS §6).
 public func checkMarkerInSeries(_ seriesOpts: Any?, _ markerType: MarkerTypes) -> Bool {
     if seriesOpts == nil {

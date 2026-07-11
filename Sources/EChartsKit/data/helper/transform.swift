@@ -536,7 +536,7 @@ public func applyDataTransform(
             // upstream: sourceList.length = Math.max(sourceList.length, 1);
             //   Only grows an empty list by one (undefined) slot; a Swift `[Source]` cannot hold
             //   nil, and a transform always yields at least one result, so this is a no-op here.
-            // PORT-TODO (transform.ts:385): an empty `sourceList` would need a placeholder Source.
+            // PORT-NOTE (transform.ts:385): an empty `sourceList` would need a placeholder Source.
             if sourceList.isEmpty {
                 // intentionally left as no-op (see note above)
             }

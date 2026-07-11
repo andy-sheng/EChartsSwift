@@ -37,9 +37,9 @@ import ZRenderKit
 //   import Cartesian2D from '../../coord/cartesian/Cartesian2D';         -> Cartesian2D (coord/cartesian/Cartesian2D.swift).
 //   import { mixin } from 'zrender/src/core/util';                       -> see folding note above (no runtime mixin).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet. `tokens.color.neutral00` / `tokens.color.shadow`
-//          are inlined verbatim as their resolved constants in `defaultOption` (same convention as
-//          ScatterSeries.swift); re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+//       -> PORT-NOTE: visual/tokens.swift is ported. `tokens.color.neutral00` / `tokens.color.shadow`
+//          are still inlined verbatim as their resolved constants in `defaultOption` (same convention
+//          as ScatterSeries.swift); they could be re-wired to the real `tokens` namespace.
 //            tokens.color.neutral00 = '#fff'
 //            tokens.color.shadow    = 'rgba(0,0,0,0.2)'
 
@@ -135,8 +135,8 @@ open class BoxplotSeriesModel: SeriesModel {
             "boxWidth": [7.0, 50.0],
 
             "itemStyle": [
-                // PORT-TODO: tokens.color.neutral00 inlined as resolved constant ('#fff');
-                //   re-wire to `tokens.color.neutral00` once visual/tokens.swift lands.
+                // PORT-NOTE: tokens.color.neutral00 inlined as resolved constant ('#fff');
+                //   visual/tokens.swift is ported and could be wired to `tokens.color.neutral00`.
                 "color": "#fff",   // tokens.color.neutral00
                 "borderWidth": 1.0
             ] as [String: Any],
@@ -149,8 +149,8 @@ open class BoxplotSeriesModel: SeriesModel {
                     "shadowBlur": 5.0,
                     "shadowOffsetX": 1.0,
                     "shadowOffsetY": 1.0,
-                    // PORT-TODO: tokens.color.shadow inlined as resolved constant ('rgba(0,0,0,0.2)');
-                    //   re-wire to `tokens.color.shadow` once visual/tokens.swift lands.
+                    // PORT-NOTE: tokens.color.shadow inlined as resolved constant ('rgba(0,0,0,0.2)');
+                    //   visual/tokens.swift is ported and could be wired to `tokens.color.shadow`.
                     "shadowColor": "rgba(0,0,0,0.2)"   // tokens.color.shadow
                 ] as [String: Any]
             ] as [String: Any],
@@ -205,7 +205,7 @@ open class BoxplotSeriesModel: SeriesModel {
 
         // const xAxisModel = ecModel.getComponent('xAxis', this.get('xAxisIndex')) as CartesianAxisModel;
         // const yAxisModel = ecModel.getComponent('yAxis', this.get('yAxisIndex')) as CartesianAxisModel;
-        // PORT-TODO: upstream casts to the generated `CartesianAxisModel` (which implements
+        // PORT-NOTE: upstream casts to the generated `CartesianAxisModel` (which implements
         //   `AxisModelExtendedInCreator`). In the port, `xAxis`/`yAxis` are instantiated as
         //   axisModelCreator-generated CartesianAxisModel subclasses (the driver's EChartsXAxisModel);
         //   cast to CartesianAxisModel here (NOT the standalone `AxisModel`, which the models are not),

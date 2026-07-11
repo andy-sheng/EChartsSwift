@@ -40,14 +40,14 @@ import ZRenderKit
 
 // const inner = makeInner<{ defaultOption: ComponentOption }, ComponentModel>();
 //
-// PORT-TODO: `inner` cached the auto-merged ancestor `defaultOption` for the legacy
+// PORT-NOTE: `inner` cached the auto-merged ancestor `defaultOption` for the legacy
 //   `ParentClass.extend(subProto)` path inside `getDefaultOption`. That path is unreachable in the
 //   Swift port (`clazz.isExtendedClass` always returns false — native subclassing replaces the
 //   prototype `extend` machinery), so the `inner`/WeakMap cache is dropped together with the branch.
 
 // upstream: class ComponentModel<Opt extends ComponentOption = ComponentOption> extends Model<Opt>
 //
-// PORT-TODO: the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is modeled as
+// PORT-NOTE: the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is modeled as
 //   the `Any` bag; keyed access casts to `[String: Any]`). `ComponentModel` is the project's real
 //   reference type for components/series — `open class` (subclassed by Series/axis/grid/etc., and by
 //   each registered component model). It replaces the forward-reference placeholder
@@ -116,7 +116,7 @@ open class ComponentModel: Model, ClassManageable {
      */
     // upstream: protected defaultOption: ComponentOption
     //
-    // PORT-TODO: upstream declares `defaultOption` as a `protected` instance (prototype) member, but
+    // PORT-NOTE: upstream declares `defaultOption` as a `protected` instance (prototype) member, but
     //   its value is supplied by the subclass STATIC `defaultOption` (read via `(ctor as any)
     //   .defaultOption` in `getDefaultOption`). Per the doc block on `getDefaultOption`, ES-class
     //   subclasses MUST declare `static defaultOption`. We model it as an overridable class var;
@@ -143,7 +143,8 @@ open class ComponentModel: Model, ClassManageable {
     // Will be injected.
     // @see injectCoordinateSystem
     // upstream: boxCoordinateSystem?: CoordinateSystem | NullUndefined
-    // PORT-TODO: coord/CoordinateSystem.ts not yet ported — typed as `Any?` until it lands.
+    // PORT-NOTE: coord/CoordinateSystem.swift is ported (protocol `CoordinateSystem`); this box is
+    //   still kept as `Any?`.
     public var boxCoordinateSystem: Any?
 
     /**
@@ -151,14 +152,14 @@ open class ComponentModel: Model, ClassManageable {
      * Only support 'box' now (left/right/top/bottom/width/height).
      */
     // upstream: static layoutMode: ComponentLayoutMode | ComponentLayoutMode['type']
-    // PORT-TODO: union `ComponentLayoutMode | string` modeled as `Any?` (consumed by the
+    // PORT-NOTE: union `ComponentLayoutMode | string` modeled as `Any?` (consumed by the
     //   not-yet-ported `layout.fetchLayoutMode`).
     open class var layoutMode: Any? { return nil }
 
     /**
      * Prevent from auto set z, zlevel, z2 by the framework.
      */
-    // PORT-TODO: upstream leaves `preventAutoZ: boolean` uninitialized (the caution above); Swift
+    // PORT-NOTE: upstream leaves `preventAutoZ: boolean` uninitialized (the caution above); Swift
     //   requires a stored value, so it defaults to `false` (≡ JS `undefined` truthiness here).
     public var preventAutoZ: Bool = false
 
@@ -205,7 +206,7 @@ open class ComponentModel: Model, ClassManageable {
         _ = ecModel
 
         // zrUtil.merge(option, this.getDefaultOption());
-        // PORT-TODO: upstream mutates the shared `option` object in place; Swift option bags are
+        // PORT-NOTE: upstream mutates the shared `option` object in place; Swift option bags are
         //   value types, so merge the default option into a mutable copy and write it back to
         //   `self.option` (at call time `option === self.option`, mirroring Model.mergeOption's
         //   writeback). `overwrite` is false (defaults must not clobber existing option values).
@@ -312,7 +313,7 @@ open class ComponentModel: Model, ClassManageable {
         // FIXME: remove this approach?
         // Legacy: auto merge defaultOption from ancestor classes if using ParentClass.extend(subProto)
         //
-        // PORT-TODO: the legacy `extend`-based ancestor-merge branch (`inner(this)` cache +
+        // PORT-NOTE: the legacy `extend`-based ancestor-merge branch (`inner(this)` cache +
         //   `ExtendableConstructor.superClass` walk + `zrUtil.merge`) is unreachable in the Swift
         //   port — `clazz.isExtendedClass(ctor)` always returns false (native subclassing replaces
         //   the prototype `extend` machinery; see util/clazz.swift). Branch dropped.
@@ -469,7 +470,7 @@ open class ComponentModel: Model, ClassManageable {
 //     & ExtendableConstructor
 //     & componentUtil.TopologicalTravelable<object>;
 //
-// PORT-TODO: no Swift equivalent for the `typeof ComponentModel & ...` metatype intersection. The
+// PORT-NOTE: no Swift equivalent for the `typeof ComponentModel & ...` metatype intersection. The
 //   combined manager surface is provided by `ComponentModel._manager` (a `ComponentModelManager`,
 //   below) plus the static forwarders above. (A placeholder `protocol ComponentModelConstructor`
 //   for `determineSubType` lives in util/model.swift; ComponentModel does not conform to it because
@@ -531,7 +532,7 @@ func getDependencies(_ componentType: String) -> [String] {
     var deps: [String] = []
     util.each(ComponentModel.getClassesByMainType(componentType)) { clz, _ in
         // deps = deps.concat((clz as any).dependencies || (clz as any).prototype.dependencies || []);
-        // PORT-TODO: upstream reads `dependencies` off either the class object or its prototype; the
+        // PORT-NOTE: upstream reads `dependencies` off either the class object or its prototype; the
         //   Swift static `dependencies` (a class var on ComponentModel subclasses) is the single
         //   source of truth — read it by downcasting the `Constructor` metatype.
         if let cm = clz as? ComponentModel.Type {

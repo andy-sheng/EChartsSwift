@@ -23,10 +23,11 @@ import ZRenderKit
 
 // upstream imports:
 //   import GraphSeriesModel from './GraphSeries';
-//       -> PORT-TODO: `GraphSeries.swift` is not ported yet; `getNodeGlobalScale` is typed against
+//       -> PORT-NOTE: `GraphSeries.swift` is ported; `getNodeGlobalScale` is still typed against
 //          the base `SeriesModel` (it only touches `.coordinateSystem`, an `Any?` on SeriesModel).
 //   import { calcCompensationScaleToPreserveNodeSize, isViewCoordSys } from '../../coord/View';
-//       -> PORT-TODO: `coord/View.swift` is not ported yet (see `getNodeGlobalScale`).
+//       -> PORT-NOTE: `coord/View.swift` is ported (`isViewCoordSys` available);
+//          `calcCompensationScaleToPreserveNodeSize` is not yet ported (see `getNodeGlobalScale`).
 //   import { GraphNode } from '../../data/Graph';   -> data/Graph.swift (sibling port)
 
 // Free-function module `graphHelper.ts` -> caseless enum namespace `graphHelper` (CONVENTIONS §2).
@@ -35,8 +36,8 @@ import ZRenderKit
 public enum graphHelper {
 
     // export function getNodeGlobalScale(seriesModel: GraphSeriesModel)
-    // PORT-TODO: upstream parameter type is `GraphSeriesModel`; typed as `SeriesModel` until
-    //   `GraphSeries.swift` lands (only `.coordinateSystem` is accessed).
+    // PORT-NOTE: upstream parameter type is `GraphSeriesModel`; typed as the base `SeriesModel`
+    //   (only `.coordinateSystem` is accessed). `GraphSeries.swift` is ported.
     public static func getNodeGlobalScale(_ seriesModel: SeriesModel) -> Double {
         let coordSys = seriesModel.coordinateSystem
         // return isViewCoordSys(coordSys)

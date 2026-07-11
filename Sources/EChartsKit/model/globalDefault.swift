@@ -5,9 +5,8 @@ import ZRenderKit
 
 // import { modifyHSL } from 'zrender/src/tool/color';  → color.modifyHSL (ZRenderKit)
 // import tokens from '../visual/tokens';
-// PORT-TODO: visual/tokens.ts is not ported yet (this phase ports only this file). The theme
-// palette is inlined below to match `tokens.color.theme`; re-wire to the real `tokens`
-// namespace once visual/tokens.swift lands.
+// PORT-NOTE: the theme palette is inlined below to match `tokens.color.theme` (visual/tokens.swift is
+// ported; the values are kept inlined here verbatim).
 
 // upstream:
 //   let platform = '';
@@ -21,7 +20,7 @@ private let platform = ""
 
 private let decalColor = "rgba(0, 0, 0, 0.2)"
 
-// PORT-TODO: upstream is `tokens.color.theme` (from ../visual/tokens). Inlined verbatim here.
+// PORT-NOTE: upstream is `tokens.color.theme` (from ../visual/tokens). Inlined verbatim here.
 private let themeColorTheme: [String] = [
     "#5070dd",
     "#b6d634",
@@ -117,7 +116,7 @@ public enum globalDefault {
         // http://blogs.adobe.com/webplatform/2014/02/24/using-blend-modes-in-html-canvas/
         // https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
         // Default is source-over
-        // PORT-TODO: upstream value is `null`; represented as NSNull() to retain the key in
+        // PORT-NOTE: upstream value is `null`; represented as NSNull() to retain the key in
         // the [String: Any] bag (merge guards null/undefined when consuming).
         "blendMode": NSNull(),
 

@@ -207,7 +207,7 @@ public enum multipleGraphEdgeHelper {
         createCurveness(seriesModel, totalLen)
 
         // edge.lineStyle = edge.lineStyle || {};
-        // PORT-TODO: GraphEdge has no dynamic `lineStyle` slot; upstream only ensures its existence
+        // PORT-NOTE: GraphEdge has no dynamic `lineStyle` slot; upstream only ensures its existence
         //   here (no effect on the returned value), so the assignment is omitted.
 
         // const parityCorrection = isArrayParam ? 0 : totalLen % 2 ? 0 : 1;

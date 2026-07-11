@@ -32,10 +32,10 @@ import ZRenderKit
 // upstream: import { AxisBreakParsingResult, BreakScaleMapper, getScaleBreakHelper } from './break'  -> scale/break.swift
 // upstream: import type { ValueTransformLookupOpt } from './helper'  -> scale/helper.swift
 // upstream: import { DataSanitizationFilter } from '../data/helper/dataValueHelper'
-//   `DataSanitizationFilter` is owned by data/helper/dataValueHelper.ts (not yet translated);
-//   a minimal forward-declared shim lives in the fenced PORT-TODO block at the bottom of this file.
+//   PORT-NOTE: `DataSanitizationFilter` is now defined in data/helper/dataValueHelper.swift; the
+//   former minimal forward-declared shim at the bottom of this file has been removed.
 //
-// PORT-TODO (the central deviation of this file): upstream models `ScaleMapper`/`LinearScaleMapper`/
+// PORT-NOTE (the central deviation of this file): upstream models `ScaleMapper`/`LinearScaleMapper`/
 //   `BreakScaleMapper` as TS *interfaces* whose method set is **dynamically mounted at runtime** onto
 //   plain objects (and onto `Scale` subclass instances) via `bind`/`extend`/`each(SCALE_MAPPER_METHOD_NAMES)`.
 //   Swift has no string-keyed dynamic method assignment, so `ScaleMapper` is a base `class` whose methods
@@ -43,7 +43,7 @@ import ZRenderKit
 //   and `Scale` (scale/Scale.swift) subclass it so the slots are inherited/reusable. The
 //   `each(SCALE_MAPPER_METHOD_NAMES)` loops are kept, with a per-name `switch` standing in for the
 //   `obj[methodName]` dynamic indexing.
-// PORT-TODO: CONVENTIONS §2 prefers a `enum scaleMapper` namespace for the free functions, but every
+// PORT-NOTE: CONVENTIONS §2 prefers a `enum scaleMapper` namespace for the free functions, but every
 //   sibling scale (Interval/Time/Ordinal/Log) calls these unqualified, so they are bare top-level funcs.
 
 
@@ -90,7 +90,7 @@ import ZRenderKit
  *
  * @see SCALE_EXTENT_CONSTRUCTION for the full processing flow.
  */
-// PORT-TODO: `ScaleExtentKind = 0 | 1` modeled as `Int` (a genuine array index into `_extents`, CONVENTIONS §7).
+// PORT-NOTE: `ScaleExtentKind = 0 | 1` modeled as `Int` (a genuine array index into `_extents`, CONVENTIONS §7).
 public typealias ScaleExtentKind = Int
 public let SCALE_EXTENT_KIND_EFFECTIVE: ScaleExtentKind = 0
 public let SCALE_EXTENT_KIND_MAPPING: ScaleExtentKind = 1
@@ -114,7 +114,7 @@ private let SCALE_MAPPER_METHOD_NAMES_MAP: [String: Int] = [
     "getDefaultStartValue": 1,
     "freeze": 1,
 ]
-// PORT-TODO: Swift dictionary key order is nondeterministic; the iteration order of
+// PORT-NOTE: Swift dictionary key order is nondeterministic; the iteration order of
 //   SCALE_MAPPER_METHOD_NAMES is not load-bearing (every consumer just visits all names).
 private let SCALE_MAPPER_METHOD_NAMES = util.keys(SCALE_MAPPER_METHOD_NAMES_MAP)
 
@@ -170,11 +170,11 @@ public typealias ScaleMapperTransformInOpt = ScaleMapperDepthOpt
 //   interface ScaleMapperGeneric<This> { needTransform; normalize; scale; transformIn; transformOut;
 //     contain; getExtent; getExtentUnsafe; setExtent; setExtent2; getFilter?; sanitize?;
 //     getDefaultStartValue?; freeze; }
-// PORT-TODO: modeled as a base `public` (not `open`) class of stored-closure "method slots" — see the
+// PORT-NOTE: modeled as a base `public` (not `open`) class of stored-closure "method slots" — see the
 //   file-level note. The `<This>` self-type collapses (closures capture their owner). Required slots are
 //   IUO (assigned at construction by `initLinearScaleMapper` / `decorateScaleMapper` / break decoration);
 //   invoking one before it is mounted traps, mirroring "calling an undefined method" in JS.
-// PORT-TODO: declared `open` (not just `public`) because the sibling `open class Scale` subclasses it,
+// PORT-NOTE: declared `open` (not just `public`) because the sibling `open class Scale` subclasses it,
 //   and an `open` class requires an `open` superclass.
 open class ScaleMapper {
 
@@ -242,7 +242,7 @@ open class ScaleMapper {
     public var freeze: (() -> Void)!
 
     // ------------------------------------------------------------------------
-    // PORT-TODO: upstream `interface LinearScaleMapper extends ScaleMapper` declares the two fields below;
+    // PORT-NOTE: upstream `interface LinearScaleMapper extends ScaleMapper` declares the two fields below;
     //   folded onto this base class because `initLinearScaleMapper` decorates the same instance in place.
     /**
      * [CAVEAT]:
@@ -251,7 +251,7 @@ open class ScaleMapper {
      *    but it is initialized as `[Infinity, -Infinity]`.
      * Structure: `_extents[ScaleExtentKind][]`
      */
-    // PORT-TODO: upstream `readonly _extents: number[][]` is SPARSE (index 0 always set, index 1 set only
+    // PORT-NOTE: upstream `readonly _extents: number[][]` is SPARSE (index 0 always set, index 1 set only
     //   by setExtent2). Modeled as a fixed length-2 `[[Double]?]` so `_extents[kind]` reads/writes are
     //   Swift-safe (an absent slot reads as nil, matching JS `undefined`).
     internal var _extents: [[Double]?] = [nil, nil]
@@ -294,7 +294,7 @@ public func initBreakOrLinearMapper(
 }
 
 // upstream: type DecoratedScaleMapperMethods<THost extends ScaleMapper> = Omit<ScaleMapperGeneric<THost>, 'freeze'>;
-// PORT-TODO: the `<THost>` self-type collapses — the sibling scales build this via a per-host factory
+// PORT-NOTE: the `<THost>` self-type collapses — the sibling scales build this via a per-host factory
 //   (e.g. `OrdinalScale.decoratedMethods(this)`) whose closures capture `this`, so the slots here take
 //   only the value args (no explicit host). Member/init order mirrors upstream `ScaleMapperGeneric`
 //   (minus `freeze`); the trailing optional three default to nil.
@@ -386,7 +386,7 @@ public func getScaleLinearSpanEffective(_ mapper: ScaleMapper) -> Double {
     return extent[1] - extent[0]
 }
 
-// PORT-TODO: name-keyed slot copy/assignment helpers. Upstream copies via `obj[methodName]` dynamic
+// PORT-NOTE: name-keyed slot copy/assignment helpers. Upstream copies via `obj[methodName]` dynamic
 //   indexing; Swift has no string-keyed access to typed stored properties, so the
 //   `each(SCALE_MAPPER_METHOD_NAMES)` loop body switches on the name. The `if (brkMapper[methodName])`
 //   presence guard becomes a per-slot `!= nil` check.
@@ -442,7 +442,7 @@ private func assignDecoratedMapperMethod(
  * Generally, no need to export `LinearScaleMapper` and not recommended
  * to visit `_extent` directly outside - use `getExtentUnsafe()` instead.
  */
-// PORT-TODO: upstream `interface LinearScaleMapper extends ScaleMapper { _extents; _frozen }` — the
+// PORT-NOTE: upstream `interface LinearScaleMapper extends ScaleMapper { _extents; _frozen }` — the
 //   `_extents`/`_frozen` storage lives on the base `ScaleMapper` class (see there).
 
 public func initLinearScaleMapper(
@@ -453,7 +453,7 @@ public func initLinearScaleMapper(
     let linearMapper = mapper ?? ScaleMapper()
 
     // upstream: const extendList: number[][] = []; linearMapper._extents = extendList;
-    //   modeled as the pre-sized length-2 `[[Double]?]` on the instance (see `_extents` PORT-TODO).
+    //   modeled as the pre-sized length-2 `[[Double]?]` on the instance (see `_extents` PORT-NOTE).
     linearMapper._extents = [nil, nil]
 
     // `.slice()` -> value-type array copy on assignment.
@@ -468,7 +468,7 @@ public func initLinearScaleMapper(
 // upstream: const linearScaleMapperMethods: ScaleMapperGeneric<LinearScaleMapper> = { ... }
 //   The static method bag cannot be modeled as-is because each body uses `this`. We assign the
 //   slots as per-instance closures that capture `mapper` (as `this`).
-// PORT-TODO: `[unowned mapper]` breaks the retain cycle (the mapper owns the closures, the closures
+// PORT-NOTE: `[unowned mapper]` breaks the retain cycle (the mapper owns the closures, the closures
 //   capture the mapper); safe because the closures never outlive the mapper.
 private func applyLinearScaleMapperMethods(_ mapper: ScaleMapper) {
 
@@ -537,7 +537,7 @@ private func applyLinearScaleMapperMethods(_ mapper: ScaleMapper) {
     }
 }
 
-// PORT-TODO: upstream `writeExtent(extentList: number[][], kind, start, end)` mutates the passed
+// PORT-NOTE: upstream `writeExtent(extentList: number[][], kind, start, end)` mutates the passed
 //   `number[][]` by reference; a Swift `[[Double]?]` is a value type, so we pass the owning
 //   `ScaleMapper` (reference type) and mutate `mapper._extents` instead.
 private func writeExtent(
@@ -551,7 +551,7 @@ private func writeExtent(
     else {
         if __DEV__ {
             // PENDING: should use `assert` after fixing all invalid calls.
-            // PORT-TODO: upstream `start != null && end != null` — start/end are non-optional Double here.
+            // PORT-NOTE: upstream `start != null && end != null` — start/end are non-optional Double here.
             if !start.isNaN && !end.isNaN && start <= end {
                 log.error("Invalid setExtent call - start: \(start), end: \(end)")
             }

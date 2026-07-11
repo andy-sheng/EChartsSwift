@@ -8,7 +8,7 @@
 /// Upstream `key: string | number`. Swift has no untagged union, so we model the
 /// key as a tagged enum. Literal conformances keep call sites close to upstream
 /// (`lru.put("foo", v)` / `lru.put(1, v)`).
-// PORT-TODO: JS coerces numeric object keys to strings, so `map[1]` and `map["1"]`
+// PORT-NOTE: JS coerces numeric object keys to strings, so `map[1]` and `map["1"]`
 // collide in the original. `.number(1)` and `.string("1")` are distinct here.
 public enum LRUKey: Hashable {
     case string(String)

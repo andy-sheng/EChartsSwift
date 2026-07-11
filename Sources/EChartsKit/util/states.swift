@@ -363,7 +363,7 @@ public enum states {
     // Bridge: upstream `liftColor(fill as ColorString)` only lifts STRING colors. `Path`'s `ZRColor`
     //   enum and `color.liftColor`'s `ColorValue` enum are distinct types, so extract the string,
     //   lift it, and re-box. Gradient/pattern fills are returned unchanged (upstream casts to
-    //   ColorString, i.e. only strings are lifted). PORT-TODO: gradient lift.
+    //   ColorString, i.e. only strings are lifted). PORT-NOTE: gradient lift.
     static func liftZRColor(_ c: ZRenderKit.ZRColor?) -> ZRenderKit.ZRColor? {
         guard let c = c else { return nil }
         if case let .string(s) = c {
@@ -809,7 +809,7 @@ public enum states {
                 case "lineStyle": state.style = model.getLineStyle()
                 case "areaStyle": state.style = model.getAreaStyle()
                 default:
-                    // PORT-TODO: upstream `defaultStyleGetterMap[styleType]` is undefined for other
+                    // PORT-NOTE: upstream `defaultStyleGetterMap[styleType]` is undefined for other
                     //   styleTypes and would throw ("Let it throw error if getterType is not found");
                     //   we fall back to `getItemStyle` rather than trap.
                     state.style = model.getItemStyle()

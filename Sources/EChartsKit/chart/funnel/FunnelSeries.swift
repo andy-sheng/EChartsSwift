@@ -29,15 +29,15 @@ import ZRenderKit
 //   import {makeSeriesEncodeForNameBased} from '../../data/helper/sourceHelper';
 //       -> `sourceHelper.makeSeriesEncodeForNameBased` (data/helper/sourceHelper.swift).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend deferred).
+//       -> LegendVisualProvider (visual/LegendVisualProvider.swift); wired in `init` below.
 //   import SeriesModel from '../../model/Series';                  -> SeriesModel (model/Series.swift).
 //   import { ... } from '../../util/types';                        -> util/types.swift (type-only; the dynamic
 //       option tree is the `[String: Any]` bag per CONVENTIONS §2).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData (data/SeriesData.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet; `tokens.color.neutral00` / `tokens.color.primary`
-//          are inlined as their resolved constants below.
+//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; `tokens.color.neutral00` / `tokens.color.primary`
+//          are inlined as their resolved constants in defaultOption below.
 
 // ============================================================================
 // The upstream `type`/`interface` declarations (FunnelLabelOption, FunnelStatesMixin,
@@ -115,17 +115,36 @@ open class FunnelSeriesModel: SeriesModel {
 
     // Overwrite
     // upstream: getDataParams(dataIndex: number): FunnelCallbackDataParams { ... percent ... }
-    // PORT-TODO: `getDataParams` is provided by the `DataFormatMixin` graft, which is NOT yet a
-    //   conformance on SeriesModel (see model/Series.swift), so there is no `super.getDataParams` to
-    //   extend here. `percent`/`$vars` only feed labels/tooltip, both deferred. Faithful upstream body:
-    //     const data = this.getData();
-    //     const params = super.getDataParams(dataIndex) as FunnelCallbackDataParams;
-    //     const valueDim = data.mapDimension('value');
-    //     const sum = data.getSum(valueDim);
-    //     // Percent is 0 if sum is 0
-    //     params.percent = !sum ? 0 : +(data.get(valueDim, dataIndex) as number / sum * 100).toFixed(2);
-    //     params.$vars.push('percent');
-    //     return params;
+    //   `FunnelCallbackDataParams` is `CallbackDataParams` with a required `percent` — that field is
+    //   already present on the Swift `CallbackDataParams`, and `$vars` maps to `vars`. Mirrors the
+    //   CustomSeries overload idiom: `super.getDataParams` is the `DataFormatMixin` protocol-extension
+    //   method (not a class member), so it is reached through a protocol-typed self, both to disambiguate
+    //   from this override and to avoid a self-recursion in overload resolution.
+    open func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        // const data = this.getData();
+        let data = self.getData()
+        // const params = super.getDataParams(dataIndex) as FunnelCallbackDataParams;
+        var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
+        // const valueDim = data.mapDimension('value');
+        let valueDim = data.mapDimension("value")
+        // const sum = data.getSum(valueDim);
+        let sum = valueDim.map { data.getSum($0) } ?? 0
+        // Percent is 0 if sum is 0
+        // params.percent = !sum ? 0 : +(data.get(valueDim, dataIndex) as number / sum * 100).toFixed(2);
+        if sum == 0 {
+            params.percent = 0
+        } else {
+            let value = valueDim.flatMap { funnelSeriesAsDouble(data.get($0, Int(dataIndex))) } ?? 0
+            params.percent = number.round(value / sum * 100, 2)
+        }
+        // params.$vars.push('percent');
+        params.vars.append("percent")
+        // return params;
+        return params
+    }
 
     // upstream: static defaultOption: FunnelSeriesOption = { ... }
     //   LOAD-BEARING: `coordinateSystemUsage: 'box'` is what `createBoxLayoutReference` / `getLayoutRect`
@@ -170,8 +189,8 @@ open class FunnelSeriesModel: SeriesModel {
             ] as [String: Any],
             "itemStyle": [
                 // color: 各异,
-                // PORT-TODO: tokens.color.neutral00 inlined as resolved constant ('#fff'); re-wire to
-                //   `tokens.color.neutral00` once visual/tokens.swift lands.
+                // PORT-NOTE: tokens.color.neutral00 inlined as its resolved constant ('#fff');
+                //   visual/tokens.swift is ported (Tokens.color.neutral00) if a live read is wanted.
                 "borderColor": "#fff",   // tokens.color.neutral00
                 "borderWidth": 1.0
             ] as [String: Any],
@@ -182,8 +201,8 @@ open class FunnelSeriesModel: SeriesModel {
             ] as [String: Any],
             "select": [
                 "itemStyle": [
-                    // PORT-TODO: tokens.color.primary inlined as resolved constant (color.neutral80);
-                    //   re-wire to `tokens.color.primary` once visual/tokens.swift lands.
+                    // PORT-NOTE: tokens.color.primary inlined as its resolved constant (color.neutral80);
+                    //   visual/tokens.swift is ported (Tokens.color.primary) if a live read is wanted.
                     "borderColor": "#3c3c41"   // tokens.color.primary
                 ] as [String: Any]
             ] as [String: Any]
@@ -193,3 +212,13 @@ open class FunnelSeriesModel: SeriesModel {
 }
 
 // export default FunnelSeriesModel;  -> `open class FunnelSeriesModel` above.
+
+// Coerce a stored `ParsedValue` (Any) to a Double for the `data.get(valueDim, i) as number` read in
+//   `getDataParams`; nil when the slot is absent/non-numeric.
+private func funnelSeriesAsDouble(_ v: Any?) -> Double? {
+    if v == nil || v is NSNull { return nil }
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let s = v as? String { return Double(s) }
+    return nil
+}

@@ -71,7 +71,7 @@ public func smoothBezier(
         v = vector.sub(nextPoint, prevPoint)
 
         // use degree to scale the handle length
-        // PORT-TODO: `smooth` is optional upstream; `scale` needs a Double. Callers (poly.buildPath)
+        // PORT-NOTE: `smooth` is optional upstream; `scale` needs a Double. Callers (poly.buildPath)
         //   only invoke smoothBezier when `smooth` is truthy, so `?? 0` is never the live path.
         v = vector.scale(v, smooth ?? 0)
 

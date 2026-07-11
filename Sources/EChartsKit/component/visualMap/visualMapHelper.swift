@@ -24,9 +24,9 @@ import ZRenderKit
 // import * as zrUtil from 'zrender/src/core/util';        -> `util.each` (ZRenderKit).
 // import {getLayoutRect} from '../../util/layout';        -> `layout.getLayoutRect` (util/layout.swift).
 // import VisualMapModel from './VisualMapModel';
-//   -> PORT-TODO: component/visualMap/VisualMapModel.swift is a SEPARATE (later) port phase. BOTH
-//      helpers below hard-depend on it (`visualMapModel.option`, `.padding`, `.componentIndex`), so they
-//      are preserved here as faithful commented source and re-typed against the real class once it lands.
+//   -> PORT-NOTE: VisualMapModel is ported (component/visualMap/VisualMapModel.swift). BOTH
+//      helpers below hard-depend on it (`visualMapModel.option`, `.padding`, `.componentIndex`); they are
+//      reproduced (module-internal) in ContinuousView.swift and used live, so the copy here is reference source.
 // import ExtensionAPI from '../../core/ExtensionAPI';      -> `ExtensionAPI` (core/ExtensionAPI.swift).
 // import { Payload } from '../../util/types';              -> `Payload` (util/types.swift).
 
@@ -34,7 +34,7 @@ import ZRenderKit
 //     ['left', 'right', 'width'],
 //     ['top', 'bottom', 'height']
 // ] as const;
-// PORT-TODO: consumed by `getItemAlign` (below, deferred with VisualMapModel).
+// PORT-NOTE: consumed by `getItemAlign` (reproduced in ContinuousView.swift; the copy below is reference source).
 let visualMapParamsSet: [[String]] = [
     ["left", "right", "width"],
     ["top", "bottom", "height"]
@@ -52,8 +52,8 @@ public typealias ItemAlign = String
  * @param itemSize always [short, long]
  * @return {string} 'left' or 'right' or 'top' or 'bottom'
  */
-// PORT-TODO (BLOCKED on VisualMapModel — later phase): faithful upstream source preserved. Retype the
-//   `visualMapModel` parameter to the real `VisualMapModel` class and un-comment once it lands. It reads
+// PORT-NOTE: getItemAlign is reproduced (module-internal) in ContinuousView.swift and used live; VisualMapModel
+//   is ported. Faithful upstream source preserved here for reference. It reads
 //   `modelOption.align`, `.orient`, the `paramsSet` position keys, and `.padding`, then runs
 //   `layout.getLayoutRect(layoutInput, ecSize, modelOption.padding)` and compares the mid-point of the
 //   laid-out rect against the container mid-point to auto-pick the side.
@@ -96,10 +96,10 @@ public typealias ItemAlign = String
  * Prepare dataIndex for outside usage, where dataIndex means rawIndex, and
  * dataIndexInside means filtered index.
  */
-// PORT-TODO (BLOCKED on VisualMapModel; and CONVENTIONS §5 — INTERACTION/highlight is DEFERRED):
-//   `makeHighDownBatch` rewrites a highlight/downplay `Payload['batch']`, moving `dataIndex` to
+// PORT-NOTE: `makeHighDownBatch` is reproduced (module-internal) in ContinuousView.swift and used live;
+//   VisualMapModel is ported. It rewrites a highlight/downplay `Payload['batch']`, moving `dataIndex` to
 //   `dataIndexInside` and stamping a `highlightKey` derived from `visualMapModel.componentIndex`. It is
-//   part of the hover-indicator interaction path (deferred). In the Swift `Payload`/`PayloadItem` model
+//   part of the hover-indicator interaction path (wired in ContinuousView.swift). In the Swift `Payload`/`PayloadItem` model
 //   the `dataIndex`/`dataIndexInside`/`highlightKey` fields live in the dynamic `other` bag. Faithful
 //   upstream source preserved:
 //

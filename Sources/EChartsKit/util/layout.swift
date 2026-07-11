@@ -21,9 +21,9 @@
 import Foundation
 import ZRenderKit
 
-// PORT-TODO: This is a PARTIAL port of util/layout.ts landing the surface needed by coord/cartesian
-//   (Grid). The full module (positionElement / mergeLayoutParam / getCircleLayout / applyPreserveAspect
-//   / fetchLayoutMode / getLayoutParams / copyLayoutParams, and the `boxCoordinateSystem` branch of
+// PORT-TODO: This is a PARTIAL port of util/layout.ts. positionElement / mergeLayoutParam /
+//   getCircleLayout / copyLayoutParams have since landed below; the still-unported surface
+//   (applyPreserveAspect / fetchLayoutMode / getLayoutParams, and the `boxCoordinateSystem` branch of
 //   `createBoxLayoutReference`) lands with the layout/orchestrator phase. `LayoutRect` is currently the
 //   `typealias LayoutRect = BoundingRect` declared in coord/cartesian/cartesianAxisHelper.swift.
 //
@@ -46,7 +46,7 @@ public struct BoxLayoutReferenceResult {
     // upstream: `refPoint: number[]`
     public var refPoint: [Double]
     // upstream: `boxCoordFrom: BoxCoordinateSystemCoordFrom | NullUndefined`
-    // PORT-TODO: `BoxCoordinateSystemCoordFrom` modeled as `Any?` until the box coord-sys layer lands.
+    // PORT-NOTE: `BoxCoordinateSystemCoordFrom` modeled as `Any?` until the box coord-sys layer lands.
     public var boxCoordFrom: Any?
 
     public init(type: Double, refContainer: LayoutRect, refPoint: [Double], boxCoordFrom: Any? = nil) {
@@ -172,7 +172,7 @@ public enum layout {
 
     // upstream: export const vbox = zrUtil.curry(boxLayout, 'vertical');
     //           export const hbox = zrUtil.curry(boxLayout, 'horizontal');
-    // PORT-TODO: `vbox`/`hbox` (curried `boxLayout`) have no current consumer in the ported surface;
+    // PORT-NOTE: `vbox`/`hbox` (curried `boxLayout`) have no current consumer in the ported surface;
     //   add the thin `box('vertical', ...)` / `box('horizontal', ...)` forwarders when one lands.
 
     // upstream: `interface NewlineElement extends Element { newline: boolean }` — LegendView tags a
@@ -227,7 +227,7 @@ public enum layout {
         let viewRect: LayoutRect
         let center: [Double]
         if layoutRef.type == BOX_LAYOUT_REFERENCE_TYPE_POINT {
-            // PORT-TODO: the `point` reference kind is produced only when the box coord-sys branch of
+            // PORT-NOTE: the `point` reference kind is produced only when the box coord-sys branch of
             //   `createBoxLayoutReference` (with `enableLayoutOnlyByCenter: true` + `boxCoordSys.dataToPoint`)
             //   lands (Phase 6b). `createBoxLayoutReference` ignores `opt` today and always returns the
             //   `rect` kind, so this branch is currently unreachable. Kept faithful for when it lands.
@@ -430,7 +430,7 @@ public enum layout {
             height = containerHeight - verticalMargin - top - ((bottom.isNaN || bottom == 0) ? 0 : bottom)
         }
 
-        // PORT-TODO: upstream sets `rect.margin = margin` on the returned `LayoutRect`; `LayoutRect` is
+        // PORT-NOTE: upstream sets `rect.margin = margin` on the returned `LayoutRect`; `LayoutRect` is
         //   currently `typealias BoundingRect`, which has no `margin` slot, so it is dropped until the
         //   real `LayoutRect` (util/layout.ts) lands. No current consumer reads `.margin`.
         let rect = BoundingRect(
@@ -631,7 +631,7 @@ private func isNewlineElement(_ el: Element) -> Bool {
     return _newlineInner(el).newline
 }
 
-// PORT-TODO: JS truthiness shim (matches the per-file `jsTruthy` used across the port). Used only for
+// PORT-NOTE: JS truthiness shim (matches the per-file `jsTruthy` used across the port). Used only for
 //   the `left || right` / `top || bottom` alignment branches above.
 private func layoutJsTruthy(_ v: Any?) -> Bool {
     switch v {

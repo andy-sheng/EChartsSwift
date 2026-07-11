@@ -131,15 +131,14 @@ let seriesStyleTask: StageHandler = {
 
             var executor = StageHandlerProgressExecutor()
             executor.dataEach = { (data: SeriesData, idxD: Double) in
-                // PORT-TODO: the color-callback path needs SeriesModel.getDataParams, which is
-                //   provided by DataFormatMixin — not yet conformed on SeriesModel (see
-                //   model/Series.swift PORT-TODO). Deferred; out of bar-render scope.
                 // const dataParams = seriesModel.getDataParams(idx);
+                let dataParams = seriesModel.getDataParams(idxD)
                 // const itemStyle = extend({}, globalStyle);
+                var itemStyle = globalStyle
                 // itemStyle[colorKey] = colorCallback(dataParams);
+                itemStyle[colorKey] = colorCallback!(dataParams)
                 // data.setItemVisual(idx, 'style', itemStyle);
-                _ = data
-                _ = idxD
+                data.setItemVisual(Int(idxD), "style", itemStyle)
             }
             return executor
         }

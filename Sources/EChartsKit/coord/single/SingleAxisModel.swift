@@ -29,7 +29,7 @@ import ZRenderKit
 // import {AxisModelCommonMixin} from '../axisModelCommonMixin';       -> AxisModelCommonMixin (coord/axisModelCommonMixin.swift, protocol)
 // import Single from './Single';                                      -> Single (coord/single/Single.swift; coord-sys master, sibling this phase)
 // import SingleAxis from './SingleAxis';                              -> SingleAxis (coord/single/SingleAxis.swift; sibling this phase)
-// import { AxisBaseOption } from '../axisCommonTypes';                -> AxisBaseOption (dynamic option bag, see axisModelCreator.swift; PORT-TODO)
+// import { AxisBaseOption } from '../axisCommonTypes';                -> AxisBaseOption (dynamic option bag, see axisModelCreator.swift; PORT-NOTE)
 // import {
 //     BoxLayoutOptionMixin, ComponentOnCalendarOptionMixin, ComponentOnMatrixOptionMixin, LayoutOrient
 // } from '../../util/types';                                          -> option interfaces dropped (dynamic option bag, CONVENTIONS §2)
@@ -53,7 +53,7 @@ public let COORD_SYS_TYPE_SINGLE_AXIS_COMPATIBLE = "singleAxis"
 public let COMPONENT_TYPE_SINGLE_AXIS = "singleAxis"
 
 // upstream: export type SingleAxisPosition = 'top' | 'bottom' | 'left' | 'right';
-//   PORT-TODO: no string unions in Swift → a `String` alias (option is read from the dynamic bag).
+//   PORT-NOTE: no string unions in Swift → a `String` alias (option is read from the dynamic bag).
 public typealias SingleAxisPosition = String
 
 // upstream:
@@ -62,7 +62,7 @@ public typealias SingleAxisPosition = String
 //     position?: SingleAxisPosition
 //     orient?: LayoutOrient
 // } & ComponentOnCalendarOptionMixin & ComponentOnMatrixOptionMixin;
-//   PORT-TODO: option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
+//   PORT-NOTE: option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
 //   (mainType/position/orient plus the box-layout / calendar / matrix mixins) are keyed accesses on the bag.
 public typealias SingleAxisOption = AxisBaseOption
 
@@ -72,7 +72,7 @@ public typealias SingleAxisOption = AxisBaseOption
 // interface SingleAxisModel extends AxisModelCommonMixin<SingleAxisOption>, AxisModelExtendedInCreator {}
 // mixin(SingleAxisModel, AxisModelCommonMixin.prototype);
 //
-// PORT-TODO: mirrors the CartesianAxisModel port (coord/cartesian/AxisModel.swift). Upstream `extends
+// PORT-NOTE: mirrors the CartesianAxisModel port (coord/cartesian/AxisModel.swift). Upstream `extends
 //   ComponentModel implements AxisBaseModel<T>` where `AxisBaseModel` is a TS interface merging
 //   ComponentModel + AxisModelCommonMixin + AxisModelExtendedInCreator + the `axis` slot. Per CONVENTIONS
 //   §2 the Swift port models `AxisBaseModel` as a real `open class AxisBaseModel: ComponentModel,
@@ -95,7 +95,7 @@ public final class SingleAxisModel: AxisBaseModel {
     //      lands; narrow via `as? SingleAxis` at use).
 
     // coordinateSystem: Single;
-    //   PORT-TODO: upstream types this the concrete `Single` (a `CoordinateSystemMaster`), injected by
+    //   PORT-NOTE: upstream types this the concrete `Single` (a `CoordinateSystemMaster`), injected by
     //   singleCreator once the coordinate system is built. `Single` (coord/single/Single.swift) is a
     //   sibling this phase; typed here as `CoordinateSystemMaster?` (mirroring PolarModel), narrow via
     //   `as? Single` at use (see singleCreator.swift).

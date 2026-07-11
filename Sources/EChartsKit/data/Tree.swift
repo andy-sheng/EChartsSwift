@@ -38,7 +38,7 @@ import ZRenderKit
 // type TreeTraverseOrder = 'preorder' | 'postorder';
 public typealias TreeTraverseOrder = String
 // type TreeTraverseCallback<Ctx> = (this: Ctx, node: TreeNode) => boolean | void;
-// PORT-TODO: upstream returns `boolean | void`; modeled as `Any?` (a `Bool` -> suppress subtree,
+// PORT-NOTE: upstream returns `boolean | void`; modeled as `Any?` (a `Bool` -> suppress subtree,
 //   `nil`/void -> continue). The `this: Ctx` binding is dropped: Swift closures capture context
 //   directly, so the trailing `context` parameter (kept for fidelity) is unused by the closure.
 public typealias TreeTraverseCallback = (TreeNode) -> Any?
@@ -48,7 +48,7 @@ public typealias TreeTraverseCallback = (TreeNode) -> Any?
 // interface TreeNodeOption extends Pick<OptionDataItemObject<OptionDataValue>, 'name' | 'value'> {
 //     children?: TreeNodeOption[];
 // }
-// PORT-TODO: the `{name, value, children}` node option is modeled as a dynamic bag `[String: Any]`.
+// PORT-NOTE: the `{name, value, children}` node option is modeled as a dynamic bag `[String: Any]`.
 public typealias TreeNodeOption = [String: Any]
 
 public final class TreeNode {
@@ -58,7 +58,7 @@ public final class TreeNode {
 
     public var height: Double = 0
 
-    // PORT-TODO: upstream declares `parentNode: TreeNode` (non-optional) but leaves it undefined
+    // PORT-NOTE: upstream declares `parentNode: TreeNode` (non-optional) but leaves it undefined
     //   for the root and relies on `while (node)`; modeled as Optional.
     public var parentNode: TreeNode?
     /**
@@ -68,7 +68,7 @@ public final class TreeNode {
      * If dataIndex -1,
      * this node is logical deleted (filtered) in list.
      */
-    // PORT-TODO: upstream types `dataIndex: number`; kept `Int` here because every consumer
+    // PORT-NOTE: upstream types `dataIndex: number`; kept `Int` here because every consumer
     //   (SeriesData.getRawIndex/getId/getItemModel/getItemLayout/setItemLayout/…) is Int-indexed.
     public var dataIndex: Int = -1
 
@@ -369,17 +369,17 @@ public final class TreeNode {
     }
 }
 
-// PORT-TODO: upstream `Tree<HostModel extends Model = Model, LevelOption = any>` is generic; the
+// PORT-NOTE: upstream `Tree<HostModel extends Model = Model, LevelOption = any>` is generic; the
 //   Swift port fixes `HostModel = Model` / `LevelOption = Any` since the generic parameters are
 //   only surfaced through `hostModel`/`levelModels` typing.
 public final class Tree: LinkableStruct {
 
     public let type: String = "tree"
 
-    // PORT-TODO: upstream `root: TreeNode` is set during createTree; modeled as implicitly-unwrapped.
+    // PORT-NOTE: upstream `root: TreeNode` is set during createTree; modeled as implicitly-unwrapped.
     public var root: TreeNode!
 
-    // PORT-TODO: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     public var data: SeriesData!
 
     public var hostModel: Model

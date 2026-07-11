@@ -25,8 +25,9 @@
 //     'mousedown','mouseup','globalout','contextmenu']) and binds ONE generic handler that assembles
 //     `ECElementEvent` params (getDataParams) and `this.trigger(eveName, params)` on the ECharts
 //     event bus. The Phase-33 brief scopes this to the EMPHASIS binding (mouseover/mouseout) plus a
-//     MINIMAL click→dispatchAction; the full event-param assembly + the public ECharts event bus +
-//     the tooltip/axisPointer `mousemove`→axisTrigger path are DEFERRED (see PORT-TODO below).
+//     MINIMAL click→dispatchAction; the full event-param assembly + the public ECharts event bus
+//     remain DEFERRED. The tooltip/axisPointer `mousemove`→axisTrigger path is now wired (Phase 35,
+//     `_bindAxisPointerListeners`).
 //   - The mouseover/mouseout → `handleGlobalMouseOverForHighDown`/`…OutForHighDown` binding is done
 //     HERE directly against the zr handler (in the path the views do not self-register their zr
 //     listeners — no live zr at render time — so `EChartsView` owns the binding; documented deviation).
@@ -148,7 +149,7 @@ public final class EChartsView {
     //   `updateRoamControllerSimply` on each `setOption`). On drag-pan / wheel-zoom the controller emits
     //   'pan'/'zoom', which dispatch `{type:'graphRoam', ...}` → the graph view coord sys shifts/scales and
     //   the chart re-renders. Created lazily the first time a graph series with `roam` truthy is seen.
-    //   PORT-TODO (DEFERRED): map/geo/tree/treemap reuse of the same controller (this wiring is GRAPH-only).
+    //   PORT-NOTE: geo/map/tree/treemap/sankey roam are wired via their own host-owned controllers below.
     // ------------------------------------------------------------------------
     private var _graphRoamController: RoamController?
 
@@ -577,8 +578,8 @@ public final class EChartsView {
     //   emitted action mirrors `roams.dispatchAction` (`{type:'dataZoom', batch:[{dataZoomId,start,end}]}`).
     //
     //   PORT-TODO (DEFERRED, mirroring upstream `RoamController`/`roams`):
-    //     - pan/drag (`moveOnMouseMove` → getRangeHandlers.pan) and wheel-scroll-move (`moveOnMouseWheel`
-    //       → getRangeHandlers.scrollMove); pinch/touch zoom (`_pinchHandler`).
+    //     - wheel-scroll-move (`moveOnMouseWheel` → getRangeHandlers.scrollMove) and pinch/touch zoom
+    //       (`_pinchHandler`). (pan/drag → getRangeHandlers.pan is now wired — Phase 39, `_bindInsidePan`.)
     //     - the full `RoamController` state machine + `throttleUtil.createOrUpdate` throttle + the
     //       `{easing:'cubicOut', duration:100}` animated dataZoom transition (the driver renders the
     //       new window synchronously, so no animated tween yet).

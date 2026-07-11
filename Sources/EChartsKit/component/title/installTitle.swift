@@ -29,9 +29,11 @@ import ZRenderKit
 //   import {getECData} from '../../util/innerStore';                 -> `innerStore.getECData`
 //        (event wiring — the `eventData` assignment is deferred, see PORT-TODO in `render`).
 //   import {createTextStyle} from '../../label/labelStyle';
-//     -> PORT-TODO: `label/labelStyle` is NOT ported. A faithful minimal reproduction
-//        `createTextStyle` lives at the bottom of this file (delete once label/labelStyle.swift lands
-//        and call it directly). Same deviation as AxisBuilder.swift.
+//     -> `label/labelStyle.swift` IS ported (`labelStyle.createTextStyle`, labelStyle.swift:417).
+//        This view still uses a local minimal reproduction `createTextStyle` at the bottom of this
+//        file because the real overload takes a different opt shape (`specifiedTextStyle: TextStyleProps?`
+//        + `TextCommonParams`) than the title view's `{text, fill, y, verticalAlign}` literal; rewiring
+//        is a deferred deviation, not a missing dep. Same local reproduction as AxisBuilder.swift.
 //   import {createBoxLayoutReference, getLayoutRect} from '../../util/layout';
 //     -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` (util/layout.swift).
 //   import ComponentModel from '../../model/Component';              -> `ComponentModel` (model/Component.swift).
@@ -48,9 +50,9 @@ import ZRenderKit
 //     -> PORT-TODO: registration boilerplate deferred to the Orchestrate driver (see `install`
 //        note at the bottom).
 //   import tokens from '../../visual/tokens';
-//     -> PORT-TODO: `visual/tokens.ts` is NOT ported yet. The `tokens.*` values consumed in
-//        `defaultOption` are inlined verbatim as their resolved constants (same deviation as
-//        GridModel/axisDefault); re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+//     -> PORT-NOTE: `visual/tokens.ts` is ported (visual/tokens.swift). The `tokens.*` values consumed in
+//        `defaultOption` are still inlined verbatim as their resolved constants (same deviation as
+//        GridModel/axisDefault); could be re-wired to the real `tokens` namespace.
 //          tokens.size.m            = 15                       (size.m)
 //          tokens.color.transparent = 'rgba(0,0,0,0)'
 //          tokens.color.primary     = color.neutral80 = '#3c3c41'
@@ -403,11 +405,13 @@ private struct CreateTextStyleOpt {
     }
 }
 
-/// PORT-TODO: faithful minimal reproduction of `label/labelStyle.createTextStyle`. Only the fields used
+/// Local minimal reproduction of `label/labelStyle.createTextStyle`. `labelStyle.swift` IS ported
+///   (`labelStyle.createTextStyle`, labelStyle.swift:417), but its overload takes a different opt shape
+///   (`specifiedTextStyle: TextStyleProps?` + `TextCommonParams`) than this view's `{text, fill, y,
+///   verticalAlign}` literal, so the rewire is deferred rather than a missing dep. Only the fields used
 ///   by the title view (text/font/fill/x/y/verticalAlign/width) are populated; the full rich-text /
-///   state / inheritColor / background-box behavior (and the `disableBox` opt) lives in labelStyle.ts.
-///   Delete when label/labelStyle.swift lands and call `createTextStyle(textStyleModel, opt, {disableBox})`
-///   directly. (Distinct from AxisBuilder.swift's `createTextStyle` overload by its `CreateTextStyleOpt`
+///   state / inheritColor / background-box behavior (and the `disableBox` opt) lives in labelStyle.
+///   (Distinct from AxisBuilder.swift's `createTextStyle` overload by its `CreateTextStyleOpt`
 ///   second parameter — no ambiguity.)
 private func createTextStyle(
     _ textStyleModel: Model,

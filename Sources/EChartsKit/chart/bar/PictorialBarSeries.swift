@@ -29,7 +29,7 @@ import ZRenderKit
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';  -> Cartesian2D (type-only).
 //   import { inheritDefaultOption } from '../../util/component';       -> `component.inheritDefaultOption`.
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported. `tokens.color.primary` is inlined as its resolved
+//       -> PORT-NOTE: visual/tokens.swift is ported; `tokens.color.primary` is inlined as its resolved
 //          constant (color.neutral80 = '#3c3c41'), same convention as BarSeries.swift's `select`.
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> `SERIES_TYPE_PICTORIAL_BAR`.
 
@@ -79,7 +79,7 @@ open class PictorialBarSeriesModel: BaseBarSeriesModel {
             (BaseBarSeriesModel.defaultOption as? [String: Any]) ?? [:],
             [
                 "symbol": "circle",           // Customized bar shape
-                // PORT-TODO: upstream values are `null`; NSNull() retains the key in the [String: Any] bag
+                // PORT-NOTE: upstream values are `null`; NSNull() retains the key in the [String: Any] bag
                 //   so `get(...)` reads back a distinguishable "unset" rather than a missing key.
                 "symbolSize": NSNull(),
                 "symbolRotate": NSNull(),
@@ -110,8 +110,8 @@ open class PictorialBarSeriesModel: BaseBarSeriesModel {
 
                 "select": [
                     "itemStyle": [
-                        // PORT-TODO: tokens.color.primary inlined as resolved constant (color.neutral80);
-                        //   re-wire to `tokens.color.primary` once visual/tokens.swift lands.
+                        // PORT-NOTE: tokens.color.primary inlined as resolved constant (color.neutral80);
+                        //   visual/tokens.swift has landed — could re-wire to `tokens.color.primary`.
                         "borderColor": "#3c3c41"   // tokens.color.primary
                     ] as [String: Any]
                 ] as [String: Any]

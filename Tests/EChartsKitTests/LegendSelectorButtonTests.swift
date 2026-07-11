@@ -2,7 +2,8 @@
 // a clickable label per selector item. A click dispatches `legendAllSelect` (type "all") or
 // `legendInverseSelect` (type "inverse"), scoped to the legend by `legendId`. Those actions mutate
 // LegendModel.selected (all-true / inverted) and, via legendFilter, show/hide the matching series on the
-// next update. Regression for the "selector button does nothing" gap (the onclick was a PORT-TODO).
+// next update. Regression for the "selector button does nothing" gap (the onclick is now wired in
+// LegendView._createSelector — dispatches legendAllSelect / legendInverseSelect).
 import XCTest
 import ZRenderKit
 @testable import EChartsKit

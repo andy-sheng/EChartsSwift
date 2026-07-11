@@ -31,10 +31,10 @@ import ZRenderKit
 //       itemNameFormatter?: string | ((params: { value: number }) => string);
 //   }
 public struct PrepareBoxplotDataOpt {
-    // PORT-TODO: upstream `number | 'none'` union -> `Any?` (a `Double` or the string 'none').
+    // PORT-NOTE: upstream `number | 'none'` union -> `Any?` (a `Double` or the string 'none').
     public var boundIQR: Any?
     // Like "expriment{value}" produce: "expriment0", "expriment1", ...
-    // PORT-TODO: upstream `string | ((params: { value: number }) => string)` union -> `Any?` (a `String`
+    // PORT-NOTE: upstream `string | ((params: { value: number }) => string)` union -> `Any?` (a `String`
     //   or a `(Double) -> String` closure; the `{ value }` param object is flattened to the bare value).
     public var itemNameFormatter: Any?
     public init(boundIQR: Any? = nil, itemNameFormatter: Any? = nil) {

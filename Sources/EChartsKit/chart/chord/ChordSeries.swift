@@ -38,9 +38,9 @@ import ZRenderKit
 //   import Graph from '../../data/Graph';                              -> data/Graph.swift (sibling port).
 //   import { LineDataVisual } from '../../visual/commonVisualTypes';   -> type-only.
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> component/tooltip/tooltipMarkup.swift (`createTooltipMarkup`, ported and wired below).
 //   import LegendVisualProvider from '../../visual/LegendVisualProvider';
-//       -> PORT-TODO: visual/LegendVisualProvider.ts NOT ported (legend-select provider deferred).
+//       -> visual/LegendVisualProvider.swift (ported and wired below).
 //   import * as zrUtil from 'zrender/src/core/util';                   -> ZRenderKit.util (bind — deferred with
 //       LegendVisualProvider below).
 
@@ -162,11 +162,17 @@ open class ChordSeriesModel: SeriesModel {
         _ multipleSeries: Bool? = nil,
         _ dataType: SeriesDataType? = nil
     ) -> TooltipFormatResult? {
+        _ = multipleSeries
         // const params = this.getDataParams(dataIndex, dataType as 'node' | 'edge');
-        // PORT-TODO: SeriesModel does not yet conform to DataFormatMixin (see model/Series.swift), so
-        //   `getDataParams` / `params.value` / `params.name` are unavailable — the `value`/`noValue`/`name`
-        //   fields of the markup are deferred with the markup construction below (same deferral as
-        //   GraphSeries.formatTooltip). The edge name-walk logic is preserved faithfully.
+        let params = self.getDataParams(dataIndex, dataType)
+        // `params.value` is typed `Any`; a nil raw value is boxed as `Optional.none as Any` (or NSNull).
+        // Detect both to mirror the upstream `params.value == null` guard.
+        let value = params.value
+        let valueIsNull: Bool = {
+            if value is NSNull { return true }
+            let m = Mirror(reflecting: value)
+            return m.displayStyle == .optional && m.children.isEmpty
+        }()
 
         // if (dataType === 'edge') {
         if dataType == .edge {
@@ -179,55 +185,49 @@ open class ChordSeriesModel: SeriesModel {
             // const targetName = nodeData.getName(edge.node2.dataIndex);
             let targetName = nodeData.getName(edge.node2.dataIndex)
 
-            // const nameArr = [];
-            // sourceName != null && nameArr.push(sourceName);
-            // targetName != null && nameArr.push(targetName);
+            // const nameArr = []; sourceName/targetName != null && push.
             //   getName never returns nil in this port (falls back to ""), so both are pushed.
             var nameArr: [String] = []
             nameArr.append(sourceName)
             nameArr.append(targetName)
-            _ = nameArr.joined(separator: " > ")
 
             // return createTooltipMarkup('nameValue', {
-            //     name: nameArr.join(' > '),
-            //     value: params.value,
-            //     noValue: params.value == null
-            // });
-            // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — the markup return is deferred
-            //   (returns nil, matching the base stub). The name walk above is faithful.
-            return nil
+            //     name: nameArr.join(' > '), value: params.value, noValue: params.value == null });
+            return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                name: nameArr.joined(separator: " > "), value: value, noValue: valueIsNull))
         }
         // dataType === 'node' or empty
         // return createTooltipMarkup('nameValue', {
-        //     name: params.name,
-        //     value: params.value,
-        //     noValue: params.value == null
-        // });
-        // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — defers to the base stub (nil).
-        _ = multipleSeries
-        return nil
+        //     name: params.name, value: params.value, noValue: params.value == null });
+        return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+            name: params.name, value: value, noValue: valueIsNull))
     }
 
-    // getDataParams(dataIndex: number, dataType: 'node' | 'edge') {
-    //     const params = super.getDataParams(dataIndex, dataType);
-    //     if (dataType === 'node') {
-    //         const nodeData = this.getData();
-    //         const node = this.getGraph().getNodeByIndex(dataIndex);
-    //         // Set name if not already set
-    //         if (params.name == null) { params.name = nodeData.getName(dataIndex); }
-    //         // Set value if not already set
-    //         if (params.value == null) {
-    //             const nodeValue = node.getLayout().value;
-    //             params.value = nodeValue;
-    //         }
-    //     }
-    //     return params;
-    // }
-    // PORT-TODO: SeriesModel does not yet conform to DataFormatMixin (see model/Series.swift), so
-    //   `super.getDataParams` / `CallbackDataParams.name` / `.value` are unavailable — the node
-    //   name/value fill-in is deferred with the tooltip subsystem above (same deferral as
-    //   SankeySeries.getDataParams). `node.getLayout().value` (the layout value, written by the chord
-    //   circular layout stage) fires once getDataParams lands on the base.
+    // getDataParams(dataIndex, dataType) — node branch fills name/value from the graph layout.
+    //   The base (DataFormatMixin) 2-arg getDataParams is reached via `(self as DataFormatMixin)`
+    //   to avoid re-dispatching into this concrete override (mirrors FunnelSeries/CustomSeries).
+    open func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
+        // const params = super.getDataParams(dataIndex, dataType);
+        var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
+        // if (dataType === 'node') {
+        if dataType == .node {
+            let nodeData = self.getData()
+            let node = self.getGraph().getNodeByIndex(Int(dataIndex))
+            // Set name if not already set  (params.name is a non-optional String — empty == "not set")
+            if params.name.isEmpty { params.name = nodeData.getName(Int(dataIndex)) }
+            // Set value if not already set  (params.value is `Any`; a nil raw value boxes as Optional.none/NSNull)
+            let valueIsNull: Bool = {
+                if params.value is NSNull { return true }
+                let m = Mirror(reflecting: params.value)
+                return m.displayStyle == .optional && m.children.isEmpty
+            }()
+            if valueIsNull, let nodeValue = (node?.getLayout() as? [String: Any])?["value"] {
+                // const nodeValue = node.getLayout().value; params.value = nodeValue;
+                params.value = nodeValue
+            }
+        }
+        return params
+    }
 
     // static defaultOption: ChordSeriesOption = { ... }
     open override class var defaultOption: ModelOption? {

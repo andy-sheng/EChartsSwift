@@ -4,7 +4,7 @@ import Foundation
 
 private let PI2 = Double.pi * 2
 
-// PORT-TODO: upstream module name is `util` (contain/util.ts); renamed to
+// PORT-NOTE: upstream module name is `util` (contain/util.ts); renamed to
 // `containUtil` to avoid a Swift namespace collision with core/util.ts (`enum util`).
 public enum containUtil {
 

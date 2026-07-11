@@ -32,7 +32,7 @@ import ZRenderKit
 //       (sibling layout-stage port — circular arc layout for nodes + edges).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   series/render-layer file (same convention as chart/sankey/sankeyInstall.swift). Preserved as commented
 //   source for the diffable surface:
 //

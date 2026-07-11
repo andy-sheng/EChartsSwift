@@ -19,7 +19,7 @@ import Foundation
 // Modeled as a class-bound protocol so the `static` out-param mutators below
 // (set/copy/add/sub/scale/...) mutate the caller's object in place via reference
 // semantics, matching upstream's in-place mutation of the `out` argument.
-// PORT-TODO: upstream PointLike is a structural interface that also accepts plain
+// PORT-NOTE: upstream PointLike is a structural interface that also accepts plain
 // object literals / value types; we constrain to AnyObject to preserve mutation.
 public protocol PointLike: AnyObject {
     var x: Double { get set }

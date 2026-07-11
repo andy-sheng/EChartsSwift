@@ -31,7 +31,7 @@ import ZRenderKit
 //       -> GeoModel + RegionOption (sibling, GeoModel.swift). `GeoCommonOptionMixin`/`GeoOption` are
 //          type-only; dynamic option reads go through `model.get(...)`.
 //   import MapSeries, { buildAllMapSeriesGroups, mapSeriesGroupHasOwnGeo, MapSeriesOption, SERIES_TYPE_MAP }
-//       from '../../chart/map/MapSeries';                          -> MapSeries + helpers (NOT yet ported; see PORT-TODOs).
+//       from '../../chart/map/MapSeries';                          -> MapSeries + helpers (ported, chart/map/MapSeries.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import { CoordinateSystemCreator } from '../CoordinateSystem'; -> CoordinateSystemCreator (coord/CoordinateSystem.swift).
 //   import { NameMap } from './geoTypes';                          -> NameMap (geoTypes.swift; = [String: String]).
@@ -47,7 +47,7 @@ import ZRenderKit
 
 // export type resizeGeoType = typeof resizeGeo;
 // export type MapOrGeoModel = (GeoModel | MapSeries) & ComponentModel<GeoOption | MapSeriesOption>;
-// PORT-TODO: `MapOrGeoModel` is the union `GeoModel | MapSeries` (both are ComponentModel). Modeled as
+// PORT-NOTE: `MapOrGeoModel` is the union `GeoModel | MapSeries` (both are ComponentModel). Modeled as
 //   the common base `ComponentModel` (matches Geo's `resize` closure param type); dynamic option reads
 //   go through `.get(...)`.
 public typealias MapOrGeoModel = ComponentModel
@@ -212,7 +212,7 @@ func resizeGeo(_ geo: Geo, _ geoModel: MapOrGeoModel, _ api: ExtensionAPI) {
         // Use left/top/width/height
         // const boxLayoutOption = geoModel.getBoxLayoutParams() as Parameters<typeof layout.getLayoutRect>[0];
         // boxLayoutOption.aspect = aspect;
-        // PORT-TODO: `aspect` is not a field of `BoxLayoutOptionMixin`; upstream augments the cast bag.
+        // PORT-NOTE: `aspect` is not a field of `BoxLayoutOptionMixin`; upstream augments the cast bag.
         //   Rebuilt as a `[String: Any]` bag (+ aspect) so `layout.getLayoutRect`'s dynamic overload
         //   reads it, preserving upstream behavior.
         let box = geoModel.getBoxLayoutParams()
@@ -270,10 +270,9 @@ public final class GeoCreator: CoordinateSystemCreator {
     // create(ecModel: GlobalModel, api: ExtensionAPI): Geo[]
     // upstream returns `Geo[]`; the `CoordinateSystemCreator` protocol requires `[CoordinateSystemMaster]`
     //   (Geo conforms upstream), so the `[Geo]` list is upcast on return (same idiom as Grid/Polar creators).
-    // PORT-TODO: `Geo` currently does NOT conform to `CoordinateSystemMaster` (dropped in Geo.swift with a
-    //   PORT-TODO: "re-add protocol conformance ... when geoCreator lands"). Re-add that conformance (and the
-    //   `geoModel.coordinateSystem = geo` assignment below both depend on it) for this to compile — see
-    //   integrationNotes.
+    // PORT-NOTE: `Geo` now conforms to `CoordinateSystemMaster` (coord/geo/Geo.swift), so the `[Geo]` list
+    //   upcasts to `[CoordinateSystemMaster]` on return and the `geoModel.coordinateSystem = geo`
+    //   assignment below type-checks.
     public func create(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [CoordinateSystemMaster] {
         // const geoList = [] as Geo[];
         var geoList: [Geo] = []
@@ -439,7 +438,7 @@ public final class GeoCreator: CoordinateSystemCreator {
         var regionsArr = originRegionArr ?? []
 
         // const dataNameMap = zrUtil.createHashMap();
-        // PORT-TODO: upstream `dataNameMap` stores the RegionOption OBJECT (JS reference) so the later
+        // PORT-NOTE: upstream `dataNameMap` stores the RegionOption OBJECT (JS reference) so the later
         //   `zrUtil.merge(regionOption, ...)` writes back into `regionsArr`. `RegionOption` is a Swift
         //   value dict, so we store the INDEX into `regionsArr` and mutate through it to preserve the
         //   in-place write-back semantics.

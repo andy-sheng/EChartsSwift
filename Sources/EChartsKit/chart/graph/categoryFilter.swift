@@ -24,8 +24,8 @@ import ZRenderKit
 // upstream imports:
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import GraphSeriesModel, { GraphNodeItemOption, SERIES_TYPE_GRAPH } from './GraphSeries';
-//       -> PORT-TODO: sibling GraphSeries.swift NOT ported yet; `GraphSeriesModel` / `SERIES_TYPE_GRAPH`
-//          referenced as siblings. `GraphNodeItemOption` is a type-only generic — dropped.
+//       -> sibling GraphSeries.swift (ported): `GraphSeriesModel` / `SERIES_TYPE_GRAPH`.
+//          `GraphNodeItemOption` is a type-only generic — dropped.
 //   import type LegendModel from '../../component/legend/LegendModel'; -> LegendModel (component/legend/LegendModel.swift).
 //   import { isNumber } from 'zrender/src/core/util';                -> `util.isNumber`.
 //   import { createSimpleOverallStageHandler } from '../../util/model'; -> `model.createSimpleOverallStageHandler`.

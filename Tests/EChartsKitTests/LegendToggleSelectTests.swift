@@ -1,7 +1,7 @@
 // Legend show/hide: dispatching legendToggleSelect (what a legend item click dispatches) must toggle
 // LegendModel.selected and, via the legendFilter processor, hide/show the corresponding series on the
-// next update. Regression for the "legend click does nothing" gap (legendAction + legendFilter were
-// unported; LegendView item click was a PORT-TODO).
+// next update. Regression for the "legend click does nothing" gap (legendAction + legendFilter +
+// the LegendView item-click dispatch are now wired).
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit

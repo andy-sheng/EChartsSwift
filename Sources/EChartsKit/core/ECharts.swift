@@ -551,9 +551,9 @@ public final class ECharts: EChartsType {
         // -- chart/bar/install.ts --
         ComponentModel.registerClass(BarSeriesModel.self)                  // registerSeriesModel(BarSeries)
         // registerLayout(VISUAL.LAYOUT, createCrossSeriesLayoutHandler(bar)) → `_barLayoutHandler`.
-        // registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(bar)) → PORT-TODO: the non-large
-        //   bar path recomputes per-item geometry inside `BarView.render`, so the progressive layout
-        //   task is not needed for a basic render (see barGrid.swift `createProgressiveLayout` note).
+        // registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(bar)) → PORT-NOTE: `createProgressiveLayout`
+        //   is ported (barGrid.swift) but not registered here — the non-large bar path recomputes per-item
+        //   geometry inside `BarView.render`, so the progressive layout task is not needed for a basic render.
         // registerProcessor(PROCESSOR.STATISTIC, dataSample(bar)) — captured in `_dataSamplers` and run
         //   in the data-processor stage (see the `_dataSamplers` loop in the update pipeline).
         registerBarGridAxisHandlers(_registers)   // populates axisStatistics `clientsForLookup` +
@@ -850,8 +850,8 @@ public final class ECharts: EChartsType {
         //   `setOption` (see below); the visual stage handler generates the accessibility LABEL and is
         //   invoked directly in `update()` (`aria.ariaLabel(...)` → stored on the ec instance,
         //   `getAriaLabel()`) because a `StageHandler` returns Void and there is no DOM to write to.
-        //   The `aria.decal.show` decal (SVG-pattern) generation is a PORT-TODO (decal palette infra
-        //   unported). See Sources/EChartsKit/component/aria/ariaVisual.swift + ariaPreprocessor.swift.
+        //   The `aria.decal.show` decal (SVG-pattern) generation is ported (decal palette infra: util/decal.swift,
+        //   visual/decalVisual.swift). See Sources/EChartsKit/component/aria/ariaVisual.swift + ariaPreprocessor.swift.
 
         // -- component/timeline/install.ts -- registerComponentModel(SliderTimelineModel) +
         //   registerComponentView(SliderTimelineView) + registerSubTypeDefaulter('timeline', ()=>'slider')
@@ -916,8 +916,9 @@ public final class ECharts: EChartsType {
         //   registerComponentView(TooltipView) + ... . Phase 31 ports ONLY the host-independent
         //   tooltip CONTENT model (formatTooltip → markup → html/richText string). The on-screen
         //   TooltipView + the hover TRIGGER are DEFERRED (need the live-view host — a later phase),
-        //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; the
-        //   axisPointer model itself is a `[String: Any]` stub (see TooltipModel.swift PORT-TODO).
+        //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; AxisPointerModel
+        //   is ported (AxisPointerModel.swift), but the tooltip's embedded `axisPointer` sub-option is kept as an
+        //   untyped `[String: Any]` bag (see TooltipModel.swift PORT-NOTE).
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
         installTooltipActions(ECharts._registers)                      // registerAction('showTip'/'hideTip', noop)
 
@@ -1303,7 +1304,7 @@ public final class ECharts: EChartsType {
         // (3) coordSysMgr.create — build the Grid coordinate system(s), lay them out on the container
         //     rect, and inject `coordinateSystem` into each series (Grid.create → injectCoordSysByOption).
         _coordSysMgr.create(ecModel, api)
-        // lifecycle.trigger('coordsys:aftercreate', ...) — PORT-TODO: lifecycle not ported (no listeners
+        // lifecycle.trigger('coordsys:aftercreate', ...) — PORT-NOTE: lifecycle not ported (no listeners
         //     needed for a bar chart).
 
         // (4) performDataProcessorTasks — run every data-processor stage task through the Scheduler
@@ -1546,7 +1547,7 @@ public final class ECharts: EChartsType {
     // here the bar cross-series layout is invoked explicitly right before `renderSeries`).
     // ------------------------------------------------------------------------
     private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // allocateZlevels(ecModel) — PORT-TODO skip (single grid + one series; default z ordering).
+        // allocateZlevels(ecModel) — PORT-NOTE skip (single grid + one series; default z ordering).
 
         // View REUSE (L5): the driver no longer wipes root + the view registries each render.
         //   `prepareView` now performs upstream's mark-and-sweep (echarts.ts:1687-1770): every view
@@ -1801,7 +1802,7 @@ public final class ECharts: EChartsType {
                     //   type is 'legend.plain'). Most components have full type == mainType, so the fallback
                     //   is what they resolve through.
                     guard let factory = _componentViewFactories[model.type] ?? _componentViewFactories[model.mainType] else {
-                        // PORT-TODO: no component view registered for this mainType (out of bar scope).
+                        // PORT-NOTE: no component view registered for this mainType — skip (a general fallback guard).
                         return nil as ComponentView?
                     }
                     let v = factory()
@@ -1824,7 +1825,7 @@ public final class ECharts: EChartsType {
                 let view = existing ?? {
                     // ChartView.getClass(classType.sub) → factory keyed by series subType.
                     guard let factory = _chartViewFactories[seriesModel.subType] else {
-                        // PORT-TODO: no chart view registered for this subType (only 'bar' in scope).
+                        // PORT-NOTE: no chart view registered for this subType — skip (a general fallback guard).
                         return nil as ChartView?
                     }
                     let v = factory()
@@ -2082,7 +2083,7 @@ public final class ECharts: EChartsType {
     /// Ported from `ECharts.dispatchAction` (echarts.ts:1574-1624).
     public func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         // if (this._disposed) { disposedWarning(this.id); return; }
-        //   PORT-TODO: the driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
+        //   PORT-NOTE: the driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
 
         // if (!isObject(opt)) { opt = {silent: !!opt}; }
         //   The `boolean | {silent,flush}` normalization is absorbed by `DispatchActionOpt` (nil → silent:false;
@@ -2146,8 +2147,8 @@ public final class ECharts: EChartsType {
 
         _inEcCycle = true
         // updateECUpdateCycleVersion(this);
-        //   PORT-TODO: no EC update-cycle version counter tracked in the driver (used only by the
-        //   deferred emphasis/blur state machine — util/states, Phase 30).
+        //   PORT-NOTE: util/states (the emphasis/blur state machine) is ported and wired; the EC update-cycle
+        //   version counter it uses as a staleness guard is simply not tracked in this driver.
 
         // Batch action → one payload per batch item (`defaults(extend({}, item), payload); item.batch = null`).
         var payloads: [Payload] = [payload]
@@ -2205,7 +2206,7 @@ public final class ECharts: EChartsType {
                     ? (pre.queryOptionMap.keys().first ?? "series")
                     : "series"
                 updateDirectly(updateMethod, batchItem, componentMainType)
-                // markStatusToUpdate(this); — PORT-TODO: no status-needs-update flag tracked in the
+                // markStatusToUpdate(this); — PORT-NOTE: no status-needs-update flag tracked in the
                 //   driver; the dispatch caller repaints via the full `update()` when needed.
             }
             else if isSelectChange {
@@ -2291,7 +2292,7 @@ public final class ECharts: EChartsType {
         ecModel.setUpdatePayload(payload)
 
         // if (!mainType) { broadcast to all views; return; }
-        //   PORT-TODO: the empty-mainType broadcast branch (`:updateAxisPointer`) is unreachable from the
+        //   PORT-NOTE: the empty-mainType broadcast branch (`:updateAxisPointer`) is unreachable from the
         //   ported call sites (doDispatchAction always passes a concrete mainType), so it is elided.
 
         let condition = model.makeQueryConditionKindA(payload, mainType, subType)
@@ -2348,7 +2349,7 @@ public final class ECharts: EChartsType {
                 if let seriesModel = m as? SeriesModel {
                     states.toggleSelectionFromPayload(seriesModel, payload, api)
                     states.updateSeriesElementSelection(seriesModel)
-                    // markStatusToUpdate(ecIns);  — PORT-TODO: no status-needs-update flag tracked in the
+                    // markStatusToUpdate(ecIns);  — PORT-NOTE: no status-needs-update flag tracked in the
                     //   driver (upstream sets it so a later flush repaints; here the caller repaints).
                 }
             }

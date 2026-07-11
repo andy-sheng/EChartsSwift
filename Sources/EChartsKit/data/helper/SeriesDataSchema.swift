@@ -31,7 +31,7 @@
 import Foundation
 import ZRenderKit
 
-// PORT-TODO: `inner` is a per-`Source` property store. Upstream:
+// PORT-NOTE: `inner` is a per-`Source` property store. Upstream:
 //   const inner = makeInner<{ dimNameMap: HashMap<DimensionIndex, DimensionName>; }, Source>();
 // Our `model.makeInner` takes a factory closure and is keyed by host object identity
 // (Source must be a `final class`, per the sibling data/Source port). The anonymous bag
@@ -72,7 +72,7 @@ public final class SeriesDataSchema {
      * The item can still be modified outsite.
      * But MUST NOT add/remove item of this array.
      */
-    // PORT-TODO: upstream `readonly` (binding fixed, but `appendCalculationDimension` pushes
+    // PORT-NOTE: upstream `readonly` (binding fixed, but `appendCalculationDimension` pushes
     // into it). Modeled as `private(set) var` so the class can mutate the array.
     public private(set) var dimensions: [SeriesDimensionDefine]
 
@@ -130,7 +130,7 @@ public final class SeriesDataSchema {
     public func getSourceDimension(_ dimIndex: DimensionIndex) -> DimensionDefinition? {
         let dimensionsDefine = self.source.dimensionsDefine
         if let dimensionsDefine = dimensionsDefine {
-            // PORT-TODO: JS returns `undefined` on out-of-range index; guard to avoid a trap.
+            // PORT-NOTE: JS returns `undefined` on out-of-range index; guard to avoid a trap.
             let i = Int(dimIndex)
             if i >= 0 && i < dimensionsDefine.count {
                 return dimensionsDefine[i]
@@ -160,7 +160,7 @@ public final class SeriesDataSchema {
             var type: DimensionType?
             var ordinalMeta: OrdinalMeta?
 
-            // PORT-TODO: JS `this.dimensions[seriesDimIdx]` yields `undefined` past the end;
+            // PORT-NOTE: JS `this.dimensions[seriesDimIdx]` yields `undefined` past the end;
             // guard the index so `seriesDimDef` is `nil` there.
             let seriesDimDef: SeriesDimensionDefine? =
                 seriesDimIdx < self.dimensions.count ? self.dimensions[seriesDimIdx] : nil
@@ -180,7 +180,7 @@ public final class SeriesDataSchema {
                 }
             }
 
-            // PORT-TODO: relies on the sibling data/DataStore port exposing
+            // PORT-NOTE: relies on the sibling data/DataStore port exposing
             // `DataStoreDimensionDefine` (struct) with a default init + mutable
             // `property`/`type`/`ordinalMeta` fields. Mirrors `dims.push({ property, type, ordinalMeta })`.
             var dim = DataStoreDimensionDefine()
@@ -238,7 +238,7 @@ public final class SeriesDataSchema {
     }
 
     public func makeOutputDimensionNames() -> [DimensionName?] {
-        // PORT-TODO: upstream return type is `DimensionName[]`, but `name` is left `undefined`
+        // PORT-NOTE: upstream return type is `DimensionName[]`, but `name` is left `undefined`
         // when there is no matching series/source dimension, so elements may be `nil`.
         var result: [DimensionName?] = []
 

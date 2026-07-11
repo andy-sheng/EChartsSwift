@@ -28,11 +28,11 @@ import ZRenderKit
 // import { makeInner } from '../../util/model';                     -> EChartsKit `model.makeInner`
 // import SeriesModel from '../../model/Series';                     -> EChartsKit `SeriesModel`
 // import Group from 'zrender/src/graphic/Group';                    -> ZRenderKit `Group`
-// import { enterBlur, leaveBlur } from '../../util/states';         -> PORT-TODO: util/states.ts not yet ported
+// import { enterBlur, leaveBlur } from '../../util/states';         -> util/states.swift (enterBlur/leaveBlur ported; the blur toggling usage is deferred, see below)
 // import { traverseUpdateZ, retrieveZInfo } from '../../util/graphic'; -> PORT-TODO: util/graphic.ts not yet ported
 
 // const inner = makeInner<{ keep: boolean }, MarkerDraw>();
-// PORT-TODO: `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
+// PORT-NOTE: `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
 //   bag is wrapped in a reference `MarkerDrawKeep`; `MarkerDraw` is the reference host (protocol).
 final class MarkerDrawKeep {
     var keep: Bool = false
@@ -60,7 +60,7 @@ open class MarkerView: ComponentView {
      * Markline grouped by series
      */
     // markerGroupMap: HashMap<MarkerDraw>;
-    // PORT-TODO: not initialized at declaration place (upstream caveat); set in `init()`.
+    // PORT-NOTE: not initialized at declaration place (upstream caveat); set in `init()`.
     public var markerGroupMap: HashMap<MarkerDraw>!
 
     // init() { this.markerGroupMap = createHashMap(); }
@@ -122,7 +122,7 @@ open class MarkerView: ComponentView {
     }
 
     // abstract renderSeries(seriesModel, markerModel, ecModel, api): void
-    // PORT-TODO: abstract method — the per-type subclass (MarkPointView/MarkLineView/MarkAreaView,
+    // PORT-NOTE: abstract method — the per-type subclass (MarkPointView/MarkLineView/MarkAreaView,
     //   dependent stage) must override.
     open func renderSeries(
         _ seriesModel: SeriesModel,

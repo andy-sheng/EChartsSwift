@@ -31,16 +31,17 @@ import ZRenderKit
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import SeriesData from '../../data/SeriesData';                 -> SeriesData (data/SeriesData.swift).
 //   import View from '../../coord/View';
-//       -> PORT-TODO: coord/View.ts NOT ported (the tree's box coordinate system is deferred); the
-//          `coordinateSystem` slot is inherited from SeriesModel typed `Any?`.
+//       -> View (coord/View.swift, ported); the tree's box coordinate system is still not wired here, so
+//          the `coordinateSystem` slot is inherited from SeriesModel typed `Any?`.
 //   import { LayoutRect } from '../../util/layout';                 -> `LayoutRect` (== BoundingRect).
 //   import Model from '../../model/Model';                          -> Model (model/Model.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); tree's use is deferred with getDataParams.
 //   import { wrapTreePathInfo } from '../helper/treeHelper';
-//       -> PORT-TODO: chart/helper/treeHelper.ts NOT ported (only used by `getDataParams`, deferred).
+//       -> treeHelper IS ported (chart/helper/treeHelper.swift), but `wrapTreePathInfo` (the only symbol
+//          used here) is still deferred within it — used only by the deferred `getDataParams`.
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts NOT ported; the single consumed value `tokens.color.borderTint`
+//       -> visual/tokens.ts IS ported (visual/tokens.swift); the single consumed value `tokens.color.borderTint`
 //          (= color.neutral20 = '#cfd2d7') is inlined verbatim in `defaultOption` below.
 
 // ============================================================================
@@ -207,24 +208,41 @@ open class TreeSeriesModel: SeriesModel {
     }
 
     // formatTooltip(dataIndex, multipleSeries, dataType) { ... createTooltipMarkup('nameValue', {...}) }
-    // PORT-TODO: DEFERRED. Depends on `createTooltipMarkup` (component/tooltip/tooltipMarkup.ts NOT
-    //   ported — tooltip component deferred). The name-walk / value computation is faithful; only the
-    //   markup construction is missing, so the whole override returns nil (matching the base stub).
-    //   Faithful upstream body (for the eventual port):
-    //     const tree = this.getData().tree;
-    //     const realRoot = tree.root.children[0];
-    //     let node = tree.getNodeByDataIndex(dataIndex);
-    //     const value = node.getValue();
-    //     let name = node.name;
-    //     while (node && (node !== realRoot)) {
-    //         name = node.parentNode.name + '.' + name;
-    //         node = node.parentNode;
-    //     }
-    //     return createTooltipMarkup('nameValue', {
-    //         name: name,
-    //         value: value,
-    //         noValue: isNaN(value as number) || value == null
-    //     });
+    //   Faithful upstream body: walk the parent chain from the node up to the real root, joining
+    //   names with '.', then emit a 'nameValue' markup block. `createTooltipMarkup` is now ported
+    //   (component/tooltip/tooltipMarkup.swift).
+    open override func formatTooltip(
+        _ dataIndex: Double,
+        _ multipleSeries: Bool? = nil,
+        _ dataType: SeriesDataType? = nil
+    ) -> TooltipFormatResult? {
+        _ = (multipleSeries, dataType)
+        // const tree = this.getData().tree;
+        guard let tree = self.getData().tree else {
+            return nil
+        }
+        // const realRoot = tree.root.children[0];
+        let realRoot = tree.root.children.first
+        // let node = tree.getNodeByDataIndex(dataIndex);
+        var node = tree.getNodeByDataIndex(Int(dataIndex))
+        // const value = node.getValue();
+        let value = node?.getValue()
+        // let name = node.name;
+        var name = node?.name ?? ""
+        // while (node && (node !== realRoot)) { name = node.parentNode.name + '.' + name; node = node.parentNode; }
+        while let n = node, n !== realRoot {
+            name = (n.parentNode?.name ?? "") + "." + name
+            node = n.parentNode
+        }
+        // noValue: isNaN(value as number) || value == null
+        let numericValue = (value as? Double) ?? (value as? Int).map(Double.init)
+        let noValue = numericValue.map { $0.isNaN } ?? true
+        return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+            name: name,
+            value: value,
+            noValue: noValue
+        ))
+    }
 
     // Add tree path to tooltip param
     // getDataParams(dataIndex) { const params = super.getDataParams(...); params.treeAncestors = wrapTreePathInfo(node, this); params.collapsed = !node.isExpand; return params; }

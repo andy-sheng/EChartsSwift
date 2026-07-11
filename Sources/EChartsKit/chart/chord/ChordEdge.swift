@@ -36,7 +36,7 @@ import ZRenderKit
 //   import ChordSeriesModel, { ChordEdgeItemOption, ChordEdgeLineStyleOption, ChordNodeItemOption } from './ChordSeries';
 //       -> sibling `ChordSeriesModel` (assumed ported alongside — the ChordSeries.swift port).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis DEFERRED per CONVENTIONS §5).
+//       -> util/states.swift (`states.setStatesStylesFromModel` / `states.toggleHoverEmphasis`), wired in updateData.
 //   import { getECData } from '../../util/innerStore';             -> `innerStore.getECData`.
 
 // ================================================================================================
@@ -108,7 +108,7 @@ public struct ChordPathShape: PathShape {
 }
 
 // upstream: interface ChordEdgePathProps extends PathProps { shape?: Partial<ChordPathShape> }
-// PORT-TODO: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag; the
+// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag; the
 //   `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias ChordEdgePathProps = PathProps
 

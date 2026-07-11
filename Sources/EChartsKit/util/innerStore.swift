@@ -60,7 +60,7 @@ public final class ECData {
     public struct TooltipConfig {
         // Target item name to locate tooltip.
         public var name: String
-        // PORT-TODO: upstream `ComponentItemTooltipOption<unknown>`; depends on sibling
+        // PORT-NOTE: upstream `ComponentItemTooltipOption<unknown>`; depends on sibling
         //   types.swift modeling `ComponentItemTooltipOption` as a generic.
         public var option: ComponentItemTooltipOption<Any>
         public init(name: String, option: ComponentItemTooltipOption<Any>) {
@@ -77,7 +77,7 @@ public final class ECData {
 // upstream call sites `getECData(el)` / `setCommonECData(...)` → `innerStore.getECData(el)` / `innerStore.setCommonECData(...)`.
 public enum innerStore {
 
-    // PORT-TODO: upstream `makeInner<ECData, Element>()` lazily creates an empty `{}` bag per host.
+    // PORT-NOTE: upstream `makeInner<ECData, Element>()` lazily creates an empty `{}` bag per host.
     //   Swift generics cannot construct `T` without a factory, so we assume the sibling
     //   `model.makeInner(_:)` API takes a factory closure: `(@escaping () -> T) -> (Host) -> T`.
     public static let getECData: (Element) -> ECData = model.makeInner { ECData() }

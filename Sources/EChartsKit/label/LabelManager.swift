@@ -281,7 +281,7 @@ public final class LabelManager {
 
     /// Parse the raw `labelLayout` option (already a `LabelLayoutOption`, or an option `[String: Any]`
     /// dict) into a `LabelLayoutOption`. Returns `nil` for an absent / empty option (the collection
-    /// gate) or an unsupported callback form (PORT-TODO).
+    /// gate) or a callback form (which is handled separately by `addLabelsOfSeries`).
     static func parseLayoutOption(_ raw: Any?) -> LabelLayoutOption? {
         guard let raw = raw else { return nil }
         if let opt = raw as? LabelLayoutOption {

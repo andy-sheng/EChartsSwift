@@ -27,8 +27,7 @@ import ZRenderKit
 //        surface is owned by the Orchestrate/Integrate driver, not this file).
 //   import BoxplotSeriesModel from './BoxplotSeries';                         -> sibling BoxplotSeries.swift (ported).
 //   import BoxplotView from './BoxplotView';
-//       -> PORT-TODO: chart/boxplot/BoxplotView.ts NOT ported (View is a separate/deferred stage; it hosts
-//          the BoxPath custom shape). Register once BoxplotView.swift lands.
+//       -> sibling BoxplotView.swift (ported); hosts the BoxPath custom shape.
 //   import {boxplotLayoutStageHandler, registerBoxplotAxisHandlers} from './boxplotLayout';
 //       -> sibling boxplotLayout.swift (ported): `boxplotLayoutStageHandler` / `registerBoxplotAxisHandlers`.
 //   import { boxplotTransform } from './boxplotTransform';
@@ -36,7 +35,7 @@ import ZRenderKit
 //          Register once boxplotTransform.swift lands.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as component/grid/installSimple.swift). The stub
 //   `EChartsExtensionInstallRegisters` does not yet expose registerSeriesModel/registerChartView/
 //   registerLayout/registerTransform, and BoxplotView/boxplotTransform are not ported. `registerBoxplotAxisHandlers`

@@ -55,13 +55,13 @@ import ZRenderKit
 //        chart/helper/axisSnippets.swift lands.
 
 
-// PORT-TODO: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
+// PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
 //   matching coord/axisStatistics.swift.
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
 
 private let STACK_PREFIX = "__ec_stack_"
 
-// PORT-TODO: `getSeriesStackId(seriesModel: BaseBarSeriesModel)`; `BaseBarSeries`/`BarSeries` are not
+// PORT-NOTE: `getSeriesStackId(seriesModel: BaseBarSeriesModel)`; `BaseBarSeries`/`BarSeries` are not
 //   ported (bar-only scope), so `SeriesModel` is used directly — it exposes `get`/`seriesIndex`.
 private func getSeriesStackId(_ seriesModel: SeriesModel) -> StackId {
     // ((seriesModel as BarSeriesModel).get('stack') || STACK_PREFIX + seriesModel.seriesIndex) as StackId
@@ -87,7 +87,7 @@ private struct BarGridLayoutAxisSeriesInfo {
     var stackId: StackId
 }
 
-// PORT-TODO: upstream `type StackId = string & {_: 'barGridStackId'}` is a nominal-branded string; the
+// PORT-NOTE: upstream `type StackId = string & {_: 'barGridStackId'}` is a nominal-branded string; the
 //   brand is dropped in Swift (aliased to String).
 private typealias StackId = String
 
@@ -528,7 +528,7 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
         var exec = StageHandlerProgressExecutor()
         exec.progress = { params, data in
             let count = params.count
-            // PORT-TODO: large mode is simplified — arrays are always materialized (empty when
+            // PORT-NOTE: large mode is simplified — arrays are always materialized (empty when
             //   inactive) rather than JS's `isLarge && createFloat32Array(...)` short-circuit; stacking
             //   is not supported in large mode (per upstream TODO).
             var largePoints = isLarge ? vendor.createFloat32Array(count * 3) : []
@@ -721,7 +721,7 @@ public func registerBarGridAxisHandlers(_ registers: EChartsExtensionInstallRegi
 
 
 // ============================================================================
-// PORT-TODO: local port helpers (NOT in upstream barGrid.ts).
+// PORT-NOTE: local port helpers (NOT in upstream barGrid.ts).
 // ============================================================================
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric bar data is stored as `Double`. Mirrors the

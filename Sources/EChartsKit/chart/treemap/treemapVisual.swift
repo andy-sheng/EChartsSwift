@@ -23,9 +23,10 @@ import ZRenderKit
 
 // upstream imports:
 //   import VisualMapping, { VisualMappingOption } from '../../visual/VisualMapping';
-//       -> PORT-TODO: visual/VisualMapping.ts NOT ported. The range-based per-child color mapping
-//          (buildVisualMapping / mapVisual's `mapping.mapValueToVisual`) is DEFERRED — `buildVisualMapping`
-//          returns nil, so children inherit the parent visuals unchanged. Wire once VisualMapping lands.
+//       -> `VisualMapping` / `VisualMappingOption` (visual/VisualMapping.swift, ported). The range-based
+//          per-child color mapping (buildVisualMapping builds a VisualMapping; mapVisual applies
+//          `mapping.mapValueToVisual`) is wired below via the `VisualMapping(VisualMappingOption(bag))`
+//          idiom (same as visualSolution.swift).
 //   import { each, extend, isArray } from 'zrender/src/core/util';    -> `util.each` / `util.extend` / `util.isArray`.
 //   import TreemapSeriesModel, { TreemapSeriesNodeItemOption } from './TreemapSeries';  -> sibling TreemapSeries.swift.
 //   import { TreemapLayoutNode, TreemapItemLayout } from './treemapLayout';
@@ -43,11 +44,15 @@ import ZRenderKit
 private let ITEM_STYLE_NORMAL = "itemStyle"
 
 // const inner = makeInner<{ drColorMappingBy: ... }, VisualMapping>();
-// PORT-TODO: `inner(mapping).drColorMappingBy` is part of the deferred VisualMapping subsystem; see the
-//   VisualMapping import PORT-TODO. Not created here.
+//   Upstream stashes `drColorMappingBy` on the mapping instance via makeInner. The ported analog bundles
+//   it with the mapping in `TreemapVisualMapping` (both created + consumed only within this file).
+private struct TreemapVisualMapping {
+    let mapping: VisualMapping
+    let drColorMappingBy: String?
+}
 
 // interface TreemapVisual { color?: ZRColor; colorAlpha?: number; colorSaturation?: number }
-// PORT-TODO: modeled as a dynamic `[String: Any]` bag to mirror upstream's `(visuals as any)[visualName]`
+// PORT-NOTE: modeled as a dynamic `[String: Any]` bag to mirror upstream's `(visuals as any)[visualName]`
 //   dynamic-key access in buildVisuals/mapVisual.
 public typealias TreemapVisual = [String: Any]
 
@@ -278,7 +283,7 @@ private func buildVisualMapping(
     _ visuals: TreemapVisual,
     _ viewChildren: [TreeNode],
     _ fallbackPalette: [Any]
-) -> Any? {
+) -> TreemapVisualMapping? {
     // if (!viewChildren || !viewChildren.length) { return; }
     if viewChildren.isEmpty {
         return nil
@@ -307,25 +312,44 @@ private func buildVisualMapping(
         return nil
     }
 
-    // PORT-TODO: the full VisualMapping subsystem is DEFERRED. The upstream body builds a
-    //   `VisualMapping` (category for color-by-index/id, linear otherwise). We port ONLY the common
-    //   category color-by-index/id case (the treemap default `colorMappingBy: 'index'`), which is what
-    //   distributes the palette across the children — without it every tile fell to the default black
-    //   fill. The linear value-mapping (colorAlpha/colorSaturation ranges, colorMappingBy 'value') stays
-    //   deferred and returns nil (children then inherit the parent visual unmapped, as before).
-    //
-    //   const opt = { type: rangeVisual.name, dataExtent, visual: rangeVisual.range };
-    //   if (opt.type === 'color' && (colorMappingBy === 'index' || 'id')) { mappingMethod = 'category'; }
-    let colorMappingBy = (nodeModel.get("colorMappingBy") as? String) ?? "index"
-    if let rv = rangeVisual,
-       (rv["name"] as? String) == "color",
-       (colorMappingBy == "index" || colorMappingBy == "id"),
-       let range = rv["range"] as? [Any], !range.isEmpty {
-        _ = nodeLayout
-        return ["type": "color", "range": range, "mappingBy": colorMappingBy] as [String: Any]
+    // Upstream widens the layout dataExtent by any explicit visualMin / visualMax, then builds the
+    //   VisualMapping: a 'category' mapping (with loop) for the color-by-index/id case, else 'linear'.
+    //   const visualMin = nodeModel.get('visualMin'); const visualMax = nodeModel.get('visualMax');
+    //   const dataExtent = nodeLayout.dataExtent.slice();
+    let visualMin = nodeModel.get("visualMin")
+    let visualMax = nodeModel.get("visualMax")
+    var dataExtent = (nodeLayout["dataExtent"] as? [Double]) ?? [Double.nan, Double.nan]   // .slice()
+    if dataExtent.count >= 2 {
+        // visualMin != null && visualMin < dataExtent[0] && (dataExtent[0] = visualMin);
+        if let vMin = treemapVisualAsDouble(visualMin), vMin < dataExtent[0] { dataExtent[0] = vMin }
+        // visualMax != null && visualMax > dataExtent[1] && (dataExtent[1] = visualMax);
+        if let vMax = treemapVisualAsDouble(visualMax), vMax > dataExtent[1] { dataExtent[1] = vMax }
     }
-    _ = node
-    return nil
+
+    // const colorMappingBy = nodeModel.get('colorMappingBy');
+    let colorMappingBy = nodeModel.get("colorMappingBy") as? String
+    guard let rv = rangeVisual else { return nil }
+
+    // const opt: VisualMappingOption = { type: rangeVisual.name, dataExtent, visual: rangeVisual.range };
+    var opt: [String: Any] = [:]
+    opt["type"] = rv["name"]
+    opt["dataExtent"] = dataExtent
+    opt["visual"] = rv["range"]
+    if (rv["name"] as? String) == "color"
+        && (colorMappingBy == "index" || colorMappingBy == "id") {
+        // opt.mappingMethod = 'category'; opt.loop = true; (categories is ordinal, so no opt.categories)
+        opt["mappingMethod"] = "category"
+        opt["loop"] = true
+    }
+    else {
+        opt["mappingMethod"] = "linear"
+    }
+
+    // const mapping = new VisualMapping(opt); inner(mapping).drColorMappingBy = colorMappingBy;
+    //   Mirrors the `VisualMapping(VisualMappingOption(bag))` construction idiom in visualSolution.swift.
+    let mapping = VisualMapping(VisualMappingOption(opt))
+    // `node` / `nodeItemStyleModel` are in the upstream signature but unused by the body.
+    return TreemapVisualMapping(mapping: mapping, drColorMappingBy: colorMappingBy)
 }
 
 // Notice: If we don't have the attribute 'colorRange', but only use
@@ -352,32 +376,49 @@ private func mapVisual(
     _ visuals: TreemapVisual,
     _ child: TreeNode,
     _ index: Int,
-    _ mapping: Any?,
+    _ mapping: TreemapVisualMapping?,
     _ seriesModel: TreemapSeriesModel
 ) -> TreemapVisual {
     // const childVisuals = extend({}, visuals);
     var childVisuals: TreemapVisual = [:]
     _ = util.extend(&childVisuals, visuals)
 
-    // if (mapping) { ... childVisuals[mappingType] = mapping.mapValueToVisual(value); }
-    //   Only the ported category color-by-index/id mapping (see buildVisualMapping) is handled; the
-    //   deferred linear value mapping never produces a `mapping` bag. `mapValueToVisual` for a 'category'
-    //   mapping with `loop: true` is `range[value % range.length]`.
-    if let mapping = mapping as? [String: Any],
-       let type = mapping["type"] as? String,
-       let range = mapping["range"] as? [Any], !range.isEmpty {
-        let mappingBy = (mapping["mappingBy"] as? String) ?? "index"
-        // colorMappingBy 'id' would use seriesModel.mapIdToIndex(child.getId()); that id table is not
-        //   ported, so fall back to the child ordinal (identical for the common auto-id case).
-        _ = mappingBy
-        let value = index
-        let count = range.count
-        let colorIdx = ((value % count) + count) % count
-        childVisuals[type] = range[colorIdx]
+    // if (mapping) { childVisuals[mappingType] = mapping.mapValueToVisual(value); }
+    if let tvm = mapping {
+        // Only support color, colorAlpha, colorSaturation.
+        // const mappingType = mapping.type;
+        let mappingType = tvm.mapping.type
+        // const colorMappingBy = mappingType === 'color' && inner(mapping).drColorMappingBy;
+        let colorMappingBy = mappingType == "color" ? tvm.drColorMappingBy : nil
+        // const value = colorMappingBy === 'index' ? index
+        //     : colorMappingBy === 'id' ? seriesModel.mapIdToIndex(child.getId())
+        //     : child.getValue(nodeModel.get('visualDimension'));
+        let value: Any
+        if colorMappingBy == "index" {
+            value = index
+        }
+        else if colorMappingBy == "id" {
+            value = seriesModel.mapIdToIndex(child.getId())
+        }
+        else {
+            value = child.getValue(nodeModel.get("visualDimension"))
+        }
+        // (childVisuals as any)[mappingType] = mapping.mapValueToVisual(value);
+        childVisuals[mappingType] = tvm.mapping.mapValueToVisual(value)
     }
-    _ = (nodeModel, child, seriesModel)
 
     return childVisuals
+}
+
+// Numeric coercion for an option value; nil when unset/non-numeric (mirrors the JS `x != null` numeric
+// guard used for visualMin / visualMax). Not an upstream symbol.
+private func treemapVisualAsDouble(_ v: Any?) -> Double? {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    default: return nil
+    }
 }
 
 // JS truthiness of a color value (a non-empty string is truthy; nil / NSNull / "" are falsy). Mirrors

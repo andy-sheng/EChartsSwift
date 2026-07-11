@@ -17,7 +17,7 @@ public struct TextMetrics {
 
 public let DEFAULT_FONT_SIZE: Double = 12
 public let DEFAULT_FONT_FAMILY: String = "sans-serif"
-// PORT-TODO: upstream interpolates the numeric `${DEFAULT_FONT_SIZE}` ("12px sans-serif").
+// PORT-NOTE: upstream interpolates the numeric `${DEFAULT_FONT_SIZE}` ("12px sans-serif").
 // DEFAULT_FONT_SIZE is a Double per CONVENTIONS §1; cast to Int for the px string so the
 // value stays byte-identical to upstream ("12px", not "12.0px").
 public let DEFAULT_FONT: String = "\(Int(DEFAULT_FONT_SIZE))px \(DEFAULT_FONT_FAMILY)"
@@ -64,7 +64,7 @@ private let defaultWidthMapStr: String = "007LLmW'55;N0500LLLLLLLLLL00NNNLzWW\\\
 
 private func getTextWidthMap(_ mapStr: String) -> [String: Double] {
     var map: [String: Double] = [:]
-    // PORT-TODO: upstream guards `typeof JSON === 'undefined'` (a legacy/no-JSON runtime
+    // PORT-NOTE: upstream guards `typeof JSON === 'undefined'` (a legacy/no-JSON runtime
     // bailout). JSON is always present in Swift; we take the available branch and drop the
     // early return.
     let codeUnits = Array(mapStr.utf16)
@@ -100,13 +100,13 @@ public final class DefaultPlatformAPI: PlatformAPI {
     public func measureText(_ text: String, _ font: String?) -> TextMetrics {
         if _ctx == nil {
             let canvas = platformApi.createCanvas()
-            // PORT-TODO: upstream `_ctx = canvas && canvas.getContext('2d')`. createCanvas is a
+            // PORT-NOTE: upstream `_ctx = canvas && canvas.getContext('2d')`. createCanvas is a
             // stub returning nil, so `_ctx` stays nil and we always take the fallback below.
             _ = canvas
             _ctx = nil
         }
         if _ctx != nil {
-            // PORT-TODO: real 2d-context measurement (upstream caches `_cachedFont = _ctx.font`
+            // PORT-NOTE: real 2d-context measurement (upstream caches `_cachedFont = _ctx.font`
             // then `return _ctx.measureText(text)`). Unreachable in Phase 0 since `_ctx` is nil.
             _ = _cachedFont
             return TextMetrics(width: 0)
@@ -162,7 +162,7 @@ public final class DefaultPlatformAPI: PlatformAPI {
     }
 
     // Helper mirroring the inline regex extraction in measureText.
-    // PORT-TODO: NSRegularExpression replaces JS RegExp.exec; returns capture group 1 if matched.
+    // PORT-NOTE: NSRegularExpression replaces JS RegExp.exec; returns capture group 1 if matched.
     private func firstCaptureGroup1(pattern: String, in string: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return nil
@@ -180,7 +180,7 @@ public final class DefaultPlatformAPI: PlatformAPI {
 public var platformApi: PlatformAPI = DefaultPlatformAPI()
 
 public func setPlatformAPI(_ newPlatformApis: PlatformAPI) {
-    // PORT-TODO: upstream takes `Partial<Platform>` and merges per-key (only assigning known,
+    // PORT-NOTE: upstream takes `Partial<Platform>` and merges per-key (only assigning known,
     // truthy methods). Swift protocols cannot be partially overridden on an arbitrary type, so
     // we replace the global wholesale. Callers needing a single-method override should subclass
     // DefaultPlatformAPI / forward the methods they do not override.

@@ -119,7 +119,7 @@ open class ParallelSeriesModel: SeriesModel {
         return createSeriesData(nil, self, CreateSeriesDataOpt(
             useEncodeDefaulter: { [weak self] (_ source: Source, _ dimCount: Double) -> OptionEncode in
                 guard let self = self else { return [:] }
-                // PORT-TODO: `makeDefaultEncode` returns `undefined` when no parallel component exists;
+                // PORT-NOTE: `makeDefaultEncode` returns `undefined` when no parallel component exists;
                 //   the ported `EncodeDefaulter` return is non-optional, so the empty encode `[:]` stands
                 //   in for that `undefined` (both leave the encode undefined downstream).
                 return makeDefaultEncode(self) ?? [:]
@@ -133,9 +133,9 @@ open class ParallelSeriesModel: SeriesModel {
      * @return Raw indices
      */
     // upstream: getRawIndicesByActiveState(activeState: ParallelActiveState): number[]
-    // PORT-TODO: depends on `Parallel.eachActiveState` — part of the parallelAxis brush / active-interval
-    //   selection path, which is DEFERRED (see task scope). Body is ported faithfully; `eachActiveState`
-    //   is provided by the coord/parallel track.
+    // PORT-NOTE: uses `Parallel.eachActiveState` (provided by the coord/parallel track — Parallel.swift).
+    //   Body is ported faithfully; without a live parallelAxis brush selection every row resolves to
+    //   'normal'.
     open func getRawIndicesByActiveState(_ activeState: ParallelActiveState) -> [Double] {
         // const coordSys = this.coordinateSystem;
         let coordSys = self.parallelCoordinateSystem
@@ -208,7 +208,7 @@ func makeDefaultEncode(_ seriesModel: ParallelSeriesModel) -> OptionEncode? {
     // const parallelModel = seriesModel.ecModel.getComponent(
     //     'parallel', seriesModel.get('parallelIndex')
     // ) as ParallelModel;
-    // PORT-TODO (CONVENTIONS trap 1): `parallelIndex` is stored as a bare `Int` in defaultOption, so it is
+    // PORT-NOTE (CONVENTIONS trap 1): `parallelIndex` is stored as a bare `Int` in defaultOption, so it is
     //   read through `numOpt` (never a bare `as? Double`, which would silently drop the Int).
     let parallelModel = seriesModel.ecModel?.getComponent(
         "parallel", numOpt(seriesModel.get("parallelIndex"))
@@ -232,7 +232,7 @@ func makeDefaultEncode(_ seriesModel: ParallelSeriesModel) -> OptionEncode? {
 // upstream: function convertDimNameToNumber(dimName: DimensionName): number
 //   return +dimName.replace('dim', '');
 func convertDimNameToNumber(_ dimName: DimensionName) -> Double {
-    // PORT-TODO (CONVENTIONS §5): JS `+"..."` string→number coercion; falls back to 0 on parse failure
+    // PORT-NOTE (CONVENTIONS §5): JS `+"..."` string→number coercion; falls back to 0 on parse failure
     //   (upstream would yield NaN — parallel dim names are always well-formed `dim<N>`, so 0 is unreached).
     return Double(dimName.replacingOccurrences(of: "dim", with: "")) ?? 0
 }

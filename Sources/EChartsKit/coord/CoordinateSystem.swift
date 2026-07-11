@@ -39,7 +39,7 @@ public protocol CoordinateSystemCreator {
     // getDimensionsInfo?: () => DimensionDefinitionLoose[];
     func getDimensionsInfo() -> [DimensionDefinitionLoose]?
 }
-// PORT-TODO: `dimensions` / `getDimensionsInfo` are upstream-optional (`?`). Modeled as protocol
+// PORT-NOTE: `dimensions` / `getDimensionsInfo` are upstream-optional (`?`). Modeled as protocol
 //   requirements with nil-returning defaults so conformers may omit them (see extension below).
 public extension CoordinateSystemCreator {
     var dimensions: [DimensionName]? { nil }
@@ -81,7 +81,7 @@ public protocol CoordinateSystemMaster: AnyObject {
     //     value: Parameters<CoordinateSystem['dataToPoint']>[0],
     //     opt?: unknown
     // ): ReturnType<CoordinateSystem['dataToPoint']> | number | NullUndefined;
-    // PORT-TODO: return `number[] | number | NullUndefined` erased to `Any?` (no Swift union).
+    // PORT-NOTE: return `number[] | number | NullUndefined` erased to `Any?` (no Swift union).
     func convertToPixel(
         _ ecModel: GlobalModel,
         _ finder: ParsedModelFinder,
@@ -116,7 +116,7 @@ public protocol CoordinateSystemMaster: AnyObject {
     //     pixelValue: Parameters<NonNullable<CoordinateSystem['pointToData']>>[0],
     //     opt?: unknown
     // ): ReturnType<NonNullable<CoordinateSystem['pointToData']>> | NullUndefined;
-    // PORT-TODO: return `number | number[] | NullUndefined` erased to `Any?` (no Swift union).
+    // PORT-NOTE: return `number | number[] | NullUndefined` erased to `Any?` (no Swift union).
     func convertFromPixel(
         _ ecModel: GlobalModel,
         _ finder: ParsedModelFinder,
@@ -137,7 +137,7 @@ public protocol CoordinateSystemMaster: AnyObject {
     var axisPointerEnabled: Bool? { get }
 
     // getTooltipAxes?: (dim: DimensionName | 'auto') => {baseAxes: Axis[], otherAxes: Axis[]};
-    // PORT-TODO: `dim: DimensionName | 'auto'` erased to String; anonymous object -> named tuple.
+    // PORT-NOTE: `dim: DimensionName | 'auto'` erased to String; anonymous object -> named tuple.
     func getTooltipAxes(_ dim: DimensionName) -> (baseAxes: [Axis], otherAxes: [Axis])?
 
     /**
@@ -204,7 +204,7 @@ public protocol CoordinateSystem: AnyObject {
     //     opt?: unknown,
     //     out?: number[]
     // ): number[];
-    // PORT-TODO: `out?: number[]` perf out-param dropped, value-returning (CONVENTIONS §3).
+    // PORT-NOTE: `out?: number[]` perf out-param dropped, value-returning (CONVENTIONS §3).
     func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double]
 
     /**
@@ -220,7 +220,7 @@ public protocol CoordinateSystem: AnyObject {
     //     opt?: unknown,
     //     out?: CoordinateSystemDataLayout
     // ): CoordinateSystemDataLayout;
-    // PORT-TODO: `out?` perf out-param dropped, value-returning (CONVENTIONS §3).
+    // PORT-NOTE: `out?` perf out-param dropped, value-returning (CONVENTIONS §3).
     func dataToLayout(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> CoordinateSystemDataLayout?
 
     /**
@@ -239,7 +239,7 @@ public protocol CoordinateSystem: AnyObject {
     //     opt?: unknown,
     //     out?: number | number[]
     // ): number | number[];
-    // PORT-TODO: `out?`/return `number | number[]` erased to `Any?` (no Swift union); out-param dropped.
+    // PORT-NOTE: `out?`/return `number | number[]` erased to `Any?` (no Swift union); out-param dropped.
     func pointToData(_ point: [Double], _ opt: Any?) -> Any?
 
     // @param point Point in global pixel coordinate system.
@@ -262,7 +262,7 @@ public protocol CoordinateSystem: AnyObject {
     func getOtherAxis(_ baseAxis: Axis) -> Axis?
 
     // clampData?: (data: ScaleDataValue[], out?: number[]) => number[];
-    // PORT-TODO: `out?` perf out-param dropped, value-returning (CONVENTIONS §3).
+    // PORT-NOTE: `out?` perf out-param dropped, value-returning (CONVENTIONS §3).
     func clampData(_ data: [ScaleDataValue]) -> [Double]?
 
     // getArea?: (tolerance?: number) => CoordinateSystemClipArea;
@@ -331,7 +331,7 @@ public extension CoordinateSystem {
 // export interface CoordinateSystemHostModel extends ComponentModel {
 //     coordinateSystem?: CoordinateSystemMaster
 // }
-// PORT-TODO: TS `interface extends class ComponentModel`; Swift protocol cannot inherit a class,
+// PORT-NOTE: TS `interface extends class ComponentModel`; Swift protocol cannot inherit a class,
 //   so constrain `Self: ComponentModel` instead (equivalent contract).
 public protocol CoordinateSystemHostModel where Self: ComponentModel {
     var coordinateSystem: CoordinateSystemMaster? { get set }
@@ -354,7 +354,7 @@ public protocol CoordinateSystemClipArea {
 // ): coordSys is T {
 //     return (coordSys.type as unknown as S) === type;
 // }
-// PORT-TODO: TS type-guard (`coordSys is T`) erased; Swift returns a plain Bool. Callers narrow via
+// PORT-NOTE: TS type-guard (`coordSys is T`) erased; Swift returns a plain Bool. Callers narrow via
 //   `as?` at the call site. `type` union `T['type']` modeled as String.
 public func isCoordinateSystemType(_ coordSys: CoordinateSystem, _ type: String) -> Bool {
     return coordSys.type == type
@@ -366,7 +366,7 @@ public func isCoordinateSystemType(_ coordSys: CoordinateSystem, _ type: String)
 //     getViewRect: CoordinateSystem['getViewRect'] // Mandatory (e.g., for heatmap)
 //     // PENDING: also check `getBoundingRect` and `getRoamTransform`?
 // }
-// PORT-TODO: `dimensions: ['lng', 'lat']` tuple-literal type narrowed to `[DimensionName]`.
+// PORT-NOTE: `dimensions: ['lng', 'lat']` tuple-literal type narrowed to `[DimensionName]`.
 public protocol GeoLikeCoordSys: CoordinateSystem {
     // getViewRect: CoordinateSystem['getViewRect'] // Mandatory (e.g., for heatmap)
     func getViewRect() -> BoundingRect?

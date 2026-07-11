@@ -25,7 +25,7 @@ import ZRenderKit
 //   import {circularLayout} from './circularLayoutHelper';           -> sibling (circularLayoutHelper.swift).
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import GraphSeriesModel, { SERIES_TYPE_GRAPH } from './GraphSeries';
-//       -> GraphSeriesModel / SERIES_TYPE_GRAPH (PORT-TODO: chart/graph/GraphSeries.ts not ported yet).
+//       -> GraphSeriesModel / SERIES_TYPE_GRAPH (chart/graph/GraphSeries.swift).
 //   import { createSimpleOverallStageHandler } from '../../util/model'; -> `model.createSimpleOverallStageHandler`.
 
 // upstream:
@@ -40,7 +40,7 @@ public let graphCircularLayoutStageHandler = model.createSimpleOverallStageHandl
 
 // The third graph layout — iterative physics (`layout: 'force'`) — is ported in the siblings
 // `forceLayout.swift` (+ `forceHelper.swift`): `graphForceLayoutStageHandler`. It settles the
-// simulation synchronously for the static render (the live per-frame tick is a PORT-TODO there).
+// simulation synchronously for the static render (the live per-frame tick is a PORT-NOTE there).
 
 // Exposed for the driver to call directly, matching upstream's module-private
 // `function graphCircularLayout(ecModel)`.

@@ -11,17 +11,17 @@ import XCTest
 // jest → XCTest (per task brief): describe/it → XCTestCase/test_ methods; toEqual/toBe →
 //   XCTAssertEqual; the two Promise-based async `it`s → XCTestExpectation.
 //
-// ── STUBBED-SURFACE NOTE (drives the skips below) ────────────────────────────────────────────
+// ── SUB-BAG NOTE ─────────────────────────────────────────────────────────────────────────────
 // The animate target's keyed get/set is routed through `AnimationTarget` (Animator.swift). The
-// base `Element` exposes only its primary/Transformable props (x/y/rotation/scale/…) via
+// base `Element` exposes its primary/Transformable props (x/y/rotation/scale/…) via
 // `animationGet`/`animationSet`; the `shape` and `style` SUB-BAGS are value-type structs on
-// Path/Displayable and are NOT yet exposed through `AnimationTarget` (documented PORT-TODO in
-// Element.swift `_getKnownKV`: "Displayable/Path would override these to expose the value-type
-// style/shape bags (deferred)"). Consequently `animateTo({shape:{…}})` / `animateTo({style:{…}})`
-// can neither read an initial sub-value nor write the interpolated/final sub-value: the produced
-// `shape`/`style` track is inert (empty), so any assertion that reads back an animated
-// `shape.*`/`style.*` is `throw XCTSkip(...)`-ed. Assertions over primary props (x, y) and over
-// the *animator count / callback* surface DO run, because those paths are fully wired.
+// Path/Displayable and are now ALSO exposed through `AnimationTarget` (Displayable/Path override
+// `animationGet`/`animationSet` — see the Element.swift `_getKnownKV` PORT-NOTE and Path.swift /
+// Displayable.swift). So `animateTo({shape:{…}})` / `animateTo({style:{…}})` reads an initial
+// sub-value and writes the interpolated/final sub-value. Assertions over primary props (x, y), the
+// shape/style sub-bags, and the animator count / callback surface all run; the one remaining skip
+// (Original_reference) is for a DIFFERENT reason — JS array reference identity, inexpressible on a
+// value-type shape — not the sub-bag.
 final class ElementAnimationUnitTests: XCTestCase {
 
     // upstream: it('Undefined value should not be animated.')

@@ -42,7 +42,8 @@ import ZRenderKit
 //   - the enter/update/leave group DIFF (`data.diff`) — the group is rebuilt from scratch each render
 //     (same deviation as ScatterView/BarView), and `diffGroupChildren` / DataDiffer child-diff.
 //   - emphasis/blur/select STATES: `updateElOnState` / `setDefaultStateProxy` / `toggleHoverEmphasis`
-//     / `retrieveStateOption` state application (util/states not ported).
+//     are now ported (util/states is present). Still DEFERRED: the per-state application loop that
+//     CALLS `updateElOnState` (the `for (STATES)` walk + `retrieveStateOption`) — see its PORT-TODO.
 //   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
 //   - the legacy ec4 style compat (`convertFromEC4CompatibleStyle` / `isEC4CompatibleStyle` /
 //     `convertToEC4StyleForCustomSerise`) and the deprecated `api.style` / `api.styleEmphasis`.
@@ -54,9 +55,10 @@ import ZRenderKit
 //       from 'zrender/src/core/util';                                -> `util.*` (ZRenderKit).
 //   import * as graphicUtil from '../../util/graphic';               -> concrete ZRenderKit shapes;
 //       `graphicUtil.makePath` / `getShapeClass` NOT ported (see `createEl`).
-//   import { setDefaultStateProxy, toggleHoverEmphasis } from '../../util/states';  -> DEFERRED (states).
-//   import * as labelStyleHelper from '../../label/labelStyle';      -> DEFERRED (label/labelStyle not ported).
-//   import { getDefaultLabel } from '../helper/labelHelper';         -> DEFERRED (labelHelper not ported).
+//   import { setDefaultStateProxy, toggleHoverEmphasis } from '../../util/states';  -> `states.*`
+//       (util/states.swift); both wired (updateElOnState + doCreateOrUpdateElOnDataIndex).
+//   import * as labelStyleHelper from '../../label/labelStyle';      -> `labelStyle` (label/labelStyle.swift); getFont wired in `font`.
+//   import { getDefaultLabel } from '../helper/labelHelper';         -> `labelHelper.getDefaultLabel` (label/labelHelper.swift).
 //   import { ...computeBarLayoutForCustomSeries } from '../../layout/barGrid';  -> layout/barGrid.swift.
 //   import DataDiffer from '../../data/DataDiffer';                  -> DEFERRED (child diff).
 //   import Model from '../../model/Model';                           -> `Model`.
@@ -440,8 +442,10 @@ private func createEl(_ elOption: [String: Any]) -> Element {
 
     // Compat ec4: the default z2 lift is 1.
     // upstream: (el as ECElement).z2EmphasisLift = 1; (el as ECElement).z2SelectLift = 1;
-    // PORT-TODO: `ECElement` is a not-yet-conformed protocol on `Element` (util/types.swift); the
-    //   emphasis/select z2 lift is a states concern (DEFERRED) — skipped.
+    // PORT-NOTE: `ECElement` (util/types.swift) is ported and the states z2-lift machinery works
+    //   (util/states.swift stores z2EmphasisLift/z2SelectLift on the el's HighDownInner). Element does
+    //   not directly conform to `ECElement`, so this ec4-compat default lift of 1 is not written here;
+    //   the default Z2_EMPHASIS_LIFT applies instead.
 
     return el
 }
@@ -623,7 +627,8 @@ private func applyStyle(_ el: Element, _ s: [String: Any]) {
 }
 
 // upstream: function updateElOnState(state, el, elStateOpt, styleOpt, attachedTxInfo): void
-//   DEFERRED — emphasis/blur/select STATES (ensureState / setDefaultStateProxy) not ported.
+//   Ported from util/states (ensureState / getState / setDefaultStateProxy — all present in
+//   ZRenderKit.Element + util/states.swift). `elStateOpt` mirrors upstream: it is not read here.
 private func updateElOnState(
     _ state: String,
     _ el: Element,
@@ -631,9 +636,32 @@ private func updateElOnState(
     _ styleOpt: Any?,
     _ attachedTxInfo: AttachedTxInfo?
 ) {
-    // PORT-TODO: states (util/states) not ported — the whole per-state style/textConfig application
-    //   and `setDefaultStateProxy` is deferred. No-op.
-    _ = (state, el, elStateOpt, styleOpt, attachedTxInfo)
+    // upstream: const elDisplayable = el.isGroup ? null : el as Displayable;
+    let elDisplayable = el.isGroup ? nil : (el as? Displayable)
+    // upstream: const txCfgOpt = attachedTxInfo && attachedTxInfo[state].cfg;
+    let txCfgOpt = attachedTxInfo?[state].cfg
+
+    if let elDisplayable = elDisplayable {
+        // By default support auto lift color when hover whether `emphasis` specified.
+        let stateObj = elDisplayable.ensureState(state)
+        // upstream: if (styleOpt === false) { const existing = getState(state); existing && (existing.style = null) }
+        //   else { stateObj.style = styleOpt || null }  — `styleOpt === false` removes the hover style.
+        if let styleFalse = styleOpt as? Bool, styleFalse == false {
+            if let existingEmphasisState = elDisplayable.getState(state) {
+                existingEmphasisState.style = nil
+            }
+        }
+        else {
+            // style is needed to enable default emphasis.
+            stateObj.style = styleOpt as? [String: Any]
+        }
+        // upstream: if (txCfgOpt) stateObj.textConfig = txCfgOpt;
+        if let txCfgOpt = txCfgOpt {
+            stateObj.textConfig = txCfgOpt
+        }
+        states.setDefaultStateProxy(elDisplayable)
+    }
+    _ = elStateOpt
 }
 
 // upstream: function updateZ(el, elOption, seriesModel): void
@@ -691,8 +719,9 @@ private func makeRenderItem(
         // upstream DEV assert: renderItem present + coordSys supports custom.
         // upstream: prepareResult = coordSys.prepareCustoms ? coordSys.prepareCustoms(coordSys)
         //             : prepareCustoms[coordSys.type](coordSys);
-        // PORT-TODO: `coordSys.prepareCustoms` (external coord systems like bmap) not modeled; the
-        //   built-in dispatch is used.
+        // PORT-NOTE: `coordSys.prepareCustoms` is modeled (a property on CoordinateSystem), but this
+        //   call site still only uses the built-in dispatch and does not yet consult the coordSys
+        //   override (relevant to external systems like bmap).
         if let r = prepareCustoms(coordSys) {
             prepareResult = r
         }
@@ -907,10 +936,14 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     }
 
     // upstream: function font(opt) { return labelStyleHelper.getFont(opt, ecModel); }
-    //   DEFERRED — label/labelStyle.getFont (the free helper) not ported.
     func font(_ opt: [String: Any]?) -> String {
-        // PORT-TODO: labelStyleHelper.getFont(opt, ecModel) not ported.
-        return ""
+        let fontOpt = labelStyle.GetFontOpt(
+            fontStyle: opt?["fontStyle"],
+            fontWeight: opt?["fontWeight"],
+            fontSize: opt?["fontSize"],
+            fontFamily: opt?["fontFamily"]
+        )
+        return labelStyle.getFont(fontOpt, ecModel)
     }
 }
 
@@ -965,10 +998,15 @@ private func createOrUpdateItem(
     let el = doCreateOrUpdateEl(api, existsEl, dataIndex, elOption!, seriesModel, group)
     if let el = el {
         data.setItemGraphicEl(dataIndex, el)
-    }
 
-    // upstream: el && toggleHoverEmphasis(el, elOption.focus, elOption.blurScope, elOption.emphasisDisabled);
-    // PORT-TODO: `toggleHoverEmphasis` (util/states) DEFERRED — emphasis/blur wiring skipped.
+        // upstream: el && toggleHoverEmphasis(el, elOption.focus, elOption.blurScope, elOption.emphasisDisabled);
+        //   Ported (util/states.toggleHoverEmphasis); mirrors BarView's coercion of the option-bag
+        //   entries to the states API types. `elOption` is guaranteed non-nil past the guard above.
+        let focus: InnerFocus? = elOption!["focus"]
+        let blurScope = (elOption!["blurScope"] as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (elOption!["emphasisDisabled"] as? Bool) ?? false
+        states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
+    }
 
     return el
 }

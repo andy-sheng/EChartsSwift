@@ -27,7 +27,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import GraphSeriesModel, { SERIES_TYPE_GRAPH } from './GraphSeries';
-//       -> GraphSeriesModel / SERIES_TYPE_GRAPH (PORT-TODO: chart/graph/GraphSeries.ts not ported yet).
+//       -> GraphSeriesModel / SERIES_TYPE_GRAPH (chart/graph/GraphSeries.swift).
 //   import { createSimpleOverallStageHandler } from '../../util/model'; -> `model.createSimpleOverallStageHandler`.
 
 // upstream:

@@ -28,7 +28,7 @@ import ZRenderKit
 //   import { PathProps, PathStyleProps } from 'zrender/src/graphic/Path';      -> ZRenderKit (type-only).
 //   import { ZRenderType } from 'zrender/src/zrender';                   -> `Any?` (getZr() return; ZRenderType facade).
 //   import { BarGridLayoutOptionForCustomSeries, BarGridLayoutResultForCustomSeries } from '../../layout/barGrid';
-//       -> PORT-TODO: layout/barGrid custom-series layout types NOT ported (`barLayout` API deferred, typed `Any`).
+//       -> PORT-NOTE: layout/barGrid.swift is ported (BarGridLayoutOptionForCustomSeries / ...Result); the `barLayout` API here is still typed `Any`.
 //   import { ...many... } from '../../util/types';                        -> util/types.swift (type-only; the dynamic
 //       option tree is the `[String: Any]` bag per CONVENTIONS §2).
 //   import Element from 'zrender/src/Element';                            -> ZRenderKit.Element.
@@ -224,7 +224,7 @@ public protocol CustomSeriesRenderItemAPI: CustomSeriesRenderItemCoordinateSyste
     // NOTE: Not using Pick<ExtensionAPI> here because we don't want to bundle ExtensionAPI into the d.ts
     func getWidth() -> Double
     func getHeight() -> Double
-    // getZr(): ZRenderType  -> PORT-TODO: ZRenderType facade typed `Any?`.
+    // getZr(): ZRenderType  -> PORT-NOTE: ZRenderType facade typed `Any?`.
     func getZr() -> Any?
     func getDevicePixelRatio() -> Double
 
@@ -242,7 +242,7 @@ public protocol CustomSeriesRenderItemAPI: CustomSeriesRenderItemCoordinateSyste
     func visual(_ visualType: String, _ dataIndexInside: Double?) -> Any?
 
     // barLayout(opt: BarGridLayoutOptionForCustomSeries): BarGridLayoutResultForCustomSeries;
-    //   PORT-TODO: layout/barGrid custom types NOT ported; opt/result typed `Any`.
+    //   PORT-NOTE: layout/barGrid custom types are ported (barGrid.swift); opt/result kept `Any` here.
     func barLayout(_ opt: Any?) -> Any?
 
     // currentSeriesIndices(): number[];

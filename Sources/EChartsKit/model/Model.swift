@@ -19,7 +19,7 @@
 */
 
 import ZRenderKit
-// import env from 'zrender/src/core/env';                      -> ZRenderKit `env` (module-internal; see isAnimationEnabled PORT-TODO)
+// import env from 'zrender/src/core/env';                      -> ZRenderKit `env` (module-internal; see isAnimationEnabled PORT-NOTE)
 // import {
 //     enableClassExtend, ExtendableConstructor,
 //     enableClassCheck, CheckableConstructor
@@ -41,7 +41,7 @@ import ZRenderKit
 //     ? (R extends keyof Opt ? Opt[R] : ModelOption)
 //     : ModelOption;
 
-// PORT-TODO: upstream is generic `Model<Opt = ModelOption>` and uses declaration merging
+// PORT-NOTE: upstream is generic `Model<Opt = ModelOption>` and uses declaration merging
 //   (`interface Model extends LineStyleMixin, ItemStyleMixin, TextStyleMixin, AreaStyleMixin {}`)
 //   plus runtime `mixin(Model, ...)` to graft the four style mixins onto the class. Per
 //   CONVENTIONS §2 the generic is dropped (`Opt` -> the dynamic `ModelOption` = `Any` bag) and
@@ -74,7 +74,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     public var ecModel: GlobalModel?
 
     // TODO Opt should only be object.
-    // PORT-TODO: upstream `option: Opt` (Opt = ModelOption = Dictionary<any> | any[] | string |
+    // PORT-NOTE: upstream `option: Opt` (Opt = ModelOption = Dictionary<any> | any[] | string |
     //   number | boolean | function). The dynamic option tree is modeled as the `Any?` bag
     //   (CONVENTIONS): keyed access casts to `[String: Any]` in `getShallow`/`_doGet`.
     public var option: ModelOption?
@@ -95,7 +95,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
         // }
     }
 
-    // PORT-TODO: upstream has an overridable lifecycle method literally named `init` (distinct
+    // PORT-NOTE: upstream has an overridable lifecycle method literally named `init` (distinct
     //   from the JS constructor above), which subclasses (ComponentModel/SeriesModel) override.
     //   Swift reserves `init` for initializers, so the method keeps the upstream name via a
     //   backtick-escaped identifier; subclasses override `` `init` ``.
@@ -121,7 +121,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     // return type have to be ModelOption or can be Option<R>?
     // (Is there any chance that parentModel value type is different?)
     //
-    // PORT-TODO: the upstream `get<R extends keyof Opt>(...)` overload chain (1–3 level keyed
+    // PORT-NOTE: the upstream `get<R extends keyof Opt>(...)` overload chain (1–3 level keyed
     //   type-narrowing) collapses, with the generic, to the `path: string | readonly string[]`
     //   signature returning `ModelOption`. Modeled as two overloads (String / [String]) plus a
     //   no-arg form for the `path == null` branch, so call sites stay byte-identical.
@@ -163,7 +163,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
 
     // TODO At most 3 depth?
     //
-    // PORT-TODO: the upstream `getModel<R extends keyof Opt>(...)` overload chain collapses, with
+    // PORT-NOTE: the upstream `getModel<R extends keyof Opt>(...)` overload chain collapses, with
     //   the generic dropped, to `getModel(path?: string | readonly string[], parentModel?: Model)`.
     //   Modeled as a String convenience + the `[String]?` core (the latter also covers the
     //   `path == null` form).
@@ -314,7 +314,7 @@ private func modelOptionTruthy(_ value: ModelOption?) -> Bool {
 // mixin(Model, AreaStyleMixin);
 // mixin(Model, TextStyleMixin);
 //
-// PORT-TODO: the module-level `enableClassExtend`/`enableClassCheck`/`mixin` calls run at TS
+// PORT-NOTE: the module-level `enableClassExtend`/`enableClassCheck`/`mixin` calls run at TS
 //   module-load time. Swift library modules have no load-time execution, and:
 //     - `clazz.enableClassExtend`/`clazz.enableClassCheck` are no-ops (native subclassing +
 //       `is`/`as?` replace the prototype `extend`/`isInstance` machinery — see util/clazz.swift);

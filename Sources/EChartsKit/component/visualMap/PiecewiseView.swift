@@ -28,9 +28,9 @@ import ZRenderKit
 //   import {createSymbol} from '../../util/symbol';                  → `symbol.createSymbol` (util/symbol.swift).
 //   import * as layout from '../../util/layout';                     → `layout.box` (util/layout.swift).
 //   import * as helper from './helper';
-//     → PORT-TODO: `visualMap/helper` NOT ported. `helper.getItemAlign` reproduced in ContinuousView.swift
-//        (module-internal `getItemAlign`); `helper.ItemAlign` collapses to `String`;
-//        `helper.makeHighDownBatch` is DEFERRED (hover-link interaction).
+//     → `visualMap/helper` -> visualMapHelper.swift (reference source). `helper.getItemAlign` and
+//        `helper.makeHighDownBatch` are reproduced (module-internal) and used live in ContinuousView.swift;
+//        `helper.ItemAlign` collapses to `String`.
 //   import type PiecewiseModel from './PiecewiseModel';
 //     → `PiecewiseModel` (component/visualMap/PiecewiseModel.swift). Surface consumed here:
 //        `getPieceList() -> [[String: Any]]`, `getRepresentValue(_ piece: [String: Any]) -> Any?`,
@@ -310,7 +310,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
     ) -> Path {
         // const itemSymbol = createSymbol(getControllerVisual(representValue, 'symbol'), x, y, w, h,
         //   getControllerVisual(representValue, 'color'));
-        // PORT-TODO: upstream passes `getControllerVisual(...,'symbol') as string` directly; when the
+        // PORT-NOTE: upstream passes `getControllerVisual(...,'symbol') as string` directly; when the
         //   symbol mapping yields no value we default to 'roundRect' (createSymbol requires a non-nil type).
         let symbolType = (self.getControllerVisual(representValue, "symbol") as? String) ?? "roundRect"
         let color = ZRenderKit.ZRColor.string(colorToString(self.getControllerVisual(representValue, "color")))
@@ -320,7 +320,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
             color
         )
         // itemSymbol.silent = silent;
-        // PORT-TODO: `ECSymbol` surfaces as a concrete `Path` (SymbolPath); set silent through it (same
+        // PORT-NOTE: `ECSymbol` surfaces as a concrete `Path` (SymbolPath); set silent through it (same
         //   seam as LegendView.getDefaultLegendIcon).
         let itemSymbolPath = itemSymbol as! Path
         itemSymbolPath.silent = silent

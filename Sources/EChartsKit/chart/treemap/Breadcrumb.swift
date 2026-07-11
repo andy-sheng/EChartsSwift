@@ -37,10 +37,10 @@ import ZRenderKit
 //   import Model from '../../model/Model';                          -> `Model`.
 //   import { convertOptionIdName } from '../../util/model';         -> `model.convertOptionIdName`.
 //   import { toggleHoverEmphasis, Z2_EMPHASIS_LIFT } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (hover emphasis DEFERRED). `Z2_EMPHASIS_LIFT` (== 10) inlined.
+//       -> `states.toggleHoverEmphasis` / `states.Z2_EMPHASIS_LIFT` (util/states.swift). APPLIED below.
+//          A local `Z2_EMPHASIS_LIFT` (== 10) mirror is kept for the z2 computation.
 //   import { createTextStyle } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported. A MINIMAL `createTextStyle` (text/font/fill) is
-//          defined at the bottom of this file (installTitle.swift convention).
+//       -> `labelStyle.createTextStyle` (label/labelStyle.swift), wired directly at the draw site.
 
 // const TEXT_PADDING = 8;
 private let TEXT_PADDING: Double = 8
@@ -49,7 +49,7 @@ private let ITEM_GAP: Double = 8
 // const ARRAY_LENGTH = 5;
 private let ARRAY_LENGTH: Double = 5
 
-// PORT-TODO: util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
+// Local mirror of `states.Z2_EMPHASIS_LIFT` (== 10, util/states.swift) for the z2 computation below.
 private let Z2_EMPHASIS_LIFT: Double = 10
 
 // interface OnSelectCallback { (node: TreeNode, e: ZRElementEvent): void }
@@ -196,8 +196,7 @@ open class Breadcrumb {
         // const renderList = layoutParam.renderList;
         let renderList = layoutParam.renderList
         // const emphasisItemStyle = emphasisModel.getModel('itemStyle').getItemStyle();
-        // PORT-TODO: consumed only by the deferred `el.ensureState('emphasis').style` (states not ported).
-        _ = emphasisModel.getModel("itemStyle").getItemStyle()
+        let emphasisItemStyle = emphasisModel.getModel("itemStyle").getItemStyle()
 
         // for (let i = renderList.length - 1; i >= 0; i--) { ... }
         var i = renderList.count - 1
@@ -233,7 +232,9 @@ open class Breadcrumb {
 
             // textContent: new graphic.Text({ style: createTextStyle(textStyleModel, { text }) })
             let textEl = ZRText()
-            textEl.useStyle(createTextStyle(textStyleModel, text))
+            var textSpecified = TextStyleProps()
+            textSpecified.text = text
+            textEl.useStyle(labelStyle.createTextStyle(textStyleModel, textSpecified, nil, nil, nil))
             el.setTextContent(textEl)
             // textConfig: { position: 'inside' }
             var textConfig = ElementTextConfig()
@@ -246,12 +247,25 @@ open class Breadcrumb {
             // PORT-TODO: onclick (curry(onSelect, itemNode)) DEFERRED — events not ported.
             _ = onSelect
 
-            // (el as ECElement).disableLabelAnimation = true;  -> DEFERRED (animation not ported).
+            // (el as ECElement).disableLabelAnimation = true;
+            // PORT-TODO: disableLabelAnimation (ECElement label-animation flag) DEFERRED — label
+            //   animation not ported (matches sibling views SankeyView / MapView / GeoView).
+
             // el.getTextContent().ensureState('emphasis').style = createTextStyle(emphasisTextStyleModel, {text});
+            //   textEl is the textContent created above; the emphasis text style is stored on ZRText's
+            //   typed per-state `textStyle` side-channel (ElementState.textStyle), mirroring labelStyle.swift.
+            var emphasisTextSpecified = TextStyleProps()
+            emphasisTextSpecified.text = text
+            textEl.ensureState("emphasis").textStyle = labelStyle.createTextStyle(
+                emphasisTextStyleModel, emphasisTextSpecified, nil, nil, nil
+            )
             // el.ensureState('emphasis').style = emphasisItemStyle;
+            el.ensureState("emphasis").style = emphasisItemStyle
             // toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
-            // PORT-TODO: emphasis states + toggleHoverEmphasis DEFERRED (util/states not ported).
-            _ = emphasisTextStyleModel
+            let focus: InnerFocus? = emphasisModel.get("focus")
+            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+            states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
 
             // this.group.add(el);
             _ = self.group.add(el)
@@ -315,17 +329,6 @@ private func packEventData(_ el: Element, _ seriesModel: TreemapSeriesModel, _ i
         // treePathInfo: itemNode && wrapTreePathInfo(itemNode, seriesModel)
         // PORT-TODO: treeHelper.wrapTreePathInfo NOT ported (tree path info for tooltip/event DEFERRED).
     ]
-}
-
-// PORT-TODO: minimal faithful reproduction of `label/labelStyle.createTextStyle(textStyleModel, {text})`.
-//   Only text/font/fill are populated (the full rich-text/state path lives in labelStyle.ts). Delete once
-//   label/labelStyle.swift lands. (installTitle.swift convention.)
-private func createTextStyle(_ textStyleModel: Model, _ text: String?) -> TextStyleProps {
-    var style = TextStyleProps()
-    style.text = text
-    style.font = textStyleModel.getFont()
-    style.fill = textStyleModel.get("color") as? String
-    return style
 }
 
 // export default Breadcrumb;  -> `open class Breadcrumb` above.

@@ -13,7 +13,7 @@ import Foundation
 public enum subPixelOptimizeNS {
 
     // const round = Math.round;
-    // PORT-TODO: JS `Math.round` rounds half toward +Infinity (Math.round(2.5)===3,
+    // PORT-NOTE: JS `Math.round` rounds half toward +Infinity (Math.round(2.5)===3,
     //   Math.round(-2.5)===-2). Replicate with `floor(x + 0.5)` (CONVENTIONS §5).
     static func round(_ x: Double) -> Double {
         return floor(x + 0.5)

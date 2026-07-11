@@ -22,17 +22,17 @@
 //   import { getPrecision, round, nice, quantityExponent, mathPow, mathMax, mathRound,
 //            mathLog, mathAbs, mathFloor, mathCeil } from '../util/number';
 //       -> sibling number.swift caseless enum `number` (qualified `number.*` at use sites).
-//   import type IntervalScale from './Interval';   -> placeholder below (PORT-TODO)
-//   import type LogScale from './Log';             -> placeholder below (PORT-TODO)
-//   import type Scale from './Scale';              -> placeholder below (PORT-TODO)
-//   import type TimeScale from './Time';           -> placeholder below (PORT-TODO)
+//   import type IntervalScale from './Interval';   -> real scale/Interval.swift; subtype import dropped (TS type-predicate only, see below)
+//   import type LogScale from './Log';             -> real scale/LogScale.swift; subtype import dropped (see below)
+//   import type Scale from './Scale';              -> real scale/Scale.swift
+//   import type TimeScale from './Time';           -> real scale/TimeScale.swift; subtype import dropped (see below)
 //   import { NullUndefined, ScaleTick } from '../util/types';
 //       -> NullUndefined collapses to Optional (CONVENTIONS §6); ScaleTick from sibling types.swift.
-//   import type OrdinalScale from './Ordinal';     -> placeholder below (PORT-TODO)
+//   import type OrdinalScale from './Ordinal';     -> real scale/Ordinal.swift; subtype import dropped (see below)
 //   import { ScaleExtentFixMinMax, ScaleRawExtentResultFinal } from '../coord/scaleRawExtentInfo';
-//       -> placeholders below (PORT-TODO)
+//       -> real coord/scaleRawExtentInfo.swift (see below)
 //   import { isValidNumberForExtent } from '../util/model';   -> sibling model.swift (`model.*`)
-//   import { getScaleExtentForTickUnsafe } from './scaleMapper';   -> placeholder below (PORT-TODO)
+//   import { getScaleExtentForTickUnsafe } from './scaleMapper';   -> real scale/scaleMapper.swift (see below)
 
 // `Scale` (abstract base), `IntervalScale`, `LogScale`, `TimeScale` are imported by upstream only
 // for the TS type-predicate return types of `is*Scale` (e.g. `scale is IntervalScale`). Swift cannot
@@ -40,12 +40,11 @@
 // `Scale` class from sibling `scale/Scale.swift`; the subtype imports are therefore dropped.
 
 // ============================================================================
-// PORT-TODO: FORWARD-REFERENCE PLACEHOLDERS
-// Upstream `scale/helper.ts` imports these from sibling files that are being
-// ported by other agents this phase but are not yet present. They are declared
-// here as minimal placeholders so this file compiles. The agent that ports the
-// corresponding source file MUST remove the placeholder here and replace it
-// with the real, fully-ported type/API.
+// PORT-NOTE: FORWARD-REFERENCE PLACEHOLDERS — ALL RESOLVED
+// Upstream `scale/helper.ts` imports these from sibling files that, at the time
+// this file was first ported, were still in flight. Those siblings have all landed,
+// so the placeholders were removed and calls now resolve to the real types/APIs
+// (see the per-symbol notes below).
 // ============================================================================
 
 // './Ordinal' — OrdinalScale: real `final class OrdinalScale` now ported in scale/Ordinal.swift

@@ -100,12 +100,12 @@ public func visualMapPreprocessor(_ option: inout ECUnitOption) {
         //         });
         //     }
         // }
-        // PORT-TODO: dev-only (`__DEV__`) validation warnings preserved above; not executed in the port.
+        // PORT-NOTE: dev-only (`__DEV__`) validation warnings preserved above; not executed in the port.
 
         visualMapArr[i] = opt
     }
 
-    // value-type writeback (see the top-of-function PORT-TODO).
+    // value-type writeback (see the top-of-function PORT-NOTE).
     option["visualMap"] = visualMapArr
 }
 

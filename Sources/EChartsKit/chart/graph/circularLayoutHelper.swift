@@ -25,15 +25,15 @@ import ZRenderKit
 //   import * as vec2 from 'zrender/src/core/vector';                 -> `vector.*` (ZRenderKit).
 //   import {getSymbolSize, getNodeGlobalScale} from './graphHelper';
 //       -> `graphHelper.getSymbolSize` / `graphHelper.getNodeGlobalScale`
-//          (PORT-TODO: chart/graph/graphHelper.ts not ported yet).
+//          (chart/graph/graphHelper.swift).
 //   import GraphSeriesModel, { GraphEdgeItemOption, GraphNodeItemOption } from './GraphSeries';
-//       -> GraphSeriesModel (PORT-TODO: chart/graph/GraphSeries.ts not ported yet).
-//   import Graph, { GraphNode } from '../../data/Graph';             -> Graph / GraphNode (PORT-TODO: data/Graph.ts not ported yet).
-//   import Symbol from '../helper/Symbol';                           -> Symbol (PORT-TODO: chart/helper/Symbol.ts not ported yet).
+//       -> GraphSeriesModel (chart/graph/GraphSeries.swift).
+//   import Graph, { GraphNode } from '../../data/Graph';             -> Graph / GraphNode (data/Graph.swift).
+//   import Symbol from '../helper/Symbol';                           -> Symbol (chart/helper/SymbolElement.swift, class Symbol).
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util.*` (ZRenderKit).
 //   import {getCurvenessForEdge} from '../helper/multipleGraphEdgeHelper';
-//       -> `multipleGraphEdgeHelper.getCurvenessForEdge` (PORT-TODO: chart/helper/multipleGraphEdgeHelper.ts not ported yet).
+//       -> `multipleGraphEdgeHelper.getCurvenessForEdge` (chart/helper/multipleGraphEdgeHelper.swift).
 
 // const PI = Math.PI;
 private let PI = Double.pi
@@ -239,9 +239,10 @@ public func rotateNodeLabel(
 ) {
     // const el = node.getGraphicEl() as Symbol;
     // need to check if el exists. '-' value may not create node element.
-    // PORT-TODO: upstream casts the graphic el to `Symbol` (chart/helper/Symbol.ts not ported yet) and
+    // PORT-NOTE: upstream casts the graphic el to `Symbol` (chart/helper/SymbolElement.swift, now ported) and
     // drives `el.getSymbolPath().setTextConfig(...)` / its emphasis state. Below we port the label-angle
-    // math faithfully but cannot apply it to the (unported) symbol path — apply once Symbol lands.
+    // math faithfully; applying it via `symbolPath.setTextConfig(...)` / the emphasis state is still
+    // stubbed (see the per-line PORT-TODO markers further down).
     guard node.getGraphicEl() != nil else {
         return
     }

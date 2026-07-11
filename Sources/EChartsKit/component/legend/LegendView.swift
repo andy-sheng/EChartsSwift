@@ -32,13 +32,15 @@ import ZRenderKit
 //        are the ZRenderKit scene-graph types `Group` / `ZRText` / `Rect` (used directly).
 //        `graphic.setTooltipConfig` is deferred (interaction — PORT-TODO in `_createItem`).
 //   import { enableHoverEmphasis } from '../../util/states';
-//     -> PORT-TODO: `util/states` (emphasis/blur) NOT ported — DEFERRED interaction (task: STATIC RENDER
-//        ONLY). Every `enableHoverEmphasis(...)` call is a documented no-op below.
+//     -> `states.enableHoverEmphasis` (util/states.swift; ported). Wired at both upstream call sites
+//        (`_createSelector` selector label + `_createItem` item group), each with the single-arg form
+//        matching upstream (no focus/blurScope passed by legend).
 //   import {setLabelStyle, createTextStyle} from '../../label/labelStyle';
 //     -> `createTextStyle` reuses the module-internal `createTextStyle(_ textStyleModel, text:, fill:,
 //        align:, verticalAlign:)` (AxisBuilder.swift) — a faithful minimal reproduction of
 //        `label/labelStyle.createTextStyle` (its `{inheritColor}` opt / rich-text path are out of
-//        static-render scope). `setLabelStyle` (selector labels) is DEFERRED — PORT-TODO in `_createSelector`.
+//        static-render scope). `setLabelStyle` (selector labels) -> `label/labelStyle.setLabelStyle`
+//        (ported; wired in `_createSelector`).
 //   import {makeBackground} from '../helper/listComponent';
 //     -> PORT-TODO: `component/helper/listComponent` NOT ported. A faithful minimal `makeBackground`
 //        lives at the bottom of this file (delete once component/helper/listComponent.swift lands).
@@ -63,7 +65,7 @@ import ZRenderKit
 //     -> PORT-TODO: `util/decal` NOT ported — decal pattern from option deferred (PORT-TODO in `getLegendStyle`).
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData` (event wiring — deferred).
 //   import tokens from '../../visual/tokens';
-//     -> PORT-TODO: `visual/tokens.ts` NOT ported; `tokens.color.neutral00` inlined verbatim as '#fff'
+//     -> `visual/tokens.swift` is ported; `tokens.color.neutral00` still inlined verbatim as '#fff'
 //        (same deviation as symbol.swift / axisDefault.swift).
 //   import Element from 'zrender/src/Element';                       -> ZRenderKit `Element`.
 
@@ -433,23 +435,23 @@ open class LegendView: ComponentView {
             _ = selectorGroup.add(labelText)
 
             let labelModel = legendModel.getModel("selectorLabel")
-            _ = legendModel.getModel(["emphasis", "selectorLabel"])
+            let emphasisLabelModel = legendModel.getModel(["emphasis", "selectorLabel"])
 
             // setLabelStyle(labelText, {normal: labelModel, emphasis: emphasisLabelModel},
             //   { defaultText: selectorItem.title });
-            // PORT-TODO: DEFERRED — `label/labelStyle.setLabelStyle` (normal/emphasis state + rich text)
-            //   NOT ported. Reproduce the visible normal-state text so the selector geometry is meaningful.
-            var s = labelText.textStyle ?? TextStyleProps()
-            s.text = selectorItem["title"] as? String
-            s.font = labelModel.getFont()
-            s.fill = labelModel.getTextColor()
-            s.align = .center
-            s.verticalAlign = .middle
-            labelText.textStyle = s
-            labelText.dirtyStyle()
+            //   -> `label/labelStyle.setLabelStyle` (ported). labelStatesModels is built inline from the
+            //      {normal, emphasis} selectorLabel models (mirrors upstream's literal, not
+            //      getLabelStatesModels). x/y on the ZRText are preserved by setLabelStyle.
+            var labelOpt = SetLabelStyleOpt()
+            labelOpt.defaultText = selectorItem["title"]
+            labelStyle.setLabelStyle(
+                labelText,
+                [.normal: labelModel, .emphasis: emphasisLabelModel],
+                labelOpt
+            )
 
             // enableHoverEmphasis(labelText);
-            // PORT-TODO: DEFERRED — emphasis/blur (util/states) out of static-render scope.
+            states.enableHoverEmphasis(labelText)
         }
     }
 
@@ -587,7 +589,7 @@ open class LegendView: ComponentView {
         _ = self.getContentGroup().add(itemGroup)
 
         // enableHoverEmphasis(itemGroup);
-        // PORT-TODO: DEFERRED — emphasis/blur (util/states) out of static-render scope.
+        states.enableHoverEmphasis(itemGroup)
 
         // @ts-ignore
         // itemGroup.__legendDataIndex = dataIndex;
@@ -821,9 +823,10 @@ private func getDefaultLegendIcon(_ opt: LegendIconParams) -> ECSymbol {
     return icon
 }
 
-// PORT-TODO: DEFERRED action helpers — `dispatchSelectAction` / `dispatchHighlightAction` /
+// PORT-NOTE: the action-helper behavior — `dispatchSelectAction` / `dispatchHighlightAction` /
 //   `dispatchDownplayAction` (`api.dispatchAction({type: 'legendToggleSelect'|'highlight'|'downplay'})`)
-//   are click/hover interaction, out of static-render scope. Reproduce with the action layer.
+//   is wired inline in `_createItem` (the itemGroup `.on("click"|"mouseover"|"mouseout")` closures),
+//   dispatching into the ported action layer (legendAction.swift / legendFilter.swift).
 
 // export default LegendView;  -> `open class LegendView` above.
 

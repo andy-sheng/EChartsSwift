@@ -31,15 +31,15 @@ import ZRenderKit
 //                                                                       the dynamic option tree is `[String: Any]`).
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';  -> Cartesian2D (coord/cartesian/Cartesian2D.swift; type-only).
 //   import createSeriesData from '../helper/createSeriesData';      -> `createSeriesData` (sibling chart/helper/createSeriesData.swift).
-//   import type Polar from '../../coord/polar/Polar';               -> PORT-TODO: coord/polar not ported (bar-on-polar deferred; cartesian only).
+//   import type Polar from '../../coord/polar/Polar';               -> Polar (coord/polar/Polar.swift); BarView rendering is cartesian-only.
 //   import { inheritDefaultOption } from '../../util/component';     -> `component.inheritDefaultOption` (util/componentUtil.swift).
 //   import SeriesData from '../../data/SeriesData';                 -> SeriesData (data/SeriesData.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
 //       -> PORT-TODO: component/brush not ported (brushSelector deferred below).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet. `tokens.color.primary` is inlined verbatim as
-//          its resolved constant in `defaultOption` (same convention as coord/cartesian/GridModel.swift);
-//          re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+//       -> PORT-NOTE: visual/tokens.swift is ported (`tokens.color.primary`), but the value is still
+//          inlined verbatim as its resolved constant in `defaultOption` (same convention as
+//          coord/cartesian/GridModel.swift); re-wiring to the real `tokens` namespace is still pending.
 //            tokens.color.primary = color.neutral80 = '#3c3c41'
 //   import { preparePipelineContext } from '../../util/model';      -> `model.preparePipelineContext` (util/modelUtil.swift).
 //   import type { Pipeline } from '../../core/Scheduler';           -> `Pipeline` / `PipelinePick` (core/Scheduler.swift; util/modelUtil.swift).
@@ -179,13 +179,13 @@ open class BarSeriesModel: BaseBarSeriesModel {
                 "showBackground": false,
                 "backgroundStyle": [
                     "color": "rgba(180, 180, 180, 0.2)",
-                    // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                    // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                     "borderColor": NSNull(),
                     "borderWidth": 0,
                     "borderType": "solid",
                     "borderRadius": 0,
                     "shadowBlur": 0,
-                    // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+                    // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
                     "shadowColor": NSNull(),
                     "shadowOffsetX": 0,
                     "shadowOffsetY": 0,
@@ -194,8 +194,8 @@ open class BarSeriesModel: BaseBarSeriesModel {
 
                 "select": [
                     "itemStyle": [
-                        // PORT-TODO: tokens.color.primary inlined as resolved constant (color.neutral80);
-                        //   re-wire to `tokens.color.primary` once visual/tokens.swift lands.
+                        // PORT-NOTE: tokens.color.primary inlined as resolved constant (color.neutral80);
+                        //   visual/tokens.swift is ported — re-wire to `tokens.color.primary` still pending.
                         "borderColor": "#3c3c41",   // tokens.color.primary
                         "borderWidth": 2
                     ] as [String: Any]

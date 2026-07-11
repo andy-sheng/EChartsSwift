@@ -179,7 +179,7 @@ private func registerActionInternal(_ arg0: Any, _ arg1Input: Any?, _ actionInpu
         publicEventTypeMap[nonRefinedEventType] = true
     }
 
-    // PORT-TODO: upstream's `if (__DEV__ && connectionEventRevertMap[nonRefinedEventType]) error(...)`
+    // PORT-NOTE: upstream's `if (__DEV__ && connectionEventRevertMap[nonRefinedEventType]) error(...)`
     //   dev-only shared-event-name warning is omitted (no __DEV__ flag / logging path wired here).
     // connectionEventRevertMap[nonRefinedEventType] = actionType;
     connectionEventRevertMap[nonRefinedEventType] = actionType

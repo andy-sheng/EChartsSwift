@@ -27,32 +27,32 @@ import ZRenderKit
 //     → `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Circle` / `graphic.Arc`
 //       / `graphic.Sector` are the ZRenderKit scene-graph shapes (used directly — the sanctioned DRAWING
 //       deviation, cf. RadarComponentView). `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath).
-//       `graphic.groupTransition` (anid-matched transition animation) is deferred (see the PORT-TODO in
+//       `graphic.groupTransition` (anid-matched transition animation) is deferred (see the PORT-NOTE in
 //       `render`). Note upstream indexes `graphic[shapeType]` with shapeType ∈ {'Circle','Arc'}; the
 //       dynamic constructor lookup is replaced by an explicit branch (see the splitLine builder).
 //   import AxisBuilder from './AxisBuilder';                       → `AxisBuilder` (component/axis/AxisBuilder.swift).
 //   import AxisView from './AxisView';                             → `AxisView` (component/axis/AxisView.swift).
 //   import { RadiusAxisModel } from '../../coord/polar/AxisModel';
-//     → PORT-TODO: `coord/polar/AxisModel` (RadiusAxisModel) is a sibling NOT yet ported (the whole polar
-//       coord system lands in a later phase). Assumed API (mirrors CartesianAxisModel / RadarModel):
+//     → RadiusAxisModel IS ported (coord/polar/PolarAxisModel.swift — the whole polar coord system is
+//       ported). API (mirrors CartesianAxisModel / RadarModel):
 //         open class RadiusAxisModel: AxisBaseModel   // → so AxisBuilder(radiusAxisModel, …) type-checks
 //           var axis: Any                              // inherited AxisBaseModel.axis, downcast to RadiusAxis
 //       Registered component view `type` is 'radiusAxis'.
 //   import Polar from '../../coord/polar/Polar';
-//     → PORT-TODO: `coord/polar/Polar` NOT yet ported. Assumed API (a sibling angle/radius coord system,
-//       the analogue of Radar):
+//     → Polar IS ported (coord/polar/Polar.swift — a sibling angle/radius coord system,
+//       the analogue of Radar). API:
 //         final class Polar: CoordinateSystemMaster { var cx: Double; var cy: Double
 //                                                      func getAngleAxis() -> AngleAxis
 //                                                      func getRadiusAxis() -> RadiusAxis }
 //   import RadiusAxis from '../../coord/polar/RadiusAxis';
-//     → PORT-TODO: `coord/polar/RadiusAxis` NOT yet ported. Assumed API:
+//     → RadiusAxis IS ported (coord/polar/RadiusAxis.swift). API:
 //         open class RadiusAxis: Axis { var polar: Polar
 //                                       func getMinorTicksCoords() -> [[AxisTickCoord]] }
 //       (inherits `getTicksCoords()` / `getExtent()` / `scale` from the ported `open class Axis`).
 //   import GlobalModel from '../../model/Global';                  → `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            → `ExtensionAPI`.
-//   The sibling `AngleAxis` (polar.getAngleAxis()) is likewise a PORT-TODO polar sibling
-//   (`open class AngleAxis: Axis`), used here only for `getExtent()` and the inherited `inverse` flag.
+//   The sibling `AngleAxis` (polar.getAngleAxis()) is likewise a ported polar sibling
+//   (`public final class AngleAxis: Axis`), used here only for `getExtent()` and the inherited `inverse` flag.
 
 // upstream: const selfBuilderAttrs = ['splitLine', 'splitArea', 'minorSplitLine'] as const;
 private let selfBuilderAttrs: [String] = [
@@ -378,7 +378,7 @@ private func layoutAxis(_ polar: Polar, _ radiusAxisModel: RadiusAxisModel, _ ax
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of RadiusAxisView.ts upstream. They reproduce the
+// PORT-NOTE helpers — NOT part of RadiusAxisView.ts upstream. They reproduce the
 // dynamic-option-read coercions and the `util/graphic` style-bag bridge referenced
 // above. Delete each when its real sibling lands and call the sibling directly.
 // (Mirrors the same file-private helpers in RadarComponentView / CartesianAxisView.)

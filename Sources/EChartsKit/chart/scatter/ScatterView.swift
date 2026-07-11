@@ -3,7 +3,7 @@
 // Upstream ScatterView delegates ENTIRELY to `SymbolDraw`/`LargeSymbolDraw` (helper/SymbolDraw +
 // helper/LargeSymbolDraw), driven by the `pointsLayout` stage and a `createCoordSysClipAreaSimply`
 // clip shape. NONE of those are ported yet (SymbolDraw enter/update/leave diff, LargeSymbolDraw,
-// layout/points, helper/createClipPathFromCoordSys, incremental pipeline — all documented PORT-TODOs).
+// layout/points, helper/createClipPathFromCoordSys, incremental pipeline — all documented PORT-NOTEs).
 //
 // This is a DELIBERATE DEVIATION: a STATIC faithful render inlines the per-point symbol placement the
 // same way `LineView` inlines `dataToPoint` per datum — guard the cartesian coord system, derive the
@@ -15,14 +15,14 @@ import Foundation
 import ZRenderKit
 
 // upstream imports (all deferred except createSymbol / ChartView / SeriesData / Cartesian2D):
-//   import SymbolDraw from '../helper/SymbolDraw';                 -> PORT-TODO: helper/SymbolDraw not ported.
-//   import LargeSymbolDraw from '../helper/LargeSymbolDraw';       -> PORT-TODO: helper/LargeSymbolDraw not ported.
+//   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw is ported (chart/helper/SymbolDraw.swift); this static view does not use it.
+//   import LargeSymbolDraw from '../helper/LargeSymbolDraw';       -> LargeSymbolDraw is ported (chart/helper/LargeSymbolDraw.swift); this static view does not use it.
 //   import pointsLayout from '../../layout/points';                -> PORT-TODO: layout/points not ported.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import { getIncrementalId } from '../../util/model';           -> PORT-TODO: incremental pipeline not ported.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';
 //       -> PORT-TODO: helper/createClipPathFromCoordSys not ported (clipShape omitted).
-//   import { ISymbolDraw, SymbolDrawUpdateOpt } from '../helper/baseDraw';  -> PORT-TODO: helper/baseDraw not ported.
+//   import { ISymbolDraw, SymbolDrawUpdateOpt } from '../helper/baseDraw';  -> SymbolDrawUpdateOpt is ported (chart/helper/SymbolDraw.swift); ISymbolDraw modeled implicitly (no separate baseDraw file).
 
 // upstream: class ScatterView extends ChartView { static readonly type = 'scatter'; type = ScatterView.type; ... }
 open class ScatterView: ChartView {

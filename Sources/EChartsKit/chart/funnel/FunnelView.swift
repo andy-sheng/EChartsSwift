@@ -23,11 +23,12 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
-//       -> `Polygon` / `Polyline` / `Text` (== ZRText) are the ZRenderKit shapes. PORT-TODO: `util/graphic`
-//          (initProps/updateProps/removeElementWithFadeOut/Point) is NOT ported; the animation calls are
-//          deferred (see the FunnelPiece PORT-TODO block).
+//       -> `Polygon` / `Polyline` / `Text` (== ZRText) are the ZRenderKit shapes. initProps/updateProps/
+//          removeElementWithFadeOut ARE ported (animation/basicTransition.swift); initProps is wired below.
+//          Funnel's STATIC render still defers the updateProps-driven diff-update transitions (see the
+//          FunnelPiece deferral block).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
+//       -> util/states IS ported (util/states.swift); both are wired per-piece in render() below.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import FunnelSeriesModel, {FunnelDataItemOption, SERIES_TYPE_FUNNEL} from './FunnelSeries';
 //       -> sibling FunnelSeries.swift.
@@ -36,11 +37,14 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { ColorString } from '../../util/types';                -> util/types.swift.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> PORT-TODO: label/labelGuideHelper NOT ported (labelLine deferred).
+//       -> PORT-TODO: labelGuideHelper.swift is partially ported, but setLabelLineStyle/
+//          getLabelLineStatesModels are still DEFERRED (labelLine guide machinery). The leader
+//          polyline is drawn inline in funnelUpdateLabel below instead.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported. A minimal plain-text reproduction is inlined in
-//          `_updateLabel` below (same deviation as installTitle.swift's `createTextStyle`).
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> PORT-TODO: NOT ported (deferred).
+//       -> label/labelStyle IS ported (label/labelStyle.swift); both are wired in funnelUpdateLabel
+//          below, replacing the former inline plain-text reproduction.
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> saveOldStyle IS ported
+//       (animation/basicTransition.swift); its diff-update use remains deferred in funnel's STATIC render.
 
 // const opacityAccessPath = ['itemStyle', 'opacity'] as const;
 private let opacityAccessPath = ["itemStyle", "opacity"]
@@ -53,12 +57,14 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 // `FunnelView.render`, with `_updateLabel` reproduced as a free function below. This matches the
 // PieView/BarView collapse.
 //
-// PORT-TODO (DEFERRED — separate upstream subsystems; a STATIC render faithfully omits them):
+// PORT provenance (deferred subsystems below; a STATIC render faithfully omits them):
 //   - labelLine: `setTextGuideLine`/`getTextGuideLine` (Polyline), `setLabelLineStyle`,
-//     `getLabelLineStatesModels`, `textGuideLineConfig` are deferred with label/labelGuideHelper.
+//     `getLabelLineStatesModels`, `textGuideLineConfig` remain DEFERRED with the labelGuideHelper
+//     label-guide machinery; the leader polyline is drawn inline in funnelUpdateLabel instead.
 //   - Label EMPHASIS / states: `getLabelStatesModels`, `setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
-//     are deferred; the PLAIN label text (`defaultText = data.getName(idx)`) IS drawn.
+//     ARE now wired (see render() + funnelUpdateLabel below); the plain `defaultText = data.getName(idx)`
+//     remains the fallback label text.
 //   - Animation: piece fade-in (opacity 0 → opacity) via `initProps` IS wired (see the polygon
 //     creation below); `updateProps`-driven diff-update transitions and `saveOldStyle` remain
 //     deferred with basicTransition (the STATIC render rebuilds the group from scratch each render).

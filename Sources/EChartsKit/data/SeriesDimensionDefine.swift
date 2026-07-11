@@ -130,7 +130,7 @@ public final class SeriesDimensionDefine {
     /**
      * @param opt All of the fields will be shallow copied.
      */
-    // PORT-TODO: upstream `opt?: object | SeriesDimensionDefine` + `zrUtil.extend(this, opt)`.
+    // PORT-NOTE: upstream `opt?: object | SeriesDimensionDefine` + `zrUtil.extend(this, opt)`.
     // Swift has typed properties, so we shallow-copy each known field from another
     // SeriesDimensionDefine rather than a generic object extend.
     public init(_ opt: SeriesDimensionDefine? = nil) {
@@ -140,7 +140,7 @@ public final class SeriesDimensionDefine {
     }
 }
 
-// PORT-TODO: replicate `zrUtil.extend(this, opt)` for the typed `SeriesDimensionDefine`
+// PORT-NOTE: replicate `zrUtil.extend(this, opt)` for the typed `SeriesDimensionDefine`
 // shape. Mirrors a shallow field-by-field copy of all defined properties.
 private func extendSeriesDimensionDefine(_ target: SeriesDimensionDefine, _ source: SeriesDimensionDefine) {
     target.type = source.type

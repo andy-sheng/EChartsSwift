@@ -28,17 +28,17 @@
 import Foundation
 import ZRenderKit
 
-// PORT-TODO: model layer (model/Series) is Phase 5c. The shared `SeriesModel` placeholder
-// (util/types.swift) is an empty marker. This file needs `seriesModel.get('stack')` and
-// `seriesModel.id`; declare the minimal surface here. The real SeriesModel will conform.
+// PORT-NOTE: model/Series (model/Series.swift) is ported. This file needs only `seriesModel.get('stack')`
+// and `seriesModel.id`, so it declares the minimal `DataStackSeriesModel` surface here and the real
+// SeriesModel conforms to it (avoids a hard dependency on the full model layer).
 public protocol DataStackSeriesModel: AnyObject {
     func get(_ key: String) -> Any?
     var id: String { get }
 }
 
-// PORT-TODO: `SeriesData` is not yet ported. This file needs `data.getCalculationInfo(key)`
-// (which returns `DataCalculationInfo[key]`); declare the minimal surface here. The real
-// SeriesData will conform.
+// PORT-NOTE: `SeriesData` (data/SeriesData.swift) is ported. This file needs only `data.getCalculationInfo(key)`
+// (which returns `DataCalculationInfo[key]`), so it declares the minimal `DataStackSeriesData` surface here
+// and the real SeriesData conforms to it.
 public protocol DataStackSeriesData: AnyObject {
     func getCalculationInfo(_ key: String) -> Any?
 }
@@ -56,7 +56,7 @@ public struct EnableDataStackDimensionsInput {
     }
 }
 // type EnableDataStackDimensionsInputLegacy = (SeriesDimensionDefine | string)[];
-// PORT-TODO: TS union element `SeriesDimensionDefine | string` -> `[Any]` whose elements are
+// PORT-NOTE: TS union element `SeriesDimensionDefine | string` -> `[Any]` whose elements are
 // either `String` or `SeriesDimensionDefine` (CONVENTIONS dynamic-bag mapping).
 public typealias EnableDataStackDimensionsInputLegacy = [Any]
 
@@ -77,7 +77,7 @@ public struct EnableDataStackOpt {
     }
 }
 
-// PORT-TODO: upstream return type is
+// PORT-NOTE: upstream return type is
 //   Pick<DataCalculationInfo<unknown>, 'stackedDimension' | 'stackedByDimension'
 //        | 'isStackedByIndex' | 'stackedOverDimension' | 'stackResultDimension'>.
 // The values are produced by short-circuit expressions (`stackedDimInfo && stackedDimInfo.name`)
@@ -112,7 +112,7 @@ public struct EnableDataStackResult {
  *     stackResultDimension: string
  * }
  */
-// PORT-TODO: `dimensionsInput` is `inout` because upstream mutates the (legacy) input array
+// PORT-NOTE: `dimensionsInput` is `inout` because upstream mutates the (legacy) input array
 // in place ("The input will be modified."): string entries are replaced by `SeriesDimensionDefine`
 // and the two calculation dimensions are pushed onto it. The schema branch mutates the
 // `SeriesDataSchema` reference instead, so it needs no write-back.
@@ -140,7 +140,7 @@ public func enableDataStack(
     }
 
     // compatible: when `stack` is set as '', do not stack.
-    // PORT-TODO: `seriesModel.get('stack')` — model layer (Phase 5c). JS `!!` truthiness on
+    // PORT-NOTE: `seriesModel.get('stack')` via the DataStackSeriesModel surface. JS `!!` truthiness on
     // the returned option (a string); '' counts as false.
     let mayStack = jsTruthy((seriesModel as DataStackSeriesModel).get("stack"))
     var stackedByDimInfo: SeriesDimensionDefine?
@@ -211,7 +211,7 @@ public func enableDataStack(
         // Use a weird name that not duplicated with other names.
         // Also need to use seriesModel.id as postfix because different
         // series may share same data store. The stack dimension needs to be distinguished.
-        // PORT-TODO: `seriesModel.id` — model layer (Phase 5c).
+        // PORT-NOTE: `seriesModel.id` via the DataStackSeriesModel surface.
         let seriesId = (seriesModel as DataStackSeriesModel).id
         stackResultDimension = "__\u{0}ecstackresult_" + seriesId
         stackedOverDimension = "__\u{0}ecstackedover_" + seriesId
@@ -254,7 +254,7 @@ public func enableDataStack(
 
         if let schema = schema {
             if let store = store {
-                // PORT-TODO: the ported `DataStore.ensureCalculationDimension(dimName, type)`
+                // PORT-NOTE: the ported `DataStore.ensureCalculationDimension(dimName, type)`
                 // takes a non-optional `DataStoreDimensionType`, while `stackedDimType` (the dim
                 // define's `type?`) may be `nil`. Upstream tolerates `undefined` (uses `type || 'float'`
                 // internally), so default to `.float` here to match that fallback.
@@ -304,13 +304,13 @@ private func isLegacyDimensionsInput(
 public func isDimensionStacked(_ data: SeriesData, _ stackedDim: String) -> Bool {
     // Each single series only maps to one pair of axis. So we do not need to
     // check stackByDim, whatever stacked by a dimension or stacked by index.
-    // PORT-TODO: `data.getCalculationInfo('stackedDimension')` — SeriesData not yet ported.
+    // PORT-NOTE: `data.getCalculationInfo('stackedDimension')` — provided by SeriesData (data/SeriesData.swift).
     return !stackedDim.isEmpty
         && (data.getCalculationInfo("stackedDimension") as? String) == stackedDim   // SeriesData conforms to DataStackSeriesData
 }
 
 public func getStackedDimension(_ data: SeriesData, _ targetDim: String) -> DimensionName {
-    // PORT-TODO: `data.getCalculationInfo('stackResultDimension')` — SeriesData not yet ported.
+    // PORT-NOTE: `data.getCalculationInfo('stackResultDimension')` — provided by SeriesData (data/SeriesData.swift).
     return isDimensionStacked(data, targetDim)
         ? ((data.getCalculationInfo("stackResultDimension") as? DimensionName) ?? targetDim)   // SeriesData conforms
         : targetDim

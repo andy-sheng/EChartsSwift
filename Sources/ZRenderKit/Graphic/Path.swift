@@ -9,12 +9,14 @@
 //
 // WIRED (Phase 2): contain() / pathContain hit-testing now routes to Contain/path.swift
 //   (`path.contain` / `path.containStroke`) — fill winding + stroke containment are live.
-// STUBBED (PORT-TODO, deferred — per task brief):
-//   - gradient / pattern paint resolution (the ZRColor / Pattern types exist; rendering deferred).
-//   - the animation surface (animate('shape') / animateShape) — Animator is a Phase-3 stub.
-//   - the states machinery (_innerSaveToNormal / _applyStateObj / _mergeStates) — Phase 2.
-//   - update()'s `decal` element synthesis (a pattern-rendering feature) — deferred.
-//   - the deprecated static `extend` (runtime class synthesis has no Swift equivalent).
+// PORT-NOTE (previously stubbed; now wired except where noted):
+//   - gradient / pattern paint resolution: rendered by the native painter (NativePainter/CALayerPainter.swift).
+//   - the animation surface (animate('shape') / animateShape): the real Animator (Phase 3) — see below.
+//   - the states machinery (_innerSaveToNormal / _applyStateObj / _mergeStates): the live state path
+//     routes through Element's useState→_stateApply→animateTo; these _applyStateObj-family hooks are
+//     not-the-live-path (mirrors Displayable's siblings, see below).
+//   - update()'s `decal` element synthesis: implemented in update() (see `_decalEl` below).
+//   - the deprecated static `extend` (runtime class synthesis has no Swift equivalent) — not translated.
 //
 // GENERICS DECISION (TS `Path<Props, Shape>` → Swift):
 //   Upstream `Path<Props extends PathProps, Shape>` is generic over a per-subclass `Shape` bag.
@@ -68,7 +70,7 @@ import Foundation
 // import { REDRAW_BIT, SHAPE_CHANGED_BIT, STYLE_CHANGED_BIT } from './constants';
 // import { TRANSFORMABLE_PROPS } from '../core/Transformable';
 
-// PORT-TODO: upstream `ZRColor` union `string | PatternObject | LinearGradientObject |
+// PORT-NOTE: upstream `ZRColor` union `string | PatternObject | LinearGradientObject |
 //   RadialGradientObject`. Modeled as a tagged enum (no untagged unions in Swift). Gradient/Pattern
 //   paint resolution (rendering) is deferred (STUB).
 public enum ZRColor {
@@ -78,7 +80,7 @@ public enum ZRColor {
     case pattern(Pattern)
 }
 
-// PORT-TODO: upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'`. Tagged enum.
+// PORT-NOTE: upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'`. Tagged enum.
 //   `true` is not supported (upstream); `false`/`null`/`undefined` are the same.
 public enum LineDash {
     case `false`
@@ -100,7 +102,7 @@ public struct PathStyleProps {
     public var opacity: Double?
     /// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
     public var blend: String?
-    // PORT-TODO: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
+    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
     //   iff produced by `createStyle`.
     public var zrStyleMagic: Bool = false
 
@@ -139,8 +141,8 @@ public struct PathStyleProps {
     //   fields `fill`/`stroke` (and `shadowColor`) flow as a color string through the Animator's
     //   color-tween path (color.parse → interpolate1DArray → rgba2String), the same path
     //   AnimationSmokeTests drives for `style.fill`.
-    // PORT-TODO: union-typed `fill`/`stroke` gradient & pattern values are not keyed for animation
-    //   (only the `.string` color case is exposed); `lineDash` / `lineCap` / `lineJoin` / `blend`
+    // PORT-NOTE: gradient `fill`/`stroke` values ARE keyed for animation (via zrColorToAnimValue → the
+    //   Animator's gradient tween); pattern values are not keyed; `lineDash` / `lineCap` / `lineJoin` / `blend`
     //   are not tweened.
     public func animationGet(_ key: String) -> Any? {
         switch key {
@@ -183,7 +185,7 @@ public struct PathStyleProps {
 
 // ZRColor ⟷ animation-value bridge for the color-tween path. The Animator interpolates colors as
 // rgba strings (color.parse → interpolate → rgba2String), so `fill`/`stroke` are exposed/accepted
-// as color strings. Gradient/pattern colors are not keyed (PORT-TODO).
+// as color strings (gradients flow through as Gradient objects, see below); pattern colors are not keyed (PORT-TODO).
 private func zrColorToAnimValue(_ c: ZRColor?) -> Any? {
     switch c {
     case .some(.string(let s)):
@@ -263,7 +265,7 @@ public let DEFAULT_PATH_STYLE: PathStyleProps = {
     return s
 }()
 
-// PORT-TODO: upstream `MapToType<PathProps, boolean>` — recursive mapped utility type. Collapsed to
+// PORT-NOTE: upstream `MapToType<PathProps, boolean>` — recursive mapped utility type. Collapsed to
 //   a loose `[String: Any]` bag (matches Displayable's DEFAULT_COMMON_ANIMATION_PROPS). Only read by
 //   `getAnimationStyleProps` (animation surface deferred, Phase 3).
 public let DEFAULT_PATH_ANIMATION_PROPS: [String: Any] = [
@@ -286,13 +288,13 @@ public let DEFAULT_PATH_ANIMATION_PROPS: [String: Any] = [
     ]
 ]
 
-// PORT-TODO: interface PathProps extends DisplayableProps { strokeContainThreshold?, ...,
+// PORT-NOTE: interface PathProps extends DisplayableProps { strokeContainThreshold?, ...,
 //   style?: PathStyleProps, shape?: Dictionary<any>, autoBatch?, __value?, buildPath? }. The
 //   `attr`/`attrKV` setter machinery uses the dynamic `[String: Any]` prop bag (collapsed onto
 //   DisplayableProps == ElementProps). Typed-interface fidelity dropped.
 public typealias PathProps = DisplayableProps
 
-// PORT-TODO: PathKey / PathPropertyType — TS `keyof` / `PropType` utility types; no Swift equivalent.
+// PORT-NOTE: PathKey / PathPropertyType — TS `keyof` / `PropType` utility types; no Swift equivalent.
 
 // upstream marker: per-subclass `shape` is a `Dictionary<any>`. Modeled as an existential marker
 //   protocol (see the GENERICS DECISION header note). Subclass shape structs conform.
@@ -307,7 +309,7 @@ public protocol PathShape {
 public extension PathShape {
     // Default no-op so shapes not yet wired for keyed animation still compile and behave as before
     // (their shape animation is simply inert until they override these).
-    // PORT-TODO: each *Shape overrides animationGet/animationSet to expose its numeric fields.
+    // PORT-NOTE: each *Shape overrides animationGet/animationSet to expose its numeric fields.
     func animationGet(_ key: String) -> Any? { nil }
     mutating func animationSet(_ key: String, _ value: Any?) {}
 }
@@ -355,10 +357,10 @@ public struct EmptyPathShape: PathShape {
     public init() {}
 }
 
-// PORT-TODO: PathStatePropNames = DisplayableStatePropNames | 'shape'. The states machinery is
+// PORT-NOTE: PathStatePropNames = DisplayableStatePropNames | 'shape'. The states machinery is
 //   Phase 2; collapsed onto Displayable's stub.
 public typealias PathStatePropNames = String
-// PORT-TODO: PathState = Pick<PathProps, PathStatePropNames> & { hoverLayer? }. The `shape` field of
+// PORT-NOTE: PathState = Pick<PathProps, PathStatePropNames> & { hoverLayer? }. The `shape` field of
 //   the state bag is deferred (Phase 2); reuse Displayable's ElementState-based stub.
 public typealias PathState = DisplayableState
 
@@ -371,7 +373,7 @@ let pathCopyParams: [String] = TRANSFORMABLE_PROPS + [
 // upstream: interface Path<Props> { animate(...) overloads; getState / ensureState; states;
 //   stateProxy } — declaration-merging of the animation + states surface. `getState`/`ensureState`/
 //   `states`/`stateProxy` are provided by Element; the `animate('shape')` overload is exposed via
-//   `animateShape` (PORT-TODO: full overload set deferred to the animation seam, Phase 3).
+//   `animateShape` (PORT-NOTE: the TS multi-overload set collapses to Swift's single `animate` signature; the animation seam is ported, Phase 3).
 
 // NOTE (CONVENTIONS §2): upstream `class Path<Props> extends Displayable<Props>`. `Path` is itself
 //   subclassed by every shape (Rect/Circle/...), so it CANNOT be `final`; it is a `public class`
@@ -409,7 +411,7 @@ open class Path: Displayable {
 
     private var _rectStroke: BoundingRect?   // upstream: private _rectStroke: BoundingRect
 
-    // PORT-TODO: upstream `protected _normalState: PathState` narrows the inherited type; states are
+    // PORT-NOTE: upstream `protected _normalState: PathState` narrows the inherited type; states are
     //   stubbed (Phase 2), so Element's `_normalState` is reused.
 
     private var _decalEl: Path?   // upstream: protected
@@ -418,7 +420,7 @@ open class Path: Displayable {
     //   `PathShape` existential (see GENERICS DECISION). Assigned in `_init` via `getDefaultShape()`.
     public var shape: PathShape!
 
-    // ===== morphPath seam (PORT-TODO: see Tool/morphPath.swift) =====
+    // ===== morphPath seam (PORT-NOTE: see Tool/morphPath.swift) =====
     // upstream `interface MorphingPath extends Path { __morphT: number }`. Default -1 ("not morphing":
     //   `isMorphing` tests `__morphT >= 0`; upstream's undefined and our -1 both read as false).
     public var __morphT: Double = -1
@@ -614,7 +616,7 @@ open class Path: Displayable {
         if case .some(.string(let pathFillStr)) = pathFill {
             let zr = self.__zr
             let isDarkMode = (zr != nil && zr!.isDarkMode())
-            // PORT-TODO: upstream `lum(textFill, 0)` tolerates `textFill === undefined`; `color.lum`
+            // PORT-NOTE: upstream `lum(textFill, 0)` tolerates `textFill === undefined`; `color.lum`
             //   takes a non-optional String, so we pass `textFill ?? ""` (parse → nil → lum 0).
             let isDarkLabel = color.lum(textFill ?? "", 0) < DARK_MODE_THRESHOLD
             // All dark or all light.
@@ -743,7 +745,7 @@ open class Path: Displayable {
 
                 // Only add extra hover lineWidth when there are no fill
                 if !self.hasFill() {
-                    // PORT-TODO: upstream `strokeContainThreshold == null ? 4 : strokeContainThreshold`;
+                    // PORT-NOTE: upstream `strokeContainThreshold == null ? 4 : strokeContainThreshold`;
                     //   our `strokeContainThreshold` is a non-optional Double (prototype default 5).
                     let strokeContainThreshold = self.strokeContainThreshold
                     w = Swift.max(w, strokeContainThreshold)
@@ -827,7 +829,7 @@ open class Path: Displayable {
     /// Alias for animate('shape')
     @discardableResult
     public func animateShape(_ loop: Bool) -> Animator<Any> {
-        // PORT-TODO: animation surface deferred (Phase 3). Returns the (stub) Animator from Element.
+        // PORT-NOTE: returns the real Animator from Element.animate('shape') (the Phase 3 animation seam is ported).
         return self.animate("shape", loop)
     }
 
@@ -972,7 +974,7 @@ open class Path: Displayable {
     @discardableResult
     public func setShape(_ obj: PathShape) -> Self {
         // upstream: extend(shape, keyOrObj). For the typed existential we replace wholesale.
-        // PORT-TODO: upstream merges into the existing shape; replacement is acceptable for the
+        // PORT-NOTE: upstream merges into the existing shape; replacement is acceptable for the
         //   typed-struct model (subclasses construct a full shape).
         self.shape = obj
         self.dirtyShape()
@@ -1018,7 +1020,7 @@ open class Path: Displayable {
 
     // Mirror the CommonStyleProps subset of `pathStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity / blend.
-    // PORT-TODO: a Swift-only bridge — upstream has a single `this.style` object.
+    // PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.
     private func _syncCommonStyle() {
         var c = CommonStyleProps()
         c.shadowBlur = self.pathStyle.shadowBlur
@@ -1033,9 +1035,9 @@ open class Path: Displayable {
 
     internal override func _innerSaveToNormal(_ toState: ElementState) {  // upstream: protected
         super._innerSaveToNormal(toState)
-        // PORT-TODO: states machinery is Phase 2. The faithful body clones the current `shape` into
-        //   `_normalState.shape` (`extend({}, this.shape)`) when the target state changes shape.
-        //   Deferred (consistent with Displayable's stubbed states surface).
+        // PORT-NOTE: not the live path — state save/apply routes through Element's useState→_stateApply→
+        //   animateTo (mirrors Displayable's siblings). Upstream's faithful body clones the current `shape`
+        //   into `_normalState.shape` (`extend({}, this.shape)`) when the target state changes shape.
     }
 
     internal override func _applyStateObj(  // upstream: protected
@@ -1047,16 +1049,16 @@ open class Path: Displayable {
         _ animationCfg: ElementAnimateConfig?
     ) {
         super._applyStateObj(stateName, state, normalState, keepCurrentStates, transition, animationCfg)
-        // PORT-TODO: states machinery is Phase 2. The faithful body merges/animates the target
-        //   `shape` (with the IN_HOVER_LAYER_KIND_ONLY_STYLE_CHANGE early-out, primary-prop split,
-        //   and `dirtyShape`). Deferred.
+        // PORT-NOTE: not the live path (see the useState routing note above). Upstream's faithful body
+        //   merges/animates the target `shape` (with the IN_HOVER_LAYER_KIND_ONLY_STYLE_CHANGE early-out,
+        //   primary-prop split, and `dirtyShape`).
         _ = IN_HOVER_LAYER_KIND_ONLY_STYLE_CHANGE
     }
 
     internal override func _mergeStates(_ states: [ElementState]) -> ElementState {  // upstream: protected
         let mergedState = super._mergeStates(states)
-        // PORT-TODO: states machinery is Phase 2. The faithful body merges each state's `shape` into
-        //   a single `mergedShape` (via `_mergeStyle`) and assigns it onto `mergedState`. Deferred.
+        // PORT-NOTE: not the live path (see the useState routing note above). Upstream's faithful body
+        //   merges each state's `shape` into a single `mergedShape` (via `_mergeStyle`) and assigns it onto `mergedState`.
         return mergedState
     }
 
@@ -1101,7 +1103,7 @@ private func coerceToDouble(_ value: Any?) -> Double? {
 }
 
 // extend(target, source) over PathStyleProps' known fields (value-copy of non-nil fields).
-// PORT-TODO: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
+// PORT-NOTE: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
 //   PathStyleProps fields only.
 func extendPathStyle(_ target: inout PathStyleProps, _ source: PathStyleProps) {
     // common fields

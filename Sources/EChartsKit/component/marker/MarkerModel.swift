@@ -29,7 +29,7 @@ import ZRenderKit
 // import GlobalModel from '../../model/Global';                    -> EChartsKit `GlobalModel` (model/Global.swift)
 // import SeriesData from '../../data/SeriesData';                  -> EChartsKit `SeriesData` (data/SeriesData.swift)
 // import { makeInner, defaultEmphasis } from '../../util/model';   -> EChartsKit `model.makeInner` / `model.defaultEmphasis` (util/modelUtil.swift)
-// import { createTooltipMarkup } from '../tooltip/tooltipMarkup';  -> PORT-TODO: tooltip component not yet ported
+// import { createTooltipMarkup } from '../tooltip/tooltipMarkup';  -> EChartsKit `createTooltipMarkup` (component/tooltip/tooltipMarkup.swift)
 
 // function fillLabel(opt: DisplayStateHostOption) {
 //     defaultEmphasis(opt, 'label', ['show']);

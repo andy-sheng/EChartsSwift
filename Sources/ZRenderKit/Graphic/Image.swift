@@ -22,10 +22,11 @@
 //   `self.style` via `_syncCommonStyle()` so the inherited machinery (shouldBePainted / getPaintRect)
 //   reads correct shadow / opacity / blend.
 //
-// STUBBED (PORT-TODO, deferred — inherited from Displayable/Element):
-//   - the animation surface (getAnimationStyleProps returns the props bag; Animator is Phase 3).
-//   - the states machinery (Phase 2).
-//   - the `onload` callback (fired by the painter after `platform.loadImage` resolves; renderer seam).
+// INHERITED from Displayable/Element:
+//   - the animation surface (getAnimationStyleProps returns the props bag; Animator landed in Phase 3).
+//   - the states machinery (landed in Phase 2).
+//   - PORT-NOTE: the `onload` callback (fired by the painter after `platform.loadImage` resolves) is
+//     still the deferred renderer seam.
 
 import Foundation
 
@@ -48,7 +49,7 @@ public protocol ImageNaturalSize {
     var height: Double { get }
 }
 
-// PORT-TODO: models the upstream union `string | ImageLike`. A `.url` is resolved to an `.image`
+// PORT-NOTE: models the upstream union `string | ImageLike`. A `.url` is resolved to an `.image`
 //   by the painter via `platform.loadImage` (native image loading — renderer seam).
 public enum ImageSource {
     case url(String)
@@ -66,7 +67,7 @@ public struct ImageStyleProps {
     public var opacity: Double?
     /// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
     public var blend: String?
-    // PORT-TODO: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
+    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
     //   iff produced by `createStyle`.
     public var zrStyleMagic: Bool = false
 
@@ -103,7 +104,7 @@ public let DEFAULT_IMAGE_STYLE: ImageStyleProps = {
     return s
 }()
 
-// PORT-TODO: upstream `MapToType<ImageProps, boolean>` — recursive mapped utility type. Collapsed to
+// PORT-NOTE: upstream `MapToType<ImageProps, boolean>` — recursive mapped utility type. Collapsed to
 //   a loose `[String: Any]` bag (matches Displayable's DEFAULT_COMMON_ANIMATION_PROPS). Only read by
 //   `getAnimationStyleProps` (animation surface deferred, Phase 3).
 public let DEFAULT_IMAGE_ANIMATION_PROPS: [String: Any] = [
@@ -126,13 +127,13 @@ public let DEFAULT_IMAGE_ANIMATION_PROPS: [String: Any] = [
     ]
 ]
 
-// PORT-TODO: interface ImageProps extends DisplayableProps { style?: ImageStyleProps,
+// PORT-NOTE: interface ImageProps extends DisplayableProps { style?: ImageStyleProps,
 //   onload?: (image: ImageLike) => void }. The `attr`/`attrKV` setter machinery uses the dynamic
 //   `[String: Any]` prop bag (collapsed onto DisplayableProps == ElementProps). Typed-interface
 //   fidelity dropped; `onload` is exposed as a stored property below.
 public typealias ImageProps = DisplayableProps
 
-// PORT-TODO: ImageState = Pick<ImageProps, DisplayableStatePropNames> & ElementCommonState — the
+// PORT-NOTE: ImageState = Pick<ImageProps, DisplayableStatePropNames> & ElementCommonState — the
 //   states machinery is Phase 2; collapsed onto Displayable's ElementState-based stub.
 public typealias ImageState = DisplayableState
 
@@ -186,7 +187,7 @@ public final class ZRImage: Displayable {
                     self.useStyle(s)
                 }
                 else {
-                    // PORT-TODO: non-ImageStyleProps `style` value — fall back to empty style.
+                    // PORT-NOTE: non-ImageStyleProps `style` value — fall back to empty style.
                     self.useStyle(ImageStyleProps())
                 }
             }
@@ -229,7 +230,7 @@ public final class ZRImage: Displayable {
 
     // Mirror the CommonStyleProps subset of `imageStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity / blend.
-    // PORT-TODO: a Swift-only bridge — upstream has a single `this.style` object.
+    // PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.
     private func _syncCommonStyle() {
         var c = CommonStyleProps()
         c.shadowBlur = self.imageStyle.shadowBlur
@@ -251,7 +252,7 @@ public final class ZRImage: Displayable {
             return size
         }
 
-        // upstream: isImageLike(style.image) ? style.image : this.__image. PORT-TODO: the cached
+        // upstream: isImageLike(style.image) ? style.image : this.__image. PORT-NOTE: the cached
         //   `__image` (ImageLike == Any) is read for its natural size via the `ImageNaturalSize` seam.
         let imageSource = isImageLike(style.image) ?? (self.__image as? ImageNaturalSize)
 
@@ -296,7 +297,7 @@ public final class ZRImage: Displayable {
 }
 
 // extend(target, source) over ImageStyleProps' known fields (value-copy of non-nil fields).
-// PORT-TODO: upstream `extend`/`createObject` copy all own enumerable keys (dynamic bag); here we
+// PORT-NOTE: upstream `extend`/`createObject` copy all own enumerable keys (dynamic bag); here we
 //   copy the known ImageStyleProps fields only.
 private func extendImageStyle(_ target: inout ImageStyleProps, _ source: ImageStyleProps) {
     if source.shadowBlur != nil { target.shadowBlur = source.shadowBlur }

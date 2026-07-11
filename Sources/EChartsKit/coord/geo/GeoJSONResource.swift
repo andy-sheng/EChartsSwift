@@ -33,11 +33,10 @@ import ZRenderKit
 //   import { GeoJSON, GeoJSONCompressed, GeoJSONSourceInput, GeoResource, GeoSpecialAreas, NameMap }
 //       from './geoTypes';                                        -> geoTypes.swift sibling.
 
-// PORT-TODO: The following support types are the anonymous return/param types declared in
-//   `geoTypes.ts` (`GeoResource`, its `load(...)` return, `GeoSpecialAreas`, `NameMap`, the GeoJSON
-//   source unions). They are declared here as the canonical Swift shapes so this file (and
-//   geoSourceManager) type-check; when `geoTypes.swift` lands it should OWN these and this block is
-//   deleted. See integrationNotes.
+// PORT-NOTE: `geoTypes.swift` has landed and now OWNS the support types once staged here — `GeoResource`,
+//   `NameMap`, `GeoSpecialAreas`, and the GeoJSON source unions (shown commented below for reference).
+//   `GeoResourceLoadResult` (the object literal returned by `GeoResource['load']`) remains declared in
+//   this file, below. See integrationNotes.
 //
 //   public protocol GeoResource: AnyObject {
 //       var type: String { get }                         // 'geoJSON' | 'geoSVG'
@@ -179,7 +178,7 @@ public final class GeoJSONResource: GeoResource {
     // private _parseToRegions(nameProperty): GeoJSONRegion[]
     private func _parseToRegions(_ nameProperty: String) -> [GeoJSONRegion] {
         // const mapName = this._mapName;
-        //   Only consumed by the stubbed-out fixNanhai/fixTextCoord/fixDiaoyuIsland fixers (PORT-TODO
+        //   Only consumed by the stubbed-out fixNanhai/fixTextCoord/fixDiaoyuIsland fixers (PORT-NOTE
         //   below); silence the unused warning until those land.
         let mapName = self._mapName
         _ = mapName
@@ -278,7 +277,7 @@ private func parseInput(_ source: Any?) -> Any? {
     //     ? source
     //     : (typeof JSON !== 'undefined' && JSON.parse) ? JSON.parse(source)
     //     : (new Function('return (' + source + ');'))();
-    // PORT-TODO: the `new Function(...)` legacy fallback branch (no global JSON) is dropped; Swift
+    // PORT-NOTE: the `new Function(...)` legacy fallback branch (no global JSON) is dropped; Swift
     //   always has JSONSerialization.
     if !util.isString(source) {
         return source

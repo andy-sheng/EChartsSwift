@@ -26,7 +26,7 @@ import ZRenderKit
 //   import Scale from '../../scale/Scale';                             -> Scale (scale/Scale.swift).
 //   import { OptionAxisType } from '../axisCommonTypes';               -> OptionAxisType (String alias).
 //   import SingleAxisModel, { SingleAxisPosition } from './AxisModel'; -> SingleAxisModel / SingleAxisPosition.
-//       PORT-TODO: coord/single/AxisModel.ts is a sibling NOT yet landed (must be named
+//       PORT-NOTE: `SingleAxisModel` is landed (coord/single/SingleAxisModel.swift — named
 //       `SingleAxisModel.swift`, NOT `AxisModel.swift`, to avoid a SwiftPM object-name collision with the
 //       existing coord/cartesian/AxisModel.swift). It exports:
 //         - `public typealias SingleAxisPosition = String`  (upstream: 'top' | 'bottom' | 'left' | 'right')

@@ -2,9 +2,9 @@
 // This is NOT a translation of zrender's CanvasPainter. It is a hand-written backend
 // that satisfies the renderer seam exported by ZRenderKit (see PathRebuilder).
 //
-// This file only sketches the contract. No implementation yet — every body is a
-// PORT-TODO stub. The intent is to pin down the ~8 paint operations the rest of the
-// stack (style flattening, layering, hit testing) will be written against.
+// This file only sketches the contract; the concrete backend lives in CGRenderer.swift
+// and CALayerPainter.swift. It pins down the ~8 paint operations the rest of the
+// stack (style flattening, layering, hit testing) is written against.
 
 import Foundation
 #if canImport(CoreGraphics)
@@ -23,10 +23,12 @@ import ZRenderKit
 /// This is a *flattened* paint descriptor: the `ZRColor`/gradient/pattern union and
 /// the `lineDash` enum from `PathStyleProps` are resolved into concrete Core Graphics
 /// values by `PaintStyle.from(_:dpr:)` (see CGRenderer.swift). Gradient / pattern fills
-/// are PORT-TODO this phase (they resolve to `nil` paint and are skipped).
+/// resolve to `nil` here (this descriptor carries only solid colors); CGRenderer paints
+/// them via a separate fill path (drawLinearGradient / drawRadialGradient / tilePattern).
 public struct PaintStyle {
     /// Resolved solid fill color (premultiplied with `fillOpacity * opacity`). `nil` if
-    /// no fill (or fill is `'none'` / a gradient / a pattern — PORT-TODO).
+    /// no fill (or fill is `'none'` / a gradient / a pattern — CGRenderer paints those
+    /// via its own gradient/pattern fill path).
     public var fill: CGColor?
     /// Resolved solid stroke color (premultiplied with `strokeOpacity * opacity`).
     public var stroke: CGColor?
@@ -40,7 +42,7 @@ public struct PaintStyle {
     public var miterLimit: Double = 10
 
     /// nonzero (`.winding`) vs even-odd. zrender's `PathStyleProps` has no fill-rule field;
-    /// canvas defaults to nonzero. PORT-TODO: even-odd is never selected this phase.
+    /// canvas defaults to nonzero. PORT-NOTE: even-odd is never selected this phase.
     public var fillRule: CGPathFillRule = .winding
 
     /// Global element alpha (`style.opacity`), applied to ALL subsequent paint ops via
@@ -186,10 +188,11 @@ public protocol Renderer: AnyObject {
 }
 
 /// Surface owner: creates layers, drives the frame/flush lifecycle. Mirrors zrender's
-/// `PainterBase`. PORT-TODO: resize, refresh, getRenderedCanvas/snapshot, dispose.
+/// `PainterBase`. Note: resize / refresh / snapshot (renderToImage) / dispose are
+/// implemented on CALayerPainter, not surfaced on this minimal protocol.
 public protocol Painter: AnyObject {
 
-    /// Device pixel ratio. PORT-TODO: wire to screen scale.
+    /// Device pixel ratio (CALayerPainter defaults it to `UIScreen.main.scale`).
     var dpr: Double { get }
 
     /// Begin a frame and hand back the `Renderer` to draw into.

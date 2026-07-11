@@ -25,7 +25,7 @@ import ZRenderKit
 // import * as zrUtil from 'zrender/src/core/util';                 -> util.* (clone/curry — see notes)
 // import * as graphic from '../../util/graphic';                   -> ZRenderKit Group / Line / Rect / ZRText
 // import * as axisPointerModelHelper from './modelHelper';         -> modelHelper.swift (getAxisInfo)
-// import * as eventTool from 'zrender/src/core/event';             -> handle drag seam (PORT-TODO)
+// import * as eventTool from 'zrender/src/core/event';             -> handle drag seam (PORT-NOTE)
 // import * as throttleUtil from '../../util/throttle';             -> handle throttle seam (PORT-TODO)
 // import {makeInner} from '../../util/model';                      -> see PORT-NOTE (inner store) below
 // import { AxisPointer } from './AxisPointer';                     -> AxisPointer.swift (same module)
@@ -68,7 +68,7 @@ public struct AxisPointerElementOptions {
 
 /// upstream: `pointer: PathProps & { type: 'Line' | 'Rect' | 'Circle' | 'Sector' }`.
 public struct PointerElementOption {
-    /// The ZRenderKit shape class name — 'Line' / 'Rect' (Circle / Sector are PORT-TODO, unused by
+    /// The ZRenderKit shape class name — 'Line' / 'Rect' (Circle / Sector are PORT-NOTE, unused by
     /// `CartesianAxisPointer`). Selects `graphic[type]` in `createPointerEl`.
     public var type: String
     /// The typed path shape (`LineShape` / `RectShape`) built by `viewHelper.makeLineShape` / `makeRectShape`.
@@ -126,7 +126,7 @@ open class BaseAxisPointer: AxisPointer {
     // upstream: private _handle: Icon;  — the draggable handle (PORT-TODO, deferred).
     // private var _handle: ... (deferred)
 
-    // upstream: private _dragging = false;  — handle drag (PORT-TODO, deferred).
+    // upstream: private _dragging = false;  — handle drag (PORT-NOTE, deferred).
     private var _dragging = false
 
     // upstream: private _lastValue: AxisValue;
@@ -193,18 +193,18 @@ open class BaseAxisPointer: AxisPointer {
         self._lastValue = value
         self._lastStatus = status
 
-        let handle: AnyObject? = nil  // upstream `const handle = this._handle` — handle is PORT-TODO.
+        let handle: AnyObject? = nil  // upstream `const handle = this._handle` — handle is PORT-NOTE.
 
         // upstream: `if (!status || status === 'hide')`. `!status` ⟷ `_isFalsy` (null/''/false/0).
         if _isFalsy(status) || (status as? String) == "hide" {
             // Do not clear here, for animation better.
             self.group?.hide()
-            // handle && handle.hide();  (PORT-TODO)
+            // handle && handle.hide();  (PORT-NOTE)
             _ = handle
             return
         }
         self.group?.show()
-        // handle && handle.show();  (PORT-TODO)
+        // handle && handle.show();  (PORT-NOTE)
 
         // Otherwise status is 'show'
         var elOption = AxisPointerElementOptions()
@@ -230,7 +230,7 @@ open class BaseAxisPointer: AxisPointer {
         else {
             // upstream: `const doUpdateProps = zrUtil.curry(updateProps, axisPointerModel, moveAnimation)`.
             //   The `updateProps` closure is `(el, props)`; the `animationModel`/`moveAnimation` capture
-            //   is inert here (no animated slide — see the free `updateProps` PORT-TODO).
+            //   is inert here (no animated slide — see the free `updateProps` PORT-NOTE).
             self.updatePointerEl(self.group!, elOption)
             self.updateLabelEl(self.group!, elOption, axisPointerModel)
         }
@@ -398,7 +398,7 @@ open class BaseAxisPointer: AxisPointer {
             self._labelEl = nil
         }
 
-        // upstream: throttleUtil.clear(this, '_doDispatchAxisPointer');  (handle throttle — PORT-TODO)
+        // upstream: throttleUtil.clear(this, '_doDispatchAxisPointer');  (handle throttle — PORT-NOTE)
     }
 
     /// @protected — Implemented by sub-class if necessary.

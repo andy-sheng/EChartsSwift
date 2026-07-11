@@ -31,8 +31,8 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData (data/SeriesData.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet; every `tokens.color.*` used in defaultOption is
-//          inlined below as its resolved constant (resolved from upstream src/visual/tokens.ts):
+//       -> visual/tokens.swift (ported); this defaultOption inlines every `tokens.color.*` it uses as
+//          its resolved constant (resolved from upstream src/visual/tokens.ts):
 //            tokens.color.neutral10      = '#e8ebf0'
 //            tokens.color.neutral00      = '#fff'
 //            tokens.color.neutral40      = '#9ea0a5'
@@ -169,7 +169,7 @@ open class GaugeSeriesModel: SeriesModel {
                 "rotate": 0.0
             ] as [String: Any],
             "pointer": [
-                // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                 "icon": NSNull(),
                 "offsetCenter": [0.0, 0.0],
                 "show": true,
@@ -212,7 +212,7 @@ open class GaugeSeriesModel: SeriesModel {
                 // borderColor: tokens.color.neutral40  (= '#9ea0a5')
                 "borderColor": "#9ea0a5",
                 "width": 100.0,
-                // PORT-TODO: upstream value is `null` (self-adaption); NSNull() retains the key.
+                // PORT-NOTE: upstream value is `null` (self-adaption); NSNull() retains the key.
                 "height": NSNull(), // self-adaption
                 "padding": [5.0, 10.0],
                 // x, y，单位px

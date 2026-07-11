@@ -4,7 +4,8 @@
 // rects with their text labels (ZRText), the divider lines splitting the corner from the body, the body
 // cell rects (from `body.data`, keyed by `coord: [xLocator, yLocator]`), and the outer border/background.
 // All cell geometry comes from the Matrix coord (an (x,y) header/body cell → a pixel rect). Renders on
-// BOTH panes: native (EChartsKit) and echarts.js. (A series ON the matrix is custom-series — PORT-TODO.)
+// BOTH panes: native (EChartsKit) and echarts.js. (A series ON the matrix is custom-series, ported — this
+// demo shows the backdrop only.)
 extension EChartsDemoRegistry {
     static let demo_matrix_basic = EChartsDemo(
         name: "matrix-basic", category: "Matrix",

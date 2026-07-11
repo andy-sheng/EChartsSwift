@@ -22,10 +22,10 @@ import Foundation
 import ZRenderKit
 
 // import SeriesModel from '../../model/Series';                       -> SeriesModel (model/Series.swift)
-// import createSeriesData from '../helper/createSeriesData';          -> PORT-TODO: chart/helper/createSeriesData.ts
-//   not yet ported (sibling this phase). Referenced by its conventional public API
-//   `createSeriesData(sourceRaw, seriesModel, opt)`; a local PORT-TODO stub at the bottom keeps the
-//   build green until the real helper lands (mirrors the Series.swift stub precedent).
+// import createSeriesData from '../helper/createSeriesData';          -> createSeriesData IS ported
+//   (chart/helper/createSeriesData.swift). Referenced by its conventional public API
+//   `createSeriesData(sourceRaw, seriesModel, opt)` (called in getInitialData below); the former local
+//   stub has been removed (see the note at the bottom of this file).
 // import {
 //     SeriesOption, SeriesOnCartesianOptionMixin, SeriesOnPolarOptionMixin, ScaleDataValue,
 //     DefaultStatesMixin, StatesMixinBase
@@ -34,8 +34,8 @@ import ZRenderKit
 // import Cartesian2D from '../../coord/cartesian/Cartesian2D';        -> Cartesian2D (coord/cartesian/Cartesian2D.swift)
 // import SeriesData from '../../data/SeriesData';                     -> SeriesData (data/SeriesData.swift)
 // import {dimPermutations} from '../../component/marker/MarkAreaView';
-//   -> PORT-TODO: component/marker/MarkAreaView.ts not ported (mark* out of scope). `dimPermutations`
-//      is the 4 x/y start/end permutations; the `dims` param of `getMarkerPosition` is typed `[String]?`
+//   -> MarkAreaView IS ported (component/marker/MarkAreaView.swift), which exports `dimPermutations`
+//      (the 4 x/y start/end permutations); the `dims` param of `getMarkerPosition` is typed `[String]?`
 //      until the marker component lands.
 // import { each } from 'zrender/src/core/util';                       -> util.each (ZRenderKit)
 // import type Axis2D from '../../coord/cartesian/Axis2D';             -> Axis2D (coord/cartesian/Axis2D.swift)
@@ -59,14 +59,14 @@ import ZRenderKit
 //     largeThreshold?: number
 // }
 //
-// PORT-TODO: TS `interface BaseBarSeriesOption` describes the dynamic option shape; per CONVENTIONS §2
+// PORT-NOTE: TS `interface BaseBarSeriesOption` describes the dynamic option shape; per CONVENTIONS §2
 //   the option tree is modeled as the dynamic bag ([String: Any], keyed access via Model.get), so no
 //   standalone Swift struct is emitted. Preserved above for the diffable surface.
 
 // class BaseBarSeriesModel<Opts extends BaseBarSeriesOption<unknown> = BaseBarSeriesOption<unknown>>
 //     extends SeriesModel<Opts>
 //
-// PORT-TODO: the generic `Opts` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
+// PORT-NOTE: the generic `Opts` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
 //   bag). `open class` because concrete bar series (BarSeriesModel / PictorialBarSeriesModel) subclass it.
 open class BaseBarSeriesModel: SeriesModel {
 
@@ -156,7 +156,7 @@ open class BaseBarSeriesModel: SeriesModel {
                             }
                         }
                         if coord == nil {
-                            // PORT-TODO: upstream `!leftCoord` / `else if (leftCoord)` use JS truthiness;
+                            // PORT-NOTE: upstream `!leftCoord` / `else if (leftCoord)` use JS truthiness;
                             //   leftCoord is falsy when nil OR 0. Replicated explicitly here.
                             if !(leftCoord != nil && leftCoord! != 0) {
                                 // targetTickId is smaller than all tick ids in the
@@ -193,7 +193,7 @@ open class BaseBarSeriesModel: SeriesModel {
     // __requireStartValue(axis: Axis): boolean
     open func __requireStartValue(_ axis: Axis) -> Bool {
         // return this.getBaseAxis() !== axis;
-        // PORT-TODO: SeriesModel.getBaseAxis() returns `Any?` (coord layer stub); compare by identity.
+        // PORT-NOTE: SeriesModel.getBaseAxis() returns `Any?` (coord layer stub); compare by identity.
         return (self.getBaseAxis() as AnyObject?) !== (axis as AnyObject)
     }
 
@@ -225,7 +225,7 @@ open class BaseBarSeriesModel: SeriesModel {
 }
 
 // SeriesModel.registerClass(BaseBarSeriesModel);
-// PORT-TODO: upstream runs this side-effecting registration at module import time. Swift libraries have
+// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries have
 //   no import-time hook, so it is exposed as an idempotent static bootstrap the EChartsKit registration
 //   entry point must invoke once (mirrors the scale/*.swift `registerScaleClass` precedent).
 extension BaseBarSeriesModel {
@@ -240,4 +240,4 @@ extension BaseBarSeriesModel {
 
 // chart/helper/createSeriesData.ts is now the REAL ported free function `createSeriesData(...)`
 // (+ `CreateSeriesDataOpt`) in chart/helper/createSeriesData.swift. The former local stub declared
-// here was removed per its own PORT-TODO note.
+// here was removed per its own PORT-NOTE note.

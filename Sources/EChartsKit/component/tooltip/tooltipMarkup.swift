@@ -412,7 +412,7 @@ func buildNameValue(
             else {
                 vt = valueTypeOption as? DimensionType
             }
-            // PORT-TODO: `format.makeValueReadable` takes a non-optional `DimensionType`; an
+            // PORT-NOTE: `format.makeValueReadable` takes a non-optional `DimensionType`; an
             //   `undefined`/nil valueType takes the same "by default" branch as `.number`, so nil
             //   maps to `.number` here (identical output).
             return format.makeValueReadable(val, vt ?? .number, useUTC)
@@ -689,7 +689,7 @@ public class TooltipMarkupStyleCreator {
     }
 }
 
-// PORT-TODO: JS truthiness helper (`textStyle.color || default`, `fragment.markerColor || default`).
+// PORT-NOTE: JS truthiness helper (`textStyle.color || default`, `fragment.markerColor || default`).
 //   Reproduces `Boolean(x)` for the value kinds reachable here (string / number / bool / null).
 private func jsTruthy(_ v: Any?) -> Bool {
     switch v {

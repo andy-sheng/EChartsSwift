@@ -32,14 +32,14 @@ public final class IncrementalDisplayable: Displayable {
     //   `childrenRef` so they flattened into the normal list — render-correct but O(total)/frame, which
     //   defeated the whole point; the retained bitmap is O(pending)/frame instead.)
 
-    // PORT-TODO: upstream re-declares `notClear: boolean = true` / `incremental = …` as own fields;
+    // PORT-NOTE: upstream re-declares `notClear: boolean = true` / `incremental = …` as own fields;
     //   Swift can't redeclare inherited stored properties (both live on `Displayable`), so they are
     //   seeded in `init` instead.
 
     private var _displayables: [Displayable] = []
     private var _temporaryDisplayables: [Displayable] = []
 
-    // PORT-TODO: upstream `private _cursor = 0` is a `number`; it is used purely as an array
+    // PORT-NOTE: upstream `private _cursor = 0` is a `number`; it is used purely as an array
     //   index / length (never in float math), so it is modeled as `Int` per CONVENTIONS §7.
     private var _cursor: Int = 0
 
@@ -50,14 +50,14 @@ public final class IncrementalDisplayable: Displayable {
         self.incremental = INCREMENTAL_ID_TRUE_COMPAT
     }
 
-    // PORT-TODO: upstream `traverse<T>(cb, context) { cb.call(context, this) }`. The Swift base
+    // PORT-NOTE: upstream `traverse<T>(cb, context) { cb.call(context, this) }`. The Swift base
     //   `Element.traverse(_ cb: (_ el: Element) -> Void, _ context: Any?)` is non-generic; we
     //   override it and invoke `cb(self)` (the closure capture replaces the bound `this`).
     public override func traverse(_ cb: (_ el: Element) -> Void, _ context: Any? = nil) {
         cb(self)
     }
 
-    // PORT-TODO: upstream `useStyle()` takes no args; the Swift base
+    // PORT-NOTE: upstream `useStyle()` takes no args; the Swift base
     //   `Displayable.useStyle(_ obj: CommonStyleProps)` carries one, so we override with it and
     //   ignore `obj`, assigning an empty style as upstream does.
     public override func useStyle(_ obj: CommonStyleProps) {
@@ -66,7 +66,7 @@ public final class IncrementalDisplayable: Displayable {
         self.style = CommonStyleProps()
     }
 
-    // PORT-TODO: upstream `_useHoverStyle()` takes no args; the Swift base
+    // PORT-NOTE: upstream `_useHoverStyle()` takes no args; the Swift base
     //   `Displayable._useHoverStyle(_ obj: CommonStyleProps)` carries one, so we override with it
     //   and ignore `obj`.
     internal override func _useHoverStyle(_ obj: CommonStyleProps) {  // upstream: protected
@@ -155,7 +155,7 @@ public final class IncrementalDisplayable: Displayable {
             let rect = BoundingRect(Double.infinity, Double.infinity, -Double.infinity, -Double.infinity)
             for i in 0..<self._displayables.count {
                 let displayable = self._displayables[i]
-                // PORT-TODO: upstream assumes `getBoundingRect()` is non-null (Displayable always
+                // PORT-NOTE: upstream assumes `getBoundingRect()` is non-null (Displayable always
                 //   returns one); skip a nil child rather than trap.
                 guard let childRect = displayable.getBoundingRect()?.clone() else { continue }
                 if displayable.needLocalTransform() {

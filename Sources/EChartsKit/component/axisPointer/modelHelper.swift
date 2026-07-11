@@ -494,11 +494,10 @@ public func makeKey(_ model: ComponentModel) -> String {
     return model.type + "||" + model.id
 }
 
-// PORT-TODO (Phase 36): `viewHelper.buildLabelElOption` — the drawn crosshair label *element* build
-//   (an `AxisPointerElementOption`) lives in `component/axisPointer/viewHelper.ts`, NOT in
-//   modelHelper. Its LABEL-TEXT computation feeds the visual crosshair, which is deferred; port it
-//   alongside the axisPointer view. `axisTrigger` (this phase) consumes only the collected models
-//   (`collect` / `getAxisPointerModel` / `makeKey`) + their coordSys / value / status above.
+// PORT-NOTE: `viewHelper.buildLabelElOption` — the drawn crosshair label *element* build
+//   (an `AxisPointerElementOption`) lives in `component/axisPointer/viewHelper.ts` and is ported in
+//   the sibling `viewHelper.swift` (not here in modelHelper). `axisTrigger` (this phase) consumes only
+//   the collected models (`collect` / `getAxisPointerModel` / `makeKey`) + their coordSys / value / status above.
 
 // --- JS truthiness (shared local helper; mirrors the sibling `jsTruthy` in coord/View.swift etc.) ---
 private func jsTruthy(_ v: Any?) -> Bool {

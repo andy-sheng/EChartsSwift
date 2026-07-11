@@ -12,7 +12,7 @@
 // creates `Draggable(self)` just like upstream.
 //
 // The `handler` back-reference is `unowned` to break the Handler→Draggable→Handler retain cycle
-// (Handler strongly owns its `_draggingMgr`, and Handler always outlives it). // PORT-TODO: verify capture
+// (Handler strongly owns its `_draggingMgr`, and Handler always outlives it). // PORT-NOTE: verify capture
 
 // import Handler from '../Handler';
 // import Element, { ElementEvent } from '../Element';
@@ -30,7 +30,7 @@ public protocol DraggableTargetInfo: AnyObject {
 public protocol DraggableHandler: AnyObject {
     @discardableResult
     func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject?) -> Eventful
-    // PORT-TODO: `event` is the ZRRawEvent (browser DOM event), Any? at the native event seam.
+    // PORT-NOTE: `event` is the ZRRawEvent (browser DOM event), Any? at the native event seam.
     func dispatchToElement(_ targetInfo: DraggableTargetInfo, _ eventName: ElementEventName, _ event: Any?)
     // upstream returns Handler's `HoveredResult` (which conforms to `DraggableTargetInfo`). The
     //   requirement uses the concrete `HoveredResult` (defined in Handler.swift, same module)
@@ -80,7 +80,7 @@ public final class Draggable {
         // this._y = 0;
     }
 
-    // PORT-TODO: upstream listeners take `(e: ElementEvent)` directly; here they are bound through
+    // PORT-NOTE: upstream listeners take `(e: ElementEvent)` directly; here they are bound through
     //   `Eventful.on`, whose callback receives `[Any?]` args. These thin shims unwrap `args[0]` to
     //   the dispatched `ElementEvent` and forward to the faithful `_drag*` bodies below.
     private func _dragStart(_ args: [Any?]) {

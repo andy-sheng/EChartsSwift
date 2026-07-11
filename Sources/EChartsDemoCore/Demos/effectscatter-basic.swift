@@ -1,6 +1,6 @@
 // effectscatter-basic — a single cartesian effectScatter series (value×value). Renders on BOTH panes:
-// native (EChartsKit's static EffectScatterView draws a symbol path per datum — the animated ripple is a
-// documented PORT-TODO) and real echarts.js.
+// native (EChartsKit's EffectScatterView draws a symbol path per datum plus the animated expanding-ring
+// ripple via EffectSymbol.startEffectAnimation) and real echarts.js.
 extension EChartsDemoRegistry {
     static let demo_effectscatter_basic = EChartsDemo(
         name: "effectscatter-basic", category: "EffectScatter",

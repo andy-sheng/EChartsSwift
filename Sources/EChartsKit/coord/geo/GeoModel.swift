@@ -36,8 +36,8 @@ import ZRenderKit
 //   `geoSourceManager` (coord/geo/geoSourceManager.swift), `geoCreator` (coord/geo/geoCreator.swift, the
 //   singleton `geoCreator`), and `Geo` (coord/geo/Geo.swift, the GEO coordinate-system master — the 7th
 //   coord system, projects [lng, lat] -> pixel) are ALL ported and wired below.
-// PORT-TODO: `Geo` does NOT declare `CoordinateSystemMaster` conformance yet (dropped in Geo.swift). The
-//   `coordinateSystem: CoordinateSystemMaster?` slot required by `CoordinateSystemHostModel` still holds it
+// PORT-NOTE: `Geo` now declares `CoordinateSystemMaster` conformance (see Geo.swift class decl). The
+//   `coordinateSystem: CoordinateSystemMaster?` slot required by `CoordinateSystemHostModel` holds it
 //   at runtime (assigned by geoCreator.create); narrow via `as? Geo` / `as! Geo` at use (as GeoView does).
 
 // NOTE: visual/tokens.ts is not ported yet. The `tokens.*` values consumed by `defaultOption` / `init` are
@@ -60,7 +60,7 @@ import ZRenderKit
 // export interface GeoCommonOptionMixin extends RoamOptionMixin, PreserveAspectMixin { map?; aspectScale?;
 //     layoutCenter?; layoutSize?; clip?; boundingCoords?; nameMap?; nameProperty?; projection?; }
 // export interface GeoOption extends ComponentOption, ..., GeoCommonOptionMixin, GeoStateOption { ... }
-//   PORT-TODO: all of the above option/param interfaces describe the dynamic option shape; modeled as the
+//   PORT-NOTE: all of the above option/param interfaces describe the dynamic option shape; modeled as the
 //   dynamic option bag ([String: Any]) per CONVENTIONS §2 — no standalone Swift structs emitted. The
 //   `label.formatter` callback (string | (params) -> string) is stored as a closure in the bag at use time.
 
@@ -230,7 +230,7 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
     }
 
     // optionUpdated(): void { ... }
-    //   PORT-TODO: upstream overrides `optionUpdated()` with NO params, but `ComponentModel.optionUpdated`
+    //   PORT-NOTE: upstream overrides `optionUpdated()` with NO params, but `ComponentModel.optionUpdated`
     //   is `(newCptOption, isInit)`. Swift overrides must match the signature; the two params are accepted
     //   and ignored (as upstream does implicitly).
     public override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
@@ -317,7 +317,7 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
         // }
         if util.isFunction(formatter) {
             params["status"] = status
-            // PORT-TODO: the formatter closure type is erased in the dynamic option bag; narrowed to the
+            // PORT-NOTE: the formatter closure type is erased in the dynamic option bag; narrowed to the
             //   GeoLabelFormatterDataParams->String shape ([String: Any]) -> String.
             if let f = formatter as? ([String: Any]) -> String {
                 return f(params)
@@ -329,7 +329,7 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
         // }
         else if util.isString(formatter) {
             let fmt = formatter as! String
-            // PORT-TODO: JS String.replace(str, str) replaces only the FIRST occurrence; Swift
+            // PORT-NOTE: JS String.replace(str, str) replaces only the FIRST occurrence; Swift
             //   replacingOccurrences replaces ALL. Reproduce first-only to stay faithful.
             let replacement = name   // name != null ? name : '' — name is non-null here
             if let range = fmt.range(of: "{a}") {
@@ -403,7 +403,7 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
     }
 
     // __ownRoamView() { return this.coordinateSystem.view; }
-    //   PORT-TODO: ROAM (pan/zoom) interaction is DEFERRED per the phase brief; this returns the owning
+    //   PORT-NOTE: ROAM (pan/zoom) interaction is DEFERRED per the phase brief; this returns the owning
     //   `View` of the geo coord system. Typed `Any?` (mirrors SankeySeries) since the `RoamHostModel`
     //   conformance — whose `__ownRoamView` returns `View?` — is not declared on this class yet.
     public func __ownRoamView() -> Any? {

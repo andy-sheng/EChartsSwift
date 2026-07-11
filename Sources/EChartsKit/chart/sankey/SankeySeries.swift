@@ -37,11 +37,11 @@ import ZRenderKit
 //   import { LayoutRect } from '../../util/layout';                   -> `LayoutRect` (== BoundingRect alias,
 //       coord/cartesian/cartesianAxisHelper.swift; real util/layout.swift LayoutRect deferred).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift); used by formatTooltip below.
 //   import type View from '../../coord/View';                         -> PORT-TODO: coord/View.ts NOT ported
 //       (the box `View` coordinate system + roam are deferred); `coordinateSystem` uses the inherited `Any?`.
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts NOT ported; the consumed values are inlined verbatim in
+//       -> PORT-NOTE: visual/tokens.swift IS ported, but the consumed values are inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
 
 // export const SERIES_TYPE_SANKEY = 'sankey';
@@ -219,36 +219,66 @@ open class SankeySeriesModel: SeriesModel {
         _ multipleSeries: Bool? = nil,
         _ dataType: SeriesDataType? = nil
     ) -> TooltipFormatResult? {
-        // function noValue(val: unknown): boolean { return isNaN(val as number) || val == null; }
+        _ = multipleSeries
+        // function noValue(val): boolean { return isNaN(val as number) || val == null; }
+        func noValue(_ val: Any?) -> Bool {
+            guard let val = val, !(val is NSNull) else { return true }
+            let m = Mirror(reflecting: val)
+            if m.displayStyle == .optional && m.children.isEmpty { return true }
+            if let d = val as? Double { return d.isNaN }
+            return false
+        }
+        // JS `'' + x` string coercion for the edge name-walk (source/target are names).
+        func str(_ v: Any?) -> String {
+            guard let v = v, !(v is NSNull) else { return "" }
+            if let s = v as? String { return s }
+            return "\(v)"
+        }
         // dataType === 'node' or empty do not show tooltip by default
-        // if (dataType === 'edge') { ... createTooltipMarkup('nameValue', { name, value, noValue }); }
-        // else { ... createTooltipMarkup('nameValue', { name, value, noValue }); }
-        // PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported — the markup return is deferred (returns
-        //   nil, matching the base stub). `getDataParams` (also deferred below) supplies the edge/node
-        //   value, so the whole markup construction is deferred together. The name-walk logic is:
-        //     edge:  edgeName = rawDataOpt.source + ' -- ' + rawDataOpt.target
-        //     node:  name = node.getLayout().value's node name; value = node.getLayout().value
-        _ = (dataIndex, multipleSeries, dataType)
-        return nil
+        if dataType == .edge {
+            let params = self.getDataParams(dataIndex, dataType)
+            let rawDataOpt = params.data as? [String: Any]
+            let edgeValue = params.value
+            // const edgeName = rawDataOpt.source + ' -- ' + rawDataOpt.target;
+            let edgeName = str(rawDataOpt?["source"]) + " -- " + str(rawDataOpt?["target"])
+            return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                name: edgeName, value: edgeValue, noValue: noValue(edgeValue)))
+        }
+        // dataType === 'node'
+        else {
+            let node = self.getGraph().getNodeByIndex(Int(dataIndex))
+            let value = (node?.getLayout() as? [String: Any])?["value"]
+            // const name = (this.getDataParams(...).data as SankeyNodeItemOption).name;
+            let nameRaw = (self.getDataParams(dataIndex, dataType).data as? [String: Any])?["name"]
+            let name: String? = (nameRaw != nil && !(nameRaw is NSNull)) ? str(nameRaw) : nil
+            return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                name: name, value: value, noValue: noValue(value)))
+        }
     }
 
     // optionUpdated() {}
     open func optionUpdated() {}
 
-    // Override Series.getDataParams()
-    // getDataParams(dataIndex: number, dataType: 'node' | 'edge') {
-    //     const params = super.getDataParams(dataIndex, dataType);
-    //     if (params.value == null && dataType === 'node') {
-    //         const node = this.getGraph().getNodeByIndex(dataIndex);
-    //         const nodeValue = node.getLayout().value;
-    //         params.value = nodeValue;
-    //     }
-    //     return params;
-    // }
-    // PORT-TODO: SeriesModel does not yet conform to DataFormatMixin (see model/Series.swift), so
-    //   `super.getDataParams` / `CallbackDataParams.value` are unavailable — the node-value fallback is
-    //   deferred with the tooltip subsystem above (same deferral as GraphSeries.formatTooltip). The
-    //   `node.getLayout().value` fill-in fires once getDataParams lands on the base.
+    // Override Series.getDataParams() — node branch fills value from the graph layout.
+    //   Base (DataFormatMixin) 2-arg getDataParams reached via `(self as DataFormatMixin)` to avoid
+    //   re-dispatching into this concrete override.
+    open func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
+        // const params = super.getDataParams(dataIndex, dataType);
+        var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
+        // if (params.value == null && dataType === 'node') {
+        let valueIsNull: Bool = {
+            if params.value is NSNull { return true }
+            let m = Mirror(reflecting: params.value)
+            return m.displayStyle == .optional && m.children.isEmpty
+        }()
+        if valueIsNull && dataType == .node {
+            let node = self.getGraph().getNodeByIndex(Int(dataIndex))
+            if let nodeValue = (node?.getLayout() as? [String: Any])?["value"] {
+                params.value = nodeValue
+            }
+        }
+        return params
+    }
 
     // __ownRoamView() { return this.coordinateSystem; }
     open func __ownRoamView() -> Any? {

@@ -26,7 +26,7 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Sector` / `ZRText`;
 //       `graphic.initProps`/`updateProps` are the animation helpers — DEFERRED (see PORT-TODO below).
 //   import { toggleHoverEmphasis, SPECIAL_STATES, DISPLAY_STATES } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
+//       -> states.toggleHoverEmphasis / states.SPECIAL_STATES / states.DISPLAY_STATES (util/states.swift).
 //   import { createTextStyle } from '../../label/labelStyle';       -> `labelStyle` (label/labelStyle.swift).
 //       PORT: `_updateLabel` routes text+style through `labelStyle.setLabelStyle` (on the label ZRText,
 //       à la ChordPiece) rather than the upstream inline `createTextStyle` DISPLAY_STATES loop.
@@ -156,8 +156,14 @@ open class SunburstPiece: Sector {
         }
 
         // zrUtil.each(SPECIAL_STATES, function (stateName) { ... ensureState ... getSectorCornerRadius ... });
-        // PORT-TODO: SPECIAL_STATES per-state itemStyle + corner-radius (emphasis/blur/select) DEFERRED
-        //   (util/states not ported). Static render only needs the normal state.
+        //   The per-state itemStyle half of this upstream loop (`state.style =
+        //   itemModel.getModel([stateName, 'itemStyle']).getItemStyle()` over emphasis/blur/select) IS
+        //   wired below via `states.setStatesStylesFromModel` (see the call ~line 232, which iterates the
+        //   same SPECIAL_STATES and stores each state's itemStyle onto `ensureState(name).style`).
+        // PORT-TODO: only the per-state corner-radius augmentation
+        //   (`getSectorCornerRadius(itemStyleModel, sectorShape)` -> `ensureState(name).shape`) is still
+        //   DEFERRED — `setStatesStylesFromModel` sets `.style` but not `.shape`, and the static render
+        //   only needs the normal-state corner radius (applied above).
 
         if firstCreate {
             // sector.setShape(sectorShape);

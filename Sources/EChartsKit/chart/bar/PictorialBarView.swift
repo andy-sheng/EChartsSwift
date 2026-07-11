@@ -62,8 +62,8 @@ private let PB_LAYOUT_ATTRS: [PBLayoutAttr] = [
 ]
 
 // upstream: const pathForLineWidth = new graphic.Circle();  (a scratch path used only to compute the
-//   scaled lineWidth). getLineScale() is not ported (see prepareLineWidth PORT-TODO), so this scratch is
-//   currently unused; kept for the diffable surface.
+//   scaled lineWidth). PictorialBar's lineWidth scaling is approximated in prepareLineWidth (see below),
+//   so this scratch is currently unused; kept for the diffable surface.
 // private let pathForLineWidth = Circle()
 
 // upstream `type ItemModel` monkeypatches getAnimationDelayParams / isAnimationEnabled onto the item model.

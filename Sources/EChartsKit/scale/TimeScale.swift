@@ -67,14 +67,14 @@ import ZRenderKit
 //   import {TimeAxisLabelFormatterParsed} from '../coord/axisCommonTypes';
 //       -> forward-ref placeholder in time.swift (`TimeAxisLabelFormatterParsed`).
 //   import { warn } from '../util/log';                      -> sibling log.swift (`log.warn`).
-//   import { LocaleOption } from '../core/locale';           -> PORT-TODO: core/locale (Tier6) not ported.
+//   import { LocaleOption } from '../core/locale';           -> sibling core/locale.swift (`LocaleOption`).
 //   import Model from '../model/Model';                      -> forward-ref placeholder `Model` in types.swift.
 //   import { each, filter, indexOf, isNumber, map } from 'zrender/src/core/util';   -> ZRenderKit `util`.
 //   import { BreakScaleMapper, getBreaksUnsafe, getScaleBreakHelper, simplyParseBreakOption } from './break';
 //       -> sibling break.swift (caseless enum `` `break` ``; `break` is a Swift keyword so the namespace
 //          is back-tick escaped, matching minorTicks.swift / Interval.swift).
 //   import type { ScaleCalcNiceMethod } from '../coord/axisNiceTicks';
-//       -> forward-ref placeholder at the bottom of this file (PORT-TODO: belongs to coord/axisNiceTicks).
+//       -> coord/axisNiceTicks.swift (`ScaleCalcNiceMethod`, landed; see the note at the bottom of this file).
 //   import { getMinorTicks } from './minorTicks';            -> sibling minorTicks.swift (`minorTicks.getMinorTicks`).
 //   import {
 //       getScaleLinearSpanEffective, getScaleExtentForTickUnsafe, initBreakOrLinearMapper, ScaleMapperGeneric
@@ -114,7 +114,8 @@ fileprivate func bisect(
 
 // upstream: type TimeScaleSetting = { locale; useUTC; breakOption };
 //   `locale: Model<LocaleOption>` -> `Model` (forward-ref placeholder in types.swift; the
-//   `<LocaleOption>` generic argument is dropped — PORT-TODO: core/locale not ported).
+//   `<LocaleOption>` generic argument is dropped — PORT-NOTE: core/locale.swift is ported, but the
+//   `Model` placeholder here is not yet generic, so the argument is still dropped).
 public struct TimeScaleSetting {
     public var locale: Model
     public var useUTC: Bool
@@ -765,7 +766,7 @@ fileprivate func createIntervalTicks(
 
     // Remove duplicates, which may cause jitter of `splitArea` and other bad cases.
     // upstream: removeDuplicates(ticks, removeDuplicatesGetKeyFromValueProp, null);
-    // PORT-TODO: `model.removeDuplicatesGetKeyFromValueProp` extracts `value` from a `[String:Any]`
+    // PORT-NOTE: `model.removeDuplicatesGetKeyFromValueProp` extracts `value` from a `[String:Any]`
     //   bag; our ticks are `ScaleTick` structs, so the key closure mirrors its semantics (`item.value + ''`).
     //   `model.removeDuplicates` takes `inout [TItem?]`, so bridge through an optional array.
     var ticksForDedup: [ScaleTick?] = ticks
@@ -855,7 +856,7 @@ public func calcNiceForTimeScale(_ scale: TimeScale, _ opt: ScaleCalcNiceMethodO
 }
 
 // upstream: Scale.registerClass(TimeScale);
-// PORT-TODO: upstream runs this side-effecting registration at module import time. Swift libraries have
+// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries have
 //  no import-time hook, so it is exposed as an idempotent static bootstrap the EChartsKit registration
 //  entry point must invoke once (mirrors Interval.swift's `registerScaleClass`).
 extension TimeScale {

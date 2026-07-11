@@ -6,7 +6,7 @@
 //  - Upstream `Eventful<EvtDef>` is generic purely for TS compile-time event-name /
 //    event-param type checking. Swift has no faithful analogue, so the `EvtDef` type
 //    parameter is dropped: event names become `String` and event params `[Any?]`.
-//    // PORT-TODO: EvtDef compile-time event typing not modeled.
+//    // PORT-NOTE: EvtDef compile-time event typing not modeled.
 //  - Upstream callbacks are `(...args) => boolean | void`; the bound `this`
 //    (introduced by `WithThisType` at the `on` overloads) is modeled here as an
 //    explicit leading `thisCtx` parameter so `triggerWithContext`'s receiver binding
@@ -93,7 +93,7 @@ public struct EventProcessor {
  */
 // NOTE (CONVENTIONS §2): upstream `Eventful` is applied to `Element` as a MIXIN
 // (`applyMixin`), not as a superclass, so it is faithfully a standalone `final class`
-// here. // PORT-TODO: wire Eventful into Element via protocol + forwarding at Element.
+// here. Element composes it via forwarding (see `mixin(Element, Eventful)` in Element.swift).
 public final class Eventful {
 
     private var _$handlers: [String: [EventHandler]]?
@@ -173,7 +173,7 @@ public final class Eventful {
             query: query,
             // FIXME
             // Do not publish this feature util it is proved that it makes sense.
-            // PORT-TODO: `handler.zrEventfulCallAtLast` — JS tacks a flag onto the
+            // PORT-NOTE: `handler.zrEventfulCallAtLast` — JS tacks a flag onto the
             // function object; Swift closures cannot carry properties, so default false.
             callAtLast: false
         )

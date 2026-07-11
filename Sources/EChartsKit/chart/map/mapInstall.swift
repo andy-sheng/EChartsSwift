@@ -26,33 +26,33 @@ import ZRenderKit
 //       -> registrar surface owned by the Orchestrate/Integrate driver (same convention as
 //          chart/sankey/sankeyInstall.swift / chart/sunburst/sunburstInstall.swift).
 //   import MapView from './MapView';
-//       -> PORT-TODO: chart/map/MapView.swift is a SEPARATE port phase — the render layer that draws each
-//          GeoJSON region as a Polygon/Path COLORED by the series datum value (mirrors GeoView, but per
-//          `getItemVisual` fill instead of the region itemStyle backdrop). Referenced as the future view.
+//       -> MapView (chart/map/MapView.swift, ported) — the render layer that draws each GeoJSON region
+//          as a Polygon/Path COLORED by the series datum value (mirrors GeoView, but per `getItemVisual`
+//          fill instead of the region itemStyle backdrop).
 //   import MapSeries from './MapSeries';                         -> MapSeriesModel (sibling MapSeries.swift, ported).
 //   import {createLegacyDataSelectAction} from '../../legacy/dataSelectAction';
 //       -> PORT-TODO: legacy/dataSelectAction.ts NOT ported (select actions deferred).
 //   import {install as installGeo} from '../../component/geo/install';
 //       -> the geo component install (geoCreator + GeoModel + GeoView). Wired by the driver via `use`.
 //   import { mapSymbolLayoutStageHandler } from './mapSymbolLayout';
-//       -> PORT-TODO: chart/map/mapSymbolLayout.ts NOT ported (the map symbol layout stage — places the
-//          per-region series symbols; a SEPARATE port phase alongside MapView).
+//       -> mapSymbolLayoutStageHandler (chart/map/mapSymbolLayout.swift, ported) — the map symbol layout
+//          stage that places the per-region series symbols.
 //   import { mapDataStatisticStageHandler } from './mapDataStatistic';
 //       -> `mapDataStatisticStageHandler` (sibling mapDataStatistic.swift, ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sankey/sankeyInstall.swift). `MapView` and
-//   `mapSymbolLayoutStageHandler` land with their own (later) port phases; `createLegacyDataSelectAction`
-//   (select actions) is DEFERRED. Preserved as commented source for the diffable surface:
+//   `mapSymbolLayoutStageHandler` are ported; `createLegacyDataSelectAction` (select actions) is
+//   still DEFERRED. Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {
 //         use(installGeo);                                        // -> geo component (geoCreator/GeoModel/GeoView)
 //
-//         registers.registerChartView(MapView);                  // PORT-TODO: MapView (later phase)
+//         registers.registerChartView(MapView);                  // PORT-NOTE: MapView (ported)
 //         registers.registerSeriesModel(MapSeries);              // -> MapSeriesModel (MapSeries.swift)
 //
-//         registers.registerLayout(mapSymbolLayoutStageHandler); // PORT-TODO: mapSymbolLayout (later phase)
+//         registers.registerLayout(mapSymbolLayoutStageHandler); // PORT-NOTE: mapSymbolLayout (ported)
 //         registers.registerProcessor(
 //             registers.PRIORITY.PROCESSOR.STATISTIC,
 //             mapDataStatisticStageHandler                        // -> mapDataStatisticStageHandler (mapDataStatistic.swift)

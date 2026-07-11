@@ -10,7 +10,7 @@ import Foundation
 //   `string | GradientObject` argument is modeled as the `ColorValue` enum (the
 //   `.string` / `.gradient` switch replaces `isString` / `isGradientObject`).
 // import { GradientObject } from '../graphic/Gradient';           → Graphic/Gradient.swift
-//   (GradientObject / GradientColorStop). See the `extend({}, color)` PORT-TODO on `liftColor`.
+//   (GradientObject / GradientColorStop). See the `extend({}, color)` PORT-NOTE on `liftColor`.
 
 /// Upstream color params are typed `number | string` (e.g. the `(number | string)[]`
 /// returned by `.split(',')`, then partly overwritten with parsed floats). Swift has no
@@ -59,7 +59,7 @@ public struct LerpFullOutput {
 /// upstream `modifyHSL` params are `number | string | ((x: number) => number)`. Modelled as a
 /// tagged enum (no untagged union in Swift). The `.function` case replaces the runtime
 /// `isFunction(...)` guard — callers resolve "is this callable" statically, as the
-/// `util.isFunction` PORT-TODO recommends. Literal conformances keep call sites close to
+/// `util.isFunction` PORT-NOTE recommends. Literal conformances keep call sites close to
 /// upstream (`modifyHSL(c, 180, 0.5, "50%")`).
 public enum HSLParam {
     case number(Double)
@@ -256,7 +256,7 @@ public enum color {
 
     // upstream: parse(colorStr, rgbaArr?) — out-param `rgbaArr` mutation dropped per §3;
     // value-returning. Internal callers all rely on the return value (`if (colorArr)`).
-    // PORT-TODO: the original's error branches (`setRgba(rgbaArr,0,0,0,1); return;`) mutate
+    // PORT-NOTE: the original's error branches (`setRgba(rgbaArr,0,0,0,1); return;`) mutate
     // `rgbaArr` *and* return undefined; here those branches return nil (no out-param).
     @discardableResult
     public static func parse(_ colorStr: String, _ rgbaArr: [Double]? = nil) -> [Double]? {
@@ -770,7 +770,7 @@ public enum color {
     static func stringOf(_ p: CssParam) -> String {
         switch p {
         case .string(let s): return s
-        // PORT-TODO: full JS Number→String fidelity (exponential form, etc.) not replicated.
+        // PORT-NOTE: full JS Number→String fidelity (exponential form, etc.) not replicated.
         case .number(let n): return numToStr(n)
         }
     }
@@ -783,7 +783,7 @@ public enum color {
     }
 
     /// JS unary `+` (i.e. `Number(value)`): empty → 0, else the parsed number or NaN.
-    /// PORT-TODO: not a complete ECMAScript ToNumber (no 0x.. / Infinity literals, etc.).
+    /// PORT-NOTE: not a complete ECMAScript ToNumber (no 0x.. / Infinity literals, etc.).
     static func cssPlus(_ p: CssParam) -> Double {
         switch p {
         case .number(let n): return n
@@ -795,7 +795,7 @@ public enum color {
     }
 
     /// JS Number→String for the integral/short-fraction values color produces.
-    /// PORT-TODO: not full ECMAScript Number::toString (exponential notation, etc.).
+    /// PORT-NOTE: not full ECMAScript Number::toString (exponential notation, etc.).
     static func numToStr(_ n: Double) -> String {
         if n.isNaN { return "NaN" }
         if n.isInfinite { return n > 0 ? "Infinity" : "-Infinity" }
@@ -806,7 +806,7 @@ public enum color {
     }
 
     /// JS `parseFloat`: parse a leading float, ignore trailing junk, NaN if none.
-    /// PORT-TODO: narrow subset (no exponent edge cases beyond the common forms).
+    /// PORT-NOTE: narrow subset (no exponent edge cases beyond the common forms).
     static func parseFloat(_ s: String) -> Double {
         let chars = Array(s)
         let n = chars.count

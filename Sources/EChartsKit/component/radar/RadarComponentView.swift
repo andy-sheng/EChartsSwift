@@ -35,8 +35,8 @@ import ZRenderKit
 //       the sanctioned DRAWING deviation). `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath).
 //   import ComponentView from '../../view/Component';          → `ComponentView` (view/ComponentView.swift).
 //   import RadarModel from '../../coord/radar/RadarModel';
-//     → PORT-TODO: `coord/radar/RadarModel` is a sibling landing this phase (not yet ported).
-//       Assumed API: `open class RadarModel: ComponentModel` with `var coordinateSystem: Radar?`
+//     → `coord/radar/RadarModel` -> `RadarModel` (coord/radar/RadarModel.swift, `public final class
+//       RadarModel: ComponentModel, CoordinateSystemHostModel`) with `var coordinateSystem: Radar?`
 //       and the standard `get`/`getModel` Model surface. Registered component view `type` is 'radar'.
 //   import GlobalModel from '../../model/Global';              → `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';        → `ExtensionAPI`.
@@ -146,7 +146,7 @@ public final class RadarComponentView: ComponentView {
         //     areaOrLine[colorIndex] = areaOrLine[colorIndex] || [];
         //     return colorIndex;
         //   }
-        // PORT-TODO (JS sparse-index quirk): for the polygon-shape splitArea below, `idx` can be `-1`
+        // PORT-NOTE (JS sparse-index quirk): for the polygon-shape splitArea below, `idx` can be `-1`
         //   at the first ring (i-1 with i=0, since the empty `prevPoints` array is truthy in JS). JS
         //   `(-1) % n === -1`, and `areaOrLine[-1] = ...` writes a NON-enumerable "-1" key that the
         //   later `each(splitAreas)` (index-based) skips — i.e. that first area polygon is silently
@@ -214,7 +214,7 @@ public final class RadarComponentView: ComponentView {
                     points.append(points[0])
                 }
                 else {
-                    // PORT-TODO: upstream `if (__DEV__) { console.error('Can\'t draw value axis ' + i); }`
+                    // PORT-NOTE: upstream `if (__DEV__) { console.error('Can\'t draw value axis ' + i); }`
                     //   — dev-only diagnostic dropped.
                 }
 
@@ -228,7 +228,7 @@ public final class RadarComponentView: ComponentView {
                 }
                 // upstream: `if (showSplitArea && prevPoints)` — an empty JS array is truthy, so this
                 //   is entered even on the first ring (i=0, prevPoints=[]); see the getColorIndex
-                //   PORT-TODO for how that first (colorIndex=-1) polygon is dropped.
+                //   PORT-NOTE for how that first (colorIndex=-1) polygon is dropped.
                 if showSplitArea {
                     let colorIndex = getColorIndex(&splitAreas, splitAreaColorsArr, i - 1)
                     if colorIndex >= 0 {
@@ -284,7 +284,7 @@ public final class RadarComponentView: ComponentView {
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of RadarView.ts upstream. These reproduce the
+// PORT-NOTE helpers — NOT part of RadarView.ts upstream. These reproduce the
 // out-of-phase sibling APIs / the `util/graphic` style bridge referenced above.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================

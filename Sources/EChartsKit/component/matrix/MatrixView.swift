@@ -61,10 +61,11 @@ import ZRenderKit
 //       `MatrixBodyOrCornerKind` ('body' | 'corner'); Swift has no string-literal generics, so the kind is a
 //       plain `String` argument and `MatrixBodyCorner` is referenced non-generically (kind held internally).
 //   import { setLabelStyle } from '../../label/labelStyle';
-//     → PORT-TODO: `label/labelStyle` NOT ported. Upstream attaches the cell label as the rect's textContent
-//       via setLabelStyle (+ inside textConfig positioning). Following the CalendarView/FunnelView deviation,
-//       the label is rendered as a STANDALONE `ZRText` centered on the cell rect (align center / middle),
-//       carrying the label model's font + color. The rich-text / state / overflow-clip machinery is deferred.
+//     → `label/labelStyle.swift` (setLabelStyle IS ported: labelStyle.setLabelStyle / getLabelStatesModels).
+//       Upstream attaches the cell label as the rect's textContent via setLabelStyle (+ inside textConfig
+//       positioning). This port keeps the CalendarView/FunnelView deviation instead: the label is rendered as
+//       a STANDALONE `ZRText` centered on the cell rect (align center / middle), carrying the label model's
+//       font + color. The textContent-inside-positioning / rich-text / state / overflow-clip machinery is deferred.
 //   import GlobalModel from '../../model/Global';                → `GlobalModel`.
 //
 //   The sibling coord/matrix types (assumed API, mirroring upstream MatrixDim.ts / MatrixBodyCorner.ts /
@@ -434,11 +435,13 @@ private func createMatrixCell(
 
         // upstream: setLabelStyle(cellRect, {normal: _tmpCellLabelModel}, {defaultText: text, autoOverflowArea, layoutRect});
         //           cellText = cellRect.getTextContent(); cellText.z2 = z2 + 1; ...clip path...
-        // PORT-TODO: `label/labelStyle.setLabelStyle` NOT ported. The cell label is rendered as a STANDALONE
-        //   `ZRText` centered on the cell rect (align center / middle), carrying the label model's font +
-        //   color — the CalendarView/FunnelView drawing deviation. `shape` is the subpixel-optimized rect
-        //   (createMatrixRect mutated it in place), so the center matches the drawn cell. The rich-text /
-        //   overflow-clip / textContent-inside-positioning machinery is deferred (static render, §5).
+        // PORT NOTE: `label/labelStyle.setLabelStyle` IS ported (labelStyle.setLabelStyle). This view keeps the
+        //   CalendarView/FunnelView drawing deviation instead of wiring it: the cell label is rendered as a
+        //   STANDALONE `ZRText` centered on the cell rect (align center / middle), carrying the label model's
+        //   font + color. `shape` is the subpixel-optimized rect (createMatrixRect mutated it in place), so the
+        //   center matches the drawn cell. Wiring the real setLabelStyle would re-parent the label as the rect's
+        //   textContent (textConfig-inside positioning + autoOverflowArea/layoutRect clip path) — a rendering
+        //   change out of scope for this cleanup. The rich-text / overflow-clip machinery is deferred (static, §5).
         // Honor `label.show`: upstream's setLabelStyle produces NO text element when the label model's
         // `show` is false (default true). Gate the ZRText on it (nil/true → draw).
         let labelShow = _tmpCellLabelModel.getShallow("show")

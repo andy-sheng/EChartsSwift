@@ -25,10 +25,10 @@ import ZRenderKit
 //   import RadiusAxis from './RadiusAxis';                             -> RadiusAxis (sibling, this phase).
 //   import AngleAxis from './AngleAxis';                               -> AngleAxis (sibling, this phase).
 //   import PolarModel, { COORD_SYS_TYPE_POLAR } from './PolarModel';   -> PolarModel + COORD_SYS_TYPE_POLAR.
-//       PORT-TODO: coord/polar/PolarModel.ts is a sibling not yet landed. This file references its
+//       PORT-NOTE: coord/polar/PolarModel.swift is ported. This file references its
 //       conventional public API: the constant `COORD_SYS_TYPE_POLAR = "polar"` and the class
 //       `PolarModel` (a `ComponentModel` conforming to `CoordinateSystemHostModel`, so
-//       `.coordinateSystem: CoordinateSystemMaster?`). Reconcile once that sibling lands.
+//       `.coordinateSystem: CoordinateSystemMaster?`).
 //   import { CoordinateSystem, CoordinateSystemMaster, CoordinateSystemClipArea } from '../CoordinateSystem';
 //       -> coord/CoordinateSystem.swift. See the CoordinateSystem-drop note on the class below.
 //   import GlobalModel from '../../model/Global';                      -> GlobalModel.
@@ -91,7 +91,7 @@ public final class Polar: CoordinateSystemMaster {
     public var axisPointerEnabled: Bool? = true
 
     // upstream: model: PolarModel;
-    //   Injected outside (by polarCreator). PORT-TODO: `PolarModel` is a sibling not yet landed.
+    //   Injected outside (by polarCreator). PORT-NOTE: `PolarModel` is ported (coord/polar/PolarModel.swift).
     //   NOTE: `CoordinateSystemMaster.model` requires `ComponentModel?`; when PolarModel lands (a
     //   `ComponentModel` subclass) this concrete property both stores the model and witnesses that
     //   requirement.
@@ -398,7 +398,7 @@ public final class Polar: CoordinateSystemMaster {
 //     return polarModel && polarModel.coordinateSystem
 //         || seriesModel && seriesModel.coordinateSystem as Polar;
 // }
-//   `finder` is `[String: Any]` → field access via subscript. PORT-TODO: references sibling `PolarModel`.
+//   `finder` is `[String: Any]` → field access via subscript. PORT-NOTE: references sibling `PolarModel`.
 private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Polar? {
     let seriesModel = finder["seriesModel"] as? SeriesModel
     let polarModel = finder["polarModel"] as? PolarModel

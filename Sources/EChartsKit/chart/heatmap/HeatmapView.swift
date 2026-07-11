@@ -24,8 +24,8 @@ import ZRenderKit
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                    -> `Rect` is the ZRenderKit shape.
 //     PORT-TODO: `graphic.traverseElements` not ported; `eachRendered` traverses the group directly.
-//   import { toggleHoverEmphasis } from '../../util/states';          -> PORT-TODO: `util/states` NOT ported
-//     (states/emphasis prerequisite); the ensureState/toggleHoverEmphasis block is deferred.
+//   import { toggleHoverEmphasis } from '../../util/states';          -> `util/states` (util/states.swift);
+//     `toggleHoverEmphasis` is now wired at the cell (see `_renderOnGridLike`, alongside setStatesStylesFromModel).
 //   import HeatmapLayer from './HeatmapLayer';                        -> PORT-TODO: canvas-blur layer NOT ported
 //     (geo/large-mode only — `_renderOnGeo`, deferred per the heatmap milestone scope).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> stdlib / `util` (ZRenderKit).
@@ -34,14 +34,15 @@ import ZRenderKit
 //   import type GlobalModel from '../../model/Global';               -> `GlobalModel`.
 //   import type ExtensionAPI from '../../core/ExtensionAPI';         -> `ExtensionAPI`.
 //   import type VisualMapModel from '../../component/visualMap/VisualMapModel';  -> `VisualMapModel`.
-//   import type PiecewiseModel / ContinuousModel;                    -> PORT-TODO: geo-path only (deferred).
+//   import type PiecewiseModel / ContinuousModel;                    -> component/visualMap/{PiecewiseModel,ContinuousModel}.swift (ported; only needed by the deferred geo path).
 //   import { GeoLikeCoordSys, isCoordinateSystemType, isGeoLikeCoordSys } from '../../coord/CoordinateSystem';
 //     -> `isCoordinateSystemType` used implicitly via the `as? Cartesian2D` downcast; geo helpers deferred.
 //   import { StageHandlerProgressParams, Dictionary, OptionDataValue } from '../../util/types';  -> util/types.swift.
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D'; -> `Cartesian2D`.
-//   import type Calendar from '../../coord/calendar/Calendar';        -> PORT-TODO: calendar coord NOT wired for heatmap.
+//   import type Calendar from '../../coord/calendar/Calendar';        -> coord/calendar/Calendar.swift (ported; not wired into heatmap yet).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//     -> PORT-TODO: `label/labelStyle` NOT ported; the label block is deferred (same as BarView).
+//     -> `labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels` (label/labelStyle.swift); the
+//        per-cell value label is wired in `_renderOnGridLike` (same pattern as BarView).
 //   import type Element from 'zrender/src/Element';                   -> `Element` (ZRenderKit).
 //   import type Matrix from '../../coord/matrix/Matrix';              -> PORT-TODO: matrix coord NOT wired for heatmap.
 //   import { calcBandWidth } from '../../coord/axisBand';             -> `calcBandWidth` (coord/axisBand.swift).
@@ -52,8 +53,8 @@ import ZRenderKit
 //   sized to the axis band width/height + 0.5px), FILLED with the per-datum color the visualMap encoding
 //   already wrote into the item visual `style` (visual/style + component/visualMap/visualEncoding →
 //   `data.getItemVisual(idx, 'style')`). The blurred canvas `HeatmapLayer` (`_renderOnGeo`) and the
-//   large/progressive path are PORT-TODOs; the matrix/calendar branches are PORT-TODOs (those coord
-//   systems are not wired for heatmap yet).
+//   large/progressive path are PORT-TODOs; the matrix/calendar coord branches are not wired for heatmap
+//   yet (the coord systems themselves are ported: coord/matrix/Matrix.swift, coord/calendar/Calendar.swift).
 
 // upstream: function getIsInContinuousRange(dataExtent, range) { ... }
 //   Returns a predicate over a NORMALIZED value (0..1): true iff it lands inside the visualMap
@@ -350,7 +351,7 @@ open class HeatmapView: ChartView {
         // upstream reads the emphasis/blur/select item styles + focus/blurScope/emphasisDisabled here
         //   (HeatmapView.ts:202-210). The three per-state style bags are applied via
         //   `setStatesStylesFromModel` at the cell (mirrors BarView.updateStyle).
-        //   PORT-TODO: `getLabelStatesModels` stays deferred with the cell label block below.
+        //   `getLabelStatesModels` is read per cell (from `stateModel`) with the label block below.
         var stateModel: Model = seriesModel
         var emphasisModel = seriesModel.getModel(["emphasis"])
         var focus: InnerFocus? = emphasisModel.get("focus")
@@ -479,8 +480,25 @@ open class HeatmapView: ChartView {
 
             let rect = Rect(["shape": shape as PathShape])
 
-            // upstream: setLabelStyle(...) — the value label on each cell.
-            // PORT-TODO: label block deferred (`label/labelStyle` + `getRawValue` not ported).
+            // upstream (HeatmapView.ts:308-327): setLabelStyle(...) — the value label on each cell.
+            //   `labelStatesModels` comes from `stateModel` (the seriesModel, or the itemModel when
+            //   `hasItemOption`), matching upstream's getLabelStatesModels(seriesModel|itemModel).
+            //   defaultText = the raw value dim `rawValue[2]` coerced to a string (JS `rawValue[2] + ''`
+            //   == format._strOrNil), falling back to '-'. -> labelStyle + dataFormat.getRawValue ported.
+            let labelStatesModels = labelStyle.getLabelStatesModels(stateModel)
+            var defaultLabelText = "-"
+            if let rawArr = seriesModel.getRawValue(Double(idx)) as? [Any],
+               rawArr.count > 2,
+               !(rawArr[2] is NSNull),
+               let s = format._strOrNil(rawArr[2]) {
+                defaultLabelText = s
+            }
+            var labelOpt = SetLabelStyleOpt()
+            labelOpt.labelFetcher = seriesModel
+            labelOpt.labelDataIndex = Double(idx)
+            labelOpt.defaultOpacity = cellStyle.opacity
+            labelOpt.defaultText = defaultLabelText
+            labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
 
             // Entrance animation (opacity fade-in, mirroring FunnelPiece): construct the cell at opacity 0,
             //   then `initProps({style:{opacity}})` toward the intended (visualMap-encoded) final opacity.

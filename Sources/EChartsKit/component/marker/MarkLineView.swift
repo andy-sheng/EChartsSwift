@@ -37,7 +37,8 @@ import ZRenderKit
 // import { ScaleDataValue, ColorString } from '../../util/types';    -> util/types.swift
 // import SeriesModel from '../../model/Series';                      -> EChartsKit `SeriesModel`
 // import { getECData } from '../../util/innerStore';
-//   -> PORT-TODO: util/innerStore (ECData host-model tagging for tooltip) not ported.
+//   -> PORT-NOTE: util/innerStore is ported (util/innerStore.swift, getECData); the ECData host-model
+//      tagging for tooltip is still deferred (see below).
 // import ExtensionAPI from '../../core/ExtensionAPI';                -> EChartsKit `ExtensionAPI`
 // import Cartesian2D from '../../coord/cartesian/Cartesian2D';       -> EChartsKit `Cartesian2D`
 // import GlobalModel from '../../model/Global';                      -> EChartsKit `GlobalModel`
@@ -55,12 +56,12 @@ import ZRenderKit
 // Line option. be merged from configuration of two ends.
 // type MarkLineMergedItemOption = MarkLine2DDataItemOption[number];
 //   -> the per-end option; modeled as `MarkerPositionOption` (position-only, see MarkerModel.swift).
-//   PORT-TODO: item-level style/label/symbol options in the raw `[String: Any]` data item are not
+//   PORT-NOTE: item-level style/label/symbol options in the raw `[String: Any]` data item are not
 //     carried onto `MarkerPositionOption`; where they are needed they are re-read via `getItemModel`
 //     (which falls back to the mark-line model option).
 
 // const inner = makeInner<{ from: SeriesData<MarkLineModel>, to: SeriesData<MarkLineModel> }, MarkLineModel>();
-// PORT-TODO: `makeInner` needs an `AnyObject` value; the `{ from, to }` bag is wrapped in a reference.
+// PORT-NOTE: `makeInner` needs an `AnyObject` value; the `{ from, to }` bag is wrapped in a reference.
 final class MarkLineInner {
     var from: SeriesData?
     var to: SeriesData?
@@ -805,7 +806,7 @@ private func markerPositionOption(from raw: Any?) -> MarkerPositionOption? {
 }
 
 // zrender `merge(target, source)` (overwrite falsy): copy source's fields into target only where
-//   target's field is nil. PORT-TODO: deep object-recursion of merge is approximated by a shallow
+//   target's field is nil. PORT-NOTE: deep object-recursion of merge is approximated by a shallow
 //   field fill (MarkerPositionOption fields are scalars/arrays).
 private func mergePositionOption(_ target: inout MarkerPositionOption, _ source: MarkerPositionOption?) {
     guard let source = source else { return }

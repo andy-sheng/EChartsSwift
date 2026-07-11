@@ -28,7 +28,7 @@ import ZRenderKit
 //   import HeatmapSeriesModel from './HeatmapSeries';                         -> sibling HeatmapSeries.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file (same convention as chart/effectScatter/effectScatterInstall.swift).
 //   The integration points are:
 //     - _chartViewFactories["heatmap"] = { HeatmapView() }              // registerChartView(HeatmapView)

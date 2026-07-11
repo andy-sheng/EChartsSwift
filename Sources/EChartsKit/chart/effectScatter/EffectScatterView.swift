@@ -11,7 +11,7 @@
 //   emphasis hover-scale / symbolRotate / offset / entrance scale-in) and the ripple rings are the
 //   faithful EffectSymbol.startEffectAnimation. DEVIATION (identical to ScatterView): `pointsLayout` is
 //   inlined per coord system as `getSymbolPoint`. DEFERRED: pointsLayout stage / updateTransform (roam) /
-//   clipShape (createCoordSysClipAreaSimply) — documented PORT-TODOs.
+//   clipShape (createCoordSysClipAreaSimply) — documented PORT-NOTEs.
 
 import Foundation
 import ZRenderKit

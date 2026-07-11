@@ -1,5 +1,6 @@
 // EChartsKit — faithful translation of echarts/src/** on top of ZRenderKit.
 // Placeholder for now; intentionally empty.
-// PORT-TODO: begin porting echarts core (model/component/chart) here.
+// PORT-NOTE: the echarts core (model/component/chart) is ported across this module's other files;
+//   this umbrella file stays intentionally empty.
 
 import ZRenderKit

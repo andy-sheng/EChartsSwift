@@ -176,10 +176,10 @@ extension SliderZoomView {
 
     // upstream: _onClickPanel(e) — a click on the slider panel recenters the window on the click point.
     //   `sliderGroup.transformCoordToLocal` maps the global click into slider-local coords.
-    // PORT-TODO: `transformCoordToLocal` is a Group helper (invert-transform of the global point). If TASK 1
-    //   has not ported it, this stays behind the guard below and the click-recenter is a no-op (harmless —
-    //   the drag handles are the primary interaction; the click-panel is a convenience). Wire from TASK 1's
-    //   panel `onclick` when available.
+    // PORT-NOTE: `transformCoordToLocal` (invert-transform of the global point) is a ported Group helper
+    //   (ZRenderKit Transformable). The caller (the panel click seam) supplies the already-localized
+    //   point, so `_onClickPanel` recenters the window on the click point (the drag handles remain the
+    //   primary interaction; the click-panel is a convenience).
     public func _onClickPanel(_ localX: Double, _ localY: Double) {
         let size = self._size
 

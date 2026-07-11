@@ -25,7 +25,7 @@
 // import SeriesModel from '../../model/Series';                       -> SeriesModel (model/Series.swift)
 // import { setAsPrimitive, map, isTypedArray, assert, each, retrieve2 } from 'zrender/src/core/util';
 //   -> ZRenderKit `util.*` (map/isTypedArray/assert/each/retrieve2). `setAsPrimitive` is NOT
-//      ported; used only by `disableTransformOptionMerge` (dataset) -> PORT-TODO.
+//      ported; used only by `disableTransformOptionMerge` (dataset) -> PORT-NOTE.
 // import { SourceMetaRawOption, Source, createSource, cloneSourceShallow } from '../Source';
 //   -> data/Source.swift (same module).
 // import { SeriesEncodableModel, OptionSourceData, SOURCE_FORMAT_TYPED_ARRAY, SOURCE_FORMAT_ORIGINAL,
@@ -548,7 +548,7 @@ private func jsAnyString(_ v: Any?) -> String {
 
 // JS `Number.prototype.toString` for a Double (integral values print without a fraction).
 // (Local shim; mirrors the one in data/Source.swift. Used by `_getVersionSign`.)
-private func jsNumberStr(_ x: Double) -> String {   // PORT-TODO: JS number-to-string shim
+private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-string shim
     if x == x.rounded() && Swift.abs(x) < 1e15 {
         return String(Int(x))
     }
@@ -557,7 +557,7 @@ private func jsNumberStr(_ x: Double) -> String {   // PORT-TODO: JS number-to-s
 
 // JS truthiness for an arbitrary value (used for `!!sourceHeader !== !!upMetaRawOption.sourceHeader`).
 // (Local shim; mirrors the one in data/Source.swift.)
-private func jsTruthy(_ v: Any?) -> Bool {   // PORT-TODO: JS truthiness shim
+private func jsTruthy(_ v: Any?) -> Bool {   // PORT-NOTE: JS truthiness shim
     guard let v = v else { return false }
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }

@@ -27,9 +27,9 @@ import ZRenderKit
 
 // import * as zrUtil from 'zrender/src/core/util';   -> `util` (ZRenderKit).
 // import tokens from './tokens';
-//   -> PORT-TODO: visual/tokens.ts not ported yet (same deferral as LegendModel/VisualMapModel default
-//      option). `tokens.color.transparent` is inlined as its literal 'rgba(0,0,0,0)'. Re-wire once
-//      visual/tokens.swift lands.
+//   -> PORT-NOTE: visual/tokens.swift has landed, but `tokens.color.transparent` is still inlined
+//      here as its literal 'rgba(0,0,0,0)' (`tokensColorTransparent`) rather than read from `tokens`.
+//      A follow-up may re-wire this to `tokens.color.transparent`.
 private let tokensColorTransparent = "rgba(0,0,0,0)"
 
 // const visualDefault = { get: function (visualType, key, isCategory?) { ... } };

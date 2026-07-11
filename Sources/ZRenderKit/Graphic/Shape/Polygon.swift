@@ -24,7 +24,7 @@ public struct PolygonShape: PathShape, PolyBuildPathShape {
     //   value-type `[VectorArray]` is exposed as a `[[Double]]` (the shape the Animator's 2D-array
     //   interpolation consumes — see Animator.interpolate2DArray) and accepts `[[Double]]` or
     //   `[VectorArray]` on set. This is the line/area morph case. `smooth` is a numeric field.
-    // PORT-TODO: `smoothConstraint` ([VectorArray]) is not exposed for keyed animation.
+    // PORT-NOTE: `smoothConstraint` ([VectorArray]) is not exposed for keyed animation.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "points":
@@ -52,7 +52,7 @@ public struct PolygonShape: PathShape, PolyBuildPathShape {
 }
 
 // upstream: export interface PolygonProps extends PathProps { shape?: Partial<PolygonShape> }
-// PORT-TODO: PolygonProps (typed-interface fidelity) collapses onto the dynamic PathProps bag.
+// PORT-NOTE: PolygonProps (typed-interface fidelity) collapses onto the dynamic PathProps bag.
 public typealias PolygonProps = PathProps
 
 // upstream: class Polygon extends Path<PolygonProps>

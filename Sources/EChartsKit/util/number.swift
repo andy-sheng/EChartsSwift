@@ -228,7 +228,7 @@ public enum number {
      *              Since: ` quantityExponent(val) = floor(log10(abs(val))) `
      *              Hence: ` precision ~= floor(EXP52B10 - 1 - quantityExponent(val))
      */
-    // PORT-TODO: upstream `round(x, precision, returnStr)` overloads vary the return type by the
+    // PORT-NOTE: upstream `round(x, precision, returnStr)` overloads vary the return type by the
     //  runtime boolean `returnStr`, which Swift cannot express. They are split into `round` (->Double,
     //  returnStr omitted/false) and `roundStr` (->String, returnStr: true). Call sites
     //  `round(x, p, true)` become `roundStr(x, p)`.

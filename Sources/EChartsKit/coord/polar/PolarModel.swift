@@ -36,7 +36,7 @@ import ZRenderKit
 //     ComponentOnCalendarOptionMixin, ComponentOnMatrixOptionMixin {
 //     mainType?: 'polar';
 // }
-//   PORT-TODO: `PolarOption` describes the dynamic option shape; modeled as the dynamic option bag
+//   PORT-NOTE: `PolarOption` describes the dynamic option shape; modeled as the dynamic option bag
 //   ([String: Any]) per CONVENTIONS §2 — no standalone Swift struct emitted.
 
 // upstream: export const COORD_SYS_TYPE_POLAR = 'polar';
@@ -60,7 +60,7 @@ public final class PolarModel: ComponentModel, CoordinateSystemHostModel {
     public override class var dependencies: [String] { return ["radiusAxis", "angleAxis"] }
 
     // coordinateSystem: Polar;
-    //   PORT-TODO: upstream types this the concrete `Polar` (a `CoordinateSystemMaster`), injected and
+    //   PORT-NOTE: upstream types this the concrete `Polar` (a `CoordinateSystemMaster`), injected and
     //   non-null once the coordinate system is built. `Polar` (coord/polar/Polar.swift) is a sibling this
     //   phase; typed here as the `CoordinateSystemMaster?` required by `CoordinateSystemHostModel`
     //   (narrow via `as? Polar` at use).

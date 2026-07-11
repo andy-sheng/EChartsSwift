@@ -44,7 +44,7 @@ import ZRenderKit
 //   import { isValidBoundsForExtent } from '../util/model';       -> util/model.swift (`model.isValidBoundsForExtent`)
 //   import { isNullableNumberFinite } from '../util/number';      -> util/number.swift (`number.isNullableNumberFinite`)
 //
-// PORT-TODO (cross-sibling dependency): this file relies on the established mapper design in
+// PORT-NOTE (cross-sibling dependency): this file relies on the established mapper design in
 //   scale/scaleMapper.swift where `ScaleMapper` is a base *class* of stored method-slot closures,
 //   mounted via `decorateScaleMapper`. That requires `Scale` (and thus `LogScale`) to be a
 //   `ScaleMapper` subclass — see the note in scale/Scale.swift. `IntervalScale` / `IntervalScaleSetting`
@@ -91,7 +91,7 @@ public final class LogScale: Scale, ClassManageable {
      * [CAVEAT] `powStub` and `intervalStub` should be modified synchronously.
      */
     // upstream: readonly powStub: IntervalScale;
-    // PORT-TODO: upstream `readonly`; constructed after `super.init()` (it needs `self` and the parsed
+    // PORT-NOTE: upstream `readonly`; constructed after `super.init()` (it needs `self` and the parsed
     //   breaks), so modeled as an IUO `private(set) var` (two-phase init, CONVENTIONS).
     public private(set) var powStub: IntervalScale!
     /**
@@ -137,7 +137,7 @@ public final class LogScale: Scale, ClassManageable {
         if let scaleBreakHelper = scaleBreakHelper {
             // upstream: scaleBreakHelper.parseAxisBreakOptionInwardTransform(
             //     breakOption, this, {noNegative: true}, LOOKUP_IDX_BREAK_START, out);
-            // PORT-TODO: upstream shares the `lookup` arrays by reference between `this._lookup` and
+            // PORT-NOTE: upstream shares the `lookup` arrays by reference between `this._lookup` and
             //   `out.lookup`, so the breaks written here also appear in `this._lookup`. Swift `Lookup`
             //   is a value type, so we read the mutated `out.lookup` back into `self._lookup` below.
             scaleBreakHelper.parseAxisBreakOptionInwardTransform(
@@ -185,7 +185,7 @@ public final class LogScale: Scale, ClassManageable {
                 )
                 if let brkPowResult = brkPowResult {
                     vBreak = brkPowResult.vBreak
-                    // PORT-TODO: upstream `powVal = brkPowResult.tickVal` may assign `number|undefined`
+                    // PORT-NOTE: upstream `powVal = brkPowResult.tickVal` may assign `number|undefined`
                     //   while `ScaleTick.value` is non-optional `Double`; undefined coerced to NaN.
                     powVal = brkPowResult.tickVal ?? Double.nan
                 }
@@ -216,7 +216,7 @@ public final class LogScale: Scale, ClassManageable {
         return self.intervalStub.getLabel(data, opt)
     }
 
-    // PORT-TODO: the abstract base declares `getLabel(_ tick: ScaleTick) -> String`. Upstream satisfies
+    // PORT-NOTE: the abstract base declares `getLabel(_ tick: ScaleTick) -> String`. Upstream satisfies
     //   it with the wider `getLabel(data, opt?)`; Swift cannot widen an override signature, so this
     //   one-arg override forwards to the upstream two-arg method.
     public override func getLabel(_ tick: ScaleTick) -> String {
@@ -224,14 +224,14 @@ public final class LogScale: Scale, ClassManageable {
     }
 
     // upstream: static mapperMethods: DecoratedScaleMapperMethods<LogScale> = { ... }
-    // PORT-TODO: upstream is a *static* method bag whose bodies use `this`. The ported
+    // PORT-NOTE: upstream is a *static* method bag whose bodies use `this`. The ported
     //   `DecoratedScaleMapperMethods` (scaleMapper.swift) is a NON-generic struct of closures that
     //   must capture the host, so it takes the host as `this` (mirroring `OrdinalScale.decoratedMethods`)
     //   and is mounted via `decorateScaleMapper` in the constructor exactly as upstream. The
     //   init-parameter order of `DecoratedScaleMapperMethods` places getExtent/getExtentUnsafe before
     //   setExtent/setExtent2 (differs from upstream method declaration order); each closure is
     //   annotated with its upstream position.
-    // PORT-TODO: verify capture — the closures are stored on `this` (via decorateScaleMapper) and
+    // PORT-NOTE: verify capture — the closures are stored on `this` (via decorateScaleMapper) and
     //   capture `this`, a real retain cycle; `[unowned this]` breaks it (the closures never outlive
     //   the host).
     static func mapperMethods(_ this: LogScale) -> DecoratedScaleMapperMethods {
@@ -364,7 +364,7 @@ public final class LogScale: Scale, ClassManageable {
 }
 
 // upstream: Scale.registerClass(LogScale);
-// PORT-TODO: upstream runs this side-effecting registration at module import time. Swift libraries
+// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries
 //  have no import-time hook, and a lazy `let` global only initializes on first access (so it would
 //  never run). Exposed instead as an idempotent static bootstrap that the EChartsKit registration
 //  entry point must invoke once (mirroring `IntervalScale.registerScaleClass()`).

@@ -9,7 +9,7 @@
 // This is the renderer-agnostic event layer: the coordinate-normalization MATH is ported
 // faithfully. The BROWSER-specific DOM bits (actual `addEventListener` on a DOM node,
 // `getBoundingClientRect`, `window.event`, `dom.ts`'s `isCanvasEl`/`transformCoordWithViewport`)
-// have no native equivalent and are marked `// PORT-TODO: provided by the native UIKit bridge`.
+// have no native equivalent and are marked `// PORT-NOTE: provided by the native UIKit bridge`.
 
 import Foundation
 
@@ -173,7 +173,7 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
         // /^(?:mouse|pointer|contextmenu|drag|drop)|click/
         try! NSRegularExpression(pattern: "^(?:mouse|pointer|contextmenu|drag|drop)|click")
 
-    // PORT-TODO: shared scratch array used by `transformCoordWithViewport`; that helper is
+    // PORT-NOTE: shared scratch array used by `transformCoordWithViewport`; that helper is
     // provided by the native UIKit bridge, so this is retained only for diffability.
     static var _calcOut: [Double] = []
 

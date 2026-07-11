@@ -274,7 +274,7 @@ public func registerBoxplotAxisHandlers(_ registers: EChartsExtensionInstallRegi
 
 
 // ============================================================================
-// PORT-TODO: local port helpers (NOT in upstream boxplotLayout.ts).
+// PORT-NOTE: local port helpers (NOT in upstream boxplotLayout.ts).
 // ============================================================================
 
 // `data.get(...)` returns `ParsedValue` (Any); boxplot's 5-number data is stored as `Double`. Mirrors

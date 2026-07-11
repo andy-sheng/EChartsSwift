@@ -30,7 +30,7 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     -> `graphic.Group` / `graphic.Text` / `graphic.Rect` = ZRenderKit `Group` / `ZRText` / `Rect`.
 //        `graphic.updateProps` = `updateProps` (animation/basicTransition.swift).
-//        `graphic.createIcon` is NOT ported (util/graphic PORT-TODO); reproduced minimally as
+//        `graphic.createIcon` is NOT ported (util/graphic PORT-NOTE); reproduced minimally as
 //        `scrollLegendCreateIcon` below (path:// / makePath branch — the only branch page icons use).
 //   import * as layoutUtil from '../../util/layout';               -> `layout.box` (util/layout.swift).
 //   import LegendView from './LegendView';                         -> `LegendView` (the base class).
@@ -615,7 +615,7 @@ func legendItemDataIndex(_ el: Element) -> Double? {
 }
 
 // ============================================================================
-// PORT-TODO helpers — reproduce out-of-phase sibling APIs / JS idioms so the scroll legend compiles.
+// PORT-NOTE helpers — reproduce out-of-phase sibling APIs / JS idioms so the scroll legend compiles.
 // ============================================================================
 
 // Faithful minimal reproduction of `graphic.createIcon` (util/graphic.ts) — path:// / SVG-path branch

@@ -49,11 +49,13 @@ import ZRenderKit
 //   import { TreeNode } from '../../data/Tree';                    -> TreeNode (data/Tree.swift, sibling track).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { setStatesStylesFromModel, setStatesFlag, setDefaultStateProxy, HOVER_STATE_BLUR }
-//       from '../../util/states';                                  -> PORT-TODO: util/states NOT ported (emphasis/blur deferred).
+//       from '../../util/states';                                  -> `states.*` (util/states.swift, ported).
+//       decorateNode/drawEdge use states.setStatesStylesFromModel, states.getHighDownInner,
+//       states.leaveBlur and states.HOVER_STATE_BLUR for the node/edge emphasis + blur wiring.
 //   import { AnimationOption, ECElement, RoamPayload } from '../../util/types';  -> util/types.swift (type-only).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts NOT ported. `tokens.color.neutral99` (='#000') and
-//          `tokens.color.neutral00` (='#fff') are inlined as their upstream literals below.
+//       -> visual/tokens.ts IS ported (visual/tokens.swift). `tokens.color.neutral99` (='#000') and
+//          `tokens.color.neutral00` (='#fff') are still inlined as their upstream literals below.
 //   import { createIsInSelfByPointerCheckerEl, createViewCoordSysSimply, isRoamPayloadHasZoom,
 //            updateRoamControllerSimply } from '../../component/helper/roamHelper';
 //       -> PORT-TODO: roamHelper NOT ported (roam deferred).
@@ -65,7 +67,8 @@ private let tokens_color_neutral00 = "#fff"
 // upstream:
 //   type TreeSymbol = SymbolClz & { __edge; __radialOldRawX; __radialOldRawY; __radialRawX; __radialRawY;
 //     __oldX; __oldY };
-// PORT-TODO: SymbolClz (chart/helper/Symbol) NOT ported; the augmented `TreeSymbol` (edge back-pointer +
+// PORT-NOTE: SymbolClz (upstream chart/helper/Symbol) IS ported as `Symbol` (chart/helper/SymbolElement.swift);
+//   the augmented `TreeSymbol` (edge back-pointer +
 //   radial/old raw-coordinate caches used only by the DEFERRED enter/update/remove animation) has no
 //   Swift analogue. The static render adds node symbols + edges to the group directly.
 
@@ -175,7 +178,8 @@ open class TreeView: ChartView {
     // upstream: private _mainGroup = new graphic.Group();
     private let _mainGroup = Group()
 
-    // PORT-TODO: private _controller: RoamController;  — roam NOT ported (deferred).
+    // PORT-NOTE: private _controller: RoamController;  — RoamController IS ported
+    //   (component/helper/RoamController.swift) but roam is not wired in this view (deferred).
 
     // upstream: private _data: SeriesData<TreeSeriesModel>;
     private var _data: SeriesData?
@@ -575,8 +579,8 @@ func getEdgeShape(
         x2 = targetLayout.rawX
         y2 = targetLayout.rawY
 
-        // PORT-TODO: `radialCoordinate(rad, r)` from sibling ./layoutHelper (assumed exposed as
-        //   `layoutHelper.radialCoordinate` returning a value with `.x`/`.y`). `|| 0` reproduces JS
+        // PORT-NOTE: `radialCoordinate(rad, r)` from sibling ./layoutHelper (exposed as
+        //   `layoutHelper.radialCoordinate` returning `(x, y)`). `|| 0` reproduces JS
         //   falsy-fallthrough (0/NaN → 0) via `treeNumOr`.
         let radialCoor1 = layoutHelper.radialCoordinate(x1, y1)
         let radialCoor2 = layoutHelper.radialCoordinate(x1, y1 + (y2 - y1) * curvature)

@@ -67,7 +67,7 @@ open class Transformable {
     public var transform: MatrixArray?
     public var invTransform: MatrixArray?
 
-    // ===== morphPath seam (PORT-TODO: see Tool/morphPath.swift) =====
+    // ===== morphPath seam (PORT-NOTE: see Tool/morphPath.swift) =====
     // Upstream `prepareMorphPath` monkey-patches `updateTransform` to an identity no-op
     //   (`function updateIdentityTransform(this) { this.transform = null; }`). Swift can't reassign
     //   methods on a live instance, so `updateTransform` consults this flag instead. `saveAndModifyMethod`
@@ -232,7 +232,7 @@ open class Transformable {
     // upstream types `m` as vector.VectorArray, but it is actually used as a 6-element
     // matrix (m[0]…m[5]). Since VectorArray == SIMD2<Double> only holds 2 lanes here, we
     // type it as MatrixArray.
-    // PORT-TODO: upstream mistypes the param as vector.VectorArray (a `number[]`).
+    // PORT-NOTE: upstream mistypes the param as vector.VectorArray (a `number[]`).
     public func setLocalTransform(_ m: MatrixArray?) {
         guard let m = m else {
             // TODO return or set identity?
@@ -425,10 +425,10 @@ public let TRANSFORMABLE_PROPS: [String] = [
 ]
 
 // upstream: export type TransformProp = (typeof TRANSFORMABLE_PROPS)[number]
-// PORT-TODO: TransformProp string-literal union has no faithful Swift analogue.
+// PORT-NOTE: TransformProp string-literal union has no faithful Swift analogue.
 
 // upstream: export function copyTransform(target, source) { return assignProps(target, source, TRANSFORMABLE_PROPS); }
-// PORT-TODO: util.assignProps is not ported; we copy the TRANSFORMABLE_PROPS set explicitly.
+// PORT-NOTE: util.assignProps is not ported; we copy the TRANSFORMABLE_PROPS set explicitly.
 @discardableResult
 public func copyTransform(_ target: Transformable, _ source: Transformable) -> Transformable {
     target.x = source.x

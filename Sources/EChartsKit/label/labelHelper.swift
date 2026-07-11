@@ -44,12 +44,15 @@ public enum labelHelper {
         return nil
     }
 
-    // PORT-TODO (DEFERRED, matches the value-animation deferral in label/labelStyle.swift):
+    // PORT-TODO (DEFERRED — no caller yet, NOT because the animation is unported):
     //   `getDefaultInterpolatedLabel(data, interpolatedValue)` computes the "in-flight" label text
     //   during the number roll-up animation (`animateLabelValue`'s `during` callback passes it as
-    //   `defaultInterpolatedText`). Since `setLabelValueAnimation`/`animateLabelValue` are not ported
-    //   in this phase (see label/labelStyle.swift file header), there is no caller for this yet — not
-    //   implemented. Upstream body for reference:
+    //   `defaultInterpolatedText`). `setLabelValueAnimation`/`animateLabelValue` ARE now ported
+    //   (-> label/labelStyle.swift `setLabelValueAnimation` / `animateLabelValue`), but no view yet
+    //   WIRES `setLabelValueAnimation` (e.g. BarView still marks it DEFERRED), so this helper has no
+    //   caller and is left unported until a view supplies the `getDefaultText` closure that would call
+    //   it. Deps are present (`data.mapDimensionsAll`, `data.getDimensionIndex`, `util.isArray`).
+    //   Upstream body for reference:
     //     const labelDims = data.mapDimensionsAll('defaultedLabel');
     //     if (!isArray(interpolatedValue)) { return interpolatedValue + ''; }
     //     const vals = [];

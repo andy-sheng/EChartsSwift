@@ -38,10 +38,10 @@ public enum axisDefault {
         // 'start' | 'middle' | 'end'
         "nameLocation": "end",
         // By degree. By default auto rotate by nameLocation.
-        // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+        // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
         "nameRotate": NSNull(),
         "nameTruncate": [
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "maxWidth": NSNull(),
             "ellipsis": "...",
             "placeholder": "."
@@ -67,7 +67,7 @@ public enum axisDefault {
         "axisLine": [
             "show": true,
             "onZero": "auto",
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "onZeroAxisIndex": NSNull(),
             "lineStyle": [
                 "color": "#54555a",  // upstream: tokens.color.axisLine
@@ -95,10 +95,10 @@ public enum axisDefault {
             "inside": false,
             "rotate": 0,
             // true | false | null/undefined (auto)
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "showMinLabel": NSNull(),
             // true | false | null/undefined (auto)
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "showMaxLabel": NSNull(),
             "margin": 8,
             // formatter: null,
@@ -158,7 +158,7 @@ public enum axisDefault {
             // The gap at both ends of the axis. For categoryAxis, boolean.
             "boundaryGap": true,
             // Set false to faster category collection.
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "deduplication": NSNull(),
             "jitter": 0,
             "jitterOverlap": true,

@@ -30,7 +30,7 @@ import ZRenderKit
 //   import Model from '../../model/Model';                  -> EChartsKit Model.
 //   import ZRText, { TextStyleProps } from 'zrender/src/graphic/Text';  -> ZRenderKit ZRText / TextStyleProps.
 //   import { TooltipMarkupStyleCreator, getPaddingFromTooltipModel } from './tooltipMarkup';  -> Phase 31.
-//   import { throwError } from '../../util/log';            -> DEV-mode throw (see setContent PORT-TODO).
+//   import { throwError } from '../../util/log';            -> DEV-mode throw (see setContent PORT-NOTE).
 
 // ARCHITECTURE (port): upstream `TooltipRichContent` reads the LIVE zrender via `api.getZr()`. In this
 //   port `ECharts` is render-once with no live zr; the live zr lives in `EChartsView`. The caller
@@ -49,7 +49,7 @@ public final class TooltipRichContent {
     private var _styleCoord: [Double] = [0, 0, 0, 0]
 
     // upstream: private _hideTimeout: number (setTimeout id). Modeled as a DispatchWorkItem.
-    // PORT-TODO: relies on the main run loop; not exercised headlessly (hideLater(0) hides immediately).
+    // PORT-NOTE: relies on the main run loop; not exercised headlessly (hideLater(0) hides immediately).
     private var _hideTimeout: DispatchWorkItem?
 
     private var _alwaysShowContent = false
@@ -104,7 +104,7 @@ public final class TooltipRichContent {
         _ borderColor: String?,
         _ arrowPosition: Any? = nil
     ) {
-        // PORT-TODO: upstream `if (isObject(content)) throwError('Passing DOM nodes ...')` — dev guard.
+        // PORT-NOTE: upstream `if (isObject(content)) throwError('Passing DOM nodes ...')` — dev guard.
         //   `content` is a Swift String here, so the DOM-node branch is unrepresentable.
         _ = arrowPosition
 
@@ -245,7 +245,7 @@ public final class TooltipRichContent {
                     self?.hide()
                 }
                 self._hideTimeout = work
-                // PORT-TODO: setTimeout -> asyncAfter on the main queue (not driven headlessly).
+                // PORT-NOTE: setTimeout -> asyncAfter on the main queue (not driven headlessly).
                 DispatchQueue.main.asyncAfter(deadline: .now() + time / 1000.0, execute: work)
             }
             else {

@@ -28,8 +28,8 @@ import ZRenderKit
 //     AxisLabelsComputingContext, AxisTickLabelComputingKind,
 //     createAxisLabelsComputingContext, AxisLabelInfoDetermined,
 // } from './axisTickLabelBuilder';                                     -> top-level free funcs/types (coord/axisTickLabelBuilder.swift)
-//   PORT-TODO: coord/axisTickLabelBuilder.swift is a sibling landing this phase (mutually recursive with
-//   this file). This file references its conventional public API:
+//   PORT-NOTE: coord/axisTickLabelBuilder.swift is a sibling (mutually recursive with
+//   this file). This file references its public API:
 //     - createAxisTicks(_ axis: Axis, _ axisModel: AxisBaseModel, _ opt: CreateAxisTicksOpt?) -> (ticks: [ScaleTick], ...)
 //     - createAxisLabels(_ axis: Axis, _ ctx: AxisLabelsComputingContext) -> (labels: [AxisLabelInfoDetermined], ...)
 //     - calculateCategoryInterval(_ axis: Axis, _ ctx: AxisLabelsComputingContext) -> Double
@@ -45,7 +45,7 @@ import ZRenderKit
 //     AxisBaseOption, AxisTickOptionUnion, CategoryAxisBaseOption,
 //     CategoryTickLabelSplitBuildingOption, OptionAxisType
 // } from './axisCommonTypes';                                         -> coord/axisCommonTypes.swift
-//   PORT-TODO: axisCommonTypes.swift currently only exports `AxisScaleType`; the option interfaces
+//   PORT-NOTE: axisCommonTypes.swift currently only exports `AxisScaleType`; the option interfaces
 //   (AxisBaseOption / AxisTickOptionUnion / CategoryAxisBaseOption / CategoryTickLabelSplitBuildingOption)
 //   land with the axis-option layer. Per CONVENTIONS §2 the generic `Model<Opt>` slots collapse to the
 //   dynamic `Model` bag, so those option types are only needed as generic params (dropped) — except
@@ -54,13 +54,12 @@ import ZRenderKit
 // import { isOrdinalScale } from '../scale/helper';                   -> helper.isOrdinalScale (scale/helper.swift)
 // import { calcBandWidth } from './axisBand';                         -> calcBandWidth (coord/axisBand.swift, top-level free func)
 // import { getTickValueOutermost } from './axisHelper';               -> getTickValueOutermost (coord/axisHelper.swift, top-level free func)
-//   PORT-TODO: coord/axisHelper.swift is a sibling landing this phase; conventional API:
+//   PORT-NOTE: coord/axisHelper.swift is a sibling; API:
 //     getTickValueOutermost(_ scale: Scale, _ tick: ScaleTick) -> Double
 //
-// PORT-TODO (NAME CLASH — integration): coord/axisStatistics.swift currently owns a shared
-//   `public protocol Axis` placeholder (its own comment: "MUST be removed when the real modules land
-//   (coord/Axis.ts, ...)"). This file lands the real `class Axis`; the placeholder protocol must be
-//   removed by the integrator so `calcBandWidth(_ axis: Axis)` / axisStatistics bind to this class
+// PORT-NOTE (NAME CLASH — resolved): coord/axisStatistics.swift previously owned a shared
+//   `public protocol Axis` placeholder; it was removed when this real `class Axis` landed, so
+//   `calcBandWidth(_ axis: Axis)` / axisStatistics now bind to this class
 //   (which supplies `model`/`scale`/`dim`/`onBand`/`getExtent`).
 
 // upstream: const NORMALIZED_EXTENT = [0, 1] as [number, number];
@@ -127,8 +126,8 @@ open class Axis {
      */
     // upstream: type: OptionAxisType;
     // Set by each concrete subclass (no base default) → implicitly-unwrapped.
-    // PORT-TODO: `OptionAxisType` ('value'|'category'|'time'|'log') is defined in axisCommonTypes.swift
-    //   which currently only exports `AxisScaleType`; expand that sibling with `OptionAxisType`.
+    // PORT-NOTE: `OptionAxisType` ('value'|'category'|'time'|'log') is a `typealias ... = String`
+    //   defined in axisHelper.swift.
     public var type: OptionAxisType!
 
     // Axis dimension. Such as 'x', 'y', 'z', 'angle', 'radius'.
@@ -226,7 +225,7 @@ open class Axis {
      */
     open func pointToData(_ point: [Double], _ clamp: Bool? = nil) -> Double {
         // Should be implemented in derived class if necessary.
-        return Double.nan  // PORT-TODO: upstream `return;` (undefined) — base stub, overridden in derived class
+        return Double.nan  // PORT-NOTE: upstream `return;` (undefined) — base stub, overridden in derived class
     }
 
     /**

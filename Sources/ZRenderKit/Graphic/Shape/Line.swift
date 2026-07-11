@@ -13,7 +13,7 @@
 import Foundation
 
 // Avoid create repeatly.
-// PORT-TODO: upstream `const subPixelOptimizeOutputShape = {}` is a reused mutable scratch object.
+// PORT-NOTE: upstream `const subPixelOptimizeOutputShape = {}` is a reused mutable scratch object.
 //   Per CONVENTIONS §3 our `subPixelOptimizeLine` is value-returning, so no shared scratch is
 //   needed; the optimization is purely a JS GC concern with no observable behavior.
 

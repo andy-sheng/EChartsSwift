@@ -57,10 +57,10 @@ public final class Graph: LinkableStruct {
     // readonly edges: GraphEdge[] = [];
     public private(set) var edges: [GraphEdge] = []
 
-    // PORT-TODO: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     public var data: SeriesData!
 
-    // PORT-TODO: upstream `edgeData: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // PORT-NOTE: upstream `edgeData: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     public var edgeData: SeriesData!
 
     /**
@@ -246,7 +246,7 @@ public final class Graph: LinkableStruct {
      * Return true to stop traversing
      */
     // breadthFirstTraverse<Ctx>(cb, startNode, direction, context?)
-    // PORT-TODO: cb returns `boolean | void`; modeled as `Any?` (truthy -> stop). `this: Ctx`
+    // PORT-NOTE: cb returns `boolean | void`; modeled as `Any?` (truthy -> stop). `this: Ctx`
     //   binding dropped (Swift closures capture context directly); `context` kept for fidelity.
     public func breadthFirstTraverse(
         _ cb: (GraphNode, GraphNode?) -> Any?,
@@ -372,7 +372,7 @@ public final class GraphNode {
 
     public var edges: [GraphEdge] = []
 
-    // PORT-TODO: upstream `hostGraph: Graph` is set right after construction (addNode/clone);
+    // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction (addNode/clone);
     //   implicitly-unwrapped so the proxy accessors can reach `hostGraph.data`.
     public var hostGraph: Graph!
 
@@ -556,7 +556,7 @@ public final class GraphEdge {
 
     public var dataIndex: Int = -1
 
-    // PORT-TODO: upstream `hostGraph: Graph` is set right after construction; implicitly-unwrapped.
+    // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction; implicitly-unwrapped.
     public var hostGraph: Graph!
 
     // constructor(n1: GraphNode, n2: GraphNode, dataIndex?: number)

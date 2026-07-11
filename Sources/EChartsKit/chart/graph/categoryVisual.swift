@@ -24,9 +24,9 @@ import ZRenderKit
 // upstream imports:
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import GraphSeriesModel, { GraphNodeItemOption, SERIES_TYPE_GRAPH } from './GraphSeries';
-//       -> PORT-TODO: sibling GraphSeries.swift NOT ported yet. `GraphSeriesModel` /
-//          `SERIES_TYPE_GRAPH` are referenced as siblings (to be provided by the GraphSeries port,
-//          exactly as sunburstVisual references SunburstSeries). `GraphNodeItemOption` is a
+//       -> sibling GraphSeries.swift (ported): `GraphSeriesModel` /
+//          `SERIES_TYPE_GRAPH` (exactly as sunburstVisual references SunburstSeries).
+//          `GraphNodeItemOption` is a
 //          type-only generic for `getItemModel<T>()` / `getShallow<T>()` — dropped (untyped here).
 //   import { Dictionary, ColorString } from '../../util/types';      -> util/types.swift (type-only).
 //   import { extend, isString } from 'zrender/src/core/util';        -> `util.extend` / `util.isString`.
@@ -42,7 +42,7 @@ public let graphCategoryVisualStageHandler = model.createSimpleOverallStageHandl
     { ecModel, _, _ in categoryVisual(ecModel) }
 )
 
-// PORT-TODO: upstream `paletteScope` is the object literal `{}` (`Dictionary<ColorString>`), used only
+// PORT-NOTE: upstream `paletteScope` is the object literal `{}` (`Dictionary<ColorString>`), used only
 //   as a WeakMap identity key by getColorFromPalette (see model/mixin/palette.swift). Modeled as an
 //   empty reference type so it can key the per-scope palette store (mirrors SunburstPaletteScope).
 private final class GraphCategoryPaletteScope {}

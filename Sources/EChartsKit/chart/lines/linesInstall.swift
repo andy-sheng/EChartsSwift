@@ -25,7 +25,7 @@ import ZRenderKit
 //   import { EChartsExtensionInstallRegisters } from '../../extension';   -> registrar surface owned by the
 //       Orchestrate/Integrate driver (same convention as sankeyInstall.swift / sunburstInstall.swift).
 //   import LinesView from './LinesView';
-//       -> PORT-TODO: chart/lines/LinesView.swift is a SEPARATE (later) port phase — the STATIC render
+//       -> chart/lines/LinesView.swift (ported) — the STATIC render
 //          layer (one Polyline per polyline line, or a straight Line / quadratic BezierCurve per two-point
 //          line, drawn inline via ZRenderKit shapes exactly like GraphView's edges). The effect (moving
 //          dot / trail) and the large draw path are ANIMATED/DEFERRED (CONVENTIONS §5).
@@ -37,12 +37,12 @@ import ZRenderKit
 //          then the series relies on the shared visual/style stage (lineStyle -> stroke) like the line chart.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as sankeyInstall.swift). `LinesView` and `linesVisual` land with
 //   their own (later) port phases. Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {
-//         registers.registerChartView(LinesView);          // PORT-TODO: LinesView (later phase)
+//         registers.registerChartView(LinesView);          // -> LinesView (LinesView.swift, ported)
 //         registers.registerSeriesModel(LinesSeriesModel);  // -> LinesSeriesModel (LinesSeries.swift)
 //         registers.registerLayout(linesLayout);            // -> linesLayout (linesLayout.swift)
 //         registers.registerVisual(linesVisual);            // PORT-TODO: linesVisual (later phase)

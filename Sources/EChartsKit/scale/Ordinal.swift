@@ -32,7 +32,7 @@ import ZRenderKit
 //   import { OrdinalRawValue, OrdinalNumber, OrdinalSortInfo, ScaleTick } from '../util/types';
 //       -> Tier1 util/types.swift (same module)
 //   import { CategoryAxisBaseOption } from '../coord/axisCommonTypes';
-//       -> coord/axisCommonTypes.swift (other agent; only `['data']` referenced — see PORT-TODO below)
+//       -> coord/axisCommonTypes.swift (other agent; only `['data']` referenced — see PORT-NOTE below)
 //   import { isArray, map, isObject, isString } from 'zrender/src/core/util';
 //       -> ZRenderKit caseless enum `util` (`util.isArray`, `util.map`, `util.isObject`, `util.isString`)
 //   import { mathMin, mathRound } from '../util/number';
@@ -51,7 +51,7 @@ import ZRenderKit
 //   import { ordinalScaleCreateTicks } from './helper';
 //       -> sibling helper.swift caseless enum `helper` (`helper.ordinalScaleCreateTicks`)
 //
-// PORT-TODO (cross-file integration): `decorateScaleMapper`/`enableScaleMapperFreeze`/
+// PORT-NOTE (cross-file integration): `decorateScaleMapper`/`enableScaleMapperFreeze`/
 //   `getScaleExtentForTickUnsafe` take a `ScaleMapper` host, and upstream passes `this`
 //   (the OrdinalScale) to the first two. For that to type-check, `Scale` must subclass the
 //   `ScaleMapper` class (i.e. `class Scale: ScaleMapper`), so that `OrdinalScale: Scale` is a
@@ -64,7 +64,7 @@ import ZRenderKit
 // Object-literal options bag → struct (CONVENTIONS §4).
 public struct OrdinalScaleSetting {
     // upstream: ordinalMeta?: OrdinalMeta | CategoryAxisBaseOption['data'];
-    // PORT-TODO: union of `OrdinalMeta` and the axis `data` array
+    // PORT-NOTE: union of `OrdinalMeta` and the axis `data` array
     //   (`(OrdinalRawValue | { value })[]`); modeled as `Any?` and discriminated at runtime
     //   in the constructor (matching upstream `isArray`/`isObject` checks).
     public var ordinalMeta: Any?
@@ -173,7 +173,7 @@ public final class OrdinalScale: Scale, ClassManageable {
         self.type = OrdinalScale.type
 
         // upstream: this.parse = OrdinalScale.parse;
-        // PORT-TODO: verify capture — `parse` is a `self`-owned closure; `[unowned self]`
+        // PORT-NOTE: verify capture — `parse` is a `self`-owned closure; `[unowned self]`
         //   breaks the retain cycle and is safe (closure lifetime == self lifetime).
         self.parse = { [unowned self] val in OrdinalScale.parse(self, val) }
 
@@ -186,7 +186,7 @@ public final class OrdinalScale: Scale, ClassManageable {
             ordinalMeta = OrdinalMeta()    // new OrdinalMeta({})
         }
         if util.isArray(ordinalMeta) {
-            // PORT-TODO: assumes `OrdinalMeta(categories:)` initializer shape (other agent).
+            // PORT-NOTE: `OrdinalMeta(categories:)` initializer is ported (data/OrdinalMeta.swift).
             let arr = ordinalMeta as! [Any]
             ordinalMeta = OrdinalMeta(categories: util.map(arr) { item, _ in
                 // isObject(item) ? item.value : item
@@ -211,7 +211,7 @@ public final class OrdinalScale: Scale, ClassManageable {
     private static func parse(_ this: OrdinalScale, _ val: OrdinalRawValue) -> OrdinalNumber {
         var val: Any? = val
         // Caution: Math.round(null) will return `0` rather than `NaN`
-        // PORT-TODO: `ScaleDataValue`/`OrdinalRawValue` is `Any` (Tier1), so JS `null`/`undefined`
+        // PORT-NOTE: `ScaleDataValue`/`OrdinalRawValue` is `Any` (Tier1), so JS `null`/`undefined`
         //   can only surface as a wrapped `Optional.none` or `NSNull`; both are treated as null.
         if val == nil || val is NSNull {
             val = Double.nan
@@ -327,7 +327,7 @@ public final class OrdinalScale: Scale, ClassManageable {
 
     public override func getMinorTicks(_ splitNumber: Double) -> [[Double]] {
         // Not support.
-        // PORT-TODO: upstream `return;` (undefined); base `getMinorTicks` is non-optional `[[Double]]`.
+        // PORT-NOTE: upstream `return;` (undefined); base `getMinorTicks` is non-optional `[[Double]]`.
         return []
     }
 
@@ -426,7 +426,7 @@ public final class OrdinalScale: Scale, ClassManageable {
             //   Unwrap any nested optional before stringifying.
             return category == nil ? "" : "\(ordinalUnwrapAny(category!))"
         }
-        // PORT-TODO: upstream returns `undefined` when blank; base `getLabel` is non-optional `String`.
+        // PORT-NOTE: upstream returns `undefined` when blank; base `getLabel` is non-optional `String`.
         return ""
     }
 
@@ -463,7 +463,7 @@ public final class OrdinalScale: Scale, ClassManageable {
 
 // upstream: Scale.registerClass(OrdinalScale);
 //
-// PORT-TODO: this is top-level side-effecting registration that runs at TS module-load time.
+// PORT-NOTE: this is top-level side-effecting registration that runs at TS module-load time.
 //   Swift has no module-load hook for library types, so it is exposed as an idempotent static
 //   that the ECharts bootstrap (`install`) must invoke. `OrdinalScale` conforms to
 //   `ClassManageable` (static `type`), so `OrdinalScale.self` is a valid `Constructor`.

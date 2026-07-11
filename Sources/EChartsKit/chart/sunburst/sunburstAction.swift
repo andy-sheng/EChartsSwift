@@ -31,7 +31,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                       -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 -> `ExtensionAPI`.
 //   import { extend } from 'zrender/src/core/util';                     -> `util.extend`.
-//   import { deprecateReplaceLog } from '../../util/log';               -> PORT-TODO: dev-only deprecation log (skipped).
+//   import { deprecateReplaceLog } from '../../util/log';               -> PORT-NOTE: dev-only deprecation log (skipped).
 //   import { EChartsExtensionInstallRegisters } from '../../extension'; -> `EChartsExtensionInstallRegisters`.
 //   import { retrieveTargetInfo, aboveViewRoot } from '../helper/treeHelper';  -> `treeHelper.*` (sibling helper).
 
@@ -82,10 +82,58 @@ public func installSunburstAction(_ registers: EChartsExtensionInstallRegisters)
         return nil
     }
 
-    // registers.registerAction({type: HIGHLIGHT_ACTION, update: 'none'}, ...)  — a DEPRECATED alias that
-    //   fast-forwards to the ported `highlight` action; and {type: UNHIGHLIGHT_ACTION, update:'updateView'}
-    //   fast-forwards to `downplay`.
-    // PORT-TODO: sunburstHighlight / sunburstUnhighlight DEFERRED — the sunburst emphasis/blur state wiring
-    //   (SunburstPiece toggleHoverEmphasis, util/states) is itself deferred, so these deprecated aliases
-    //   would forward into a no-op. Drill-down (`ROOT_TO_NODE_ACTION`, above) is the ported surface.
+    // registers.registerAction({type: HIGHLIGHT_ACTION, update: 'none'}, handler)  — a DEPRECATED alias
+    //   that resolves the target node's dataIndex and fast-forwards to the ported `highlight` action.
+    //   The sunburst emphasis/blur state wiring it forwards into is now ported (SunburstPiece routes
+    //   `states.toggleHoverEmphasis`; `highlight`/`downplay` are registered in actionRegister.swift and
+    //   dispatch through `updateDirectly` → `view.highlight`/`downplay`).
+    var highlightInfo = ActionInfo(type: HIGHLIGHT_ACTION)
+    highlightInfo.update = "none"
+    registerAction(highlightInfo) { payload, ecModel, api in
+        // payload = extend({}, payload);  — `Payload` is a value type, so a `var` copy IS the clone.
+        var payload = payload
+
+        // ecModel.eachComponent({mainType:'series', subType:'sunburst', query: payload}, handleHighlight)
+        //   Component-query fields (seriesId/seriesIndex/…) live in `payload.other` (see rootToNode above).
+        ecModel.eachComponent(
+            QueryConditionKindA(mainType: "series", query: payload.other, subType: "sunburst")
+        ) { modelBase, _ in
+            // function handleHighlight(model) { ... }
+            guard let model = modelBase as? SunburstSeriesModel else { return }
+            // const targetInfo = retrieveTargetInfo(payload, [HIGHLIGHT_ACTION], model);
+            let targetInfo = treeHelper.retrieveTargetInfo(payload, [HIGHLIGHT_ACTION], model)
+            if let targetInfo = targetInfo {
+                // payload.dataIndex = targetInfo.node.dataIndex;  — `dataIndex` lives in `payload.other`
+                //   in the port (mirrors EChartsView `_handleClick`); the captured `var` mutation persists.
+                payload.other["dataIndex"] = targetInfo.node.dataIndex
+            }
+        }
+
+        // if (__DEV__) { deprecateReplaceLog('sunburstHighlight', 'highlight'); }
+        //   dev-only deprecation log skipped (no __DEV__ / logging path wired; see the import note above).
+
+        // api.dispatchAction(extend(payload, {type: 'highlight'}));
+        payload.type = "highlight"
+        api.dispatchAction(payload)
+
+        return nil
+    }
+
+    // registers.registerAction({type: UNHIGHLIGHT_ACTION, update: 'updateView'}, handler)  — a DEPRECATED
+    //   alias that fast-forwards to the ported `downplay` action (no target-node resolution upstream).
+    var unhighlightInfo = ActionInfo(type: UNHIGHLIGHT_ACTION)
+    unhighlightInfo.update = "updateView"
+    registerAction(unhighlightInfo) { payload, _, api in
+        // payload = extend({}, payload);  — value-type clone.
+        var payload = payload
+
+        // if (__DEV__) { deprecateReplaceLog('sunburstUnhighlight', 'downplay'); }
+        //   dev-only deprecation log skipped (see the import note above).
+
+        // api.dispatchAction(extend(payload, {type: 'downplay'}));
+        payload.type = "downplay"
+        api.dispatchAction(payload)
+
+        return nil
+    }
 }

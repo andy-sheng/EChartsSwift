@@ -49,7 +49,7 @@ import ZRenderKit
 public let SERIES_TYPE_PIE = "pie"
 
 // const innerData = modelUtil.makeInner<{ seats?: number[] }, SeriesData>();
-// PORT-TODO: only read by `getDataParams` (percent seats), which is deferred below — kept for provenance.
+//   Read by `getDataParams` (percent seats), ported below.
 //   `makeInner` requires a class Host/value (CONVENTIONS §2 + innerStore.swift); the anonymous inner
 //   record `{ seats?: number[] }` is modeled as a small class.
 public final class PieInnerData {
@@ -130,23 +130,47 @@ open class PieSeriesModel: SeriesModel {
      * @overwrite
      */
     // upstream: getDataParams(dataIndex: number): PieCallbackDataParams { ... percent seats ... }
-    // PORT-TODO: `getDataParams` is provided by the `DataFormatMixin` graft, which is NOT yet a
-    //   conformance on SeriesModel (see model/Series.swift — blocked on `Model.ecModel` optionality), so
-    //   there is no `super.getDataParams` to extend here. `percent`/`$vars` only feed labels/tooltip,
-    //   both deferred. Faithful upstream body (for the eventual port):
-    //     const data = this.getData();
-    //     const dataInner = innerData(data);
-    //     let seats = dataInner.seats;
-    //     if (!seats) {
-    //         const valueList: number[] = [];
-    //         data.each(data.mapDimension('value'), value => valueList.push(value));
-    //         seats = dataInner.seats = getPercentSeats(valueList, data.hostModel.get('percentPrecision'));
-    //     }
-    //     const params = super.getDataParams(dataIndex);
-    //     params.percent = seats[dataIndex] || 0;
-    //     params.$vars.push('percent');
-    //     return params;
-    //   `number.getPercentSeats` + `innerData` (above) are ported/available for that port.
+    //   Declared as a 1-arg overload (matching the upstream `getDataParams(dataIndex)` signature) rather
+    //   than an `override` — the base impl is the `DataFormatMixin` protocol-extension member (2-arg with
+    //   a defaulted `dataType`), reached through a protocol-typed `self` to avoid self-recursion in
+    //   overload resolution (same idiom as CustomSeriesModel.getDataParams).
+    open func getDataParams(_ dataIndex: Double) -> CallbackDataParams {
+        // const data = this.getData();
+        let data = self.getData()
+        // const dataInner = innerData(data);
+        let dataInner = innerData(data)
+        // let seats = dataInner.seats;
+        var seats = dataInner.seats
+        // if (!seats) { ... }
+        if seats == nil {
+            // const valueList: number[] = [];
+            var valueList: [Double] = []
+            // data.each(data.mapDimension('value'), value => valueList.push(value));
+            let valueDim = data.mapDimension("value") ?? "value"
+            data.each(valueDim) { args in
+                valueList.append((args[0] as? Double) ?? Double.nan)
+            }
+            // seats = dataInner.seats = getPercentSeats(valueList, data.hostModel.get('percentPrecision'));
+            //   `get` boxes the option value; percentPrecision may arrive as an Int literal, so coerce
+            //   both Int and Double (Int-vs-Double option-read trap) — default matches defaultOption (2).
+            let precisionRaw = data.hostModel?.get("percentPrecision")
+            let precision = (precisionRaw as? Double) ?? (precisionRaw as? Int).map(Double.init) ?? 2
+            let computed = number.getPercentSeats(valueList, precision)
+            dataInner.seats = computed
+            seats = computed
+        }
+        // const params = super.getDataParams(dataIndex);
+        var params = (self as DataFormatMixin).getDataParams(dataIndex)
+        // params.percent = seats[dataIndex] || 0;
+        let idx = Int(dataIndex)
+        let seatsArr = seats ?? []
+        let seat = (idx >= 0 && idx < seatsArr.count) ? seatsArr[idx] : 0
+        params.percent = (seat.isNaN || seat == 0) ? 0 : seat
+        // params.$vars.push('percent');
+        params.vars.append("percent")
+        // return params;
+        return params
+    }
 
     // upstream: private _defaultLabelLine(option): void { ... }
     // PORT-TODO: deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:

@@ -40,7 +40,7 @@ import ZRenderKit
 //     each, filter, isArray, isObject, isString,
 //     createHashMap, assert, clone, merge, extend, mixin, HashMap, isFunction
 // } from 'zrender/src/core/util';                       -> ZRenderKit `util` (createHashMap/HashMap are the
-//                                                          EChartsKit shim in util/model.swift; see PORT-TODO)
+//                                                          EChartsKit shim in util/model.swift; see PORT-NOTE)
 // import * as modelUtil from '../util/model';           -> EChartsKit `model` namespace (util/model.swift)
 // import Model from './Model';                           -> Model (sibling model/Model.swift)
 // import ComponentModel, {ComponentModelConstructor} from './Component'; -> ComponentModel (sibling model/Component.swift)
@@ -48,10 +48,10 @@ import ZRenderKit
 // import {resetSourceDefaulter} from '../data/helper/sourceHelper';       -> sourceHelper.resetSourceDefaulter
 // import SeriesModel from './Series';                     -> SeriesModel (sibling model/Series.swift)
 // import { ... } from '../util/types';                    -> EChartsKit util/types.swift (same module)
-// import OptionManager from './OptionManager';            -> PORT-TODO: model/OptionManager.ts not ported yet (local placeholder below)
-// import Scheduler from '../core/Scheduler';              -> PORT-TODO: core/Scheduler.ts not ported yet (local placeholder below)
+// import OptionManager from './OptionManager';            -> `OptionManager` (ported, model/OptionManager.swift)
+// import Scheduler from '../core/Scheduler';              -> `Scheduler` (ported, core/Scheduler.swift)
 // import { concatInternalOptions } from './internalComponentCreator';     -> concatInternalOptions (free func, model/internalComponentCreator.swift)
-// import { LocaleOption } from '../core/locale';          -> PORT-TODO: core/locale.ts not ported (Model<LocaleOption> -> Model)
+// import { LocaleOption } from '../core/locale';          -> core/locale.swift (ported); `Model<LocaleOption>` modeled as `Model`
 // import {PaletteMixin} from './mixin/palette';           -> PaletteMixin (protocol + extension, model/mixin/palette.swift)
 // import { error, warn } from '../util/log';              -> log.error / log.warn (util/log.swift)
 
@@ -143,7 +143,7 @@ private var componetsMissingLogPrinted: [String: Bool] = [:]
 
 private func checkMissingComponents(_ option: ECUnitOption) {
     // each(option, function (componentOption, mainType) { ... })
-    // PORT-TODO: JS object key order is not guaranteed by Swift dictionaries; the log order may differ.
+    // PORT-NOTE: JS object key order is not guaranteed by Swift dictionaries; the log order may differ.
     for (mainType, _) in option {
         if !ComponentModel.hasClass(mainType) {
             let componentImportName = BUITIN_COMPONENTS_MAP[mainType]
@@ -211,7 +211,7 @@ open class GlobalModel: Model, PaletteMixin {
 
     // upstream: init(option, parentModel, ecModel, theme, locale, optionManager): void
     //
-    // PORT-TODO: the base overridable lifecycle method is `` `init` `` (see Model.swift), whose
+    // PORT-NOTE: the base overridable lifecycle method is `` `init` `` (see Model.swift), whose
     //   signature is `(option, parentModel, ecModel, rest...)`. GlobalModel's upstream `init` adds
     //   three fixed params (theme, locale, optionManager), which are folded into `rest` here to keep
     //   the override signature compatible with the base method.
@@ -234,7 +234,7 @@ open class GlobalModel: Model, PaletteMixin {
     }
 
     // upstream: setOption(option: ECBasicOption, opts, optionPreprocessorFuncs)
-    // PORT-TODO: the ported `OptionManager.setOption` takes the dynamic `ECUnitOption?` bag (not the
+    // PORT-NOTE: the ported `OptionManager.setOption` takes the dynamic `ECUnitOption?` bag (not the
     //   typed `ECBasicOption` struct), so `option` is typed to match — consistent with the dynamic
     //   option-tree convention.
     open func setOption(
@@ -349,7 +349,7 @@ open class GlobalModel: Model, PaletteMixin {
 
         // If no component class, merge directly.
         // For example: color, animaiton options, etc.
-        // PORT-TODO: JS object key order is not preserved by Swift dictionaries; `newCmptTypes` order
+        // PORT-NOTE: JS object key order is not preserved by Swift dictionaries; `newCmptTypes` order
         //   may differ (topologicalTravel re-sorts by dependency, so the final order is unaffected).
         for (mainType, componentOption) in newOption {
             if isNullish(componentOption) {
@@ -431,7 +431,7 @@ open class GlobalModel: Model, PaletteMixin {
             // from being used in the `init`/`mergeOption`/`optionUpdated` of some
             // components, which is probably incorrect logic.
             option[mainType] = NSNull() // option[mainType] = null
-            // PORT-TODO: upstream sets componentsMap[mainType] = null; the shim value type is
+            // PORT-NOTE: upstream sets componentsMap[mainType] = null; the shim value type is
             //   non-optional so we clear to [] (transient — overwritten below in this func).
             componentsMap.set(mainType, [])
             componentsCount.set(mainType, 0)
@@ -527,7 +527,7 @@ open class GlobalModel: Model, PaletteMixin {
                         //   below is the single lifecycle-init call. keyInfo is assigned BEFORE it so
                         //   `mergeDefaultAndTheme`/series init can read `subType`/`componentIndex`.
                         guard let componentModelClass = ComponentModelClass as? ComponentModel.Type else {
-                            // PORT-TODO: a registered class that is not a ComponentModel subclass can
+                            // PORT-NOTE: a registered class that is not a ComponentModel subclass can
                             //   not be instantiated through this path; skip (upstream has no analogue —
                             //   every registered class is a ComponentModel).
                             _ = index
@@ -810,7 +810,7 @@ open class GlobalModel: Model, PaletteMixin {
     // upstream overload (1): eachComponent(cb: EachComponentAllCallback, context?)
     open func eachComponent(_ cb: EachComponentAllCallback, _ context: Any? = nil) {
         let componentsMap = self._componentsMap!
-        // PORT-TODO: `context` (upstream `cb.call(ctxForAll, ...)`) is dropped — Swift closures capture.
+        // PORT-NOTE: `context` (upstream `cb.call(ctxForAll, ...)`) is dropped — Swift closures capture.
         componentsMap.each { cmpts, componentType in
             var i = 0
             while i < cmpts.count {
@@ -980,7 +980,7 @@ open class GlobalModel: Model, PaletteMixin {
 
     // upstream: restoreData(payload?: Payload): void
     //
-    // PORT-TODO: upstream is a single method with an optional `payload`, and it overrides
+    // PORT-NOTE: upstream is a single method with an optional `payload`, and it overrides
     //   `Model.restoreData()`. Swift can not both override the no-param base and add an optional
     //   param (that would be an ambiguous overload against the inherited no-arg method), so it is
     //   split into an `override` no-arg entry and a payload entry, both forwarding to `_restoreData`.
@@ -1159,7 +1159,7 @@ private func mergeTheme(_ option: inout ECUnitOption, _ theme: ThemeOption) {
 }
 
 // upstream: queryByIdOrName<T extends { id?, name? }>(attr, idOrName, cmpts)
-// PORT-TODO: the generic `T` is specialized to `ComponentModel` (the only caller passes the components
+// PORT-NOTE: the generic `T` is specialized to `ComponentModel` (the only caller passes the components
 //   map). `attr` is the caseless local enum below rather than the `'id' | 'name'` string-literal type.
 private enum IdOrNameAttr { case id, name }
 private func queryByIdOrName(_ attr: IdOrNameAttr, _ idOrName: Any?, _ cmpts: [ComponentModel?]) -> [ComponentModel] {
@@ -1348,7 +1348,7 @@ private func assertSeriesInitialized(_ ecModel: GlobalModel) {
     if __DEV__ {
         if ecModel._seriesIndices == nil {
             // upstream: throw new Error('Option should contains series.');
-            // PORT-TODO: ported as an error log rather than a thrown error, to keep the callers'
+            // PORT-NOTE: ported as an error log rather than a thrown error, to keep the callers'
             //   non-throwing signatures (eachSeries/filterSeries/isSeriesFiltered).
             log.error("Option should contains series.")
         }

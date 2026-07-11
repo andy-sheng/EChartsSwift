@@ -34,7 +34,7 @@ private func mathMin(_ a: Double, _ b: Double) -> Double {
 }
 private let e = 1e-4
 
-// PORT-TODO: upstream models the sector corner radius as the inline union `number | number[]`.
+// PORT-NOTE: upstream models the sector corner radius as the inline union `number | number[]`.
 //   Modeled as a tagged enum (no untagged unions in Swift). Used by SectorShape + normalizeCornerRadius.
 public enum CornerRadius {
     case number(Double)
@@ -166,7 +166,7 @@ public enum roundSector {   // upstream module: graphic/helper/roundSector
     }
 
     // upstream: export function buildPath(ctx, shape)
-    // PORT-TODO: upstream's `shape` is an inline structural type `{ cx, cy, startAngle, endAngle,
+    // PORT-NOTE: upstream's `shape` is an inline structural type `{ cx, cy, startAngle, endAngle,
     //   clockwise?, r?, r0?, cornerRadius? }`. Only Sector calls this helper, so we accept the
     //   concrete `SectorShape` (its fields satisfy the structural type). `shape.r0 || 0` collapses
     //   to `shape.r0` since `r0` is a non-optional Double (default 0).

@@ -24,8 +24,8 @@ import ZRenderKit
 // upstream imports:
 //   import * as curveTool from 'zrender/src/core/curve';             -> `curve.*` (ZRenderKit).
 //   import * as vec2 from 'zrender/src/core/vector';                 -> `vector.*` (ZRenderKit).
-//   import {getSymbolSize} from './graphHelper';                     -> `graphHelper.getSymbolSize` (PORT-TODO: chart/graph/graphHelper.ts not ported yet).
-//   import Graph from '../../data/Graph';                            -> Graph (PORT-TODO: data/Graph.ts not ported yet).
+//   import {getSymbolSize} from './graphHelper';                     -> `graphHelper.getSymbolSize` (chart/graph/graphHelper.swift, ported).
+//   import Graph from '../../data/Graph';                            -> Graph (data/Graph.swift, ported).
 
 // const v1: number[] = []; const v2: number[] = []; const v3: number[] = [];
 // (module-level 2-vector scratch buffers; sized to 2 so index writes are valid.)
@@ -121,7 +121,7 @@ public func adjustEdge(_ graph: Graph, _ scale: Double) {
         let fromSymbol = edge.getVisual("fromSymbol") as? String
         let toSymbol = edge.getVisual("toSymbol") as? String
 
-        // PORT-TODO: upstream caches the pristine points on `linePoints.__original` (an attached property
+        // PORT-NOTE: upstream caches the pristine points on `linePoints.__original` (an attached property
         // on the JS layout array) so repeated calls don't re-shrink. We rebuild the edge layout from
         // scratch each pass (CONVENTIONS §5 static render), so `linePoints` is already pristine here;
         // originalPoints is taken directly from it (equivalent to first-run behavior).
@@ -190,7 +190,7 @@ public func adjustEdge(_ graph: Graph, _ scale: Double) {
             linePoints[1] = pts2[1]
         }
 
-        // PORT-TODO: upstream mutates `linePoints` in place (the JS array is the same object stored in
+        // PORT-NOTE: upstream mutates `linePoints` in place (the JS array is the same object stored in
         // the layout); Swift [Double] arrays are value types (CONVENTIONS §3/§4), so we write the
         // adjusted points back to the store here to make the mutation visible.
         _ = idx

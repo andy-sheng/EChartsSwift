@@ -76,7 +76,7 @@ public enum aria {
     // upstream: function ariaVisual(ecModel, api) { ... setDecal(); setLabel(); }
     //
     // The port splits out the LABEL generation (pure data + locale, RETURNED as a String?) from the
-    // DECAL generation (PORT-TODO below). Returns `nil` when aria is disabled / has no series (upstream:
+    // DECAL generation (the ported `setDecal` static below). Returns `nil` when aria is disabled / has no series (upstream:
     // the early `return`s that leave `aria-label` unset).
     // ------------------------------------------------------------------------
     public static func ariaLabel(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> String? {

@@ -30,7 +30,7 @@ import ZRenderKit
 //       -> `util.*` (ZRenderKit); `HashMap`/`createHashMap` (util/modelUtil.swift shim)
 //   import SeriesModel from '../../model/Series';                     -> `SeriesModel` (model/Series.swift)
 //   import { CoordinateSystemHostModel } from '../../coord/CoordinateSystem';
-//       -> PORT-TODO: `CoordinateSystemHostModel` not narrowly ported; modeled as `ComponentModel`.
+//       -> PORT-NOTE: `CoordinateSystemHostModel` is ported (coord/CoordinateSystem.swift); modeled here as its `ComponentModel` supertype.
 //   import { AxisBaseModel } from '../../coord/AxisBaseModel';        -> `AxisBaseModel` (coord/AxisBaseModel.swift)
 //   import type AxisProxy from './AxisProxy';                         -> `AxisProxy` (sibling AxisProxy.swift)
 //   import { makeInner } from '../../util/model';                     -> `model.makeInner` (util/modelUtil.swift)
@@ -66,7 +66,7 @@ public struct DataZoomPayloadBatchItem {
 //   `.axisModels` on it — the list entry and the map entry are the SAME reference. A Swift value
 //   struct would break that aliasing (value-type write-back trap), so this is a `final class`.
 public final class DataZoomReferCoordSysInfo {
-    // upstream: model: CoordinateSystemHostModel  -> PORT-TODO: modeled as `ComponentModel`.
+    // upstream: model: CoordinateSystemHostModel  -> PORT-NOTE: modeled as its `ComponentModel` supertype.
     public var model: ComponentModel
     // Notice: if two dataZooms refer the same coordinate system model,
     // (1) The axis they referred may different
@@ -239,7 +239,7 @@ public func collectReferCoordSysModelInfo(_ dataZoomModel: DataZoomModel) -> Dat
         guard let axisModel = axisModel else {
             return
         }
-        // getCoordSysModel() -> Any? (PORT-TODO CoordinateSystemHostModel); narrow to ComponentModel.
+        // getCoordSysModel() -> Any? (upstream CoordinateSystemHostModel, ported); narrow to ComponentModel.
         guard let coordSysModel = axisModel.getCoordSysModel() as? ComponentModel else {
             return
         }

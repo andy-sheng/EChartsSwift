@@ -30,11 +30,11 @@ import ZRenderKit
 //      CommonTooltipOption) already live in util/types.swift.
 // import tokens from '../../visual/tokens';             -> `tokens` (visual/tokens.swift)
 // import {AxisPointerOption} from '../axisPointer/AxisPointerModel';
-//   -> PORT-TODO: axisPointer/AxisPointerModel not ported. `AxisPointerOption` is stubbed below as
-//      an untyped option bag; the `axisPointer` sub-option in `defaultOption` is emitted as a plain
-//      `[String: Any]` literal. Re-type once AxisPointerModel lands.
+//   -> PORT-NOTE: axisPointer/AxisPointerModel is ported (component/axisPointer/AxisPointerModel.swift).
+//      `AxisPointerOption` is still kept below as an untyped option bag; the `axisPointer` sub-option
+//      in `defaultOption` is emitted as a plain `[String: Any]` literal.
 
-// PORT-TODO: axisPointer/AxisPointerModel not ported.
+// PORT-NOTE: axisPointer/AxisPointerModel is ported; `AxisPointerOption` kept as an untyped bag here.
 public typealias AxisPointerOption = [String: Any]
 
 // export type TopLevelFormatterParams = CallbackDataParams | CallbackDataParams[];
@@ -121,7 +121,7 @@ open class TooltipModel: ComponentModel {
             "extraCssText": "",
 
             // axis indicator, trigger by axis
-            // PORT-TODO: axisPointer/AxisPointerModel not ported — emitted as a plain option bag.
+            // PORT-NOTE: AxisPointerModel is ported; this sub-option is still emitted as a plain option bag.
             "axisPointer": [
                 // default is line
                 // legal values: 'line' | 'shadow' | 'cross'

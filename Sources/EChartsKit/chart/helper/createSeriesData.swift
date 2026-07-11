@@ -50,7 +50,7 @@ import ZRenderKit
 //   }
 public struct CreateSeriesDataOpt {
     public var generateCoord: String?
-    // PORT-TODO: union `boolean | EncodeDefaulter` -> `Any?` (Bool or the `EncodeDefaulter` closure).
+    // PORT-NOTE: union `boolean | EncodeDefaulter` -> `Any?` (Bool or the `EncodeDefaulter` closure).
     public var useEncodeDefaulter: Any?
     // By default: auto. If `true`, create inverted indices for all ordinal dimension on coordSys.
     public var createInvertedIndices: Bool?
@@ -83,7 +83,7 @@ private func getCoordSysDimDefs(
     if let coordSysInfo = coordSysInfo {
         coordSysDimDefs = util.map(coordSysInfo.coordSysDims) { dim, _ -> CoordDimensionDefinitionLoose in
             // upstream builds `{ name: dim } as DimensionDefinition` then sets `.type`.
-            // PORT-TODO: `createDimensions` downcasts each non-string coord dimension to
+            // PORT-NOTE: `createDimensions` downcasts each non-string coord dimension to
             //   `CoordDimensionDefinition` (a distinct Swift value struct from `DimensionDefinition`),
             //   so build that concrete type here (upstream relies on TS structural subtyping —
             //   `CoordDimensionDefinition extends DimensionDefinition`).
@@ -112,7 +112,7 @@ private func getCoordSysDimDefs(
         // Get dimensions from registered coordinate system.
         // upstream: (registeredCoordSys && (registeredCoordSys.getDimensionsInfo
         //     ? registeredCoordSys.getDimensionsInfo() : registeredCoordSys.dimensions.slice())) || ['x', 'y']
-        // PORT-TODO: upstream branches on whether the *method* `getDimensionsInfo` is defined; the
+        // PORT-NOTE: upstream branches on whether the *method* `getDimensionsInfo` is defined; the
         //   ported `CoordinateSystemCreator.getDimensionsInfo()` returns nil by default (method not
         //   provided), so a non-nil return is treated as "method present", otherwise fall to
         //   `dimensions`.
@@ -148,7 +148,7 @@ private func injectOrdinalMeta(
                     firstCategoryDimIndex = Double(dimIndex)
                 }
                 // upstream: `dimInfo.ordinalMeta = categoryAxisModel.getOrdinalMeta();`
-                // PORT-TODO: `categoryAxisMap` holds `AxisBaseModel` (referHelper collapses the
+                // PORT-NOTE: `categoryAxisMap` holds `AxisBaseModel` (referHelper collapses the
                 //   upstream `FetcherAxisModel` = `Model & Pick<AxisModelExtendedInCreator,'getOrdinalMeta'>`
                 //   down to `AxisBaseModel`). `getOrdinalMeta()` lives on `AxisModelExtendedInCreator`
                 //   (implemented by the generated axis model), so cast to reach it. Category axis

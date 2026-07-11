@@ -24,7 +24,7 @@ public final class CompoundPath: Path {
         self.type = "compound"
     }
 
-    // PORT-TODO: upstream `CompoundPath` declares `shape: CompoundPathShape` but no `getDefaultShape`,
+    // PORT-NOTE: upstream `CompoundPath` declares `shape: CompoundPathShape` but no `getDefaultShape`,
     //   relying on `shape.paths` being supplied via constructor opts (with `|| []` fallbacks below).
     //   The typed-existential model (Path.swift) needs a concrete default so `self.shape as! …`
     //   never traps; we default to an empty `CompoundPathShape`.
@@ -44,7 +44,7 @@ public final class CompoundPath: Path {
         }
     }
 
-    // PORT-TODO: upstream signature `beforeBrush()` takes no args; the Swift base
+    // PORT-NOTE: upstream signature `beforeBrush()` takes no args; the Swift base
     //   `Displayable.beforeBrush(_ param: BeforeBrushParam)` carries the param, so we override with
     //   it and ignore `param`.
     public override func beforeBrush(_ param: BeforeBrushParam) {
@@ -60,7 +60,7 @@ public final class CompoundPath: Path {
         }
     }
 
-    // PORT-TODO: upstream signature `buildPath(ctx, shape)` omits the `inBatch` arg; the Swift base
+    // PORT-NOTE: upstream signature `buildPath(ctx, shape)` omits the `inBatch` arg; the Swift base
     //   `Path.buildPath(_ ctx, _ shape, _ inBatch)` carries it, so we override with the full arity.
     public override func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {
         let shape = shape as! CompoundPathShape

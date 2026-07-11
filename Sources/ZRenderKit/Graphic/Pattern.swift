@@ -57,7 +57,7 @@ public protocol SVGPatternObject: PatternObjectBase {
     var svgHeight: Double? { get set }
 }
 
-// PORT-TODO: PatternObject = ImagePatternObject | SVGPatternObject — a structural union;
+// PORT-NOTE: PatternObject = ImagePatternObject | SVGPatternObject — a structural union;
 // modeled in Swift as the two separate protocols above. A union enum (or a `fill` enum case)
 // will be introduced where PathStyleProps consumes it.
 

@@ -39,7 +39,7 @@ import ZRenderKit
 //   functions below therefore take it `inout` where upstream mutates the array reference in place.
 //
 // NOTE (declaration ownership): upstream declares `MatrixCoordValueOption` / `MatrixCoordRangeOption` in
-//   MatrixModel.ts, but MatrixModel.swift deferred them (PORT-TODO) and MatrixDim.swift references
+//   MatrixModel.ts, but MatrixModel.swift deferred them (PORT-NOTE) and MatrixDim.swift references
 //   `MatrixCoordValueOption` in `getCell`. They are the coord-parser's currency, so they are declared here
 //   (one module-wide home, no redeclaration). Both are dynamic option values.
 public typealias MatrixCoordValueOption = Any        // OrdinalRawValue | OrdinalNumber | MatrixXYLocator
@@ -157,7 +157,7 @@ public func parseCoordRangeOption(
     parseCoordRangeOptionOnOneDim(&locOut, &reasonOut, clamp, data, dims, 1)
 }
 
-// PORT-TODO: upstream passes the inner one-dim array `locOut[dimIdx]` (a reference) and mutates it in
+// PORT-NOTE: upstream passes the inner one-dim array `locOut[dimIdx]` (a reference) and mutates it in
 //   place. `MatrixXYLocatorRange` is `[[Double]]` (value type), so we pass the whole range `inout` +
 //   `dimIdx` and write through `locRange[dimIdx][k]`. Same logic; only the inner-array aliasing is dropped.
 private func parseCoordRangeOptionOnOneDim(

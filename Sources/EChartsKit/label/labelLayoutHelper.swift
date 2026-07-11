@@ -26,10 +26,10 @@ import ZRenderKit
 //     (localRect + marginDefault expansion, then the label's computed transform).
 //   - `shiftLayoutOnXY`: the along-axis overlap resolver (pie's `avoidOverlap` shifts labels on Y).
 //
-//   DEFERRED (the OBB / axis-label machinery): `LabelGeometry` dirty-bit caching, `ensureOBB`,
-//   `labelIntersect`, `hideOverlap`, `restoreIgnore`, `newLabelLayoutWithGeometry`,
-//   `labelLayoutApplyTranslation`. AxisBuilder's `hideOverlap` PORT-TODO and the axis-name overlap
-//   resolver still wait on those. This file lands only what the pie leader-line layout needs.
+//   Most of the OBB / axis-label machinery (`ensureOBB`, `labelIntersect`, `hideOverlap`,
+//   `restoreIgnore`, `newLabelLayoutWithGeometry`) has since landed in this file and is wired into
+//   AxisBuilder's overlap-resolution pass; `labelLayoutApplyTranslation` (and `LabelGeometry`
+//   dirty-bit caching) remain deferred. This L1c pass landed only what the pie leader-line layout needs.
 
 /// Namespace for the ported labelLayoutHelper functions (caseless enum, mirrors `labelStyle`).
 public enum labelLayoutHelper {

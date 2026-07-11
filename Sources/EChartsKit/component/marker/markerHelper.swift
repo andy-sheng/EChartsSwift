@@ -33,7 +33,7 @@ import ZRenderKit
 // import SeriesDimensionDefine from '../../data/SeriesDimensionDefine'; -> EChartsKit `SeriesDimensionDefine`
 
 // interface MarkerAxisInfo { valueDataDim; valueAxis; baseAxis; baseDataDim }
-// PORT-TODO: upstream fields are non-optional (`{} as MarkerAxisInfo` then filled). Modeled with
+// PORT-NOTE: upstream fields are non-optional (`{} as MarkerAxisInfo` then filled). Modeled with
 //   optional fields because it is built incrementally (CONVENTIONS §6).
 struct MarkerAxisInfo {
     var valueDataDim: DimensionName?
@@ -87,7 +87,7 @@ public enum markerHelper {
         _ otherCoordIndex: Double,
         _ targetCoordIndex: Double
     ) -> (coordArr: [ParsedValue], coordArrValue: ParsedValue) {   // upstream: [ParsedValue[], ParsedValue]
-        // PORT-TODO: upstream builds a sparse `ParsedValue[]` via index assignment (`coordArr[i] = ...`);
+        // PORT-NOTE: upstream builds a sparse `ParsedValue[]` via index assignment (`coordArr[i] = ...`);
         //   Swift arrays are not sparse, so it is pre-sized to 2 (cartesian/polar have 2 coord dims).
         var coordArr: [ParsedValue] = [Double.nan, Double.nan]
 

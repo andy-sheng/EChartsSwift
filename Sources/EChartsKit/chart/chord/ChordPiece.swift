@@ -34,12 +34,14 @@ import ZRenderKit
 //   import type Model from '../../model/Model';                    -> `Model`.
 //   import type { GraphNode } from '../../data/Graph';             -> data/Graph.swift `GraphNode`.
 //   import { getLabelStatesModels, setLabelStyle } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported. A minimal plain-text NORMAL-state label is inlined in
-//          `_updateLabel` below (same deviation as SankeyView / FunnelView / SunburstPiece).
+//       -> label/labelStyle.swift (getLabelStatesModels:404, setLabelStyle:303). Both ARE ported, but this
+//          view still inlines a minimal NORMAL-state label in `_updateLabel` below: upstream wraps
+//          setLabelStyle in a CUSTOM `labelFetcher` (a retrieve3 name-formatter fallback + dataType 'node')
+//          plus a 'startArc' outside position, none of which are wired here yet (see note in `_updateLabel`).
 //   import type { BuiltinTextPosition } from 'zrender/src/core/types'; -> the `defaultOutsidePosition`
 //       only feeds the DEFERRED setLabelStyle.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis DEFERRED per CONVENTIONS §5).
+//       -> PORT-NOTE: util/states.swift is ported; states/emphasis is just not wired here yet (DEFERRED per CONVENTIONS §5).
 //   import { getECData } from '../../util/innerStore';             -> `innerStore.getECData`.
 
 // upstream: export default class ChordPiece extends graphic.Sector
@@ -148,7 +150,7 @@ open class ChordPiece: Sector {
         // sector.useStyle(data.getItemVisual(idx, 'style'));
         sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
         // setStatesStylesFromModel(sector, itemModel);
-        // PORT-TODO: per-state itemStyle (emphasis/blur/select) DEFERRED (util/states not ported).
+        // PORT-NOTE: per-state itemStyle (emphasis/blur/select) not wired here yet (util/states.swift is ported).
 
         // this._updateLabel(seriesModel, itemModel, node);
         self._updateLabel(seriesModel, itemModel, node)
@@ -205,18 +207,30 @@ open class ChordPiece: Sector {
         // const style = node.getVisual('style');
         // setLabelStyle(label, labelStateModels, { labelFetcher: {...}, labelDataIndex, defaultText: node.dataIndex + '',
         //     inheritColor: style.fill, defaultOpacity: style.opacity, defaultOutsidePosition: 'startArc' });
-        // PORT-TODO: label/labelStyle.setLabelStyle NOT ported — the full formatter chain / per-state
-        //   label styles / inheritColor / outside 'startArc' placement are DEFERRED. Below is a MINIMAL
-        //   faithful NORMAL-state label: text = node.dataIndex-as-string default, plus the geometry
-        //   (position/align/verticalAlign) that upstream sets after setLabelStyle.
+        // PORT-TODO: setLabelStyle IS ported (label/labelStyle.swift:303), but it is NOT wired here.
+        //   Upstream does not use the plain BarView `labelFetcher = seriesModel` form: it passes a CUSTOM
+        //   inline labelFetcher whose getFormattedLabel adds `dataType: 'node'` and a
+        //   retrieve3(formatter, normal formatter, itemModel name) fallback, plus a 'startArc' outside
+        //   position — a custom DataFormatMixin-conforming fetcher that is not ported. So per-state label
+        //   styles / defaultOpacity / 'startArc' placement remain DEFERRED. Below is a MINIMAL faithful
+        //   NORMAL-state label: text = formatter chain then node id/name then dataIndex-as-string, plus the
+        //   geometry (position/align/verticalAlign) that upstream sets after setLabelStyle.
         let style = node.getVisual("style") as? [String: Any] ?? [:]
 
         var textStyle = TextStyleProps()
-        // Upstream `setLabelStyle` resolves the text through the labelFetcher (the node NAME) and only
-        //   falls back to `node.dataIndex + ''` when that is empty. The formatter chain is deferred, so
-        //   use the node id (== the node name for chord data, e.g. a/b/c/d) directly, falling back to the
-        //   data-index string. Without this the sectors were labelled 0/1/2/3 instead of the names.
-        textStyle.text = node.id.isEmpty ? String(node.dataIndex) : node.id
+        // Upstream `setLabelStyle` resolves the text through the labelFetcher, which calls
+        //   `seriesModel.getFormattedLabel(node.dataIndex, 'normal', ...)` (the label.formatter chain),
+        //   and falls back to its `defaultText` (`node.dataIndex + ''`) when that yields nothing.
+        //   `getFormattedLabel` is now ported (DataFormatMixin), so honour the formatter and only fall
+        //   back to the node id (== the node name for chord data, e.g. a/b/c/d) — and finally the
+        //   data-index string. Without the id fallback the sectors were labelled 0/1/2/3 instead of names.
+        let formattedLabel = seriesModel.getFormattedLabel(Double(node.dataIndex), .normal)
+        if let formattedLabel = formattedLabel, !formattedLabel.isEmpty {
+            textStyle.text = formattedLabel
+        }
+        else {
+            textStyle.text = node.id.isEmpty ? String(node.dataIndex) : node.id
+        }
         // inheritColor: style.fill  (bridge the visual fill color to the text fill).
         if let fill = chordColorString(style["fill"]) {
             textStyle.fill = fill
@@ -270,8 +284,6 @@ open class ChordPiece: Sector {
         label.y = dy * r + cy
         label.rotation = 0
         label.dirtyStyle()
-
-        _ = seriesModel   // DEFERRED getFormattedLabel fetcher (see PORT-TODO above).
     }
 }
 

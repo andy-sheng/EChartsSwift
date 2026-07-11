@@ -16,7 +16,8 @@
 //        below feeds an empty `DataStore` (the `data as? DataStore` branch of `SeriesData.initData`
 //        skips the provider assert) purely so the series MODEL instantiates.
 //   (B2) `queryReferringComponents` (util/modelUtil.swift:1256-1298) is stubbed to always return
-//        `models: []` (stale PORT-TODO: `GlobalModel.getComponent`/`queryComponents` now exist), so
+//        `models: []` (since resolved — `GlobalModel.getComponent`/`queryComponents` now exist and the
+//        stub has been replaced), so
 //        `CartesianAxisModel.getCoordSysModel().models[0]` crashes (index out of range), taking down
 //        the whole Grid pipeline. The probe axis models override `getCoordSysModel()` to resolve the
 //        grid via `ecModel.getComponent("grid", ...)` — exactly what the un-stubbed resolver would do.

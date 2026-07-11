@@ -23,22 +23,21 @@ import ZRenderKit
 
 // upstream imports:
 //   import {ECPolygon} from '../line/poly';
-//       -> PORT-TODO: `ECPolygon` (the line chart's dual-edge `points`/`stackedOnPoints` smoothed area
-//          polygon) is NOT ported. A STATIC theme-river band is reproduced here with a plain
-//          `ZRenderKit.Polygon` whose ring traces the top edge (points0) forward then the bottom edge
-//          (points1) back — the same closed area ECPolygon fills, minus the `smooth: 0.4` /
-//          `stackedOnSmooth: 0.4` Bézier smoothing (smoothing deferred).
+//       -> PORT-NOTE: the shared `ECPolygon` (chart/line/poly.ts) is not ported as a shared shape; a local
+//          minimal equivalent (`ThemeRiverBand` / `ThemeRiverBandShape`, below) reproduces the dual-edge
+//          `points0`/`points1` band WITH the `smooth: 0.4` / `stackedOnSmooth: 0.4` Bézier smoothing, so
+//          adjacent bands share an identical boundary curve (contiguous stream).
 //   import * as graphic from '../../util/graphic';
-//       -> `Polygon` is the ZRenderKit shape. PORT-TODO: `util/graphic` (Group, Rect, initProps/
-//          updateProps) — the `graphic.Rect` clip + `updateProps` are on the deferred animation path.
+//       -> `Polygon` is the ZRenderKit shape. `util/graphic` (Group, Rect, initProps/updateProps) is ported;
+//          `updateProps` drives the band edge morph. Only the `graphic.Rect` grid-clip reveal is still deferred.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis deferred).
+//       -> util/states.swift (ported); `setStatesStylesFromModel` + `toggleHoverEmphasis` wire the band hover/emphasis in render.
 //   import {setLabelStyle, getLabelStatesModels} from '../../label/labelStyle';
 //       -> `labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels` (SHARED LABEL CORE). The
 //          per-layer band label now routes through the core (see the `setLabelStyle` block in render).
 //   import {bind} from 'zrender/src/core/util';                    -> Swift closures.
 //   import DataDiffer from '../../data/DataDiffer';
-//       -> PORT-TODO: the add/update/remove diff is collapsed into a from-scratch rebuild (STATIC render).
+//       -> the add/remove diff is still collapsed, but the UPDATE path is faithful: persisted bands MORPH via updateProps (see render).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import ThemeRiverSeriesModel, { SERIES_TYPE_THEME_RIVER } from './ThemeRiverSeries';
 //       -> sibling ThemeRiverSeries.swift (assumed).
@@ -46,10 +45,10 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
 //   import { RectLike } from 'zrender/src/core/BoundingRect';      -> ZRenderKit.RectLike.
 //   import { ColorString } from '../../util/types';                -> util/types (label-only; deferred).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: NOT ported (deferred).
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> animation/basicTransition.swift (ported); not called on the band morph path here.
 
 // upstream: type LayerSeries = ReturnType<ThemeRiverSeriesModel['getLayerSeries']>;
-//   PORT-TODO (sibling contract): `ThemeRiverSeriesModel.getLayerSeries()` is ASSUMED to return
+//   PORT-NOTE (sibling contract): `ThemeRiverSeriesModel.getLayerSeries()` is ASSUMED to return
 //   `[[String: Any]]`, one dictionary per layer with keys:
 //     - "name":    String   (the layer / series name — the diff key)
 //     - "indices": [Int]    (data indices of that layer, sorted by the `single` (time) dimension)
@@ -131,7 +130,7 @@ open class ThemeRiverView: ChartView {
         //   `updateProps({shape})` — the stream slides to the new values instead of rebuild-and-snap. A
         //   layer add/remove or a per-layer sample-count change rebuilds fresh (the edge arrays interpolate
         //   element-wise, so their lengths must be stable to morph), keeping the opacity-fade entrance.
-        //   Label + emphasis + grid-clip reveal remain as documented in the PORT-TODOs.
+        //   Label + emphasis are wired (shared label core + util/states); only the grid-clip reveal entrance remains deferred.
         // ------------------------------------------------------------------------------------------
 
         // Gather the drawable per-layer render info first (skipping empty layers), so the morph gate can

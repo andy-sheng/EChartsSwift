@@ -44,7 +44,7 @@ import ZRenderKit
 //   import { calcBandWidth } from '../../coord/axisBand';              -> `calcBandWidth` (coord/axisBand.swift).
 
 // const callOnlyOnce = makeCallOnlyOnce();
-// PORT-TODO: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type
+// PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type
 //   (same as layout/barGrid.swift).
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
 
@@ -240,7 +240,7 @@ public let candlestickLayout: StageHandler = {
             var points = vendor.createFloat32Array(params.count * 4)
             var offset = 0
             var point: [Double]?
-            // PORT-TODO: upstream reuses scratch `tmpIn`/`tmpOut` arrays with `dataToPoint(tmpIn, null, tmpOut)`
+            // PORT-NOTE: upstream reuses scratch `tmpIn`/`tmpOut` arrays with `dataToPoint(tmpIn, null, tmpOut)`
             //   (out-param). The ported `dataToPoint` is value-returning (CONVENTIONS §3), so a fresh 2-vec
             //   is built per call instead.
             var tmpIn: [Double] = [0, 0]
@@ -334,7 +334,7 @@ private func calculateCandleWidth(_ seriesModel: CandlestickSeriesModel, _ data:
         )
     ).w
 
-    // PORT-TODO: the option bag stores explicit-null defaults as `NSNull()` (codebase convention;
+    // PORT-NOTE: the option bag stores explicit-null defaults as `NSNull()` (codebase convention;
     //   see BarSeries.swift). `retrieve2` checks `!= nil`, so `NSNull` would wrongly win over the
     //   fallback; `candlestickDenull` collapses `NSNull` -> nil first (JS `null` == nil, CONVENTIONS §6).
     let barMaxWidth = number.parsePercent(
@@ -376,7 +376,7 @@ public func registerCandlestickAxisHandlers(_ registers: EChartsExtensionInstall
 }
 
 // ============================================================================
-// PORT-TODO: local helpers (NOT in upstream candlestickLayout.ts).
+// PORT-NOTE: local helpers (NOT in upstream candlestickLayout.ts).
 // ============================================================================
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric candlestick values are stored as `Double`.

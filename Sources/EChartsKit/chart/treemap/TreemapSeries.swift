@@ -29,7 +29,7 @@ import ZRenderKit
 //       `tree.getNodeByDataIndex`, `tree.root`, `node.depth`, `root.contains(...)`.
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
-//       -> PORT-TODO: chart/helper/treeHelper.ts NOT ported (only used by `getDataParams`, deferred).
+//       -> wrapTreePathInfo (chart/helper/treeHelper.swift); used by `getDataParams` (still deferred below).
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -37,12 +37,11 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import { normalizeToArray } from '../../util/model';             -> `model.normalizeToArray` (util/modelUtil.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip deferred; used only by
-//          `formatTooltip`, deferred).
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift); used by `formatTooltip` below.
 //   import enableAriaDecalForTree from '../helper/enableAriaDecalForTree';
-//       -> PORT-TODO: chart/helper/enableAriaDecalForTree.ts NOT ported (aria decal deferred).
+//       -> enableAriaDecalForTree (chart/helper/enableAriaDecalForTree.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet; every `tokens.*` value in `defaultOption` is
+//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; every `tokens.*` value in `defaultOption` is
 //          inlined below as its resolved constant, with the token path kept in a trailing comment.
 
 // ============================================================================
@@ -196,14 +195,17 @@ open class TreemapSeriesModel: SeriesModel {
     /**
      * @override
      */
-    // upstream: formatTooltip(dataIndex, multipleSeries, dataType) {
-    //     const data = this.getData();
-    //     const value = this.getRawValue(dataIndex) as TreemapSeriesDataValue;
-    //     const name = data.getName(dataIndex);
-    //     return createTooltipMarkup('nameValue', { name: name, value: value });
-    // }
-    // PORT-TODO: DEFERRED. `createTooltipMarkup` (component/tooltip/tooltipMarkup.ts) is NOT ported and the
-    //   tooltip subsystem is deferred. Faithful upstream body preserved above for the eventual port.
+    open override func formatTooltip(
+        _ dataIndex: Double,
+        _ multipleSeries: Bool? = nil,
+        _ dataType: SeriesDataType? = nil
+    ) -> TooltipFormatResult? {
+        _ = (multipleSeries, dataType)
+        let data = self.getData()
+        let value = self.getRawValue(dataIndex)
+        let name = data.getName(Int(dataIndex))
+        return createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(name: name, value: value))
+    }
 
     /**
      * Add tree path to tooltip param

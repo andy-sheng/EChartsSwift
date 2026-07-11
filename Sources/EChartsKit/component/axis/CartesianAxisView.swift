@@ -27,7 +27,7 @@ import ZRenderKit
 //     namespace. `graphic.Group` / `graphic.Line` are the ZRenderKit `Group` / `Line`. The echarts
 //     wrappers `graphic.subPixelOptimizeLine` (which delegates to the value-returning
 //     `subPixelOptimizeNS.subPixelOptimizeLine`) and `graphic.groupTransition` are reproduced/deferred
-//     below (see `subPixelOptimizeLine` free function + the `groupTransition` PORT-TODO in `render`).
+//     below (see `subPixelOptimizeLine` free function + the `groupTransition` PORT-NOTE in `render`).
 //   import AxisView from './AxisView';                               -> `AxisView` (component/axis/AxisView.swift).
 //     PORT-TODO: `AxisView` is a sibling landing this phase (not yet ported). Conventional public API
 //     referenced here: `open class AxisView: ComponentView` with an overridable `type: String`,
@@ -37,7 +37,7 @@ import ZRenderKit
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
 //     -> PORT-TODO: `component/axis/axisSplitHelper` NOT ported (splitArea colors + inner-store PREREQ).
 //        `rectCoordAxisBuildSplitArea` (splitArea builder) and `rectCoordAxisHandleRemove` (remove) are
-//        deferred with documented PORT-TODOs below.
+//        deferred with documented PORT-NOTEs below.
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> `ExtensionAPI`.
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> `CartesianAxisModel`.
@@ -106,7 +106,7 @@ open class CartesianAxisView: AxisView {
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
         for name in selfBuilderAttrs {
             // upstream: if (axisModel.get([name, 'show']))
-            //   PORT-TODO: JS truthy check on the option value; coerced to Bool (all four `show`
+            //   PORT-NOTE: JS truthy check on the option value; coerced to Bool (all four `show`
             //   flags are booleans).
             if (axisModel.get([name, "show"]) as? Bool) == true {
                 axisElementBuilders[name]!(
@@ -240,7 +240,7 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
                 "style": style
             ])
             // upstream: anid: tickValue != null ? 'line_' + tickValue : null
-            //   PORT-TODO: `AxisTickCoord.tickValue` is a non-optional `Double`, so the `!= null` guard
+            //   PORT-NOTE: `AxisTickCoord.tickValue` is a non-optional `Double`, so the `!= null` guard
             //   is always true; `anid` is only consumed by the deferred `groupTransition`.
             line.anid = "line_\(tickValue)"
             line.autoBatch = true

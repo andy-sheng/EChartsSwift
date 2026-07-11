@@ -33,16 +33,16 @@ import ZRenderKit
 //     GeoJSON / GeoJSONCompressed are dynamic JSON bags -> [String: Any] (CONVENTIONS: dynamic option bag).
 
 // MARK: - dynamic JSON coercion helpers
-// PORT-TODO: geoTypes not ported; GeoJSON structures arrive as parsed JSON ([String: Any] /
-// nested [Any] with NSNumber leaves). These helpers coerce that dynamic bag into the typed
-// numeric arrays / VectorArray rings the ported logic below consumes. INT-vs-DOUBLE trap:
+// PORT-NOTE: geoTypes is ported, but GeoJSON structures are dynamic JSON bags and arrive as parsed JSON
+// ([String: Any] / nested [Any] with NSNumber leaves). These helpers coerce that dynamic bag into the
+// typed numeric arrays / VectorArray rings the ported logic below consumes. INT-vs-DOUBLE trap:
 // go through NSNumber.doubleValue so Int-boxed JSON numbers do not drop to nil.
 private func asDouble(_ v: Any) -> Double {
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     if let f = v as? Float { return Double(f) }
-    return 0 // PORT-TODO: non-numeric leaf
+    return 0 // PORT-NOTE: non-numeric leaf
 }
 
 private func asDoubleOrNil(_ v: Any?) -> Double? {
@@ -79,7 +79,7 @@ private func doubleArray3(_ v: Any?) -> [[[Double]]] {
 private func toPoint(_ v: Any) -> [Double] {
     if let p = v as? [Double] { return p }
     if let p = v as? [Any] { return p.map { asDouble($0) } }
-    return [0, 0] // PORT-TODO: malformed position
+    return [0, 0] // PORT-NOTE: malformed position
 }
 // number[][] ring -> [[Double]].
 private func toRing(_ v: Any?) -> [[Double]] {

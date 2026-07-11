@@ -23,30 +23,29 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';                    -> ZRenderKit.util
-//   import {...} from './../coord/axisCommonTypes';                     -> PORT-TODO: axisCommonTypes
-//       not ported yet (coord tier). The TimeAxisLabelFormatter* types it exports are declared
-//       here as forward-ref placeholders and MUST be reconciled when axisCommonTypes lands.
+//   import {...} from './../coord/axisCommonTypes';                     -> PORT-NOTE: coord/axisCommonTypes.swift
+//       is ported, but the TimeAxisLabelFormatter* types it exports are still declared here (kept in
+//       time.swift rather than moved into axisCommonTypes.swift).
 //   import * as numberUtil from './number';                            -> EChartsKit.number (same module)
 //   import {NullUndefined, ScaleTick} from './types';                  -> ScaleTick in types.swift;
 //                                                                          NullUndefined collapses to `nil`.
 //   import { getDefaultLocaleModel, getLocaleModel, SYSTEM_LANG, LocaleOption } from '../core/locale';
 //                                                                       -> PORT-TODO: core/locale (Tier6) not ported.
-//   import Model from '../model/Model';                                -> PORT-TODO: model/Model not ported.
+//   import Model from '../model/Model';                                -> model/Model.swift (ported).
 //   import { getScaleBreakHelper } from '../scale/break';              -> PORT-TODO: scale/break not ported.
 
 // ============================================================================
-// PORT-TODO: FORWARD-REFERENCE PLACEHOLDERS for coord/axisCommonTypes.ts
+// PORT-NOTE: FORWARD-REFERENCE TYPES for coord/axisCommonTypes.ts
 // These TimeAxisLabelFormatter* aliases/types are exported by `coord/axisCommonTypes`
-// upstream, which is NOT yet ported (handled by another tier). They are declared here
-// as minimal placeholders so this file compiles. The agent that ports axisCommonTypes
-// MUST move/reconcile these into that file.
+// upstream. coord/axisCommonTypes.swift is now ported, but these Time* types are still
+// declared here (kept in time.swift); they could later be moved/reconciled into that file.
 // ============================================================================
 
 // upstream: AxisLabelTimeFormatter = (value, index, extra: TimeAxisLabelFormatterExtraParams) => string
 public typealias AxisLabelTimeFormatter =
-    (Double, Double, TimeAxisLabelFormatterExtraParams) -> String          // PORT-TODO: axisCommonTypes
+    (Double, Double, TimeAxisLabelFormatterExtraParams) -> String          // PORT-NOTE: axisCommonTypes type (kept here)
 // upstream: TimeAxisLabelFormatterExtraParams = { time, level } & AxisLabelFormatterExtraParams
-public struct TimeAxisLabelFormatterExtraParams {                           // PORT-TODO: axisCommonTypes
+public struct TimeAxisLabelFormatterExtraParams {                           // PORT-NOTE: axisCommonTypes type (kept here)
     public var time: TimeScaleTickTime? // upstream: TimeScaleTick['time']
     /**
      * @deprecated Refactored to `time.level`, kept for backward compat.
@@ -60,26 +59,26 @@ public struct TimeAxisLabelFormatterExtraParams {                           // P
     }
 }
 // upstream: TimeAxisLabelLeveledFormatterOption = string[] | string
-public typealias TimeAxisLabelLeveledFormatterOption = Any                  // PORT-TODO: [String] | String
+public typealias TimeAxisLabelLeveledFormatterOption = Any                  // PORT-NOTE: [String] | String
 // upstream: TimeAxisLabelFormatterUpperDictionaryOption = {[key in PrimaryTimeUnit]?: ...}
 // upstream: TimeAxisLabelFormatterDictionaryOption = {[key in PrimaryTimeUnit]?: ...}
 //   Modeled as the project dynamic option bag ([String: Any]) keyed by PrimaryTimeUnit.rawValue.
-public typealias TimeAxisLabelFormatterDictionaryOption = [String: Any]     // PORT-TODO: axisCommonTypes
+public typealias TimeAxisLabelFormatterDictionaryOption = [String: Any]     // PORT-NOTE: axisCommonTypes type (kept here)
 // upstream: TimeAxisLabelFormatterOption = string | AxisLabelTimeFormatter | dictOption
-public typealias TimeAxisLabelFormatterOption = Any                         // PORT-TODO: union
+public typealias TimeAxisLabelFormatterOption = Any                         // PORT-NOTE: union
 // upstream: TimeAxisLabelFormatterParsed = string | AxisLabelTimeFormatter | dict
-public typealias TimeAxisLabelFormatterParsed = Any                         // PORT-TODO: union
+public typealias TimeAxisLabelFormatterParsed = Any                         // PORT-NOTE: union
 // upstream: TimeAxisLabelFormatterUpperDictionary = {[key in PrimaryTimeUnit]: string[]}
-public typealias TimeAxisLabelFormatterUpperDictionary = [PrimaryTimeUnit: [String]] // PORT-TODO: axisCommonTypes
+public typealias TimeAxisLabelFormatterUpperDictionary = [PrimaryTimeUnit: [String]] // PORT-NOTE: axisCommonTypes type (kept here)
 // upstream: TimeAxisLabelFormatterDictionary = {[key in PrimaryTimeUnit]: TimeAxisLabelFormatterUpperDictionary}
-public typealias TimeAxisLabelFormatterDictionary = [PrimaryTimeUnit: TimeAxisLabelFormatterUpperDictionary] // PORT-TODO
+public typealias TimeAxisLabelFormatterDictionary = [PrimaryTimeUnit: TimeAxisLabelFormatterUpperDictionary] // PORT-NOTE: axisCommonTypes type (kept here)
 
 // upstream: type JSDateGetterNames = 'getUTCFullYear' | 'getFullYear' | ...
 // upstream: type JSDateSetterNames = 'setUTCFullYear' | 'setFullYear' | ...
 //   The string-literal unions collapse to `String` (the getter/setter name functions below
 //   return one of these literals; dynamic dispatch on `Date` is emulated by `jsDateGet`/`jsDateSet`).
-public typealias JSDateGetterNames = String                                 // PORT-TODO: string-literal union
-public typealias JSDateSetterNames = String                                 // PORT-TODO: string-literal union
+public typealias JSDateGetterNames = String                                 // PORT-NOTE: string-literal union
+public typealias JSDateSetterNames = String                                 // PORT-NOTE: string-literal union
 
 // upstream `time.ts` (free functions) -> caseless enum namespace `time`.
 // (upstream alias at call sites: `import * as timeUtil from '../util/time'`.)

@@ -35,7 +35,7 @@ import ZRenderKit
 //     registers.registerChartView(CustomChartView);
 //     registers.registerSeriesModel(CustomSeriesModel);
 // }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file. The integration points are:
 //     - ComponentModel.registerClass(CustomSeriesModel.self)      // registerSeriesModel(CustomSeriesModel)
 //     - _chartViewFactories["custom"] = { CustomView() }          // registerChartView(CustomChartView)

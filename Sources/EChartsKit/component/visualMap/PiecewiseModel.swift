@@ -30,19 +30,19 @@ import ZRenderKit
 //   -> VisualMapping (sibling port, visual/VisualMapping.swift): static `findPieceIndex(_:_:_:)`
 //      (takes `[VisualMappingPiece]` — see `toMappingPieces`), `listVisualTypes()`, `retrieveVisuals(_:)`.
 // import visualDefault from '../../visual/visualDefault';
-//   -> PORT-TODO: visual/visualDefault.ts is NOT ported yet (deferred, matching the VisualMapModel
-//      base). The `visualDefault.get(...)` completion in `completeVisualOption` is left deferred.
+//   -> visual/visualDefault.swift (enum visualDefault, `get(visualType, key, isCategory)`). The
+//      `visualDefault.get(...)` default-visual completion in `completeVisualOption` is wired below.
 // import {reformIntervals} from '../../util/number';
 //   -> `number.reformIntervals` handles `[number.IntervalItem]`. Upstream reforms the REAL piece
 //      objects (`Required<InnerVisualPiece>[]`), which carry extra fields (visual/value/text/index)
 //      that `number.IntervalItem` can not hold. So the reform is re-implemented locally over the
 //      `InnerVisualPiece` dicts (see `reformIntervals(_:)`), mirroring `number.reformIntervals`
-//      line-for-line. PORT-TODO: keep in sync with util/number.swift#reformIntervals.
+//      line-for-line. PORT-NOTE: keep in sync with util/number.swift#reformIntervals.
 // import { VisualOptionPiecewise, BuiltinVisualProperty } from '../../util/types';  -> (type-only).
 // import { Dictionary } from 'zrender/src/core/types';                    -> Dictionary<T> = [String: T].
 // import { inheritDefaultOption } from '../../util/component';            -> `component.inheritDefaultOption`.
 //
-// PORT-TODO (sibling-base coupling): this model `extends VisualMapModel`. Members provided by the
+// PORT-NOTE (sibling-base coupling): this model `extends VisualMapModel`. Members provided by the
 //   sibling base and referenced here exactly as upstream:
 //     - `resetExtent()`, `getExtent() -> [Double]`
 //     - `resetVisual(_ supplementVisualOption: @escaping (VisualMapModel, [String: Any], String) -> Void)`
@@ -182,7 +182,8 @@ open class PiecewiseModel: VisualMapModel {
         // appear in `pieces` will not be taken into account in visual encoding.
 
         // const option = this.option;
-        let option = (self.option as? [String: Any]) ?? [:]
+        // (mutable: the default-visual completion below writes back into `option[state]`.)
+        var option = (self.option as? [String: Any]) ?? [:]
         // const visualTypesInPieces: {...} = {};
         var visualTypesInPieces: [String: Double] = [:]
         // const visualTypes = VisualMapping.listVisualTypes();
@@ -211,7 +212,7 @@ open class PiecewiseModel: VisualMapModel {
         }
 
         // zrUtil.each(visualTypesInPieces, function (v, visualType) {
-        // PORT-TODO: JS iterates `visualTypesInPieces` in insertion order; Swift dict order is
+        // PORT-NOTE: JS iterates `visualTypesInPieces` in insertion order; Swift dict order is
         //   unspecified. The result set of applied default visuals is order-independent, so this is
         //   safe, but the write order into `option[state]` may differ.
         for (visualType, _) in visualTypesInPieces {
@@ -229,15 +230,14 @@ open class PiecewiseModel: VisualMapModel {
                 util.each(self.stateList) { state, _ in
                     // (option[state] || (option[state] = {}))[visualType] = visualDefault.get(
                     //     visualType, state === 'inRange' ? 'active' : 'inactive', isCategory);
-                    // PORT-TODO: visual/visualDefault.ts is NOT ported (deferred — matching the
-                    //   VisualMapModel base). The default inRange/outOfRange visual for pieces-only
-                    //   visuals is therefore not filled here yet. When `visualDefault.get(...)` lands:
-                    //     var stateOpt = (option[state] as? [String: Any]) ?? [:]
-                    //     stateOpt[visualType] = visualDefault.get(
-                    //         visualType, state == "inRange" ? "active" : "inactive", isCategory)
-                    //     option[state] = stateOpt
-                    _ = state
-                    _ = isCategory
+                    // visual/visualDefault.swift (enum visualDefault.get) is ported; wired to mirror the
+                    //   sibling VisualMapModel.completeInactive caller. `visualDefault.get` returns the
+                    //   cloned default row for a builtin visual type (always non-nil here, since
+                    //   `visualType` came from VisualMapping.listVisualTypes()).
+                    var stateOpt = (option[state] as? [String: Any]) ?? [:]
+                    stateOpt[visualType] = visualDefault.get(
+                        visualType, state == "inRange" ? "active" : "inactive", isCategory)
+                    option[state] = stateOpt
                 }
             }
         }
@@ -462,7 +462,7 @@ open class PiecewiseModel: VisualMapModel {
                     representValue = (pieceInterval[0] + pieceInterval[1]) / 2
                 }
                 else {
-                    // PORT-TODO: JS would produce NaN from `undefined + undefined`; empty interval only
+                    // PORT-NOTE: JS would produce NaN from `undefined + undefined`; empty interval only
                     //   occurs for a malformed piece.
                     representValue = Double.nan
                 }
@@ -558,7 +558,7 @@ open class PiecewiseModel: VisualMapModel {
         return component.inheritDefaultOption(
             (VisualMapModel.defaultOption as? [String: Any]) ?? [:],
             [
-                // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                 "selected": NSNull(),
                 "minOpen": false,           // Whether include values that smaller than `min`.
                 "maxOpen": false,           // Whether include values that bigger than `max`.
@@ -763,7 +763,7 @@ open class PiecewiseModel: VisualMapModel {
                 }
 
                 // if (__DEV__) { if (interval[0] > interval[1]) console.warn(...); }
-                // PORT-TODO: __DEV__ warn (illegal piece: lower bound > upper bound) dropped.
+                // PORT-NOTE: __DEV__ warn (illegal piece: lower bound > upper bound) dropped.
 
                 // if (interval[0] === interval[1] && close[0] && close[1]) {
                 if interval[0] == interval[1] && close[0] != 0 && close[1] != 0 {
@@ -829,7 +829,7 @@ open class PiecewiseModel: VisualMapModel {
 
     // Local re-implementation of `number.reformIntervals` over `InnerVisualPiece` dicts (so the extra
     // piece fields travel with their interval). Mirrors util/number.swift#reformIntervals line-for-line.
-    // PORT-TODO: keep in sync with util/number.swift#reformIntervals.
+    // PORT-NOTE: keep in sync with util/number.swift#reformIntervals.
     private func reformIntervals(_ listIn: [[String: Any]]) -> [[String: Any]] {
         func iv(_ p: [String: Any]) -> [Double] { return asDoubleArrayOpt(p["interval"]) ?? [0, 0] }
         func cl(_ p: [String: Any]) -> [Double] { return asDoubleArrayOpt(p["close"]) ?? [0, 0] }

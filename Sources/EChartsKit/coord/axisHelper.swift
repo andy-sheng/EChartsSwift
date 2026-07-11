@@ -61,7 +61,7 @@ import ZRenderKit
 //   import ComponentModel from '../model/Component';           -> model/Component.swift (`ComponentModel`)
 
 // ============================================================================
-// PORT-TODO: FORWARD-REFERENCE PLACEHOLDERS
+// PORT-NOTE: FORWARD-REFERENCE PLACEHOLDERS
 // Upstream `axisHelper.ts` imports these from sibling files that are NOT yet ported in
 // this phase (coord/axisCommonTypes option interfaces, coord/axisModelCreator). They are
 // declared here as minimal placeholders so this hub file compiles. The agent that ports
@@ -71,19 +71,19 @@ import ZRenderKit
 
 // './axisCommonTypes' — OptionAxisType = AxisBaseOption['type'] (= 'value' | 'category' | 'time' | 'log').
 //   No string unions in Swift → `String` alias (mirrors the `AxisScaleType` stub already in
-//   axisCommonTypes.swift). PORT-TODO: belongs to coord/axisCommonTypes.
+//   axisCommonTypes.swift). PORT-NOTE: belongs to coord/axisCommonTypes.
 public typealias OptionAxisType = String
 
 // './axisCommonTypes' — const AXIS_TYPES = {value: 1, category: 1, time: 1, log: 1} as const.
 //   `Record<..., 1>` -> `[String: Int]`; the values are an unused marker constant `1`.
-//   PORT-TODO: belongs to coord/axisCommonTypes.
+//   PORT-NOTE: belongs to coord/axisCommonTypes.
 public let AXIS_TYPES: [String: Int] = ["value": 1, "category": 1, "time": 1, "log": 1]
 
 // './axisCommonTypes' — AxisLabelCategoryFormatter = (rawValue, labelIndex, extra?) => string.
-//   PORT-TODO: belongs to coord/axisCommonTypes (`rawValue` is the category raw value, so `Any`).
+//   PORT-NOTE: belongs to coord/axisCommonTypes (`rawValue` is the category raw value, so `Any`).
 public typealias AxisLabelCategoryFormatter = (Any, Double, Any?) -> String
 // './axisCommonTypes' — AxisLabelValueFormatter = (value: number, index, extra?) => string.
-//   PORT-TODO: belongs to coord/axisCommonTypes.
+//   PORT-NOTE: belongs to coord/axisCommonTypes.
 public typealias AxisLabelValueFormatter = (Double, Double, AxisLabelFormatterExtraParams?) -> String
 
 // './axisModelCreator' — AxisModelExtendedInCreator: the axis-model methods mixed in by
@@ -93,7 +93,7 @@ public typealias AxisLabelValueFormatter = (Double, Double, AxisLabelFormatterEx
 
 // upstream inline `makeInner<{ noOnMyZero: boolean }, Axis>()` record type. Not a standalone upstream
 //   symbol; `makeInner` requires a class store (CONVENTIONS §8 — makeInner keys by object identity).
-//   PORT-TODO: upstream `noOnMyZero` starts `undefined` (falsy); modeled as `false`.
+//   PORT-NOTE: upstream `noOnMyZero` starts `undefined` (falsy); modeled as `false`.
 final class AxisHelperInner {
     var noOnMyZero: Bool = false
     init() {}
@@ -158,7 +158,7 @@ public enum axisHelper {
             return TimeScale(TimeScaleSetting(
                 locale: model.ecModel!.getLocaleModel(),
                 // upstream passes `model.ecModel.get('useUTC')` (typed boolean); coerced from the dynamic bag.
-                useUTC: (model.ecModel!.get("useUTC") as? Bool) ?? false,  // PORT-TODO: option-bag coercion
+                useUTC: (model.ecModel!.get("useUTC") as? Bool) ?? false,  // PORT-NOTE: option-bag coercion
                 breakOption: breakOption
             ))
         case "log":
@@ -223,7 +223,7 @@ public enum axisHelper {
         if axis.type == "time" {
             let parsed = time.parseTimeAxisLabelFormatter(labelFormatter as TimeAxisLabelFormatterOption)
             return { tick, idx in
-                // PORT-TODO: upstream `idx: number`; the returned type widens to `idx?` — time axis
+                // PORT-NOTE: upstream `idx: number`; the returned type widens to `idx?` — time axis
                 //   always receives an index, so `nil` falls back to `0`.
                 return (axis.scale as! TimeScale).getFormattedLabel(tick, idx ?? 0, parsed)
             }
@@ -236,7 +236,7 @@ public enum axisHelper {
                 let label = axis.scale.getLabel(tick)
                 // upstream: labelFormatter.replace('{value}', label != null ? label : '')
                 //   `label` is a non-optional `String` in the port (base `getLabel` never returns nil).
-                // PORT-TODO: JS `String.prototype.replace(string, ...)` replaces the FIRST match only;
+                // PORT-NOTE: JS `String.prototype.replace(string, ...)` replaces the FIRST match only;
                 //   `replacingOccurrences` replaces all (rare for a single `{value}` placeholder).
                 let text = labelFormatter.replacingOccurrences(of: "{value}", with: label)
                 return text
@@ -268,9 +268,9 @@ public enum axisHelper {
                     extra = scaleBreakHelper.makeAxisLabelFormatterParamBreak(extra, tick.break)
                 }
                 return (labelFormatter as! AxisLabelValueFormatter)(
-                    // PORT-TODO: `getAxisRawValue<false>` returns `number`; cast from `Any`.
+                    // PORT-NOTE: `getAxisRawValue<false>` returns `number`; cast from `Any`.
                     getAxisRawValue(axis, tick) as! Double,
-                    idx ?? Double.nan,  // PORT-TODO: returned type widens `idx` to optional
+                    idx ?? Double.nan,  // PORT-NOTE: returned type widens `idx` to optional
                     extra
                 )
             }
@@ -283,7 +283,7 @@ public enum axisHelper {
     }
 
     // upstream: getAxisRawValue<TIsCategory extends boolean>(axis, tick): TIsCategory extends true ? string : number
-    // PORT-TODO: the `<TIsCategory>` type predicate return (`string` vs `number`) is not expressible;
+    // PORT-NOTE: the `<TIsCategory>` type predicate return (`string` vs `number`) is not expressible;
     //   returns `Any` (String for ordinal scales, Double otherwise), cast at call sites.
     public static func getAxisRawValue(_ axis: Axis, _ tick: ScaleTick) -> Any {
         // In category axis with data zoom, tick is not the original
@@ -340,7 +340,7 @@ public enum axisHelper {
     }
 
     public static func shouldAxisShow(_ axisModel: AxisBaseModel) -> Bool {
-        // PORT-TODO: `getShallow` returns the dynamic option bag (`Any?`); coerced to Bool.
+        // PORT-NOTE: `getShallow` returns the dynamic option bag (`Any?`); coerced to Bool.
         return (axisModel.getShallow("show") as? Bool) ?? false
     }
 
@@ -398,7 +398,7 @@ public enum axisHelper {
 
     public static func updateIntervalOrLogScaleForNiceOrAligned(
         // upstream: scale: IntervalScale | LogScale
-        // PORT-TODO: the `IntervalScale | LogScale` union is taken as the base `Scale`; the branches
+        // PORT-NOTE: the `IntervalScale | LogScale` union is taken as the base `Scale`; the branches
         //   downcast (`helper.isLogScale` is upstream's `isLogScale` type predicate).
         _ scale: Scale,
         _ fixMinMax: ScaleExtentFixMinMax,
@@ -446,14 +446,14 @@ public enum axisHelper {
 
     public static func isAxisOnBand(_ scale: Scale, _ axisModel: AxisBaseModel) -> Bool {
         // upstream: isOrdinalScale(scale) && !!(axisModel as AxisBaseModel<CategoryAxisBaseOption>).get('boundaryGap')
-        // PORT-TODO: `boundaryGap` on a category axis is a boolean; coerced with `!!` truthiness.
+        // PORT-NOTE: `boundaryGap` on a category axis is a boolean; coerced with `!!` truthiness.
         return helper.isOrdinalScale(scale) && ((axisModel.get("boundaryGap") as? Bool) ?? false)
     }
 }
 
 // upstream: export type ScaleValuePositionKind = ... ; export const SCALE_VALUE_POSITION_KIND_* = ...;
 //   Kept top-level (they are exported alongside the free functions).
-// PORT-TODO: the `1 | 2 | 3` literal union collapses to `Double` (a plain numeric tag).
+// PORT-NOTE: the `1 | 2 | 3` literal union collapses to `Double` (a plain numeric tag).
 public typealias ScaleValuePositionKind = Double
 public let SCALE_VALUE_POSITION_KIND_INSIDE: ScaleValuePositionKind = 1
 public let SCALE_VALUE_POSITION_KIND_EDGE: ScaleValuePositionKind = 2

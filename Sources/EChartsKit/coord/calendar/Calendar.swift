@@ -39,8 +39,8 @@ import ZRenderKit
 //   import { injectCoordSysByOption, simpleCoordSysInjectionProvider } from '../../core/CoordinateSystem';
 //       -> injectCoordSysByOption / simpleCoordSysInjectionProvider (core/CoordinateSystemManager.swift).
 //
-// PORT-TODO: the sibling `coord/calendar/CalendarModel.ts` is not yet landed (must be named
-//   `CalendarModel.swift`). It is an `open class CalendarModel: ComponentModel` exposing:
+// PORT-NOTE: the sibling `coord/calendar/CalendarModel.ts` is ported as `CalendarModel.swift`
+//   (`public final class CalendarModel: ComponentModel, CoordinateSystemHostModel`) exposing:
 //     - `getModel(_:)` / `get(_:)` (Model API, already on ComponentModel),
 //     - `getCellSize() -> [Any]` (the `cellSize` option normalized to a 2-length `(number | 'auto')[]`),
 //     - `getBoxLayoutParams() -> BoxLayoutOptionMixin` (already on ComponentModel),

@@ -25,17 +25,15 @@ import ZRenderKit
 //   -> ZRenderKit `util` (util.each / util.map / util.find / util.clone / util.merge / util.isArray
 //      / util.isString / util.isFunction / util.bind)
 // import visualDefault from '../../visual/visualDefault';
-//   -> PORT-TODO: visual/visualDefault.ts NOT ported. `visualDefault.get(visualType, 'inactive',
-//      isCategory)` supplies the default "inactive" visual for `completeInactive`. The inactive-state
-//      completion is DEFERRED (see completeInactive below) until visualDefault lands.
+//   -> visualDefault IS ported (visual/visualDefault.swift). `visualDefault.get(visualType, 'inactive',
+//      isCategory)` supplies the default "inactive" visual for `completeInactive` (see below).
 // import VisualMapping, { VisualMappingOption } from '../../visual/VisualMapping';
-//   -> PORT-TODO: visual/VisualMapping.ts NOT ported (same deferral as treemapVisual.swift /
-//      sankeyVisual.swift). `VisualMapping.mapVisual` / `.eachVisual` / `.isValidType` and the
-//      `VisualMapping` instances built by visualSolution are unavailable. `VisualMappingOption` is
-//      modeled as the `[String: Any]` bag.
+//   -> VisualMapping IS ported (visual/VisualMapping.swift). `VisualMapping.mapVisual` / `.eachVisual` /
+//      `.isValidType` and the `VisualMapping` instances built by visualSolution are available.
+//      `VisualMappingOption` is modeled as the `[String: Any]` bag.
 // import * as visualSolution from '../../visual/visualSolution';
-//   -> PORT-TODO: visual/visualSolution.ts NOT ported. `visualSolution.createVisualMappings`,
-//      `visualSolution.replaceVisualOption` back `resetVisual` / `optionUpdated`; DEFERRED.
+//   -> visualSolution IS ported (visual/visualSolution.swift). `visualSolution.createVisualMappings`,
+//      `visualSolution.replaceVisualOption` back `resetVisual` / `optionUpdated`.
 // import * as modelUtil from '../../util/model';        -> EChartsKit `model` namespace (util/modelUtil.swift)
 // import * as numberUtil from '../../util/number';      -> EChartsKit `number` namespace (util/number.swift)
 // import { ...many option interfaces... } from '../../util/types';
@@ -47,8 +45,8 @@ import ZRenderKit
 // import SeriesModel from '../../model/Series';         -> SeriesModel (model/Series.swift)
 // import SeriesData from '../../data/SeriesData';       -> SeriesData (data/SeriesData.swift)
 // import tokens from '../../visual/tokens';
-//   -> PORT-TODO: visual/tokens.ts not ported yet. The `tokens.*` values consumed in `defaultOption`
-//      are inlined verbatim as their resolved constants; re-wire once visual/tokens.swift lands.
+//   -> visual/tokens.ts IS ported (visual/tokens.swift). The `tokens.*` values consumed in `defaultOption`
+//      are still inlined verbatim as their resolved constants.
 //        tokens.color.transparent = 'rgba(0,0,0,0)'
 //        tokens.color.borderTint  = color.neutral20 = '#cfd2d7'
 //        tokens.color.theme[0]    = '#5070dd'
@@ -56,10 +54,10 @@ import ZRenderKit
 //        tokens.color.secondary   = color.neutral70 = '#54555a'
 //        tokens.size.m            = 15
 
-// const mapVisual = VisualMapping.mapVisual;
-// const eachVisual = VisualMapping.eachVisual;
-// PORT-TODO: VisualMapping DEFERRED — `mapVisual` / `eachVisual` are unavailable; the call sites in
-//   `completeVisualOption` that use them are elided behind PORT-TODO.
+// const mapVisual = VisualMapping.mapVisual;   -> VisualMapping.mapVisual (static)
+// const eachVisual = VisualMapping.eachVisual; -> VisualMapping.eachVisual (static)
+//   Both are ported; the `completeController` call sites (symbol 'none' remap + symbolSize
+//   linearMap normalization) are wired below.
 // const isArray = zrUtil.isArray;    -> util.isArray
 // const each = zrUtil.each;          -> util.each
 // const asc = numberUtil.asc;        -> number.asc
@@ -120,7 +118,7 @@ open class VisualMapModel: ComponentModel {
     ]
 
     // readonly layoutMode = { type: 'box', ignoreSize: true } as const;
-    // PORT-TODO: upstream declares `layoutMode` as an INSTANCE readonly member; the Swift
+    // PORT-NOTE: upstream declares `layoutMode` as an INSTANCE readonly member; the Swift
     //   ComponentModel exposes it as `open class var`. Modeled as a class-var override.
     public override class var layoutMode: Any? {
         return ["type": "box", "ignoreSize": true] as [String: Any]
@@ -133,26 +131,26 @@ open class VisualMapModel: ComponentModel {
     public var dataBound: [Double] = [-Double.infinity, Double.infinity]
 
     // protected _dataExtent: [number, number];
-    // PORT-TODO: upstream leaves this uninitialized (assigned by `resetExtent`); Swift requires a
+    // PORT-NOTE: upstream leaves this uninitialized (assigned by `resetExtent`); Swift requires a
     //   stored value, so it defaults to empty.
     internal var _dataExtent: [Double] = []   // upstream: protected
 
     // targetVisuals = {} as ReturnType<typeof visualSolution.createVisualMappings>;
-    // PORT-TODO: visualSolution NOT ported — `createVisualMappings` returns a per-state map of
-    //   `VisualMapping` instances (`{ inRange: {...}, outOfRange: {...} }`). Held as the `[String: Any]`
-    //   bag; populated once visualSolution + VisualMapping land.
+    // PORT-NOTE: visualSolution IS ported. `createVisualMappings` returns a per-state map of
+    //   `VisualMapping` instances (`{ inRange: {...}, outOfRange: {...} }`). Held here as the untyped
+    //   `[String: Any]` bag.
     public var targetVisuals: [String: Any] = [:]
 
     // controllerVisuals = {} as ReturnType<typeof visualSolution.createVisualMappings>;
     public var controllerVisuals: [String: Any] = [:]
 
     // textStyleModel: Model<LabelOption>;
-    // PORT-TODO: upstream leaves this uninitialized (assigned by `optionUpdated`); Swift requires a
+    // PORT-NOTE: upstream leaves this uninitialized (assigned by `optionUpdated`); Swift requires a
     //   stored value, so it defaults to a fresh empty Model until `optionUpdated` runs.
     public var textStyleModel: Model = Model()
 
     // itemSize: number[];
-    // PORT-TODO: assigned by `resetItemSize`; defaults to empty until then.
+    // PORT-NOTE: assigned by `resetItemSize`; defaults to empty until then.
     public var itemSize: [Double] = []
 
     // init(option, parentModel, ecModel) { this.mergeDefaultAndTheme(option, ecModel); }
@@ -648,23 +646,33 @@ open class VisualMapModel: ComponentModel {
                 }
             }
 
-            // PORT-TODO: VisualMapping.mapVisual / eachVisual NOT ported (VisualMapping deferred). The
-            //   upstream "Filter none" symbol remap and the symbolSize normalization (linearMap into
-            //   [0, itemSize[0]]) require `mapVisual` / `eachVisual`, which walk either a plain value or
-            //   a per-category object. DEFERRED until VisualMapping lands:
-            //
-            //   // Filter none
-            //   visuals.symbol = mapVisual(visuals.symbol, symbol => symbol === 'none' ? defaultSymbol : symbol);
-            //
-            //   // Normalize symbolSize
-            //   const symbolSize = visuals.symbolSize;
-            //   if (symbolSize != null) {
-            //       let max = -Infinity;
-            //       eachVisual(symbolSize, value => { value > max && (max = value); });
-            //       visuals.symbolSize = mapVisual(symbolSize, value =>
-            //           linearMap(value, [0, max], [0, itemSize[0]], true));
-            //   }
-            _ = defaultSymbol
+            // Filter none
+            // visuals.symbol = mapVisual(visuals.symbol, function (symbol) {
+            //     return symbol === 'none' ? defaultSymbol : symbol;
+            // });
+            visualsBag["symbol"] = VisualMapping.mapVisual(visualsBag["symbol"]) { symbol, _ in
+                return (symbol as? String) == "none" ? (defaultSymbol as Any) : symbol
+            } as Any
+
+            // Normalize symbolSize
+            // const symbolSize = visuals.symbolSize;
+            let symbolSize = visualsBag["symbolSize"]
+            // if (symbolSize != null) { ... }
+            if symbolSize != nil && !(symbolSize is NSNull) {
+                var maxVal = -Double.infinity
+                // symbolSize can be object when categories defined.
+                // eachVisual(symbolSize, function (value) { value > max && (max = value); });
+                VisualMapping.eachVisual(symbolSize) { value, _ in
+                    let d = vmToDouble(value)
+                    if d > maxVal { maxVal = d }
+                }
+                // visuals.symbolSize = mapVisual(symbolSize, function (value) {
+                //     return linearMap(value, [0, max], [0, itemSize[0]], true);
+                // });
+                visualsBag["symbolSize"] = VisualMapping.mapVisual(symbolSize) { value, _ in
+                    return number.linearMap(vmToDouble(value), [0, maxVal], [0, itemSize[0]], true)
+                } as Any
+            }
 
             controller[state] = visualsBag
         }

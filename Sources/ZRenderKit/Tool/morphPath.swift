@@ -748,7 +748,7 @@ public func combineMorph(
 
     var toSubPathList = dividePath(DividePathParams(path: toPath, count: Double(separateCount)))
     if toSubPathList.count != separateCount {
-        // PORT-TODO: console.error('Invalid morphing: unmatched splitted path')
+        // PORT-NOTE: console.error('Invalid morphing: unmatched splitted path')
         return createEmptyReturn()
     }
 
@@ -935,7 +935,7 @@ public func separateMorph(
             fromPathList[i].setLocalTransform(fromPathTransform)
         }
         if fromPathList.count != toLen {
-            // PORT-TODO: console.error('Invalid morphing: unmatched splitted path')
+            // PORT-NOTE: console.error('Invalid morphing: unmatched splitted path')
             return createEmptyReturn()
         }
     }

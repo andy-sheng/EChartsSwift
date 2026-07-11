@@ -239,7 +239,7 @@ public enum polarCreator {
                 if __DEV__ {
                     // if (!polarModel) { throw new Error('Polar "' + zrUtil.retrieve(...) + '" not found'); }
                     if polarModel == nil {
-                        // PORT-TODO: upstream `throw new Error('Polar "' + zrUtil.retrieve(polarIndex, polarId, 0)
+                        // PORT-NOTE: upstream `throw new Error('Polar "' + zrUtil.retrieve(polarIndex, polarId, 0)
                         //   + '" not found')`. `eachSeries`'s callback is non-throwing, so a fatalError stands in
                         //   for the dev-only throw. `retrieve` (first non-null of index/id/0) is inlined below
                         //   rather than calling `util.retrieve` — its variadic generic cannot unify Double?/String?.

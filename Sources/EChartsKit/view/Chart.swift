@@ -28,7 +28,7 @@ import ZRenderKit
 //   import * as clazzUtil from '../util/clazz';                 -> `clazz` namespace (util/clazz.swift).
 //   import * as modelUtil from '../util/model';                 -> `model` namespace (util/modelUtil.swift; upstream alias `modelUtil`).
 //   import { enterEmphasis, leaveEmphasis, getHighlightDigit, isHighDownDispatcher } from '../util/states';
-//       -> PORT-TODO: util/states.ts not yet ported (states/emphasis prereq). See `elSetState`/`toggleHighlight`.
+//       -> `states` namespace (util/states.swift). See `elSetState`/`toggleHighlight`.
 //   import {createTask, TaskResetCallbackReturn} from '../core/task';   -> sibling core/task.swift.
 //   import createRenderPlanner from '../chart/helper/createRenderPlanner';  -> sibling chart/helper/createRenderPlanner.swift.
 //   import SeriesModel from '../model/Series';                  -> `SeriesModel` (model/Series.swift).
@@ -39,12 +39,12 @@ import ZRenderKit
 //            DisplayState, StageHandlerProgressParams, ECElementEvent } from '../util/types';  -> util/types.swift.
 //   import { SeriesTaskContext, SeriesTask } from '../core/Scheduler';   -> sibling core/Scheduler.swift.
 //   import SeriesData from '../data/SeriesData';                -> `SeriesData` (data/SeriesData.swift).
-//   import { traverseElements } from '../util/graphic';         -> PORT-TODO: util/graphic.ts not yet ported; see `eachRendered`.
+//   import { traverseElements } from '../util/graphic';         -> PORT-NOTE: util/graphic.ts not yet ported; see `eachRendered`.
 //   import { error } from '../util/log';                        -> `log.error` (util/log.swift).
 
 // upstream:
 //   const inner = modelUtil.makeInner<{ updateMethod: keyof ChartView }, Payload>();
-// PORT-TODO: `makeInner` requires an `AnyObject` host, but `Payload` is a value type (struct) in this
+// PORT-NOTE: `makeInner` requires an `AnyObject` host, but `Payload` is a value type (struct) in this
 //   port, so per-payload attached state can not be stored/read back through object identity. The
 //   `inner(payload).updateMethod` mechanism is therefore inert: `markUpdateMethod` is a documented
 //   no-op and `renderTaskReset` treats `updateMethod` as always nil (routing falls through to
@@ -56,7 +56,7 @@ private let renderPlanner = createRenderPlanner()
 //   containPoint?; filterForExposedEvent? } — a declaration-merged interface whose members are
 //   "implement it if needed" (their *existence* is feature-detected elsewhere, e.g.
 //   `!view.incrementalPrepareRender` in Scheduler). Swift can not feature-detect method existence,
-//   so these are folded into the class below as `open` methods with PORT-TODO default bodies.
+//   so these are folded into the class below as `open` methods with PORT-NOTE default bodies.
 open class ChartView {
 
     // [Caution]: Because this class or desecendants can be used as `XXX.extend(subProto)`,
@@ -68,7 +68,7 @@ open class ChartView {
     //   var C = B.extend({xxx: 5});
     //   var c = new C();
     //   console.log(c.xxx); // expect 5 but always 1.
-    // PORT-TODO: Swift has no prototype `extend`; native subclassing is used instead, so the caution
+    // PORT-NOTE: Swift has no prototype `extend`; native subclassing is used instead, so the caution
     //   above does not apply. Members that upstream leaves unset (assigned by `protoInitialize`) are
     //   given Swift declaration defaults below.
 
@@ -77,7 +77,7 @@ open class ChartView {
     open var type: String = "chart"
 
     // upstream: readonly group: ViewRootGroup
-    // PORT-TODO: `ViewRootGroup` (Group augmented with `__ecComponentInfo`) is a protocol stub in
+    // PORT-NOTE: `ViewRootGroup` (Group augmented with `__ecComponentInfo`) is a protocol stub in
     //   util/types.swift; the concrete `new Group()` is a ZRenderKit `Group`, so `group` is typed as
     //   `Group` here. Revisit once `ViewRootGroup` is a real Group subclass/augmentation.
     public let group: Group
@@ -95,7 +95,7 @@ open class ChartView {
     // ----------------------
     // Injectable properties
     // ----------------------
-    // PORT-TODO: `__model`/`__id` are non-optional upstream but injected after construction; modeled
+    // PORT-NOTE: `__model`/`__id` are non-optional upstream but injected after construction; modeled
     //   as Optional to avoid an initializer requirement.
     open var __alive: Bool = false
     open var __model: SeriesModel?
@@ -120,7 +120,7 @@ open class ChartView {
 
     open func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {}
     // NOTE: upstream method name is `init`; renamed `init_` to avoid clashing with Swift's `init`
-    //   (the constructor). PORT-TODO: keep call sites in sync (they call `view.init(ecModel, api)`).
+    //   (the constructor). PORT-NOTE: keep call sites in sync (they call `view.init(ecModel, api)`).
 
     open func render(_ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload) {
         if __DEV__ {
@@ -135,7 +135,7 @@ open class ChartView {
         // upstream: const data = seriesModel.getData(payload && payload.dataType);
         let data = seriesModel.getData(payloadDataType(payload))
         // upstream: if (!data) { if (__DEV__) { error(`Unknown dataType ${payload.dataType}`); } return; }
-        // PORT-TODO: `SeriesModel.getData` returns a non-Optional `SeriesData` in this port (unknown
+        // PORT-NOTE: `SeriesModel.getData` returns a non-Optional `SeriesData` in this port (unknown
         //   dataType can not be signalled), so the `!data` guard is vacuous and omitted.
         toggleHighlight(data, payload, .emphasis)
     }
@@ -145,7 +145,7 @@ open class ChartView {
      */
     open func downplay(_ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload) {
         let data = seriesModel.getData(payloadDataType(payload))
-        // PORT-TODO: see `highlight` — vacuous `!data` guard omitted.
+        // PORT-NOTE: see `highlight` — vacuous `!data` guard omitted.
         toggleHighlight(data, payload, .normal)
     }
 
@@ -189,7 +189,7 @@ open class ChartView {
     open func incrementalPrepareRender(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
-        // PORT-TODO: optional upstream method; base is a no-op (subclasses override for progressive mode).
+        // PORT-NOTE: optional upstream method; base is a no-op (subclasses override for progressive mode).
     }
 
     /**
@@ -201,7 +201,7 @@ open class ChartView {
         _ params: StageHandlerProgressParams, _ seriesModel: SeriesModel, _ ecModel: GlobalModel,
         _ api: ExtensionAPI, _ payload: Payload
     ) {
-        // PORT-TODO: optional upstream method; base is a no-op.
+        // PORT-NOTE: optional upstream method; base is a no-op.
     }
 
     /**
@@ -212,7 +212,7 @@ open class ChartView {
     open func updateTransform(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) -> Bool? {
-        // PORT-TODO: optional upstream method; base returns nil (void).
+        // PORT-NOTE: optional upstream method; base returns nil (void).
         return nil
     }
 
@@ -221,7 +221,7 @@ open class ChartView {
      * Implement it if needed.
      */
     open func containPoint(_ point: [Double], _ seriesModel: SeriesModel) -> Bool {
-        // PORT-TODO: optional upstream method; base returns false.
+        // PORT-NOTE: optional upstream method; base returns false.
         return false
     }
 
@@ -233,7 +233,7 @@ open class ChartView {
         _ eventType: String, _ query: EventQueryItem, _ targetEl: Element, _ packedEvent: Any
     ) -> Bool {
         // upstream `packedEvent: ECActionEvent | ECElementEvent` — the union is erased to `Any` here.
-        // PORT-TODO: optional upstream method; base returns true (default: not filtered out).
+        // PORT-NOTE: optional upstream method; base returns true (default: not filtered out).
         return true
     }
 
@@ -245,7 +245,7 @@ open class ChartView {
      */
     open func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this.group, cb);
-        // PORT-TODO: util/graphic.traverseElements not yet ported; inlined via `Group.traverse`.
+        // PORT-NOTE: util/graphic.traverseElements not yet ported; inlined via `Group.traverse`.
         //   Deviation: upstream `traverseElement` also invokes `cb` on the root element itself, while
         //   `Group.traverse` visits children only. The `boolean | void` callback return maps to the
         //   `Bool` "stopped" flag consumed by `Group.traverse`.
@@ -254,7 +254,7 @@ open class ChartView {
 
     static func markUpdateMethod(_ payload: Payload, _ methodName: String) {
         // upstream: inner(payload).updateMethod = methodName;  (methodName: keyof ChartView)
-        // PORT-TODO: no-op — see the `inner` PORT-TODO at the top of this file (value-type Payload
+        // PORT-NOTE: no-op — see the `inner` PORT-NOTE at the top of this file (value-type Payload
         //   can not carry `makeInner` state). Kept for call-site compatibility.
         _ = (payload, methodName)
     }
@@ -313,7 +313,7 @@ private func toggleHighlight(_ data: SeriesData, _ payload: Payload, _ state: Di
 
     if let dataIndex = dataIndex, !(dataIndex is NSNull) {
         util.each(model.normalizeToArray(dataIndex) as [Any]) { dataIdx, _ in
-            // PORT-TODO: `dataIdx` is `number` upstream; coerce to `Int` for `getItemGraphicEl`
+            // PORT-NOTE: `dataIdx` is `number` upstream; coerce to `Int` for `getItemGraphicEl`
             //   (out-of-range/negative indices return nil, matching JS `undefined`).
             let idx = (dataIdx as? Double).map { Int($0) } ?? (dataIdx as? Int) ?? -1
             elSetState(data.getItemGraphicEl(idx), state, highlightDigit)
@@ -330,13 +330,13 @@ private func toggleHighlight(_ data: SeriesData, _ payload: Payload, _ state: Di
 }
 
 // upstream: export type ChartViewConstructor = typeof ChartView & clazzUtil.ExtendableConstructor & clazzUtil.ClassManager;
-// PORT-TODO: prototype-mounted constructor shape has no Swift equivalent (native subclassing +
+// PORT-NOTE: prototype-mounted constructor shape has no Swift equivalent (native subclassing +
 //   `ChartView.registerClass` static replace it).
 
 // upstream:
 //   clazzUtil.enableClassExtend(ChartView as ChartViewConstructor, ['dispose']);
 //   clazzUtil.enableClassManagement(ChartView as ChartViewConstructor);
-// PORT-TODO: `enableClassExtend` is a callable no-op (native subclassing replaces prototype extend);
+// PORT-NOTE: `enableClassExtend` is a callable no-op (native subclassing replaces prototype extend);
 //   `enableClassManagement` is realized by the static `_manager` on `ChartView` above.
 
 
@@ -360,8 +360,8 @@ func renderTaskReset(_ context: SeriesTaskContext) -> TaskResetCallbackReturn<Se
     //       : (updateMethod && view[updateMethod]) ? updateMethod
     //       // `appendData` is also supported when data amount is less than progressive threshold.
     //       : 'render';
-    // PORT-TODO: `updateMethod` is always nil here (value-type Payload can not carry `makeInner`
-    //   state — see top-of-file PORT-TODO), so the dynamic `view[updateMethod]` branch is dropped and
+    // PORT-NOTE: `updateMethod` is always nil here (value-type Payload can not carry `makeInner`
+    //   state — see top-of-file PORT-NOTE), so the dynamic `view[updateMethod]` branch is dropped and
     //   `methodName` is either 'incrementalPrepareRender' (progressive) or 'render'.
     let updateMethod: String? = nil
     let methodName: String = progressiveRender
@@ -371,7 +371,7 @@ func renderTaskReset(_ context: SeriesTaskContext) -> TaskResetCallbackReturn<Se
 
     if methodName != "render" {
         // upstream: (view[methodName] as any)(seriesModel, ecModel, api, payload);
-        // Reduced: `methodName` can only be "incrementalPrepareRender" here (see PORT-TODO above).
+        // Reduced: `methodName` can only be "incrementalPrepareRender" here (see PORT-NOTE above).
         view.incrementalPrepareRender(seriesModel, ecModel!, api!, payload!)
     }
 

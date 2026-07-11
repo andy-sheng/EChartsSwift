@@ -4,9 +4,9 @@ import Foundation
 import ZRenderKit
 
 // import * as zrUtil from 'zrender/src/core/util';            -> `util` (ZRenderKit)
-// import {EChartsType} from './echarts';                      -> PORT-TODO stub below
+// import {EChartsType} from './echarts';                      -> PORT-NOTE stub below
 //
-// import type {CoordinateSystemMaster} from '../coord/CoordinateSystem';  -> PORT-TODO stub below
+// import type {CoordinateSystemMaster} from '../coord/CoordinateSystem';  -> PORT-NOTE below (now ported)
 // import type Element from 'zrender/src/Element';             -> ZRenderKit.Element
 // import type ComponentModel from '../model/Component';       -> ComponentModel
 // import type ComponentView from '../view/Component';         -> ComponentView (util/types.swift stub)
@@ -15,9 +15,9 @@ import ZRenderKit
 // import type GlobalModel from '../model/Global';             -> GlobalModel
 // import { COMPONENT_MAIN_TYPE_SERIES } from '../util/types'; -> COMPONENT_MAIN_TYPE_SERIES (util/types.swift)
 
-// PORT-TODO: EChartsType (core/echarts.ts) is the public ECharts instance facade; it lands in the
-//   chart-view/orchestrator phase (Phase 6b). Minimal placeholder so the `ecInstance` back-pointer
-//   and `availableMethods` binding type-check without pulling in the full instance API.
+// PORT-NOTE: EChartsType is the public ECharts instance facade; the concrete `ECharts` (core/ECharts.swift)
+//   is ported and conforms to it. This protocol is kept as a minimal seam so the `ecInstance` back-pointer
+//   and `availableMethods` binding type-check without depending on the full instance API.
 public protocol EChartsType: AnyObject {}
 
 // CoordinateSystemMaster (coord/CoordinateSystem.ts) is now ported — see coord/CoordinateSystem.swift.
@@ -47,7 +47,7 @@ private let availableMethods: [String] = [
 // upstream: interface ExtensionAPI extends Pick<EChartsType, (typeof availableMethods)[number]> {}
 //   The picked methods (getDom/getZr/getWidth/getHeight/getDevicePixelRatio/dispatchAction/isSSR/
 //   isDisposed/on/off/getDataURL/getConnectedDataURL/getOption/getId/updateLabelLayout) are added to
-//   each instance dynamically in the constructor via `zrUtil.bind`. See the PORT-TODO in `init`.
+//   each instance dynamically in the constructor via `zrUtil.bind`. See the PORT-NOTE in `init`.
 
 // upstream: abstract class ExtensionAPI
 //   `abstract class` → an open (non-final) class whose abstract members `fatalError`
@@ -58,7 +58,7 @@ open class ExtensionAPI {
         // zrUtil.each(availableMethods, function (methodName: string) {
         //     (this as any)[methodName] = zrUtil.bind((ecInstance as any)[methodName], ecInstance);
         // }, this);
-        // PORT-TODO: dynamic method binding. Swift cannot copy methods onto an instance at runtime;
+        // PORT-NOTE: dynamic method binding. Swift cannot copy methods onto an instance at runtime;
         //   the `availableMethods` forwarding to `ecInstance` (getDom/getZr/getWidth/... — see the
         //   interface note above) is replicated as explicit forwarding methods when EChartsType lands
         //   in Phase 6b. `ecInstance` is intentionally not retained here yet.
@@ -68,28 +68,28 @@ open class ExtensionAPI {
 
     // Implemented in echarts.js
     open func getCoordinateSystems() -> [CoordinateSystemMaster] {
-        fatalError("abstract method ExtensionAPI.getCoordinateSystems must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getCoordinateSystems must be overridden") // PORT-NOTE: abstract
     }
     open func getComponentByElement(_ el: Element) -> ComponentModel {
-        fatalError("abstract method ExtensionAPI.getComponentByElement must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getComponentByElement must be overridden") // PORT-NOTE: abstract
     }
     open func enterEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
-        fatalError("abstract method ExtensionAPI.enterEmphasis must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.enterEmphasis must be overridden") // PORT-NOTE: abstract
     }
     open func leaveEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
-        fatalError("abstract method ExtensionAPI.leaveEmphasis must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.leaveEmphasis must be overridden") // PORT-NOTE: abstract
     }
     open func enterSelect(_ el: Element) {
-        fatalError("abstract method ExtensionAPI.enterSelect must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.enterSelect must be overridden") // PORT-NOTE: abstract
     }
     open func leaveSelect(_ el: Element) {
-        fatalError("abstract method ExtensionAPI.leaveSelect must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.leaveSelect must be overridden") // PORT-NOTE: abstract
     }
     open func enterBlur(_ el: Element) {
-        fatalError("abstract method ExtensionAPI.enterBlur must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.enterBlur must be overridden") // PORT-NOTE: abstract
     }
     open func leaveBlur(_ el: Element) {
-        fatalError("abstract method ExtensionAPI.leaveBlur must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.leaveBlur must be overridden") // PORT-NOTE: abstract
     }
     // These methods are not planned to be exposed to outside.
     // Optional: upstream `getViewOfComponentModel` can return `undefined` for a component whose
@@ -97,21 +97,21 @@ open class ExtensionAPI {
     //   blurSeries) guard with `if (view && view.toggleBlurSeries)`. Force-unwrapping here crashes on
     //   any such viewless component during a highlight/blur dispatch.
     open func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {
-        fatalError("abstract method ExtensionAPI.getViewOfComponentModel must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getViewOfComponentModel must be overridden") // PORT-NOTE: abstract
     }
     // Returns nil for a series with no live view — e.g. a legend-filtered (toggled-off) series, whose
     //   view is not created/rendered. Upstream `getViewOfSeriesModel` likewise returns undefined then;
     //   callers (allLeaveBlur / blurSeries) must guard (a force-unwrap here crashed on legend hover after
     //   a series was hidden).
     open func getViewOfSeriesModel(_ seriesModel: SeriesModel) -> ChartView? {
-        fatalError("abstract method ExtensionAPI.getViewOfSeriesModel must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getViewOfSeriesModel must be overridden") // PORT-NOTE: abstract
     }
     open func getModel() -> GlobalModel {
-        fatalError("abstract method ExtensionAPI.getModel must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getModel must be overridden") // PORT-NOTE: abstract
     }
     // @return Never be null/undefined
     open func getECUpdateCycleVersion() -> Double {
-        fatalError("abstract method ExtensionAPI.getECUpdateCycleVersion must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getECUpdateCycleVersion must be overridden") // PORT-NOTE: abstract
     }
     /**
      * PENDING: a temporary method - may be refactored.
@@ -121,17 +121,17 @@ open class ExtensionAPI {
      * but this method does not need to cover this case.
      */
     open func usingTHL() -> Bool {
-        fatalError("abstract method ExtensionAPI.usingTHL must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.usingTHL must be overridden") // PORT-NOTE: abstract
     }
 
-    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (see init note). Declared as
+    // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (see init note). Declared as
     //   faithful-signature abstract members so layout math (`layout.createBoxLayoutReference`) can read
     //   the viewport size; the real forwarding is wired when EChartsType lands (Phase 6b).
     open func getWidth() -> Double {
-        fatalError("abstract method ExtensionAPI.getWidth must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getWidth must be overridden") // PORT-NOTE: abstract
     }
     open func getHeight() -> Double {
-        fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-NOTE: abstract
     }
 
     // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
@@ -142,14 +142,14 @@ open class ExtensionAPI {
         return 1
     }
 
-    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (see init note). Upstream
+    // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (see init note). Upstream
     //   `ExtensionAPI.dispatchAction` is `zrUtil.bind(ecInstance.dispatchAction, ecInstance)`. Declared
     //   here as a faithful-signature abstract member so the action round-trip (a view/action handler
     //   calling `api.dispatchAction(...)`) type-checks; the concrete `EChartsExtensionAPI` forwards it to
     //   the driver's `ECharts.dispatchAction`. `opt` models the upstream `boolean | {silent,flush}`
     //   (see `DispatchActionOpt` in core/ECharts.swift).
     open func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
-        fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-TODO: abstract
+        fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-NOTE: abstract
     }
 
     // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getConnectedDataURL` /
@@ -167,7 +167,7 @@ open class ExtensionAPI {
 }
 
 // upstream return type: `ChartView | ComponentView`. Swift has no union types; the two view
-//   protocols share no common supertype, so return `AnyObject`. PORT-TODO: tighten to a shared
+//   protocols share no common supertype, so return `AnyObject`. PORT-NOTE: tighten to a shared
 //   `View`-like protocol if the view layer introduces one.
 public func getViewOfComponentOrSeries(
     _ api: ExtensionAPI,

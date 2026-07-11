@@ -35,7 +35,7 @@ import ZRenderKit
 //   import { Payload, ZRElementEvent, ECEventData, RoamPayload } from '../../util/types';
 //     → `Payload` (util/types.swift). `ZRElementEvent`/`ECEventData`/`RoamPayload` are used only by the
 //       DEFERRED click/roam handlers below.
-//   import { getECData } from '../../util/innerStore';            → PORT-TODO: innerStore NOT ported (events deferred).
+//   import { getECData } from '../../util/innerStore';            → `innerStore.getECData` (util/innerStore.swift); geo events deferred.
 //   import { findEventDispatcher } from '../../util/event';       → PORT-TODO: util/event NOT ported (events deferred).
 //   import Element from 'zrender/src/Element';                    → ZRenderKit `Element`.
 //
@@ -564,7 +564,7 @@ public final class GeoView: ComponentView {
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of GeoView.ts upstream. `geoGetFixedItemStyle`
+// PORT-NOTE helpers — NOT part of GeoView.ts upstream. `geoGetFixedItemStyle`
 // reproduces MapDraw.getFixedItemStyle; the rest mirror the file-private helpers
 // in CalendarView (dynamic-option coercions, the style-bag → PathStyleProps
 // bridge). Delete each when its real sibling lands (util/graphic, util/states)
@@ -601,7 +601,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic itemStyle bag
+/// PORT-NOTE: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic itemStyle bag
 ///   ([String: Any] — the `getItemStyle()` result, post `getFixedItemStyle`) onto the typed `PathStyleProps`.
 ///   Same deviation as CalendarView.calendarPathStyleFromDict; numbers via `numOpt` (Int-drop trap). Delete
 ///   when the graphic bridge lands.

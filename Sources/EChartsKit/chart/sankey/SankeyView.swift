@@ -23,11 +23,11 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
-//       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. PORT-TODO:
-//          `util/graphic` (initProps) NOT ported; the grow-in clip animation is DEFERRED (see render).
+//       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. PORT-NOTE:
+//          `util/graphic.initProps` is ported (animation/basicTransition.swift); the grow-in clip animation is still deferred here (static render, see render).
 //   import { enterEmphasis, leaveEmphasis, toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
-//       -> PORT-TODO: util/states NOT ported (states/emphasis prerequisite). All emphasis / focus-adjacency
-//          / hover-blur handling is DEFERRED (same deviation as GraphView / FunnelView).
+//       -> util/states.swift (enterEmphasis/leaveEmphasis/toggleHoverEmphasis/setStatesStylesFromModel); node/edge
+//          emphasis is wired (see render). Only graph-topology focus-adjacency/blur remains deferred.
 //   import { LayoutOrient, ECElement, RoamHostView, RoamPayload } from '../../util/types';
 //       -> util/types.swift (type-only). `LayoutOrient` ('horizontal' | 'vertical') is a `String` here.
 //   import type { PathProps, PathStyleProps } from 'zrender/src/graphic/Path';  -> ZRenderKit `PathProps` / `PathStyleProps`.
@@ -40,16 +40,16 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { RectLike } from 'zrender/src/core/BoundingRect';      -> `RectLike` (used only by the deferred clip).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> PORT-TODO: label/labelStyle NOT ported. A minimal plain-text reproduction is inlined in
-//          `sankeySetLabel` below (same deviation as FunnelView).
-//   import { getECData } from '../../util/innerStore';             -> PORT-TODO: innerStore NOT ported (ECData DEFERRED).
+//       -> label/labelStyle.swift (`labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels`). Both the
+//          node and edge labels are wired onto the shared label core (see render).
+//   import { getECData } from '../../util/innerStore';             -> getECData (util/innerStore.swift); ECData tagging still not applied here.
 //   import { isString, retrieve3 } from 'zrender/src/core/util';   -> `util.isString` (retrieve3 only used by the deferred label formatter).
 //   import type { GraphEdge } from '../../data/Graph';             -> data/Graph.swift `GraphEdge`.
-//   import RoamController from '../../component/helper/RoamController';   -> PORT-TODO: roam NOT ported (DEFERRED).
+//   import RoamController from '../../component/helper/RoamController';   -> RoamController (component/helper/RoamController.swift); Sankey roam is wired via EChartsView._setupSankeyRoam (SankeyView holds no controller).
 //   import { applyViewCoordSysTransToElement, VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';
-//       -> PORT-TODO: coord/View NOT ported (roam / view coord-system transform DEFERRED).
+//       -> coord/View.swift is ported; the view-coord-system placement is not used here (roam is applied as a group transform, see render).
 //   import { createIsInSelfByPointerCheckerEl, createViewCoordSysSimply, updateRoamControllerSimply }
-//       from '../../component/helper/roamHelper';   -> PORT-TODO: roamHelper NOT ported (roam DEFERRED).
+//       from '../../component/helper/roamHelper';   -> roamHelper (component/helper/roamHelper*.swift); Sankey roam uses roamHelperViewGroup.
 
 // ================================================================================================
 // upstream: class SankeyPathShape { x1..y2, cpx1..cpy2, extent, orient }
@@ -77,8 +77,8 @@ public struct SankeyPathShape: PathShape {
 
     // Keyed access for animateTo({shape: {...}}). Exposes the animatable numeric fields (the two cubic
     //   endpoints + control points + extent). `orient` is a mode flag, not tweened.
-    // PORT-TODO: upstream animates the ribbon via these fields; the enter/update transition itself is
-    //   DEFERRED (static render), but the keyed seam is provided for parity with sibling shapes.
+    // PORT-NOTE: upstream animates the ribbon via these fields; the animation infra is ported but the
+    //   enter/update transition is not wired here (static render). The keyed seam is provided for parity.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "x1": return x1
@@ -163,12 +163,12 @@ public final class SankeyPath: Path {
     }
 
     // upstream: highlight() { enterEmphasis(this); }  /  downplay() { leaveEmphasis(this); }
-    //   PORT-TODO: util/states (enterEmphasis/leaveEmphasis) NOT ported — DEFERRED.
+    //   PORT-NOTE: util/states.swift (enterEmphasis/leaveEmphasis) is ported; this SankeyPath highlight/downplay pair is not wired here.
 }
 
 // ================================================================================================
 // upstream: class SankeyView extends ChartView implements RoamHostView
-//   PORT-TODO: RoamHostView (`__updateOnOwnRoam`) NOT implemented — roam DEFERRED per CONVENTIONS §5.
+//   PORT-NOTE: RoamHostView (`__updateOnOwnRoam`) is not a protocol conformance here; the `sankeyRoam` action re-renders via update() (see roamHelperViewGroup.swift).
 // ================================================================================================
 open class SankeyView: ChartView {
 
@@ -185,7 +185,7 @@ open class SankeyView: ChartView {
     // upstream: private _data: SeriesData;
     private var _data: SeriesData?
 
-    // PORT-TODO: private _controller: RoamController;  — roam NOT ported (DEFERRED).
+    // PORT-NOTE: private _controller: RoamController;  — SankeyView holds no controller; roam is wired externally (EChartsView._setupSankeyRoam).
     // upstream: private _firstRender: boolean;
     private var _firstRender: Bool = true
 
@@ -206,7 +206,7 @@ open class SankeyView: ChartView {
     //     this._firstRender = true;
     // }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: RoamController DEFERRED (roam not ported).
+        // PORT-NOTE: no RoamController held here; Sankey roam is wired by EChartsView._setupSankeyRoam.
         _ = self.group.add(self._mainGroup)
         self._firstRender = true
     }
@@ -257,8 +257,8 @@ open class SankeyView: ChartView {
         mainGroup.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-TODO: the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
-        //   applyViewCoordSysTransToElement) is DEFERRED (coord/View not ported). The node/edge layout
+        //   PORT-NOTE: the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
+        //   applyViewCoordSysTransToElement) is not used here (coord/View.swift is ported). The node/edge layout
         //   positions are already in the series' local pixel space (set by sankeyLayout), and `_mainGroup`
         //   is placed at `layoutInfo.x/y` above; the roam pan/zoom is applied to the group as a TRANSFORM
         //   at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
@@ -270,7 +270,7 @@ open class SankeyView: ChartView {
         // generate a bezier curve (ribbon) for each edge
         graph.eachEdge({ edge, _ in
             // const ecData = getECData(curve); ecData.dataIndex/seriesIndex/dataType = ...
-            //   PORT-TODO: innerStore (getECData) NOT ported — ECData tagging DEFERRED.
+            //   PORT-NOTE: getECData (util/innerStore.swift) is ported; ECData tagging is not applied to the ribbon here.
             guard let edgeModel = edge.getModel() else { return }
             let lineStyleModel = edgeModel.getModel("lineStyle")
             // const curvature = lineStyleModel.get('curveness');
@@ -370,14 +370,30 @@ open class SankeyView: ChartView {
             // Special color, use source node color or target node color
             applyCurveStyle(curve, orient, edge)
 
-            // Edge label — PLAIN-TEXT subset. Upstream:
-            //   const defaultEdgeLabelText = `${edgeModel.get('value')}`;
-            //   setLabelStyle(curve, getLabelStatesModels(edgeModel, 'edgeLabel'), { labelFetcher..., defaultText });
-            //   curve.setTextConfig({ position: 'inside' });
-            // PORT-TODO: label/labelStyle + getFormattedLabel (labelFetcher) + label states DEFERRED; the
-            //   normal-state edgeLabel text/font/fill is reproduced by `sankeySetLabel`, forced 'inside'.
+            // Edge label — retrofitted onto the SHARED label core (label/labelStyle.swift), mirroring the
+            //   node label below. Upstream (SankeyView.ts:223-249):
+            //     const defaultEdgeLabelText = `${edgeModel.get('value')}`;
+            //     setLabelStyle(curve, getLabelStatesModels(edgeModel, 'edgeLabel'),
+            //       { labelFetcher: { getFormattedLabel(...) { seriesModel.getFormattedLabel(..., 'edge', ...) } },
+            //         labelDataIndex: edge.dataIndex, defaultText: defaultEdgeLabelText });
+            //     curve.setTextConfig({ position: 'inside' });
+            // PORT-NOTE: same deviation as the node label — the shared `SetLabelStyleOpt.labelFetcher` (a
+            //   `DataFormatMixin`) calls `getFormattedLabel` with `dataType == nil` (upstream passes 'edge').
+            //   For the default edge label (no formatter) this is inert: `getFormattedLabel` returns nil and
+            //   the core falls back to `defaultText` (defaultEdgeLabelText), so the resolved text is identical.
+            //   The forced 'inside' position is field-merged onto the textConfig `setLabelStyle` created
+            //   (upstream's `setTextConfig` extends; this port's assigns wholesale, so mutate-in-place keeps
+            //   the other textConfig fields).
             let defaultEdgeLabelText = sankeyStringify(edgeModel.get("value"))
-            sankeySetLabel(curve, edgeModel.getModel("edgeLabel"), defaultEdgeLabelText, "inside")
+            let edgeLabelModels = labelStyle.getLabelStatesModels(edgeModel, "edgeLabel")
+            var edgeLabelOpt = SetLabelStyleOpt()
+            edgeLabelOpt.labelFetcher = seriesModel
+            edgeLabelOpt.labelDataIndex = Double(edge.dataIndex)
+            edgeLabelOpt.defaultText = defaultEdgeLabelText
+            labelStyle.setLabelStyle(curve, edgeLabelModels, edgeLabelOpt)
+            var edgeTextConfig = curve.textConfig ?? ElementTextConfig()
+            edgeTextConfig.position = "inside"
+            curve.setTextConfig(edgeTextConfig)
 
             // Phase 45: edge emphasis + topology focus (upstream SankeyView.ts:158-161 + 265-273). The curve
             //   is a highDown dispatcher carrying its emphasis-state lineStyle; `focus:'adjacency'`/
@@ -410,7 +426,7 @@ open class SankeyView: ChartView {
             // const dragX = itemModel.get('localX'); const dragY = itemModel.get('localY');
             let dragX = sankeyNum(itemModel.get("localX"))
             let dragY = sankeyNum(itemModel.get("localY"))
-            // const emphasisModel = itemModel.getModel('emphasis');  — PORT-TODO: states DEFERRED.
+            // const emphasisModel = itemModel.getModel('emphasis');  — read below at the emphasis wiring (states ported).
             // const borderRadius = itemModel.get(['itemStyle', 'borderRadius']) as number | number[] || 0;
             let borderRadius = sankeyBorderRadius(itemModel.get(["itemStyle", "borderRadius"]))
 
@@ -497,8 +513,8 @@ open class SankeyView: ChartView {
             //   toggleHoverEmphasis. The node rect is marked a highDown dispatcher carrying its
             //   emphasis-state itemStyle, so a hover restyles it. Mirror ScatterView.render's block.
             //   PORT-TODO: `focus === 'adjacency'|'trajectory'` (getAdjacentDataIndices /
-            //   getTrajectoryDataIndices) — the graph-topology focus that also blurs unrelated
-            //   nodes/edges — is DEFERRED (raw focus passed through).
+            //   getTrajectoryDataIndices exist in data/Graph.swift) — the graph-topology focus that also
+            //   blurs unrelated nodes/edges — is not yet wired here (raw focus passed through).
             let emphasisModel = itemModel.getModel(["emphasis"])
             let focusRaw: InnerFocus? = emphasisModel.get("focus")
             let focus: InnerFocus? = sankeyResolveNodeFocus(focusRaw, node)   // Phase 45: adjacency/trajectory
@@ -566,7 +582,7 @@ open class SankeyView: ChartView {
 
         // if (!this._data && seriesModel.isAnimationEnabled()) { mainGroup.setClipPath(createGridClipShape(...)); }
         //   PORT-TODO: the first-render grow-in clip animation (createGridClipShape + graphic.initProps)
-        //   is DEFERRED (util/graphic initProps not ported; CONVENTIONS §5 — animation deferred).
+        //   is deferred here (graphic.initProps is ported in animation/basicTransition.swift; CONVENTIONS §5 — animation deferred).
 
         self._data = seriesModel.getData()
 
@@ -594,10 +610,10 @@ open class SankeyView: ChartView {
 
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: RoamController.dispose DEFERRED (roam not ported).
+        // PORT-NOTE: no RoamController held here to dispose; Sankey roam is wired by EChartsView._setupSankeyRoam.
     }
 
-    // upstream: _updateViewCoordSys(seriesModel, api)  — PORT-TODO: coord/View + roam DEFERRED.
+    // upstream: _updateViewCoordSys(seriesModel, api)  — not used here; coord/View.swift + roam are ported (roam applied as a group transform).
 
     // The base `ChartView.remove(ecModel, api)` clears the group; sankey has no bespoke remove upstream,
     //   but the mainGroup is a child of `group`, so removeAll cascades. Kept for _data reset symmetry.
@@ -652,9 +668,9 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
 
 // ================================================================================================
 // upstream: function createGridClipShape(rect: RectLike, seriesModel, cb)
-//   PORT-TODO: the first-render grow-in clip animation is DEFERRED. It builds a zero-width Rect and
+//   PORT-TODO: the first-render grow-in clip animation is deferred. It builds a zero-width Rect and
 //   `graphic.initProps` tweens its width to `rect.width + 20`, revealing the diagram left-to-right.
-//   `util/graphic.initProps` is not ported (animation deferred per CONVENTIONS §5); reinstate with it.
+//   `graphic.initProps` is ported (animation/basicTransition.swift); reinstate this clip with it (animation deferred per CONVENTIONS §5).
 // ================================================================================================
 
 // export default SankeyView;  -> `open class SankeyView` above.
@@ -755,10 +771,11 @@ private func sankeyStringify(_ v: Any?) -> String {
     }
 }
 
-// PLAIN-TEXT reproduction of setLabelStyle for the sankey node/edge label (label/labelStyle NOT ported).
-//   Draws the normal-state label: text (formatter DEFERRED → defaultText), font, and fill from the label
-//   model, attached to the host via setTextContent + a textConfig position. `label.show === false` hides it.
-//   Same deviation as FunnelView's `funnelUpdateLabel`.
+// LEGACY plain-text reproduction of setLabelStyle for the sankey node/edge label. label/labelStyle.swift is
+//   now ported and BOTH the node and edge labels are wired onto the shared core in `render`, so this helper
+//   is unused and retained only as reference; it can be removed. It draws the normal-state label: text
+//   (formatter → defaultText), font, and fill from the label model, attached to the host via setTextContent +
+//   a textConfig position. `label.show === false` hides it.
 private func sankeySetLabel(_ host: Path, _ labelModel: Model, _ defaultText: String, _ forcedPosition: String?) {
     var textStyle = TextStyleProps()
     textStyle.text = defaultText

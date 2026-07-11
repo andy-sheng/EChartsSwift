@@ -2,10 +2,9 @@
 //
 // SHARED LABEL CORE. This is the foundational module every chart's label rendering routes through
 // (`setLabelStyle` creates/updates the ZRText attached to a data element; `getLabelStatesModels`
-// reads the normal/emphasis/blur/select `label` sub-models off an item model). Downstream chart
-// views (Pie/Bar/Line/... — see the `labelStyle.`-referencing PORT-TODO comments already scattered
-// across `chart/*/*.swift`) are expected to retrofit onto this API in a later phase; this phase only
-// builds and tests the core in isolation.
+// reads the normal/emphasis/blur/select `label` sub-models off an item model). Most chart views
+// (Pie/Bar/Line/... ) now route through this API; a few (see the remaining `labelStyle.`-referencing
+// PORT-TODO comments in `chart/*/*.swift`, e.g. RadarView/ChordPiece) still have wiring gaps.
 //
 // upstream imports (resolved to the ported modules):
 //   import ZRText, { TextProps, TextStyleProps } from 'zrender/src/graphic/Text';   -> ZRenderKit.ZRText / TextStyleProps
@@ -39,7 +38,7 @@
 // GAP (documented, see the final report): `label.style.__marginType` (upstream `LabelExtendedTextStyle`,
 //   L825-830) has no home on the ported `TextStyleProps` struct (ZRenderKit/Graphic/Text.swift) —
 //   the margin VALUE is computed faithfully (`minMargin` takes precedence over `textMargin`), but the
-//   tag distinguishing which one produced it is not stored. See the two PORT-TODOs in
+//   tag distinguishing which one produced it is not stored. See the two PORT-NOTEs in
 //   `setTextStyleCommon` below.
 //
 // PORTED (L1a follow-up): `setLabelValueAnimation` (L739) and `animateLabelValue` (L763) — the
@@ -790,7 +789,7 @@ public enum labelStyle {
 
     /// Create a font string from fontStyle, fontWeight, fontSize, fontFamily.
     // PORT-NOTE: `model/mixin/textStyle.swift`'s `TextStyleMixin.getFont()` currently reproduces this
-    //   exact body inline (`_labelStyleGetFont`, with an explicit PORT-TODO to call this once it
+    //   exact body inline (`_labelStyleGetFont`, with an explicit PORT-NOTE to call this once it
     //   landed) because it was ported OUT OF PHASE, before `label/labelStyle.swift` existed. Left
     //   as-is here (not retrofitted) to keep this phase's diff scoped to the two files it was asked to
     //   create; a follow-up can delete `_labelStyleGetFont` and forward to `labelStyle.getFont` instead.
@@ -927,7 +926,7 @@ public enum labelStyle {
     // PENDING (upstream comment): Temporary impl. unify them?
     // PORT: the enum itself is trivial and ported faithfully; ATTACHING the tag to a style object
     //   (`LabelExtendedTextStyle.__marginType`) is a documented gap — see the file header and the two
-    //   PORT-TODOs in `setTextStyleCommon` above.
+    //   PORT-NOTEs in `setTextStyleCommon` above.
     public enum LabelMarginType: Int {
         case minMargin = 1
         case textMargin = 2

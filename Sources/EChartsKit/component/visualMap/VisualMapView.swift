@@ -31,9 +31,9 @@ import ZRenderKit
 //   import * as layout from '../../util/layout';
 //     → `layout.createBoxLayoutReference` / `layout.positionElement` (util/layout.swift).
 //   import VisualMapping from '../../visual/VisualMapping';
-//     → PORT-TODO: `visual/VisualMapping` is an ASSUMED sibling (models phase). `VisualMapping.prepareVisualTypes`
+//     → `visual/VisualMapping` -> VisualMapping.swift (`class VisualMapping`). `VisualMapping.prepareVisualTypes`
 //        / `VisualMapping.dependsOn` (statics) and `applyVisual` (instance) are referenced as the value→visual
-//        ENCODING path this view queries. Port `visual/VisualMapping.swift` before integrating this file.
+//        ENCODING path this view queries.
 //   import ComponentView from '../../view/Component';                → `ComponentView` (view/ComponentView.swift).
 //   import GlobalModel from '../../model/Global';                    → `GlobalModel` (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';              → `ExtensionAPI` (core/ExtensionAPI.swift).
@@ -56,7 +56,7 @@ open class VisualMapView: ComponentView {
     public let autoPositionValues: [String: Int] = ["left": 1, "right": 1, "top": 1, "bottom": 1]
 
     // ecModel: GlobalModel;  (injected by init)
-    // PORT-TODO: IUO-bound var (NOT a `let` — CONVENTIONS §trap 2 concerns `let x = foo.bar` only); assigned in `init`.
+    // PORT-NOTE: IUO-bound var (NOT a `let` — CONVENTIONS §trap 2 concerns `let x = foo.bar` only); assigned in `init`.
     public var ecModel: GlobalModel!
 
     // api: ExtensionAPI;
@@ -83,7 +83,7 @@ open class VisualMapView: ComponentView {
         let visualMapModel = model as! VisualMapModel
         self.visualMapModel = visualMapModel
 
-        // PORT-TODO: the pipeline is expected to call `init(ecModel, api)` before `render`; guarantee the
+        // PORT-NOTE: the pipeline is expected to call `init(ecModel, api)` before `render`; guarantee the
         //   injected refs exist (same defensive init as LegendView).
         if self.ecModel == nil || self.api == nil {
             self.`init`(ecModel, api)
@@ -125,7 +125,7 @@ open class VisualMapView: ComponentView {
             "z2": -1.0, // Lay background rect on the lowest layer.
             "silent": true,
             "shape": shape as PathShape,
-            // PORT-TODO: bridge the dynamic style bag → typed `PathStyleProps` via the shared
+            // PORT-NOTE: bridge the dynamic style bag → typed `PathStyleProps` via the shared
             //   `barStyleFromDict` seam (BarView.swift).
             "style": barStyleFromDict(styleBag)
         ]))
@@ -219,7 +219,7 @@ open class VisualMapView: ComponentView {
 // export default VisualMapView;  → `open class VisualMapView` above.
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of visualMap/VisualMapView.ts upstream. These reproduce out-of-phase
+// PORT-NOTE helpers — NOT part of visualMap/VisualMapView.ts upstream. These reproduce out-of-phase
 // sibling APIs / JS idioms so the static visualMap render compiles. Delete each when its real sibling
 // lands and call the sibling directly. (Kept `internal` so the two subclass files can reuse them.)
 // ============================================================================

@@ -8,7 +8,7 @@ import ZRenderKit
 // import { ... } from '../../util/types';                          -> EChartsKit (same module)
 // import GlobalModel from '../Global';                             -> GlobalModel (sibling model/Global.swift)
 // import { TooltipMarkupBlockFragment } from '../../component/tooltip/tooltipMarkup';
-//                                                                  -> PORT-TODO (see typealias below)
+//                                                                  -> PORT-NOTE (see typealias below)
 // import { error, makePrintable } from '../../util/log';           -> log.error / log.makePrintable (EChartsKit)
 
 // const DIMENSION_LABEL_REG = /\{@(.+?)\}/g;
@@ -18,7 +18,7 @@ private let DIMENSION_LABEL_REG = try! NSRegularExpression(pattern: "\\{@(.+?)\\
 //   component/tooltip/tooltipMarkup.swift (base class `TooltipMarkupBlock`, discriminated by `.type`).
 //   `normalizeTooltipFormatResult` below reads that `.type` via an `as?` downcast to the class.
 
-// PORT-TODO: upstream uses an inline anonymous object type
+// PORT-NOTE: upstream uses an inline anonymous object type
 //   `{ interpolatedValue: InterpolatableValue }` for `getFormattedLabel`'s `extendParams`.
 //   Modeled as a value struct per CONVENTIONS §4 (inline object literal -> struct).
 public struct GetFormattedLabelExtendParams {
@@ -82,7 +82,7 @@ extension DataFormatMixin {
         let name = data.getName(Int(dataIndex))
         let itemOpt = data.getRawDataItem(Int(dataIndex))
         let style = data.getItemVisual(Int(dataIndex), "style")
-        // PORT-TODO: the visual `style` bag is modeled as a dynamic `[String: Any]`.
+        // PORT-NOTE: the visual `style` bag is modeled as a dynamic `[String: Any]`.
         let styleDict = style as? [String: Any]
         // upstream: style && style[data.getItemVisual(dataIndex, 'drawType') || 'fill'] as ZRColor
         // PORT-TODO: the visual may store a raw `ColorString` rather than a `ZRColor` enum.
@@ -169,7 +169,7 @@ extension DataFormatMixin {
         }
 
         // upstream: zrUtil.isFunction(formatter)
-        // PORT-TODO: `util.isFunction` is unreliable for Swift closures (no introspectable
+        // PORT-NOTE: `util.isFunction` is unreliable for Swift closures (no introspectable
         //   metadata); resolve "is callable" statically via a cast to the formatter signature.
         if let formatterFn = formatter as? (CallbackDataParams) -> String {
             params.status = status
@@ -188,7 +188,7 @@ extension DataFormatMixin {
                 if dimStr.first == "[" && dimStr.last == "]" {
                     // upstream: dimLoose = +dimLoose.slice(1, len - 1); // Also support: '[]' => 0
                     let sliced = String(Array(dimStr)[1..<(len - 1)])
-                    // PORT-TODO: replicate JS `+s`: `''` => 0, numeric => value, else => NaN.
+                    // PORT-NOTE: replicate JS `+s`: `''` => 0, numeric => value, else => NaN.
                     let dimNum: Double = sliced.isEmpty ? 0 : (Double(sliced) ?? Double.nan)
                     dimLoose = dimNum
                     if __DEV__ {
@@ -242,7 +242,7 @@ extension DataFormatMixin {
     }
 }
 
-// PORT-TODO: `getFormattedLabel`'s string branch passes the `CallbackDataParams` *object* to
+// PORT-NOTE: `getFormattedLabel`'s string branch passes the `CallbackDataParams` *object* to
 //   `formatTpl`, which dynamically reads keys named by `$vars`. `format.formatTpl` consumes a
 //   dynamic `[String: Any]` bag, so the typed struct is bridged to a dict carrying exactly the
 //   `$vars`-referenced keys (plus `$vars` itself). This mirrors upstream's dynamic access.
@@ -279,7 +279,7 @@ private func replaceDimensionLabelReg(_ str: String, _ replacer: (String) -> Str
 //       string
 //       // | TooltipFormatResultLegacyObject
 //       | TooltipMarkupBlockFragment;
-// PORT-TODO: `string | TooltipMarkupBlockFragment` union modeled as `Any` (dynamic option bag).
+// PORT-NOTE: `string | TooltipMarkupBlockFragment` union modeled as `Any` (dynamic option bag).
 public typealias TooltipFormatResult = Any
 
 // PENDING: previously we accept this type when calling `formatTooltip`,

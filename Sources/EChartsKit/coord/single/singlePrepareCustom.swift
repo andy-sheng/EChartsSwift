@@ -27,7 +27,7 @@ import ZRenderKit
 // import Single from './Single';                                        -> Single (coord/single/Single.swift; coord-sys master, sibling this phase)
 // import { bind } from 'zrender/src/core/util';                         -> util.bind — replaced by an explicit coordSys param (see below)
 //
-// PORT-TODO: `Single` (coord/single/Single.swift) is ported alongside this file in the same phase. It
+// PORT-NOTE: `Single` (coord/single/Single.swift) is ported alongside this file in the same phase. It
 //   exposes: getAxis() (-> SingleAxis, an Axis with `type` / `dataToCoord`), getRect() (-> RectLike),
 //   dataToPoint(_ , _). Re-narrow if the sibling surface differs.
 

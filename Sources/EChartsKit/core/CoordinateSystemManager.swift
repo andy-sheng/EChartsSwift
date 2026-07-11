@@ -21,7 +21,7 @@ import ZRenderKit
 // import { CoordinateSystemDataCoord, NullUndefined } from '../util/types';  -> util/types.swift
 //   NullUndefined collapses to Optional (CONVENTIONS §6).
 
-// PORT-TODO: upstream `type CoordinateSystemCreatorMap = {[type: string]: CoordinateSystemCreator}`
+// PORT-NOTE: upstream `type CoordinateSystemCreatorMap = {[type: string]: CoordinateSystemCreator}`
 //   is a plain object literal iterated by `zrUtil.each` in insertion order. Modeled as the
 //   insertion-ordered `HashMap` shim (util/modelUtil.swift) so `.each`/`.get`/`.set` mirror the
 //   upstream object semantics; replace with `util.HashMap` once ZRenderKit ports it.
@@ -70,7 +70,7 @@ public final class CoordinateSystemManager {
                         // Disallow `update` is a brutal way to ensure `_nonSeriesBoxMasterList`s are ready to
                         // serve after `create`. But if `update` has to be involved in `_nonSeriesBoxMasterList`
                         // for some future case, more complicated mechanisms need to be introduced.
-                        // PORT-TODO: `zrUtil.each(list, master => zrUtil.assert(!master.update))` checks the
+                        // PORT-NOTE: `zrUtil.each(list, master => zrUtil.assert(!master.update))` checks the
                         //   optional `update` method is *absent*. In the Swift port `update` is a protocol
                         //   requirement with a no-op default, so its presence cannot be detected at runtime;
                         //   the assertion is omitted.
@@ -130,7 +130,7 @@ public typealias BoxCoordinateSystemCoordFrom = Double
 // type BoxCoordinateSystemGetCoord2 = (model: ComponentModel) => CoordinateSystemDataCoord;
 public typealias BoxCoordinateSystemGetCoord2 = (_ model: ComponentModel) -> CoordinateSystemDataCoord
 
-// PORT-TODO: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
+// PORT-NOTE: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
 public struct RegisterLayOutOnCoordSysUsageOpt {
     // `SomeSeries.type` or `SomeComponent.type`
     public var fullType: ComponentFullType // ComponentModel['type']
@@ -142,7 +142,7 @@ public struct RegisterLayOutOnCoordSysUsageOpt {
     }
 }
 
-// PORT-TODO: upstream stores `{getCoord2: BoxCoordinateSystemGetCoord2 | NullUndefined}` and mutates
+// PORT-NOTE: upstream stores `{getCoord2: BoxCoordinateSystemGetCoord2 | NullUndefined}` and mutates
 //   its `.getCoord2` through the value returned by `map.set(...)`. Modeled as a `final class` so the
 //   mutation is observed through the stored reference (a struct would mutate a copy).
 final class CoordSysUseStore {
@@ -307,7 +307,7 @@ public func decideCoordSysUsageKind(
  *  and then call `injectCoordSysByOption({coordSysType: 'bbb', ..., isDefaultDataCoordSys: true})`
  *  once for each series/components.
  */
-// PORT-TODO: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
+// PORT-NOTE: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
 public struct InjectCoordSysByOptionOpt {
     // series or component
     public var targetModel: ComponentModel

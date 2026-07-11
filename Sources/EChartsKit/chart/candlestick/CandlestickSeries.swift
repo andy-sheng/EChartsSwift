@@ -200,7 +200,7 @@ open class CandlestickSeriesModel: SeriesModel {
         // This behavior is preserved until it causes problems.
         if xAxisType == "category" {
             layout = "horizontal"
-            // PORT-TODO: upstream's generated `CartesianAxisModel` implements `AxisModelExtendedInCreator`
+            // PORT-NOTE: upstream's generated `CartesianAxisModel` implements `AxisModelExtendedInCreator`
             //   (getOrdinalMeta); the port supplies that surface via the axisModelCreator-generated subclass
             //   (the driver's EChartsXAxisModel), reachable through the protocol. Cast through it here.
             ordinalMeta = (xAxisModel as? AxisModelExtendedInCreator)?.getOrdinalMeta()

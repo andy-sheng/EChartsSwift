@@ -24,11 +24,10 @@ import ZRenderKit
 //   import {asc} from '../util/number';                       -> `number.asc` (value-returning, §3).
 //   import {ordinalScaleCreateTicks} from '../scale/helper';  -> `helper.ordinalScaleCreateTicks`.
 //
-// PORT-TODO: `Axis`, `Axis2D`, `AxisBaseModel`, the `axisHelper.*` free functions and the
-//   `axisCommonTypes` option/callback types are sibling files being ported in this same coord phase.
-//   This file targets their *conventional* public API (per the task brief); it compiles once those
-//   siblings land. `makeLabelFormatter(axis)` is assumed to return `(ScaleTick, Double?) -> String`
-//   (the optional 2nd arg mirrors upstream `idx?`).
+// PORT-NOTE: `Axis`, `Axis2D`, `AxisBaseModel` and the `axisHelper.*` free functions are ported
+//   siblings; this file uses their public API directly. The `axisCommonTypes` option/callback types
+//   are still placeholders (declared below). `makeLabelFormatter(axis)` is assumed to return
+//   `(ScaleTick, Double?) -> String` (the optional 2nd arg mirrors upstream `idx?`).
 
 // PORT-TODO: these two types belong to `coord/axisCommonTypes.ts`, whose Swift stub currently only
 //   exports `AxisScaleType`. Declared here as placeholders for this phase; remove them once
@@ -51,7 +50,7 @@ public struct AxisLabelInfoDetermined {
 }
 
 // upstream: type AxisCache<TKey, TVal> = { list: {key: TKey; value: TVal;}[] };
-// PORT-TODO: `TKey` is dropped → the key is `Any?` (the category `interval` option); see
+// PORT-NOTE: `TKey` is dropped → the key is `Any?` (the category `interval` option); see
 //   `axisCacheKeyEquals`. Modeled as a `final class` because it is stored on the `makeInner`
 //   record and mutated in place via `push`.
 final class AxisCache<TVal> {
@@ -64,7 +63,7 @@ final class AxisCache<TVal> {
 
 struct AxisCategoryLabelsCreated {
     var labels: [AxisLabelInfoDetermined]
-    // PORT-TODO: upstream declares `number`, but it is left `undefined` when `interval` is a callback.
+    // PORT-NOTE: upstream declares `number`, but it is left `undefined` when `interval` is a callback.
     var labelCategoryInterval: Double?
 }
 public struct AxisCategoryTicksCreated {
@@ -79,7 +78,7 @@ public struct AxisCategoryTicksCreated {
 public typealias AxisTicksCreated = AxisCategoryTicksCreated
 
 final class AxisModelInnerStore {
-    // PORT-TODO: upstream types these `number`, but they are `undefined` until first written
+    // PORT-NOTE: upstream types these `number`, but they are `undefined` until first written
     //   (`makeInner` default `{}`), and the code checks `!= null` — so modeled as `Double?`.
     var lastAutoInterval: Double?
     var lastTickCount: Double?
@@ -100,7 +99,7 @@ private let axisInner: (Axis) -> AxisInnerStore = model.makeInner { AxisInnerSto
 
 // upstream: export const AxisTickLabelComputingKind = { estimate: 1, determine: 2 } as const;
 //           export type AxisTickLabelComputingKind = (typeof AxisTickLabelComputingKind)[keyof ...]; // = 1 | 2
-// PORT-TODO: the value-object doubles as a type upstream (via `typeof`). In Swift the value side is a
+// PORT-NOTE: the value-object doubles as a type upstream (via `typeof`). In Swift the value side is a
 //   caseless-enum namespace of `Double` constants; the "type" side collapses to `Double`
 //   (fields/params typed `kind: Double`).
 public enum AxisTickLabelComputingKind {
@@ -178,7 +177,7 @@ public func createAxisLabels(_ axis: Axis, _ ctx: AxisLabelsComputingContext) ->
 public func createAxisTicks(
     _ axis: Axis,
     _ tickModel: Model,
-    // PORT-TODO: upstream `Pick<ScaleGetTicksOpt, 'breakTicks' | 'pruneByBreak'>` — the full struct is
+    // PORT-NOTE: upstream `Pick<ScaleGetTicksOpt, 'breakTicks' | 'pruneByBreak'>` — the full struct is
     //   accepted here and forwarded to `scale.getTicks`.
     _ opt: ScaleGetTicksOpt? = nil
 ) -> AxisTicksCreated {
@@ -200,7 +199,7 @@ private func parseTickLabelCustomValues(
     _ scale: Scale
 ) -> [ScaleTick] {
     let extent = scale.getExtent()
-    // PORT-TODO: upstream `number[]`; modeled as `[Double?]` so it can be passed `inout` to
+    // PORT-NOTE: upstream `number[]`; modeled as `[Double?]` so it can be passed `inout` to
     //   `model.removeDuplicates(_: inout [TItem?], ...)`.
     var tickNumbers: [Double?] = []
     util.each(customValues) { val, _ in
@@ -248,7 +247,7 @@ private func makeCategoryLabelsActually(
     var labels: [AxisLabelInfoDetermined]
     var numericLabelInterval: Double?
 
-    // PORT-TODO: `zrUtil.isFunction` cannot introspect a Swift closure stored in `Any`
+    // PORT-NOTE: `zrUtil.isFunction` cannot introspect a Swift closure stored in `Any`
     //   (util.isFunction returns false); the interval callback is detected via `as?` cast instead.
     if (optionLabelInterval as? CategoryTickLabelSplitIntervalCb) != nil {
         labels = makeTicksLabelsByCategoryIntervalNumOrCb(axis, optionLabelInterval, false) as! [AxisLabelInfoDetermined]
@@ -257,7 +256,7 @@ private func makeCategoryLabelsActually(
         // optionLabelInterval === 'auto' ? makeAutoCategoryInterval(axis, ctx) : optionLabelInterval
         let ni: Double = (optionLabelInterval as? String) == "auto"
             ? makeAutoCategoryInterval(axis, ctx)
-            : ((optionLabelInterval as? Double) ?? 0) // PORT-TODO: `optionLabelInterval` is a number here.
+            : ((optionLabelInterval as? Double) ?? 0) // PORT-NOTE: `optionLabelInterval` is a number here.
         numericLabelInterval = ni
         labels = makeTicksLabelsByCategoryIntervalNumOrCb(axis, ni, false) as! [AxisLabelInfoDetermined]
     }
@@ -294,7 +293,7 @@ private func makeCategoryTicks(
         ticks = []
     }
 
-    // PORT-TODO: `zrUtil.isFunction` → `as?` cast (see `makeCategoryLabelsActually`).
+    // PORT-NOTE: `zrUtil.isFunction` → `as?` cast (see `makeCategoryLabelsActually`).
     if (optionTickInterval as? CategoryTickLabelSplitIntervalCb) != nil {
         ticks = makeTicksLabelsByCategoryIntervalNumOrCb(axis, optionTickInterval, true) as! [ScaleTick]
     }
@@ -311,7 +310,7 @@ private func makeCategoryTicks(
         }
     }
     else {
-        let interval: Double = (optionTickInterval as? Double) ?? 0 // PORT-TODO: `optionTickInterval` is a number here.
+        let interval: Double = (optionTickInterval as? Double) ?? 0 // PORT-NOTE: `optionTickInterval` is a number here.
         tickCategoryInterval = interval
         ticks = makeTicksLabelsByCategoryIntervalNumOrCb(axis, interval, true) as! [ScaleTick]
     }
@@ -349,7 +348,7 @@ private let ensureCategoryLabelCache: (Axis) -> AxisCache<AxisCategoryLabelsCrea
  * cache size always is small, and currently no JS Map object key polyfill, we use a simple
  * array cache instead of plain object hash.
  */
-// PORT-TODO: upstream indexes the store by the string `prop` (`AxisInnerStore[TCacheProp]`). Swift has
+// PORT-NOTE: upstream indexes the store by the string `prop` (`AxisInnerStore[TCacheProp]`). Swift has
 //   no heterogeneous keyed member access, so the store slot is passed as a getter/setter closure pair.
 private func initAxisCacheMethod<TVal>(
     _ get: @escaping (AxisInnerStore) -> AxisCache<TVal>?,
@@ -382,7 +381,7 @@ private func axisCacheSet<TVal>(_ cache: AxisCache<TVal>, _ key: Any?, _ value: 
     return value
 }
 
-// PORT-TODO: upstream compares cache keys with `===`. The key is the category `interval` option
+// PORT-NOTE: upstream compares cache keys with `===`. The key is the category `interval` option
 //   ('auto' | number | callback). Swift cannot `===`-compare an arbitrary `Any`; we value-compare the
 //   String/Double/Bool cases (covers 'auto' and numeric intervals). A callback key never matches
 //   (closures are not identity-comparable here), so a function interval recomputes each call — this
@@ -555,7 +554,7 @@ private func fetchAutoCategoryIntervalCalculationParams(_ axis: Axis) -> AutoCat
     if let getRotate = axis.getRotate {
         axisRotate = getRotate()
     }
-    // PORT-TODO: `Axis2D` (coord/cartesian/Axis2D.ts) is a sibling not yet landed this phase.
+    // PORT-NOTE: `Axis2D` (coord/cartesian/Axis2D.swift) is ported.
     //   `(axis as Axis2D).isHorizontal &&` (a truthy method-existence check) collapses to the
     //   `as? Axis2D` cast; `!(axis as Axis2D).isHorizontal()` is the negated call.
     else if let axis2D = axis as? Axis2D, !axis2D.isHorizontal() {
@@ -573,7 +572,7 @@ private func fetchAutoCategoryIntervalCalculationParams(_ axis: Axis) -> AutoCat
 
 // upstream: two overloads (onlyTick: false → AxisLabelInfoDetermined[]; onlyTick: true → ScaleTick[])
 //   plus the implementation returning `(AxisLabelInfoDetermined | ScaleTick)[]`.
-// PORT-TODO: Swift cannot overload on a `Bool` argument value, so this is one implementation returning
+// PORT-NOTE: Swift cannot overload on a `Bool` argument value, so this is one implementation returning
 //   `[Any]`; call sites downcast to `[AxisLabelInfoDetermined]` / `[ScaleTick]`.
 private func makeTicksLabelsByCategoryIntervalNumOrCb(
     _ axis: Axis,

@@ -1,6 +1,7 @@
 // lines-basic — a single cartesian lines series (from→to segments via the `coords` data format). Renders
 // on BOTH panes: native (EChartsKit's static LinesView draws one Line/BezierCurve per two-point line — the
-// curveness item bends one into a quadratic curve; the moving-dot effect is a documented PORT-TODO) and
+// curveness item bends one into a quadratic curve; the animated moving-dot effect is the separate
+// effect-line path, ported — see the lines-effect demo) and
 // real echarts.js.
 extension EChartsDemoRegistry {
     static let demo_lines_basic = EChartsDemo(

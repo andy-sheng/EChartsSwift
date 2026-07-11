@@ -23,8 +23,8 @@ import ZRenderKit
 
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import * as graphic from '../../util/graphic';
-//     → `Circle`/`Polygon`/`Polyline`/`CompoundPath`/`ZRText` are ZRenderKit shapes. PORT-TODO: `util/graphic`
-//       (initProps/updateProps/Circle helpers) is NOT ported; the shapes are built directly.
+//     → `Circle`/`Polygon`/`Polyline`/`CompoundPath`/`ZRText` are ZRenderKit shapes. `util/graphic`
+//       (initProps/updateProps/Circle helpers) is ported; this static render builds the shapes directly.
 //   import MapDraw from '../../component/helper/MapDraw';
 //     → PORT-TODO: `component/helper/MapDraw` is NOT ported. Upstream `MapView.render` delegates ALL region
 //       drawing to a persistent `MapDraw` instance (which also owns the roam controller, the SVG map path,
@@ -39,11 +39,12 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';           → `ExtensionAPI`.
 //   import { Payload, DisplayState, ECElement, RoamPayload } from '../../util/types';  → util/types.swift.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//     → PORT-TODO: label/labelStyle NOT ported. A minimal plain-text reproduction is inlined
-//       (`_updateSymbolLabel` / `_resetLabelForRegion`), the same deviation as FunnelView/GeoView.
+//     → label/labelStyle is ported (label/labelStyle.swift); MapView still inlines a minimal plain-text
+//       reproduction (`_updateSymbolLabel` / `_resetLabelForRegion`), the same deviation as FunnelView/GeoView.
 //   import { setStatesFlag, Z2_EMPHASIS_LIFT } from '../../util/states';
-//     → PORT-TODO: util/states NOT ported (states/emphasis deferred). `Z2_EMPHASIS_LIFT` (== 10) is
-//       inlined as a local constant; `setStatesFlag` (the region↔symbol hover link) is deferred.
+//     → util/states.swift is ported (`setStatesFlag`, `Z2_EMPHASIS_LIFT`). In this static render
+//       `Z2_EMPHASIS_LIFT` (== 10) is still inlined as a local constant and the `setStatesFlag` region↔symbol
+//       hover link is still deferred.
 //
 // ── Assumed sibling API (chart/map/MapSeries.swift — lands in a later phase, like PieSeries/GeoModel) ──
 //   These are the members of the map SERIES model + its module free functions that `MapView` /
@@ -757,7 +758,7 @@ open class MapView: ChartView {
 
             circle.silent = true
             // upstream: z2: 8 + (!offset ? Z2_EMPHASIS_LIFT + 1 : 0)  (Z2_EMPHASIS_LIFT == 10)
-            let z2EmphasisLift = 10.0   // PORT-TODO: util/states.Z2_EMPHASIS_LIFT not ported (== 10).
+            let z2EmphasisLift = 10.0   // PORT-NOTE: mirrors util/states.Z2_EMPHASIS_LIFT (== 10), inlined here.
             circle.z2 = 8 + (offset == 0 ? z2EmphasisLift + 1 : 0)
 
             // upstream: only the series holding the FIRST value on a region (offset 0) renders the label.
@@ -847,7 +848,7 @@ open class MapView: ChartView {
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of MapView.ts upstream. `mapGetFixedItemStyle`
+// PORT-NOTE helpers — NOT part of MapView.ts upstream. `mapGetFixedItemStyle`
 // reproduces MapDraw.getFixedItemStyle; the rest mirror the file-private helpers
 // in GeoView.swift (dynamic-option coercions, the style-bag → PathStyleProps
 // bridge). Delete each when its real sibling lands (util/graphic, util/states)
@@ -884,7 +885,7 @@ private func mapJsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic itemStyle bag
+/// PORT-NOTE: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic itemStyle bag
 ///   ([String: Any]) onto the typed `PathStyleProps`. Same deviation as GeoView.geoPathStyleFromDict;
 ///   numbers via `mapToNumber` (Int-drop trap). Delete when the graphic bridge lands.
 private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {

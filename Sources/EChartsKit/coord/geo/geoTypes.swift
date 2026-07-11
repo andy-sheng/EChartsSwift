@@ -22,13 +22,12 @@ import Foundation
 import ZRenderKit
 
 // import BoundingRect from 'zrender/src/core/BoundingRect';             -> BoundingRect (ZRenderKit)
-// import { HashMap } from 'zrender/src/core/util';                      -> [String: T] (PORT-TODO: HashMap not ported; see util.swift)
+// import { HashMap } from 'zrender/src/core/util';                      -> [String: T] (a `HashMap` shim also exists in util/modelUtil.swift)
 // import { Group } from '../../util/graphic';                           -> Group (ZRenderKit)
 // import { Region } from './Region';                                    -> Region (coord/geo/Region.swift)
 //
-// PORT-TODO: `Region` (coord/geo/Region.swift) is NOT ported yet — it is the geo region primitive that a
-//   `GeoResource.load` yields (drawn as filled polygon rings). It is referenced structurally below; the
-//   file is staged (like the other geo coord pieces) and does not compile standalone until Region lands.
+// PORT-NOTE: `Region` (coord/geo/Region.swift) is ported — it is the geo region primitive that a
+//   `GeoResource.load` yields (drawn as filled polygon rings). It is referenced structurally below.
 
 // upstream: export type GeoSVGSourceInput = string | Document | SVGElement;
 //   `Document`/`SVGElement` are DOM types (SVG-map path, deferred per the phase brief) -> erased to `Any`.
@@ -66,7 +65,7 @@ public typealias GeoJSON = GeoJSONFeatureCollection
 //     UTF8Encoding?: boolean;
 //     UTF8Scale?: number;
 // }
-//   PORT-TODO: generic geometry arg (`GeoJSONGeometry` vs `GeoJSONGeometryCompressed`) erased; both feature
+//   PORT-NOTE: generic geometry arg (`GeoJSONGeometry` vs `GeoJSONGeometryCompressed`) erased; both feature
 //   collections carry `features: [GeoJSONFeature]` whose `geometry` is the dynamic geometry bag below.
 public struct GeoJSONCompressed {
     public var type: String                 // 'FeatureCollection'
@@ -105,7 +104,7 @@ public struct GeoJSONFeatureCollection {
 //     geometry: G;
 // }
 //   `id` (string | number) erased to `Any?`; `properties` is a dynamic bag ([String: Any]); `geometry` is
-//   the dynamic geometry union (`GeoJSONGeometry`, modeled as `[String: Any]` — see the union PORT-TODO).
+//   the dynamic geometry union (`GeoJSONGeometry`, modeled as `[String: Any]` — see the union PORT-NOTE).
 public struct GeoJSONFeature {
     public var type: String                 // 'Feature'
     public var id: Any?                      // string | number
@@ -129,8 +128,8 @@ public struct GeoJSONFeature {
 //     GeoJSONGeometryPolygonCompressed | GeoJSONGeometryMultiPolygonCompressed
 //     | GeoJSONGeometryLineStringCompressed | GeoJSONGeometryMultiLineStringCompressed;
 //
-// PORT-TODO: Swift has no anonymous tagged union. The GeoJSON geometry variants are discriminated by
-//   their `type` string field at parse time (`parseGeoJson`, not yet ported). Modeled as a dynamic
+// PORT-NOTE: Swift has no anonymous tagged union. The GeoJSON geometry variants are discriminated by
+//   their `type` string field at parse time (`parseGeoJson`, coord/geo/parseGeoJson.swift). Modeled as a dynamic
 //   `[String: Any]` bag (the `GeoJSONFeature.geometry` field). The concrete per-variant shapes are kept
 //   below as documented comments (coordinates typings preserved) so the future parser can switch on `type`:
 //
@@ -146,7 +145,7 @@ public struct GeoJSONFeature {
 //   interface GeoJSONGeometryMultiPolygonCompressed{ type: 'MultiPolygon';    coordinates: string[][]; encodeOffsets: number[][][]; }
 //   // interface GeoJSONGeometryGeometryCollection { type: 'GeometryCollection'; geometries: GeoJSONGeometry[]; } // not supported yet
 //
-// PORT-TODO: `GeoJSONGeometry` is ALREADY declared in coord/geo/Region.swift (forward-hoisted before
+// PORT-NOTE: `GeoJSONGeometry` is ALREADY declared in coord/geo/Region.swift (forward-hoisted before
 //   geoTypes landed) as a class-based protocol (`GeoJSONPolygonGeometry` / `GeoJSONLineStringGeometry`
 //   conform) — that is the PARSED geometry contract used by `parseGeoJSON` / `GeoJSONRegion`, NOT the raw
 //   GeoJSON JSON union above. To avoid a redeclaration collision, it is NOT re-emitted here. The raw JSON
@@ -171,7 +170,7 @@ public protocol GeoResource: AnyObject {
 
 // upstream:
 // export interface GeoSVGGraphicRoot extends Group { isGeoSVGGraphicRoot: boolean; }
-//   PORT-TODO: SVG-map path deferred per the phase brief. Group is a `final class` (ZRenderKit); adding a
+//   PORT-NOTE: SVG-map path deferred per the phase brief. Group is a `final class` (ZRenderKit); adding a
 //   stored `isGeoSVGGraphicRoot` flag requires a subclass. Modeled as a protocol contract for now.
 public protocol GeoSVGGraphicRoot: AnyObject {
     var isGeoSVGGraphicRoot: Bool { get set }
@@ -209,7 +208,7 @@ public protocol ProjectionStream: AnyObject {
 //     stream?(outStream: ProjectionStream): ProjectionStream
 // }
 //
-// PORT-TODO: `GeoProjection` is ALREADY declared in coord/geo/Region.swift (forward-hoisted before geoTypes
+// PORT-NOTE: `GeoProjection` is ALREADY declared in coord/geo/Region.swift (forward-hoisted before geoTypes
 //   landed) with a MINIMAL shape — `func project(_ point: [Double]) -> [Double]?` (Optional return; no
 //   `unproject` / `stream`) — because `Region.updateBBoxFromPoints` needs it and relies on the null-point
 //   guard. To avoid a redeclaration collision it is NOT re-emitted here. Consolidate the full upstream

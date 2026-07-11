@@ -30,7 +30,7 @@ import ZRenderKit
 
 // upstream: export default function radarBackwardCompat(option)
 //
-// PORT-TODO: `option.polar` / `option.radar` / `option.series` items are objects that upstream mutates
+// PORT-NOTE: `option.polar` / `option.radar` / `option.series` items are objects that upstream mutates
 //   IN PLACE (`polarOpt.shape = ...`, `seriesOpt.radarIndex = ...`). Swift `[String: Any]` is a value
 //   type, so the port takes `inout` and writes the mutated items back (mirrors chart/candlestick/
 //   preprocessor.swift's `candlestickPreprocessor(_:)`). The `OptionPreprocessor` registration is owned

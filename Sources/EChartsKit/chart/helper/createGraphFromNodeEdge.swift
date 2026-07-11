@@ -38,7 +38,7 @@ import ZRenderKit
 
 // export default function createGraphFromNodeEdge(...): Graph  -> free function (CONVENTIONS §2).
 //
-// PORT-TODO: upstream `nodes: OptionSourceDataOriginal<OptionDataValue, OptionDataItemObject<OptionDataValue>>`
+// PORT-NOTE: upstream `nodes: OptionSourceDataOriginal<OptionDataValue, OptionDataItemObject<OptionDataValue>>`
 //   and `edges: OptionSourceDataOriginal<OptionDataValue, GraphEdgeItemObject<OptionDataValue>>`. Both
 //   `OptionSourceDataOriginal` collapse to `[Any]` here (== `[OptionDataItemOriginal]`); each element is
 //   read as a `[String: Any]` option bag (`.id` / `.name` for nodes, `.source` / `.target` / `.id` for edges).

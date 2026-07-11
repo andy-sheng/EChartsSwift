@@ -149,7 +149,7 @@ public final class ContinuousView: VisualMapView {
         self._updateView(false)
 
         self._enableHoverLinkToSeries()
-        // PORT-TODO: `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
+        // PORT-NOTE: `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
         //   The ExtensionAPI has no live `getZr()`, so the series→bar hover indicator (the "and vice
         //   versa" direction) is driven by the host `EChartsView` instead: it calls this view's public
         //   `_hoverLinkFromSeriesMouseOver(_:)` / `_hideIndicator()` on a series-element mouseover/mouseout.
@@ -952,7 +952,7 @@ private func numberOrString(_ v: Any?) -> NumberOrString {
 }
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of visualMap/ContinuousView.ts upstream. These reproduce out-of-phase
+// PORT-NOTE helpers — NOT part of visualMap/ContinuousView.ts upstream. These reproduce out-of-phase
 // sibling APIs (`util/graphic` transform helpers, `visualMap/helper.getItemAlign`) so the view compiles.
 // ============================================================================
 
@@ -1012,7 +1012,7 @@ internal func stringifyAny(_ v: Any?) -> String {
     return "\(v)"
 }
 
-/// PORT-TODO: faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported).
+/// PORT-NOTE: faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported).
 internal func getItemAlign(_ visualMapModel: VisualMapModel, _ api: ExtensionAPI, _ itemSize: [Double]) -> String {
     let paramsSet = [["left", "right", "width"], ["top", "bottom", "height"]]
 

@@ -32,7 +32,7 @@ import ZRenderKit
 //          stage is not wired. Register once layout/points.swift lands.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate/Integrate driver
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file (same convention as chart/boxplot/boxplotInstall.swift).
 //   The integration points are:
 //     - ComponentModel.registerClass(EffectScatterSeriesModel.self)   // registerSeriesModel(EffectScatterSeriesModel)

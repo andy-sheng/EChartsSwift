@@ -468,9 +468,10 @@ public extension PaintStyle {
 
     /// Flatten zrender's `PathStyleProps` into a concrete Core Graphics paint descriptor.
     ///
-    /// Resolves the `ZRColor` fill/stroke union (solid `string` colors only — gradients &
-    /// patterns are PORT-TODO and resolve to `nil` paint), bakes `fillOpacity`/`strokeOpacity`
-    /// and the global `opacity` into the color alpha, and maps line cap/join/dash enums.
+    /// Resolves the `ZRColor` fill/stroke union (solid `string` colors to a `CGColor`; the gradient &
+    /// pattern arms are carried as objects — see `resolvePaintObject` — for clipped drawing), bakes
+    /// `fillOpacity`/`strokeOpacity` and the global `opacity` into the color alpha, and maps line
+    /// cap/join/dash enums.
     static func from(_ style: PathStyleProps) -> PaintStyle {
         var out = PaintStyle()
 

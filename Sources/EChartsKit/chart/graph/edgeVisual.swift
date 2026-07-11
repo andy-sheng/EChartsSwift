@@ -25,8 +25,8 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import { createSimpleOverallStageHandler } from '../../util/model'; -> `model.createSimpleOverallStageHandler`.
 //   import GraphSeriesModel, { GraphEdgeItemOption, SERIES_TYPE_GRAPH } from './GraphSeries';
-//       -> PORT-TODO: sibling GraphSeries.swift NOT ported yet; `GraphSeriesModel` / `SERIES_TYPE_GRAPH`
-//          referenced as siblings. `GraphEdgeItemOption` is a type-only generic — dropped.
+//       -> sibling GraphSeries.swift; `GraphSeriesModel` / `SERIES_TYPE_GRAPH` referenced as siblings.
+//          `GraphEdgeItemOption` is a type-only generic — dropped.
 //   import { extend } from 'zrender/src/core/util';                  -> `util.extend`.
 
 // function normalize(a): a is `string | number | (string | number)[]`.

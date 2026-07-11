@@ -25,15 +25,15 @@ import ZRenderKit
 // import * as graphic from '../../util/graphic';
 //   -> `graphic.Rect` / `graphic.Sector` / `graphic.Path` are re-exports of the zrender shapes, so
 //      ZRenderKit `Rect` / `Sector` / `Path` are used directly. `graphic.initProps` (a re-export of
-//      `animation/basicTransition.initProps`) is NOT ported yet — see the PORT-TODO in
-//      `createGridClipPath`.
+//      `animation/basicTransition.initProps`) is ported and is applied in `createGridClipPath`
+//      below.
 // import {round} from '../../util/number';                        -> `number.round` (util/number.swift)
 // import SeriesModel from '../../model/Series';                   -> `SeriesModel` (this module)
 // import { NullUndefined, SeriesOption } from '../../util/types';
 //   -> `NullUndefined` collapses to Optional (CONVENTIONS §6); `SeriesOption` is only used to
 //      parametrize `SeriesModel<...>`, which is non-generic here (see `SeriesModelWithLineWidth`).
 // import type Cartesian2D from '../../coord/cartesian/Cartesian2D'; -> `Cartesian2D` (this module)
-// import type Polar from '../../coord/polar/Polar';                 -> PORT-TODO: Polar not ported.
+// import type Polar from '../../coord/polar/Polar';                 -> coord/polar/Polar.swift (ported; the polar branch here is still deferred — see below).
 // import { CoordinateSystem, CoordinateSystemClipArea } from '../../coord/CoordinateSystem';
 //   -> `CoordinateSystem` / `CoordinateSystemClipArea` (coord/CoordinateSystem.swift)
 // import { assert, isFunction } from 'zrender/src/core/util';      -> `util.assert` / `util.isFunction`
@@ -201,7 +201,7 @@ public func createClipPath(
 // upstream:
 //   export type ShapeClipKind = typeof SHAPE_CLIP_KIND_NOT_CLIPPED | ...;
 //   export const SHAPE_CLIP_KIND_NOT_CLIPPED = 0; (etc.)
-// PORT-TODO: the union-of-literal-types `ShapeClipKind` is erased to `Int` (the constants' runtime
+// PORT-NOTE: the union-of-literal-types `ShapeClipKind` is erased to `Int` (the constants' runtime
 //   type); callers compare against the `SHAPE_CLIP_KIND_*` constants below.
 public typealias ShapeClipKind = Int
 public let SHAPE_CLIP_KIND_NOT_CLIPPED = 0

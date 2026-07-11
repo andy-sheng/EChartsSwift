@@ -13,7 +13,7 @@ private var points: [VectorArray] = [VectorArray(), VectorArray(), VectorArray()
 // const mathSqrt = Math.sqrt;   -> Foundation `sqrt`
 // const mathAtan2 = Math.atan2; -> Foundation `atan2`
 
-// PORT-TODO: `m` typed `MatrixArray?` (optional) to preserve the upstream `if (!m) return`
+// PORT-NOTE: `m` typed `MatrixArray?` (optional) to preserve the upstream `if (!m) return`
 // guard, even though upstream's static type is non-null.
 public func transformPath(_ path: PathProxy, _ m: MatrixArray?) {
     guard let m = m else {

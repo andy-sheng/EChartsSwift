@@ -29,8 +29,10 @@ import ZRenderKit
 //       / `graphic.Text` are the ZRenderKit scene-graph types (`Group` / `Rect` / `Polyline` / `ZRText`),
 //       used directly — the sanctioned DRAWING deviation (cf. SingleAxisView / FunnelView).
 //   import {createTextStyle} from '../../label/labelStyle';
-//     → PORT-TODO: `label/labelStyle` NOT ported. The file-private `calendarCreateTextStyle` below is a
-//       minimal faithful reproduction (text + font + fill), mirroring AxisBuilder/FunnelView/Breadcrumb.
+//     → `label/labelStyle.createTextStyle` IS ported (label/labelStyle.swift, `labelStyle.createTextStyle`).
+//       The file-private `calendarCreateTextStyle` below is a minimal local variant (text + font + fill only),
+//       retained pending a build-verified swap to `labelStyle.createTextStyle` (which populates more style
+//       fields, changing rendered output). Mirrors AxisBuilder/FunnelView/Breadcrumb.
 //   import { formatTplSimple } from '../../util/format';           → `format.formatTplSimple`.
 //   import { parsePercent } from '../../util/number';              → `number.parsePercent`.
 //   import type CalendarModel from '../../coord/calendar/CalendarModel';  → `CalendarModel` (sibling).
@@ -47,8 +49,9 @@ import ZRenderKit
 //   import { TextStyleProps, TextProps } from 'zrender/src/graphic/Text';
 //     → ZRenderKit `TextStyleProps` / `TextProps` (`TextProps` = `DisplayableProps` = `ElementProps`).
 //   import { LocaleOption, getLocaleModel } from '../../core/locale';
-//     → PORT-TODO: `core/locale` NOT ported. `ecModel.getLocaleModel()` (→ `Model`) supplies the default
-//       locale; the by-name `getLocaleModel(nameMap)` reassignment is deferred (see PORT-TODOs below).
+//     → PORT-NOTE: `core/locale` is ported (core/locale.swift, `getLocaleModel(_:)`). `ecModel.getLocaleModel()`
+//       (→ `Model`) supplies the default locale; the by-name `getLocaleModel(nameMap)` reassignment at the
+//       call sites below is not wired (the default localeModel is kept).
 //   import type Model from '../../model/Model';                   → `Model`.
 //
 //   The sibling `Calendar` (`CalendarModel.coordinateSystem`) is the calendar COORDINATE SYSTEM (the 6th),
@@ -522,9 +525,9 @@ public final class CalendarView: ComponentView {
             nameMap = (nameMapRaw as? [Any]) ?? []
         }
         _ = nameMapRaw
-        // PORT-TODO: core/locale is not ported, so the default localeModel has no `time.monthAbbr`;
-        //   fall back to the EN month abbreviations (echarts' en locale) so the `nameMap[m-1]` index below
-        //   is in range and month labels render. Remove once core/locale lands.
+        // PORT-NOTE: the default EN localeModel (core/locale.swift) provides `time.monthAbbr`; this EN
+        //   fallback is a defensive guard for a custom locale that omits it, keeping the `nameMap[m-1]`
+        //   index below in range so month labels render.
         if nameMap.isEmpty { nameMap = calendarEnMonthAbbr }
 
         let idx = pos == "start" ? 0 : 1
@@ -650,8 +653,8 @@ public final class CalendarView: ComponentView {
             }
             else {
                 var abbr = (localeModel.get(["time", "dayOfWeekAbbr"]) as? [Any]) ?? []
-                // PORT-TODO: locale not ported → no `time.dayOfWeekAbbr`; fall back to the EN abbreviations
-                //   so the `nameMap[day]` index (day 0..6) is in range. Remove once core/locale lands.
+                // PORT-NOTE: the default EN localeModel (core/locale.swift) provides `time.dayOfWeekAbbr`;
+                //   this EN fallback is a defensive guard so the `nameMap[day]` index (day 0..6) stays in range.
                 if abbr.isEmpty { abbr = calendarEnDayOfWeekAbbr }
                 nameMap = util.map(abbr) { val, _ -> Any in
                     // upstream: val => val[0]  (first character of the abbreviation string)
@@ -726,11 +729,11 @@ public final class CalendarView: ComponentView {
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of CalendarView.ts upstream. They reproduce the
+// PORT-NOTE helpers — NOT part of CalendarView.ts upstream. They reproduce the
 // dynamic-option-read coercions, the minimal `createTextStyle`, the style-bag →
 // PathStyleProps bridge, the number[][] → [VectorArray] conversion, and the
-// JS `Date.setMonth` replacement referenced above. Delete each when its real
-// sibling lands (label/labelStyle, util/graphic) and call it directly.
+// JS `Date.setMonth` replacement referenced above. Local convenience bridges over
+// label/labelStyle and util/graphic (util/graphic.swift is ported).
 // (Mirrors the file-private helpers in SingleAxisView / FunnelView / TitleView.)
 // ============================================================================
 
@@ -756,10 +759,13 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: minimal faithful reproduction of `label/labelStyle.createTextStyle(textStyleModel, {text})`.
-///   Only the fields used by the calendar backdrop labels (text / font / fill) are populated; the full
-///   rich-text / state / ecModel-driven behavior is in labelStyle.ts. Mirrors AxisBuilder/FunnelView/
-///   Breadcrumb. Delete when label/labelStyle.swift lands and call `createTextStyle(textStyleModel, {text})`.
+/// Minimal local variant of `labelStyle.createTextStyle(textStyleModel, {text})`, which IS now ported
+///   (label/labelStyle.swift, `labelStyle.createTextStyle`). Only the fields used by the calendar backdrop
+///   labels (text / font / fill) are populated here; the full rich-text / state / ecModel-driven behavior
+///   lives in the ported `labelStyle.createTextStyle`. Mirrors AxisBuilder/FunnelView/Breadcrumb. Can be
+///   replaced by a direct call —
+///   `labelStyle.createTextStyle(textStyleModel, { var t = TextStyleProps(); t.text = text; return t }())` —
+///   once that swap is build-verified (it widens the populated style fields, changing rendered output).
 private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -> TextStyleProps {
     var style = TextStyleProps()
     style.text = text
@@ -768,10 +774,10 @@ private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -
     return style
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
-///   ([String: Any] — the `getItemStyle()` / `getLineStyle()` result) onto the typed `PathStyleProps`.
-///   Same deviation as SingleAxisView.pathStyleFromDict; numbers are read via `numOpt` (Int|Double|
-///   NSNumber) to avoid the Int-drop trap. Delete when the graphic bridge lands.
+/// PORT-NOTE: a local `useStyle`-style bridge (upstream lives in `util/graphic`, which is ported as
+///   util/graphic.swift). Maps the dynamic style bag ([String: Any] — the `getItemStyle()` / `getLineStyle()`
+///   result) onto the typed `PathStyleProps`. Same deviation as SingleAxisView.pathStyleFromDict; numbers
+///   are read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap.
 private func calendarPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
     // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
@@ -807,7 +813,7 @@ private func pointsToVector(_ points: [[Double]]) -> [VectorArray] {
     return points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
 }
 
-/// PORT-TODO: replacement for the JS `date.setMonth(date.getMonth() + n)` in-place mutation.
+/// PORT-NOTE: replacement for the JS `date.setMonth(date.getMonth() + n)` in-place mutation.
 ///   Foundation.Date is a value type, so this returns a new Date `n` months later. Uses a Gregorian
 ///   calendar in the current timezone to match JS local `Date` semantics (cf. util/time.swift's non-UTC
 ///   getters, which use `TimeZone.current`). Reconcile with the `Calendar` coord's date parsing (which
@@ -818,7 +824,8 @@ private func calendarSetMonthPlus(_ date: Foundation.Date, _ n: Int) -> Foundati
     return cal.date(byAdding: .month, value: n, to: date) ?? date
 }
 
-// PORT-TODO bridge: echarts' EN locale (core/locale/EN.ts `time.monthAbbr` / `time.dayOfWeekAbbr`).
+// PORT-NOTE bridge: echarts' EN locale (mirrors core/locale/EN.ts `time.monthAbbr` / `time.dayOfWeekAbbr`,
+//   ported as i18n/langEN.swift) — used as the defensive fallback above.
 // Used as a fallback when the (not-yet-ported) locale model supplies no month/day names, so the
 // calendar month/week label index lookups stay in range. Remove once core/locale lands.
 private let calendarEnMonthAbbr: [Any] = [

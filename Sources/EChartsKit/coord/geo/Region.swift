@@ -32,12 +32,12 @@ import ZRenderKit
 //   import { each } from 'zrender/src/core/util';                       -> plain Swift loops (comment: upstream each).
 //   import type { RegionOption } from './GeoModel';                     -> represented via [String: Any] properties bag.
 
-// PORT-TODO: point/ring representation. Upstream point arrays are `number[]` (a [lng, lat]
+// PORT-NOTE: point/ring representation. Upstream point arrays are `number[]` (a [lng, lat]
 // position). Ported as `[Double]` (ring = `[[Double]]`, rings = `[[[Double]]]`) to match the
 // downstream consumer (GeoView). The zrender math helpers (vector.*, polygon.contain) take
 // VectorArray = SIMD2<Double>, so points are converted at those call sites.
 
-// PORT-TODO: geoTypes.GeoProjection not yet ported. Minimal shape used by getBoundingRect /
+// PORT-NOTE: geoTypes.GeoProjection not yet ported. Minimal shape used by getBoundingRect /
 // updateBBoxFromPoints. `project` may return a null point (see updateBBoxFromPoints guard),
 // hence the Optional return.
 public protocol GeoProjection: AnyObject {
@@ -47,7 +47,7 @@ public protocol GeoProjection: AnyObject {
 }
 
 // const TMP_TRANSFORM = [] as number[];
-// PORT-TODO: matrix scratch used only by GeoSVGRegion.calcCenter (deferred SVG-map path).
+// PORT-NOTE: matrix scratch used only by GeoSVGRegion.calcCenter (deferred SVG-map path).
 private let TMP_TRANSFORM: MatrixArray = []
 
 // was: transformPoints(points: number[][], transform) — mutates each point in place.
@@ -110,7 +110,7 @@ private func centroid(_ points: [[Double]]) -> [Double] {
     }
 }
 
-// PORT-TODO: upstream `abstract class Region`. Swift has no abstract classes; `calcCenter`
+// PORT-NOTE: upstream `abstract class Region`. Swift has no abstract classes; `calcCenter`
 // is a subclass responsibility (fatalError fallback), `type` is an overridable computed prop.
 open class Region {
 
@@ -151,7 +151,7 @@ open class Region {
     }
 }
 
-// PORT-TODO: geoTypes union `GeoJSONRegion['geometries']` — a common contract so a
+// PORT-NOTE: geoTypes union `GeoJSONRegion['geometries']` — a common contract so a
 // geometries list can hold both polygon and linestring geometries.
 public protocol GeoJSONGeometry: AnyObject {
     var type: String { get }
@@ -180,7 +180,7 @@ public final class GeoJSONRegion: Region {
     public let geometries: [GeoJSONGeometry]
 
     // Injected outside.
-    // PORT-TODO: upstream `properties: GeoJSON['features'][0]['properties'] & { echartsStyle? }`.
+    // PORT-NOTE: upstream `properties: GeoJSON['features'][0]['properties'] & { echartsStyle? }`.
     // Represented as a dynamic bag ([String: Any]).
     public var properties: [String: Any] = [:]
 

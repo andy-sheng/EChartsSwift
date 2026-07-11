@@ -13,7 +13,7 @@ import ZRenderKit
 //      (e.g. `let getItemStyle = makeStyleMapper(ITEM_STYLE_KEY_MAP)`).
 //
 // The returned mapper closure type mirrors `(model, excludes?, includes?) => PathStyleProps`.
-// PORT-TODO: upstream returns `style as PathStyleProps`; here we return the dynamic
+// PORT-NOTE: upstream returns `style as PathStyleProps`; here we return the dynamic
 //   `Dictionary<Any>` ([String: Any]) bag as-is, because `PathStyleProps` is a Swift struct
 //   (value type, fixed fields) and cannot be produced from arbitrary string keys mechanically.
 //   Swift closure types cannot carry defaulted/optional params, so callers pass `nil` explicitly
@@ -23,7 +23,7 @@ public func makeStyleMapper(
     _ ignoreParent: Bool? = nil
 ) -> (Model, [String]?, [String]?) -> Dictionary<Any> {
     // Normalize
-    // PORT-TODO: upstream mutates the (readonly-typed) input array in place; Swift arrays are
+    // PORT-NOTE: upstream mutates the (readonly-typed) input array in place; Swift arrays are
     //   value types, so we normalize a local mutable copy that the returned closure captures.
     var properties = properties
     for i in 0..<properties.count {

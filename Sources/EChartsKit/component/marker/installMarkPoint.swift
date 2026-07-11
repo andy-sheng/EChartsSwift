@@ -33,7 +33,7 @@
 //     });
 // }
 //
-// PORT-TODO: registration + preprocessor wiring belongs to the Orchestrate driver (Integrate stage),
+// PORT-NOTE: registration + preprocessor wiring belongs to the Orchestrate driver (Integrate stage),
 //   not this render-layer file (same convention as component/title/install.swift and grid/installSimple).
 //   The `install` body is preserved above as commented source for the diffable surface. The preprocessor
 //   logic (auto-enable the markPoint component when any series declares `markPoint`) is provided below as

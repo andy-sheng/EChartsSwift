@@ -3,9 +3,9 @@ import XCTest
 @testable import ZRenderKit
 
 // Regression: gauge had NO hover effect — upstream GaugeView wires setStatesStylesFromModel +
-// toggleHoverEmphasis on the pointer and the progress arc (GaugeView.ts:527-574); the port left
-// both as PORT-TODO stubs, so the elements were never highDown dispatchers and carried no
-// emphasis state.
+// toggleHoverEmphasis on the pointer and the progress arc (GaugeView.ts:527-574). PORT-NOTE: both
+// are now wired (GaugeView.swift:600-618), so the elements ARE highDown dispatchers carrying
+// emphasis state; this test guards that.
 final class GaugeHoverTests: XCTestCase {
     private func hitPoint(_ el: Path) -> (Double, Double)? {
         guard let rect = el.getBoundingRect() else { return nil }

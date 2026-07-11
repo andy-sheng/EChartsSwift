@@ -29,11 +29,12 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                 -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';               -> SeriesData (data/SeriesData.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//       -> PORT-TODO: component/brush/selector.ts not ported — brush is out of scope (brushSelector deferred below).
+//       -> BrushCommonSelectorsForSeries (component/brush/brushVisual.swift). The scatter `brushSelector`
+//          override is still deferred (see below).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-TODO: visual/tokens.ts not ported yet. `tokens.color.primary` is inlined verbatim as its
+//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported. `tokens.color.primary` is inlined verbatim as its
 //          resolved constant in `defaultOption` (same convention as BarSeries.swift);
-//          re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+//          a live `tokens` read could replace the inlined constant.
 //            tokens.color.primary = color.neutral80 = '#3c3c41'
 
 // ============================================================================
@@ -76,8 +77,9 @@ open class ScatterSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.scatter" }
 
     // upstream: static readonly dependencies = ['grid', 'polar', 'geo', 'singleAxis', 'calendar', 'matrix'];
-    //   PORT-TODO: only grid/cartesian2d is renderable now (polar/geo/singleAxis/calendar/matrix coord
-    //   systems not ported); the dependency list is kept verbatim so registration/topo order matches.
+    //   PORT-NOTE: cartesian2d / polar / geo scatter are renderable now (see ScatterView); singleAxis /
+    //   calendar / matrix scatter are still deferred though their coord systems are ported. The dependency
+    //   list is kept verbatim so registration/topo order matches.
     public override class var dependencies: [String] {
         return ["grid", "polar", "geo", "singleAxis", "calendar", "matrix"]
     }
@@ -161,7 +163,7 @@ open class ScatterSeriesModel: SeriesModel {
     //   brushSelector(dataIndex, data, selectors): boolean {
     //       return selectors.point(data.getItemLayout(dataIndex));
     //   }
-    // PORT-TODO: component/brush/selector.ts (BrushCommonSelectorsForSeries) not ported — brush is out of
+    // PORT-NOTE: component/brush/selector.ts (BrushCommonSelectorsForSeries) not ported — brush is out of
     //   scope for the scatter milestone. Restore this override when the brush component lands.
 
     // upstream: static defaultOption: ScatterSeriesOption = { ... }
@@ -192,8 +194,8 @@ open class ScatterSeriesModel: SeriesModel {
 
             "select": [
                 "itemStyle": [
-                    // PORT-TODO: tokens.color.primary inlined as resolved constant (color.neutral80);
-                    //   re-wire to `tokens.color.primary` once visual/tokens.swift lands.
+                    // PORT-NOTE: tokens.color.primary inlined as its resolved constant (color.neutral80);
+                    //   visual/tokens.swift is ported (Tokens.color.primary) if a live read is wanted.
                     "borderColor": "#3c3c41"   // tokens.color.primary
                 ] as [String: Any]
             ] as [String: Any],

@@ -28,7 +28,8 @@ import ZRenderKit
 //       sibling tree-data track). This file references `Tree.createTree`, `tree.data`,
 //       `tree.getNodeByDataIndex`, `tree.root`, `node.depth`, `node.contains(...)`.
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
-//       -> PORT-TODO: chart/helper/treeHelper.ts NOT ported (only used by `getDataParams`, deferred).
+//       -> PORT-NOTE: chart/helper/treeHelper.swift IS ported, but `wrapTreePathInfo` within it is a
+//          deferred stub (only consumed by `getDataParams`, itself deferred).
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -46,7 +47,7 @@ import ZRenderKit
 // `SortParam` which is materialized (below) because the `sort` callback consumes it by value.
 // ============================================================================
 
-// PORT-TODO: TreeNode `depth`/`height`/`dataIndex` are `number` upstream. The exact Swift numeric type
+// PORT-NOTE: TreeNode `depth`/`height`/`dataIndex` are `number` upstream. The exact Swift numeric type
 //   (Int vs Double) is owned by the sibling data/Tree.swift track. To stay build-robust regardless of
 //   that choice, every float-math use here wraps the metric in `Double(...)` and every array-index use
 //   wraps it in `Int(...)` (both compile whether the source is Int or Double). Integrate reconciles.
@@ -248,7 +249,7 @@ open class SunburstSeriesModel: SeriesModel {
 
     // getViewRoot() { return this._viewRoot; }
     open func getViewRoot() -> TreeNode {
-        // PORT-TODO: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
+        // PORT-NOTE: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
         //   lifecycle hook). If the driver has not invoked `optionUpdated` yet, `_viewRoot` is
         //   nil; lazily reset here so the layout/view see a valid root (safe fallback per task rule 6).
         if self._viewRoot == nil {

@@ -32,7 +32,9 @@ import ZRenderKit
 // import ExtensionAPI from '../../core/ExtensionAPI';      -> EChartsKit `ExtensionAPI` (core/ExtensionAPI.swift).
 // import { Payload, Dictionary } from '../../util/types';  -> EChartsKit util/types.swift (`Payload`, `Dictionary<T>` = [String: T]).
 // import type BaseAxisPointer from '../axisPointer/BaseAxisPointer';
-//   -> PORT-TODO: BaseAxisPointer not ported (out of scope). Referenced only via the `Any?`
+//   -> PORT-NOTE: BaseAxisPointer is ported (component/axisPointer/BaseAxisPointer.swift), but this
+//      base-AxisView path is unused here (axisPointer is driven by AxisPointerView/globalListener instead);
+//      referenced in this file only via the `Any?`
 //      `_axisPointer` slot and the `AxisPointerConstructor` factory typealias below.
 
 // upstream:
@@ -67,7 +69,7 @@ open class AxisView: ComponentView {
      * @private
      */
     // upstream: private _axisPointer: BaseAxisPointer;
-    // PORT-TODO: BaseAxisPointer not ported (out of scope); typed `Any?`. Never assigned in-scope.
+    // PORT-NOTE: BaseAxisPointer is ported but unused by this base-AxisView path; typed `Any?`. Never assigned here.
     private var _axisPointer: Any?
 
     /**
@@ -80,7 +82,7 @@ open class AxisView: ComponentView {
     /**
      * @override
      */
-    // PORT-TODO: upstream types `axisModel: AxisBaseModel`; Swift cannot narrow an override parameter
+    // PORT-NOTE: upstream types `axisModel: AxisBaseModel`; Swift cannot narrow an override parameter
     //   (ComponentView.render takes ComponentModel), so the base type is kept and downcast where an
     //   AxisBaseModel is required. The render pipeline always passes an AxisBaseModel here.
     open override func render(_ axisModel: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload) {
@@ -119,8 +121,8 @@ open class AxisView: ComponentView {
     open func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let axisPointer = self._axisPointer
         if axisPointer != nil {
-            // PORT-TODO: axisPointer.remove(api) — BaseAxisPointer out of scope; `_axisPointer` is
-            //   never assigned in-scope so this is dead code.
+            // PORT-NOTE: axisPointer.remove(api) — BaseAxisPointer is ported but unused by this path;
+            //   `_axisPointer` is never assigned here so this is dead code.
         }
     }
 
@@ -152,8 +154,8 @@ open class AxisView: ComponentView {
 
     private func _disposeAxisPointer(_ api: ExtensionAPI) {
         if self._axisPointer != nil {
-            // PORT-TODO: self._axisPointer.dispose(api) — BaseAxisPointer out of scope; never
-            //   assigned in-scope. Upstream: this._axisPointer && this._axisPointer.dispose(api);
+            // PORT-NOTE: self._axisPointer.dispose(api) — BaseAxisPointer is ported but unused by this path;
+            //   `_axisPointer` never assigned here. Upstream: this._axisPointer && this._axisPointer.dispose(api);
         }
         self._axisPointer = nil
     }

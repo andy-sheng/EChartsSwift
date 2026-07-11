@@ -5,7 +5,7 @@
 //
 // jest -> XCTest mapping as elsewhere. Notes on faithful divergences:
 //   * `compressBatches` builds its result from `[String: ...]` dictionaries, whose key
-//     iteration order is UNSPECIFIED in Swift (documented PORT-TODO at modelUtil.swift and
+//     iteration order is UNSPECIFIED in Swift (documented PORT-NOTE at modelUtil.swift and
 //     clazz.swift). Upstream relies on JS objects iterating integer-like keys in ascending
 //     numeric order, which is why the expected arrays are sorted. We therefore compare the
 //     result in an order-NORMALIZED canonical form (sort seriesId + sort dataIndex). The
