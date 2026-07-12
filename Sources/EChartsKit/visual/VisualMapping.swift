@@ -699,8 +699,9 @@ private func normalizeVisualRange(_ thisOption: VisualMappingInnerOption, _ isCa
         for v in arr { visualArr.append(v) }
     }
     else if let dict = visual as? [String: Any] {
-        // PORT-TODO: Swift dict iteration order is nondeterministic; upstream relies on JS object
-        //   insertion order here. Rare (visual for linear/fixed is usually an array).
+        // POTENTIAL-BUG (SEMANTIC_RISK): Swift dict iteration order is nondeterministic; upstream relies
+        //   on JS object insertion order here, so the flattened visualArr order (and thus paired visual
+        //   assignment) can differ. Rare (visual for linear/fixed is usually an array, not an object).
         for (_, v) in dict { visualArr.append(v) }
     }
     else if visual != nil {

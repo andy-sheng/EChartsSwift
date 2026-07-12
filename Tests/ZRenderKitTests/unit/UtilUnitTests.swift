@@ -150,7 +150,7 @@ final class UtilUnitTests: XCTestCase {
         throw XCTSkip("util.clone built-in passthrough is not faithfully testable: upstream returns "
             + "Date/function/RegExp/Error BY REFERENCE (BUILTIN_OBJECT branch). In Swift, Date is a "
             + "value type (no `===`), functions are not representable, so the reference-equality "
-            + "assertions `clone(d) === d` cannot be expressed. (util.swift PORT-TODO: BUILTIN_OBJECT)")
+            + "assertions `clone(d) === d` cannot be expressed. (util.swift PORT-NOTE: BUILTIN_OBJECT)")
     }
 
     // upstream: it('TypedArray')
@@ -158,7 +158,7 @@ final class UtilUnitTests: XCTestCase {
         throw XCTSkip("util.clone TypedArray branch is not ported: upstream allocates a NEW typed "
             + "array (distinct reference, equal contents). Swift ContiguousArray is a value type, so "
             + "the `cloned !== original` reference test is moot and clone() passes the value through. "
-            + "(util.swift PORT-TODO: TYPED_ARRAY branch)")
+            + "(util.swift PORT-NOTE: TYPED_ARRAY branch)")
     }
 
     // upstream: it('user_defined_class')

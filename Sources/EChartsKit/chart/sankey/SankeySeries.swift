@@ -38,8 +38,8 @@ import ZRenderKit
 //       coord/cartesian/cartesianAxisHelper.swift; real util/layout.swift LayoutRect deferred).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
 //       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift); used by formatTooltip below.
-//   import type View from '../../coord/View';                         -> PORT-TODO: coord/View.ts NOT ported
-//       (the box `View` coordinate system + roam are deferred); `coordinateSystem` uses the inherited `Any?`.
+//   import type View from '../../coord/View';                         -> PORT-NOTE (deferred): requires coord/View.ts
+//       (the box `View` coordinate system + roam are not ported); `coordinateSystem` uses the inherited `Any?`.
 //   import tokens from '../../visual/tokens';
 //       -> PORT-NOTE: visual/tokens.swift IS ported, but the consumed values are inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
@@ -59,11 +59,11 @@ open class SankeySeriesModel: SeriesModel {
     open override class var layoutMode: Any? { return "box" }
 
     // coordinateSystem: View;
-    //   PORT-TODO: upstream types `coordinateSystem: View`; coord/View.ts NOT ported, so the inherited
-    //   `open var coordinateSystem: Any?` slot (model/Series.swift) is used unchanged.
+    //   PORT-NOTE (deferred): upstream types `coordinateSystem: View`; requires coord/View.ts (not ported),
+    //   so the inherited `open var coordinateSystem: Any?` slot (model/Series.swift) is used unchanged.
 
     // levelModels: Model<SankeyLevelOption>[];
-    //   PORT-TODO: upstream is a SPARSE array indexed by node depth (`levelModels[levels[i].depth] = …`,
+    //   PORT-NOTE: upstream is a SPARSE array indexed by node depth (`levelModels[levels[i].depth] = …`,
     //   read back as `levelModels[nodeDepth]` with an `if (levelModel)` presence guard). A sparse JS array
     //   with gaps behaves like a keyed map, so it is modeled as `[Int: Model]` (missing depth == undefined),
     //   which reproduces the index-by-depth semantics exactly.
@@ -102,7 +102,7 @@ open class SankeySeriesModel: SeriesModel {
             }
             else {
                 // if (__DEV__) { throw new Error('levels[i].depth is mandatory and should be natural number'); }
-                // PORT-TODO: __DEV__ guard — the throw is dropped in release-equivalent builds.
+                // PORT-NOTE: __DEV__ guard — the throw is dropped in release-equivalent builds.
             }
         }
 
@@ -125,15 +125,16 @@ open class SankeySeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-TODO: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by name —
-        //   see data/SeriesData.swift), so the injected closure is NOT actually invoked; the level-model
-        //   parenting therefore does not take effect through this path yet. Preserved faithfully for the
-        //   diffable surface and for when wrapMethod becomes real. (`model.parentModel` is the series model
-        //   because the item Model's parent is the series — `getGraph()` mirrors upstream's read.)
+        // PORT-NOTE (deferred): requires a real SeriesData.wrapMethod that rebinds `getItemModel` by name.
+        //   The current wrapMethod stores an injection but `getItemModel` does not invoke it (and the
+        //   injection signature is fed only a SeriesData result, not the Model+idx), so the level-model
+        //   parenting does not take effect through this path yet. Preserved faithfully for the diffable
+        //   surface and for when wrapMethod becomes real. (`model.parentModel` is the series model because
+        //   the item Model's parent is the series — `getGraph()` mirrors upstream's read.)
         nodeData.wrapMethod("getItemModel") { [weak self] args in
             guard let self = self, let model = args.first as? Model else { return args.first as Any? }
             // upstream reads `idx` from the wrapped args; the stub feeds only the result Model, so the
-            //   `idx`-keyed layout lookup is inert here (see wrapMethod PORT-TODO). Kept for provenance.
+            //   `idx`-keyed layout lookup is inert here (see wrapMethod PORT-NOTE). Kept for provenance.
             _ = self
             return model
         }
@@ -149,7 +150,8 @@ open class SankeySeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-TODO: same wrapMethod stub deferral as the node closure above.
+        // PORT-NOTE (deferred): same wrapMethod stub deferral as the node closure above (requires a real
+        //   wrapMethod that rebinds `getItemModel`).
         edgeData.wrapMethod("getItemModel") { args in
             return args.first as Any?
         }
@@ -191,8 +193,9 @@ open class SankeySeriesModel: SeriesModel {
      */
     // getGraph() { return this.getData().graph; }
     open func getGraph() -> Graph {
-        // PORT-TODO: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap to
-        //   the ported Graph. linkSeriesData guarantees it is a Graph for sankey (createGraphFromNodeEdge).
+        // PORT-NOTE: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap to
+        //   the ported Graph — faithful to upstream's non-optional `this.getData().graph` return. The
+        //   invariant holds: createGraphFromNodeEdge (getInitialData) always sets graph for sankey.
         return self.getData().graph!
     }
 
@@ -313,7 +316,9 @@ open class SankeySeriesModel: SeriesModel {
             // true | false | 'move' | 'scale', see module:component/helper/RoamController.
             "roam": false,
             "roamTrigger": "global",
-            // PORT-TODO: upstream `center: null`; NSNull() retains the key in the [String: Any] bag.
+            // POTENTIAL-BUG: upstream `center: null`; NSNull() faithfully retains the key in the
+            //   [String: Any] bag, but a reader doing `bag["center"] != nil` sees NSNull as present
+            //   (JS `center == null` would be true). Readers must `as?`-cast (NSNull fails the cast → absent).
             "center": NSNull(),
             "zoom": 1.0,
 

@@ -39,7 +39,7 @@ import ZRenderKit
 // import LegendVisualProvider from '../visual/LegendVisualProvider';  -> LegendVisualProvider (visual/LegendVisualProvider.swift)
 // import SeriesData from '../data/SeriesData';                     -> SeriesData (data/SeriesData.swift)
 // import Axis from '../coord/Axis';                                -> Axis (coord/Axis.swift)
-// import type { BrushCommonSelectorsForSeries, BrushSelectableArea } from '../component/brush/selector';  -> PORT-TODO: brush not ported
+// import type { BrushCommonSelectorsForSeries, BrushSelectableArea } from '../component/brush/selector';  -> PORT-NOTE: both types ARE ported (component/brush/brushVisual.swift); brush/selector.ts not yet split into its own module.
 // import makeStyleMapper from './mixin/makeStyleMapper';           -> makeStyleMapper (sibling model/mixin/makeStyleMapper.swift)
 // import { SourceManager } from '../data/helper/sourceManager';    -> SourceManager (data/helper/sourceManager.swift)
 // import { Source } from '../data/Source';                         -> Source (data/Source.swift)
@@ -244,8 +244,9 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     open override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = fetchLayoutMode(this);
         // const inputPositionParams = layoutMode ? getLayoutParams(option) : {};
-        // PORT-TODO: util/layout.ts not ported — layout-mode param extraction and the final
-        //   `mergeLayoutParam` below are deferred.
+        // PORT-NOTE (deferred): requires fetchLayoutMode / getLayoutParams (util/layout.ts) — only
+        //   mergeLayoutParam is ported (util/layout.swift). Layout-mode param extraction and the final
+        //   `mergeLayoutParam` below are deferred until those two land.
 
         // Backward compat: using subType on theme.
         // But if name duplicate between series subType
@@ -256,10 +257,14 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
             themeSubType += "Series"
         }
         // zrUtil.merge(option, ecModel.getTheme().get(this.subType));
-        // PORT-TODO: GlobalModel placeholder has no `getTheme()`; theme merge deferred until
-        //   model/Global lands. `themeSubType` is computed faithfully but otherwise unused here.
+        // NOTE (upstream quirk): `themeSubType` is computed above but the merge reads `this.subType`
+        //   (themeSubType is dead in upstream too — see model/Series.ts). getTheme() IS ported (Global.swift).
         _ = themeSubType
-        _ = ecModel
+        if var target = (self.option ?? option) as? [String: Any],
+           let themeForSub = ecModel?.getTheme().get(self.subType) as? [String: Any] {
+            util.merge(&target, themeForSub, false)
+            self.option = target
+        }
 
         // zrUtil.merge(option, this.getDefaultOption());
         // PORT-NOTE: option bags are value types; merge the default into a mutable copy and write
@@ -272,14 +277,15 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
 
         // Default label emphasis `show`
         // modelUtil.defaultEmphasis(option, 'label', ['show']);
-        // PORT-TODO: model.defaultEmphasis takes a typed `DisplayStateHostOption` (struct); the
-        //   dynamic option bag is `[String: Any]`. Top-level label emphasis defaulting deferred.
+        // PORT-NOTE (deferred): requires bridging the dynamic `[String: Any]` option bag to the typed
+        //   `DisplayStateHostOption` struct that modelUtil.defaultEmphasis consumes (with read-modify-
+        //   write-back through self.option). Top-level label emphasis defaulting deferred.
 
         // this.fillDataTextStyle(option.data);
         self.fillDataTextStyle((self.option as? [String: Any])?["data"])
 
         // if (layoutMode) { mergeLayoutParam(option, inputPositionParams, layoutMode); }
-        // PORT-TODO: fetchLayoutMode/getLayoutParams (layout-mode selection) not yet ported — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
+        // PORT-NOTE (deferred): requires fetchLayoutMode/getLayoutParams (layout-mode selection, not yet ported) — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
     }
 
     open override func mergeOption(_ newSeriesOption: ModelOption?, _ ecModel: GlobalModel?) {
@@ -296,7 +302,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
 
         // const layoutMode = fetchLayoutMode(this);
         // if (layoutMode) { mergeLayoutParam(this.option, newSeriesOption, layoutMode); }
-        // PORT-TODO: fetchLayoutMode/getLayoutParams (layout-mode selection) not yet ported — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
+        // PORT-NOTE (deferred): requires fetchLayoutMode/getLayoutParams (layout-mode selection, not yet ported) — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
 
         let sourceManager = inner(self).sourceManager
         sourceManager?.dirty()
@@ -329,8 +335,9 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
                 // if (data[i] && data[i].label)
                 if let item = arr[i] as? [String: Any], item["label"] != nil {
                     // modelUtil.defaultEmphasis(data[i], 'label', props);
-                    // PORT-TODO: model.defaultEmphasis takes a typed `DisplayStateHostOption`; the
-                    //   dynamic data item is `[String: Any]`. Per-item emphasis defaulting deferred.
+                    // PORT-NOTE (deferred): requires bridging the dynamic `[String: Any]` data item to the
+                    //   typed `DisplayStateHostOption` that modelUtil.defaultEmphasis consumes (and writing
+                    //   the mutated item back through self.option's data array). Per-item emphasis defaulting deferred.
                 }
             }
         }
@@ -371,9 +378,9 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         if let task = task {
             let data = task.context.data!
             // upstream: return (dataType == null || !data.getLinkedData) ? data : data.getLinkedData(dataType);
-            // PORT-TODO: `!data.getLinkedData` checks method existence; base SeriesData's
-            //   getLinkedData is provided by Graph/Tree only (it fatalErrors otherwise). Treat as
-            //   absent here -> always return `data` (the linked-data branch lands with Graph/Tree).
+            // PORT-NOTE (deferred): `!data.getLinkedData` checks method existence; requires the
+            //   Graph/Tree getLinkedData (base SeriesData.getLinkedData fatalErrors — not ported).
+            //   Treat as absent here -> always return `data` (the linked-data branch lands with Graph/Tree).
             _ = dataType
             return data
         }
@@ -394,8 +401,8 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     open func getAllData() -> [(data: SeriesData, type: SeriesDataType?)] {
         let mainData = self.getData()
         // upstream: (mainData && mainData.getLinkedDataAll) ? mainData.getLinkedDataAll() : [{ data: mainData }];
-        // PORT-TODO: getLinkedDataAll is provided by Graph/Tree only (fatalErrors otherwise); treat
-        //   as absent.
+        // PORT-NOTE (deferred): requires the Graph/Tree getLinkedDataAll (base SeriesData.getLinkedDataAll
+        //   fatalErrors — not ported); treat as absent.
         return [(data: mainData, type: nil)]
     }
 
@@ -977,9 +984,11 @@ func getCurrentTask(_ seriesModel: SeriesModel) -> SeriesTask? {
     // const scheduler = (seriesModel.ecModel || {}).scheduler;
     // const pipeline = scheduler && scheduler.getPipeline(seriesModel.uid);
     // ... return the pipeline currentTask (or its agentStub for an OverallTask).
-    // PORT-TODO: core/Scheduler.ts not ported (Phase 6) and GlobalModel placeholder has no
-    //   `scheduler`; no pipeline task is reachable -> returns nil (so getData/setData fall back to
-    //   `inner(this).data`). Faithful body restored when the Scheduler lands.
+    // PORT-NOTE (deferred): core/Scheduler.swift IS ported and GlobalModel now has `scheduler`, but
+    //   wiring this to resolve `pipeline.currentTask` (+ agentStub) back to a `SeriesTask` and thereby
+    //   change getData/setData's data source is deferred to the C2 render-pipeline routing work — the
+    //   render pipeline does not yet publish a per-series currentTask whose context.data is authoritative.
+    //   Returns nil for now (so getData/setData fall back to `inner(this).data`).
     _ = seriesModel
     return nil
 }

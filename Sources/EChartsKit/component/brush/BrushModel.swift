@@ -26,7 +26,7 @@ import ZRenderKit
 // import Model from '../../model/Model';                     -> Model (model/Model.swift)
 // import ComponentModel from '../../model/Component';        -> ComponentModel (model/Component.swift)
 // import BrushTargetManager from '../helper/BrushTargetManager';
-//   -> PORT-TODO: BrushTargetManager NOT ported (DEFERRED with the full BrushController). The
+//   -> PORT-NOTE (deferred): requires BrushTargetManager (DEFERRED with the full BrushController). The
 //      `brushTargetManager` inject slot is preserved below as an untyped `Any?` for the later
 //      target-matching task.
 // import {
@@ -102,7 +102,7 @@ open class BrushModel: ComponentModel {
     public var brushOption: [String: Any] = [:]
 
     // Inject brushTargetManager: BrushTargetManager;
-    // PORT-TODO: BrushTargetManager DEFERRED; kept untyped for the later target-matching task.
+    // PORT-NOTE (deferred): requires BrushTargetManager; kept untyped for the later target-matching task.
     public var brushTargetManager: Any?
 
     // optionUpdated(newOption: BrushOption, isInit: boolean): void

@@ -34,7 +34,7 @@ import ZRenderKit
 //     `params`, plus the coord-system dispatch via the ported `prepareCustoms`.
 //   - `mergeChildren` group building.
 //
-// DEFERRED (each marked // PORT-TODO at its site):
+// DEFERRED (each marked // PORT-NOTE at its site):
 //   - the transition/animation/morph machinery: `applyUpdateTransition` / `applyLeaveTransition` /
 //     `applyKeyframeAnimation` / `stopPreviousKeyframeAnimationAndRestore` — replaced by a direct
 //     static apply of the final shape/style/transform (mirrors GraphicComponentView's
@@ -43,7 +43,7 @@ import ZRenderKit
 //     (same deviation as ScatterView/BarView), and `diffGroupChildren` / DataDiffer child-diff.
 //   - emphasis/blur/select STATES: `updateElOnState` / `setDefaultStateProxy` / `toggleHoverEmphasis`
 //     are now ported (util/states is present). Still DEFERRED: the per-state application loop that
-//     CALLS `updateElOnState` (the `for (STATES)` walk + `retrieveStateOption`) — see its PORT-TODO.
+//     CALLS `updateElOnState` (the `for (STATES)` walk + `retrieveStateOption`) — see its PORT-NOTE.
 //   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
 //   - the legacy ec4 style compat (`convertFromEC4CompatibleStyle` / `isEC4CompatibleStyle` /
 //     `convertToEC4StyleForCustomSerise`) and the deprecated `api.style` / `api.styleEmphasis`.
@@ -212,9 +212,10 @@ private func copyElement(_ sourceEl: Element, _ targetEl: Element) {
     targetEl.copyTransform(sourceEl)
     if let target = targetEl as? Displayable, let source = sourceEl as? Displayable {
         // upstream: targetEl.setStyle(sourceEl.style); z/z2/zlevel/invisible/ignore copied.
-        // PORT-TODO: `Displayable.style` is a typed struct; a generic `setStyle(source.style)` across
-        //   Path/Text/Image variants is not uniformly typed here. Copy the scalar display props;
-        //   the style copy is deferred (recreate path is off the static critical path).
+        // PORT-NOTE (language difference): `Displayable.style` is a typed struct; a generic
+        //   `setStyle(source.style)` across Path/Text/Image variants is not uniformly typed here. Copy
+        //   the scalar display props; the style copy is deferred (recreate path is off the static
+        //   critical path).
         target.z = source.z
         target.z2 = source.z2
         target.zlevel = source.zlevel
@@ -278,9 +279,10 @@ open class CustomChartView: ChartView {
         //   const clipPath = customSeries.get('clip', true)
         //       ? createClipPath(customSeries.coordinateSystem, false, customSeries) : null;
         //   if (clipPath) { group.setClipPath(clipPath); } else { group.removeClipPath(); }
-        // PORT-TODO: the group-level clip (createClipPath — Polar clip + cartesian animation) is
-        //   DEFERRED. Static shape rendering does not require it; wire once createClipPath/Polar land
-        //   for the custom-series model surface.
+        // PORT-NOTE (deferred): `createClipPath` IS ported (chart/helper/createClipPathFromCoordSys), but
+        //   wiring the group-level clip for the custom series (its `coordinateSystem` access +
+        //   SeriesModelWithLineWidth conformance, plus the still-deferred Polar clip branch) is not done.
+        //   Static shape rendering does not require it.
 
         self._data = data
     }
@@ -306,8 +308,9 @@ open class CustomChartView: ChartView {
 
         // upstream: function setIncrementalAndHoverLayer(el) { ... el.incremental = getIncrementalId(...);
         //   el.ensureState('emphasis').hoverLayer = HOVER_LAYER_FOR_INCREMENTAL; }
-        // PORT-TODO: `el.incremental` / hover-layer emphasis state DEFERRED (states + incremental layer
-        //   not ported). The elements are still built + collected below.
+        // PORT-NOTE (deferred): requires the incremental hover-layer (`el.incremental` +
+        //   HOVER_LAYER_FOR_INCREMENTAL emphasis state), not ported. The elements are still built +
+        //   collected below.
 
         // upstream: for (let idx = params.start; idx < params.end; idx++) { ... }
         let start = Int(params.start)
@@ -326,7 +329,8 @@ open class CustomChartView: ChartView {
 
     // upstream: eachRendered(cb) { graphicUtil.traverseElements(this._progressiveEls || this.group, cb); }
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
-        // PORT-TODO: `graphicUtil.traverseElements` not ported; traverse the progressive els or group.
+        // PORT-NOTE (equivalent substitute): `graphicUtil.traverseElements` is not ported; the walk below
+        //   reproduces it — traverse the progressive els or group.
         //   `traverseElements` invokes `cb` on each root element itself and then walks its descendants;
         //   `Element.traverse` is a no-op stub while `Group.traverse` walks children, so invoke `cb` on
         //   each root and recurse into groups.
@@ -356,13 +360,14 @@ open class CustomChartView: ChartView {
         // Enable to give a name on a group made by `renderItem`, and listen
         // events that are triggered by its descendents.
         // upstream: while ((targetEl = targetEl.__hostTarget || targetEl.parent) && targetEl !== this.group)
-        // PORT-TODO: `__hostTarget` (text-content host back-pointer) not modeled; walk `parent` only.
-        var cur: Element? = targetEl.parent as? Element
+        //   `__hostTarget` (text-content host back-pointer) IS modeled on `Element`, so port faithfully:
+        //   prefer the host target, else the parent.
+        var cur: Element? = targetEl.__hostTarget ?? (targetEl.parent as? Element)
         while let c = cur, c !== self.group {
             if c.name == elementName {
                 return true
             }
-            cur = c.parent as? Element
+            cur = c.__hostTarget ?? (c.parent as? Element)
         }
 
         return false
@@ -381,13 +386,26 @@ private func createEl(_ elOption: [String: Any]) -> Element {
     // Those graphic elements are not shapes. They should not be
     // overwritten by users, so do them first.
     if graphicType == "path" {
-        // upstream: makePath(getPathData(shape), null, pathRect, shape.layout || 'center')
-        // PORT-TODO: `graphicUtil.makePath` (SVG path-data parsing) is NOT ported (see util/symbol.swift
-        //   note). A `path` custom element yields an empty `Path` until makePath lands; pathData/pathRect
-        //   are ignored. customInnerStore(el).customPathData tracked for the (deferred) recreate check.
-        let p = Path()
-        el = p
-        customInnerStore(el).customPathData = getPathData(elOption["shape"] as? [String: Any])
+        // upstream:
+        //   const shape = (elOption as CustomPathOption).shape;
+        //   const pathRect = (shape.width != null && shape.height != null)
+        //       ? { x: shape.x || 0, y: shape.y || 0, width: shape.width, height: shape.height } : null;
+        //   const pathData = getPathData(shape);
+        //   el = makePath(pathData, null, pathRect, shape.layout || 'center');
+        //   (el as CustomPathElement).__customPathData = pathData;
+        // `graphicUtil.makePath` IS ported (ZRenderKit `makePath` in Tool/ToolPath) → SVG path-data
+        //   parsing is wired. `SVGPath` is a `Path` subclass; the opts are applied later in updateElNormal.
+        let shape = (elOption["shape"] as? [String: Any]) ?? [:]
+        let pathData = getPathData(shape)
+        var pathRect: RectLike? = nil
+        if let w = customToDouble(shape["width"]), let h = customToDouble(shape["height"]) {
+            pathRect = BoundingRect(
+                customToDouble(shape["x"]) ?? 0, customToDouble(shape["y"]) ?? 0, w, h
+            )
+        }
+        let layout = (shape["layout"] as? String) ?? "center"
+        el = makePath(pathData, nil, pathRect, layout)
+        customInnerStore(el).customPathData = pathData
     }
     else if graphicType == "image" {
         el = ZRImage()
@@ -412,9 +430,15 @@ private func createEl(_ elOption: [String: Any]) -> Element {
         let paths: [Path] = util.map(pathsOpt) { (pathOpt, _) -> Path in
             // if (path.type === 'path') { return makePath(path.shape.pathData, path, null); }
             // else { const Clz = getShapeClass(path.type); ... return new Clz(); }
-            // PORT-TODO: makePath deferred; sub-path `type` is built via the same shape switch as
-            //   top-level elements (getShapeClass equivalent below).
+            //   `makePath` IS ported; a `type: 'path'` sub-path parses its `shape.pathData`. The `path`
+            //   opts bag is applied later (updateElNormal), so pass nil opts here (as the top-level
+            //   `path` element does). Other sub-path `type`s use the shape switch (getShapeClass
+            //   equivalent) below.
             let subType = pathOpt["type"] as? String
+            if subType == "path" {
+                let subShape = pathOpt["shape"] as? [String: Any]
+                return makePath(getPathData(subShape), nil, nil)
+            }
             let child = makeShapeElement(subType) ?? Path()
             return child
         }
@@ -426,8 +450,8 @@ private func createEl(_ elOption: [String: Any]) -> Element {
     }
     else {
         // upstream: const Clz = getShapeClass(graphicType); if (!Clz) throwError(...); el = new Clz();
-        // PORT-TODO: `graphicUtil.getShapeClass` (extendShape string->class registry) not ported; the
-        //   built-in shapes are switched explicitly in `makeShapeElement`.
+        // PORT-NOTE (equivalent substitute): `graphicUtil.getShapeClass` (the extendShape string->class
+        //   registry) is not ported; the built-in shapes are switched explicitly in `makeShapeElement`.
         if let shapeEl = makeShapeElement(graphicType) {
             el = shapeEl
         }
@@ -506,14 +530,17 @@ private func updateElNormal(
     if let styleOpt = styleOpt {
         if el.type == "text" {
             // Compatible with ec4: if `textFill`/`textStroke` exist use them as fill/stroke.
-            // PORT-TODO: handled inside the text-style bridge (`bridgeTextStyle`).
+            // PORT-NOTE: this ec4 compat is handled inside the text-style bridge (`bridgeTextStyle`,
+            //   which reads textFill/textStroke), so this site is intentionally a no-op.
             _ = styleOpt
         }
         // upstream: decal pattern resolution (createOrUpdatePatternFromDecal) — DEFERRED (decal).
     }
 
     // upstream: applyUpdateTransition(el, elOption, seriesModel, { dataIndex, isInit, clearStyle: true });
-    // PORT-TODO: DEFERRED. Static substitute — apply the final shape / style / transform directly.
+    // PORT-NOTE (deferred): the transition/animation machinery (`applyUpdateTransition`) is deferred;
+    //   `applyUpdateTransitionStatic` below is the static substitute — apply the final shape / style /
+    //   transform directly (mirrors GraphicComponentView).
     applyUpdateTransitionStatic(el, elOption)
 
     // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, seriesModel);  — DEFERRED.
@@ -766,9 +793,9 @@ private func makeRenderItem(
         userAPI.currDataIndexInside = dataIndexInside
 
         // upstream: renderItem && renderItem(defaults({ dataIndexInside, dataIndex, actionType }, userParams), userAPI)
-        // PORT-TODO: `context` — upstream shares one `{}` across the render round so a user can stash
-        //   cross-datum state; the value-type struct copies it per datum, so that sharing is lost (fresh
-        //   `[:]` here). Wire a reference-typed context if a demo needs it.
+        // PORT-NOTE (language difference): `context` — upstream shares one `{}` across the render round so
+        //   a user can stash cross-datum state; the value-type `[:]` copies per datum, so that sharing is
+        //   lost (fresh `[:]` here). Would need a reference-typed context box to restore the sharing.
         let userParams = CustomSeriesRenderItemParams(
             context: [:],
             dataIndex: Double(data.getRawIndex(dataIndexInside)),
@@ -838,8 +865,9 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
 
     func getWidth() -> Double { return extApi.getWidth() }
     func getHeight() -> Double { return extApi.getHeight() }
-    // PORT-TODO: `api.getZr` / `api.getDevicePixelRatio` are on ExtensionAPI's dynamic
-    //   `availableMethods` forwarding list but not exposed as Swift methods yet — stubbed.
+    // PORT-NOTE (deferred): `api.getZr` / `api.getDevicePixelRatio` are on ExtensionAPI's dynamic
+    //   `availableMethods` forwarding list but not yet exposed as callable Swift methods (dynamic
+    //   forwarding deferred to Phase 6b) — stubbed.
     func getZr() -> Any? { return nil }
     func getDevicePixelRatio() -> Double { return 1.0 }
 
@@ -861,13 +889,25 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     // upstream: function ordinalRawValue(dim?, dataIndexInside?): ParsedValue | OrdinalRawValue
     func ordinalRawValue(_ dim: DimensionLoose, _ dataIndexInside: Double?) -> Any? {
         let idx = resolveIdx(dataIndexInside)
-        // PORT-TODO: `data.getDimensionInfo` returns a non-Optional `SeriesDimensionDefine` in this port
-        //   (a missing dim can not be signalled), so upstream's `if (!dimInfo) { getDimensionIndex
-        //   fallback }` branch is unreachable; the ordinalMeta path below covers the common case.
+        // PORT-NOTE (language difference): `data.getDimensionInfo` returns a non-Optional
+        //   `SeriesDimensionDefine` in this port (a missing dim can not be signalled), so upstream's
+        //   `if (!dimInfo) { getDimensionIndex fallback }` branch is unreachable; the ordinalMeta path
+        //   below covers the common case.
         let dimInfo = data.getDimensionInfo(dim)
         let val = data.get(dimInfo.name, idx)
-        // const ordinalMeta = dimInfo && dimInfo.ordinalMeta;
-        // PORT-TODO: `ordinalMeta.categories[val]` — OrdinalMeta lookup deferred; return the raw val.
+        // upstream: const ordinalMeta = dimInfo && dimInfo.ordinalMeta;
+        //           return ordinalMeta ? ordinalMeta.categories[val as number] : val;
+        //   `SeriesDimensionDefine.ordinalMeta` IS modeled → wired. Numeric coercion of the ordinal
+        //   index mirrors SeriesData._getCategory (CONVENTIONS INT-vs-DOUBLE trap).
+        if let ordinalMeta = dimInfo.ordinalMeta {
+            let oi = (val as? Double) ?? Double.nan
+            if oi.isFinite {
+                let i = Int(oi)
+                if i >= 0 && i < ordinalMeta.categories.count {
+                    return ordinalMeta.categories[i]
+                }
+            }
+        }
         return val
     }
 
@@ -875,7 +915,9 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     //   DEFERRED — depends on label/labelStyle + styleCompat (createTextStyle / convertToEC4...),
     //   neither ported. Returns the raw item visual style bag as a best effort.
     func style(_ userProps: [String: Any]?, _ dataIndexInside: Double?) -> [String: Any] {
-        // PORT-TODO: full api.style (itemStyle + label + ec4 compat) not ported.
+        // PORT-NOTE (deferred): the full (deprecated) api.style (itemStyle + label + ec4 compat) requires
+        //   label/labelStyle createTextStyle + styleCompat convertToEC4Style, neither ported. Returns the
+        //   raw item visual style bag merged with userProps as a best effort.
         let idx = resolveIdx(dataIndexInside)
         var out = (data.getItemVisual(idx, "style") as? [String: Any]) ?? [:]
         if let userProps = userProps {
@@ -886,7 +928,8 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
 
     // upstream (deprecated): function styleEmphasis(userProps?, dataIndexInside?): ZRStyleProps  — DEFERRED.
     func styleEmphasis(_ userProps: [String: Any]?, _ dataIndexInside: Double?) -> [String: Any] {
-        // PORT-TODO: full api.styleEmphasis not ported.
+        // PORT-NOTE (deferred): the full (deprecated) api.styleEmphasis requires the same label/styleCompat
+        //   surface as api.style (not ported); returns userProps as a best effort.
         return userProps ?? [:]
     }
 
@@ -1063,7 +1106,8 @@ private func doCreateOrUpdateEl(
     )
 
     // upstream: doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit);
-    // PORT-TODO: per-element clipPath (createEl for the clip + update) DEFERRED (clip animation + assert).
+    // PORT-NOTE (deferred): the per-element `clipPath` spec (createEl for the clip element + its
+    //   update/animation + the isPath assert) is deferred with the transition machinery.
 
     updateElNormal(
         api, elUnwrapped, dataIndex, elOption, attachedTxInfoTmp, seriesModel, isInit
@@ -1088,9 +1132,8 @@ private func doCreateOrUpdateEl(
 
     // upstream: if (toBeReplacedIdx >= 0) group.replaceAt(el, toBeReplacedIdx); else group.add(el);
     if toBeReplacedIdx >= 0 {
-        // PORT-TODO: `Group.replaceAt` not present on the ported Group; remove-old + add is used
-        //   (loses the exact-index placement — acceptable in the static rebuild path).
-        _ = group.add(elUnwrapped)
+        // upstream: group.replaceAt(el, toBeReplacedIdx);  — `Group.replaceAt` IS ported → wired.
+        _ = group.replaceAt(elUnwrapped, toBeReplacedIdx)
     }
     else {
         _ = group.add(elUnwrapped)
@@ -1136,8 +1179,8 @@ private func doCreateOrUpdateAttachedTx(
     }
 
     // upstream: processTxInfo(normal) then processTxInfo(EMPHASIS); legacy ec4 conversion — DEFERRED.
-    // PORT-TODO: legacy-style detection + emphasis text config DEFERRED. Only `elOption.textContent`
-    //   (normal) is honored as a basic text child.
+    // PORT-NOTE (deferred): legacy ec4-style detection + per-state (emphasis/blur/select) text config are
+    //   deferred. Only `elOption.textContent` (normal) is honored as a basic text child.
     var txConOptNormal = elOption["textContent"]
 
     // upstream: if (txConOptNormal != null || ...emphasis/blur/select...) { textContent handling }
@@ -1218,7 +1261,8 @@ private func mergeChildren(
 
     if byName {
         // upstream: diffGroupChildren({...}) — the DataDiffer by-name child diff.
-        // PORT-TODO: by-name child DIFF (DataDiffer) DEFERRED; rebuild by index below as a fallback.
+        // PORT-NOTE (deferred): the by-name child DIFF (`diffGroupChildren` via DataDiffer) is deferred
+        //   with the enter/update/leave DIFF; rebuild by index below as a fallback.
     }
 
     // notMerge && el.removeAll();  — in the static rebuild the group child list starts empty anyway.
@@ -1335,7 +1379,8 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
     out.strokeNoScale = s["strokeNoScale"] as? Bool
     out.strokeFirst = s["strokeFirst"] as? Bool
     if let dash = s["lineDash"] as? [Double] { out.lineDash = .values(dash) }
-    // PORT-TODO: decal / lineDash-string / gradient fill bridging deferred.
+    // PORT-NOTE (deferred): requires decal-pattern / lineDash-string / gradient-fill modeling; those
+    //   style-bridge cases are deferred.
     return out
 }
 
@@ -1359,7 +1404,8 @@ private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     out.height = customToDouble(s["height"])
     out.x = customToDouble(s["x"])
     out.y = customToDouble(s["y"])
-    // PORT-TODO: fontStyle/fontWeight/rich/backgroundColor/padding bridging deferred.
+    // PORT-NOTE (deferred): fontStyle/fontWeight/rich/backgroundColor/padding text-style bridging is
+    //   deferred (basic-text subset only).
     return out
 }
 
@@ -1367,7 +1413,8 @@ private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
 private func bridgeImageStyle(_ s: [String: Any]) -> ImageStyleProps {
     var out = ImageStyleProps()
     if let url = s["image"] as? String { out.image = .url(url) }
-    // PORT-TODO: non-URL ImageLike source bridging deferred.
+    // PORT-NOTE (deferred): non-URL ImageLike sources (HTMLImageElement/HTMLCanvasElement) have no native
+    //   analog in the string-URL bridge; deferred.
     out.x = customToDouble(s["x"])
     out.y = customToDouble(s["y"])
     out.width = customToDouble(s["width"])

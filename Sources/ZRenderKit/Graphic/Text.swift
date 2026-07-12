@@ -451,7 +451,8 @@ public final class ZRText: Displayable, GroupLike {
                     self.useStyle(s)
                 }
                 else {
-                    // PORT-TODO: non-TextStyleProps `style` value — fall back to empty style.
+                    // PORT-NOTE (language): upstream JS always passes a style object; a non-`TextStyleProps`
+                    //   value has no analogue, so fall back to an empty style (defensive, semantically equivalent).
                     self.useStyle(TextStyleProps())
                 }
             }
@@ -1628,10 +1629,10 @@ private func zrNumberToString(_ n: Double) -> String {
 
 
 // ============================================================================================
-// PORT-TODO SEAM STUB — graphic/helper/parseText.ts (NOT yet ported).
-//   The full layout engine (wrap / truncate / rich-text token measurement) lives upstream in
-//   `graphic/helper/parseText.ts`. Until `Graphic/Helper/parseText.swift` is ported, this fence
-//   provides the minimal surface `ZRText` consumes. REMOVE this whole block when parseText lands.
+// PORT-NOTE (provenance) — graphic/helper/parseText.ts is ported INLINE below (not as a separate
+//   `Graphic/Helper/parseText.swift` file). The full layout engine (wrap / truncate / rich-text token
+//   measurement — `truncateText` / `parsePlainText` / `parseRichText` and their support types) lives in
+//   this fence. Move it to its own file if/when the helper directory is split out.
 // ============================================================================================
 
 // upstream: export type CalcInnerTextOverflowAreaOut = { baseX; baseY; outerWidth?; outerHeight? }
@@ -2150,8 +2151,8 @@ public enum parseText {
                     if tokenWidthNotSpecified {
                         // FIXME (upstream): if bg image not loaded and textWidth not specified,
                         //   getBoundingRect() will be incorrect.
-                        // PORT-TODO: the `backgroundColor.image` → token-width-from-image-size branch
-                        //   needs the image-loading seam (imageHelper.findExistImage / isImageReady),
+                        // PORT-NOTE (deferred): the `backgroundColor.image` → token-width-from-image-size branch
+                        //   requires the image-loading seam (imageHelper.findExistImage / isImageReady),
                         //   which is the canvas/browser image cache (CONVENTIONS §9), not ported.
                         //   Token width falls back to its measured text width below.
                     }

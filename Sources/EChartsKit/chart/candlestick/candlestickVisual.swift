@@ -64,7 +64,7 @@ public let candlestickVisual: StageHandler = {
 
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. `createRenderPlanner()` yields a
+    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. `createRenderPlanner()` yields a
     //   `(SeriesModel) -> StageHandlerPlanReturn?` while `StageHandler.plan` (`StageHandlerPlan`) has a
     //   NON-optional return, so "no reset" cannot be represented without spurious re-plans. Left unwired
     //   (same deviation as layout/barGrid.swift's `handler.plan = nil`). The `reset` stage still

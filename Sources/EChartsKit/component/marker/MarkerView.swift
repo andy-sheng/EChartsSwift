@@ -29,7 +29,10 @@ import ZRenderKit
 // import SeriesModel from '../../model/Series';                     -> EChartsKit `SeriesModel`
 // import Group from 'zrender/src/graphic/Group';                    -> ZRenderKit `Group`
 // import { enterBlur, leaveBlur } from '../../util/states';         -> util/states.swift (enterBlur/leaveBlur ported; the blur toggling usage is deferred, see below)
-// import { traverseUpdateZ, retrieveZInfo } from '../../util/graphic'; -> PORT-TODO: util/graphic.ts not yet ported
+// import { traverseUpdateZ, retrieveZInfo } from '../../util/graphic';
+//   -> PORT-NOTE (deferred): `retrieveZInfo` IS ported (component/helper/RoamController.swift), but
+//      `traverseUpdateZ` is not yet a reusable util/graphic function — only ECharts.swift has a private
+//      `doUpdateZ`. The marker-group z/zlevel pass (updateZ below) stays deferred until it is extracted.
 
 // const inner = makeInner<{ keep: boolean }, MarkerDraw>();
 // PORT-NOTE: `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
@@ -113,9 +116,13 @@ open class MarkerView: ComponentView {
                 let data = markerModel.getData()
                 data.eachItemGraphicEl { el, _ in
                     // if (el) { isBlur ? enterBlur(el) : leaveBlur(el); }
-                    // PORT-TODO: `enterBlur`/`leaveBlur` (util/states.ts) not yet ported — emphasis/
-                    //   blur state toggling is deferred (interaction, out of static-render scope).
-                    _ = (el, isBlur)
+                    //   (the `if (el)` null-guard is handled inside eachItemGraphicEl).
+                    if isBlur {
+                        states.enterBlur(el)
+                    }
+                    else {
+                        states.leaveBlur(el)
+                    }
                 }
             }
         }
@@ -151,8 +158,10 @@ private func updateZ(
         if let markerModel = markerModel, let markerDraw = markerDraw {
             // const { z, zlevel } = retrieveZInfo(markerModel);
             // traverseUpdateZ(markerDraw.group, z, zlevel);
-            // PORT-TODO: `retrieveZInfo` / `traverseUpdateZ` (util/graphic.ts) not yet ported — the
-            //   z/zlevel propagation onto the marker draw group is deferred until util/graphic lands.
+            // PORT-NOTE (deferred): requires a reusable `traverseUpdateZ` in util/graphic. `retrieveZInfo`
+            //   IS ported (RoamController.swift), but `traverseUpdateZ` exists only as ECharts.swift's
+            //   private `doUpdateZ`; the z/zlevel propagation onto the marker draw group is deferred until
+            //   it is extracted as a shared function.
             _ = (markerModel, markerDraw)
         }
     }

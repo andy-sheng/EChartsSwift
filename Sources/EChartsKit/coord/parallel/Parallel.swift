@@ -67,8 +67,8 @@ import ZRenderKit
 //       -> scaleRawExtentInfoCreate / AXIS_EXTENT_INFO_BUILD_FROM_COORD_SYS_UPDATE (coord/scaleRawExtentInfo.swift).
 //
 // Static-render scope (CONVENTIONS §5 + task): the layout math + `dataToPoint` polyline mapping are ported
-// in full; the brush / active-interval paths (`eachActiveState`, `hasAxisBrushed`) are now ported too. Only
-// the axis-drag expand-window slide (`getSlidedAxisExpandWindow`) remains DEFERRED (see PORT-TODO below).
+// in full; the brush / active-interval paths (`eachActiveState`, `hasAxisBrushed`) are ported too. The
+// axis-drag expand-window slide (`getSlidedAxisExpandWindow`) is now ported in full as well (see below).
 
 // upstream: interface ParallelCoordinateSystemLayoutInfo { ... }
 //   Internal data bag → private struct (CONVENTIONS §4).
@@ -280,9 +280,10 @@ public final class Parallel: CoordinateSystemMaster {
     }
 
     // upstream: getRect(): graphic.BoundingRect { return this._rect; }
-    //   PORT-TODO: upstream returns the concrete `BoundingRect`; the optional protocol requirement
-    //   `CoordinateSystemMaster.getRect(): RectLike?` therefore resolves to its nil default when Parallel is
-    //   held as the protocol (mirroring Single.getRect). Concrete-typed holders get the real rect.
+    //   PORT-NOTE: upstream returns the concrete `BoundingRect`; a non-optional `-> LayoutRect` witness
+    //   does not satisfy the optional protocol requirement `CoordinateSystemMaster.getRect(): RectLike?`,
+    //   so a Parallel held as the protocol would hit the nil default (mirrors Single/Calendar getRect).
+    //   Accepted: no protocol-typed caller invokes getRect on a Parallel; concrete holders get the real rect.
     public func getRect() -> LayoutRect {
         return self._rect
     }
@@ -579,14 +580,88 @@ public final class Parallel: CoordinateSystemMaster {
      * @return {Object} {axisExpandWindow, delta, behavior: 'jump' | 'slide' | 'none'}.
      */
     // upstream: getSlidedAxisExpandWindow(point: number[]): {axisExpandWindow: number[], behavior: ...} { ... }
-    // PORT-TODO: DEFERRED — axis-drag (expand-window slide) interaction (CONVENTIONS §5 + task). The full
-    //   body converts the pointer position into a slid `axisExpandWindow` via `sliderMove` and the
-    //   `axisExpandSlideTriggerArea` option. Not needed for static layout/polyline render; the stub returns
-    //   the current window with `behavior: 'none'` (upstream's out-of-bounds result). Restore the full
-    //   `_makeLayoutInfo`-based slide math (see upstream) when the interaction lands.
     public func getSlidedAxisExpandWindow(_ point: [Double]) -> (axisExpandWindow: [Double], behavior: SlidedAxisExpandBehavior) {
+        // const layoutInfo = this._makeLayoutInfo();
         let layoutInfo = self._makeLayoutInfo()
-        return (axisExpandWindow: layoutInfo.axisExpandWindow, behavior: "none")
+        // const pixelDimIndex = layoutInfo.pixelDimIndex;
+        let pixelDimIndex = layoutInfo.pixelDimIndex
+        // let axisExpandWindow = layoutInfo.axisExpandWindow.slice();  (value copy)
+        var axisExpandWindow = layoutInfo.axisExpandWindow
+        // const winSize = axisExpandWindow[1] - axisExpandWindow[0];
+        let winSize = axisExpandWindow[1] - axisExpandWindow[0]
+        // const extent = [0, layoutInfo.axisExpandWidth * (layoutInfo.axisCount - 1)];
+        let extent: [Double] = [0, layoutInfo.axisExpandWidth * (layoutInfo.axisCount - 1)]
+
+        // Out of the area of coordinate system.
+        // if (!this.containPoint(point)) { return {behavior: 'none', axisExpandWindow}; }
+        if !self.containPoint(point) {
+            return (axisExpandWindow: axisExpandWindow, behavior: "none")
+        }
+
+        // Convert the point from global to expand coordinates.
+        // const pointCoord = point[pixelDimIndex] - layoutInfo.layoutBase - layoutInfo.axisExpandWindow0Pos;
+        let pointCoord = point[pixelDimIndex] - layoutInfo.layoutBase - layoutInfo.axisExpandWindow0Pos
+
+        // let delta; let behavior = 'slide';
+        var delta: Double = 0
+        var behavior: SlidedAxisExpandBehavior = "slide"
+        // const axisCollapseWidth = layoutInfo.axisCollapseWidth;
+        let axisCollapseWidth = layoutInfo.axisCollapseWidth
+        // const triggerArea = this._model.get('axisExpandSlideTriggerArea');
+        let triggerArea = (self._model.get("axisExpandSlideTriggerArea") as? [Any]) ?? []
+        func ta(_ i: Int) -> Double { return (i < triggerArea.count) ? (numOpt(triggerArea[i]) ?? 0) : 0 }
+        // const useJump = triggerArea[0] != null;
+        let useJump = triggerArea.count > 0 && !(triggerArea[0] is NSNull)
+
+        // if (axisCollapseWidth) { ... } else { ... }
+        if axisCollapseWidth != 0 && !axisCollapseWidth.isNaN {
+            // if (useJump && ... && pointCoord < winSize * triggerArea[0]) { behavior='jump'; delta = pointCoord - winSize*triggerArea[2]; }
+            if useJump && pointCoord < winSize * ta(0) {
+                behavior = "jump"
+                delta = pointCoord - winSize * ta(2)
+            }
+            // else if (useJump && ... && pointCoord > winSize * (1 - triggerArea[0])) { behavior='jump'; delta = pointCoord - winSize*(1-triggerArea[2]); }
+            else if useJump && pointCoord > winSize * (1 - ta(0)) {
+                behavior = "jump"
+                delta = pointCoord - winSize * (1 - ta(2))
+            }
+            else {
+                // (delta = pointCoord - winSize*triggerArea[1]) >= 0
+                //     && (delta = pointCoord - winSize*(1-triggerArea[1])) <= 0
+                //     && (delta = 0);
+                delta = pointCoord - winSize * ta(1)
+                if delta >= 0 {
+                    delta = pointCoord - winSize * (1 - ta(1))
+                    if delta <= 0 {
+                        delta = 0
+                    }
+                }
+            }
+            // delta *= layoutInfo.axisExpandWidth / axisCollapseWidth;
+            delta *= layoutInfo.axisExpandWidth / axisCollapseWidth
+            // delta ? sliderMove(delta, axisExpandWindow, extent, 'all') : (behavior = 'none');
+            if delta != 0 && !delta.isNaN {
+                sliderMove(delta, &axisExpandWindow, extent, .all)
+            }
+            else {
+                behavior = "none"
+            }
+        }
+        // When screen is too narrow, make it visible and slidable, although it is hard to interact.
+        else {
+            // const winSize2 = axisExpandWindow[1] - axisExpandWindow[0];
+            let winSize2 = axisExpandWindow[1] - axisExpandWindow[0]
+            // const pos = extent[1] * pointCoord / winSize2;
+            let pos = extent[1] * pointCoord / winSize2
+            // axisExpandWindow = [mathMax(0, pos - winSize2 / 2)];
+            axisExpandWindow = [number.mathMax(0, pos - winSize2 / 2)]
+            // axisExpandWindow[1] = mathMin(extent[1], axisExpandWindow[0] + winSize2);
+            axisExpandWindow.append(number.mathMin(extent[1], axisExpandWindow[0] + winSize2))
+            // axisExpandWindow[0] = axisExpandWindow[1] - winSize2;
+            axisExpandWindow[0] = axisExpandWindow[1] - winSize2
+        }
+
+        return (axisExpandWindow: axisExpandWindow, behavior: behavior)
     }
 
     // TODO

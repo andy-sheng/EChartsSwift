@@ -30,9 +30,9 @@ import ZRenderKit
 //   import {NullUndefined, ScaleTick} from './types';                  -> ScaleTick in types.swift;
 //                                                                          NullUndefined collapses to `nil`.
 //   import { getDefaultLocaleModel, getLocaleModel, SYSTEM_LANG, LocaleOption } from '../core/locale';
-//                                                                       -> PORT-TODO: core/locale (Tier6) not ported.
+//                                                                       -> PORT-NOTE: core/locale.swift (ported).
 //   import Model from '../model/Model';                                -> model/Model.swift (ported).
-//   import { getScaleBreakHelper } from '../scale/break';              -> PORT-TODO: scale/break not ported.
+//   import { getScaleBreakHelper } from '../scale/break';              -> PORT-NOTE: scale/break.swift (ported).
 
 // ============================================================================
 // PORT-NOTE: FORWARD-REFERENCE TYPES for coord/axisCommonTypes.ts
@@ -51,8 +51,9 @@ public struct TimeAxisLabelFormatterExtraParams {                           // P
      * @deprecated Refactored to `time.level`, kept for backward compat.
      */
     public var level: Double
-    // PORT-TODO: also intersects AxisLabelFormatterExtraParams (the break part); omitted
-    //   until scale/break lands.
+    // PORT-NOTE: upstream also intersects AxisLabelFormatterExtraParams (the break part). That
+    //   intersection is omitted here: wiring it would require this struct to carry the break
+    //   fields so scale/break's makeAxisLabelFormatterParamBreak can enrich it (see leveledFormat).
     public init(time: TimeScaleTickTime?, level: Double) {
         self.time = time
         self.level = level
@@ -142,8 +143,6 @@ public enum time {
         _ formatter: TimeAxisLabelFormatterOption
     ) -> TimeAxisLabelFormatterParsed {
         // Keep the logic the same with function `leveledFormat`.
-        // PORT-TODO: util.isFunction currently returns false (ZRenderKit limitation), so a
-        //   closure formatter is not detected here and falls into the dictionary branch.
         return (!util.isString(formatter) && !util.isFunction(formatter))
             ? parseTimeAxisLabelFormatterDictionary(formatter as? TimeAxisLabelFormatterDictionaryOption)
             : formatter
@@ -341,15 +340,23 @@ public enum time {
         let a = H >= 12 ? "pm" : "am"
         let A = a.uppercased()
 
-        // PORT-TODO: locale Model (core/locale, model/Model) not ported yet. Upstream resolves
-        //   month/monthAbbr/dayOfWeek/dayOfWeekAbbr from a locale model
-        //   (`lang instanceof Model ? lang : getLocaleModel(lang || SYSTEM_LANG) || getDefaultLocaleModel()`).
-        //   Until locale lands, fall back to the built-in English locale (i18n/langEN).
-        _ = lang
-        let month = _fallbackMonth
-        let monthAbbr = _fallbackMonthAbbr
-        let dayOfWeek = _fallbackDayOfWeek
-        let dayOfWeekAbbr = _fallbackDayOfWeekAbbr
+        // upstream:
+        //   const localeModel = lang instanceof Model ? lang
+        //       : getLocaleModel(lang || SYSTEM_LANG) || getDefaultLocaleModel();
+        //   const timeModel = localeModel.getModel('time');
+        //   const month = timeModel.get('month'); ...
+        // getDefaultLocaleModel() force-unwraps the EN registration; substitute the crash-safe
+        // getLocaleModel(LOCALE_EN) here and fall back to the built-in EN constants when the
+        // time-model arrays are absent (e.g. locales not yet registered).
+        let langStr = lang as? String
+        let localeModel: Model? = (lang as? Model)
+            ?? locale.getLocaleModel(langStr?.isEmpty == false ? langStr! : locale.SYSTEM_LANG)
+            ?? locale.getLocaleModel(locale.LOCALE_EN)
+        let timeModel = localeModel?.getModel("time")
+        let month = (timeModel?.get("month") as? [String]) ?? _fallbackMonth
+        let monthAbbr = (timeModel?.get("monthAbbr") as? [String]) ?? _fallbackMonthAbbr
+        let dayOfWeek = (timeModel?.get("dayOfWeek") as? [String]) ?? _fallbackDayOfWeek
+        let dayOfWeekAbbr = (timeModel?.get("dayOfWeekAbbr") as? [String]) ?? _fallbackDayOfWeekAbbr
 
         return replaceAll(template ?? "", "{a}", a + "")
             |> { replaceAll($0, "{A}", A + "") }
@@ -390,14 +397,14 @@ public enum time {
             template = (formatter as! String)
         }
         else if util.isFunction(formatter) {
-            // PORT-TODO: util.isFunction currently returns false (ZRenderKit limitation), so this
-            //   branch is effectively dead; closure formatters cannot be detected dynamically.
             let extra = TimeAxisLabelFormatterExtraParams(
                 time: tick.time,
                 level: tick.time != nil ? tick.time!.level : 0
             )
-            // PORT-TODO: getScaleBreakHelper() (scale/break) not ported; the break-param
-            //   enrichment is skipped (the helper would be nil here).
+            // PORT-NOTE (deferred): the break-param enrichment below requires
+            //   TimeAxisLabelFormatterExtraParams to intersect AxisLabelFormatterExtraParams so that
+            //   scale/break's makeAxisLabelFormatterParamBreak can mutate it. That intersection is
+            //   omitted (see the struct definition), so the enrichment is skipped here.
             // const scaleBreakHelper = getScaleBreakHelper();
             // if (scaleBreakHelper) {
             //     scaleBreakHelper.makeAxisLabelFormatterParamBreak(extra, tick.break);
@@ -692,7 +699,8 @@ public enum time {
         return re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
     }
 
-    // PORT-TODO: locale fallback (i18n/langEN `time`), see `format`.
+    // PORT-NOTE: built-in EN locale fallback (mirrors i18n/langEN `time`), used by `format`/
+    //   `leveledFormat` when the resolved locale model has no `time` arrays registered.
     static let _fallbackMonth = [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"

@@ -31,7 +31,7 @@ import ZRenderKit
 //   import {boxplotLayoutStageHandler, registerBoxplotAxisHandlers} from './boxplotLayout';
 //       -> sibling boxplotLayout.swift (ported): `boxplotLayoutStageHandler` / `registerBoxplotAxisHandlers`.
 //   import { boxplotTransform } from './boxplotTransform';
-//       -> PORT-TODO: chart/boxplot/boxplotTransform.ts DEFERRED (dataset transform, see task scope).
+//       -> PORT-NOTE (deferred): requires chart/boxplot/boxplotTransform.ts (dataset transform) — NOT ported.
 //          Register once boxplotTransform.swift lands.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }

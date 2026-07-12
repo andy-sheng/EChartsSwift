@@ -134,10 +134,10 @@ open class ExtensionAPI {
         fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-NOTE: abstract
     }
 
-    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
+    // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
     //   Upstream returns `zr.painter.dpr` (the device pixel ratio). Used by `util/decal`'s tile
     //   rasterization (createOrUpdatePatternFromDecal). Defaults to 1 (the headless/test dpr); the
-    //   host painter can override when a real dpr is wired.
+    //   host painter overrides via this open method when a real dpr is wired.
     open func getDevicePixelRatio() -> Double {
         return 1
     }
@@ -152,7 +152,7 @@ open class ExtensionAPI {
         fatalError("abstract method ExtensionAPI.dispatchAction must be overridden") // PORT-NOTE: abstract
     }
 
-    // PORT-TODO: part of the `availableMethods` forwarding to `ecInstance` (`getConnectedDataURL` /
+    // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (`getConnectedDataURL` /
     //   `getDataURL`). Upstream returns a DATA-URL STRING of the rendered chart (a `<canvas>.toDataURL`).
     //   The headless port returns the ENCODED image `Data` (PNG/JPEG bytes) produced by the host-injected
     //   rasterizer (see ECharts `getRenderedImage`); nil when no host renderer is wired. Only the

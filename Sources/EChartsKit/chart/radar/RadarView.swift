@@ -29,8 +29,8 @@ import ZRenderKit
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Wired: each item's polyline/polygon carry their emphasis/blur/
 //       select line/area state styles and the whole itemGroup is a highDown dispatcher (focus:self blurs
-//       the other polygons). PORT-TODO: the per-state symbol itemStyle clone + per-state polygon.ignore
-//       toggle remain deferred (styling niceties, not the dispatcher).
+//       the other polygons). PORT-NOTE (deferred): the per-state symbol itemStyle clone + per-state
+//       polygon.ignore toggle remain deferred (styling niceties, not the dispatcher).
 //   import * as zrUtil from 'zrender/src/core/util';               -> `zrUtil.defaults` inlined (radarDefaults) / map dropped.
 //   import * as symbolUtil from '../../util/symbol';               -> `symbol` namespace (util/symbol.swift).
 //       DEVIATION: the vertex symbol is built inline with `symbol.createSymbol` (same deviation as
@@ -45,16 +45,17 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import { VectorArray } from 'zrender/src/core/vector';         -> VectorArray (ZRenderKit).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> label/labelStyle.swift (setLabelStyle + getLabelStatesModels ARE ported). PORT-TODO: the
-//          vertex value-label block (upstream RadarView.ts:235-265) remains DEFERRED — it needs the
+//       -> label/labelStyle.swift (setLabelStyle + getLabelStatesModels ARE ported). PORT-NOTE (deferred):
+//          the vertex value-label block (upstream RadarView.ts:235-265) remains DEFERRED — it needs the
 //          per-symbol `__dimIdx` tag + a symbolGroup styling loop (neither ported; symbols are drawn
 //          untagged by buildRadarSymbols) to source defaultText via
 //          getStore().get(getDimensionIndex(__dimIdx), idx) and pass it through SetLabelStyleOpt.
-//   import ZRImage from 'zrender/src/graphic/Image';               -> PORT-TODO: image-symbol branch DEFERRED (inline createSymbol only).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: update-transition NOT ported (DEFERRED).
+//   import ZRImage from 'zrender/src/graphic/Image';               -> PORT-NOTE: image-symbol branch DEFERRED (inline createSymbol only).
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-NOTE (deferred): saveOldStyle IS
+//       ported (basicTransition.swift) but unused here — the data.diff update-transition path is deferred (static rebuild).
 
 // type RadarSymbol = ReturnType<typeof symbolUtil.createSymbol> & { __dimIdx: number };
-//   PORT-TODO: the `__dimIdx` tag is only used by the DEFERRED vertex-label path; symbols are drawn
+//   PORT-NOTE (deferred): the `__dimIdx` tag is only used by the DEFERRED vertex-label path; symbols are drawn
 //   untagged in the static render.
 
 // upstream: class RadarView extends ChartView { static readonly type = SERIES_TYPE_RADAR; readonly type = SERIES_TYPE_RADAR; ... }
@@ -345,7 +346,7 @@ open class RadarView: ChartView {
         // polygon.useStyle(zrUtil.defaults(
         //     itemModel.getModel('areaStyle').getAreaStyle(),
         //     { fill: color, opacity: 0.7, decal: itemStyle.decal }));
-        //   PORT-TODO: `decal: itemStyle.decal` NOT applied (decal/pattern out of scope).
+        //   PORT-NOTE (deferred): `decal: itemStyle.decal` NOT applied (requires decal/pattern rendering, out of scope).
         var areaStyleDict = areaStyleModel.getAreaStyle()
         if areaStyleDict["fill"] == nil, let color = color { areaStyleDict["fill"] = color }
         if areaStyleDict["opacity"] == nil { areaStyleDict["opacity"] = 0.7 }

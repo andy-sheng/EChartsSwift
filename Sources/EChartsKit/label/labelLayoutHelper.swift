@@ -555,7 +555,8 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
 }
 
 /// upstream: `interface SavedLabelAttr` (LabelManager.ts). Only the fields the ported stage reads are
-/// carried; the drag / attached-text-config fields are PORT-TODO (see `LabelManager.swift`).
+/// carried. PORT-NOTE (deferred): the drag / attached-text-config fields require the deferred
+/// `draggable` / `labelLinePoints` support in `LabelManager.swift`.
 public struct SavedLabelAttr {
     public var ignore: Bool
     public var labelGuideIgnore: Bool

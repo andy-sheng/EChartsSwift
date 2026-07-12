@@ -203,9 +203,11 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
     }
 
     // upstream: getRect() { return this._rect; }
-    //   PORT-TODO: upstream returns the concrete `BoundingRect`; the optional protocol requirement
-    //   `CoordinateSystemMaster.getRect(): RectLike?` therefore resolves to its nil default when Calendar
-    //   is held as the protocol (mirroring Single/Grid.getRect). Concrete-typed holders get the real rect.
+    //   POTENTIAL-BUG (protocol-witness gap): upstream returns the concrete `BoundingRect`; the optional
+    //   protocol requirement `CoordinateSystemMaster.getRect(): RectLike?` may resolve to its nil default
+    //   when Calendar is held as the protocol (mirroring Single/Grid/Parallel/Matrix.getRect — a systemic
+    //   pattern). Concrete-typed holders get the real rect. Fix must be applied uniformly across the coord
+    //   family, so it is deferred here rather than patched in one file.
     public func getRect() -> LayoutRect {
         return self._rect
     }
@@ -431,8 +433,9 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
      * Convert a (x, y) point to time data
      */
     // upstream: pointToData(point: number[]): number { ... }
-    //   PORT-TODO: upstream `return date && date.time` yields `null` when `date` is null (falsy). The
-    //   declared return type is `number`; the Swift port returns `Double.nan` in the null case.
+    //   PORT-NOTE: upstream `return date && date.time` yields `null` when `date` is null (falsy). The
+    //   declared return type is `number`; the Swift port returns `Double.nan` in the null case as the
+    //   nearest non-Optional sentinel (JS/Swift language difference, semantically equivalent).
     public func pointToData(_ point: [Double]) -> Double {
         // const date = this.pointToDate(point);
         let date = self.pointToDate(point)

@@ -138,11 +138,12 @@ public enum geoSourceManager {
     }
 
     // load: function (mapName, nameMap, nameProperty): ReturnType<GeoResource['load']>
-    // PORT-TODO: upstream returns `undefined` when the map is not registered (`if (!resource) return;`);
+    // PORT-NOTE: upstream returns `undefined` when the map is not registered (`if (!resource) return;`);
     //   callers (e.g. `Geo`'s constructor: `source.regions`) then dereference it unchecked and crash.
     //   The ported `Geo.init` mirrors that by reading `source.regions` NON-optionally, so this returns a
     //   NON-optional `GeoResourceLoadResult` — the missing-map case yields an EMPTY result (after the
-    //   dev-only error) rather than `undefined`.
+    //   dev-only error) rather than `undefined`. Deliberate language-difference: no unwrapped-undefined
+    //   deref, and the caller path is unchanged for the map-registered (normal) case.
     public static func load(
         _ mapName: String,
         _ nameMap: NameMap?,

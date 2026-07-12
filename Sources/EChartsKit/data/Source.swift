@@ -359,8 +359,8 @@ private func determineSourceDimensions(
     }
 
     if sourceFormat == SOURCE_FORMAT_ARRAY_ROWS {
-        // PORT-TODO: dynamic cast of `OptionSourceData` (Any) to the typed array shape;
-        //   real source data may need normalization once the model layer (5c) lands.
+        // PORT-NOTE: dynamic cast of `OptionSourceData` (Any) to the typed array shape mirrors
+        //   upstream's structural typing; the `?? []` fallback preserves the null-data path above.
         let dataArrayRows = (data as? OptionSourceDataArrayRows) ?? []
         // Rule: Most of the first line are string: it is header.
         // Caution: consider a line with 5 string and 1 number,
@@ -425,9 +425,9 @@ private func determineSourceDimensions(
         if dimensionsDefine == nil {
             dimensionsDefine = []
             // upstream: each(data, function (colArr, key) { dimensionsDefine.push(key); });
-            // PORT-TODO: `util.each` has no dictionary overload; iterate keys directly.
+            // POTENTIAL-BUG: `util.each` has no dictionary overload; iterate keys directly.
             //   Upstream iterates in JS object insertion order; Swift `Dictionary` is unordered,
-            //   so the resulting dimension order may differ.
+            //   so the resulting keyed-columns dimension order may diverge from upstream.
             if let dataDict = data as? [String: Any] {
                 for key in util.keys(dataDict) {
                     dimensionsDefine!.append(key)

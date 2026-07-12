@@ -47,7 +47,8 @@ import ZRenderKit
 // Arbitrary value
 private let HOVER_LINK_SIZE = 12.0
 private let HOVER_LINK_OUT = 6.0
-// PORT-TODO: HANDLE_LABEL_MERGE_MARGIN feeds the DEFERRED handle-label overlap merge (_updateHandle).
+// PORT-NOTE (deferred): HANDLE_LABEL_MERGE_MARGIN feeds the deferred handle-label overlap merge
+//   (_updateHandle) — a visual refinement when the two handles are very close.
 
 // type ContinuousVisualMapHandleIndex = 0 | 1 | 'all';  → modeled by `SliderMoveHandleIndex`.
 
@@ -228,9 +229,9 @@ public final class ContinuousView: VisualMapView {
         gradientBarGroup.setClipPath(Rect(["shape": clipShape as PathShape]))
 
         // const textRect = visualMapModel.textStyleModel.getTextRect('国');
-        //   PORT-TODO: `Model.getTextRect` is not ported; approximate `textSize` by the font size (the
-        //   `国` glyph is ~1em square), which is all `_createIndicator` uses it for (label offset).
-        let textSize = visualMapAsDouble(visualMapModel.textStyleModel.get("fontSize")) ?? 12
+        // const textSize = mathMax(textRect.width, textRect.height);
+        let textRect = visualMapModel.textStyleModel.getTextRect("国")
+        let textSize = Swift.max(textRect.width, textRect.height)
 
         // Handle
         if useHandle {
@@ -326,8 +327,8 @@ public final class ContinuousView: VisualMapView {
         indicator.x = itemSize[0] / 2
         // const indicatorStyle = visualMapModel.getModel('indicatorStyle').getItemStyle();
         indicator.useStyle(barStyleFromDict(visualMapModel.getModel("indicatorStyle").getItemStyle()))
-        // PORT-TODO: ZRImage-icon branch (image indicator) — createSymbol image path falls back to a
-        //   SymbolClz here, so the ZRImage special-case is not needed.
+        // PORT-NOTE: ZRImage-icon branch (image indicator) — the ported createSymbol image path falls
+        //   back to a SymbolClz here, so the upstream ZRImage special-case is not needed.
 
         _ = mainGroup.add(indicator)
 
@@ -647,8 +648,8 @@ public final class ContinuousView: VisualMapView {
             elInner(handleLabels[handleIndex]).hdlIdx = .at(handleIndex)
         }
 
-        // PORT-TODO: the handle-LABEL overlap merge (BoundingRect.intersect MTV → nudge apart + switch
-        //   both labels to 'all'-drag) is a visual refinement when the two handles are very close; deferred.
+        // PORT-NOTE (deferred): the handle-LABEL overlap merge (BoundingRect.intersect MTV → nudge apart
+        //   + switch both labels to 'all'-drag) — a visual refinement when the two handles are very close.
     }
 
     // upstream: _showIndicator(cursorValue, textValue, rangeSymbol?, halfHoverLinkSize?)
@@ -695,8 +696,9 @@ public final class ContinuousView: VisualMapView {
             indicatorLabel.useStyle(s)
         }
 
-        // PORT-TODO: animateTo(indicatorNewProps, {duration:100, cubicInOut, additive}) — the animated
-        //   indicator move is deferred; the fill is set directly here.
+        // PORT-NOTE (deferred): animateTo(indicatorNewProps, {duration:100, cubicInOut, additive}) — the
+        //   additive animated indicator move (a live-interaction refinement); the fill/position settled
+        //   state is set directly here.
         indicator.pathStyle.fill = .string(color)
         indicator.dirtyStyle()
 
@@ -998,7 +1000,8 @@ private func transformDirection(_ direction: String, _ transform: MatrixArray, _
 /// The `getControllerVisual('color', ...)` result is a color option value (a `String` in the static path).
 internal func colorToString(_ v: Any?) -> String {
     if let s = v as? String { return s }
-    // PORT-TODO: gradient/pattern color objects are not stringified here.
+    // PORT-NOTE (deferred): gradient/pattern color objects are not stringified here (only the String
+    //   form of a visual-result color is handled).
     return ""
 }
 

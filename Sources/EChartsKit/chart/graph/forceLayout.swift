@@ -235,7 +235,7 @@ func graphForceLayout(_ ecModel: GlobalModel) {
             // Step to get the layout
             // upstream: `forceInstance.step();` — a SINGLE step. The remaining steps are driven live,
             //   per animation frame, by GraphView until the force reports `finished` (friction < 0.01).
-            // PORT-TODO (live per-frame tick): the GraphView requestAnimationFrame loop that calls
+            // PORT-NOTE (deferred): the GraphView requestAnimationFrame loop that calls
             //   `forceInstance.step()` each frame (and eases node symbols toward the new positions) is
             //   NOT ported — the port renders a single STATIC frame. To make that static frame show a
             //   settled (spread-out) graph rather than the noisy first step, we run the simulation

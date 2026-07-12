@@ -239,17 +239,16 @@ public func rotateNodeLabel(
 ) {
     // const el = node.getGraphicEl() as Symbol;
     // need to check if el exists. '-' value may not create node element.
-    // PORT-NOTE: upstream casts the graphic el to `Symbol` (chart/helper/SymbolElement.swift, now ported) and
-    // drives `el.getSymbolPath().setTextConfig(...)` / its emphasis state. Below we port the label-angle
-    // math faithfully; applying it via `symbolPath.setTextConfig(...)` / the emphasis state is still
-    // stubbed (see the per-line PORT-TODO markers further down).
-    guard node.getGraphicEl() != nil else {
+    // PORT-NOTE: upstream casts the graphic el to `Symbol` (chart/helper/SymbolElement.swift, now ported)
+    // and drives `el.getSymbolPath().setTextConfig(...)` / its emphasis state. Both are wired below.
+    guard let el = node.getGraphicEl() as? Symbol else {
         return
     }
     let nodeModel = node.getModel()
     // let labelRotate = nodeModel.get(['label', 'rotate']) || 0;  — JS `||`: falsy -> 0.
     var labelRotate = truthyNumberOr0(nodeModel?.get(["label", "rotate"]))
     // const symbolPath = el.getSymbolPath();
+    let symbolPath = el.getSymbolPath()
     if circularRotateLabel {
         let pos = asPoint(node.getLayout())
         var rad = atan2(pos[1] - cy, pos[0] - cx)
@@ -266,18 +265,23 @@ public func rotateNodeLabel(
         tc.rotation = -rad
         tc.position = textPosition
         tc.origin = "center"
-        // PORT-TODO: symbolPath.setTextConfig(tc)
-        // PORT-TODO: const emphasisState = symbolPath.ensureState('emphasis');
-        //            zrUtil.extend(emphasisState.textConfig ||= {}, { position: textPosition });
-        _ = tc
+        symbolPath?.setTextConfig(tc)
+        // const emphasisState = symbolPath.ensureState('emphasis');
+        // zrUtil.extend(emphasisState.textConfig ||= {}, { position: textPosition });
+        if let symbolPath = symbolPath {
+            let emphasisState = symbolPath.ensureState("emphasis")
+            if emphasisState.textConfig == nil {
+                emphasisState.textConfig = ElementTextConfig()
+            }
+            emphasisState.textConfig?.position = textPosition
+        }
     }
     else {
         // symbolPath.setTextConfig({ rotation: labelRotate *= Math.PI / 180 });
         labelRotate *= Double.pi / 180
         var tc = ElementTextConfig()
         tc.rotation = labelRotate
-        // PORT-TODO: symbolPath.setTextConfig(tc)
-        _ = tc
+        symbolPath?.setTextConfig(tc)
     }
 }
 
@@ -308,8 +312,9 @@ private func asPoint(_ layout: Any?) -> [Double] {
 }
 
 // `node.getLayout().fixed` — a `fixed` flag carried on the node's layout object (set by force layout).
-// A plain `[x, y]` point layout has no `fixed`, so this reads false. PORT-TODO: force layout may store
-// the flag as an attached property on the point array (JS); modeled as a dict key here.
+// A plain `[x, y]` point layout has no `fixed`, so this reads false. PORT-NOTE: force layout stores
+// the flag as an attached property on the point array (JS); modeled as a dict key here (semantically
+// equivalent — a non-dict layout has no flag either way).
 private func layoutFixed(_ layout: Any?) -> Bool {
     if let d = layout as? [String: Any] {
         return (d["fixed"] as? Bool) ?? false

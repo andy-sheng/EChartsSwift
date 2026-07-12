@@ -190,8 +190,9 @@ public final class OrdinalScale: Scale, ClassManageable {
             let arr = ordinalMeta as! [Any]
             ordinalMeta = OrdinalMeta(categories: util.map(arr) { item, _ in
                 // isObject(item) ? item.value : item
-                // PORT-TODO: dynamic `item.value` access — `OrdinalRawValue` is `Any`; objects
-                //   modeled as `[String: Any]` with a `"value"` key.
+                // PORT-NOTE: dynamic `item.value` access — `OrdinalRawValue` is `Any`; a JS object
+                //   is modeled as `[String: Any]` and its `.value` as the `"value"` key (semantically
+                //   equivalent to the upstream dynamic property read).
                 util.isObject(item) ? ((item as? [String: Any])?["value"] ?? item) : item
             })
         }
@@ -342,12 +343,13 @@ public final class OrdinalScale: Scale, ClassManageable {
         }
 
         let infoOrdinalNumbers = info!.ordinalNumbers
-        // PORT-TODO: upstream grows these as sparse JS arrays with `undefined` holes (read via
+        // PORT-NOTE: upstream grows these as sparse JS arrays with `undefined` holes (read via
         //   `!= null`). Here they are pre-sized to `allCategoryLen` and seeded with `NaN` as the
         //   "unset" sentinel (`!= null` → `!isNaN`), then assigned to the properties at the end
-        //   (no observer reads them mid-loop, so this is behaviorally equivalent). Indices are
-        //   assumed in `0..<allCategoryLen` per the `OrdinalNumber` contract; an out-of-range
-        //   ordinal would crash here where JS would silently extend the array.
+        //   (no observer reads them mid-loop, so this is behaviorally equivalent).
+        // POTENTIAL-BUG: indices are assumed in `0..<allCategoryLen` per the `OrdinalNumber`
+        //   contract; an out-of-range ordinal would crash here (`ticksByOrdinal[Int(ordinalNumber)]`)
+        //   where JS would silently extend the array.
         let allCategoryLen = self._ordinalMeta.categories.count
         var ordinalsByTick = [OrdinalNumber](repeating: Double.nan, count: allCategoryLen)
         var ticksByOrdinal = [Double](repeating: Double.nan, count: allCategoryLen)

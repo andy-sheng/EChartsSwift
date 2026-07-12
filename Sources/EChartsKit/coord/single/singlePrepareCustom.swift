@@ -55,9 +55,12 @@ private func dataToCoordSize(_ coordSys: Single, _ dataSize: Any, _ dataItem: An
 // upstream: export default function singlePrepareCustom(coordSys: Single) { ... }
 public func singlePrepareCustom(_ coordSys: Single) -> [String: Any] {
     // const rect = coordSys.getRect();
-    //   PORT-TODO: upstream `getRect()` returns a non-null BoundingRect; the `CoordinateSystem.getRect()`
-    //   protocol requirement returns `RectLike?`, so force-unwrap here (the rect is set by resize()).
-    let rect = coordSys.getRect()!
+    //   PORT-NOTE: `coordSys` is the concrete `Single`, whose `getRect() -> LayoutRect` is non-optional
+    //   (upstream returns a non-null BoundingRect; the rect is set by resize()). Call it WITHOUT `!`: a
+    //   trailing `!` would force overload resolution onto the nil-returning `CoordinateSystem.getRect()
+    //   -> RectLike?` protocol default (the concrete method does not witness the optional requirement),
+    //   crashing at runtime — the protocol-witness/force-unwrap trap.
+    let rect = coordSys.getRect()
 
     // return { coordSys: {...}, api: {...} };
     return [

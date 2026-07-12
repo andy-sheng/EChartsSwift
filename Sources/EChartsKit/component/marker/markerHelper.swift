@@ -122,8 +122,9 @@ public enum markerHelper {
     }
 
     // JS `+(x.toFixed(precision))` — format to `precision` decimals then reparse to a number.
-    // PORT-TODO: JS `Number.prototype.toFixed` rounding (half-away-from-zero on the decimal string)
-    //   is approximated by `%.*f` formatting (which rounds half-to-even in some locales).
+    // POTENTIAL-BUG (SEMANTIC_RISK): JS `Number.prototype.toFixed` rounding (half-away-from-zero on the
+    //   decimal string) is approximated by `%.*f` formatting (which rounds half-to-even in some locales).
+    //   A tie at the rounding digit can diverge by one ULP; affects only marker coordinate precision, rare.
     private static func toFixedNumber(_ x: Double, _ precision: Int) -> Double {
         if x.isNaN || x.isInfinite {
             return x

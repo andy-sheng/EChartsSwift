@@ -34,8 +34,9 @@ import ZRenderKit
 //   import ExtensionAPI / SeriesData / GlobalModel / Model / util/types / Cartesian2D / Axis2D    -> ported peers.
 //   import { getDefaultLabel } from '../helper/labelHelper';         -> `labelHelper.getDefaultLabel`.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';  -> `labelStyle.*`.
-//   import ZRImage from 'zrender/src/graphic/Image';                 -> PORT-TODO: createSymbol does not emit
-//       images yet (image:// deferred), so the ZRImage branch in updateCommon is unreachable and omitted.
+//   import ZRImage from 'zrender/src/graphic/Image';                 -> PORT-NOTE (deferred): createSymbol does not
+//       emit images yet (image:// / graphic.makeImage deferred in symbol.swift), so the ZRImage branch in
+//       updateCommon is unreachable and omitted.
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`.
 //   import { createClipPath } from '../helper/createClipPathFromCoordSys';  -> `createClipPath`.
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> `SERIES_TYPE_PICTORIAL_BAR`.
@@ -474,9 +475,9 @@ private func pbPrepareLineWidth(
     if valueLineWidth != 0 {
         // upstream scales the border width through a scratch Circle's `getLineScale()` (accounts for the
         //   symbol scale/rotation so `strokeNoScale` symbols draw a correct border). `Path.getLineScale`
-        //   is not ported; approximate with the value-dim scale factor only (PORT-TODO: wire getLineScale
-        //   once available). pictorialBar's default itemStyle.borderWidth is 0, so this branch is inert
-        //   for the common demos.
+        //   is not ported; approximate with the value-dim scale factor only (PORT-NOTE (deferred): requires
+        //   Path.getLineScale, wire it once available). pictorialBar's default itemStyle.borderWidth is 0,
+        //   so this branch is inert for the common demos.
         _ = rotation
         valueLineWidth *= symbolScale[opt.valueDim.index]
     }
@@ -757,7 +758,8 @@ private func pbCreateOrUpdateBarRect(
         s.fill = .string("transparent")
         s.lineWidth = 0
         barRect.useStyle(s)
-        // (barRect as ECElement).disableMorphing = true;  — morphing not wired (PORT-TODO), no-op.
+        // (barRect as ECElement).disableMorphing = true;  — PORT-NOTE (deferred): morph/animation not wired
+        //   (TreemapView defers this flag identically), so setting it would be a no-op.
         bar.__pictorialBarRect = barRect
         _ = bar.add(barRect)
     }

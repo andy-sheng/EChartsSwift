@@ -189,7 +189,7 @@ open class ScrollableLegendView: LegendView {
         )
         // icon.name = name;
         icon.name = name
-        // PORT-TODO: DEFERRED onclick — upstream binds `self._pageGo(name + 'DataIndex', legendModel, api)`.
+        // PORT-NOTE (deferred): onclick — upstream binds `self._pageGo(name + 'DataIndex', legendModel, api)`.
         //   Page-flip is a click interaction (out of static-render scope). `_pageGo` is ported below.
         _ = controllerGroup.add(icon)
     }
@@ -423,7 +423,7 @@ open class ScrollableLegendView: LegendView {
     }
 
     // _pageGo(to, legendModel, api)
-    //   PORT-TODO: DEFERRED — reached only from the page-arrow onclick (interaction). Ported for fidelity;
+    //   PORT-NOTE (deferred): reached only from the page-arrow onclick (interaction). Ported for fidelity;
     //   currently has no caller because `createPageButton` does not wire onclick.
     func _pageGo(_ to: String, _ legendModel: ScrollableLegendModel, _ api: ExtensionAPI) {
         let info = self._getPageInfo(legendModel)
@@ -471,7 +471,7 @@ open class ScrollableLegendView: LegendView {
             pageText.textStyle = s
             pageText.dirtyStyle()
         }
-        // PORT-TODO: DEFERRED — function-valued `pageFormatter({current, total})` (dynamic callback)
+        // PORT-NOTE (deferred): function-valued `pageFormatter({current, total})` (dynamic callback)
         //   not modeled in the option bag (only the string template path).
     }
 
@@ -653,7 +653,8 @@ private func scrollLegendAsDouble(_ v: Any?) -> Double? {
 /// Bridge a dynamic style-bag color value (`String`) to `ZRColor` for a page-icon fill.
 private func scrollLegendZRColor(_ v: Any?) -> ZRenderKit.ZRColor? {
     if let s = v as? String { return .string(s) }
-    // PORT-TODO: gradient/pattern color objects not bridged (out of static-render scope).
+    // PORT-NOTE (deferred): gradient/pattern color objects not bridged for the page-icon fill
+    //   (out of static-render scope; page icons resolve to string hex colors in practice).
     return nil
 }
 

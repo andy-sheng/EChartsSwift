@@ -85,8 +85,11 @@ extension DataFormatMixin {
         // PORT-NOTE: the visual `style` bag is modeled as a dynamic `[String: Any]`.
         let styleDict = style as? [String: Any]
         // upstream: style && style[data.getItemVisual(dataIndex, 'drawType') || 'fill'] as ZRColor
-        // PORT-TODO: the visual may store a raw `ColorString` rather than a `ZRColor` enum.
-        let color = styleDict?[(data.getItemVisual(Int(dataIndex), "drawType") as? String) ?? "fill"] as? ZRColor
+        // The visual bag may store either a typed `ZRColor` (palette path, getColorFromPalette) OR a
+        //   raw `ColorString` (an explicit `itemStyle.color: 'red'` kept un-wrapped in visual/style.swift).
+        //   Accept both so an explicitly-colored series does not surface `color == nil`.
+        let colorRaw = styleDict?[(data.getItemVisual(Int(dataIndex), "drawType") as? String) ?? "fill"]
+        let color: ZRColor? = (colorRaw as? ZRColor) ?? (colorRaw as? ColorString).map { ZRColor.color($0) }
         // upstream: style && style.stroke as ColorString
         let borderColor = styleDict?["stroke"] as? ColorString
         let mainType = self.mainType
@@ -108,10 +111,11 @@ extension DataFormatMixin {
             value: rawValue as Any,
             color: color,
             borderColor: borderColor,
-            // PORT-TODO: `DimensionUserOuput.get().fullDimensions` is `[DimensionName?]` (the
+            // PORT-NOTE: `DimensionUserOuput.get().fullDimensions` is `[DimensionName?]` (the
             //   name may be absent), but `CallbackDataParams.dimensionNames` is `[DimensionName]?`
             //   (non-optional element). The absent names are coerced to `""`; element optionality
-            //   is lost relative to upstream.
+            //   is lost relative to upstream (semantically near-equivalent — an absent dim name has
+            //   no meaningful use as a callback param key).
             dimensionNames: userOutput != nil ? userOutput!.fullDimensions.map { $0 ?? "" } : nil,
             encode: userOutput?.encode,
 
@@ -208,9 +212,9 @@ extension DataFormatMixin {
                 }
 
                 // upstream: return val != null ? val + '' : '';
-                // PORT-TODO: JS `val + ''` differs from Swift string interpolation for numbers
-                //   (e.g. `3` -> "3" in JS, but `3.0` -> "3.0" here).
-                return val != nil ? "\(val!)" : ""
+                // `format._str` reproduces JS `val + ''` (number.jsNumberString: `3` -> "3", not the
+                //   "3.0" a bare Swift interpolation would produce).
+                return val != nil ? format._str(val) : ""
             }
         }
         return nil

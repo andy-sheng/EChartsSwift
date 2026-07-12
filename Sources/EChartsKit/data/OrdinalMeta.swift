@@ -124,9 +124,10 @@ public final class OrdinalMeta {
         // expected to be tread as a category. This case usually happen in dataset,
         // where it happent to be no need of the index feature.
         if !util.isString(category) && !needCollect {
-            // category here is an OrdinalNumber (the index into the category set)
-            return (category as? OrdinalNumber) ?? OrdinalNumber.nan
-            // PORT-TODO: numeric coercion — assumes numbers flow as Double (CONVENTIONS §1).
+            // category here is an OrdinalNumber (the index into the category set).
+            // Coerce via numberCoerce so an Int-boxed number is accepted too — a bare
+            // `as? Double` would return nil (→ NaN) on an Int literal (Int-vs-Double trap).
+            return number.numberCoerce(category)
         }
 
         // Optimize for the scenario:

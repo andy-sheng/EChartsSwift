@@ -32,7 +32,9 @@ open class Transformable {
 
     // upstream: parent: Transformable
     // weak to avoid the parent<->child retain cycle (parent owns children, child references parent).
-    // PORT-TODO: verify capture — upstream uses a plain (strong) reference.
+    // PORT-NOTE (language-difference): upstream uses a plain (strong) reference; JS GC collects
+    //   cycles, but Swift ARC would leak the parent↔child cycle, so `weak` is the faithful Swift
+    //   equivalent (parent owns children, child references parent).
     public weak var parent: Transformable?
 
     public var x: Double = 0

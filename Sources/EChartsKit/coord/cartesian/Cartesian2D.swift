@@ -270,9 +270,8 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
      * Area will have a contain function to determine if a point is in the coordinate system.
      */
     // upstream: getArea(tolerance?: number): Cartesian2DArea
-    // PORT-TODO: returns the concrete `Cartesian2DArea` (BoundingRect), matching upstream. A concrete
-    //   return does not satisfy the protocol's `getArea(): CoordinateSystemClipArea?` witness (concrete
-    //   vs existential), so protocol dispatch uses the default; concrete callers get the real rect.
+    // Concrete-typed callers use this overload directly and receive the real `Cartesian2DArea`
+    //   (BoundingRect). See the explicit protocol witness below for protocol-dispatched callers.
     public func getArea(_ tolerance: Double? = nil) -> Cartesian2DArea {
         let tolerance = tolerance ?? 0
 
@@ -284,6 +283,18 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
         let height = Swift.max(yExtent[0], yExtent[1]) - y + tolerance
 
         return BoundingRect(x, y, width, height)
+    }
+
+    // PORT-NOTE: explicit `CoordinateSystem.getArea` protocol witness. Swift does not accept the
+    //   covariant `Cartesian2DArea` return of the overload above as a witness for the protocol
+    //   requirement `getArea(_:) -> CoordinateSystemClipArea?` (existential erasure is not covariance),
+    //   so without this the protocol default (returning nil) would be dispatched for cartesian2d —
+    //   breaking protocol-typed callers like createClipPathFromCoordSys. This overload provides the
+    //   witness, delegating to the concrete implementation. (Zero-arg calls resolve to the default-arg
+    //   overload above, so concrete callers are unaffected.)
+    public func getArea(_ tolerance: Double?) -> CoordinateSystemClipArea? {
+        let rect: Cartesian2DArea = self.getArea(tolerance)
+        return rect
     }
 }
 

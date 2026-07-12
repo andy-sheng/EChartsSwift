@@ -47,8 +47,8 @@ import ZRenderKit
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getBorderColor, getColor } from './candlestickVisual';  -> sibling `getBorderColor` / `getColor`.
 //   import { resolveNormalBoxClipping } from '../helper/whiskerBoxCommon';
-//     -> PORT-TODO: `chart/helper/whiskerBoxCommon.ts` NOT ported; `resolveNormalBoxClipping` is
-//        stubbed to `SHAPE_CLIP_KIND_NOT_CLIPPED` below (per-item partial-clip fix deferred).
+//     -> PORT-NOTE: `chart/helper/whiskerBoxCommon.ts` is folded per-client; `resolveNormalBoxClipping`
+//        is ported faithfully below (BoundingRect.contain over itemLayout.ends).
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
 
 // const SKIP_PROPS = ['color', 'borderColor'] as const;
@@ -171,7 +171,8 @@ open class CandlestickView: ChartView {
         data.diff(oldData)
             .add({ newIdx in
                 if data.hasValue(newIdx) {
-                    // PORT-TODO: force-unwrap — normalProgress only writes CandlestickItemLayout.
+                    // POTENTIAL-BUG: force-unwrap — normalProgress only writes CandlestickItemLayout, but a
+                    //   foreign/nil layout would SIGTRAP here (guarded upstream of this by data.hasValue).
                     let itemLayout = data.getItemLayout(newIdx) as! CandlestickItemLayout
 
                     let clipKind = needClip
@@ -227,8 +228,8 @@ open class CandlestickView: ChartView {
                 else {
                     var shape = NormalBoxPathShape()
                     shape.points = itemLayout.ends
-                    // PORT-TODO: same struct-shape snap-to-final deviation as the `initProps` call
-                    //   above — see comment there. Deferred until NormalBoxPathShape supports per-key
+                    // PORT-NOTE (deferred): same struct-shape snap-to-final deviation as the `initProps`
+                    //   call above — see comment there. Deferred until NormalBoxPathShape supports per-key
                     //   `points` animation.
                     updateProps(el!, ["shape": shape as PathShape], seriesModel, newIdx)
 
@@ -280,8 +281,8 @@ open class CandlestickView: ChartView {
             setBoxCommon(el, data, dataIndex, isSimpleBox)
 
             // el.incremental = getIncrementalId(seriesModel);
-            // PORT-TODO: `Element.incremental` / `model.getIncrementalId` (incremental/large-mode rendering)
-            //   deferred; the element is still added to the group so the geometry renders.
+            // PORT-NOTE (deferred): `Element.incremental` / `model.getIncrementalId` (incremental/large-mode
+            //   rendering) deferred; the element is still added to the group so the geometry renders.
             _ = group.add(el)
 
             self._progressiveEls?.append(el)
@@ -401,7 +402,7 @@ private func setBoxCommon(_ el: NormalBoxPath, _ data: SeriesData, _ dataIndex: 
     let itemModel = data.getItemModel(dataIndex)
 
     // el.useStyle(data.getItemVisual(dataIndex, 'style'));
-    // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (candlestickVisual.swift); ZRenderKit
+    // PORT-NOTE: the item visual 'style' is a `[String: Any]` bag (candlestickVisual.swift); ZRenderKit
     //   `useStyle` takes a typed `PathStyleProps`. `candlestickStyleFromDict` bridges the common paint
     //   keys (this is what colors the body/whiskers bull/bear). Gradient/pattern fills not bridged.
     el.useStyle(candlestickStyleFromDict(data.getItemVisual(dataIndex, "style")))
@@ -475,7 +476,7 @@ private func getTransPointDimension(_ seriesModel: CandlestickSeriesModel) -> In
 
 
 // ================================================================================================
-// PORT-TODO: LARGE / PROGRESSIVE DRAW PATH — DEFERRED (per task scope + CONVENTIONS §5).
+// PORT-NOTE (deferred): LARGE / PROGRESSIVE DRAW PATH (per task scope + CONVENTIONS §5).
 //   The large-mode `LargeBoxPath` custom shape and `createLarge` / `setLargeStyle` batch-draw one
 //   `LargeBoxPath` per sign (1 / -1 / 0) over the flat `largePoints` buffer produced by
 //   candlestickLayout.swift's `largeProgress`. It needs `ignoreCoarsePointer`, `Element.incremental`
@@ -519,14 +520,14 @@ private func createLarge(
     _ progressiveEls: inout [Element]?,
     _ incremental: Bool = false
 ) {
-    // PORT-TODO: large draw deferred (see the block comment above).
+    // PORT-NOTE (deferred): large draw (see the block comment above).
     _ = (seriesModel, group, incremental)
     _ = progressiveEls
 }
 
 // Overload matching the `_renderLarge` call site (no progressiveEls / incremental).
 private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) {
-    // PORT-TODO: large draw deferred (see the block comment above).
+    // PORT-NOTE (deferred): large draw (see the block comment above).
     _ = (seriesModel, group)
 }
 
@@ -536,13 +537,27 @@ private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) 
 // PORT-NOTE: local helpers (NOT in upstream CandlestickView.ts).
 // ================================================================================================
 
-// PORT-TODO: `resolveNormalBoxClipping` from `chart/helper/whiskerBoxCommon.ts` is not ported (the
-//   mixin file is folded per-client — see CandlestickSeries.swift). Stubbed to NOT_CLIPPED so a box
-//   straddling the coord-sys edge is drawn unclipped rather than dropped. The per-item partial-clip
-//   fix (setClipPath on partially-clipped boxes) is deferred with it.
+// upstream: export function resolveNormalBoxClipping(clipArea, itemLayout): ShapeClipKind
+//   (chart/helper/whiskerBoxCommon.ts). The mixin file is folded per-client (see CandlestickSeries.swift);
+//   this is the faithful body. `clipArea` is a `CoordinateSystemClipArea` — here the Cartesian2DArea
+//   (a BoundingRect) produced by `coordSys.getArea()`, so we cast and use its `contain(x, y)`.
 private func resolveNormalBoxClipping(_ clipArea: Any?, _ itemLayout: CandlestickItemLayout) -> ShapeClipKind {
-    _ = (clipArea, itemLayout)
-    return SHAPE_CLIP_KIND_NOT_CLIPPED
+    guard let area = clipArea as? BoundingRect else {
+        return SHAPE_CLIP_KIND_NOT_CLIPPED
+    }
+    let ends = itemLayout.ends
+    let count = ends.count
+    var containCount = 0
+    for i in 0..<count {
+        // clip if any point is out of the area, otherwise the shape may partially
+        // out of the coord sys area and overlap with axis labels.
+        if ends[i].count >= 2 && area.contain(ends[i][0], ends[i][1]) {
+            containCount += 1
+        }
+    }
+    return containCount == 0 ? SHAPE_CLIP_KIND_FULLY_CLIPPED
+        : (containCount < count ? SHAPE_CLIP_KIND_PARTIALLY_CLIPPED
+        : SHAPE_CLIP_KIND_NOT_CLIPPED)
 }
 
 // PORT-NOTE: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`

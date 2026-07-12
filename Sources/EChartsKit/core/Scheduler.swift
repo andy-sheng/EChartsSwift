@@ -293,8 +293,12 @@ public final class Scheduler {
         // upstream: const context = seriesModel.__preparePipelineContext
         //     ? seriesModel.__preparePipelineContext(view, pipeline)
         //     : preparePipelineContext(seriesModel, view, pipeline);
-        // PORT-TODO: `SeriesModel.__preparePipelineContext` is an optional method absent on the base
-        //   (declaration-merged interface; Phase 6b) — always use `model.preparePipelineContext`.
+        // POTENTIAL-BUG: `__preparePipelineContext` is now overridden by concrete series (e.g.
+        //   BarSeries, which sets `large = true` under progressiveRender), but the base `SeriesModel`
+        //   declares no such slot, so this always calls the free `model.preparePipelineContext` and
+        //   the override is bypassed. Dormant while progressive is disabled (native painter →
+        //   progressiveRender false); to fix, declare the optional method on base SeriesModel (out of
+        //   this file's scope) and dispatch to it when present.
         let context = model.preparePipelineContext(
             seriesModel, view,
             PipelinePick(progressiveEnabled: pipeline.progressiveEnabled, threshold: pipeline.threshold)
@@ -324,8 +328,12 @@ public final class Scheduler {
                 tail: nil,
                 threshold: seriesModel.getProgressiveThreshold(),
                 // upstream: progressive && !(seriesModel.preventIncremental && seriesModel.preventIncremental())
-                // PORT-TODO: `preventIncremental` is an optional method absent on the base SeriesModel
-                //   (Phase 6b); treated as absent (false).
+                // POTENTIAL-BUG: `preventIncremental` is now overridden by concrete series (e.g.
+                //   LinesSeries returns true when effect.show), but the base SeriesModel declares no
+                //   such slot, so it is not consulted here (treated as absent/false). Dormant while
+                //   progressive is disabled (native painter → `progressive` false → progressiveEnabled
+                //   false regardless); to fix, declare the optional method on base SeriesModel (out of
+                //   this file's scope) and gate on it.
                 progressiveEnabled: jsTruthy(progressive) && true,
                 blockIndex: -1,
                 // upstream: Math.round(progressive || 700)
@@ -366,8 +374,12 @@ public final class Scheduler {
         //   context.api = api;
         //   renderTask.__block = !view.incrementalPrepareRender;
         //   this._pipe(model, renderTask);
-        // PORT-TODO: ChartView (view/Chart.ts) is a Phase-6b stub without `renderTask` /
-        //   `incrementalPrepareRender`. Faithful body preserved above; wired when the view layer lands.
+        // PORT-NOTE (deferred): ChartView now has `renderTask` and `incrementalPrepareRender`
+        //   (view/Chart.swift), so the faithful body above is portable, but nothing performs the piped
+        //   render task yet — the render/progressive pipeline consumer (sub-project C2) is not wired.
+        //   Piping the render task here would have no effect and could perturb pipeline iteration, so
+        //   this stays a no-op until C2 lands. (Also `!view.incrementalPrepareRender` is not
+        //   feature-detectable in Swift; see the ChartView PORT-NOTE.)
         _ = (view, model, ecModel, api)
     }
 
@@ -488,9 +500,9 @@ public final class Scheduler {
         _ payload: Payload?
     ) {
         // upstream: payload !== 'remain' && (task.context.payload = payload)
-        // PORT-TODO: the `'remain'` sentinel (a string union member) is used by callers in
-        //   core/echarts.ts (Phase 6b) to keep the previous payload; here `payload` is always a real
-        //   Payload (or nil), so the sentinel branch is dropped.
+        // PORT-NOTE: the `'remain'` sentinel (a string union member) lets core/echarts.ts keep the
+        //   previous payload. In this port `payload` is a strongly-typed `Payload?`, so the sentinel is
+        //   not representable; the "keep previous" case is not exercised and the branch is dropped.
         task.context.payload = payload
     }
 
@@ -544,8 +556,11 @@ public final class Scheduler {
             ecModel.eachRawSeriesByType(seriesType) { seriesModel, _ in create(seriesModel) }
         }
         else if let getTargetSeries = getTargetSeries {
-            // PORT-TODO: upstream `getTargetSeries(...).each(create)` iterates a `HashMap<SeriesModel>`
-            //   (insertion order); the ported return type is `[String: SeriesModel]` (unordered).
+            // POTENTIAL-BUG: upstream `getTargetSeries(...).each(create)` iterates a `HashMap<SeriesModel>`
+            //   in insertion order; the ported return type is `[String: SeriesModel]`, and Swift
+            //   Dictionary iteration order is unspecified (varies across runs), so the series-task
+            //   creation order here is non-deterministic. Change `getTargetSeries` to return an ordered
+            //   collection (e.g. HashMap/[SeriesModel]) to make pipeline order deterministic.
             for (_, seriesModel) in getTargetSeries(ecModel, api) { create(seriesModel) }
         }
     }
@@ -617,7 +632,9 @@ public final class Scheduler {
             ecModel.eachRawSeriesByType(seriesType) { seriesModel, _ in createStub(seriesModel) }
         }
         else if let getTargetSeries = getTargetSeries {
-            // PORT-TODO: see note in `_createSeriesStageTask` — unordered dict vs upstream HashMap.
+            // POTENTIAL-BUG: see note in `_createSeriesStageTask` — Swift `[String: SeriesModel]`
+            //   iteration order is unspecified vs upstream's insertion-ordered HashMap, making the
+            //   stub-creation (and thus pipeline) order non-deterministic.
             for (_, seriesModel) in getTargetSeries(ecModel, api) { createStub(seriesModel) }
         }
         else {
@@ -659,7 +676,9 @@ public final class Scheduler {
 
         // upstream: (stageHandler as StageHandlerInternal).uid = getUID('stageHandler');
         //           visualType && ((stageHandler as StageHandlerInternal).visualType = visualType);
-        // PORT-TODO: `__prio` is assigned by the registry (echarts.ts, Phase 6b); defaulted to 0 here.
+        // PORT-NOTE: `__prio` is assigned by the registry (echarts.ts registerVisual/registerLayout);
+        //   defaulted to 0 here. Harmless: the ported `_performStageTasks` iterates registration/array
+        //   order, not `__prio`, so the value is currently unused by execution ordering.
         var internalHandler = StageHandlerInternal(
             uid: component.getUID("stageHandler"),
             visualType: nil,
@@ -764,7 +783,7 @@ func seriesTaskCount(_ this: SeriesTask, _ context: SeriesTaskContext) -> Double
  * progressive rendering disabled. We try to detect the series type, to narrow down
  * the block range to only the series type they concern, but not all series.
  */
-// PORT-TODO: upstream detects the series type by running `legacyFunc` against mock
+// PORT-NOTE (unportable): upstream detects the series type by running `legacyFunc` against mock
 //   `GlobalModel`/`ExtensionAPI` instances whose every prototype method is replaced by `noop`
 //   (`for (let name in Clz.prototype) target[name] = noop;`) and capturing the `eachSeriesByType`/
 //   `eachRawSeriesByType`/`eachComponent` argument. Swift cannot iterate a type's method table nor

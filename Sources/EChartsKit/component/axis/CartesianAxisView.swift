@@ -29,13 +29,13 @@ import ZRenderKit
 //     `subPixelOptimizeNS.subPixelOptimizeLine`) and `graphic.groupTransition` are reproduced/deferred
 //     below (see `subPixelOptimizeLine` free function + the `groupTransition` PORT-NOTE in `render`).
 //   import AxisView from './AxisView';                               -> `AxisView` (component/axis/AxisView.swift).
-//     PORT-TODO: `AxisView` is a sibling landing this phase (not yet ported). Conventional public API
-//     referenced here: `open class AxisView: ComponentView` with an overridable `type: String`,
+//     PORT-NOTE: `AxisView` is ported (base class of this view). Public API used here:
+//     `open class AxisView: ComponentView` with an overridable `type: String`,
 //     `axisPointerClass: String`, `open func render(_ model: ComponentModel, _ ecModel: GlobalModel,
 //     _ api: ExtensionAPI, _ payload: Payload)`, and `open func remove(_ ecModel: GlobalModel,
 //     _ api: ExtensionAPI)`.
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
-//     -> PORT-TODO: `component/axis/axisSplitHelper` NOT ported (splitArea colors + inner-store PREREQ).
+//     -> PORT-NOTE (deferred): requires `component/axis/axisSplitHelper` (splitArea colors + inner-store PREREQ), not ported.
 //        `rectCoordAxisBuildSplitArea` (splitArea builder) and `rectCoordAxisHandleRemove` (remove) are
 //        deferred with documented PORT-NOTEs below.
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
@@ -43,8 +43,8 @@ import ZRenderKit
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> `CartesianAxisModel`.
 //   import GridModel from '../../coord/cartesian/GridModel';          -> `GridModel`.
 //   import { Payload } from '../../util/types';                       -> `Payload` (util/types.swift).
-//   import { getAxisBreakHelper } from './axisBreakHelper';           -> PORT-TODO: `component/axis/axisBreakHelper`
-//     NOT ported (axis break feature). `breakArea` builder deferred below.
+//   import { getAxisBreakHelper } from './axisBreakHelper';           -> PORT-NOTE (deferred): requires
+//     `component/axis/axisBreakHelper` (axis break feature), not ported. `breakArea` builder deferred below.
 //   import { shouldAxisShow } from '../../coord/axisHelper';          -> `axisHelper.shouldAxisShow`.
 
 // upstream: const selfBuilderAttrs = ['splitArea', 'splitLine', 'minorSplitLine', 'breakArea'] as const;
@@ -97,10 +97,8 @@ open class CartesianAxisView: AxisView {
 
         // upstream: this._axisGroup.add(axisModel.axis.axisBuilder.group);
         //   `axisModel.axis` is typed `Any` (see AxisBaseModel.axis) → downcast to `Axis2D`.
-        //   PORT-TODO: `Axis2D.axisBuilder` is the Tier4 `AxisBuilder` (component/axis/AxisBuilder,
-        //   Phase 6b). Conventional public API referenced: `AxisBuilder.group: Group` (the built
-        //   axisLine / ticks / labels group). Until AxisBuilder is ported this reads the injected
-        //   builder's group.
+        //   PORT-NOTE: `Axis2D.axisBuilder` is the `AxisBuilder` (component/axis/AxisBuilder.swift, ported).
+        //   `AxisBuilder.group: Group` is the built axisLine / ticks / labels group read here.
         _ = self._axisGroup.add((axisModel.axis as! Axis2D).axisBuilder.group)
 
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
@@ -125,7 +123,7 @@ open class CartesianAxisView: AxisView {
 
         if !isInitialSortFromBarRacing {
             // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-            // PORT-TODO: `graphic.groupTransition` (util/graphic.ts) is NOT ported. It matches
+            // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), not ported. It matches
             //   old/new elements by `anid` and animates the transition (`updateProps`). Deferred with
             //   the animation seam; the final geometry (built fresh above) is correct without it.
             _ = oldAxisGroup
@@ -136,10 +134,10 @@ open class CartesianAxisView: AxisView {
 
     // upstream: remove() { rectCoordAxisHandleRemove(this); }
     //   The base `AxisView.remove(ecModel, api)` carries the two args (ignored upstream); the signature
-    //   is matched here so it overrides. PORT-TODO: `rectCoordAxisHandleRemove` (axisSplitHelper) clears
-    //   the cached splitArea colors from the inner store — deferred with splitArea.
+    //   is matched here so it overrides. PORT-NOTE (deferred): requires `rectCoordAxisHandleRemove`
+    //   (axisSplitHelper), not ported — it clears the cached splitArea colors from the inner store.
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: rectCoordAxisHandleRemove(self) — axisSplitHelper not ported.
+        // PORT-NOTE (deferred): requires rectCoordAxisHandleRemove — axisSplitHelper not ported.
     }
 }
 
@@ -317,7 +315,7 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
 
     "splitArea": { axisView, axisGroup, axisModel, gridModel, api in
         // upstream: rectCoordAxisBuildSplitArea(axisView, axisGroup, axisModel, gridModel);
-        // PORT-TODO: `component/axis/axisSplitHelper.rectCoordAxisBuildSplitArea` is NOT ported (it caches
+        // PORT-NOTE (deferred): requires `component/axis/axisSplitHelper.rectCoordAxisBuildSplitArea`, not ported (it caches
         //   alternating splitArea colors in the inner store and builds `graphic.Rect` bands across the
         //   grid rect). Deferred per the bar+axis milestone scope (splitLine is the axis grid deliverable).
         _ = (axisView, axisGroup, axisModel, gridModel, api)
@@ -331,7 +329,7 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
         //       axisBreakHelper.rectCoordBuildBreakAxis(
         //           axisGroup, axisView, axisModel, gridModel.coordinateSystem.getRect(), api);
         //   }
-        // PORT-TODO: `component/axis/axisBreakHelper` (the axis-break feature) is NOT ported;
+        // PORT-NOTE (deferred): requires `component/axis/axisBreakHelper` (the axis-break feature), not ported;
         //   `getAxisBreakHelper()` returns nil, so this builder is a no-op (matches upstream when the
         //   feature is not `use()`-d). Deferred per the bar+axis milestone scope.
         _ = (axisView, axisGroup, axisModel, gridModel, api)
@@ -388,7 +386,7 @@ private func subPixelOptimizeLine(_ shape: LineShape, _ lineWidth: Double?) -> L
     return s
 }
 
-// PORT-TODO: `util/graphic`-level style-bag bridge. `Model.getLineStyle()` returns the dynamic
+// PORT-NOTE: `util/graphic`-level style-bag bridge (JS dynamic dict -> typed Swift struct). `Model.getLineStyle()` returns the dynamic
 //   `LineStyleProps` == `[String: Any]` bag (makeStyleMapper output, keyed by PathStyleProps field
 //   names); ZRenderKit `Line`'s `style` prop is a typed `PathStyleProps`. This maps the common line
 //   paint keys so the splitLine/minorSplitLine strokes are actually drawn. `lineDash`
@@ -406,6 +404,6 @@ private func lineStylePropsFromDict(_ style: [String: Any]) -> PathStyleProps {
     if let v = style["lineJoin"] as? String { s.lineJoin = v }
     if let v = style["miterLimit"] as? Double { s.miterLimit = v }
     if let v = style["lineDashOffset"] as? Double { s.lineDashOffset = v }
-    // PORT-TODO: `lineDash` (number | number[]) not bridged to ZRColor.LineDash yet.
+    // PORT-NOTE (deferred): `lineDash` (number | number[]) not bridged to LineDash yet (same deferral as BarView.barStyleFromDict).
     return s
 }

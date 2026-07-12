@@ -47,7 +47,9 @@ import ZRenderKit
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
 //       -> chart/helper/sectorHelper.swift (ported); PieView still defaults cornerRadius to `0` (getSectorCornerRadius
 //          not wired here), so the plain SectorShape from the item layout suffices for a static render.
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> PORT-TODO: NOT ported (deferred).
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> `saveOldStyle` IS ported
+//       (animation/basicTransition.swift). PORT-NOTE: not wired here — the static render rebuilds the
+//       group from scratch (no old-data diff), so there is no old style to save.
 //   import { getSeriesLayoutData } from './pieLayout';             -> `getSeriesLayoutData` (sibling pieLayout.swift).
 
 // ================================================================================================
@@ -125,7 +127,7 @@ open class PieView: ChartView {
         // ------------------------------------------------------------------------------------------
         // STATIC render deviation: upstream diffs `oldData` → `PiePiece` add/update/remove and calls
         //   `labelLayout(seriesModel)`. The SymbolDraw-style diff + PiePiece + label/emphasis/animation
-        //   are deferred (see the PiePiece PORT-TODO block), so the group is rebuilt from scratch each
+        //   are deferred (see the PiePiece PORT-NOTE block above), so the group is rebuilt from scratch each
         //   render. Clearing the group also drops any previous empty-circle sector, so the explicit
         //   `group.remove(this._emptyCircleSector)` below is subsumed by `removeAll()`.
         // ------------------------------------------------------------------------------------------
@@ -186,7 +188,7 @@ open class PieView: ChartView {
 
             // upstream (PiePiece.updateData, PieView.ts): the sector is marked a highDown dispatcher
             //   carrying its emphasis-state itemStyle so a hover restyles it. Mirror BarView.updateStyle.
-            //   PORT-TODO (still deferred): the select-state `selectedOffset` dx/dy offset and blur focus
+            //   PORT-NOTE (deferred): the select-state `selectedOffset` dx/dy offset and blur focus
             //   fan-out (upstream computes them in PiePiece) are not applied.
             let itemModel = data.getItemModel(idx)
             let emphasisModel = itemModel.getModel(["emphasis"])
@@ -199,8 +201,8 @@ open class PieView: ChartView {
             // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize`
             //   when `emphasis.scale` is on — the hover "enlarge" effect. The getSectorCornerRadius
             //   merge stays deferred with the normal-state corner radius (defaults 0).
-            //   PORT-TODO: the `select` state's {x: dx, y: dy} selectedOffset translate (the exploded
-            //   slice, PieView.ts:146-150) + the select/blur corner-radius shapes are still deferred.
+            //   PORT-NOTE (deferred): the `select` state's {x: dx, y: dy} selectedOffset translate (the
+            //   exploded slice, PieView.ts:146-150) + the select/blur corner-radius shapes are still deferred.
             let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
             let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
             sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]

@@ -52,8 +52,9 @@ private func getSortedIndices(_ data: SeriesData, _ sort: Any?) -> [Int] {
     // Add custom sortable function & none sortable opetion by "options.sort"
     if util.isFunction(sort) {
         // indices.sort(sort as any);
-        // PORT-TODO: a custom comparator `sort` function cannot be carried through the `[String: Any]`
-        //   option bag; only the string forms ('ascending' / 'descending' / 'none') are supported here.
+        // PORT-NOTE: a user-supplied JS comparator `sort` function is not representable in the
+        //   `[String: Any]` option bag (no callback plumbing); only the string forms
+        //   ('ascending' / 'descending' / 'none') are supported. `isFunction(sort)` is always false today.
     }
     else if (sort as? String) != "none" {
         // indices.sort(function (a, b) {

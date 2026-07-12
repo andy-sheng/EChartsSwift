@@ -229,7 +229,7 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
     guard let style = img.imageStyle else { return }
     if (style.opacity ?? 1) == 0 { return }
     guard let cg = resolveCGImage(img) else {
-        // PORT-TODO: image not yet decoded (remote URL via platform.loadImage — renderer seam).
+        // PORT-NOTE (deferred): image not yet decoded (remote URL via platform.loadImage — renderer seam, CONVENTIONS §9).
         return
     }
 
@@ -268,7 +268,7 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
 
 /// Resolve a `ZRImage`'s native `CGImage`. Prefers the painter-decoded `__image` handle, then an
 /// inline `.image(CGImage)` source, then a best-effort decode of a `.url` string (file / data URI).
-/// PORT-TODO: remote URL loading + async `onload` is the deferred renderer seam (CONVENTIONS §9).
+/// PORT-NOTE (deferred): remote URL loading + async `onload` is the deferred renderer seam (CONVENTIONS §9).
 private func resolveCGImage(_ img: ZRImage) -> CGImage? {
     if let cg = asCGImage(img.__image) { return cg }
     if case .some(.image(let like)) = img.imageStyle.image, let cg = asCGImage(like) {
@@ -488,7 +488,7 @@ public final class CALayerPainter: Painter {
         sl.opacity = Float(paint.opacity)
 
         // Shadow (CAShapeLayer applies it in layer space; offset sign matches canvas on iOS y-down
-        // and on the flipped AppKit root layer). PORT-TODO: exact parity with zrender's CG shadow.
+        // and on the flipped AppKit root layer). PORT-NOTE: exact parity with zrender's CG shadow is a platform-specific approximation.
         if let shadow = makeShadow(style) {
             sl.shadowColor = shadow.color
             sl.shadowOpacity = 1
@@ -769,7 +769,7 @@ extension CALayerPainter: PainterBase {
             rootLayer.bounds = CGRect(origin: .zero, size: surfaceSize)
             _incrementalLayers.removeAll()   // retained bitmaps are sized to the old surface
         }
-        // PORT-TODO: `dpr` is immutable on CALayerPainter (set at init); a dpr change needs a fresh
+        // PORT-NOTE (platform): `dpr` is immutable on CALayerPainter (set at init); a dpr change needs a fresh
         //   painter / backing store. Honored only for width/height here.
     }
 

@@ -115,7 +115,9 @@ public final class CartesianAxisPointer: BaseAxisPointer {
      * @override
      */
     // Handle drag geometry (the draggable axisPointer handle). BaseAxisPointer's handle surface is a
-    //   PORT-TODO (deferred), so these are plain methods (not `override`s) — pure geometry kept faithful.
+    //   PORT-NOTE (deferred: handle/drag surface out of scope for the headless crosshair — see
+    //   BaseAxisPointer._renderHandle note), so these are plain methods (not `override`s) — pure geometry
+    //   kept faithful.
     public func getHandleTransform(
         _ value: Any?,
         _ axisModel: CartesianAxisModel,

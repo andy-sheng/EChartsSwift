@@ -27,7 +27,7 @@ import ZRenderKit
 //   import EffectScatterView from './EffectScatterView';                      -> sibling EffectScatterView.swift (ported, STATIC).
 //   import EffectScatterSeriesModel from './EffectScatterSeries';             -> sibling EffectScatterSeries.swift (ported).
 //   import layoutPoints from '../../layout/points';
-//       -> PORT-TODO: layout/points.ts NOT ported. The static EffectScatterView inlines per-datum
+//       -> PORT-NOTE (deferred): requires layout/points.ts (not ported). The static EffectScatterView inlines per-datum
 //          `coord.dataToPoint` placement (same deviation as ScatterView), so the `registerLayout(layoutPoints)`
 //          stage is not wired. Register once layout/points.swift lands.
 
@@ -37,7 +37,7 @@ import ZRenderKit
 //   The integration points are:
 //     - ComponentModel.registerClass(EffectScatterSeriesModel.self)   // registerSeriesModel(EffectScatterSeriesModel)
 //     - _chartViewFactories["effectScatter"] = { EffectScatterView() } // registerChartView(EffectScatterView)
-//     - registerLayout(layoutPoints('effectScatter'))                  // PORT-TODO: layout/points not ported.
+//     - registerLayout(layoutPoints('effectScatter'))                  // PORT-NOTE (deferred): requires layout/points.ts (not ported).
 //   Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {

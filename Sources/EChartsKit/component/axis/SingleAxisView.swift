@@ -40,9 +40,9 @@ import ZRenderKit
 //       dropped, same deviation as CartesianAxisLayout / RadiusAxisView.layoutAxis → AxisBuilderCfg).
 //   import AxisView from './AxisView';                             → `AxisView` (component/axis/AxisView.swift).
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
-//     → PORT-TODO: `component/axis/axisSplitHelper` NOT ported (splitArea alternating colors + inner-store
-//       cache). `rectCoordAxisBuildSplitArea` (splitArea builder) and `rectCoordAxisHandleRemove` (remove)
-//       are deferred with documented PORT-NOTEs below (same deviation as CartesianAxisView).
+//     → PORT-NOTE (deferred): requires `component/axis/axisSplitHelper` (splitArea alternating colors +
+//       inner-store cache), not ported. `rectCoordAxisBuildSplitArea` (splitArea builder) and
+//       `rectCoordAxisHandleRemove` (remove) are deferred below (same deviation as CartesianAxisView).
 //   import SingleAxisModel from '../../coord/single/AxisModel';
 //     → PORT-NOTE: `coord/single/AxisModel` (SingleAxisModel) is ported (SingleAxisModel.swift).
 //       Named `SingleAxisModel.swift` (NOT `AxisModel.swift`) to avoid the SwiftPM object-name collision
@@ -54,8 +54,9 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  → `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            → `ExtensionAPI`.
 //   import { Payload } from '../../util/types';                    → `Payload` (util/types.swift).
-//   import { getAxisBreakHelper } from './axisBreakHelper';        → PORT-TODO: `component/axis/axisBreakHelper`
-//     NOT ported (axis break feature); `getAxisBreakHelper()` returns nil, so `breakArea` is a no-op.
+//   import { getAxisBreakHelper } from './axisBreakHelper';        → PORT-NOTE (deferred): the axis-break
+//     feature installer is not ported; `getAxisBreakHelper()` (axisModelCreator.swift) returns nil, so
+//     `breakArea` is a no-op (matches upstream when the feature is not `use()`-d).
 //
 //   The sibling `Single` (SingleAxisModel.coordinateSystem) is ported (Single.swift) — the 4th
 //   coordinate system (one axis), analogue of Grid/Polar. Assumed API:
@@ -138,9 +139,9 @@ final class SingleAxisView: AxisView {
         }
 
         // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-        // PORT-TODO: `graphic.groupTransition` (util/graphic.ts) is NOT ported. It matches old/new elements
-        //   by `anid` and animates the transition (`updateProps`). Deferred with the animation seam
-        //   (CONVENTIONS §5); the freshly-built geometry above is correct without it.
+        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), not ported. It matches
+        //   old/new elements by `anid` and animates the transition (`updateProps`). Deferred with the
+        //   animation seam (CONVENTIONS §5); the freshly-built geometry above is correct without it.
         _ = oldAxisGroup
 
         super.render(axisModel, ecModel, api, payload)
@@ -148,10 +149,11 @@ final class SingleAxisView: AxisView {
 
     // upstream: remove() { rectCoordAxisHandleRemove(this); }
     //   The base `AxisView.remove(ecModel, api)` carries the two args (ignored upstream); the signature is
-    //   matched here so it overrides. PORT-TODO: `rectCoordAxisHandleRemove` (axisSplitHelper) clears the
-    //   cached splitArea colors from the inner store — deferred with splitArea (cf. CartesianAxisView).
+    //   matched here so it overrides. PORT-NOTE (deferred): requires `rectCoordAxisHandleRemove`
+    //   (axisSplitHelper) — it clears the cached splitArea colors from the inner store; deferred with
+    //   splitArea (cf. CartesianAxisView).
     override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: rectCoordAxisHandleRemove(self) — axisSplitHelper not ported.
+        // PORT-NOTE (deferred): requires rectCoordAxisHandleRemove(self) — axisSplitHelper not ported.
     }
 }
 
@@ -273,7 +275,7 @@ private let axisElementBuilders: [String: SingleAxisElementBuilder] = [
 
     "splitArea": { axisView, group, axisGroup, axisModel, api in
         // upstream: rectCoordAxisBuildSplitArea(axisView, axisGroup, axisModel, axisModel);
-        // PORT-TODO: `component/axis/axisSplitHelper.rectCoordAxisBuildSplitArea` is NOT ported (it caches
+        // PORT-NOTE (deferred): requires `component/axis/axisSplitHelper.rectCoordAxisBuildSplitArea`, not ported (it caches
         //   alternating splitArea colors in the inner store and builds `graphic.Rect` bands across the
         //   coord rect). Deferred per task scope (splitLine is the axis-grid deliverable); same deviation
         //   as CartesianAxisView.splitArea.
@@ -288,7 +290,7 @@ private let axisElementBuilders: [String: SingleAxisElementBuilder] = [
         //       axisBreakHelper.rectCoordBuildBreakAxis(
         //           group, axisView, axisModel, axisModel.coordinateSystem.getRect(), api);
         //   }
-        // PORT-TODO: `component/axis/axisBreakHelper` (the axis-break feature) is NOT ported;
+        // PORT-NOTE (deferred): requires `component/axis/axisBreakHelper` (the axis-break feature), not ported;
         //   `getAxisBreakHelper()` returns nil, so this builder is a no-op (matches upstream when the
         //   feature is not `use()`-d). Deferred per task scope; same deviation as CartesianAxisView.breakArea.
         _ = (axisView, group, axisGroup, axisModel, api)
@@ -341,8 +343,10 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `stroke` may be a gradient/pattern object (ZRColor non-string); only the String form
-    //   (incl. the sentinel 'none') is mapped here.
+    // POTENTIAL-BUG: `stroke` may be a gradient/pattern object (ZRColor non-string); only the String form
+    //   (incl. the sentinel 'none') is mapped here, so a gradient/pattern axis-line stroke is dropped.
+    //   Not fixed inline: the dict carries EChartsKit.ZRColor while s.stroke is ZRenderKit's ZRColor, so a
+    //   passthrough needs a color bridge (same latent gap as RadiusAxisView.pathStyleFromDict).
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
@@ -354,7 +358,7 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
     if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping requires the LineDash enum bridge (not ported).
     return s
 }
 

@@ -37,9 +37,10 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { ColorString } from '../../util/types';                -> util/types.swift.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> PORT-TODO: labelGuideHelper.swift is partially ported, but setLabelLineStyle/
-//          getLabelLineStatesModels are still DEFERRED (labelLine guide machinery). The leader
-//          polyline is drawn inline in funnelUpdateLabel below instead.
+//       -> PORT-NOTE (deferred): requires `setLabelLineStyle` / `getLabelLineStatesModels`.
+//          labelGuideHelper.swift is partially ported (only the geometry helpers projectPointToLine/
+//          limitTurnAngle/limitSurfaceAngle exist — confirmed both symbols absent). The leader polyline
+//          is drawn inline in funnelUpdateLabel below instead.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle IS ported (label/labelStyle.swift); both are wired in funnelUpdateLabel
 //          below, replacing the former inline plain-text reproduction.
@@ -104,7 +105,7 @@ open class FunnelView: ChartView {
         // ------------------------------------------------------------------------------------------
         // STATIC render deviation: upstream diffs `oldData` → `FunnelPiece` add/update/remove. The
         //   SymbolDraw-style diff + FunnelPiece + emphasis/animation are deferred (see the FunnelPiece
-        //   PORT-TODO block), so the group is rebuilt from scratch each render. Per-piece geometry,
+        //   PORT provenance block above), so the group is rebuilt from scratch each render. Per-piece geometry,
         //   visual fill, and the PLAIN label text ARE drawn (mirroring `FunnelPiece.updateData` +
         //   `_updateLabel`).
         // ------------------------------------------------------------------------------------------
@@ -198,8 +199,9 @@ open class FunnelView: ChartView {
 //     - x/y          = labelLayout.x / y     (set AFTER setLabelStyle, which replaces the style)
 //     - rotation/originX/originY/z2 = labelLayout.rotation / x / y / 10
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
-// PORT-TODO (still deferred): `setLabelLineStyle`/`getLabelLineStatesModels` + `textGuideLineConfig`
-//   (the label-guide anchor machinery) — the leader polyline is still drawn inline at the end.
+// PORT-NOTE (deferred): requires `setLabelLineStyle` / `getLabelLineStatesModels` + `textGuideLineConfig`
+//   (the label-guide anchor machinery, still absent from labelGuideHelper.swift) — the leader polyline is
+//   still drawn inline at the end.
 private func funnelUpdateLabel(
     _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
     _ layout: [String: Any], _ group: Group

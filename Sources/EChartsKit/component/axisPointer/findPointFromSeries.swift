@@ -104,9 +104,11 @@ public func findPointFromSeries(
     let coordSys = seriesModel.coordinateSystem
 
     // upstream: if (seriesModel.getTooltipPosition) { point = seriesModel.getTooltipPosition(dataIndex) || []; }
-    //   PORT-TODO (DEFERRED): `SeriesModel.getTooltipPosition` is not ported (only a comment stub on
-    //   model/Series.swift). No series in the current scope overrides it, so this branch is skipped; add
-    //   it once a chart (e.g. graph/tree) that overrides `getTooltipPosition` lands.
+    //   PORT-NOTE (deferred): requires a base `SeriesModel.getTooltipPosition` witness. Upstream's is a
+    //   declaration-merged optional method; concrete overrides now exist on MapSeries/RadarSeries but with
+    //   divergent signatures and no common protocol to dispatch through, and neither uses a cartesian
+    //   axisPointer, so this cartesian branch never reaches them. Wire a protocol witness once a
+    //   cartesian-coord series (e.g. graph/tree) overrides `getTooltipPosition`.
 
     // upstream: else if (coordSys && coordSys.dataToPoint) { ... }
     //   The concrete `Cartesian2D` supplies `dataToPoint` / `getBaseAxis` / `getOtherAxis` / `dimensions`.

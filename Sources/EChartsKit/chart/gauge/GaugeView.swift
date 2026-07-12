@@ -45,15 +45,17 @@ import ZRenderKit
 //   import { ColorString, ECElement } from '../../util/types';        → ColorString(==String); ECElement deferred.
 //   import SeriesData from '../../data/SeriesData';                   → SeriesData.
 //   import Sausage from '../../util/shape/sausage';
-//     → PORT-TODO: `util/shape/sausage` (round-capped sector) NOT ported. The `roundCap ? Sausage : Sector`
-//       selection falls back to `Sector` (square caps); the band/progress geometry is otherwise identical.
+//     → PORT-NOTE (deferred): requires `util/shape/sausage` (round-capped sector), NOT ported. The
+//       `roundCap ? Sausage : Sector` selection falls back to `Sector` (square caps); the band/progress
+//       geometry is otherwise identical.
 //   import {createSymbol} from '../../util/symbol';                   → `symbol.createSymbol`.
 //   import ZRImage from 'zrender/src/graphic/Image';
-//     → PORT-TODO: the `pointer instanceof ZRImage` styling branch (image:// pointer icon) is deferred.
+//     → PORT-NOTE (deferred): ZRImage IS ported (ZRenderKit Graphic/Image.swift); only the
+//       `pointer instanceof ZRImage` styling branch (image:// pointer icon) is deferred.
 //   import { extend, isFunction, isString, isNumber, each } from 'zrender/src/core/util';
 //     → `util.*` (ZRenderKit). `isString`/`isFunction`/`isNumber` used via the local helpers below.
 //   import {setCommonECData} from '../../util/innerStore';
-//     → PORT-TODO: inner-store ECData seam (tooltip indexing) deferred.
+//     → `innerStore.setCommonECData` (ported).
 //   import { normalizeArcAngles } from 'zrender/src/core/PathProxy';  → `normalizeArcAngles` (ZRenderKit, free func).
 
 // type ECSymbol = ReturnType<typeof createSymbol>;  → `ECSymbol` protocol (util/symbol.swift). Not needed as
@@ -94,9 +96,8 @@ private func formatLabel(_ value: Double?, _ labelFormatter: Any?) -> String {
         }
         else if isFunction(labelFormatter) {
             // label = labelFormatter(value);
-            // PORT-TODO: a JS `(value: number) => string` formatter callback cannot be invoked from the
-            //   option bag in this port; the raw numeric label is kept. Restore when the formatter-callback
-            //   seam lands.
+            // PORT-NOTE (deferred): requires the formatter-callback seam — a JS `(value: number) => string`
+            //   callback cannot be invoked from the option bag in this port; the raw numeric label is kept.
             _ = labelFormatter
         }
     }
@@ -165,7 +166,7 @@ open class GaugeView: ChartView {
 
         let roundCap = jsTruthy(axisLineModel.get("roundCap"))
         // const MainPath = roundCap ? Sausage : graphic.Sector;
-        // PORT-TODO: Sausage (round-capped sector) NOT ported; `Sector` is used for both branches.
+        // PORT-NOTE (deferred): requires `util/shape/sausage`; Sausage NOT ported, `Sector` used for both branches.
         _ = roundCap
 
         let showAxis = jsTruthy(axisLineModel.get("show"))
@@ -502,7 +503,7 @@ open class GaugeView: ChartView {
         func createProgress(_ idx: Int, _ endAngle: Double) -> Sector {
             let roundCap = jsTruthy(progressModel.get("roundCap"))
             // const ProgressPath = roundCap ? Sausage : graphic.Sector;
-            // PORT-TODO: Sausage NOT ported; `Sector` used for both branches.
+            // PORT-NOTE (deferred): requires `util/shape/sausage`; Sausage NOT ported, `Sector` used for both branches.
             _ = roundCap
 
             let isOverlap = jsTruthy(progressModel.get("overlap"))
@@ -557,8 +558,9 @@ open class GaugeView: ChartView {
                     let progress = createProgress(idx, startAngle)
                     initProps(progress, ["shape": ["endAngle": valueEndAngle]], seriesModel)
                     _ = group.add(progress)
-                    // PORT-TODO: setCommonECData(seriesModel.seriesIndex, data.dataType, idx, progress)
-                    //   — inner-store ECData tooltip indexing deferred.
+                    // upstream: setCommonECData(seriesModel.seriesIndex, data.dataType, idx, progress)
+                    //   — inner-store ECData tooltip indexing.
+                    innerStore.setCommonECData(seriesModel.seriesIndex, data.dataType ?? .main, Double(idx), progress)
                     progressList[idx] = progress
                 }
             }
@@ -577,7 +579,7 @@ open class GaugeView: ChartView {
                     let pointer = data.getItemGraphicEl(idx) as? Path
                     let symbolStyle = data.getItemVisual(idx, "style")
                     let visualColor = gaugeVisualFill(symbolStyle)
-                    // PORT-TODO: the `pointer instanceof ZRImage` branch (image:// icon) is deferred.
+                    // PORT-NOTE (deferred): the `pointer instanceof ZRImage` branch (image:// icon) is deferred.
                     //   pointer.useStyle(symbolStyle); then `pointer.type !== 'pointer' && pointer.setColor(visualColor)`;
                     //   then setStyle(itemModel.getModel(['pointer','itemStyle']).getItemStyle()); then 'auto' fill.
                     //   Static: merge the visual style + pointer itemStyle into one bag, resolve 'auto', useStyle.
@@ -756,7 +758,7 @@ open class GaugeView: ChartView {
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of GaugeView.ts upstream. These reproduce the dynamic-option coercion,
+// PORT-NOTE: local helpers — NOT part of GaugeView.ts upstream. These reproduce the dynamic-option coercion,
 // the JS truthiness/number-stringification, the color-stop parsing, and a minimal `createTextStyle`.
 // Delete each when its real sibling (label/labelStyle, util/graphic style bridge) lands.
 // ============================================================================
@@ -812,7 +814,7 @@ private func isNumber(_ v: Any?) -> Bool {
 }
 
 /// JS `value + ''` for a number. Integers render without a decimal point (`20` → "20"); non-integers
-/// keep their shortest decimal form. PORT-TODO: not a full ECMAScript Number→String (no exponent form).
+/// keep their shortest decimal form. PORT-NOTE: not a full ECMAScript Number→String (no exponent form).
 private func jsNumberToString(_ v: Double) -> String {
     if v.isNaN { return "NaN" }
     if v == v.rounded() && Swift.abs(v) < 1e15 {
@@ -823,7 +825,7 @@ private func jsNumberToString(_ v: Double) -> String {
 
 /// Parse the `axisLine.lineStyle.color` color-stop list (`[[percent, color], ...]`) into `[(Double, String)]`.
 ///   `percent` may be a bare Int literal (`1`) → coerced via gaugeNum; `color` is a solid string (or a
-///   ZRColor.color). PORT-TODO: gradient/pattern color values are not modeled (solid strings only).
+///   ZRColor.color). PORT-NOTE (deferred): gradient/pattern color values are not modeled (solid strings only).
 private func gaugeColorList(_ v: Any?) -> [(Double, String)] {
     guard let arr = v as? [Any] else { return [] }
     var out: [(Double, String)] = []
@@ -876,7 +878,7 @@ private func gaugeTextStyle(
     return s
 }
 
-/// PORT-TODO: `util/graphic` style-bag bridge for LINE styles (splitline/tick). `Model.getLineStyle()`
+/// PORT-NOTE: `util/graphic` style-bag bridge for LINE styles (splitline/tick). `Model.getLineStyle()`
 ///   returns the dynamic `[String: Any]` paint bag; ZRenderKit `Path.style` is a typed `PathStyleProps`.
 ///   Maps the common stroke/line keys (stroke resolved elsewhere for the 'auto' sentinel). Mirrors
 ///   AngleAxisView.pathStyleFromDict. `lineDash` is not bridged yet.
@@ -889,7 +891,7 @@ private func gaugeStyleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object; only the String form (incl. 'none'/'auto')
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object; only the String form (incl. 'none'/'auto')
     //   is mapped here. The 'auto' stroke sentinel is overridden by getColor at the call site.
     if let fill = dict["fill"] as? String { s.fill = .string(fill) }
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }

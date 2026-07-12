@@ -266,8 +266,9 @@ open class ContinuousModel: VisualMapModel {
             let data = seriesModel.getData()
 
             // data.each(this.getDataDimensionIndex(data), function (value, dataIndex) {
-            // PORT-TODO: base `getDataDimensionIndex` returns `DimensionIndex?`; upstream treats it as
-            //   always-present, so force-unwrap here.
+            // POTENTIAL-BUG: base `getDataDimensionIndex` returns `DimensionIndex?`; upstream treats it as
+            //   always-present, so force-unwrap here — a nil dim index (e.g. no visualMap dimension
+            //   resolvable on the data) would SIGTRAP instead of degrading like JS `undefined`.
             data.each(self.getDataDimensionIndex(data)!) { args in
                 let value = asDouble(args[0])
                 let dataIndex = asDouble(args[1])

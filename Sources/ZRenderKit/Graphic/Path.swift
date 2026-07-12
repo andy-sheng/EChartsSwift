@@ -185,7 +185,8 @@ public struct PathStyleProps {
 
 // ZRColor ⟷ animation-value bridge for the color-tween path. The Animator interpolates colors as
 // rgba strings (color.parse → interpolate → rgba2String), so `fill`/`stroke` are exposed/accepted
-// as color strings (gradients flow through as Gradient objects, see below); pattern colors are not keyed (PORT-TODO).
+// as color strings (gradients flow through as Gradient objects, see below); pattern colors are not keyed
+// (PORT-NOTE: faithful — upstream's color-tween interpolates only color strings + gradients, never patterns).
 private func zrColorToAnimValue(_ c: ZRColor?) -> Any? {
     switch c {
     case .some(.string(let s)):
@@ -197,7 +198,8 @@ private func zrColorToAnimValue(_ c: ZRColor?) -> Any? {
         return g
     case .some(.radialGradient(let g)):
         return g
-    // PORT-TODO: pattern color tweening.
+    // PORT-NOTE: pattern fills are not color-tweened — faithful to upstream (patterns fall through the
+    //   color-interpolation path, so they are not keyed for animation). Returns nil (no tween).
     default:
         return nil
     }
@@ -553,11 +555,18 @@ open class Path: Displayable {
                 }
             }
             else if key == "shape" {
-                // upstream: extend(this.shape, value). For the typed `PathShape` existential we
-                //   replace wholesale; partial dict-merge into a typed struct is deferred.
-                // PORT-TODO: dict-merge of a partial `[String: Any]` shape into a typed shape struct.
+                // upstream: extend(this.shape, value). A full typed `PathShape` replaces wholesale; a
+                //   partial `[String: Any]` merges only the given keys via each *Shape's keyed
+                //   `animationSet` (same seam as attrKV's "shape" branch below), coercing Int/NSNumber →
+                //   Double (Int-vs-Double option-read trap).
                 if let v = value as? PathShape {
                     self.shape = v
+                }
+                else if let partial = value as? [String: Any], var s = self.shape {
+                    for (innerKey, innerValue) in partial {
+                        s.animationSet(innerKey, coerceToDouble(innerValue) ?? innerValue)
+                    }
+                    self.shape = s
                 }
             }
             else {
@@ -960,8 +969,8 @@ open class Path: Displayable {
             self.dirtyStyle()
         }
         else {
-            // PORT-TODO: upstream routes the `style` key through `super.attrKV` → Displayable, which
-            //   types the value as CommonStyleProps. A FULL `PathStyleProps` set via `attr('style', …)`
+            // PORT-NOTE (deferred): upstream routes the `style` key through `super.attrKV` → Displayable,
+            //   which types the value as CommonStyleProps. A FULL `PathStyleProps` set via `attr('style', …)`
             //   will not round-trip through Displayable's CommonStyleProps handler; style is set via
             //   `_init` opts on the critical path. Edge case deferred (no known caller passes a full
             //   `PathStyleProps` through `attr`/`attrKV` post-construction; only the partial-dict form
@@ -983,8 +992,15 @@ open class Path: Displayable {
 
     @discardableResult
     public func setShape(_ key: String, _ value: Any?) -> Self {
-        // PORT-TODO: per-key set on a typed `PathShape` struct requires reflection / a subclass
-        //   override; deferred. Marks the shape dirty so callers still trigger a rebuild.
+        // upstream: setShape(key, value) { this.shape[key] = value; this.dirtyShape(); }
+        //   The typed value-type `PathShape` exposes keyed mutation via `animationSet` (each *Shape
+        //   overrides it for its numeric fields — the same seam `ShapeAnimationAccessor` drives).
+        //   Coerce Int/NSNumber → Double before the set (Int-vs-Double option-read trap: each *Shape's
+        //   `animationSet` only accepts `Double`, so an Int-boxed literal would otherwise be dropped).
+        if var s = self.shape {
+            s.animationSet(key, coerceToDouble(value) ?? value)
+            self.shape = s
+        }
         self.dirtyShape()
         return self
     }
@@ -1072,10 +1088,10 @@ open class Path: Displayable {
     }
 
     // upstream: static extend<Shape>(defaultProps) { class Sub extends Path { ... }; return Sub }
-    // PORT-TODO: the deprecated `Path.extend(...)` synthesizes a NEW subclass at runtime (assigning
-    //   `buildPath` / `init` / style / shape from a config object). Swift has no runtime class
+    // PORT-NOTE (unportable): the deprecated `Path.extend(...)` synthesizes a NEW subclass at runtime
+    //   (assigning `buildPath` / `init` / style / shape from a config object). Swift has no runtime class
     //   synthesis; the upstream JSDoc already marks it `@DEPRECATED Use class extends`. Shapes are
-    //   ported as real `final class … : Path` subclasses (Phase 1, 4b). Not translated.
+    //   ported as real `final class … : Path` subclasses (Phase 1, 4b). Permanently not translated.
 
     // upstream: protected static initDefaultProps = (function () { pathProto.type = 'path';
     //   pathProto.strokeContainThreshold = 5; pathProto.segmentIgnoreThreshold = 0;

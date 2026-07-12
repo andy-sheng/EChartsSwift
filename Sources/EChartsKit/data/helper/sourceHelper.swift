@@ -97,7 +97,7 @@ final class SourceHelperGlobalInner {
 //   is ported (util/modelUtil.swift). This still uses an equivalent object-identity keyed store
 //   with the same `innerGlobalModel(ecModel)` call shape; it could be switched to `model.makeInner`.
 private final class SourceHelperGlobalInnerStore {
-    private var map: [ObjectIdentifier: SourceHelperGlobalInner] = [:]   // PORT-TODO: strong (vs WeakMap)
+    private var map: [ObjectIdentifier: SourceHelperGlobalInner] = [:]   // PORT-NOTE: strong map (JS uses a WeakMap); entries live as long as this process-global store, so a GlobalModel keyed here is retained. Switch to `model.makeInner` for weak semantics.
     func callAsFunction(_ host: GlobalModel) -> SourceHelperGlobalInner {
         let id = ObjectIdentifier(host as AnyObject)
         if let existing = map[id] {
@@ -165,7 +165,8 @@ public enum sourceHelper {
         var encodeSeriesName: [DimensionIndex] = []
 
         // upstream `ComponentModel.ecModel` is non-null; `Model.ecModel` is `GlobalModel?` in the port
-        // (see the reconciliation PORT-TODO in util/types.swift, resolved now that model/Global landed).
+        // (see the reconciliation PORT-NOTE in util/types.swift, resolved now that model/Global landed —
+        //  so the `!` below is faithful to upstream's non-null `ecModel`).
         let ecModel = seriesModel.ecModel!
         let datasetMap = innerGlobalModel(ecModel).datasetMap!
         let key = datasetModel.uid + "_" + source.seriesLayoutBy
@@ -192,7 +193,12 @@ public enum sourceHelper {
                 baseCategoryDimIndex = Double(coordDimIdx)
                 categoryWayValueDimStart = getDataDimCountOnCoordDim(coordDimInfo)
             }
-            encode[coordDimInfo.name!] = []   // PORT-TODO: `name` is non-null DimensionName by construction
+            // POTENTIAL-BUG: force-unwrap of `CoordDimensionDefinition.name` (a `DimensionName?`). The
+            //   else-branch above sets `created.name = coordDimInfoLoose as? DimensionName`, which is nil
+            //   when `coordDimInfoLoose` is not a plain dimension-name string — so this `!` can trap.
+            //   In practice the loose entry is always a name string or a CoordDimensionDefinition carrying
+            //   a name, so `name` is non-null by construction here; guard with `if let` if that ever changes.
+            encode[coordDimInfo.name!] = []
         }
 
         // datasetMap.get(key) || datasetMap.set(key, {categoryWayDim: categoryWayValueDimStart, valueWayDim: 0})
@@ -581,8 +587,8 @@ public enum sourceHelper {
     }
 
     // JS `Number(val)` coercion (used by `detectValue`). Not a standalone upstream symbol.
-    // PORT-TODO: hex strings ('0x10'), 'Infinity', BigInt, and Date coercions are not handled;
-    //   these do not arise for the value-classification heuristic here.
+    // PORT-NOTE: hex strings ('0x10'), 'Infinity', BigInt, and Date coercions of JS `Number(val)` are
+    //   not handled; these do not arise for the value-classification heuristic here (language diff).
     private static func jsNumber(_ val: Any?) -> Double {
         switch val {
         case nil: return 0                       // Number(null) === 0 (guarded before this call)

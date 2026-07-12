@@ -409,8 +409,8 @@ open class PiecewiseModel: VisualMapModel {
             let data = seriesModel.getData()
 
             // data.each(this.getDataDimensionIndex(data), function (value, dataIndex) {
-            // PORT-TODO: base `getDataDimensionIndex` returns `DimensionIndex?`; upstream treats it as
-            //   always-present, so force-unwrap here.
+            // POTENTIAL-BUG: base `getDataDimensionIndex` returns `DimensionIndex?`; upstream treats it as
+            //   always-present, so force-unwrap here (latent SIGTRAP if the target dimension is absent).
             data.each(self.getDataDimensionIndex(data)!) { args in
                 let value = asDouble(args[0])
                 let dataIndex = asDouble(args[1])
@@ -968,8 +968,9 @@ private func jsParseInt(_ v: Any?) -> Double {
 }
 
 // JS `+x.toFixed(p)`: round to `p` decimals (as fixed-point) and parse back to a number.
-// PORT-TODO: `Number.prototype.toFixed` rounding (round-half-to-even-ish, implementation-defined)
-//   is approximated by `%.*f` (round-half-away). Used only for the precision auto-adaption loop.
+// PORT-NOTE: `Number.prototype.toFixed` rounding (round-half-to-even-ish, implementation-defined)
+//   is approximated by `%.*f` (round-half-away). Used only for the precision auto-adaption loop;
+//   the residual sub-ULP difference is not observable in that convergence loop.
 private func jsToFixedNumber(_ x: Double, _ p: Double) -> Double {
     let digits = Swift.max(0, Int(p))
     let s = String(format: "%.\(digits)f", x)

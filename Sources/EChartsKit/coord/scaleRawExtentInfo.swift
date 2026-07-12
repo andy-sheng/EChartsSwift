@@ -42,7 +42,7 @@ import ZRenderKit
 //   import { discourageOnAxisZero, getDataDimensionsOnAxis, isAxisOnBand } from './axisHelper';
 //       -> coord/axisHelper.swift is ported; called at the getDataDimensionsOnAxis/isAxisOnBand/discourageOnAxisZero sites below.
 //   import { getCoordForCoordSysUsageKindBox } from '../core/CoordinateSystem';
-//       -> `getCoordForCoordSysUsageKindBox` is ported (core/CoordinateSystemManager.swift); the box-coord-sys branch here is still deferred (see the PORT-TODO ~698).
+//       -> `getCoordForCoordSysUsageKindBox` is ported (core/CoordinateSystemManager.swift); the box-coord-sys branch here is now ported too (see ~698).
 //   import type GlobalModel from '../model/Global';         -> model/Global.swift (same module)
 //   import { error } from '../util/log';                    -> `log.error` (util/log.swift)
 //   import type Axis from './Axis';                         -> the `Axis` placeholder in coord/axisStatistics.swift
@@ -526,9 +526,11 @@ private func parseAxisModelMinMax(_ scale: Scale, _ minMax: ScaleDataValue?) -> 
     return scale.parse(minMax!)
 }
 
-// PORT-TODO: min/max callback `({min, max}) => value`. The option bag stores it as `Any`; we attempt a
-//   best-effort cast to a `([String: Double]) -> ScaleDataValue` closure and invoke it with the full
-//   (pre-filter) data extent. If the cast fails, treat as unspecified (nil).
+// PORT-NOTE: min/max callback `({min, max}) => value` — a JS function stored in the option bag (`Any`),
+//   modeled as a Swift closure. We attempt a best-effort cast to `([String: Double]) -> ScaleDataValue`
+//   and invoke it with the full (pre-filter) data extent. If the cast fails, treat as unspecified (nil).
+//   POTENTIAL-BUG: a caller-supplied closure with a different (equivalent) Swift signature would fail the
+//   cast and be silently dropped; there is no single canonical Swift type for the JS callback shape.
 private func invokeAxisMinMaxCallback(_ raw: Any?, _ dataMM: [Double]) -> ScaleDataValue? {
     if let fn = raw as? (([String: Double]) -> ScaleDataValue) {
         return fn(["min": dataMM[0], "max": dataMM[1]])
@@ -695,24 +697,39 @@ private func scaleRawExtentInfoCreateDeal(
     var requireStartValue = false
 
     eachSeriesOnAxis(axis) { seriesModel in
-        // PORT-TODO: `seriesModel.boxCoordinateSystem` + `getCoordForCoordSysUsageKindBox`
-        //   (core/CoordinateSystem.ts) not ported (Phase 6b). The box-coord-sys union branch
-        //   (pie-on-cartesian2d and similar) is omitted; only the `coordinateSystem` data-extent
-        //   branch below is ported.
-        //
         // if (seriesModel.boxCoordinateSystem) {
-        //     const {coord} = getCoordForCoordSysUsageKindBox(seriesModel);
-        //     const dimIdx = scaleStore.dimIdxInCoord;
-        //     if (!(dimIdx >= 0)) { error(...); }
-        //     else if (isArray(coord)) {
-        //         const coordItem = coord[dimIdx];
-        //         if (coordItem != null && !isArray(coordItem)) {
-        //             unionExtentFromNumber(extent, scale.parse(coordItem));
-        //         }
-        //     }
-        // }
+        if let bcs = seriesModel.boxCoordinateSystem, !(bcs is NSNull) {
+            // This supports union extent on case like: pie (or other similar series)
+            // lays out on cartesian2d.
+            // const {coord} = getCoordForCoordSysUsageKindBox(seriesModel);
+            let coord = getCoordForCoordSysUsageKindBox(seriesModel).coord
+            // const dimIdx = scaleStore.dimIdxInCoord;
+            let dimIdx = scaleStore.dimIdxInCoord
+            // if (!(dimIdx >= 0)) { error(...); }  (JS: undefined >= 0 is false → error branch)
+            if !((dimIdx ?? -1) >= 0) {
+                if __DEV__ {
+                    // Require `scaleRawExtentInfoEnableBoxCoordSysUsage` have been called to support it.
+                    let t = (bcs as? CoordinateSystem)?.type ?? ""
+                    log.error("Property \"series.coord\" is not supported on axis \(t).")
+                }
+            }
+            // Only `[val1, val2]` case needs to be supported currently.
+            // else if (isArray(coord)) {
+            else if let coordArr = coord as? [Any] {
+                let idx = Int(dimIdx!)
+                if idx >= 0 && idx < coordArr.count {
+                    // const coordItem = coord[dimIdx];
+                    let coordItem = coordArr[idx]
+                    // if (coordItem != null && !isArray(coordItem)) {
+                    if !(coordItem is NSNull) && !(coordItem is [Any]) {
+                        // unionExtentFromNumber(extent, scale.parse(coordItem));
+                        EChartsKit.model.unionExtentFromNumber(&extent, scale.parse(coordItem))
+                    }
+                }
+            }
+        }
         // else if (seriesModel.coordinateSystem) {
-        if seriesModel.coordinateSystem != nil {
+        else if seriesModel.coordinateSystem != nil {
             // NOTE: This data may have been filtered by dataZoom on orthogonal axes.
             let data = seriesModel.getData()
             // if (data) {

@@ -26,13 +26,16 @@ import ZRenderKit
 //   import type PathProxy from 'zrender/src/core/PathProxy';       -> ZRenderKit `PathProxy`.
 //   import { extend, isString } from 'zrender/src/core/util';      -> shape-from-layout build + `isString` bridge (see below).
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Path` / `LinearGradient`;
-//       `graphic.updateProps` (enter/update transition) is DEFERRED (see PORT-TODO in updateData).
+//       `graphic.updateProps` is ported (animation/basicTransition.swift); wiring the enter/update
+//       ribbon transition into this static-render view is DEFERRED by design (see PORT-NOTE in updateData).
 //   import SeriesData from '../../data/SeriesData';                -> `SeriesData`.
 //   import { GraphEdge } from '../../data/Graph';                  -> data/Graph.swift `GraphEdge`.
 //   import type Model from '../../model/Model';                    -> `Model`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';-> `getSectorCornerRadius`
 //       (only consumed by the `extend(cornerRadius, layout)` merge — cornerRadius is not used by buildPath).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: NOT ported (animation DEFERRED).
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-NOTE: animation/basicTransition.swift
+//       IS ported (saveOldStyle/updateProps available), but this static-render view applies the target
+//       shape directly, so the enter/update transition is intentionally not wired (see updateData).
 //   import ChordSeriesModel, { ChordEdgeItemOption, ChordEdgeLineStyleOption, ChordNodeItemOption } from './ChordSeries';
 //       -> sibling `ChordSeriesModel` (assumed ported alongside — the ChordSeries.swift port).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
@@ -70,8 +73,9 @@ public struct ChordPathShape: PathShape {
 
     // Keyed access for animateTo({shape: {...}}). Exposes the tweenable fields (the two endpoint pairs,
     //   the four arc angles, the center, and the radius). `clockwise` is a mode flag, not tweened.
-    // PORT-TODO: upstream animates the ribbon via these fields; the enter/update transition itself is
-    //   DEFERRED (static render), but the keyed seam is provided for parity with sibling shapes.
+    // PORT-NOTE (deferred): upstream animates the ribbon via these fields; the enter/update transition
+    //   is intentionally not wired in this static-render view, but the keyed seam is provided for parity
+    //   with sibling shapes (and for when the transition is wired via updateProps).
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "s1": return s1
@@ -195,7 +199,8 @@ public final class ChordEdge: Path {
         // const seriesModel = nodeData.hostModel as ChordSeriesModel;
         let seriesModel = nodeData.hostModel as! ChordSeriesModel
         // const edge = edgeData.graph.getEdgeByIndex(edgeIdx);
-        //   PORT-TODO: `graph` is `Graph?` and `getEdgeByIndex` is `GraphEdge?`; upstream assumes non-null.
+        //   PORT-NOTE: `graph` is `Graph?` and `getEdgeByIndex` is `GraphEdge?` where upstream assumes
+        //   non-null; the port guards defensively and returns early (skips this edge) rather than crash.
         guard let edge = edgeData.graph?.getEdgeByIndex(edgeIdx) else { return }
         // const layout = edge.getLayout();
         let layout = chordLayoutDict(edge.getLayout())
@@ -241,11 +246,12 @@ public final class ChordEdge: Path {
             applyEdgeFill(el, edge, nodeData, lineStyle)
         }
         else {
-            // saveOldStyle(el);  — PORT-TODO: animation/basicTransition NOT ported (DEFERRED).
+            // saveOldStyle(el);  — PORT-NOTE (deferred): animation/basicTransition IS ported, but the
+            //   enter/update ribbon transition is intentionally not wired in this static-render view.
             // applyEdgeFill(el, edge, nodeData, lineStyle);
             applyEdgeFill(el, edge, nodeData, lineStyle)
             // graphic.updateProps(el, { shape: shape }, seriesModel, edgeIdx);
-            // PORT-TODO: enter/update transition DEFERRED (animation) — apply the target shape directly.
+            // PORT-NOTE (deferred): enter/update transition not wired — apply the target shape directly.
             _ = el.setShape(shape)
         }
 
@@ -302,13 +308,13 @@ private func applyEdgeFill(
             edgeShape.pathStyle.fill = .string(fill)
         }
         // edgeStyle.decal = node1.getVisual('style').decal;
-        // PORT-TODO: node decal (Pattern) not bridged (decal out of the static-render scope).
+        // PORT-NOTE (deferred): node decal (Pattern) not bridged (decal is out of the static-render scope).
     case "target":
         // edgeStyle.fill = nodeData.getItemVisual(node2.dataIndex, 'style').fill;
         if let fill = chordColorString(chordStyleDict(nodeData.getItemVisual(node2.dataIndex, "style"))["fill"]) {
             edgeShape.pathStyle.fill = .string(fill)
         }
-        // edgeStyle.decal = node2.getVisual('style').decal;  — PORT-TODO: decal deferred.
+        // edgeStyle.decal = node2.getVisual('style').decal;  — PORT-NOTE (deferred): decal (Pattern) not bridged.
     case "gradient":
         // const sourceColor = nodeData.getItemVisual(node1.dataIndex, 'style').fill;
         // const targetColor = nodeData.getItemVisual(node2.dataIndex, 'style').fill;

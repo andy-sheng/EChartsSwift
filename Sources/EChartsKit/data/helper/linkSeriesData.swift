@@ -122,8 +122,9 @@ public enum linkSeriesData {
         //   shared tree/graph struct onto the clone produced by `dataTaskReset`, so a hierarchical
         //   series' `getData().tree` survives). The other transferable methods (downSample/map) and the
         //   changable methods (filterSelf/selectRange) record their injections here but do not yet fire
-        //   them — PORT-TODO: invoke the stored injections from those methods when data-zoom/sampling
-        //   lands (they are unreachable in the current static render path).
+        //   them — PORT-NOTE (deferred): SeriesData.downSample/map/filterSelf/selectRange must invoke
+        //   their stored injections when data-zoom/sampling lands (they are unreachable in the current
+        //   static render path, and firing them is a SeriesData-side change, not this file's).
         for (_, data) in datas! {
             for methodName in mainData.TRANSFERABLE_METHODS {
                 data.wrapMethod(methodName) { args in

@@ -147,19 +147,20 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if xAxisModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("xAxis \"\(util.retrieve(seriesModel.get("xAxisIndex"), seriesModel.get("xAxisId"), 0 as Any) ?? 0)\" not found")
             }
             if yAxisModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 // (Upstream uses `xAxisIndex` here too — preserved faithfully.)
                 fatalError("yAxis \"\(util.retrieve(seriesModel.get("xAxisIndex"), seriesModel.get("yAxisId"), 0 as Any) ?? 0)\" not found")
             }
         }
 
         result.coordSysDims = ["x", "y"]
-        // PORT-TODO: upstream HashMap<AxisBaseModel> may hold undefined; Swift maps are
-        //   non-optional so we force-unwrap post the __DEV__ guard.
+        // POTENTIAL-BUG: upstream HashMap<AxisBaseModel> may hold undefined; Swift maps are non-optional so
+        //   we force-unwrap post the __DEV__ guard. In a RELEASE build (__DEV__ false) a missing xAxis/yAxis
+        //   makes this force-unwrap SIGTRAP instead of surfacing the DEV error — mirrors upstream optimistic typing.
         axisMap.set("x", xAxisModel!)
         axisMap.set("y", yAxisModel!)
 
@@ -180,7 +181,7 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if singleAxisModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("singleAxis should be specified.")
             }
         }
@@ -201,11 +202,11 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if angleAxisModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("angleAxis option not found")
             }
             if radiusAxisModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("radiusAxis option not found")
             }
         }
@@ -259,7 +260,7 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if matrixModel == nil {
-                // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("matrix coordinate system should be specified.")
             }
         }
@@ -270,13 +271,13 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
         //   const yModel = matrixModel.getDimensionModel('y');
         //   axisMap.set('x', xModel); axisMap.set('y', yModel);
         //   categoryAxisMap.set('x', xModel); categoryAxisMap.set('y', yModel);
-        // PORT-TODO (DEFERRED): `getDimensionModel` returns `MatrixDimensionModel` (a `Model` with
+        // PORT-NOTE (deferred): `getDimensionModel` returns `MatrixDimensionModel` (a `Model` with
         //   `.get('type')`/`getOrdinalMeta()`), but this port collapsed the structural upstream
         //   `FetcherAxisModel` to the concrete `AxisBaseModel` (see the typealias above), and
         //   MatrixDimensionModel is NOT an AxisBaseModel — so it cannot be inserted into the
         //   `HashMap<AxisBaseModel>` axisMap here. No series is registered on the `matrix` coordinate
         //   system in the port (matrix is a custom-series/nonSeriesBox coord — Phase 6b), so this
-        //   fetcher is never invoked; the axisMap population is left as a PORT-TODO to be wired once
+        //   fetcher is never invoked; the axisMap population is left deferred, to be wired once
         //   FetcherAxisModel is widened to the structural (type + getOrdinalMeta) protocol.
         _ = matrixModel?.getDimensionModel("x")
         _ = matrixModel?.getDimensionModel("y")

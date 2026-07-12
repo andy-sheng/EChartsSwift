@@ -108,9 +108,9 @@ public final class EChartsView {
     //   `status:"hide"` (off-grid / leave) makes `render` call `group.hide()`.
     //
     //   Pointer managers are keyed by axis key (`makeKey(axis.model)`) so their `group`/`_lastGraphicKey`
-    //   persist across hovers. PORT-TODO: polar/single crosshairs (non-Axis2D) are deferred; move
-    //   animation / drag handle / lineDash(dashed→solid) are deferred inside BaseAxisPointer/viewHelper.
-    //   PORT-TODO: `axisPointer:{show:true}` WITHOUT a tooltip trigger:"axis" is not yet wired (the hover
+    //   persist across hovers. PORT-NOTE (deferred): polar/single crosshairs (non-Axis2D); move
+    //   animation / drag handle / lineDash(dashed→solid) inside BaseAxisPointer/viewHelper.
+    //   PORT-NOTE (deferred): `axisPointer:{show:true}` WITHOUT a tooltip trigger:"axis" is not yet wired (the hover
     //   path is gated on `_isAxisTrigger`; enabling axisPointer-only needs the mousemove→hideTip guard
     //   reworked so it does not fight the trigger:"item" tooltip — see `_bindAxisPointerListeners`).
     // ------------------------------------------------------------------------
@@ -136,7 +136,7 @@ public final class EChartsView {
     //   pixel rect is dispatched as a `{type:'brush', areas:[{brushType:'rect', range:[[x0,x1],[y0,y1]]}]}`
     //   action → brushVisual dims the unselected. While non-nil the same hover/tooltip suppression as an
     //   inside-pan drag applies (guarded alongside `_insideZoomDrag`).
-    //   PORT-TODO (DEFERRED): the live rubber-band cover rectangle, the full BrushController
+    //   PORT-NOTE (deferred): the live rubber-band cover rectangle, the full BrushController
     //     (polygon/lineX/lineY, transformable covers, removeOnClick), coordRange persistence across
     //     dataZoom, and the toolbox brush button that arms the cursor.
     // ------------------------------------------------------------------------
@@ -305,7 +305,7 @@ public final class EChartsView {
     //   series with roam. Enable the shared `RoamController` over the live zr and wire pan/zoom → `geoRoam`
     //   (see roamHelperGeo). The `onDispatched` seam flushes the zr display list + repaints after the
     //   action's full re-render. If nothing wants geo roam, the controller is disabled.
-    //   PORT-TODO (DEFERRED): MAP_SERIES_GROUP (multiple map series sharing a geo) uses a single host here.
+    //   PORT-NOTE (deferred): MAP_SERIES_GROUP (multiple map series sharing a geo) uses a single host here.
     // ------------------------------------------------------------------------
     private func _setupGeoRoam() {
         guard let ecModel = ec.getModel() else { return }
@@ -494,7 +494,7 @@ public final class EChartsView {
 
         // click: minimal payload assembly + dispatchAction (see `_handleClick`). Upstream builds the
         //   full `ECElementEvent` + triggers the public event bus; the Phase-33 scope is the highlight
-        //   dispatch for the clicked series/dataIndex (PORT-TODO: full param assembly + event bus).
+        //   dispatch for the clicked series/dataIndex (PORT-NOTE (deferred): full param assembly + event bus).
         _ = zr.on("click", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
             self._handleClick(e)
@@ -518,9 +518,12 @@ public final class EChartsView {
         // Slider-dataZoom brush select: forward the zr mousemove/mouseup legs (see _bindSliderZoomBrush).
         _bindSliderZoomBrush()
 
-        // PORT-TODO (DEFERRED): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
-        //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + a message bus.
-        // PORT-TODO (DEFERRED): `globalout` (no `e.target`) → `allLeaveBlur` / leave-emphasis reset.
+        // PORT-NOTE (deferred): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
+        //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + the message
+        //   center (ECharts.swift `messageCenter.trigger` is still commented out).
+        // PORT-NOTE (deferred): `globalout` (no `e.target`) → leave-emphasis reset. `allLeaveBlur` IS ported
+        //   (util/states.swift), but wiring it onto a globalout handler is not done (would need care not to
+        //   fight the drag-end globalout bindings in _bindInsidePan/_bindBrush).
     }
 
     // ------------------------------------------------------------------------
@@ -577,7 +580,7 @@ public final class EChartsView {
     //   (`InsideZoomView.getRangeHandlers.zoom` + `roams.getDirectionInfo.grid`) are ported exactly; the
     //   emitted action mirrors `roams.dispatchAction` (`{type:'dataZoom', batch:[{dataZoomId,start,end}]}`).
     //
-    //   PORT-TODO (DEFERRED, mirroring upstream `RoamController`/`roams`):
+    //   PORT-NOTE (deferred, mirroring upstream `RoamController`/`roams`):
     //     - wheel-scroll-move (`moveOnMouseWheel` → getRangeHandlers.scrollMove) and pinch/touch zoom
     //       (`_pinchHandler`). (pan/drag → getRangeHandlers.pan is now wired — Phase 39, `_bindInsidePan`.)
     //     - the full `RoamController` state machine + `throttleUtil.createOrUpdate` throttle + the
@@ -641,7 +644,7 @@ public final class EChartsView {
         if !batch.isEmpty {
             // upstream `roams.dispatchAction`: `{type:'dataZoom', animation:{easing:'cubicOut',
             //   duration:100}, batch}`. The driver renders the new window synchronously (no animated
-            //   dataZoom tween yet — PORT-TODO), so the animation part is omitted; the batch is faithful.
+            //   dataZoom tween yet — PORT-NOTE (deferred)), so the animation part is omitted; the batch is faithful.
             var payload = Payload(type: "dataZoom")
             payload.batch = batch
             ec.dispatchAction(payload)
@@ -662,7 +665,7 @@ public final class EChartsView {
     /// model-level grid referring link, so `collectReferCoordSysModelInfo` yields no coord systems — we
     /// instead resolve the target axis via the dataZoom's REPRESENTATIVE axis proxy (the same path
     /// `dataZoomProcessor` uses). For a single-axis inside dataZoom (the common cartesian case) this IS
-    /// `axisModels[0]`. PORT-TODO: multi-axis-per-grid grouping + polar/single coord systems.
+    /// `axisModels[0]`. PORT-NOTE (deferred): multi-axis-per-grid grouping + polar/single coord systems.
     private func _computeInsideZoomRange(
         _ dzModel: InsideZoomModel,
         originX: Double,
@@ -710,12 +713,12 @@ public final class EChartsView {
     //   of the wheel-zoom + pan paths. Faithful to `roams.getDirectionInfo.grid` (InsideZoomView.ts): the
     //   grid rect + the axis dim/inverse fix `pixelLength`/`pixelStart`/`signal`; NO cursor is baked in, so
     //   both the zoom (anchor point) and pan (drag delta) callers supply their own `pixel`. Returns `nil`
-    //   for a non-cartesian (polar/single) axis — PORT-TODO, deferred.
+    //   for a non-cartesian (polar/single) axis — PORT-NOTE (deferred).
     //
     //   DEVIATION (same as the wheel path): upstream drives the recompute off `coordSysInfo.axisModels[0]`
     //   (from `collectReferCoordSysModelInfo`); in this port the stand-in axis models don't carry the
     //   model-level grid referring link, so we resolve the target axis via the dataZoom's REPRESENTATIVE
-    //   axis proxy (the same path `dataZoomProcessor` uses). PORT-TODO: multi-axis-per-grid grouping.
+    //   axis proxy (the same path `dataZoomProcessor` uses). PORT-NOTE (deferred): multi-axis-per-grid grouping.
     // ------------------------------------------------------------------------
     private struct InsideZoomGeom {
         let isX: Bool
@@ -731,7 +734,7 @@ public final class EChartsView {
         let axisModel = proxy.getAxisModel()
         // Narrow to the CONCRETE Axis2D (protocol-witness trap): `.dim`/`.inverse`/`.grid`/`.index`.
         guard let axis = axisModel.axis as? Axis2D else {
-            // PORT-TODO: polar (RadiusAxis/AngleAxis) & singleAxis direction info deferred.
+            // PORT-NOTE (deferred): polar (RadiusAxis/AngleAxis) & singleAxis direction info.
             return nil
         }
         let grid = axis.grid!
@@ -759,7 +762,7 @@ public final class EChartsView {
     //   Binding APPROACH is identical to Phase-38 (`EChartsView` owns the zr binding; no live per-component
     //   `InsideZoomView`). ctx `nil` + `[weak self]` (Phase-33 retain-cycle rule).
     //
-    //   PORT-TODO (DEFERRED): cursor style (`cursorGrab`/`cursorGrabbing`), the interactionMutex globalPan,
+    //   PORT-NOTE (deferred): cursor style (`cursorGrab`/`cursorGrabbing`), the interactionMutex globalPan,
     //     `draggable` element opt-out, middle/right-button guard, throttle + the animated dataZoom tween,
     //     modifier-key gating of `moveOnMouseMove: 'ctrl'|'shift'|'alt'`, polar/single roam.
     // ------------------------------------------------------------------------
@@ -791,7 +794,7 @@ public final class EChartsView {
     //   a `{type:'brush', areas:[{brushType:'rect', range:[[x0,x1],[y0,y1]]}]}` action, which runs the
     //   Phase-44 `brushVisual` (dim the unselected). ctx `nil` + `[weak self]` (Phase-33 retain-cycle rule).
     //
-    //   PORT-TODO (DEFERRED): the live rubber-band cover rectangle drawn during the drag, brushType
+    //   PORT-NOTE (deferred): the live rubber-band cover rectangle drawn during the drag, brushType
     //     polygon/lineX/lineY, the full `BrushController` (transformable/removeOnClick covers), coordRange
     //     persistence across dataZoom, and the toolbox brush button that arms/disarms the brush cursor.
     // ------------------------------------------------------------------------
@@ -1198,7 +1201,7 @@ public final class EChartsView {
     //   SELECTION — `dispatcher.selected ? 'unselect' : 'select'`, echarts.ts:2347; `toggleSelect` is the
     //   ported single-action equivalent). It flows through the already-ported dispatchAction/updateDirectly
     //   path. Upstream additionally assembles a full `ECElementEvent` + triggers the public 'click' bus;
-    //   that user-facing param object + the message center is the documented PORT-TODO.
+    //   that user-facing param object + the message center is the documented PORT-NOTE (deferred).
     // ------------------------------------------------------------------------
     private func _handleClick(_ e: ElementEvent) {
         // Click uses the INNERMOST dispatcher (upstream passes returnFirstMatch=true, echarts.ts:2343).
@@ -1218,7 +1221,7 @@ public final class EChartsView {
             }
             cur = el.__hostTarget ?? (el.parent as? Element)
         }
-        // PORT-TODO: no ECData on the click target → upstream would still trigger the 'click' event with
+        // PORT-NOTE (deferred): no ECData on the click target → upstream would still trigger the 'click' event with
         //   an empty param object on the public bus; the bus is deferred, so this is a no-op.
     }
 

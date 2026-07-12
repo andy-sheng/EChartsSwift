@@ -57,7 +57,7 @@ import ZRenderKit
 //   import { formatTplSimple } from '../../util/format';         → `format.formatTplSimple`.
 //   import { invert } from 'zrender/src/core/matrix';            → used only by the deferred clip path.
 //   import { MatrixBodyCorner, MatrixBodyOrCornerKind } from '../../coord/matrix/MatrixBodyCorner';
-//     → `MatrixBodyCorner` (coord/matrix sibling). PORT-TODO: upstream is generic over the string-literal
+//     → `MatrixBodyCorner` (coord/matrix sibling). PORT-NOTE: upstream is generic over the string-literal
 //       `MatrixBodyOrCornerKind` ('body' | 'corner'); Swift has no string-literal generics, so the kind is a
 //       plain `String` argument and `MatrixBodyCorner` is referenced non-generically (kind held internally).
 //   import { setLabelStyle } from '../../label/labelStyle';
@@ -102,7 +102,7 @@ import ZRenderKit
 //     }
 
 // upstream: const round = Math.round;
-// PORT-TODO: JS `Math.round` rounds half toward +Infinity; replicate with `floor(x + 0.5)` (CONVENTIONS §5).
+// PORT-NOTE: JS `Math.round` rounds half toward +Infinity; replicated here with `floor(x + 0.5)` (CONVENTIONS §5).
 private func round(_ x: Double) -> Double {
     return floor(x + 0.5)
 }
@@ -293,7 +293,7 @@ private func createBodyAndCorner(
 
     // upstream: function createBodyOrCornerCells<TBodyOrCornerKind>(
     //     bodyCornerOptionRoot, bodyOrCorner, dimForCoordX, dimForCoordY): void
-    //   PORT-TODO: the string-literal generic `TBodyOrCornerKind` ('body' | 'corner') is dropped — the kind
+    //   PORT-NOTE: the string-literal generic `TBodyOrCornerKind` ('body' | 'corner') is dropped — the kind
     //     is a plain `String` and `MatrixBodyCorner` is referenced non-generically (CONVENTIONS §2).
     func createBodyOrCornerCells(
         _ bodyCornerOptionRoot: String,
@@ -427,8 +427,9 @@ private func createMatrixCell(
                 text = format.formatTplSimple(tpl, params)
             }
             else if util.isFunction(formatter) {
-                // PORT-TODO: a JS callback formatter can not be invoked from the option bag in this static
-                //   port; falls through to the default `text` (matches the no-formatter case).
+                // PORT-NOTE (deferred): requires JS-callback formatter bridging. A callback formatter can not
+                //   be invoked from the option bag in this static port; falls through to the default `text`
+                //   (matches the no-formatter case).
                 _ = params
             }
         }
@@ -496,7 +497,7 @@ private func createMatrixCell(
     cellRect.silent = rectSilent!
 
     // upstream: if (triggerEvent && cellRect) { getECData(cellRect).eventData = {...}; }
-    // PORT-TODO: eventData / triggerEvent wiring DEFERRED (interaction, CONVENTIONS §5).
+    // PORT-NOTE (deferred): eventData / triggerEvent wiring DEFERRED (interaction, CONVENTIONS §5).
 
     model.clearTmpModel(_tmpCellModel)
     model.clearTmpModel(_tmpCellItemStyleModel)
@@ -572,7 +573,7 @@ private func createMatrixLine(_ shapeIn: LineShape, _ style: [String: Any], _ z2
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of MatrixView.ts upstream. They reproduce the
+// PORT-NOTE helpers — NOT part of MatrixView.ts upstream. They reproduce the
 // `XY` util/graphic sibling, the dynamic-option-read coercions, the JS `+x`
 // stringify, and the `util/graphic` style-bag → PathStyleProps bridge referenced
 // above so the table cells / dividers are actually drawn. Delete each when its
@@ -582,8 +583,8 @@ private func createMatrixLine(_ shapeIn: LineShape, _ style: [String: Any], _ z2
 // ============================================================================
 
 // upstream: import { XY } from '../../util/graphic';  (== ['x', 'y'])
-//   PORT-TODO: `util/graphic.XY` is a matrix-coord-phase sibling (imported by MatrixDim). Referenced here as
-//   a file-private constant until the shared `XY` lands in util/graphic.swift, then delete this and import it.
+//   PORT-NOTE (deferred): requires shared `util/graphic.XY` (== ['x','y']), not yet in util/graphic.swift.
+//   Referenced here as a file-private constant until it lands, then delete this and import it.
 private let XY: [String] = ["x", "y"]
 
 /// Coerce a dynamic option value to Double, tolerating the Int boxing that `[String: Any]` defaultOption
@@ -622,13 +623,13 @@ private func stringify(_ v: Any) -> String {
     return "\(v)"
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle(dict)` bridge) is not ported. Map the dynamic style bag
+/// PORT-NOTE (deferred): requires `util/graphic`'s `useStyle(dict)` bridge, not ported. Map the dynamic style bag
 ///   ([String: Any] — the `getItemStyle()` / `getLineStyle()` result) onto the typed `PathStyleProps`.
 ///   Same deviation as CalendarView.calendarPathStyleFromDict / SingleAxisView.pathStyleFromDict; numbers are
 ///   read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap. Delete when the graphic bridge lands.
 private func matrixPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern/decal object (ZRColor non-string); only the String
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern/decal object (ZRColor non-string); only the String
     //   form (incl. the sentinel 'none') is mapped here.
     if let v = matrixColorString(dict["fill"]) { s.fill = .string(v) }
     if let v = matrixColorString(dict["stroke"]) { s.stroke = .string(v) }
@@ -644,7 +645,7 @@ private func matrixPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let v = numOpt(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
     if let v = numOpt(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
     if let v = numOpt(dict["lineDashOffset"]) { s.lineDashOffset = v }
-    // PORT-TODO: `lineDash` (number[] | false) / `decal` mapping deferred.
+    // PORT-NOTE (deferred): `lineDash` (number[] | false) / `decal` mapping deferred.
     return s
 }
 

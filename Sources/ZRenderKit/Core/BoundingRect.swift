@@ -412,7 +412,9 @@ private func intersectOneDim(
                 pointSet(_maxTv, updateDimIdx, -d0) // b is on the right/bottom(larger x/y)
             }
             if clamp == true {
-                // PORT-TODO: upstream assumes outIntersectRect is present whenever clamp is set.
+                // PORT-NOTE: faithful — upstream's BoundingRectIntersectOpt contract documents that
+                // `clamp: true` requires `outIntersectRect`; upstream dereferences it unguarded here too
+                // (would throw on null). The `!` mirrors that same non-null assumption.
                 rectXYSet(outIntersectRect!, updateDimIdx, a1)
                 rectWHSet(outIntersectRect!, updateDimIdx, 0)
             }

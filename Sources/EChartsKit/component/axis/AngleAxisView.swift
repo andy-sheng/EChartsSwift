@@ -56,7 +56,7 @@ import ZRenderKit
 //                  `getMinorTicksCoords()`/`getViewLabels()` from `Axis`.
 //   import { ZRTextAlign, ZRTextVerticalAlign, ColorString } from '../../util/types';
 //     → `TextAlign` / `TextVerticalAlign` (ZRenderKit enums) / `ColorString` (== String).
-//   import { getECData } from '../../util/innerStore';         → PORT-TODO: inner-store ECData seam, deferred.
+//   import { getECData } from '../../util/innerStore';         → `innerStore.getECData` (util/innerStore.swift).
 //   import { AxisLabelBaseOptionNuance } from '../../coord/axisCommonTypes';  → dropped (createTextStyle generic nuance).
 //   import { getTickValueOutermost } from '../../coord/axisHelper';           → `axisHelper.getTickValueOutermost`.
 
@@ -361,10 +361,11 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
             //           labelModel = new Model(rawCategoryItem.textStyle, commonLabelModel, commonLabelModel.ecModel);
             //       }
             //   }
-            // PORT-TODO: per-category `textStyle` override. `getCategories(true)` here yields `[OrdinalRawValue]`
-            //   (== [Any]); the raw category-item OBJECT form ({ value, textStyle }) that carries `textStyle`
-            //   is not modeled by OrdinalRawValue, so the per-label `Model` override is deferred and
-            //   `labelModel` stays `commonLabelModel`. Restore when the raw category-object option lands.
+            // PORT-NOTE (deferred): requires the raw category-item OBJECT form ({ value, textStyle }).
+            //   `getCategories(true)` here yields `[OrdinalRawValue]` (== [Any]); the object form that
+            //   carries `textStyle` is not modeled by OrdinalRawValue, so the per-label `Model` override
+            //   is deferred and `labelModel` stays `commonLabelModel`. Restore when the raw
+            //   category-object option lands.
             _ = rawCategoryData
             _ = tickValue
 
@@ -391,8 +392,8 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
 
             // upstream: graphic.setTooltipConfig({ el: textEl, componentModel: angleAxisModel,
             //   itemName: labelItem.formattedLabel, formatterParamsExtra: { isTruncated, value, tickIndex } });
-            // PORT-TODO: `graphic.setTooltipConfig` (util/graphic tooltip-config seam) NOT ported;
-            //   tooltip wiring is deferred (static render scope, CONVENTIONS §5).
+            // PORT-NOTE (deferred): requires `graphic.setTooltipConfig` (util/graphic tooltip-config
+            //   seam) — tooltip wiring deferred (static render scope, CONVENTIONS §5).
 
             // Pack data for mouse event
             if triggerEvent {
@@ -404,9 +405,8 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
                 var eventData = AxisBuilder.makeAxisEventDataBase(angleAxisModel)
                 eventData["targetType"] = "axisLabel"
                 eventData["value"] = labelItem.labelItem.rawLabel
-                // PORT-TODO: `getECData(textEl).eventData = eventData` — inner-store ECData seam NOT ported;
-                //   the packed `eventData` is computed but not attached (event dispatch is out of scope).
-                _ = eventData
+                // getECData(textEl).eventData = eventData;
+                innerStore.getECData(textEl).eventData = eventData
             }
         })
     },
@@ -594,8 +594,9 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
-    //   form (incl. the sentinel 'none') is mapped here.
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string);
+    //   only the String form (incl. the sentinel 'none') is mapped here — the gradient/pattern object
+    //   form carried in the dynamic bag is not parsed.
     if let fill = dict["fill"] as? String { s.fill = .string(fill) }
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
@@ -608,6 +609,6 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
     if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping requires the LineDash enum bridge.
     return s
 }

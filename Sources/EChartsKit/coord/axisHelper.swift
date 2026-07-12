@@ -143,10 +143,11 @@ public enum axisHelper {
         switch type {
         case "category":
             // upstream: ordinalMeta: model.getOrdinalMeta ? model.getOrdinalMeta() : model.getCategories()
-            // PORT-TODO: upstream branches on whether the *method* `getOrdinalMeta` is defined. The
-            //   placeholder protocol bundles both `getOrdinalMeta`/`getCategories`, so we always take
-            //   the `getOrdinalMeta()` arm when the model conforms; the `getCategories()` fallback for
-            //   models exposing only `getCategories` is deferred to coord/axisModelCreator (Phase 6b).
+            // PORT-NOTE: upstream duck-types on whether the *method* `getOrdinalMeta` is defined. The
+            //   `AxisModelExtendedInCreator` protocol requires BOTH `getOrdinalMeta`/`getCategories`, and
+            //   every ported conformer (axisModelCreator's generated model) implements `getOrdinalMeta`, so
+            //   the `getOrdinalMeta()` arm is always the correct one; the `getCategories()`-only fallback
+            //   describes a shape no ported model exhibits. Non-conformers yield `nil` (the empty case).
             let ordinalMeta: Any? = (model as? AxisModelExtendedInCreator)?.getOrdinalMeta()
             return OrdinalScale(OrdinalScaleSetting(
                 ordinalMeta: ordinalMeta,
@@ -164,7 +165,10 @@ public enum axisHelper {
         case "log":
             // See also #3749
             return LogScale(LogScaleSetting(
-                logBase: model.get("logBase") as? Double,  // PORT-TODO: option-bag coercion
+                // PORT-NOTE: `logBase` defaults to the Int literal `10` in axisDefault; a bare
+                //   `as? Double` returns nil on an Int-boxed option and would silently drop it (the
+                //   Int-vs-Double option-read trap), so coerce Int/NSNumber → Double.
+                logBase: axisHelperNumOpt(model.get("logBase")),
                 breakOption: breakOption
             ))
         case "value":
@@ -174,9 +178,11 @@ public enum axisHelper {
         default:
             // case others.
             // upstream: return new (Scale.getClass(type) || IntervalScale)({});
-            // PORT-TODO: `Scale.getClass(type)` returns a `Constructor` metatype; Swift cannot invoke
-            //   `new Ctor({})` on an arbitrary registered class without a factory hook, so fall back to
-            //   `IntervalScale`. Reinstate dynamic construction when the scale registry gains a factory.
+            // PORT-NOTE (platform): `Scale.getClass(type)` returns a `Constructor` (= `ClassManageable.Type`)
+            //   metatype; unlike JS, Swift cannot `new Ctor({})` on an arbitrary registered metatype (there is
+            //   no uniform init-from-untyped-settings requirement), so this falls back to `IntervalScale`. Only
+            //   the 4 built-in scale types (category/time/log/value) are reachable; no non-builtin scale type is
+            //   registered in the core port, so the fallback is never hit in practice.
             return IntervalScale()
         }
     }
@@ -449,6 +455,16 @@ public enum axisHelper {
         // PORT-NOTE: `boundaryGap` on a category axis is a boolean; coerced with `!!` truthiness.
         return helper.isOrdinalScale(scale) && ((axisModel.get("boundaryGap") as? Bool) ?? false)
     }
+}
+
+// Coerce a dynamic option value to Double, tolerating the Int boxing that `[String: Any]`
+// defaultOption literals use (e.g. `"logBase": 10`). A bare `as? Double` returns nil on an Int,
+// silently dropping the value — the recurring Int-vs-Double option-read trap.
+private func axisHelperNumOpt(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.doubleValue }
+    return nil
 }
 
 // upstream: export type ScaleValuePositionKind = ... ; export const SCALE_VALUE_POSITION_KIND_* = ...;

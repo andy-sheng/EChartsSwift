@@ -253,7 +253,7 @@ open class BoxplotSeriesModel: SeriesModel {
 
         // Clone a new data for next setOption({}) usage.
         // Avoid modifying current data will affect further update.
-        // PORT-TODO (value-semantics): upstream keeps two aliases of each data item — it mutates the
+        // POTENTIAL-BUG (value-semantics): upstream keeps two aliases of each data item — it mutates the
         //   SOURCE-referenced originals in place (`item.unshift(index)` / `item.value.unshift(index)`) so
         //   the Source sees the base-category index, while assigning `option.data = newOptionData` (clones
         //   WITHOUT the index) for setOption idempotency. Swift `[Any]`/`[String:Any]` are value types, and

@@ -11,7 +11,7 @@
 //   tagged `ImageSource` enum (`.url(String)` | `.image(ImageLike)`) and `ImageLike` as a small
 //   protocol exposing the natural `width` / `height` (the rest is the native image handle —
 //   `CGImage` on the painter side). The actual decode/cache lives in the renderer seam.
-//   PORT-TODO: native image loading via platform.loadImage (CONVENTIONS §9). `core/types.ts`'s
+//   PORT-NOTE (deferred): native image loading via platform.loadImage (CONVENTIONS §9). `core/types.ts`'s
 //   `ImageLike` placeholder is realised here.
 //
 // STYLE DECISION (TS `ImageStyleProps extends CommonStyleProps` → Swift):
@@ -38,7 +38,7 @@ import Foundation
 // import { defaults, createObject } from '../core/util';
 // import { ElementCommonState } from '../Element';
 
-// PORT-TODO: `ImageLike` (HTMLImageElement | HTMLCanvasElement | HTMLVideoElement) is already the
+// PORT-NOTE: `ImageLike` (HTMLImageElement | HTMLCanvasElement | HTMLVideoElement) is already the
 //   deferred opaque seam `typealias ImageLike = Any` in `core/platform.swift` (CONVENTIONS §9); the
 //   decoded native handle (a `CGImage` on the painter side) flows through it. The only structural
 //   shape Image.ts reads off an `ImageLike` is its natural pixel size (`source.width`/`.height` in
@@ -141,7 +141,7 @@ public typealias ImageState = DisplayableState
 //   `!!(source && typeof source !== 'string' && source.width && source.height)`.
 //   Adapted to the `ImageSource` enum: returns the image's natural size when the source is an
 //   `.image` exposing a non-zero `width`/`height` (matching the JS-falsy `width && height` guard),
-//   else nil. PORT-TODO: relies on the native handle conforming to `ImageNaturalSize` (renderer seam).
+//   else nil. PORT-NOTE (deferred): relies on the native handle conforming to `ImageNaturalSize` (renderer seam).
 private func isImageLike(_ source: ImageSource?) -> ImageNaturalSize? {
     if case .some(.image(let img)) = source,
        let sized = img as? ImageNaturalSize,
@@ -160,13 +160,13 @@ public final class ZRImage: Displayable {
     public var imageStyle: ImageStyleProps!
 
     // FOR CANVAS RENDERER
-    // PORT-TODO: the decoded native image handle, populated by the painter after resolving a `.url`
+    // PORT-NOTE (deferred): the decoded native image handle, populated by the painter after resolving a `.url`
     //   source via `platform.loadImage`. Renderer seam (CONVENTIONS §9).
     public var __image: ImageLike?
     // FOR SVG RENDERER
     public var __imageSrc: String?
 
-    // PORT-TODO: fired by the painter once a `string` source finishes loading. Renderer seam.
+    // PORT-NOTE (deferred): fired by the painter once a `string` source finishes loading. Renderer seam.
     public var onload: ((ImageLike) -> Void)?
 
     public override init(_ props: ElementProps? = nil) {

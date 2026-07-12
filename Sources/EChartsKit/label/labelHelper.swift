@@ -44,18 +44,32 @@ public enum labelHelper {
         return nil
     }
 
-    // PORT-TODO (DEFERRED — no caller yet, NOT because the animation is unported):
-    //   `getDefaultInterpolatedLabel(data, interpolatedValue)` computes the "in-flight" label text
-    //   during the number roll-up animation (`animateLabelValue`'s `during` callback passes it as
-    //   `defaultInterpolatedText`). `setLabelValueAnimation`/`animateLabelValue` ARE now ported
-    //   (-> label/labelStyle.swift `setLabelValueAnimation` / `animateLabelValue`), but no view yet
-    //   WIRES `setLabelValueAnimation` (e.g. BarView still marks it DEFERRED), so this helper has no
-    //   caller and is left unported until a view supplies the `getDefaultText` closure that would call
-    //   it. Deps are present (`data.mapDimensionsAll`, `data.getDimensionIndex`, `util.isArray`).
-    //   Upstream body for reference:
-    //     const labelDims = data.mapDimensionsAll('defaultedLabel');
-    //     if (!isArray(interpolatedValue)) { return interpolatedValue + ''; }
-    //     const vals = [];
-    //     for (dim of labelDims) { const i = data.getDimensionIndex(dim); if (i >= 0) vals.push(interpolatedValue[i]); }
-    //     return vals.join(' ');
+    /// upstream: `getDefaultInterpolatedLabel(data, interpolatedValue)` — the "in-flight" label text
+    ///   during the number roll-up animation (`animateLabelValue`'s `during` callback passes it as
+    ///   `defaultInterpolatedText`). Ported straight from upstream; deps are all present
+    ///   (`data.mapDimensionsAll`, `data.getDimensionIndex`, `util.isArray`).
+    public static func getDefaultInterpolatedLabel(
+        _ data: SeriesData,
+        _ interpolatedValue: InterpolatableValue
+    ) -> String {
+        // const labelDims = data.mapDimensionsAll('defaultedLabel');
+        let labelDims = data.mapDimensionsAll("defaultedLabel")
+        // if (!isArray(interpolatedValue)) { return interpolatedValue + ''; }
+        if !util.isArray(interpolatedValue) {
+            return format._str(interpolatedValue)
+        }
+        let arr = (interpolatedValue as? [Any?]) ?? []
+        // for (i of labelDims) { const dimIndex = data.getDimensionIndex(labelDims[i]);
+        //   if (dimIndex >= 0) { vals.push(interpolatedValue[dimIndex]); } }
+        var vals: [Any?] = []
+        for i in 0..<labelDims.count {
+            let dimIndex = data.getDimensionIndex(labelDims[i])
+            if dimIndex >= 0 {
+                let idx = Int(dimIndex)
+                if idx < arr.count { vals.append(arr[idx]) }
+            }
+        }
+        // return vals.join(' ');  (Array#join coerces null/undefined entries to '', see getDefaultLabel)
+        return vals.map { format._strOrNil($0) ?? "" }.joined(separator: " ")
+    }
 }

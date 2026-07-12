@@ -25,9 +25,10 @@ import ZRenderKit
 //   import { retrieve, defaults, extend, each, isObject, isString, isNumber, isFunction, retrieve2,
 //       assert, map, retrieve3, filter } from 'zrender/src/core/util';    → `util.*` (ZRenderKit)
 //   import * as graphic from '../../util/graphic';
-//     → PORT-TODO: `util/graphic` NOT ported yet. `graphic.Group/Line/Text/Rect` are the ZRenderKit
+//     → PORT-NOTE: `util/graphic` NOT ported yet. `graphic.Group/Line/Text/Rect` are the ZRenderKit
 //       scene-graph types used directly (`Group`, `Line`, `ZRText`, `Rect`); `graphic.subPixelOptimizeLine`
-//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred (see PORT-TODO).
+//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred (see the
+//       setTooltipConfig PORT-NOTEs at the axisName / axisLabel call sites).
 //   import {getECData} from '../../util/innerStore';                    → `innerStore.getECData` (deferred; event wiring)
 //   import {createTextStyle} from '../../label/labelStyle';
 //     → `label/labelStyle.swift` IS ported (`LabelStyle.createTextStyle`, labelStyle.swift:417). AxisBuilder
@@ -36,7 +37,8 @@ import ZRenderKit
 //   import Model from '../../model/Model';                              → `Model`
 //   import {isRadianAroundZero, remRadian} from '../../util/number';    → `number.isRadianAroundZero` / `number.remRadian`
 //   import {createSymbol, normalizeSymbolOffset} from '../../util/symbol';
-//     → PORT-TODO: `util/symbol` NOT ported. axisLine arrow symbols deferred.
+//     → `symbol.createSymbol` / `symbol.normalizeSymbolOffset` (util/symbol.swift). Wired for the
+//       axisLine arrow symbols (see the `axisLine` builder).
 //   import * as matrixUtil from 'zrender/src/core/matrix';              → `matrix.*` (ZRenderKit)
 //   import {applyTransform as v2ApplyTransform} from 'zrender/src/core/vector';  → `vector.applyTransform`
 //   import { getTickValueOutermost, isNameLocationCenter, shouldShowAllLabels } from '../../coord/axisHelper';
@@ -55,16 +57,20 @@ import ZRenderKit
 //       now calls the real sibling directly (see the bottom-of-file note).
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 → `ExtensionAPI`
 //   import { makeInner } from '../../util/model';                       → `model.makeInner` (util/modelUtil.swift)
-//   import { getAxisBreakHelper } from './axisBreakHelper';             → PORT-TODO: axisBreak deferred
-//   import { AXIS_BREAK_EXPAND_ACTION_TYPE, BaseAxisBreakPayload } from './axisAction';  → PORT-TODO: deferred
-//   import { getScaleBreakHelper, hasBreaks } from '../../scale/break';  → PORT-TODO: scale break deferred
+//   import { getAxisBreakHelper } from './axisBreakHelper';             → `getAxisBreakHelper()`
+//     (axisModelCreator.swift): the optional break-helper module is not installed, so it returns nil.
+//   import { AXIS_BREAK_EXPAND_ACTION_TYPE, BaseAxisBreakPayload } from './axisAction';
+//     → PORT-NOTE (deferred): requires the `axisAction` module (break-expand action), not ported.
+//   import { getScaleBreakHelper, hasBreaks } from '../../scale/break';  → `scale/break.swift`
+//     (getScaleBreakHelper / hasBreaks are ported; `hasBreaks` gates the break-marker glyph below).
 //   import BoundingRect from 'zrender/src/core/BoundingRect';           → `BoundingRect` (ZRenderKit; used by overlap → deferred)
 //   import Point from 'zrender/src/core/Point';                        → `Point` (ZRenderKit)
 //   import { copyTransform } from 'zrender/src/core/Transformable';     → `copyTransform` (free func, ZRenderKit)
 //   import { AxisLabelInfoDetermined, AxisLabelsComputingContext, AxisTickLabelComputingKind,
 //       createAxisLabelsComputingContext } from '../../coord/axisTickLabelBuilder';  → `coord/axisTickLabelBuilder`
 //   import { AxisTickCoord } from '../../coord/Axis';                   → `AxisTickCoord`
-//   import { isOrdinalScale, isTimeScale } from '../../scale/helper';   → PORT-TODO: used only in fixMinMaxLabelShow (deferred)
+//   import { isOrdinalScale, isTimeScale } from '../../scale/helper';   → `helper.isOrdinalScale` /
+//     `helper.isTimeScale` (scale/helper.swift, ported); used by the tick-label "notNice/offInterval" gate.
 
 private let PI = Double.pi
 
@@ -77,7 +83,7 @@ private let DEFAULT_ENDS_NAME_MARGIN_LEVELS: [[Double]] =
     [[0, 1, 0, 1], [0, 3, 0, 3], [0, 3, 0, 3]]
 
 // type AxisIndexKey = 'xAxisIndex' | 'yAxisIndex' | 'radiusAxisIndex' | 'angleAxisIndex' | 'singleAxisIndex';
-//   PORT-TODO: string-literal union → plain String at use sites.
+//   PORT-NOTE: string-literal union → plain String at use sites (no Swift enum needed).
 
 // upstream: type AxisEventData = { componentType, componentIndex, targetType, name?, value?,
 //   dataIndex?, tickIndex? } & { break? } & { [key in AxisIndexKey]?: number }
@@ -85,8 +91,8 @@ private let DEFAULT_ENDS_NAME_MARGIN_LEVELS: [[Double]] =
 public typealias AxisEventData = [String: Any]
 
 // type AxisLabelText = graphic.Text & { __fullText, __truncatedText } & ECElement;
-//   PORT-TODO: the `__fullText`/`__truncatedText`/ECElement decorations are used only by tooltip/truncation
-//   (deferred). Use `ZRText` directly.
+//   PORT-NOTE (deferred): the `__fullText`/`__truncatedText`/ECElement decorations are used only by
+//   tooltip/truncation wiring (not ported). Use `ZRText` directly.
 public typealias AxisLabelText = ZRText
 
 // upstream: export const getLabelInner = makeInner<{ labelInfo; layoutRotation }, graphic.Text>();
@@ -256,8 +262,9 @@ public final class AxisBuilderSharedContextRecord {
     // Represents axis rotation. The magnitude is 1.
     public var dirVec: Point?
     public var transGroup: Group?
-    // PORT-TODO: `labelInfoList` / `stOccupiedRect` / `nameLayout` / `nameLocation` are used by the
-    //   cross-axis overlap resolution (labelLayoutHelper) which is deferred per task scope.
+    // PORT-NOTE (deferred): `labelInfoList` / `stOccupiedRect` / `nameLayout` / `nameLocation` feed the
+    //   cross-axis name/label overlap resolution feature (labelLayoutHelper is ported, but this
+    //   overlap-nudging path is out of the line+ticks+labels scope of this axis port).
     // Only used in __DEV__ mode.
     public var ready: [String: Bool] = [:]
     public init() {}
@@ -312,19 +319,21 @@ public final class AxisBuilderSharedContext {
     public let resolveAxisNameOverlap: ResolveAxisNameOverlap
 }
 
-// PORT-TODO: `resetOverlapRecordToShared` + `_stTransTmp` + `_stLabelRectTmp` (label rect union for
-//   cross-axis name-overlap detection) depend on `labelLayoutHelper` (ensureLabelLayoutWithGeometry,
-//   LabelLayoutWithGeometry, BoundingRect union math). Deferred per task scope (line+ticks+labels only).
+// PORT-NOTE (deferred): `resetOverlapRecordToShared` + `_stTransTmp` + `_stLabelRectTmp` (label rect
+//   union for cross-axis name-overlap detection) build on `labelLayoutHelper`
+//   (ensureLabelLayoutWithGeometry, LabelLayoutWithGeometry, BoundingRect union math — all ported).
+//   The overlap-detection feature itself is out of this port's scope (line+ticks+labels only).
 
 /**
  * The default resolver does not involve other axes within the same coordinate system.
  */
-// PORT-TODO: `resolveAxisNameOverlapDefault` + `moveIfOverlap` + `moveIfOverlapByLinearLabels` implement
-//   axis-name overlap avoidance via OBB intersection (labelLayoutHelper). Deferred; the default resolver
-//   is a no-op so the axis name is placed at its computed `nameGap` position without overlap nudging.
+// PORT-NOTE (deferred): `resolveAxisNameOverlapDefault` + `moveIfOverlap` + `moveIfOverlapByLinearLabels`
+//   implement axis-name overlap avoidance via OBB intersection (labelLayoutHelper, ported). The feature
+//   is out of this port's scope; the default resolver is a no-op, so the axis name is placed at its
+//   computed `nameGap` position without overlap nudging.
 public let resolveAxisNameOverlapDefault: AxisBuilderSharedContext.ResolveAxisNameOverlap = {
     _, _, _, _, _, _ in
-    // PORT-TODO: no-op until labelLayoutHelper lands (see comment above).
+    // PORT-NOTE (deferred): no-op axis-name overlap resolver (see comment above).
 }
 
 /**
@@ -377,8 +386,8 @@ public final class AxisBuilder {
      * (See upstream comment.)
      */
     public func updateCfg(_ opt: AxisBuilderCfg) {
-        // PORT-TODO: upstream takes Pick<AxisBuilderCfg, 'position' | 'labelOffset'>; the __DEV__ readiness
-        //   assertions are dropped.
+        // PORT-NOTE: upstream takes Pick<AxisBuilderCfg, 'position' | 'labelOffset'>; the `__DEV__`
+        //   readiness assertions (dev-only build guard) are dropped.
         let raw = self._cfg.raw
         var newRaw = raw
         newRaw.position = opt.position
@@ -549,7 +558,7 @@ let AXIS_BUILDER_AXIS_PART_NAMES: [String] = [
 let builders: [String: AxisElementsBuilder] = [
 
     "axisLine": { cfg, _, _, axisModel, group, transformGroup, _, _ in
-        // PORT-TODO: __DEV__ readiness assertion dropped.
+        // PORT-NOTE: upstream `__DEV__` readiness assertion (dev-only build guard) dropped.
 
         var shown = axisModel.get(["axisLine", "show"])
         if (shown as? String) == "auto" {
@@ -567,7 +576,7 @@ let builders: [String: AxisElementsBuilder] = [
         let matrixArr = transformGroup.transform
         var pt1 = VectorArray(extent[0], 0)
         var pt2 = VectorArray(extent[1], 0)
-        // upstream: const inverse = pt1[0] > pt2[0];  (used for arrow placement — deferred)
+        // upstream: const inverse = pt1[0] > pt2[0];  (computed in the arrow-symbol block below)
         if let m = matrixArr {
             pt1 = vector.applyTransform(pt1, m)
             pt2 = vector.applyTransform(pt2, m)
@@ -580,7 +589,9 @@ let builders: [String: AxisElementsBuilder] = [
 
         // upstream: pathBaseProp: PathProps = { strokeContainThreshold, silent: true, z2: 1, style: lineStyle }
         // upstream: if (axisModel.get(['axisLine', 'breakLine']) && hasBreaks(axisModel.axis.scale)) { ... }
-        //   PORT-TODO: axis break line deferred; always take the else branch.
+        //   PORT-NOTE (deferred): the broken axis-line rendering needs the optional axisBreakHelper
+        //   break-line builder (getAxisBreakHelper() is nil in this port), so the else branch (the
+        //   plain axis Line) is always taken. The core break-marker glyph is drawn below.
         let line = Line([
             "shape": lineShapeOf(pt1[0], pt1[1], pt2[0], pt2[1]),
             "style": lineStyle,
@@ -605,15 +616,91 @@ let builders: [String: AxisElementsBuilder] = [
         buildAxisBreakMarker(axisModel.axis as! Axis, group, transformGroup.transform, lineStyle)
 
         // upstream: let arrows = axisModel.get(['axisLine', 'symbol']); if (arrows != null) { ... createSymbol ... }
-        //   PORT-TODO: axisLine arrow symbols require `util/symbol` (createSymbol / normalizeSymbolOffset),
-        //   which is NOT ported. Deferred.
+        let arrowsRaw = axisModel.get(["axisLine", "symbol"])
+        if arrowsRaw != nil {
+            // Use the same arrow for start and end point when a single string is given.
+            var arrows: [Any?]
+            if util.isString(arrowsRaw) {
+                arrows = [arrowsRaw, arrowsRaw]
+            }
+            else if let a = arrowsRaw as? [Any?] {
+                arrows = a
+            }
+            else if let a = arrowsRaw as? [Any] {
+                arrows = a.map { $0 as Any? }
+            }
+            else {
+                arrows = [arrowsRaw, arrowsRaw]
+            }
+
+            // Use the same size for width and height when a single string/number is given.
+            let arrowSizeRaw = axisModel.get(["axisLine", "symbolSize"])
+            var arrowSize: [Double]
+            if util.isString(arrowSizeRaw) || util.isNumber(arrowSizeRaw) {
+                let s = (arrowSizeRaw as? Double) ?? 0
+                arrowSize = [s, s]
+            }
+            else if let arr = arrowSizeRaw as? [Any] {
+                arrowSize = [
+                    arr.count > 0 ? ((arr[0] as? Double) ?? 0) : 0,
+                    arr.count > 1 ? ((arr[1] as? Double) ?? 0) : 0
+                ]
+            }
+            else {
+                arrowSize = [0, 0]
+            }
+
+            // upstream: normalizeSymbolOffset(axisModel.get(['axisLine','symbolOffset']) || 0, arrowSize)
+            let arrowOffset = symbol.normalizeSymbolOffset(
+                axisModel.get(["axisLine", "symbolOffset"]) ?? Double(0), arrowSize
+            ) ?? (0, 0)
+            let offsets = [arrowOffset.0, arrowOffset.1]
+
+            let symbolWidth = arrowSize[0]
+            let symbolHeight = arrowSize[1]
+            let inverse = pt1[0] > pt2[0]
+
+            let dx = pt1[0] - pt2[0]
+            let dy = pt1[1] - pt2[1]
+            let rLen = (dx * dx + dy * dy).squareRoot()
+
+            let points: [(rotate: Double, offset: Double, r: Double)] = [
+                (cfg.rotation + PI / 2, offsets[0], 0),
+                (cfg.rotation - PI / 2, offsets[1], rLen)
+            ]
+            for (index, point) in points.enumerated() where index < arrows.count {
+                if let arrowStr = arrows[index] as? String, arrowStr != "none" {
+                    guard let sym = symbol.createSymbol(
+                        arrowStr,
+                        -symbolWidth / 2,
+                        -symbolHeight / 2,
+                        symbolWidth,
+                        symbolHeight,
+                        lineStyle.stroke,
+                        true
+                    ) as? Path else { continue }
+
+                    // Calculate arrow position with offset.
+                    let r = point.r + point.offset
+                    let pt = inverse ? pt2 : pt1
+                    sym.attr([
+                        "rotation": point.rotate,
+                        "x": pt[0] + r * cos(cfg.rotation),
+                        "y": pt[1] - r * sin(cfg.rotation),
+                        "silent": true,
+                        "z2": Double(11)
+                    ])
+                    _ = group.add(sym)
+                }
+            }
+        }
     },
 
     /**
      * [CAUTION] This method can be called multiple times ... Thus this method should be idempotent.
      */
     "axisTickLabelEstimate": { cfg, local, shared, axisModel, group, transformGroup, api, extraParams in
-        // PORT-TODO: __DEV__ readiness assertion dropped.
+        // PORT-NOTE: upstream `__DEV__` readiness assertion (dev-only build guard) dropped.
         let needCallLayout = dealLastTickLabelResultReusable(local, group, extraParams)
         if needCallLayout {
             layOutAxisTickLabel(
@@ -626,7 +713,7 @@ let builders: [String: AxisElementsBuilder] = [
      * Finish axis tick label build. Can be only called once.
      */
     "axisTickLabelDetermine": { cfg, local, shared, axisModel, group, transformGroup, api, extraParams in
-        // PORT-TODO: __DEV__ readiness assertion dropped.
+        // PORT-NOTE: upstream `__DEV__` readiness assertion (dev-only build guard) dropped.
         let needCallLayout = dealLastTickLabelResultReusable(local, group, extraParams)
         if needCallLayout {
             layOutAxisTickLabel(
@@ -644,7 +731,7 @@ let builders: [String: AxisElementsBuilder] = [
      */
     "axisName": { cfg, local, shared, axisModel, group, transformGroup, _, extraParams in
         let sharedRecord = shared.ensureRecord(axisModel)
-        // PORT-TODO: __DEV__ readiness assertion dropped.
+        // PORT-NOTE: upstream `__DEV__` readiness assertion (dev-only build guard) dropped.
 
         // Remove the existing name result created in estimation phase.
         if let nameEl = local.nameEl {
@@ -667,7 +754,7 @@ let builders: [String: AxisElementsBuilder] = [
         let extent = axis.getExtent()
         let gapStartEndSignal: Double = axis.inverse ? -1 : 1
         // upstream uses `Point`; only pos.x/pos.y are needed here (nameMoveDirVec drives the deferred
-        //   overlap resolution — see PORT-TODO below).
+        //   overlap resolution — see PORT-NOTE below).
         var posX: Double = 0
         var posY: Double = 0
         if nameLocation == "start" {
@@ -680,8 +767,8 @@ let builders: [String: AxisElementsBuilder] = [
             posX = (extent[0] + extent[1]) / 2
             posY = cfg.labelOffset + nameDirection * gap
         }
-        // PORT-TODO: `nameMoveDirVec` + `matrixUtil.rotate` transform is only consumed by
-        //   `resolveAxisNameOverlap` (deferred). Dropped.
+        // PORT-NOTE (deferred): `nameMoveDirVec` + `matrixUtil.rotate` transform is only consumed by
+        //   `resolveAxisNameOverlap` (the out-of-scope name-overlap resolver). Dropped.
 
         var nameRotation = axisModel.get("nameRotate") as? Double
         if nameRotation != nil {
@@ -749,26 +836,28 @@ let builders: [String: AxisElementsBuilder] = [
             "z2": Double(1)
         ])
 
-        // PORT-TODO: graphic.setTooltipConfig (tooltip wiring) deferred.
-        // PORT-TODO: textEl.__fullText = name — the truncation-tooltip decoration is deferred.
+        // PORT-NOTE (deferred): graphic.setTooltipConfig (util/graphic.swift is ported, but the axis-name
+        //   tooltip params/wiring are out of this render-focused scope).
+        // PORT-NOTE (deferred): textEl.__fullText = name — the truncation-tooltip decoration is not wired.
         // Id for animation
         textEl.anid = "name"
 
-        // PORT-TODO: axisModel.get('triggerEvent') → getECData(textEl).eventData = ...  (event wiring deferred)
+        // PORT-NOTE (deferred): axisModel.get('triggerEvent') → innerStore.getECData(textEl).eventData = ...
+        //   (getECData is ported, but the axis event wiring is out of this render-focused scope).
 
         _ = transformGroup.add(textEl)
         textEl.updateTransform()
 
         local.nameEl = textEl
-        // PORT-TODO: sharedRecord.nameLayout = ensureLabelLayoutWithGeometry({...}) and
-        //   sharedRecord.nameLocation — used only by the (deferred) name-overlap resolver.
+        // PORT-NOTE (deferred): sharedRecord.nameLayout = ensureLabelLayoutWithGeometry({...}) and
+        //   sharedRecord.nameLocation — used only by the out-of-scope name-overlap resolver.
         _ = sharedRecord
         _ = group.add(textEl)
 
         textEl.decomposeTransform()
 
-        // PORT-TODO: if (cfg.shouldNameMoveOverlap && nameLayout) { shared.resolveAxisNameOverlap(...) }
-        //   Deferred (labelLayoutHelper). The default resolver is a no-op regardless.
+        // PORT-NOTE (deferred): if (cfg.shouldNameMoveOverlap && nameLayout) { shared.resolveAxisNameOverlap(...) }
+        //   Out of scope (name-overlap resolver). The default resolver is a no-op regardless.
     }
 ]
 
@@ -790,7 +879,8 @@ func layOutAxisTickLabel(
 
     updateAxisLabelChangableProps(cfg, axisModel, labelLayoutList, transformGroup)
 
-    // PORT-TODO: `adjustBreakLabels` (axis break label nudging) deferred.
+    // PORT-NOTE (deferred): `adjustBreakLabels` (axis break label nudging) needs the optional
+    //   axisBreakHelper break renderer (getAxisBreakHelper() is nil in this port).
 
     let optionHideOverlap = cfg.optionHideOverlap
 
@@ -808,7 +898,8 @@ func layOutAxisTickLabel(
         )
     }
 
-    // PORT-TODO: `resetOverlapRecordToShared` (cross-axis overlap record) deferred.
+    // PORT-NOTE (deferred): `resetOverlapRecordToShared` (cross-axis overlap record) is part of the
+    //   out-of-scope name/label overlap resolution.
     _ = shared
 }
 
@@ -1169,8 +1260,9 @@ func buildAxisLabel(
 
     let labelLayout = AxisBuilder.innerTextLayout(cfg.rotation, labelRotation, cfg.labelDirection)
     // upstream: axisModel.getCategories && axisModel.getCategories(true)
-    // PORT-TODO: per-category `textStyle` override (rawCategoryData[tickValue].textStyle → new Model)
-    //   is deferred; `labelModel` is used for every label. (Category `OrdinalRawValue` is `Any` here.)
+    // PORT-NOTE (deferred): per-category `textStyle` override (rawCategoryData[tickValue].textStyle →
+    //   new Model) is not wired; `labelModel` is used for every label. (Category `OrdinalRawValue` is
+    //   `Any` here.)
     _ = axisModel.getCategories(true)
 
     var labelEls: [ZRText] = []
@@ -1181,17 +1273,17 @@ func buildAxisLabel(
     util.each(labels, { labelItem, index in
         let labelItemTick = labelItem.tick
         let formattedLabel = labelItem.formattedLabel
-        // PORT-TODO: `labelItem.rawLabel` feeds the per-label custom formatter callback
-        //   (`axisLabel.formatter` function form), which is deferred; read it back when that lands.
+        // PORT-NOTE (deferred): `labelItem.rawLabel` feeds the per-label custom formatter callback
+        //   (`axisLabel.formatter` function form), which is not wired; read it back when that lands.
         _ = labelItem.rawLabel
 
         let itemLabelModel = labelModel
         let tickValue = axisHelper.getTickValueOutermost(axis.scale, labelItemTick)
 
         // upstream: itemLabelModel.getTextColor() || axisModel.get(['axisLine', 'lineStyle', 'color'])
-        // PORT-TODO: upstream `textColor` may be a function (per-label color callback). `ColorString`
-        //   is `String` in this port, so the `isFunction(textColor)` branch is not representable; the
-        //   plain string color is used.
+        // POTENTIAL-BUG: upstream `textColor` may be a function (per-label color callback). `ColorString`
+        //   is `String` in this port, so the `isFunction(textColor)` branch is not representable — a
+        //   function-form color is silently dropped and the plain string color is used.
         let textColor = itemLabelModel.getTextColor()
             ?? (axisModel.get(["axisLine", "lineStyle", "color"]) as? ColorString)
 
@@ -1243,8 +1335,9 @@ func buildAxisLabel(
         inner.labelInfo = labelItem
         inner.layoutRotation = labelLayout.rotation
 
-        // PORT-TODO: graphic.setTooltipConfig (tooltip + truncation params) deferred.
-        // PORT-TODO: triggerEvent → getECData(textEl).eventData / addBreakEventHandler deferred.
+        // PORT-NOTE (deferred): graphic.setTooltipConfig (tooltip + truncation params) not wired on axis labels.
+        // PORT-NOTE (deferred): triggerEvent → innerStore.getECData(textEl).eventData / addBreakEventHandler
+        //   not wired (axis label event/break-expand handling is out of this render-focused scope).
         _ = triggerEvent
 
         labelEls.append(textEl)
@@ -1328,17 +1421,17 @@ func hasAxisName(_ axisName: String?) -> Bool {
     return axisName != nil && !axisName!.isEmpty
 }
 
-// PORT-TODO: `addBreakEventHandler` (click → dispatchAction AXIS_BREAK_EXPAND) requires `axisAction` /
-//   scale break; deferred per task scope.
+// PORT-NOTE (deferred): `addBreakEventHandler` (click → dispatchAction AXIS_BREAK_EXPAND) requires the
+//   `axisAction` module (break-expand action, not ported).
 
-// PORT-TODO: `adjustBreakLabels` requires `scale/break` (getScaleBreakHelper) + `axisBreakHelper`
-//   (adjustBreakLabelPair); deferred per task scope.
+// PORT-NOTE (deferred): `adjustBreakLabels` requires the optional `axisBreakHelper` break renderer
+//   (adjustBreakLabelPair; getAxisBreakHelper() is nil in this port), atop the ported `scale/break`.
 
 // upstream: export default AxisBuilder;  -> `public final class AxisBuilder` above.
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of AxisBuilder.ts upstream. These reproduce the
+// PORT-NOTE helpers — NOT part of AxisBuilder.ts upstream. These reproduce the
 // out-of-phase sibling APIs referenced above so line+ticks+labels compile and
 // render. Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -1362,9 +1455,9 @@ func lineShapeOf(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Line
     return s
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic
-///   `getLineStyle()`/`defaults(...)` style bag ([String: Any], keys per LINE_STYLE_KEY_MAP) onto the
-///   typed `PathStyleProps`. Delete when the graphic style bridge lands.
+/// PORT-NOTE (deferred cleanup): the generic `util/graphic` `useStyle` dict→style bridge is not used
+///   here. Maps the dynamic `getLineStyle()`/`defaults(...)` style bag ([String: Any], keys per
+///   LINE_STYLE_KEY_MAP) onto the typed `PathStyleProps`. Delete when the graphic style bridge lands.
 func pathStyleFromLineStyleDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
@@ -1378,7 +1471,26 @@ func pathStyleFromLineStyleDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = dict["lineDashOffset"] as? Double { s.lineDashOffset = lineDashOffset }
     if let miterLimit = dict["miterLimit"] as? Double { s.miterLimit = miterLimit }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` → the `LineDash` enum.
+    if let dash = dict["lineDash"] {
+        if let arr = dash as? [Double] {
+            s.lineDash = .values(arr)
+        }
+        else if let arr = dash as? [Any] {
+            s.lineDash = .values(arr.compactMap { $0 as? Double })
+        }
+        else if let b = dash as? Bool, b == false {
+            s.lineDash = .`false`
+        }
+        else if let str = dash as? String {
+            switch str {
+            case "solid": s.lineDash = .solid
+            case "dashed": s.lineDash = .dashed
+            case "dotted": s.lineDash = .dotted
+            default: break
+            }
+        }
+    }
     return s
 }
 

@@ -58,9 +58,9 @@ import ZRenderKit
 
 // type DataValueChunk = ArrayLike<ParsedValue>;
 //   -> `[ParsedValue]`. Columns are heterogeneous and may transiently hold ordinal raw
-//      values (string) before `collectOrdinalMeta`. PORT-TODO: `int` columns are not
-//      truncated to int32; ordinal/number columns are pre-filled with `NaN` rather than
-//      `undefined` holes.
+//      values (string) before `collectOrdinalMeta`. PORT-NOTE: storage-model divergence — `int`
+//      columns are not truncated to int32 (all columns are `[ParsedValue]`/Double-backed);
+//      ordinal/number columns are pre-filled with `NaN` rather than `undefined` holes.
 
 // If Ctx not specified, use List as Ctx
 // type EachCb0 = (idx) => void; EachCb1 = (x, idx) => void; EachCb2 = (x, y, idx) => void;
@@ -1426,8 +1426,9 @@ public final class DataStore {
     }
 
     // Helper: coerce a stored ParsedValue to a numeric `Double` for comparison/arithmetic.
-    // PORT-TODO: upstream relies on JS implicit coercion / typed-array numeric storage; here
-    //   non-`Double` values (e.g. ordinal raw strings before `collectOrdinalMeta`) become NaN.
+    // PORT-NOTE: upstream relies on JS implicit coercion / typed-array numeric storage; here
+    //   non-`Double` values (e.g. ordinal raw strings before `collectOrdinalMeta`) become NaN,
+    //   matching JS's `Number('x') === NaN` for a non-numeric value.
     fileprivate static func numericValue(_ v: ParsedValue) -> Double {
         if let d = v as? Double { return d }
         if let i = v as? Int { return Double(i) }

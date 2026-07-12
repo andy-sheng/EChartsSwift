@@ -504,8 +504,9 @@ public func buildTooltipMarkup(
 
 
 func getGap(_ gapLevel: Int) -> (html: Double, richText: String) {
-    // PORT-TODO: JS `HTML_GAPS[gapLevel]` returns `undefined` for out-of-range levels; the guarded
+    // PORT-NOTE: JS `HTML_GAPS[gapLevel]` returns `undefined` for out-of-range levels; the guarded
     //   Swift lookup returns 0 / "" instead (out-of-range gap levels are not reached in practice).
+    //   Semantically equivalent — the guard clamps a JS `undefined` to the concrete Swift default.
     let html = (gapLevel >= 0 && gapLevel < HTML_GAPS.count) ? HTML_GAPS[gapLevel] : 0
     let richText = (gapLevel >= 0 && gapLevel < RICH_TEXT_GAPS.count) ? RICH_TEXT_GAPS[gapLevel] : ""
     return (html: html, richText: richText)
@@ -591,7 +592,7 @@ public func retrieveVisualColorForTooltipMarker(
 // style color. Here the visual style bag is `[String: Any]`, so the color arrives as `Any?`; this
 // coerces to `ZRColor` before delegating. A plain color string / gradient passes through; anything
 // non-coercible (incl. nil) yields the `convertToColorString(undefined)` default ('transparent').
-// PORT-TODO: visual styles authored with `ZRenderKit.ZRColor` (rather than a String / EChartsKit
+// POTENTIAL-BUG: visual styles authored with `ZRenderKit.ZRColor` (rather than a String / EChartsKit
 //   `ZRColor`) fall through to the default; re-wire once the visual style bag carries a typed color.
 private func convertToColorStringLoose(_ v: Any?) -> ColorString {
     if let s = v as? String {

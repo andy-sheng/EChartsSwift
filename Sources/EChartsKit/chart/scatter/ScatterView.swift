@@ -17,11 +17,11 @@ import ZRenderKit
 // upstream imports (all deferred except createSymbol / ChartView / SeriesData / Cartesian2D):
 //   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw is ported (chart/helper/SymbolDraw.swift); this static view does not use it.
 //   import LargeSymbolDraw from '../helper/LargeSymbolDraw';       -> LargeSymbolDraw is ported (chart/helper/LargeSymbolDraw.swift); this static view does not use it.
-//   import pointsLayout from '../../layout/points';                -> PORT-TODO: layout/points not ported.
+//   import pointsLayout from '../../layout/points';                -> PORT-NOTE (deferred): layout/points.ts not ported; points are computed inline per coord system below.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
-//   import { getIncrementalId } from '../../util/model';           -> PORT-TODO: incremental pipeline not ported.
+//   import { getIncrementalId } from '../../util/model';           -> PORT-NOTE (deferred): incremental/progressive render pipeline not wired for this static view.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';
-//       -> PORT-TODO: helper/createClipPathFromCoordSys not ported (clipShape omitted).
+//       -> PORT-NOTE: createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift); this static view deliberately omits the clip shape (deviation).
 //   import { ISymbolDraw, SymbolDrawUpdateOpt } from '../helper/baseDraw';  -> SymbolDrawUpdateOpt is ported (chart/helper/SymbolDraw.swift); ISymbolDraw modeled implicitly (no separate baseDraw file).
 
 // upstream: class ScatterView extends ChartView { static readonly type = 'scatter'; type = ScatterView.type; ... }
@@ -41,7 +41,7 @@ open class ScatterView: ChartView {
     // L2: the shared `SymbolDraw` (chart/helper) drives per-point symbols (enter/update/leave diff,
     //   emphasis hover-scale, symbolRotate/offset/keepAspect, symbol labels). The large-mode fast path
     //   (`large: true` past `largeThreshold`) instead routes to `LargeSymbolDraw` (a SINGLE path that
-    //   paints every point). The incremental/progressive pipeline stays PORT-TODO (single-pass here).
+    //   paints every point). PORT-NOTE (deferred): the incremental/progressive pipeline is single-pass here.
     private var _data: SeriesData?
     private var _symbolDraw: SymbolDraw?
     // upstream: private _largeSymbolDraw: LargeSymbolDraw; private _isLargeDraw: boolean;
@@ -71,17 +71,18 @@ open class ScatterView: ChartView {
         //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
         //   The static render below inlines that for the two coord systems wired so far — cartesian2d and
         //   polar. Each branch returns a `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
-        //   PORT-TODO: geo/singleAxis/calendar/matrix scatter deferred (those coord systems not ported).
-        // PORT-TODO (upstream/echarts/src/layout/points.ts:50-56): a STACKED scatter series substitutes
+        //   PORT-NOTE (deferred): singleAxis/calendar/matrix scatter (those coord systems not ported); geo is handled below.
+        // POTENTIAL-BUG (upstream/echarts/src/layout/points.ts:50-56): a STACKED scatter series substitutes
         //   the stacked base/value dim with `stackResultDimension` (via isDimensionStacked) before
         //   dataToPoint. We read the raw store dims, so a stacked scatter would place points at
-        //   un-stacked positions. Stacked scatter is rare; wire the substitution when stacking lands.
+        //   un-stacked positions. isDimensionStacked IS ported (data/helper/dataStackHelper.swift) but is
+        //   not wired here; stacked scatter is rare. Wire the substitution when needed.
         let pointAt: (Int) -> [Double]
         if let coord = seriesModel.coordinateSystem as? Cartesian2D {
             let baseAxis = coord.getBaseAxis()
             let valueAxis = coord.getOtherAxis(baseAxis)
-            // PORT-TODO: `mapDimension` is force-unwrapped — a scatter's base/value dims are always present
-            //   (same derivation as LineView).
+            // POTENTIAL-BUG: `mapDimension` is force-unwrapped — a scatter's base/value dims are always present
+            //   (same derivation as LineView), but a malformed dataset with no mapped dim would SIGTRAP.
             let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
             let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
             let isValueAxisH = valueAxis.isHorizontal()
@@ -115,7 +116,7 @@ open class ScatterView: ChartView {
             }
         }
         else {
-            // PORT-TODO: singleAxis/calendar/matrix scatter deferred.
+            // PORT-NOTE (deferred): singleAxis/calendar/matrix scatter (those coord systems not ported).
             return
         }
 
@@ -182,8 +183,8 @@ open class ScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-TODO: incrementalPrepareRender/incrementalRender/updateTransform, clipShape
-        //   (createCoordSysClipAreaSimply) — deferred with the incremental pipeline.
+        // PORT-NOTE (deferred): incrementalPrepareRender/incrementalRender/updateTransform, plus the
+        //   clipShape (createCoordSysClipAreaSimply) — deferred with the incremental pipeline.
         self._data = data
     }
 }

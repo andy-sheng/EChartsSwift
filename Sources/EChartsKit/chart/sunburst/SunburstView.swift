@@ -25,13 +25,13 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';               -> `util.*` (ZRenderKit).
 //   import ChartView from '../../view/Chart';                      -> `ChartView` (view/Chart.swift).
 //   import SunburstPiece from './SunburstPiece';                   -> `SunburstPiece` (chart/sunburst/SunburstPiece.swift).
-//   import DataDiffer from '../../data/DataDiffer';                -> PORT-TODO: `DataDiffer` diff DEFERRED (static rebuild).
+//   import DataDiffer from '../../data/DataDiffer';                -> PORT-NOTE (deferred): `DataDiffer` IS ported (data/DataDiffer.swift) but the diff-based node reconciliation is not wired here; this view does a static rebuild.
 //   import SunburstSeriesModel, { SERIES_TYPE_SUNBURST, ... } from './SunburstSeries';  -> sibling SunburstSeries.swift.
 //   import GlobalModel from '../../model/Global';                  -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> `ExtensionAPI`.
 //   import { TreeNode } from '../../data/Tree';                    -> sibling `TreeNode` / `Tree` (data/Tree.swift).
 //   import { ROOT_TO_NODE_ACTION } from './sunburstAction';        -> sunburstAction.swift (ROOT_TO_NODE_ACTION exists); click-driven dispatch deferred.
-//   import { windowOpen } from '../../util/format';                -> PORT-TODO: only used by click events (deferred).
+//   import { windowOpen } from '../../util/format';                -> PORT-NOTE (deferred): `windowOpen` IS ported (util/format.swift) but only used by the deferred click events.
 
 // upstream: interface DrawTreeNode extends TreeNode { parentNode; piece; children }
 // PORT-NOTE: TreeNode is not externally augmentable in Swift (see SunburstPiece.swift DrawTreeNode

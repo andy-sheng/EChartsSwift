@@ -26,7 +26,7 @@ import ZRenderKit
 // import * as graphic from '../../util/graphic';                   -> ZRenderKit Group / Line / Rect / ZRText
 // import * as axisPointerModelHelper from './modelHelper';         -> modelHelper.swift (getAxisInfo)
 // import * as eventTool from 'zrender/src/core/event';             -> handle drag seam (PORT-NOTE)
-// import * as throttleUtil from '../../util/throttle';             -> handle throttle seam (PORT-TODO)
+// import * as throttleUtil from '../../util/throttle';             -> handle throttle seam (PORT-NOTE, deferred: draggable handle out of scope)
 // import {makeInner} from '../../util/model';                      -> see PORT-NOTE (inner store) below
 // import { AxisPointer } from './AxisPointer';                     -> AxisPointer.swift (same module)
 // import { AxisBaseModel } from '../../coord/AxisBaseModel';       -> coord/AxisBaseModel.swift
@@ -123,7 +123,7 @@ open class BaseAxisPointer: AxisPointer {
     // upstream: private _lastGraphicKey: string;
     private var _lastGraphicKey: String?
 
-    // upstream: private _handle: Icon;  — the draggable handle (PORT-TODO, deferred).
+    // upstream: private _handle: Icon;  — the draggable handle (PORT-NOTE, deferred: handle/drag surface out of scope for the headless crosshair).
     // private var _handle: ... (deferred)
 
     // upstream: private _dragging = false;  — handle drag (PORT-NOTE, deferred).
@@ -137,7 +137,7 @@ open class BaseAxisPointer: AxisPointer {
 
     /// If have transition animation.
     // upstream: private _moveAnimation: boolean;
-    //   PORT-TODO (animation): computed by `determineAnimation` but NOT consumed for a real animated
+    //   PORT-NOTE (animation): computed by `determineAnimation` but NOT consumed for a real animated
     //   slide — `updateProps` sets position directly (see the `_moveAnimation` note there). Kept so the
     //   determination logic stays faithful and a future animated port can wire it.
     private var _moveAnimation = false
@@ -237,7 +237,7 @@ open class BaseAxisPointer: AxisPointer {
 
         updateMandatoryProps(self.group, axisPointerModel, true)
 
-        // upstream: this._renderHandle(value);  — draggable handle (PORT-TODO, deferred).
+        // upstream: this._renderHandle(value);  — draggable handle (PORT-NOTE, deferred: handle/drag surface out of scope).
     }
 
     /// @implement
@@ -360,7 +360,8 @@ open class BaseAxisPointer: AxisPointer {
         // upstream: `pointerEl.setStyle(elOption.pointer.style)` (MERGE). There is no
         //   `Path.setStyle(PathStyleProps)` overload in the port; `elOption.pointer.style` is the FULL
         //   style rebuilt every render by `viewHelper.buildElStyle`, so replacing == merging here.
-        //   PORT-TODO: true partial-merge if a caller ever supplies a partial style.
+        //   PORT-NOTE: replace == merge here because the style is fully rebuilt every render; a true
+        //   partial-merge would only matter if a caller ever supplied a partial style (none do).
         if let style = pointer.style { pointerEl.useStyle(style) }
         if let shape = pointer.shape {
             updateProps(pointerEl, ["shape": shape])
@@ -379,7 +380,7 @@ open class BaseAxisPointer: AxisPointer {
 
     // upstream: _renderHandle / _moveHandleToValue / _onHandleDragMove / _doDispatchAxisPointer /
     //   _onHandleDragEnd — the draggable handle + `updateAxisPointer` drag dispatch.
-    //   PORT-TODO (deferred): the whole handle/drag surface (handle icon, throttle, drift, dragend,
+    //   PORT-NOTE (deferred): the whole handle/drag surface (handle icon, throttle, drift, dragend,
     //   `getHandleTransform` / `updateHandleTransform`) is out of scope for the headless crosshair.
 
     /// @private
@@ -430,9 +431,13 @@ private func makePointerPath(_ pointer: PointerElementOption) -> Path {
         el = Rect(props)
     case "Line":
         el = Line(props)
+    case "Circle":
+        el = Circle(props)
+    case "Sector":
+        el = Sector(props)
     default:
-        // PORT-TODO: 'Circle' / 'Sector' pointers (Polar/Single axis pointers) — not used by
-        //   CartesianAxisPointer. Fall back to a Line so the build never crashes.
+        // upstream constructs `new graphic[pointerOption.type](...)`. Any unknown pointer type
+        //   falls back to a Line so the build never crashes.
         el = Line(props)
     }
     el.subPixelOptimize = pointer.subPixelOptimize
@@ -445,7 +450,7 @@ private func makePointerPath(_ pointer: PointerElementOption) -> Path {
 //           moveAnimation ? graphic.updateProps(el, props, animationModel)
 //                         : (el.stopAnimation(), el.attr(props)); } }
 //
-//   PORT-TODO (animation): the animated-slide branch (`graphic.updateProps` transition) + the
+//   PORT-NOTE (animation): the animated-slide branch (`graphic.updateProps` transition) + the
 //   `inner(el).lastProp` equality memo are DROPPED — the crosshair sets its position DIRECTLY
 //   (`el.stopAnimation(); el.attr(props)`), which is upstream's own no-animation branch. `moveAnimation`
 //   is therefore not consulted here (it is still computed by `determineAnimation` for a future port).

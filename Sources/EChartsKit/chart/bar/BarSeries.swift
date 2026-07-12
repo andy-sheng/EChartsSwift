@@ -35,7 +35,9 @@ import ZRenderKit
 //   import { inheritDefaultOption } from '../../util/component';     -> `component.inheritDefaultOption` (util/componentUtil.swift).
 //   import SeriesData from '../../data/SeriesData';                 -> SeriesData (data/SeriesData.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//       -> PORT-TODO: component/brush not ported (brushSelector deferred below).
+//       -> PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); the
+//          bar `brushSelector` override is centralized there (seriesBrushSelector, bar → rect) rather
+//          than restored on this subclass (see the note below).
 //   import tokens from '../../visual/tokens';
 //       -> PORT-NOTE: visual/tokens.swift is ported (`tokens.color.primary`), but the value is still
 //          inlined verbatim as its resolved constant in `defaultOption` (same convention as
@@ -121,7 +123,8 @@ open class BarSeriesModel: BaseBarSeriesModel {
         // });
         // `!!this.get('realtimeSort', true) || null` -> `true` when realtimeSort is truthy, else `nil`
         //   (JS `false || null === null`). realtimeSort defaults to a Bool in defaultOption.
-        // PORT-TODO: `!!` truthiness modeled via a Bool cast; non-Bool realtimeSort values ignored.
+        // PORT-NOTE: `!!` truthiness modeled via a Bool cast; realtimeSort is a Bool in defaultOption,
+        //   so non-Bool values (not producible from the option schema) are ignored — JS/Swift diff only.
         let createInvertedIndices: Bool? = ((self.get("realtimeSort", true) as? Bool) ?? false) ? true : nil
         return createSeriesData(nil, self, CreateSeriesDataOpt(
             useEncodeDefaulter: true,
@@ -147,8 +150,9 @@ open class BarSeriesModel: BaseBarSeriesModel {
     //   `Pick<Pipeline, ...>` -> `PipelinePick` (core/Scheduler.swift / util/modelUtil.swift).
     // NOTE: this is a declaration-merged optional method on the upstream `SeriesModel` interface; the
     //   base Swift `SeriesModel` does not declare it, so it is introduced fresh here. The Scheduler
-    //   currently always calls `model.preparePipelineContext` directly (see core/Scheduler.swift
-    //   PORT-TODO), so this override is not yet reached by the pipeline; kept faithful for when it is.
+    //   currently always calls `model.preparePipelineContext` directly (base SeriesModel declares no
+    //   such slot — see the POTENTIAL-BUG in core/Scheduler.swift), so this override is not yet reached
+    //   by the pipeline; kept faithful for when it is.
     open func __preparePipelineContext(_ view: ChartView, _ pipeline: PipelinePick) -> PipelineContext {
         var context = model.preparePipelineContext(self, view, pipeline)
         // Do not support progressive in normal mode.
@@ -162,8 +166,9 @@ open class BarSeriesModel: BaseBarSeriesModel {
     //   brushSelector(dataIndex: number, data: SeriesData, selectors: BrushCommonSelectorsForSeries): boolean {
     //       return selectors.rect(data.getItemLayout(dataIndex));
     //   }
-    // PORT-TODO: component/brush/selector.ts (BrushCommonSelectorsForSeries) not ported — brush is out
-    //   of scope for the bar-chart milestone. Restore this override when the brush component lands.
+    // PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); this
+    //   per-series `brushSelector` override is centralized there (seriesBrushSelector, bar → selectors.rect
+    //   branch) rather than restored on this subclass. Move it back here once brushSelector lands per-series.
 
     // upstream: static defaultOption: BarSeriesOption = inheritDefaultOption(BaseBarSeriesModel.defaultOption, {...})
     open override class var defaultOption: ModelOption? {

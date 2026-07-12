@@ -6,7 +6,8 @@
 //        provide the real class this phase).
 // import { ComponentOption, ComponentMainType } from '../util/types';  → sibling types.swift
 // import { createHashMap, assert } from 'zrender/src/core/util';
-//     -> createHashMap: local shim in util/model.swift (PORT-TODO until ZRenderKit ports it);
+//     -> createHashMap: local shim in util/modelUtil.swift (PORT-NOTE: deferred — ZRenderKit does
+//        not yet export createHashMap; the EChartsKit-side shim stands in);
 //        assert: ZRenderKit util.assert.
 // import { isComponentIdInternal } from '../util/model';  → model.isComponentIdInternal (model.swift)
 

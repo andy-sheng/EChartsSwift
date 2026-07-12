@@ -90,7 +90,7 @@ open class BaseBarSeriesModel: SeriesModel {
     ) -> [Double] {
         // const coordSys = this.coordinateSystem;
         // if (coordSys && coordSys.clampData) { ... }
-        // PORT-TODO: upstream duck-types `coordSys.clampData`; SCOPE is cartesian only, so we narrow
+        // PORT-NOTE: upstream duck-types `coordSys.clampData`; SCOPE is cartesian only, so we narrow
         //   `coordinateSystem` (typed `Any?` on SeriesModel) to `Cartesian2D` (which provides
         //   clampData/dataToPoint/getAxes/getBaseAxis). Polar (which also has clampData) is out of scope.
         if let coordSys = self.coordinateSystem as? Cartesian2D {

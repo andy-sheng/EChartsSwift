@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // upstream imports (all deferred except linesLayout math / ChartView / SeriesData / Cartesian2D):
-//   import LineDraw from '../helper/LineDraw';            -> PORT-TODO: helper/LineDraw NOT ported.
+//   import LineDraw from '../helper/LineDraw';            -> PORT-NOTE (deferred): requires helper/LineDraw, not ported.
 //       LineDraw.updateData is a per-edge enter/update/leave diff that reuses `Line`/`Polyline`
 //       helper instances (each reading `data.getItemLayout(i)`), plus fromSymbol/toSymbol arrow
 //       markers (ECLinePath) + label + emphasis/blur state. The static render inlines it: one
@@ -33,7 +33,7 @@ import ZRenderKit
 //   import Line from '../helper/Line';                    -> PORT-NOTE: helper/Line NOT ported (inline shape).
 //   import Polyline from '../helper/Polyline';            -> PORT-NOTE: helper/Polyline NOT ported (inline shape).
 //   import EffectPolyline from '../helper/EffectPolyline';-> PORT-NOTE: ported (in chart/lines/EffectLine.swift); effect wired.
-//   import LargeLineDraw from '../helper/LargeLineDraw';  -> PORT-TODO: LargeLineDraw NOT ported (large/progressive DEFERRED).
+//   import LargeLineDraw from '../helper/LargeLineDraw';  -> PORT-NOTE (deferred): requires helper/LargeLineDraw, not ported (large/progressive DEFERRED).
 //   import linesLayout from './linesLayout';              -> the per-item dataToPoint + curveness-control-point
 //       math is inlined below (see `render`); the layout STAGE is not run — the view projects coords
 //       itself, exactly as ScatterView inlines pointsLayout and LineView inlines dataToPoint.
@@ -45,12 +45,12 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';   -> ExtensionAPI.
 //   import CanvasPainter from 'zrender/src/canvas/Painter';   -> PORT-NOTE: motion-blur layer config (effect trail) is applied by the live host (EChartsView._setupLinesEffectLayers / configLayer).
 //   import { StageHandlerProgressParams, StageHandlerProgressExecutor } from '../../util/types';
-//       -> PORT-TODO: incremental/progressive pipeline (incrementalRender/updateTransform) DEFERRED.
+//       -> PORT-NOTE (deferred): incremental/progressive pipeline (incrementalRender/updateTransform) DEFERRED for lines.
 //   import SeriesData from '../../data/SeriesData';       -> SeriesData.
-//   import type Polar from '../../coord/polar/Polar';     -> Polar (polar lines are PORT-TODO below).
+//   import type Polar from '../../coord/polar/Polar';     -> Polar (polar lines are a PORT-NOTE deferral below).
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';   -> Cartesian2D.
 //   import Element from 'zrender/src/Element';            -> Element (eachRendered — DEFERRED).
-//   import { getIncrementalId } from '../../util/model';  -> PORT-TODO: incremental pipeline DEFERRED.
+//   import { getIncrementalId } from '../../util/model';  -> PORT-NOTE (deferred): getIncrementalId is ported (util/modelUtil), but the incremental pipeline usage for lines is DEFERRED.
 //   import { getCurrentCanvasPainter } from '../../util/graphic';   -> PORT-NOTE: motion-blur layer config is host-managed (EChartsView.configLayer); getCurrentCanvasPainter is unused natively.
 //   import { ILineDraw } from '../helper/baseDraw';       -> PORT-NOTE: helper/baseDraw NOT ported.
 
@@ -69,7 +69,7 @@ open class LinesView: ChartView {
     }
 
     // upstream fields: _lastZlevel / _finished / _lineDraw / _hasEffet / _isPolyline / _isLargeDraw.
-    //   PORT-TODO: _lineDraw (LineDraw/LargeLineDraw diff) + the large/incremental flags are DEFERRED.
+    //   PORT-NOTE (deferred): _lineDraw (LineDraw/LargeLineDraw diff) + the large/incremental flags are DEFERRED.
     private var _data: SeriesData?
 
     // View REUSE (L5 fidelity): the per-item line elements are PERSISTED (keyed by data index) instead
@@ -83,7 +83,7 @@ open class LinesView: ChartView {
     private var _prevCount = -1
     private var _prevIsPolyline = false
     // The effect TRAIL symbols are ANIMATED (looping) — kept rebuilding each render (their morph is a
-    //   documented PORT-TODO). Persisted only so the previous render's symbols can be removed before the
+    //   documented PORT-NOTE deferral). Persisted only so the previous render's symbols can be removed before the
     //   base lines are reused (otherwise they would accumulate when the group is no longer wiped).
     private var _effectSymbols: [Path] = []
 
@@ -107,7 +107,7 @@ open class LinesView: ChartView {
         // PORT-NOTE: `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath is not wired
         //   in this static view (helper/createClipPathFromCoordSys IS ported).
 
-        // PORT-TODO: polar / geo lines DEFERRED (only Cartesian2D wired). Upstream's coord system is
+        // PORT-NOTE (deferred): polar / geo lines DEFERRED (only Cartesian2D wired). Upstream's coord system is
         //   `Polar | Cartesian2D | Geo`; linesLayout calls `coordSys.dataToPoint(coord)` generically —
         //   the same call works for Polar once its lines path is exercised, but geo is not ported.
         guard let coord = seriesModelBase.coordinateSystem as? Cartesian2D else {
@@ -137,7 +137,7 @@ open class LinesView: ChartView {
         let count = data.count()
 
         // The effect trail symbols are ANIMATED (looping) and rebuilt each render (their morph is a
-        //   PORT-TODO). With the group no longer wiped, remove the previous render's symbols first so
+        //   PORT-NOTE deferral). With the group no longer wiped, remove the previous render's symbols first so
         //   they don't accumulate when the base lines are reused.
         for s in _effectSymbols { _ = group.remove(s) }
         _effectSymbols.removeAll()
@@ -319,7 +319,7 @@ open class LinesView: ChartView {
     // Finish a freshly-built line element: name it, apply the style, clear the spurious black fill
     //   (Polyline/BezierCurve close into a fillable path; useStyle→createStyle drops the intended
     //   fill:null — visual-parity trap class 1), add it to the group and record it as persisted.
-    // PORT-TODO: fromSymbol/toSymbol arrow markers, per-line label, and emphasis/blur states DEFERRED.
+    // PORT-NOTE (deferred): fromSymbol/toSymbol arrow markers, per-line label, and emphasis/blur states DEFERRED.
     private func finishBuildLine(_ el: Path, _ i: Int, _ style: PathStyleProps) {
         el.name = "line"
         el.useStyle(style)

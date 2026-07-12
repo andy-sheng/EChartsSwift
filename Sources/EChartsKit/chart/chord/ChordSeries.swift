@@ -124,7 +124,8 @@ open class ChordSeriesModel: SeriesModel {
         //     }
         //     return pathArr as string[];
         // }
-        // PORT-TODO: this dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
+        // PORT-NOTE (deferred): requires a settable `Model.resolveParentPath` hook and a functional
+        //   `SeriesData.wrapMethod`. This dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
         //   (JS prototype-method swap) so an edge's `label` path resolves against `edgeLabel`. Swift
         //   cannot swap instance methods by assignment, and `SeriesData.wrapMethod` is a bookkeeping-only
         //   stub (it cannot rebind a method by name — see data/SeriesData.swift), so the `edgeLabel`
@@ -138,8 +139,9 @@ open class ChordSeriesModel: SeriesModel {
 
     // getGraph(): Graph { return this.getData().graph; }
     open func getGraph() -> Graph {
-        // PORT-TODO: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap to
-        //   the ported Graph. linkSeriesData guarantees it is a Graph for chord (createGraphFromNodeEdge).
+        // POTENTIAL-BUG: force-unwrap mirrors upstream optimistic typing — linkSeriesData
+        //   (createGraphFromNodeEdge) is assumed to have set `graph` for chord series, but a call before
+        //   linking would SIGTRAP (latent crash hazard).
         return self.getData().graph!
     }
 
@@ -244,7 +246,7 @@ open class ChordSeriesModel: SeriesModel {
             "top": 0.0,
             "right": 0.0,
             "bottom": 0.0,
-            // PORT-TODO: upstream `width: null` / `height: null`; NSNull() retains the key in the bag.
+            // PORT-NOTE: upstream `width: null` / `height: null`; NSNull() retains the key in the bag.
             "width": NSNull(),
             "height": NSNull(),
 

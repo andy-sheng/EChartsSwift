@@ -46,9 +46,10 @@ public enum graphHelper {
         //     // PENDING: historially `nodeScaleRatio` has not been applied on
         //     // geo based graph series.
         //     : 1;
-        // PORT-TODO: `coord/View.swift` (`isViewCoordSys` / `calcCompensationScaleToPreserveNodeSize`)
-        //   is not ported yet. Only the non-view (geo) fallback branch (`1`) is available; wire the
-        //   View branch when the `View` coordinate system is ported.
+        // PORT-NOTE (deferred): requires `calcCompensationScaleToPreserveNodeSize` (coord/View.swift roam
+        //   module — NOT ported; see the deferred-exports banner in coord/View.swift). `isViewCoordSys` IS
+        //   ported, but the view branch needs the compensation-scale helper, so only the non-view (geo)
+        //   fallback branch (`1`) is available. Wire the View branch when the roam module lands.
         _ = coordSys
         return 1
     }

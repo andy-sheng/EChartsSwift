@@ -229,7 +229,7 @@ public final class ClassManagement: ClassManager {
         }
 
         if throwWhenNotFound && clz == nil {
-            // PORT-TODO: upstream `throw new Error(...)`; faithful failure surfaced as
+            // PORT-NOTE: upstream `throw new Error(...)`; faithful failure surfaced as
             //            a fatalError (no throwing signature to keep the API ergonomic).
             fatalError(
                 subType == nil
@@ -256,8 +256,9 @@ public final class ClassManagement: ClassManager {
         case .clz(let c):
             result.append(c)
         case nil:
-            // PORT-TODO: upstream does `result.push(obj)` (pushes `undefined`) when the
-            //            main type is absent; we skip rather than append a sentinel.
+            // PORT-NOTE: upstream does `result.push(obj)` (pushes `undefined`) when the
+            //            main type is absent; a non-optional `[Constructor]` cannot hold a
+            //            sentinel, so we skip. Callers never request an absent main type.
             break
         }
 
@@ -273,8 +274,9 @@ public final class ClassManagement: ClassManager {
     /// @return Like ['aa', 'bb'], but can not be ['aa.xx']
     public func getAllClassMainTypes() -> [ComponentMainType] {
         var types: [String] = []
-        // PORT-TODO: upstream iterates with zrUtil.each preserving insertion order;
-        //            Swift Dictionary key order is unspecified.
+        // PORT-NOTE: upstream iterates with zrUtil.each preserving insertion order;
+        //            Swift Dictionary key order is unspecified. Callers treat the result
+        //            as an unordered set of main types.
         for (type, _) in storage {
             types.append(type)
         }

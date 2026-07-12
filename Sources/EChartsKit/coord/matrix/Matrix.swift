@@ -172,9 +172,11 @@ public final class Matrix: CoordinateSystemMaster {
     }
 
     // upstream: getRect(): LayoutRect { return this._rect; }
-    //   PORT-TODO: upstream returns the concrete `LayoutRect`; the optional protocol requirement
+    //   POTENTIAL-BUG: upstream returns the concrete `LayoutRect`; the optional protocol requirement
     //   `CoordinateSystemMaster.getRect(): RectLike?` therefore resolves to its nil default when Matrix
-    //   is held as the protocol (mirroring Calendar/Single/Grid.getRect). Concrete-typed holders get the real rect.
+    //   is held as the protocol (mirroring Calendar/Single/Grid.getRect). Concrete-typed holders get the real
+    //   rect, but any caller reaching Matrix through the protocol gets nil instead of the rect — a
+    //   protocol-witness gap shared across these coord systems; fix systemically, not per-coord-system.
     public func getRect() -> LayoutRect {
         return self._rect
     }

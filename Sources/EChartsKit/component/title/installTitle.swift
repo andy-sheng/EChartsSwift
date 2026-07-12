@@ -27,7 +27,7 @@ import ZRenderKit
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Text` / `graphic.Rect` are the
 //        ZRenderKit scene-graph types `ZRText` / `Rect` (used directly).
 //   import {getECData} from '../../util/innerStore';                 -> `innerStore.getECData`
-//        (event wiring — the `eventData` assignment is deferred, see PORT-TODO in `render`).
+//        (event wiring — the `eventData` assignment is deferred, see PORT-NOTE in `render`).
 //   import {createTextStyle} from '../../label/labelStyle';
 //     -> `label/labelStyle.swift` IS ported (`labelStyle.createTextStyle`, labelStyle.swift:417).
 //        This view still uses a local minimal reproduction `createTextStyle` at the bottom of this
@@ -44,10 +44,10 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel` (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> `ExtensionAPI` (core/ExtensionAPI.swift).
 //   import {windowOpen} from '../../util/format';
-//     -> PORT-TODO: `format.windowOpen` opens a URL — interaction only, deferred (see the `link`/
-//        `sublink` click handlers in `render`).
+//     -> PORT-NOTE (deferred): `format.windowOpen` IS ported (format.swift:442) but only used by
+//        the deferred `link`/`sublink` click handlers in `render` (interaction wiring, CONVENTIONS §5).
 //   import { EChartsExtensionInstallRegisters } from '../../extension';
-//     -> PORT-TODO: registration boilerplate deferred to the Orchestrate driver (see `install`
+//     -> PORT-NOTE (deferred): registration boilerplate belongs to the Orchestrate driver (see `install`
 //        note at the bottom).
 //   import tokens from '../../visual/tokens';
 //     -> PORT-NOTE: `visual/tokens.ts` is ported (visual/tokens.swift). The `tokens.*` values consumed in
@@ -206,11 +206,11 @@ public final class TitleView: ComponentView {
         // subTextEl.silent = !sublink && !triggerEvent;
         subTextEl.silent = !jsTruthy(sublink) && !jsTruthy(triggerEvent)
 
-        // PORT-TODO: interaction wiring deferred (CONVENTIONS §5 / task: STATIC RENDER ONLY).
+        // PORT-NOTE (deferred): click-to-open-URL interaction wiring (CONVENTIONS §5 / STATIC RENDER ONLY).
         //   if (link) { textEl.on('click', () => windowOpen(link, '_' + titleModel.get('target'))); }
         //   if (sublink) { subTextEl.on('click', () => windowOpen(sublink, '_' + titleModel.get('subtarget'))); }
 
-        // PORT-TODO: event data wiring deferred (CONVENTIONS §5).
+        // PORT-NOTE (deferred): event data wiring (CONVENTIONS §5) — matches MatrixView/LegendView deferral.
         //   getECData(textEl).eventData = getECData(subTextEl).eventData = triggerEvent
         //       ? { componentType: 'title', componentIndex: titleModel.componentIndex }
         //       : null;
@@ -253,7 +253,7 @@ public final class TitleView: ComponentView {
         }
         if !jsTruthy(textVerticalAlign) {
             // textVerticalAlign = (titleModel.get('top') || titleModel.get('bottom')) as ZRTextVerticalAlign;
-            // PORT-TODO: upstream assigns the raw `top`/`bottom` option here; when it is a NUMBER (e.g.
+            // PORT-NOTE: upstream assigns the raw `top`/`bottom` option here; when it is a NUMBER (e.g.
             //   the default `top: 15`) `textVerticalAlign` stays that number, none of the string
             //   comparisons below match, and the final `|| 'top'` keeps the (truthy) number — which
             //   zrender then renders as the default 'top'. We coerce non-string values to nil, so the
@@ -281,7 +281,7 @@ public final class TitleView: ComponentView {
         group.markRedraw()
         // const alignStyle = { align: textAlign, verticalAlign: textVerticalAlign };
         // textEl.setStyle(alignStyle); subTextEl.setStyle(alignStyle);
-        // PORT-TODO: ZRText has no `setStyle(TextStyleProps)` overload (its rich style lives on
+        // PORT-NOTE: ZRText has no `setStyle(TextStyleProps)` overload (its rich style lives on
         //   `textStyle`, and the inherited `Displayable.setStyle` only touches the CommonStyleProps
         //   subset — align/verticalAlign are not in it). Set the two fields directly on `textStyle`
         //   and mark the element dirty, which is the faithful effect of `setStyle({align, verticalAlign})`.
@@ -294,9 +294,9 @@ public final class TitleView: ComponentView {
         // Get groupRect again because textAlign has been changed
         groupRect = group.getBoundingRect(nil)
         // const padding = layoutRect.margin;
-        // PORT-TODO: upstream reads the normalized css padding array off `layoutRect.margin`, but the
-        //   partial util/layout.swift `LayoutRect` (== BoundingRect) has no `.margin` slot yet (see the
-        //   PORT-TODO in layout.swift). Recompute it directly from the option — this is exactly the
+        // PORT-NOTE: upstream reads the normalized css padding array off `layoutRect.margin`, but the
+        //   partial util/layout.swift `LayoutRect` (== BoundingRect) has no `.margin` slot yet (the
+        //   deferred `.margin` field noted in layout.swift). Recompute it directly from the option — this is exactly the
         //   value `getLayoutRect` would have stored (`normalizeCssArray(titleModel.get('padding'))`).
         let padding = normalizeCssArrayAny(titleModel.get("padding"))
         // const style = titleModel.getItemStyle(['color', 'opacity']);
@@ -313,10 +313,10 @@ public final class TitleView: ComponentView {
 
         let rect = Rect([
             "shape": shape as PathShape,
-            // PORT-TODO: `getItemStyle` returns the dynamic `[String: Any]` style bag; bridge it to the
+            // PORT-NOTE: `getItemStyle` returns the dynamic `[String: Any]` style bag; bridge it to the
             //   typed `PathStyleProps` via the shared `barStyleFromDict` seam (BarView.swift).
             "style": barStyleFromDict(style),
-            // PORT-TODO: `subPixelOptimize: true` is not round-tripped through the dict prop bag
+            // PORT-NOTE: `subPixelOptimize: true` is not round-tripped through the dict prop bag
             //   (Path.attrKV does not map it); it is a crisp-edge nicety with no layout effect. Set it
             //   explicitly below to preserve behavior.
             "subPixelOptimize": true,
@@ -333,13 +333,13 @@ public final class TitleView: ComponentView {
 //     registers.registerComponentModel(TitleModel);
 //     registers.registerComponentView(TitleView);
 // }
-// PORT-TODO: registration boilerplate belongs to the Orchestrate driver (Integrate stage), not
+// PORT-NOTE (deferred): registration boilerplate belongs to the Orchestrate driver (Integrate stage), not
 //   this render-layer file (same convention as grid/installSimple.swift). Preserved as commented
 //   source for the diffable surface.
 
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of title/install.ts upstream. These reproduce the
+// PORT-NOTE helpers — NOT part of title/install.ts upstream. These reproduce the
 // out-of-phase sibling APIs referenced above so the static title render compiles.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -355,7 +355,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// The `{align, verticalAlign}` slice of `setStyle` for a `ZRText` (see PORT-TODO at the call site).
+/// The `{align, verticalAlign}` slice of `setStyle` for a `ZRText` (see PORT-NOTE at the call site).
 private func setAlignStyle(_ el: ZRText, _ align: TextAlign?, _ verticalAlign: TextVerticalAlign?) {
     el.textStyle.align = align
     el.textStyle.verticalAlign = verticalAlign
@@ -418,7 +418,7 @@ private func createTextStyle(
     _ opt: CreateTextStyleOpt,
     disableBox: Bool
 ) -> TextStyleProps {
-    _ = disableBox   // PORT-TODO: background-box parsing (labelStyle) is out of static-render scope.
+    _ = disableBox   // PORT-NOTE (deferred): background-box parsing (labelStyle) is out of static-render scope.
     var style = TextStyleProps()
     style.text = opt.text
     style.font = textStyleModel.getFont()

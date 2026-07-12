@@ -109,9 +109,18 @@ open class HeatmapSeriesModel: SeriesModel {
     //           return coordSysCreator.dimensions[0] === 'lng' && coordSysCreator.dimensions[1] === 'lat';
     //       }
     //   }
-    // PORT-TODO: progressive/incremental rendering (core/task incremental pipeline) not ported — the static
-    //   heatmap render draws every datum eagerly. Restore this override when the incremental pipeline + the
-    //   geo (lng/lat) coord creator land.
+    // `CoordinateSystem.get` is the coord-creator registry (core/CoordinateSystemManager.swift). Consumed by
+    //   the Scheduler progressive gate (Scheduler.swift: `!(seriesModel.preventIncremental && preventIncremental())`),
+    //   same contract as LinesSeries.preventIncremental. Upstream returns undefined (falsy) when the guard
+    //   fails; the Swift `false` is the equivalent truthy value.
+    open func preventIncremental() -> Bool {
+        guard let coordType = self.get("coordinateSystem") as? String,
+              let coordSysCreator = CoordinateSystemManager.get(coordType),
+              let dimensions = coordSysCreator.dimensions, dimensions.count >= 2 else {
+            return false
+        }
+        return dimensions[0] == "lng" && dimensions[1] == "lat"
+    }
 
     // upstream: static defaultOption: HeatmapSeriesOption = { ... }
     open override class var defaultOption: ModelOption? {
@@ -131,8 +140,9 @@ open class HeatmapSeriesModel: SeriesModel {
             // PORT-NOTE: geo coord is ported; kept verbatim for the diffable surface / geo-path deferral.
             "geoIndex": 0.0,
 
-            // The following four are for the geo/large blurred-canvas path (HeatmapLayer.ts),
-            // which is a PORT-TODO — the cartesian colored-Rect path ignores them. Kept for parity.
+            // The following four drive the geo/large blurred-canvas path (HeatmapLayer.ts, ported as
+            // chart/heatmap/HeatmapBlurLayer.swift class HeatmapLayer, which reads blurSize/pointSize/
+            // maxOpacity/minOpacity); the cartesian colored-Rect path ignores them.
             "blurSize": 30.0,
 
             "pointSize": 20.0,

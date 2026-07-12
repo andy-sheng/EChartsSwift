@@ -163,15 +163,13 @@ open class VisualMapModel: ComponentModel {
      */
     // optionUpdated(newOption, isInit?)
     open override func optionUpdated(_ newOption: ModelOption?, _ isInit: Bool) {
-        let thisOption = self.option
+        var thisOption = self.option as? [String: Any] ?? [:]
 
         // !isInit && visualSolution.replaceVisualOption(thisOption, newOption, this.replacableOptionKeys);
-        // PORT-TODO: visualSolution.replaceVisualOption NOT ported (visualSolution deferred). It moves
-        //   the replacable option keys from `newOption` onto `thisOption` (replace-not-merge). Deferred.
-        _ = thisOption
-        _ = newOption
         if !isInit {
-            // visualSolution.replaceVisualOption(thisOption, newOption, this.replacableOptionKeys)
+            let newOpt = (newOption as? [String: Any]) ?? [:]
+            visualSolution.replaceVisualOption(&thisOption, newOpt, self.replacableOptionKeys)
+            self.option = thisOption
         }
 
         // this.textStyleModel = this.getModel('textStyle');
@@ -368,9 +366,16 @@ open class VisualMapModel: ComponentModel {
         }
         else if util.isFunction(formatter) {
             // return isMinMax ? formatter(v[0], v[1]) : formatter(v);
-            // PORT-TODO: function formatter (LabelFormatter closure carried in the option bag) is
-            //   deferred — the closure is not typed off the `[String: Any]` bag. Falls through to the
-            //   default text below.
+            if isMinMax {
+                let arr = value as? [Any] ?? []
+                if let fn = formatter as? (Double, Double) -> String {
+                    return fn(vmToDouble(arr[0]), vmToDouble(arr[1]))
+                }
+            }
+            else if let fn = formatter as? (Double) -> String {
+                return fn(vmToDouble(value))
+            }
+            // Non-coercible closure signature falls through to the default text below.
         }
 
         if isMinMax {

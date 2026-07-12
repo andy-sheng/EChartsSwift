@@ -25,8 +25,8 @@ import ZRenderKit
 // import ComponentModel from '../../model/Component';                 -> ComponentModel (model/Component.swift)
 // import { getLayoutParams, sizeCalculable, mergeLayoutParam }
 //     from '../../util/layout';                                       -> layout.mergeLayoutParam (util/layout.swift).
-//     PORT-NOTE: `getLayoutParams` / `sizeCalculable` are NOT yet in the partial `layout` port
-//     (util/layout.swift ports only the cartesian surface — see its header PORT-TODO). They are
+//     PORT-NOTE (deferred): requires util/layout `getLayoutParams` / `sizeCalculable` (confirmed absent
+//     from the partial util/layout.swift port, which covers only the cartesian surface). They are
 //     faithfully reproduced here as file-scope helpers (calendarGetLayoutParams / calendarSizeCalculable)
 //     and should be folded into the `layout` namespace once the full util/layout.ts port lands.
 // import Calendar from './Calendar';                                  -> Calendar (coord/calendar/Calendar.swift — coord-sys master; sibling in a later phase)

@@ -19,9 +19,9 @@
 //   into the typed hook being non-nil.
 //
 // ANIMATION HOOKUP: `morphPath` / `combineMorph` drive the morph via `toPath.animateTo({ __morphT: 1 })`
-//   (Element.animateTo). The Animator/animateTo bodies are a Phase-3 type-surface stub today, so the
-//   morph is geometrically faithful but does not yet *drive* at runtime; the buildPath interpolation
-//   below is the real bar→pie geometry. (PORT-TODO: once animateTo is real, this morphs live.)
+//   (Element.animateTo). PORT-NOTE: the Animator/animateTo path is now ported (Phase 3 — animateTo
+//   wires the real Animator system, see Element.swift), so tweening `__morphT` 0→1 drives the
+//   buildPath interpolation below, which is the real bar→pie geometry.
 
 import Foundation
 

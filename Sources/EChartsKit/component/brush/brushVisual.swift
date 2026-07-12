@@ -26,7 +26,7 @@ import ZRenderKit
 // ============================================================================
 // PORT SCOPE (Phase 44 — brush milestone)
 //
-// This is the RECTANGLE brush on a cartesian grid only. DEFERRED (marked PORT-TODO inline):
+// This is the RECTANGLE brush on a cartesian grid only. DEFERRED (marked PORT-NOTE inline):
 //   - lineX / lineY / polygon brush types (selector.ts `getLineSelectors` + polygon branch).
 //   - geo / parallel coordinate systems (BrushTargetManager `geo` builder + `stepAParallel`).
 //   - the throttle machinery + the `zr[DISPATCH_FLAG]` re-entrancy guard around `brushSelect`
@@ -274,8 +274,9 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
     // The `brushSelected` event batch (one entry per brush component).
     let brushSelected = BrushSelectedBatch()
 
-    // PORT-TODO: `takeGlobalCursor` -> brushModel.setBrushOption(...) drives the paint cursor; deferred
-    //   (belongs to the BrushController paint flow). The layout below still runs so `range` is fresh.
+    // PORT-NOTE (deferred): requires the BrushController paint flow — `takeGlobalCursor` ->
+    //   brushModel.setBrushOption(...) drives the paint cursor. The layout below still runs so `range`
+    //   is fresh.
 
     layoutCovers(ecModel)
 
@@ -338,8 +339,8 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
 
             // subType === 'parallel' ? stepAParallel(...) : stepAOthers(...)
             if seriesModel.subType == "parallel" {
-                // PORT-TODO: stepAParallel (ParallelSeries.coordinateSystem.hasAxisBrushed / eachActiveState)
-                //   is deferred (parallel coord out of scope). No brush contribution.
+                // PORT-NOTE (deferred): requires ParallelSeries.coordinateSystem.hasAxisBrushed /
+                //   eachActiveState (stepAParallel; parallel coord out of scope). No brush contribution.
             }
             else {
                 // stepAOthers
@@ -408,8 +409,8 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
 }
 
 // function dispatchAction(api, throttleType, throttleDelay, brushSelected, payload)
-//   PORT-TODO: the throttle (throttleUtil.createOrUpdate) + `zr[DISPATCH_FLAG]` re-entrancy guard need a
-//   live zr; here we dispatch synchronously when a `payload` is present (matches upstream's "only on a
+//   PORT-NOTE (deferred): requires throttleUtil.createOrUpdate + a live zr's `zr[DISPATCH_FLAG]`
+//   re-entrancy guard; here we dispatch synchronously when a `payload` is present (matches upstream's "only on a
 //   real action, never on setOption" gate). `brushSelect` has update:'none', so it does not re-run visual.
 private func dispatchBrushSelected(_ api: ExtensionAPI, _ brushSelected: BrushSelectedBatch, _ payload: Payload?) {
     if payload == nil { return }
@@ -522,7 +523,7 @@ final class BrushTargetManagerLite {
         yAxisIndexFinder = BrushTargetManagerLite.parseFinderSel(opt["yAxisIndex"])
 
         // Build one GridTarget per grid coordinate system.
-        // PORT-TODO: geo targetInfoBuilder deferred.
+        // PORT-NOTE (deferred): geo targetInfoBuilder (geo coord system out of scope).
         ecModel.eachComponent("grid") { gridModel, gridIdxD in
             let gridIdx = Int(gridIdxD)
             guard let gm = gridModel as? GridModel,
@@ -597,7 +598,7 @@ final class BrushTargetManagerLite {
             guard let coordRange = brushRangeMinMax(areas[i]["coordRange"]) else { continue }
             let range = rectCoordConvertDataToPoint(coordSys, coordRange)
             areas[i]["range"] = range
-            // PORT-TODO: __rangeOffset (category-axis non-reversible rebuild + dataZoom scale) deferred.
+            // PORT-NOTE (deferred): __rangeOffset (category-axis non-reversible rebuild + dataZoom scale).
         }
     }
 

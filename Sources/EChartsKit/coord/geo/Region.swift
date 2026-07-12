@@ -300,6 +300,11 @@ public final class GeoJSONRegion: Region {
      * @param height
      */
     public func transformTo(_ x: Double, _ y: Double, _ width: Double, _ height: Double) {
+        // upstream nulls this method on shallow clones ("avoid to be called"); Swift cannot null a
+        // method, so shallow clones set `_transformToDisabled` and this guard makes the call a no-op.
+        if self._transformToDisabled {
+            return
+        }
         var rect = self.getBoundingRect()
         let aspect = rect.width / rect.height
         var width = width
@@ -346,13 +351,13 @@ public final class GeoJSONRegion: Region {
         let name = name ?? self.name
         let newRegion = GeoJSONRegion(name, self.geometries, self._center)
         newRegion._rect = self._rect
-        // PORT-TODO: upstream `newRegion.transformTo = null;` (avoid to be called). Swift methods
-        // cannot be nulled; guard with a flag instead.
+        // PORT-NOTE: upstream `newRegion.transformTo = null;` (avoid to be called). Swift methods
+        // cannot be nulled; guard with a flag instead (checked at the top of transformTo).
         newRegion._transformToDisabled = true
         return newRegion
     }
 
-    // PORT-TODO: see cloneShallow — replaces upstream `transformTo = null`.
+    // PORT-NOTE: see cloneShallow — replaces upstream `transformTo = null` (Swift language difference).
     internal var _transformToDisabled = false
 }
 

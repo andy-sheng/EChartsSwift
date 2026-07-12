@@ -209,8 +209,10 @@ open class ToolboxMagicTypeFeature: ToolboxFeature {
         payload.other["currentType"] = currentType
         payload.other["newOption"] = newOption
         payload.other["featureName"] = "magicType"
-        // PORT-TODO: `newTitle` (the stack↔tiled title flip merged into the feature option, FIX#11236)
-        //   is DEFERRED — the ToolboxView payload.newTitle merge is not wired (no live title update).
+        // PORT-NOTE (deferred): `newTitle` (the stack↔tiled title flip merged into the feature option,
+        //   FIX#11236) requires the consuming side ToolboxView payload.newTitle merge (ToolboxView.ts:152,
+        //   `featureOpt.title = payload.newTitle`), which is not ported — so emitting newTitle here would
+        //   be inert (no live title update). Wire once ToolboxView consumes payload.newTitle.
         api.dispatchAction(payload)
     }
 }
@@ -350,5 +352,5 @@ public func registerToolboxFeatures() {
         create: { ToolboxRestoreFeature() },
         getDefaultOption: { ToolboxRestoreFeature.getDefaultOption($0) }
     ))
-    // PORT-TODO: registerFeature('dataView', DataView) — DEFERRED (HTML overlay editor, host-dependent).
+    // PORT-NOTE: registerFeature('dataView', DataView) — DEFERRED (HTML overlay editor, host-dependent).
 }

@@ -8,12 +8,12 @@
 // ported, but the DOM coordinate mapping is the native event seam (CONVENTIONS §9); the
 // UIKit bridge supplies touch points already in ZRender-local coordinates, so this file keeps a
 // local passthrough `clientToLocal` (below) rather than using event.swift's.
-// PORT-TODO: upstream `import { ZRRawTouchEvent, ZRPinchEvent, Dictionary } from './types'` —
-// ZRRawTouchEvent / ZRPinchEvent are browser DOM event types (PORT-TODO in types.swift). They
+// PORT-NOTE: upstream `import { ZRRawTouchEvent, ZRPinchEvent, Dictionary } from './types'` —
+// ZRRawTouchEvent / ZRPinchEvent are browser DOM event types (PORT-NOTE in types.swift). They
 // are modeled here as native seam types (`Touch`, `ZRRawTouchEvent`). `Dictionary` comes from
 // types.swift.
 
-// PORT-TODO: browser `Touch` — native event seam. The UIKit bridge populates these; upstream
+// PORT-NOTE: browser `Touch` — native event seam. The UIKit bridge populates these; upstream
 // reads `touch.clientX/clientY` and converts via `clientToLocal`.
 public struct Touch {
     public var clientX: Double
@@ -25,7 +25,7 @@ public struct Touch {
     }
 }
 
-// PORT-TODO: browser `HTMLElement` root — native event seam (CONVENTIONS §9). Upstream passes
+// PORT-NOTE: browser `HTMLElement` root — native event seam (CONVENTIONS §9). Upstream passes
 // the container element to `clientToLocal`; the native bridge owns coordinate context.
 public protocol GestureRoot: AnyObject {}
 

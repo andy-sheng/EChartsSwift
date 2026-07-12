@@ -113,7 +113,8 @@ open class ChordView: ChartView {
         }
 
         // if (!oldData) { ... first-render grow-in scale animation ... }
-        //   PORT-TODO: the first-render scale-up animation is DEFERRED (CONVENTIONS §5 — animation).
+        //   PORT-NOTE (deferred): the first-render scale-up animation requires util/graphic.initProps
+        //   + parsePercent-driven origin (CONVENTIONS §5 — animation).
         //   Upstream sets group.scaleX/scaleY = 0.01, origin = parsePercent(center[0/1], api.width/height),
         //   then `graphic.initProps(group, { scaleX: 1, scaleY: 1 }, seriesModel)` tweens it to full size.
         //   util/graphic.initProps + parsePercent-driven origin are not wired here; the group renders at

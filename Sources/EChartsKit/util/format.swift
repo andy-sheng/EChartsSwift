@@ -212,8 +212,9 @@ public enum format {
         var tpl = tpl
         // upstream: `zrUtil.each(param, function (value, key) { ... })`. `util.each` has no dictionary
         //   overload in ZRenderKit, so the dict is iterated directly.
-        // PORT-TODO: upstream iterates in JS object insertion order; Swift `Dictionary` iteration order
-        //   is unspecified, so on overlapping `{key}` placeholders the replacement order may differ.
+        // POTENTIAL-BUG: upstream iterates in JS object insertion order; Swift `Dictionary` iteration
+        //   order is unspecified, so if one key's replacement value itself contains another key's
+        //   `{key}` placeholder, the replacement order (and thus output) may differ from upstream.
         for (key, value) in param {
             tpl = _replaceFirst(
                 tpl,
@@ -358,7 +359,7 @@ public enum format {
         //   matching time zone. `getMonth()+1` -> Swift `.month` is already 1-based.
         var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = (isUTC == true) ? TimeZone(identifier: "UTC")! : TimeZone.current
-        // PORT-TODO: an invalid Date (NaN) is guarded to epoch to avoid a Calendar trap; upstream would
+        // PORT-NOTE: an invalid Date (NaN) is guarded to epoch to avoid a Calendar trap; upstream would
         //   emit NaN-derived strings here. `formatTime` is deprecated, so this edge is tolerated.
         let safeDate = date.timeIntervalSince1970.isNaN ? Date(timeIntervalSince1970: 0) : date
         let c = cal.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond], from: safeDate)
@@ -421,8 +422,10 @@ public enum format {
     }
 
     // upstream: `export { truncateText } from 'zrender/src/graphic/helper/parseText';`
-    // PORT-TODO: zrender `graphic/helper/parseText` is NOT ported as a standalone module (its logic
-    //   lives inside Text.swift/TSpan.swift). This re-export is a stub returning the text unchanged.
+    // PORT-NOTE: zrender `graphic/helper/parseText` is not yet split into a standalone module — its
+    //   `truncateText` is ported inside Text.swift (`parseText.truncateText`). This re-export forwards to
+    //   it. The untyped `options` bag ({minChar, placeholder, maxIterations}) is not unpacked here (no
+    //   ported caller passes it); defaults are used, matching the common `truncateText(text, w, font)` call.
     public static func truncateText(
         _ text: String,
         _ containerWidth: Double,
@@ -430,7 +433,7 @@ public enum format {
         _ ellipsis: String? = nil,
         _ options: Any? = nil
     ) -> String {
-        return text   // PORT-TODO
+        return parseText.truncateText(text, containerWidth, font, ellipsis)
     }
 
     /**
@@ -438,17 +441,21 @@ public enum format {
      * @param link url
      * @param target blank or self
      */
-    // PORT-TODO: browser-only (`window.open`), CONVENTIONS §9 (renderer/host seam). No-op natively.
+    // PORT-NOTE: browser-only (`window.open`), CONVENTIONS §9 (renderer/host seam). No-op natively.
     public static func windowOpen(_ link: String, _ target: String) {
         _ = link
         _ = target
-        // PORT-TODO: wire to the native host (e.g. UIApplication.open / NSWorkspace.open) when available.
+        // PORT-NOTE (host seam): wire to the native host (e.g. UIApplication.open / NSWorkspace.open)
+        //   when a host-open channel is available; browser-only `window.open` has no direct equivalent.
     }
 
 
     // upstream: `export { getTextRect } from '../legacy/getTextRect';`
-    // PORT-TODO: `legacy/getTextRect.ts` is NOT ported. It builds a `Text` and returns its bounding
-    //   rect; stubbed here as an empty rect until the legacy module lands.
+    // Ported faithfully from legacy/getTextRect.ts: build a ZRText from the style and return its
+    //   bounding rect (mirrors TextStyleMixin.getTextRect in model/mixin/textStyle.swift).
+    // PORT-NOTE: `padding` / `rich` arrive as an untyped `Any?` bag; they are forwarded only if already
+    //   typed (`NumberOrNumberArray` / `[String: TextStylePropsPart]`) — same conservative coercion as
+    //   TextStyleMixin.getTextRect. No ported caller passes a raw padding/rich to this legacy re-export.
     public static func getTextRect(
         _ text: String?,
         _ font: String? = nil,
@@ -459,7 +466,19 @@ public enum format {
         _ truncate: Bool? = nil,
         _ lineHeight: Double? = nil
     ) -> BoundingRect {
-        return BoundingRect(0, 0, 0, 0)   // PORT-TODO
+        var style = TextStyleProps()
+        style.text = text
+        style.font = font
+        style.align = align
+        style.verticalAlign = verticalAlign
+        style.padding = padding as? NumberOrNumberArray
+        style.rich = rich as? [String: TextStylePropsPart]
+        style.overflow = (truncate == true) ? "truncate" : nil
+        style.lineHeight = lineHeight
+        let textEl = ZRText()
+        textEl.useStyle(style)
+        textEl.update()
+        return textEl.getBoundingRect() ?? BoundingRect(0, 0, 0, 0)
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -493,8 +512,9 @@ public enum format {
     }
 
     // JS `String.prototype.replace(searchString, replacement)` — replaces the FIRST occurrence only.
-    // PORT-TODO: JS string-replacement treats `$&`, `$1`, ... specially; this does a literal range
-    //   replacement (no `$` substitution).
+    // PORT-NOTE: JS string-replacement treats `$&`, `$1`, ... specially; this does a literal range
+    //   replacement (no `$` substitution). This is sufficient here: every replacement value passed in
+    //   (padded numbers / encoded HTML / plain option strings) is a literal with no `$` metacharacters.
     static func _replaceFirst(_ s: String, _ target: String, _ replacement: String) -> String {
         guard let r = s.range(of: target) else {
             return s

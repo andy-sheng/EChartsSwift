@@ -75,10 +75,12 @@ open class FunnelSeriesModel: SeriesModel {
 
         // Extend labelLine emphasis
         // this._defaultLabelLine(option);
-        // PORT-TODO: `_defaultLabelLine` mutates `option.labelLine.show`/`option.emphasis.labelLine.show`
+        // PORT-NOTE (deferred): `_defaultLabelLine` mutates `option.labelLine.show`/`option.emphasis.labelLine.show`
         //   from `label.show`/`emphasis.label.show` (via `model.defaultEmphasis`, which IS ported). The
         //   label/labelLine subsystem is deferred (nothing reads `labelLine.show` in the static FunnelView
-        //   render), so this is kept as a documented no-op with faithful call shape. Faithful body in
+        //   render), and `defaultEmphasis` operates on a typed `DisplayStateHostOption` whereas the option
+        //   is the raw `[String: Any]` bag — the whole series family (Pie/Geo/Graph/Marker) defers this
+        //   uniformly. Kept as a documented no-op with faithful call shape. Faithful body in
         //   `_defaultLabelLine` below.
     }
 
@@ -103,7 +105,7 @@ open class FunnelSeriesModel: SeriesModel {
     }
 
     // upstream: _defaultLabelLine(option: FunnelSeriesOption) { ... }
-    // PORT-TODO: deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:
+    // PORT-NOTE (deferred): deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:
     //     // Extend labelLine emphasis
     //     defaultEmphasis(option, 'labelLine', ['show']);
     //     const labelLineNormalOpt = option.labelLine;

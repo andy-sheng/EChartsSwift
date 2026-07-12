@@ -36,8 +36,9 @@
 //   - The browser `painterCtors` registry + DOM-ctor painter construction. Natively there is no
 //     DOM, so the painter is INJECTED into the constructor (documented deviation). `registerPainter`
 //     / `painterCtors` are kept for provenance.
-//   - configLayer / useDirtyRect / useCoarsePointer / pointerSize (canvas-layer + coarse-pointer
-//     features) — PORT-TODO.
+//   - configLayer (forwarded to painter), useCoarsePointer / pointerSize (honored) are wired;
+//     useDirtyRect is stored on opts but the dirty-rect render optimization itself is a
+//     canvas-layer feature — PORT-NOTE (deferred): requires the CanvasLayer dirty-rect painter.
 
 import Foundation
 
@@ -48,7 +49,7 @@ import Foundation
 // import Storage from './Storage';                               → Storage
 // import {PainterBase} from './PainterBase';                     → PainterBase protocol (below)
 // import Animation, {getTime} from './animation/Animation';      → Animation/Animation.swift
-// import HandlerProxy from './dom/HandlerProxy';                 → PORT-TODO: DOM seam, not ported
+// import HandlerProxy from './dom/HandlerProxy';                 → PORT-NOTE: DOM seam, not ported
 // import Element, { ElementEventCallback } from './Element';     → Element
 // import { Dictionary, ElementEventName, RenderedEvent, WithThisType } from './core/types';
 // import { LayerConfig } from './canvas/Layer';                  → `LayerConfig` (ported below in this file)
@@ -105,7 +106,7 @@ fileprivate func isDarkMode(_ backgroundColor: Any?) -> Bool {
 //   (declared at the bottom of this file); `Element.__zr` is the real `ZRender`.
 public final class ZRender {
     /// Not necessary if using SSR painter like svg-ssr
-    // upstream: dom?: HTMLElement → no DOM natively (PORT-TODO: input/host seam).
+    // upstream: dom?: HTMLElement → no DOM natively (PORT-NOTE: input/host seam).
     public var dom: Any?
 
     public var id: Double
@@ -142,7 +143,7 @@ public final class ZRender {
     private var _backgroundColor: Any?   // upstream: string | GradientObject | PatternObject
 
     // upstream: constructor(id: number, dom?: HTMLElement, opts?: ZRenderInitOpt).
-    // PORT-TODO (deviation): the painter is INJECTED rather than built from `painterCtors[rendererType]`
+    // PORT-NOTE (deviation): the painter is INJECTED rather than built from `painterCtors[rendererType]`
     //   — there is no DOM ctor natively. `opts.renderer` / `painterCtors` are kept for provenance.
     //   The `proxy` (HandlerProxyInterface) is likewise INJECTED — natively it is the hand-written
     //   UIKit bridge (`NativeHandlerProxy`); nil ⇒ Handler falls back to `EmptyProxy` (headless).
@@ -180,7 +181,8 @@ public final class ZRender {
 
         // upstream: useCoarsePointer / pointerSize (touch input — enlarge hit area). The `'auto'`
         //   arm (env.touchEventsSupported) is not modeled; an explicit `opts.pointerSize` is honored.
-        //   PORT-TODO: `useCoarsePointer === 'auto'` defaulting.
+        //   PORT-NOTE (deferred): `useCoarsePointer === 'auto'` defaulting requires
+        //   env.touchEventsSupported detection (not modeled); an explicit opts value is honored.
         let pointerSize: Double? = (opts.useCoarsePointer ?? false) ? (opts.pointerSize ?? 44) : opts.pointerSize
 
         // upstream: this.handler = new Handler(storage, painter, handlerProxy, painter.root, pointerSize);
@@ -236,7 +238,8 @@ public final class ZRender {
         if self._disposed {
             return
         }
-        // PORT-TODO: `this.painter.setBackgroundColor?.(backgroundColor)` — optional painter hook.
+        // upstream: `this.painter.setBackgroundColor?.(backgroundColor)` — optional painter hook.
+        self.painter.setBackgroundColor(backgroundColor)
         self.refresh()
         self._backgroundColor = backgroundColor
         // module-qualify: the `isDarkMode()` instance method shadows the global helper.
@@ -282,7 +285,7 @@ public final class ZRender {
             let displayList = self.storage.getDisplayList(true)
             self.painter.refresh(displayList)
         }
-        // PORT-TODO: refreshHover → hover-layer painting (Phase 2 hover machinery / painter seam).
+        // PORT-NOTE: refreshHover → hover-layer painting (Phase 2 hover machinery / painter seam).
         // Avoid trigger zr.refresh in Element#beforeUpdate hook.
         // Hover layer is always refreshed when refreshing normal layers.
         self._needsRefresh = false
@@ -517,7 +520,7 @@ public struct ZRenderResizeOpt {
 
 /// Initializing a zrender instance
 /// - dom: Not necessary if using SSR painter like svg-ssr
-// PORT-TODO (deviation): the painter is injected (no DOM ctor natively). `init` is a Swift keyword;
+// PORT-NOTE (deviation): the painter is injected (no DOM ctor natively). `init` is a Swift keyword;
 //   the free function is named with backticks to keep the upstream name.
 @discardableResult
 public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase, proxy: HandlerProxyInterface? = nil) -> ZRender {
@@ -629,6 +632,9 @@ public protocol PainterBase: AnyObject {
     /// upstream: configLayer?(zLevel, config) — optional per-layer config (e.g. motion blur).
     func configLayer(_ zLevel: Double, _ config: Any?)
 
+    /// upstream: setBackgroundColor?(backgroundColor) — optional painter hook.
+    func setBackgroundColor(_ backgroundColor: Any?)
+
     func dispose()
 }
 
@@ -638,6 +644,7 @@ extension PainterBase {
     public var ssrOnly: Bool { return false }
     public func getViewportRoot() -> Any? { return nil }
     public func configLayer(_ zLevel: Double, _ config: Any?) {}
+    public func setBackgroundColor(_ backgroundColor: Any?) {}
 }
 
 

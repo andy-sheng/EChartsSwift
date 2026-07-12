@@ -357,7 +357,7 @@ public func enableScaleMapperFreeze(_ host: ScaleMapper, _ subMapper: ScaleMappe
     host.freeze = util.noop
     if __DEV__ {
         host.freeze = {
-            subMapper.freeze() // PORT-TODO: verify capture — subMapper captured strongly (mirrors upstream).
+            subMapper.freeze() // PORT-NOTE: subMapper captured strongly (mirrors upstream; JS relies on GC).
         }
     }
 }

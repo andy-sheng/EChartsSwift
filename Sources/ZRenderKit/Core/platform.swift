@@ -1,7 +1,7 @@
 // Ported from zrender/src/core/platform.ts — keep in sync with upstream
 import Foundation
 
-// PORT-TODO: upstream uses DOM `HTMLCanvasElement` / `HTMLImageElement`. There is no DOM
+// PORT-NOTE: upstream uses DOM `HTMLCanvasElement` / `HTMLImageElement`. There is no DOM
 // in Phase 0; we keep opaque placeholder types so the seam compiles. createCanvas/loadImage
 // are stubs (see below) — only the ASCII-width-table measureText fallback is functional.
 public typealias CanvasLike = Any
@@ -91,9 +91,9 @@ public final class DefaultPlatformAPI: PlatformAPI {
 
     // Export methods
     public func createCanvas() -> CanvasLike? {
-        // PORT-TODO: stub. Upstream: `typeof document !== 'undefined' && document.createElement('canvas')`.
-        // No DOM / no Core Graphics canvas in Phase 0 — always returns nil so measureText
-        // falls back to the ASCII width table.
+        // PORT-NOTE (platform): stub. Upstream: `typeof document !== 'undefined' && document.createElement('canvas')`.
+        // No DOM in this target; there is no HTMLCanvasElement equivalent, so this always returns nil
+        // and measureText falls back to the ASCII width table.
         return nil
     }
 
@@ -149,8 +149,8 @@ public final class DefaultPlatformAPI: PlatformAPI {
         _ onload: @escaping () -> Void,
         _ onerror: @escaping () -> Void
     ) -> ImageLike? {
-        // PORT-TODO: stub. Upstream creates `new Image()`, assigns onload/onerror/src and
-        // returns it. No image loader wired in Phase 0; return nil.
+        // PORT-NOTE (platform): stub. Upstream creates a DOM `new Image()`, assigns onload/onerror/src and
+        // returns it. No DOM Image loader in this target; return nil.
         _ = (src, onload, onerror)
         return nil
     }

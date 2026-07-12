@@ -146,9 +146,9 @@ public protocol CoordinateSystemMaster: AnyObject {
     // getRect?: () => RectLike
     func getRect() -> RectLike?
 }
-// PORT-TODO: `model` / `boxCoordinateSystem` / `update` / `convert*` / `getAxes` / `axisPointerEnabled`
+// PORT-NOTE: `model` / `boxCoordinateSystem` / `update` / `convert*` / `getAxes` / `axisPointerEnabled`
 //   / `getTooltipAxes` / `getRect` are upstream-optional (`?`). Modeled as protocol requirements with
-//   nil / no-op defaults so conformers may omit them.
+//   nil / no-op defaults so conformers may omit them (Swift has no optional protocol members).
 public extension CoordinateSystemMaster {
     var model: ComponentModel? { get { nil } set {} }
     var boxCoordinateSystem: CoordinateSystem? { get { nil } set {} }
@@ -304,8 +304,9 @@ public protocol CoordinateSystem: AnyObject {
     // prepareCustoms?: PrepareCustomInfo;
     var prepareCustoms: PrepareCustomInfo? { get }
 }
-// PORT-TODO: `master` / `model` and every `?`-marked method above are upstream-optional. Modeled as
-//   protocol requirements with nil-returning defaults so conformers may omit them.
+// PORT-NOTE: `master` / `model` and every `?`-marked method above are upstream-optional. Modeled as
+//   protocol requirements with nil-returning defaults so conformers may omit them (Swift has no optional
+//   protocol members).
 public extension CoordinateSystem {
     var master: CoordinateSystemMaster? { get { nil } set {} }
     var model: ComponentModel? { get { nil } set {} }
@@ -378,7 +379,7 @@ public protocol GeoLikeCoordSys: CoordinateSystem {
 //     // Not use coordSys.type === 'geo' because coordSys maybe extended
 //     return dimensions[0] === 'lng' && dimensions[1] === 'lat' && !!coordSys.getViewRect;
 // }
-// PORT-TODO: TS type-guard erased to Bool; `!!coordSys.getViewRect` (method existence) checked via
+// PORT-NOTE: TS type-guard erased to Bool; `!!coordSys.getViewRect` (method existence) checked via
 //   the non-nil return of the optional `getViewRect()` default.
 public func isGeoLikeCoordSys(_ coordSys: CoordinateSystem) -> Bool {
     let dimensions = coordSys.dimensions

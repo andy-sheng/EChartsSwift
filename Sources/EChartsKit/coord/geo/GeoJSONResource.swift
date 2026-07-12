@@ -190,9 +190,10 @@ public final class GeoJSONResource: GeoResource {
         // https://jsperf.com/try-catch-performance-overhead
         // try { rawRegions = geoJSON ? parseGeoJson(geoJSON, nameProperty) : []; }
         // catch (e) { throw new Error('Invalid geoJson format\n' + e.message); }
-        // PORT-TODO: upstream wraps `parseGeoJson` in try/catch to rethrow as 'Invalid geoJson format'.
+        // PORT-NOTE: upstream wraps `parseGeoJson` in try/catch to rethrow as 'Invalid geoJson format'.
         //   `parseGeoJson` (sibling) is ported non-throwing as `parseGeoJSON` and takes `[String: Any]`;
-        //   the try/catch is omitted and the `Any?` source is narrowed to the dict it always is here.
+        //   the try/catch is omitted (language difference) and the `Any?` source is narrowed to the dict
+        //   it always is here.
         if geoJSON != nil {
             rawRegions = parseGeoJSON(geoJSON as? [String: Any] ?? [:], nameProperty)
         }
@@ -201,9 +202,9 @@ public final class GeoJSONResource: GeoResource {
         }
 
         // fixNanhai(mapName, rawRegions);
-        // PORT-TODO: the built-in GEO fixers `fixNanhai` / `fixTextCoord` / `fixDiaoyuIsland`
-        //   (echarts/src/coord/geo/fix/*) are NOT yet ported and are out of this phase's scope. The
-        //   calls are stubbed out; wire them when `fix/nanhai.swift` etc. land. `fixNanhai` must take
+        // PORT-NOTE (deferred): requires the built-in GEO fixers `fixNanhai` / `fixTextCoord` /
+        //   `fixDiaoyuIsland` (echarts/src/coord/geo/fix/*), NOT yet ported (out of this phase's scope).
+        //   The calls are stubbed out; wire them when `fix/nanhai.swift` etc. land. `fixNanhai` must take
         //   `inout [GeoJSONRegion]` (it PUSHES synthesized regions; Swift arrays are value types).
         // fixNanhai(mapName, &rawRegions)
 
@@ -213,9 +214,9 @@ public final class GeoJSONResource: GeoResource {
             let regionName = region.name
 
             // fixTextCoord(mapName, region);
-            // fixTextCoord(mapName, region)   // PORT-TODO: fix/textCoord not yet ported (see above).
+            // fixTextCoord(mapName, region)   // PORT-NOTE (deferred): fix/textCoord not yet ported (see above).
             // fixDiaoyuIsland(mapName, region);
-            // fixDiaoyuIsland(mapName, region)  // PORT-TODO: fix/diaoyuIsland not yet ported (see above).
+            // fixDiaoyuIsland(mapName, region)  // PORT-NOTE (deferred): fix/diaoyuIsland not yet ported (see above).
 
             // Some area like Alaska in USA map needs to be tansformed
             // to look better

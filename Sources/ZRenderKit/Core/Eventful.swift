@@ -160,9 +160,10 @@ public final class Eventful {
             self._$handlers![event] = []
         }
 
-        // PORT-TODO: closure identity — upstream dedups via `_h[event][i].h === handler`,
-        // but Swift closures have no comparable identity, so the dedup loop cannot be
-        // ported. Re-binding the same closure will currently register it twice.
+        // PORT-NOTE (language difference): upstream dedups via `_h[event][i].h === handler`,
+        // but Swift closures have no comparable identity (EventCallback is a plain closure
+        // typealias), so the dedup loop cannot be ported. Re-binding the same closure will
+        // currently register it twice. Permanent until an explicit handler-token scheme exists.
         // for (let i = 0; i < _h[event].length; i++) {
         //     if (_h[event][i].h === handler) { return this; }
         // }
@@ -221,10 +222,12 @@ public final class Eventful {
 
         if let handler = handler {
             _ = handler
-            // PORT-TODO: closure identity — upstream rebuilds the list keeping every
-            // `_h[eventType][i].h !== handler`, but Swift closures are not comparable, so
-            // a specific handler cannot be filtered out. Left as a no-op pending an
-            // identity scheme; only the empty-list cleanup below is preserved.
+            // POTENTIAL-BUG (closure identity): upstream rebuilds the list keeping every
+            // `_h[eventType][i].h !== handler`, but Swift closures are not comparable
+            // (EventCallback is a plain closure typealias), so a specific handler cannot be
+            // filtered out. This is a correctness divergence: off(event, handler) silently
+            // fails to unregister that one handler. Left as a no-op pending a handler-token
+            // scheme; only the empty-list cleanup below is preserved.
             if let list = self._$handlers![eventType], list.isEmpty {
                 self._$handlers![eventType] = nil
             }

@@ -88,10 +88,13 @@ open class PieSeriesModel: SeriesModel {
         )
 
         // this._defaultLabelLine(option);
-        // PORT-TODO: `_defaultLabelLine` mutates `option.labelLine.show`/`option.emphasis.labelLine.show`
-        //   from `label.show`/`emphasis.label.show` (via `modelUtil.defaultEmphasis`, which IS ported).
-        //   The label/labelLine subsystem is deferred (nothing reads `labelLine.show` in the static
-        //   PieView render), so this is kept as a documented no-op with faithful call shape.
+        // PORT-NOTE (deferred): `_defaultLabelLine` mutates `option.labelLine.show`/
+        //   `option.emphasis.labelLine.show` from `label.show`/`emphasis.label.show` via
+        //   `modelUtil.defaultEmphasis`. PieView DOES render labelLine (reads `labelLine.show`), but
+        //   `defaultEmphasis` operates on a typed `DisplayStateHostOption`, whereas the model's option
+        //   is the raw `[String: Any]` bag; the option-defaulting call is deferred uniformly across the
+        //   whole series family (Geo/Graph/Funnel/Marker all keep the same call commented). labelLine.show
+        //   still defaults to `true` from `defaultOption`, so this is a no-op with faithful call shape.
     }
 
     /**
@@ -173,7 +176,8 @@ open class PieSeriesModel: SeriesModel {
     }
 
     // upstream: private _defaultLabelLine(option): void { ... }
-    // PORT-TODO: deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:
+    // PORT-NOTE (deferred): the option-defaulting call `_defaultLabelLine` is deferred family-wide
+    //   (see `init` above). Faithful upstream body:
     //     modelUtil.defaultEmphasis(option, 'labelLine', ['show']);
     //     const labelLineNormalOpt = option.labelLine;
     //     const labelLineEmphasisOpt = option.emphasis.labelLine;
@@ -227,7 +231,9 @@ open class PieSeriesModel: SeriesModel {
             "top": 0.0,
             "right": 0.0,
             "bottom": 0.0,
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            // POTENTIAL-BUG: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            //   Faithful to JS (which keeps `width: null`), but readers using `option["width"] != nil`
+            //   see NSNull (non-nil) instead of an absent key — treat NSNull as null when reading.
             "width": NSNull(),
             "height": NSNull(),
 

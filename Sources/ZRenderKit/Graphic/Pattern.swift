@@ -2,11 +2,11 @@
 
 // upstream: import { ImageLike } from '../core/types';
 // upstream: import { SVGVNode } from '../svg/core';
-// PORT-TODO: ImageLike is a browser image-source union (HTMLImageElement | ... ); it is
+// PORT-NOTE: ImageLike is a browser image-source union (HTMLImageElement | ... ); it is
 // still unported (see Core/types.swift) and routed through the Renderer/Painter seam
 // (CONVENTIONS §9). String slots below stand in for the SSR/string arm; the ImageLike arm
 // is deferred to Phase 2.
-// PORT-TODO: SVGVNode — svg renderer virtual node; svg backend is not ported (CONVENTIONS §9).
+// PORT-NOTE: SVGVNode — svg renderer virtual node; svg backend is not ported (CONVENTIONS §9).
 
 public enum ImagePatternRepeat: String {
     case `repeat`
@@ -28,7 +28,7 @@ public protocol PatternObjectBase {
 }
 
 public protocol ImagePatternObject: PatternObjectBase {
-    // PORT-TODO: image: ImageLike | string — only the `string` arm is typed for now.
+    // PORT-NOTE: image: ImageLike | string — only the `string` arm is typed for now.
     var image: String { get set }
     var `repeat`: ImagePatternRepeat? { get set }
 
@@ -43,7 +43,7 @@ public protocol ImagePatternObject: PatternObjectBase {
 }
 
 public protocol InnerImagePatternObject: ImagePatternObject {
-    // PORT-TODO: __image?: ImageLike — cached image created in the canvas painter; backend
+    // PORT-NOTE: __image?: ImageLike — cached image created in the canvas painter; backend
     // seam (CONVENTIONS §9). Deferred to Phase 2.
 }
 
@@ -52,7 +52,7 @@ public protocol SVGPatternObject: PatternObjectBase {
      * svg vnode can only be used in svg renderer currently.
      * svgWidth, svgHeight defines width and height used for pattern.
      */
-    // PORT-TODO: svgElement?: SVGVNode — svg backend not ported (CONVENTIONS §9).
+    // PORT-NOTE: svgElement?: SVGVNode — svg backend not ported (CONVENTIONS §9).
     var svgWidth: Double? { get set }
     var svgHeight: Double? { get set }
 }
@@ -67,14 +67,14 @@ public class Pattern {
     // interface makes it optional, so we model it as `String?` (nil here, matching runtime).
     public var type: String?
 
-    // PORT-TODO: image: ImageLike | string — only the `string` arm is typed for now.
+    // PORT-NOTE: image: ImageLike | string — only the `string` arm is typed for now.
     public var image: String
     /**
      * svg element can only be used in svg renderer currently.
      *
      * Will be string if using SSR rendering.
      */
-    // PORT-TODO: svgElement: SVGElement | string — only the `string` arm is typed for now.
+    // PORT-NOTE: svgElement: SVGElement | string — only the `string` arm is typed for now.
     public var svgElement: String?
 
     public var `repeat`: ImagePatternRepeat

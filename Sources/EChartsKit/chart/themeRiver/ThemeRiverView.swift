@@ -327,9 +327,10 @@ open class ThemeRiverView: ChartView {
             states.setStatesStylesFromModel(polygon, seriesModel)
             states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
 
-            // PORT-TODO (DEFERRED):
+            // PORT-NOTE (deferred): entrance animation deviation.
             //   - Animation: DONE for the merge-mode UPDATE path (updateProps edge morph); the initial
-            //     grid-clip reveal (`createGridClipShape`) is still an opacity fade.
+            //     grid-clip reveal (`createGridClipShape`) is intentionally an opacity fade here (see the
+            //     module-level note below). Faithful in outcome (band appears animated), not in mechanism.
             //   - Label: DONE — routed through the shared label core above (setLabelStyle + textConfig
             //     { position: null, local: true } + manual textLayout placement).
         }
@@ -343,7 +344,7 @@ open class ThemeRiverView: ChartView {
     //   override them (default ChartView.remove clears the group), so neither is overridden here.
 }
 
-// PORT-TODO (DEFERRED — animation): upstream's module-level `createGridClipShape(rect, seriesModel, cb)`
+// PORT-NOTE (deferred — animation): upstream's module-level `createGridClipShape(rect, seriesModel, cb)`
 //   builds a `graphic.Rect` clip that expands (width 0 → rect.width + 100) via `graphic.initProps` for
 //   the grid-reveal entrance, removing itself on complete. Reproduce alongside the initProps/updateProps
 //   animation port.

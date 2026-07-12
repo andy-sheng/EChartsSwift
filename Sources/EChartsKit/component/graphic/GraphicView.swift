@@ -170,9 +170,9 @@ open class GraphicComponentView: ComponentView {
             //       if (!textConfig && convertResult.textConfig) { textConfig = elOption.textConfig = convertResult.textConfig; }
             //       if (!textContentOption && convertResult.textContent) { textContentOption = convertResult.textContent; }
             //   }
-            // PORT-TODO: `util/styleCompat` (isEC4CompatibleStyle / convertFromEC4CompatibleStyle) NOT
-            //   ported (EC4 back-compat). Modern (EC5+) style options do not hit this branch, so it is
-            //   deferred; `textConfig`/`textContentOption` keep their option values.
+            // PORT-NOTE (deferred): requires `util/styleCompat` (isEC4CompatibleStyle /
+            //   convertFromEC4CompatibleStyle), NOT ported (EC4 back-compat). Modern (EC5+) style options
+            //   do not hit this branch; `textConfig`/`textContentOption` keep their option values.
 
             // Remove unnecessary props to avoid potential problems.
             let elOptionCleaned = getCleanedElOption(elOption)
@@ -199,7 +199,7 @@ open class GraphicComponentView: ComponentView {
                 else {
                     if let el = el { inner(el).isNew = false }
                     // Stop and restore before update any other attributes.
-                    // PORT-TODO: stopPreviousKeyframeAnimationAndRestore(el) — keyframe animation deferred.
+                    // PORT-NOTE (deferred): requires keyframe animation — stopPreviousKeyframeAnimationAndRestore(el).
                 }
                 if let el = el {
                     applyUpdateTransitionStatic(el, elOptionCleaned)
@@ -215,7 +215,7 @@ open class GraphicComponentView: ComponentView {
                 }
             }
             else if action == "remove" {
-                // PORT-TODO: updateLeaveTo(elExisting, elOption) — leave transition deferred.
+                // PORT-NOTE (deferred): requires leave transition — updateLeaveTo(elExisting, elOption).
                 removeEl(elExisting, elOption, elMap, graphicModel)
             }
 
@@ -257,7 +257,7 @@ open class GraphicComponentView: ComponentView {
                     if let clipPath = clipPath {
                         el.setClipPath(clipPath)
                         applyUpdateTransitionStatic(clipPath, GraphicComponentElementOption(clipPathOption))
-                        // PORT-TODO: applyKeyframeAnimation(clipPath, clipPathOption.keyframeAnimation, graphicModel) — deferred.
+                        // PORT-NOTE (deferred): requires keyframe animation — applyKeyframeAnimation(clipPath, clipPathOption.keyframeAnimation, graphicModel).
                     }
                 }
 
@@ -271,10 +271,10 @@ open class GraphicComponentView: ComponentView {
                 elInner.option = elOption
                 setEventData(el, graphicModel, elOption)
 
-                // PORT-TODO: graphicUtil.setTooltipConfig({ el, componentModel: graphicModel,
-                //   itemName: el.name, itemTooltipOption: elOption.tooltip }) — tooltip wiring deferred.
+                // PORT-NOTE (deferred): requires graphicUtil.setTooltipConfig — setTooltipConfig({ el,
+                //   componentModel: graphicModel, itemName: el.name, itemTooltipOption: elOption.tooltip }).
 
-                // PORT-TODO: applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel) — deferred.
+                // PORT-NOTE (deferred): requires keyframe animation — applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel).
             }
         }
     }
@@ -362,8 +362,8 @@ open class GraphicComponentView: ComponentView {
                     let key = xy[k]
                     let val = layoutPos[key] ?? 0
                     // upstream: if (transition && (isTransitionAll(transition) || zrUtil.indexOf(transition, key) >= 0))
-                    // PORT-TODO: `isTransitionAll` (customGraphicTransition) deferred → treated as false;
-                    //   the `zrUtil.indexOf(transition, key) >= 0` arm handles the `transition: ['x','y']` case.
+                    // PORT-NOTE (deferred): requires customGraphicTransition.isTransitionAll → treated as
+                    //   false; the `zrUtil.indexOf(transition, key) >= 0` arm handles the `transition: ['x','y']` case.
                     if jsTruthy(transition) && transitionIndexOf(transition, key) >= 0 {
                         animatePos[key] = val
                     }
@@ -372,8 +372,9 @@ open class GraphicComponentView: ComponentView {
                         _ = el.attr(key, val)
                     }
                 }
-                // PORT-TODO: updateProps(el, animatePos, graphicModel, 0) — animation deferred; the
-                //   animated x/y are applied directly (no tween) so the final geometry is correct.
+                // PORT-NOTE (deferred): updateProps(el, animatePos, graphicModel, 0) — the transition tween
+                //   is a deliberate static-render deviation; the animated x/y are applied directly (no
+                //   tween) so the final geometry is correct.
                 for (key, val) in animatePos {
                     _ = el.attr(key, val)
                 }
@@ -428,10 +429,10 @@ private func newEl(_ graphicType: String) -> Element? {
         el = nil
     default:
         // graphicUtil.getShapeClass(graphicType)
-        // PORT-TODO: `util/graphic.getShapeClass` (the `extendShape` string->class registry) is NOT
-        //   ported yet. ZRenderKit has the concrete shape classes (Circle/Rect/Line/Polygon/...), but
-        //   no name lookup, so non-group/image/text graphic elements cannot be constructed here.
-        //   Referenced for the Integrate stage (getShapeClass). Until it lands this returns nil.
+        // PORT-NOTE (deferred): requires `util/graphic.getShapeClass` (the `extendShape` string->class
+        //   registry), NOT ported yet. ZRenderKit has the concrete shape classes (Circle/Rect/Line/
+        //   Polygon/...), but no name lookup, so non-group/image/text graphic elements cannot be
+        //   constructed here. Until it lands this returns nil.
         el = nil
     }
 
@@ -482,8 +483,8 @@ private func removeEl(
                 removeEl(el, elOption, elMap, graphicModel)
             }
         }
-        // PORT-TODO: applyLeaveTransition(elExisting, elOption, graphicModel) — leave transition
-        //   (customGraphicTransition) deferred. Static fallback: detach from parent immediately.
+        // PORT-NOTE (deferred): requires customGraphicTransition.applyLeaveTransition(elExisting, elOption,
+        //   graphicModel) — leave transition. Static fallback: detach from parent immediately.
         if let p = elExisting!.parent as? Group {
             _ = p.remove(elExisting!)
         }
@@ -521,7 +522,7 @@ private func updateCommonAttrs(
             }
             else {
                 // else if ((el as any)[prop] == null) { (el as any)[prop] = item[1]; }
-                // PORT-TODO: cannot read arbitrary `el[prop]` back generically; set the default
+                // PORT-NOTE: Swift cannot read arbitrary `el[prop]` back generically; set the default
                 //   unconditionally when the option does not specify it (matches the common case where
                 //   a freshly created element has no explicit z/z2/cursor).
                 _ = el.attr(prop, item.1)
@@ -530,11 +531,11 @@ private func updateCommonAttrs(
     }
 
     // Assign event handlers.
-    // PORT-TODO: the `on*` event-handler assignment loop is DEFERRED (interaction/events out of the
-    //   static-render scope): upstream copies each `on<Event>` function from the option onto the element.
+    // PORT-NOTE (deferred): the `on*` event-handler assignment loop requires the interaction/events layer
+    //   (out of static-render scope): upstream copies each `on<Event>` function from the option onto the element.
 
     // if (zrUtil.hasOwn(elOption, 'draggable')) { el.draggable = elOption.draggable; }
-    // PORT-TODO: `el.draggable` (ElementDraggable) is interaction; DEFERRED (drag not wired this phase).
+    // PORT-NOTE (deferred): `el.draggable` (ElementDraggable) is interaction; drag not wired this phase.
 
     // Other attributes
     if elOption.name != nil {   // elOption.name != null && (el.name = elOption.name)
@@ -593,10 +594,11 @@ private func setEventData(
 // ================================================================================================
 // Static-render substitute for `applyUpdateTransition` (animation/customGraphicTransition).
 //
-// PORT-TODO: `applyUpdateTransition(el, elOption, animatableModel, {isInit})` runs the full
-//   enter/update transition: it splits the option into transition vs non-transition props, animates
-//   the transition props (updateProps/updatePropsFromKeyframe), and applies the rest immediately.
-//   The transition/animation half is DEFERRED. The static substitute below applies the cleaned option
+// PORT-NOTE (deferred): `applyUpdateTransition(el, elOption, animatableModel, {isInit})` (animation/
+//   customGraphicTransition) runs the full enter/update transition: it splits the option into transition
+//   vs non-transition props, animates the transition props (updateProps/updatePropsFromKeyframe), and
+//   applies the rest immediately. The transition/animation half is deferred (customGraphicTransition not
+//   ported). The static substitute below applies the cleaned option
 //   directly (`el.attr`), which is exactly the no-transition-config result — the correct final
 //   geometry/style. `Element.attr` consumes the `[String: Any]` bag (shape/style/x/y/rotation/...).
 // ================================================================================================

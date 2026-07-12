@@ -30,8 +30,8 @@ import ZRenderKit
 // import { CoordinateSystemHostModel } from '../CoordinateSystem';  -> CoordinateSystemHostModel (coord/CoordinateSystem.swift)
 // import type GlobalModel from '../../model/Global';                -> GlobalModel (model/Global.swift)
 // import { getLayoutParams, mergeLayoutParam } from '../../util/layout';
-//   -> PORT-TODO: util/layout.ts not yet ported (getLayoutParams / mergeLayoutParam land later);
-//      the outerBounds layout-param merge below is deferred.
+//   -> util/layout.swift (enum layout). `mergeLayoutParam` / `copyLayoutParams` are ported;
+//      `getLayoutParams(src)` === `copyLayoutParams({}, src)` and is inlined at the call sites below.
 // import tokens from '../../visual/tokens';
 //   -> PORT-NOTE: visual/tokens.swift is ported. The `tokens.color.*` values consumed in
 //      `defaultOption` are still inlined verbatim as their resolved constants; may be re-wired to the
@@ -132,8 +132,10 @@ public final class GridModel: ComponentModel, CoordinateSystemHostModel {
     // mergeDefaultAndTheme(option: GridOption, ecModel: GlobalModel): void
     public override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const outerBoundsCp = getLayoutParams(option.outerBounds);
-        // PORT-TODO: util/layout.ts (getLayoutParams / mergeLayoutParam) not yet ported; the
-        //   outerBounds layout-param snapshot + re-merge is deferred until layout.swift lands.
+        //   getLayoutParams(src) === copyLayoutParams({}, src); missing src -> {} (JS `source && ...`).
+        //   Snapshot the user's outerBounds BEFORE super merges the default outerBounds in.
+        let srcOuter = ((self.option ?? option) as? [String: Any])?["outerBounds"] as? [String: Any]
+        let outerBoundsCp = layout.copyLayoutParams([:], srcOuter ?? [:])
 
         // super.mergeDefaultAndTheme.apply(this, arguments as any);
         super.mergeDefaultAndTheme(option, ecModel)
@@ -141,6 +143,14 @@ public final class GridModel: ComponentModel, CoordinateSystemHostModel {
         // if (outerBoundsCp && option.outerBounds) {
         //     mergeLayoutParam(option.outerBounds, outerBoundsCp);
         // }
+        // outerBoundsCp is always truthy ({} in JS); guard reduces to `option.outerBounds` present.
+        // Value-type writeback: mutate the outerBounds bag and store it back on self.option.
+        if var optDict = self.option as? [String: Any],
+           var outerBounds = optDict["outerBounds"] as? [String: Any] {
+            layout.mergeLayoutParam(&outerBounds, outerBoundsCp, nil)
+            optDict["outerBounds"] = outerBounds
+            self.option = optDict
+        }
     }
 
     // mergeOption(newOption: GridOption, ecModel: GlobalModel)
@@ -151,7 +161,13 @@ public final class GridModel: ComponentModel, CoordinateSystemHostModel {
         // if (this.option.outerBounds && newOption.outerBounds) {
         //     mergeLayoutParam(this.option.outerBounds, newOption.outerBounds);
         // }
-        // PORT-TODO: util/layout.ts (mergeLayoutParam) not yet ported — deferred.
+        if var optDict = self.option as? [String: Any],
+           var outerBounds = optDict["outerBounds"] as? [String: Any],
+           let newOuter = (newOption as? [String: Any])?["outerBounds"] as? [String: Any] {
+            layout.mergeLayoutParam(&outerBounds, newOuter, nil)
+            optDict["outerBounds"] = outerBounds
+            self.option = optDict
+        }
     }
 
     // static defaultOption: GridOption = { ... }

@@ -827,16 +827,17 @@ private struct TargetInfo {
     var node: TreemapLayoutNode
 }
 
-// PORT-TODO: upstream `helper.retrieveTargetInfo(payload, types, seriesModel)` from
-//   '../helper/treeHelper' resolves the payload's target node for the `treemapZoomToNode` /
-//   `treemapRootToNode` actions. treeHelper.ts is not ported yet, so this returns nil (no target),
-//   which drives the container-size / default-root-position branches (the non-action render path).
+// upstream `helper.retrieveTargetInfo(payload, types, seriesModel)` from '../helper/treeHelper'
+//   resolves the payload's target node for the `treemapZoomToNode` / `treemapRootToNode` actions.
+//   treeHelper.retrieveTargetInfo IS ported (returns `{ node: TreeNode }`); `TreemapLayoutNode` is a
+//   typealias for `TreeNode`, so its result maps straight through.
 private func retrieveTargetInfo(
     _ payload: Payload?,
     _ types: [String],
     _ seriesModel: TreemapSeriesModel
 ) -> TargetInfo? {
-    return nil
+    guard let info = treeHelper.retrieveTargetInfo(payload, types, seriesModel) else { return nil }
+    return TargetInfo(node: info.node)
 }
 
 // PORT-NOTE: upstream `helper.getPathToRoot(node)` from '../helper/treeHelper'. treeHelper.swift ports it

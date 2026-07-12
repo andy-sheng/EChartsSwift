@@ -36,7 +36,7 @@
 //     emphasis engine backs it. Its per-instance diff store is keyed on `api` (upstream keys on
 //     `api.getZr()`; this port's ExtensionAPI has no `getZr()` yet — documented deviation).
 //   - `series.getAxisTooltipData` (candlestick/boxplot) + `link.mapper` (linked-axis value mapping) are
-//     DEFERRED (PORT-TODOs at their sites); the default `indicesOfNearest` snap + pass-through link are used.
+//     DEFERRED (PORT-NOTEs at their sites); the default `indicesOfNearest` snap + pass-through link are used.
 //
 // import {makeInner, ModelFinderObject} from '../../util/model';   -> `model.*` (util/modelUtil.swift)
 // import * as modelHelper from './modelHelper';                    -> `modelHelper.*` (TASK 1 — see contract)
@@ -250,8 +250,10 @@ public func axisTrigger(
             if srcAxisInfo !== tarAxisInfo, let srcValItem = showValueMap.map[srcKey] {
                 // upstream: let val = srcValItem.value;
                 //           linkGroup.mapper && (val = tarAxisInfo.axis.scale.parse(linkGroup.mapper(...)));
-                // PORT-TODO (DEFERRED): the `link.mapper` JS callback is not invoked; without a mapper the
-                //   source value passes through unchanged (the common case). `makeMapperParam` deferred with it.
+                // PORT-NOTE (deferred): requires invoking the user-supplied `link.mapper` closure, which is
+                //   stored as `Any?` from the option bag (a JS function-in-options; see modelHelper.mapper)
+                //   with no Swift-callable representation yet. Without a mapper the source value passes
+                //   through unchanged (the common case). `makeMapperParam` is deferred with it.
                 let val: Any? = srcValItem.value
                 linkTriggers[tarAxisInfo.key] = val
             }
@@ -340,8 +342,10 @@ fileprivate func buildPayloadsBySeries(_ value: Double, _ axisInfo: AxisInfo)
         let seriesNestestValue: Any?
 
         // upstream: if (series.getAxisTooltipData) { ... } else { indicesOfNearest ... }
-        //   PORT-TODO (DEFERRED): `SeriesModel.getAxisTooltipData` (candlestick/boxplot) not ported;
-        //   only the default `indicesOfNearest` snap path is taken.
+        //   PORT-NOTE (deferred): `getAxisTooltipData` is not declared on the `SeriesModel` base — the
+        //   candlestick/boxplot implementations are not ported, and the one concrete implementation
+        //   (ThemeRiverSeries) has no shared protocol to dispatch through. Only the default
+        //   `indicesOfNearest` snap path is taken.
         dataIndices = series.indicesOfNearest(
             dim,
             dataDim.first ?? "",

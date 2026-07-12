@@ -397,7 +397,7 @@ public let simpleCoordSysInjectionProvider: CoordSysInjectionProvider = { coordS
     // const coordSysModel = injectTargetModel.getReferringComponents(
     //     coordSysType, SINGLE_REFERRING
     // ).models[0] as (ComponentModel & {coordinateSystem: CoordinateSystem});
-    // PORT-TODO: TS intersection cast `ComponentModel & {coordinateSystem: CoordinateSystem}` modeled
+    // PORT-NOTE: TS intersection cast `ComponentModel & {coordinateSystem: CoordinateSystem}` modeled
     //   as `as? CoordinateSystemHostModel` (the protocol that declares `coordinateSystem`). Its property
     //   type is `CoordinateSystemMaster?`, whereas upstream loosely types this as `CoordinateSystem`;
     //   bridged back with `as? CoordinateSystem` (runtime existential cast).

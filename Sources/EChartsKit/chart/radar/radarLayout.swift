@@ -67,7 +67,8 @@ public func radarLayout(_ ecModel: GlobalModel) {
         util.each(axes) { axis, axisIndex in
             _ = axis
             // data.each(data.mapDimension(axes[axisIndex].dim), function (val, dataIndex) { ... });
-            // PORT-TODO: `mapDimension` is force-unwrapped — the indicator dim is always present.
+            // PORT-NOTE: `mapDimension` is force-unwrapped — faithful to upstream's non-optional
+            //   DimensionName return; the indicator dim is always present for a radar axis.
             data.each(data.mapDimension(axes[axisIndex].dim)!) { args in
                 let val = args[0]
                 let dataIndex = Int(args[1] as! Double)

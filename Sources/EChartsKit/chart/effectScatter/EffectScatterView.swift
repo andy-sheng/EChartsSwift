@@ -20,13 +20,14 @@ import ZRenderKit
 //   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw (chart/helper/SymbolDraw.swift).
 //   import EffectSymbol from '../helper/EffectSymbol';             -> EffectSymbol (chart/helper/EffectSymbolElement.swift).
 //   import * as matrix from 'zrender/src/core/matrix';            -> only used by updateTransform (roam, deferred).
-//   import pointsLayout from '../../layout/points';                -> PORT-TODO: layout/points not ported (inlined below).
+//   import pointsLayout from '../../layout/points';                -> PORT-NOTE (deferred): requires layout/points (not ported; the per-datum placement is inlined below).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import { StageHandlerProgressExecutor } from '../../util/types';  -> type-only.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';
-//       -> PORT-TODO: helper/createClipPathFromCoordSys not ported (clipShape omitted).
+//       -> PORT-NOTE: createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift);
+//          this static view deliberately omits the clip shape (deviation, matches ScatterView).
 //   import { SymbolDrawUpdateOpt } from '../helper/baseDraw';      -> SymbolDrawUpdateOpt (chart/helper/SymbolDraw.swift).
 
 // upstream: class EffectScatterView extends ChartView { static readonly type = 'effectScatter'; type = ...; ... }
@@ -72,13 +73,13 @@ open class EffectScatterView: ChartView {
         //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
         //   The static render below inlines that for the two coord systems wired so far — cartesian2d and
         //   polar. Each branch returns a `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
-        //   PORT-TODO: geo/singleAxis/calendar/matrix effectScatter deferred (those coord systems not ported).
+        //   PORT-NOTE (deferred): requires geo/singleAxis/calendar/matrix coord systems (not ported); effectScatter on those is deferred.
         let pointAt: (Int) -> [Double]
         if let coord = seriesModel.coordinateSystem as? Cartesian2D {
             let baseAxis = coord.getBaseAxis()
             let valueAxis = coord.getOtherAxis(baseAxis)
-            // PORT-TODO: `mapDimension` is force-unwrapped — a series' base/value dims are always present
-            //   (same derivation as LineView/ScatterView).
+            // PORT-NOTE: `mapDimension` is force-unwrapped — a series' base/value dims are always present.
+            //   Same unmarked idiom as LineView/ScatterView (their identical `mapDimension(...)!` derivation).
             let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
             let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
             let isValueAxisH = valueAxis.isHorizontal()
@@ -101,7 +102,7 @@ open class EffectScatterView: ChartView {
             }
         }
         else {
-            // PORT-TODO: geo/singleAxis/calendar/matrix effectScatter deferred.
+            // PORT-NOTE (deferred): requires geo/singleAxis/calendar/matrix coord systems (not ported).
             return
         }
 
@@ -123,8 +124,9 @@ open class EffectScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-TODO: pointsLayout stage / updateTransform (roam) / _updateGroupTransform (matrix.clone of
-        //   getRoamTransform) / clipShape (createCoordSysClipAreaSimply) — all deferred.
+        // PORT-NOTE (deferred): pointsLayout stage / updateTransform (roam) / _updateGroupTransform (matrix.clone of
+        //   getRoamTransform) require the roam/layout-stage seam (not ported); clipShape (createCoordSysClipAreaSimply)
+        //   is deliberately omitted here (deviation, matches ScatterView) — all deferred.
         self._data = data
     }
 }
@@ -135,7 +137,8 @@ open class EffectScatterView: ChartView {
 //   function createSymbolDrawOpt(seriesModel): SymbolDrawUpdateOpt {
 //       return { clipShape: createCoordSysClipAreaSimply(seriesModel) };
 //   }
-// PORT-TODO: helper/createClipPathFromCoordSys not ported — clipShape omitted from the render opt.
+// PORT-NOTE: createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift);
+//   this static view deliberately omits the clipShape from the render opt (deviation, matches ScatterView).
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric series data is stored as `Double`. Mirrors the
 //   `scatterToNumber` coercion in chart/scatter/ScatterView.swift.

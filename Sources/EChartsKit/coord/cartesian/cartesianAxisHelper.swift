@@ -177,7 +177,7 @@ public enum cartesianAxisHelper {
 
             if __DEV__ {
                 if axisModel == nil {
-                    // PORT-TODO: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature).
+                    // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature). __DEV__-only.
                     let axisIndexOrId = util.retrieve3(
                         seriesModel.get(axisType + "Index"),
                         seriesModel.get(axisType + "Id"),
@@ -236,10 +236,10 @@ public enum cartesianAxisHelper {
 
         if __DEV__ {
             let oldRaw = axisBuilder.__getRawCfg()
-            // PORT-TODO: upstream iterates `zrUtil.keys(newRaw)` and asserts each prop (except
-            //   'position'/'labelOffset') equals `oldRaw[prop]`. `AxisBuilderCfg` is now the real
-            //   struct (component/axis/AxisBuilder.swift); the dynamic per-key __DEV__ comparison
-            //   itself is still not implemented here.
+            // PORT-NOTE (deferred): upstream iterates `zrUtil.keys(newRaw)` and asserts each prop
+            //   (except 'position'/'labelOffset') equals `oldRaw[prop]`. This is a __DEV__-only
+            //   invariant check; `AxisBuilderCfg` is a Swift struct without dynamic keyed access, so
+            //   the per-key comparison would require Mirror reflection. Not implemented (dev-only assert).
             _ = oldRaw
         }
 

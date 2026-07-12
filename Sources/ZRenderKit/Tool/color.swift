@@ -741,7 +741,7 @@ public enum color {
             return .string(liftedColor!)
         case .gradient(let g):  // else if (isGradientObject(color))
             // upstream: `const ret = extend({}, color); ret.colorStops = map(...)`.
-            // PORT-TODO: `extend({}, color)` shallow-clones into a NEW plain object; GradientObject
+            // POTENTIAL-BUG: `extend({}, color)` shallow-clones into a NEW plain object; GradientObject
             // has no generic clone, and for a class-backed existential `var ret = g` shares the
             // reference, so the lifted stops are written onto the same instance (and subclass
             // geometry — LinearGradient x/y/x2/y2, RadialGradient x/y/r — is not deep-copied).

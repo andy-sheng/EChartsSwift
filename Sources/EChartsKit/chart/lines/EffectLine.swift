@@ -32,8 +32,10 @@
 //      `__t` key cannot be witnessed from EChartsKit; instead the animator runs with `duration()` (a
 //      forced, track-less looping clip) and the `during` callback's `percent` parameter IS `__t / maxT`.
 //      Mathematically identical: `__t = percent * maxT`.
-//   3. The `line`/`rect`/`roundRect` "continuity trail" (stretch scaleY between frames) is a PORT-TODO —
-//      it only applies to those three symbolTypes; the default effect symbol is `circle`, unaffected.
+//   3. The `line`/`rect`/`roundRect` "continuity trail" (stretch scaleY between frames) is a PORT-NOTE
+//      (deferred): it only applies to those three symbolTypes; the default effect symbol is `circle`,
+//      unaffected. Requires tracking `__lastT`/`__lastPos`/`symbolScale`/`symbolType` in the per-symbol
+//      State (not captured here).
 
 import Foundation
 import ZRenderKit
@@ -257,8 +259,8 @@ public enum EffectLine {
             let ty = tt <= 1 ? curve.quadraticDerivativeAt(p1[1], cp1[1], p2[1], t)
                              : curve.quadraticDerivativeAt(p2[1], cp1[1], p1[1], 1 - t)
             sym.rotation = -atan2(ty, tx) - Double.pi / 2
-            // PORT-TODO: the `line`/`rect`/`roundRect` continuity-trail scaleY stretch is deferred
-            //   (only those symbolTypes; the default effect symbol is `circle`).
+            // PORT-NOTE (deferred): the `line`/`rect`/`roundRect` continuity-trail scaleY stretch
+            //   (only those symbolTypes; the default effect symbol is `circle`, unaffected).
         }
     }
 

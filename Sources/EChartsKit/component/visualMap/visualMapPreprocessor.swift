@@ -31,7 +31,7 @@ import ZRenderKit
 
 // export default function visualMapPreprocessor(option) { ... }
 //
-// PORT-TODO (CONVENTIONS §3 value-type writeback): upstream mutates the `opt` / `piece` OBJECTS in
+// PORT-NOTE (CONVENTIONS §3 value-type writeback): upstream mutates the `opt` / `piece` OBJECTS in
 //   place through JS references, so the changes propagate back into `option.visualMap` even though the
 //   local `visualMap` variable is only reassigned (never written back). Swift dictionaries/arrays are
 //   value types, so we mutate copies and WRITE THE NORMALIZED ARRAY BACK to `option["visualMap"]`.

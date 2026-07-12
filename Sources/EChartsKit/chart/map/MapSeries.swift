@@ -184,14 +184,19 @@ open class MapSeriesModel: SeriesModel {
             else {
                 // dataItem = data.getRawDataItem(dataNameIdx) as MapDataItemOption;
                 // specifiedGeoJSONRegionStyle && zrUtil.merge(dataItem, specifiedGeoJSONRegionStyle);
-                // PORT-TODO: upstream mutates the raw data item OBJECT in place (JS reference), so the
+                // PORT-NOTE: upstream mutates the raw data item OBJECT in place (JS reference), so the
                 //   `echartsStyle` merge persists into the store's raw item. `getRawDataItem` returns a
-                //   value copy here (no `setRawDataItem`), so the in-place merge for an EXISTING data item
-                //   is deferred. Only reachable when a GeoJSON region carries `properties.echartsStyle`
-                //   AND the series `data` already has that region — a rare combination. Faithful body:
-                //     var dataItem = data.getRawDataItem(dataNameIdx!) as? [String: Any]
-                //     if let style = specifiedGeoJSONRegionStyle, var di = dataItem { _ = util.merge(&di, style) /* write back */ }
-                _ = specifiedGeoJSONRegionStyle
+                //   value copy here, so we merge the style into the copy and write each merged field back
+                //   through `setRawDataItemField` (the port's shared-reference-mutation bridge). Only
+                //   reachable when a GeoJSON region carries `properties.echartsStyle` AND the series
+                //   `data` already has that region.
+                if let idx = dataNameIdx, let style = specifiedGeoJSONRegionStyle,
+                   var di = data.getRawDataItem(idx) as? [String: Any] {
+                    _ = util.merge(&di, style)
+                    for (k, v) in di {
+                        data.setRawDataItemField(idx, k, v)
+                    }
+                }
             }
         }
 
@@ -332,26 +337,38 @@ open class MapSeriesModel: SeriesModel {
     }
 
     // upstream: getLegendIcon(opt: LegendIconParams): ECSymbol | Group { ... }
-    // PORT-TODO (DEFERRED — legend/symbol): depends on `createSymbol` (util/symbol.ts) and
-    //   `LegendIconParams` (component/legend), neither ported. Faithful upstream body:
-    //     const iconType = opt.icon || 'roundRect';
-    //     const icon = createSymbol(iconType, 0, 0, opt.itemWidth, opt.itemHeight, opt.itemStyle.fill);
-    //     icon.setStyle(opt.itemStyle);
-    //     icon.style.stroke = 'none';                       // Map does not use itemStyle.borderWidth as border
-    //     if (iconType.indexOf('empty') > -1) {
-    //         icon.style.stroke = icon.style.fill;
-    //         icon.style.fill = tokens.color.neutral00;     // '#fff'
-    //         icon.style.lineWidth = 2;
-    //     }
-    //     return icon;
+    open override func getLegendIcon(_ opt: LegendIconParams) -> Element? {
+        // const iconType = opt.icon || 'roundRect';
+        let iconType = opt.icon.isEmpty ? "roundRect" : opt.icon
+        // const icon = createSymbol(iconType, 0, 0, opt.itemWidth, opt.itemHeight, opt.itemStyle.fill);
+        let iconEc = symbol.createSymbol(
+            iconType, 0, 0, opt.itemWidth, opt.itemHeight,
+            (opt.itemStyle["fill"] as? String).map { ZRenderKit.ZRColor.string($0) }
+        )
+        guard let icon = iconEc as? Path else { return nil }
+        // icon.setStyle(opt.itemStyle); — `icon.style` -> `icon.pathStyle` (PathStyleProps); bridge the
+        //   dynamic itemStyle bag via `barStyleFromDict` + `useStyle`.
+        icon.useStyle(barStyleFromDict(opt.itemStyle))
+        // icon.style.stroke = 'none';  — Map does not use itemStyle.borderWidth as border
+        icon.pathStyle.stroke = .string("none")
+        if iconType.contains("empty") {   // iconType.indexOf('empty') > -1
+            // icon.style.stroke = icon.style.fill;
+            icon.pathStyle.stroke = icon.pathStyle.fill
+            // icon.style.fill = tokens.color.neutral00;   // '#fff'
+            icon.pathStyle.fill = .string("#fff")
+            // icon.style.lineWidth = 2;
+            icon.pathStyle.lineWidth = 2
+        }
+        return icon
+    }
 
     // upstream: __ownRoamView() { return mapSeriesNeedsDrawMap(this) ? this.coordinateSystem.view : null; }
-    // PORT-TODO (DEFERRED — roam): `RoamHostModel.__ownRoamView` returns the geo View that this series
-    //   owns (drives roam ownership). Roam is deferred (Geo has no exposed `view` on the roam path here).
-    //   Faithful body:
+    // PORT-NOTE (deferred): requires roam (component/helper/RoamController + coord/View `.view`).
+    //   `RoamHostModel.__ownRoamView` returns the geo View that this series owns (drives roam ownership);
+    //   Geo has no exposed `view` on the roam path here. Faithful body:
     //     return mapSeriesNeedsDrawMap(self) ? (self.coordinateSystem as? Geo)?.view : nil
 
-    // PORT-TODO (DEFERRED — roam): the shared-geo `center`/`zoom` state (`setCenter`/`getCenter`/`getZoom`)
+    // PORT-NOTE (deferred): requires roam — the shared-geo `center`/`zoom` state (`setCenter`/`getCenter`/`getZoom`)
     //   is NOT declared on `MapSeries` in this ECharts version — it lives on the roam View / `RoamHostView`
     //   surface (component/helper/RoamController + coord/View), which is deferred with roam. The map series
     //   reads its initial `center`/`zoom`/`scaleLimit` options only (see `defaultOption`); the geo it shares
@@ -386,7 +403,8 @@ open class MapSeriesModel: SeriesModel {
 
             // Aspect is width / height. Inited to be geoJson bbox aspect. This parameter is used for
             // scale this aspect. Default value: geoSVG source: 1, geoJSON source: 0.75.
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag
+            //   (the port's canonical null sentinel — same idiom as BarSeries borderColor/shadowColor).
             "aspectScale": NSNull(),
 
             // Layout with center and size (layoutCenter / layoutSize) — commented upstream.

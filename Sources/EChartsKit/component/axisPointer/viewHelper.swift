@@ -40,8 +40,7 @@ import ZRenderKit
 // import Model from '../../model/Model';                           -> Model (model/Model.swift)
 // import { PathStyleProps } from 'zrender/src/graphic/Path';       -> PathStyleProps (ZRenderKit Graphic/Path.swift)
 // import { createTextStyle } from '../../label/labelStyle';        -> label/labelStyle.swift is ported
-//   (createTextStyle); the label TextStyleProps is nonetheless built directly here rather than routed
-//   through it (see buildLabelElOption; PORT-TODO on rich-text/textBorder at that call site).
+//   (createTextStyle); the crosshair label TextStyleProps is now routed through it in buildLabelElOption.
 // import { calcBandWidth } from '../../coord/axisBand';            -> calcBandWidth (coord/axisBand.swift)
 // import { mathMax, mathMin } from '../../util/number';            -> number.mathMax / number.mathMin
 //
@@ -159,19 +158,18 @@ public enum viewHelper {
             bgColor = axisModel.get(["axisLine", "lineStyle", "color"])
         }
 
-        // PORT-TODO: upstream uses label/labelStyle.createTextStyle(labelModel, {...}), which merges the
-        //   full text-style surface (rich text, textBorder, shadow) from `labelModel`. That helper is not
-        //   yet ported; the crosshair label TextStyleProps is built directly from the fields the pointer
-        //   label needs (text/font/fill/padding/backgroundColor). Route through createTextStyle when
-        //   label/labelStyle.swift lands.
-        var style = TextStyleProps()
-        style.text = text
-        style.font = font
-        style.fill = labelModel.getTextColor()
-        style.padding = .array(paddings)
+        // style: createTextStyle(labelModel, { text, font, fill, padding, backgroundColor })
+        //   labelStyle.createTextStyle merges the full text-style surface (rich text, textBorder, shadow)
+        //   from `labelModel` via setTextStyleCommon, then `extend`s these specified fields over it.
+        var specified = TextStyleProps()
+        specified.text = text
+        specified.font = font
+        specified.fill = labelModel.getTextColor()
+        specified.padding = .array(paddings)
         if let bg = bgColor as? String {
-            style.backgroundColor = .string(bg)
+            specified.backgroundColor = .string(bg)
         }
+        let style = labelStyle.createTextStyle(labelModel, specified, nil, nil, nil)
 
         elOption.label = LabelElementOption(
             // shape: {x: 0, y: 0, width, height, r: labelModel.get('borderRadius')},

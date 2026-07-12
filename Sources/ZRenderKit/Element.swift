@@ -129,7 +129,7 @@ public struct ElementTextGuideLineConfig {
 //   dispatch loop (`Handler.dispatchToElement`) re-reads after each `el.trigger`, so stopPropagation
 //   works. (A struct would hand each listener a copy, leaving the loop's packet untouched.)
 public final class ElementEvent {
-    // PORT-TODO: ElementEvent references ZRRawEvent and the gesture/touch fields, which belong
+    // PORT-NOTE: ElementEvent references ZRRawEvent and the gesture/touch fields, which belong
     // to the native event-dispatch seam (CONVENTIONS §9), not the render-only milestone. Minimal
     // placeholder so `drift`'s optional `e` param keeps a faithful type.
     public var type: ElementEventName?
@@ -138,7 +138,7 @@ public final class ElementEvent {
     public var cancelBubble: Bool = false
     public var offsetX: Double = 0
     public var offsetY: Double = 0
-    // PORT-TODO: `event` is the underlying ZRRawEvent (browser DOM event), modeled as Any? at
+    // PORT-NOTE: `event` is the underlying ZRRawEvent (browser DOM event), modeled as Any? at
     //   the native event seam (CONVENTIONS §9). Draggable forwards it to dispatchToElement.
     public var event: Any?
     // The remaining `Handler.makeEventPacket` fields (gesture / wheel / button). Optional so an
@@ -387,7 +387,7 @@ open class Element: Transformable, AnimationTarget {
     //   surface (`on`/`off`/`trigger`/`triggerWithContext`) is forwarded below, so `Element`
     //   behaves as `extends Eventful` for the Handler dispatch path
     //   (`el.trigger(eventName, eventPacket)`).
-    // PORT-TODO: retain cycle — once a listener is bound, the inner Eventful stores `ctx = self`
+    // POTENTIAL-BUG: retain cycle — once a listener is bound, the inner Eventful stores `ctx = self`
     //   (the Element, to keep the handler's `this` faithful), and Element strongly holds
     //   `_eventful`, forming a cycle. Upstream relies on JS GC; here it is broken when callers
     //   `off()` (which drops the handler list). Listener closures should still capture
@@ -882,12 +882,11 @@ open class Element: Transformable, AnimationTarget {
         }
     }
 
-    internal func _savePrimaryToNormal(  // upstream: protected
-        _ toState: [String: Any], _ normalState: inout [String: Any], _ primaryKeys: [String]
-    ) {
-        // PORT-TODO: states machinery is Phase 2. Faithful body copies each `primaryKeys` value
-        //   from `this` into `normalState` (when changed by `toState` and not yet saved). Deferred.
-    }
+    // PORT-NOTE: upstream splits out `_savePrimaryToNormal(toState, normalState, PRIMARY_STATES_KEYS)`
+    //   to copy the transformable/primary keys. This port's `_innerSaveToNormal` (above) instead
+    //   iterates ALL of `toState.props` (a superset of PRIMARY_STATES_KEYS) and copies each via
+    //   `self.animationGet(key)`, subsuming the primary-key case — so the separate helper is dead and
+    //   is not ported.
 
     /// If has any state.
     public func hasState() -> Bool {
@@ -1144,6 +1143,10 @@ open class Element: Transformable, AnimationTarget {
         return mergedState
     }
 
+    // PORT-NOTE: upstream `_applyStateObj` (per-class transform/style/shape split + hover-layer
+    //   branches) is intentionally not the live path. This port computes the full target prop bag and
+    //   applies it via `animateTo` (`_stateApply`) — see the `useState` PORT-NOTE above — yielding the
+    //   same observable result. The empty base is kept so `Displayable`/`Path` can override it.
     internal func _applyStateObj(  // upstream: protected
         _ stateName: String,
         _ state: ElementState?,
@@ -1152,8 +1155,6 @@ open class Element: Transformable, AnimationTarget {
         _ transition: Bool,
         _ animationCfg: ElementAnimateConfig?
     ) {
-        // PORT-TODO: states machinery is Phase 2. The faithful body applies textConfig + each
-        //   primary key (with optional transition), and keeps running animators consistent. Deferred.
     }
 
     /// Component is some elements attached on this element for specific purpose.
@@ -1250,8 +1251,11 @@ open class Element: Transformable, AnimationTarget {
         if self.textConfig == nil {
             self.textConfig = ElementTextConfig()
         }
-        // PORT-TODO: upstream `extend(this.textConfig, cfg)` does a field-merge; the ZRText
-        //   integration is Phase 2, so the stub assigns the latest `cfg` wholesale.
+        // PORT-NOTE: upstream `extend(this.textConfig, cfg)` field-merges, but a Swift Optional cannot
+        //   distinguish "field absent on cfg" from "field explicitly nil"; callers (pieLabelLayout /
+        //   themeRiver) build a fresh config with position == nil to RESET the position, which a
+        //   field-merge would silently keep. So we assign `cfg` wholesale, which preserves the
+        //   reset-on-nil semantics the layout stages depend on.
         self.textConfig = cfg
         self.markRedraw()
     }
@@ -1499,8 +1503,9 @@ open class Element: Transformable, AnimationTarget {
     //   and installs the deprecated `position`/`scale`/`origin` array accessors via
     //   Object.defineProperty.
     //   Defaults are replaced by stored-property initializers above.
-    //   PORT-TODO: the legacy `position`/`scale`/`origin` array accessors (createLegacyProperty /
-    //   enhanceArray) are deprecated DOM-defineProperty shims; not ported.
+    //   PORT-NOTE (deferred): the legacy `position`/`scale`/`origin` array accessors
+    //   (createLegacyProperty / enhanceArray) are deprecated Object.defineProperty shims for
+    //   backward compat; not ported.
 
     // ---- Eventful mixin forwarding (upstream `mixin(Element, Eventful)`; see `_eventful` above) ----
     //
@@ -1937,7 +1942,8 @@ fileprivate func isTruthyAnimProp(_ v: Any?) -> Bool {
     if let b = v as? Bool {
         return b
     }
-    // PORT-TODO: upstream values are booleans; a non-bool present value is treated as truthy.
+    // PORT-NOTE: upstream values are booleans; JS truthiness treats a non-bool present value as
+    //   truthy, which `v != nil` faithfully reproduces here.
     return v != nil
 }
 
@@ -1993,8 +1999,10 @@ func shouldUseHoverLayer(
     _ nextState: ElementState?,
     _ forceUseHoverLayer: Bool?
 ) -> InHoverLayerKind {
-    // PORT-TODO: states / hover-layer machinery is Phase 2 (see HOVER_LAYER_CONSTRAINTS_TEXT).
-    //   Stub returns "not in hover layer" deterministically. Deferred.
+    // PORT-NOTE (deferred): the hover-layer machinery (HOVER_LAYER_CONSTRAINTS_TEXT) is
+    //   intentionally dropped in this port (see the `useState` PORT-NOTE) — emphasis/blur/select
+    //   apply directly rather than promoting elements to a separate hover layer. This always
+    //   reports "not in hover layer".
     return IN_HOVER_LAYER_KIND_NO
 }
 

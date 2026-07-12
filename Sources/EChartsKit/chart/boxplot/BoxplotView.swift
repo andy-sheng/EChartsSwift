@@ -33,10 +33,10 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';                   -> ExtensionAPI.
 //   import SeriesData from '../../data/SeriesData';                       -> SeriesData.
 //   import { BoxplotItemLayout } from './boxplotLayout';                  -> sibling boxplotLayout.swift.
-//   import { saveOldStyle } from '../../animation/basicTransition';       -> PORT-TODO: animation DEFERRED.
-//   import { resolveNormalBoxClipping } from '../helper/whiskerBoxCommon';-> PORT-TODO: clipping DEFERRED.
+//   import { saveOldStyle } from '../../animation/basicTransition';       -> shared `saveOldStyle` (wired in update()).
+//   import { resolveNormalBoxClipping } from '../helper/whiskerBoxCommon';-> file-private `resolveNormalBoxClipping` below.
 //   import { createClipPath, SHAPE_CLIP_KIND_*, updateClipPath } from '../helper/createClipPathFromCoordSys';
-//       -> PORT-TODO: clipping DEFERRED (see render()).
+//       -> sibling `createClipPath` / `SHAPE_CLIP_KIND_*` / `updateClipPath` (wired in render()).
 //   import { map } from 'zrender/src/core/util';                         -> Swift Array.map (transInit).
 
 
@@ -67,9 +67,16 @@ open class BoxplotView: ChartView {
         }
 
         let constDim = seriesModel.getWhiskerBoxesLayout() == "horizontal" ? 1 : 0
-        // upstream: needClip / coordSys / clipArea / clipPath — clipping is DEFERRED.
-        // PORT-TODO: `needClip = seriesModel.get('clip', true)`, `createClipPath(...)`, and
-        //   `resolveNormalBoxClipping(clipArea, itemLayout)` (SHAPE_CLIP_KIND_* + updateClipPath) DEFERRED.
+        // const needClip = seriesModel.get('clip', true);
+        let needClip = (seriesModel.get("clip", true) as? Bool) ?? true
+        // const coordSys = seriesModel.coordinateSystem;
+        let coordSys = seriesModel.coordinateSystem as? Cartesian2D
+        // const clipArea = coordSys.getArea && coordSys.getArea();
+        let clipArea: Any? = coordSys?.getArea()
+        // const clipPath = needClip && createClipPath(coordSys, false, seriesModel);
+        let clipPath: Path? = needClip
+            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            : nil
 
         // upstream (diff chain): incremental enter/update/remove so a same-count merge-mode value
         //   change MORPHS each box to its new whisker/box geometry (identity-reused element +
@@ -79,9 +86,17 @@ open class BoxplotView: ChartView {
                 if data.hasValue(newIdx) {
                     let itemLayout = data.getItemLayout(newIdx) as! BoxplotItemLayout
 
-                    // PORT-TODO: clipKind (resolveNormalBoxClipping) DEFERRED — always NOT_CLIPPED.
+                    let clipKind = needClip
+                        ? resolveNormalBoxClipping(clipArea, itemLayout) : SHAPE_CLIP_KIND_NOT_CLIPPED
+                    if clipKind == SHAPE_CLIP_KIND_FULLY_CLIPPED {
+                        return
+                    }
+
                     let symbolEl = createNormalBox(itemLayout, data, newIdx, constDim, true)
-                    // PORT-TODO: updateClipPath(partiallyClipped, symbolEl, clipPath) DEFERRED.
+                    // One axis tick can corresponds to a group of box items (from different series),
+                    // so it may be visually misleading when a group of items are partially outside
+                    // but no clipping is applied. Only set clipPath on partially clipped elements.
+                    updateClipPath(clipKind == SHAPE_CLIP_KIND_PARTIALLY_CLIPPED, symbolEl, clipPath)
 
                     data.setItemGraphicEl(newIdx, symbolEl)
                     _ = group.add(symbolEl)
@@ -99,15 +114,26 @@ open class BoxplotView: ChartView {
 
                 let itemLayout = data.getItemLayout(newIdx) as! BoxplotItemLayout
 
+                let clipKind = needClip
+                    ? resolveNormalBoxClipping(clipArea, itemLayout) : SHAPE_CLIP_KIND_NOT_CLIPPED
+                if clipKind == SHAPE_CLIP_KIND_FULLY_CLIPPED {
+                    if let symbolEl = symbolEl { _ = group.remove(symbolEl) }
+                    return
+                }
+
                 if symbolEl == nil {
                     symbolEl = createNormalBox(itemLayout, data, newIdx, constDim, false)
                 }
                 else {
+                    saveOldStyle(symbolEl!)
                     // Morph the reused box's `points` array from its current ends toward the new
                     //   `itemLayout.ends` (updateNormalBoxData passes the raw [[Double]] dict value so
                     //   the Animator's 2D-array interpolation carries old → new — NOT a snap).
                     updateNormalBoxData(itemLayout, symbolEl!, data, newIdx, false)
                 }
+
+                // See `updateClipPath` in `add`.
+                updateClipPath(clipKind == SHAPE_CLIP_KIND_PARTIALLY_CLIPPED, symbolEl!, clipPath)
 
                 data.setItemGraphicEl(newIdx, symbolEl!)
                 _ = group.add(symbolEl!)
@@ -280,6 +306,29 @@ private func transInit(_ points: [[Double]], _ dim: Int, _ itemLayout: BoxplotIt
         point[dim] = itemLayout.initBaseline
         return point
     }
+}
+
+// upstream: export function resolveNormalBoxClipping(clipArea, itemLayout): ShapeClipKind
+//   (chart/helper/whiskerBoxCommon.ts). The mixin file is folded per-client (see BoxplotSeries.swift);
+//   this is the faithful body — mirrors CandlestickView's. `clipArea` is a `CoordinateSystemClipArea`
+//   — here the Cartesian2DArea (a BoundingRect) produced by `coordSys.getArea()`, so cast + use `contain`.
+private func resolveNormalBoxClipping(_ clipArea: Any?, _ itemLayout: BoxplotItemLayout) -> ShapeClipKind {
+    guard let area = clipArea as? BoundingRect else {
+        return SHAPE_CLIP_KIND_NOT_CLIPPED
+    }
+    let ends = itemLayout.ends
+    let count = ends.count
+    var containCount = 0
+    for i in 0..<count {
+        // clip if any point is out of the area, otherwise the shape may partially
+        // out of the coord sys area and overlap with axis labels.
+        if ends[i].count >= 2 && area.contain(ends[i][0], ends[i][1]) {
+            containCount += 1
+        }
+    }
+    return containCount == 0 ? SHAPE_CLIP_KIND_FULLY_CLIPPED
+        : (containCount < count ? SHAPE_CLIP_KIND_PARTIALLY_CLIPPED
+        : SHAPE_CLIP_KIND_NOT_CLIPPED)
 }
 
 // export default BoxplotView;  -> `open class BoxplotView` above.

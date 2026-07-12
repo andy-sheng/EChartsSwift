@@ -110,7 +110,7 @@ extension TextStyleMixin where Self: Model {
         style.fontFamily = self.getShallow("fontFamily") as? String
         style.padding = _coerceNumberOrNumberArray(self.getShallow("padding"))
         style.lineHeight = self.getShallow("lineHeight") as? Double
-        // PORT-TODO: `rich` is a nested option object (`{ [name]: TextStylePropsPart }`); coercing the
+        // PORT-NOTE: `rich` is a nested option object (`{ [name]: TextStylePropsPart }`); coercing the
         //   dynamic [String: Any] bag into typed `[String: TextStylePropsPart]` is non-mechanical, so it
         //   is passed through only if already typed.
         style.rich = self.getShallow("rich") as? [String: TextStylePropsPart]
@@ -119,8 +119,10 @@ extension TextStyleMixin where Self: Model {
         style.overflow = self.getShallow("overflow") as? String
         tmpText.useStyle(style)
         tmpText.update()
-        // PORT-TODO: ZRText.getBoundingRect() returns BoundingRect? in the Swift port; after update()
-        //   it is always populated, so force-unwrap to match upstream's non-optional return.
+        // POTENTIAL-BUG: ZRText.getBoundingRect() returns BoundingRect? in the Swift port; after update()
+        //   it is EXPECTED to be populated, so force-unwrap to match upstream's non-optional return.
+        //   Force-unwrap mirroring upstream optimistic typing is a latent SIGTRAP if update() ever
+        //   leaves the bounding rect nil.
         return tmpText.getBoundingRect()!
     }
 }

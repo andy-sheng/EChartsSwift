@@ -156,8 +156,36 @@ open class ScatterSeriesModel: SeriesModel {
     //   getZLevelKey() {
     //       return this.getData().count() > this.getProgressiveThreshold() ? this.id : '';
     //   }
-    // PORT-TODO: progressive rendering (core/task incremental pipeline) not ported — the static scatter
-    //   render draws every datum eagerly. Restore these overrides when the progressive pipeline lands.
+    // getProgressive()
+    open override func getProgressive() -> Any? {
+        // const progressive = this.option.progressive;
+        let progressive = (self.option as? [String: Any])?["progressive"]
+        // if (progressive == null) { return this.option.large ? 5e3 : this.get('progressive'); }
+        if progressive == nil || progressive is NSNull {
+            return scatterTruthy((self.option as? [String: Any])?["large"]) ? (5e3 as Any) : self.get("progressive")
+        }
+        // return progressive;
+        return progressive
+    }
+
+    // getProgressiveThreshold()
+    open override func getProgressiveThreshold() -> Double {
+        // const progressiveThreshold = this.option.progressiveThreshold;
+        let progressiveThreshold = (self.option as? [String: Any])?["progressiveThreshold"]
+        // if (progressiveThreshold == null) { return this.option.large ? 1e4 : this.get('progressiveThreshold'); }
+        if progressiveThreshold == nil || progressiveThreshold is NSNull {
+            return scatterTruthy((self.option as? [String: Any])?["large"])
+                ? 1e4 : scatterNum(self.get("progressiveThreshold"))
+        }
+        // return progressiveThreshold;
+        return scatterNum(progressiveThreshold)
+    }
+
+    // getZLevelKey()
+    open override func getZLevelKey() -> String {
+        // return this.getData().count() > this.getProgressiveThreshold() ? this.id : '';
+        return Double(self.getData().count()) > self.getProgressiveThreshold() ? self.id : ""
+    }
 
     // upstream:
     //   brushSelector(dataIndex, data, selectors): boolean {
@@ -209,3 +237,30 @@ open class ScatterSeriesModel: SeriesModel {
 }
 
 // export default ScatterSeriesModel;  -> `open class ScatterSeriesModel` above.
+
+// MARK: - Port helpers (not upstream symbols)
+
+// Coerce a dynamic option value to Double (NaN when non-numeric), mirroring `as number`.
+private func scatterNum(_ v: Any?) -> Double {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    case let s as String: return Double(s) ?? Double.nan
+    default: return Double.nan
+    }
+}
+
+// JS truthiness of `this.option.large` (nil/false/0/"" -> false).
+private func scatterTruthy(_ v: Any?) -> Bool {
+    switch v {
+    case nil: return false
+    case is NSNull: return false
+    case let b as Bool: return b
+    case let i as Int: return i != 0
+    case let d as Double: return d != 0
+    case let n as NSNumber: return n.doubleValue != 0
+    case let s as String: return !s.isEmpty
+    default: return true
+    }
+}

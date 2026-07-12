@@ -106,9 +106,11 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
      */
     open func mergeOption(_ option: ModelOption?, _ ecModel: GlobalModel? = nil) {
         // upstream: merge(this.option, option, true);
-        // PORT-TODO: `util.merge` requires both target & source to be `[String: Any]` dicts; the
+        // PORT-NOTE: `util.merge` requires both target & source to be `[String: Any]` dicts; the
         //   dynamic option bag is `Any?`. Both are cast; when either is not a dict the merge is a
-        //   no-op. Also: `util.merge` drops upstream's null/undefined guard (PORT_STATUS §4 #7).
+        //   no-op — semantically equivalent to upstream, whose `merge(target, null)` is likewise a
+        //   no-op (post-init `self.option` is always a dict). The null/undefined-guard nuance lives
+        //   in `util.merge` itself (see PORT_STATUS §4 #7), not in this delegating call.
         guard var target = self.option as? [String: Any],
               let source = option as? [String: Any] else {
             return
@@ -202,11 +204,12 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     // Pending
     public func clone() -> Model {
         // upstream: const Ctor = this.constructor; return new (Ctor as any)(clone(this.option));
-        // PORT-TODO: upstream constructs via the dynamic JS constructor to preserve the subclass
+        // POTENTIAL-BUG: upstream constructs via the dynamic JS constructor to preserve the subclass
         //   type. Swift cannot call an initializer on a metatype value unless it is `required`
         //   across the whole hierarchy; to avoid forcing every model subclass to declare a
-        //   `required init`, this returns a base `Model` carrying the cloned option. Revisit if
-        //   subtype-preserving clone is needed.
+        //   `required init`, this returns a base `Model` carrying the cloned option — so a `clone()`
+        //   of a subclass silently loses its concrete type. Revisit if subtype-preserving clone is
+        //   needed (upstream marks this method "Pending").
         return Model(util.clone(self.option))
     }
 
@@ -236,7 +239,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     // FIXME:TS check whether put this method here
     open func isAnimationEnabled() -> Bool? {
         // upstream: if (!env.node && this.option) { ... }
-        // PORT-TODO: `env` is module-internal to ZRenderKit (not importable here), and the
+        // PORT-NOTE: `env` is module-internal to ZRenderKit (not importable here), and the
         //   ZRenderKit port hardcodes `env.node = true` (windowless branch) — which would
         //   disable animation on an interactive native client. We treat the native client as
         //   browser-like (`!env.node` == true) so animation can be enabled; revisit once a public
@@ -268,10 +271,13 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
             }
             // obj could be number/string/... (like 0)
             // upstream: obj = (obj && typeof obj === 'object') ? obj[pathArr[i]] : null;
-            // PORT-TODO: only `[String: Any]` dicts are treated as "object"; an array indexed by a
-            //   numeric string key (JS `obj['0']`) is not supported (cast yields nil).
+            //   In JS an array is an object, so a numeric string key (`obj['0']`) indexes it — both the
+            //   dict and the numeric-array-index branches are honored here to match `typeof === 'object'`.
             if let dict = obj as? [String: Any] {
                 obj = dict[pathArr![i]]
+            }
+            else if let arr = obj as? [Any], let idx = Int(pathArr![i]), idx >= 0, idx < arr.count {
+                obj = arr[idx]
             }
             else {
                 obj = nil

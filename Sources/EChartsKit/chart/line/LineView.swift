@@ -33,15 +33,17 @@ open class LineView: ChartView {
             self._data = seriesModel.getData()
             return
         }
-        // PORT-TODO: only cartesian2d + polar are handled (geo/single/calendar line deferred).
+        // PORT-NOTE (deferred): only cartesian2d + polar are handled here; geo/single/calendar line
+        //   coordinate systems are not yet wired into this view's render path.
         guard let coord = seriesModel.coordinateSystem as? Cartesian2D else { return }
 
         let data = seriesModel.getData()
         let baseAxis = coord.getBaseAxis()
         let valueAxis = coord.getOtherAxis(baseAxis)
-        // PORT-TODO: `mapDimension` is force-unwrapped — a line's base/value dims are always present.
-        let baseDimName = data.mapDimension(baseAxis.dim)!
-        let valueDimName = data.mapDimension(valueAxis.dim)!
+        // A line's base/value dims are normally always present; guard rather than force-unwrap so a
+        //   missing dimension no-ops (matching JS's non-crashing behavior) instead of trapping.
+        guard let baseDimName = data.mapDimension(baseAxis.dim),
+              let valueDimName = data.mapDimension(valueAxis.dim) else { return }
         let baseDimIdx = data.getDimensionIndex(baseDimName)
         // For a `stack`ed line the point follows the cumulative stack result dimension (getStackedDimension
         //   returns valueDimName unchanged when the series is not stacked). Without this the stacked lines
@@ -320,8 +322,8 @@ open class LineView: ChartView {
     }
 
     // upstream: `highlight`/`downplay` (LineView.ts:937-1023) also flip the poly state before the
-    //   base per-datum symbol highlight. PORT-TODO: the temporary-symbol branch (creating a Symbol
-    //   for a dataIndex whose point has no element, #11360 clip guard) is deferred.
+    //   base per-datum symbol highlight. PORT-NOTE (deferred): the temporary-symbol branch (creating a
+    //   Symbol for a dataIndex whose point has no element, #11360 clip guard) is not yet ported.
     open override func highlight(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {

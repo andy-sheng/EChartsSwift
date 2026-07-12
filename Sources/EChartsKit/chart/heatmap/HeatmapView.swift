@@ -23,11 +23,11 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                    -> `Rect` is the ZRenderKit shape.
-//     PORT-TODO: `graphic.traverseElements` not ported; `eachRendered` traverses the group directly.
+//     PORT-NOTE: `graphic.traverseElements` not ported; `eachRendered` traverses the group directly.
 //   import { toggleHoverEmphasis } from '../../util/states';          -> `util/states` (util/states.swift);
 //     `toggleHoverEmphasis` is now wired at the cell (see `_renderOnGridLike`, alongside setStatesStylesFromModel).
-//   import HeatmapLayer from './HeatmapLayer';                        -> PORT-TODO: canvas-blur layer NOT ported
-//     (geo/large-mode only — `_renderOnGeo`, deferred per the heatmap milestone scope).
+//   import HeatmapLayer from './HeatmapLayer';                        -> PORT-NOTE (deferred): canvas-blur
+//     `HeatmapLayer` NOT ported (geo/large-mode only — `_renderOnGeo`, out of the heatmap milestone scope).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> stdlib / `util` (ZRenderKit).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
 //   import HeatmapSeriesModel, { HeatmapDataItemOption } from './HeatmapSeries';  -> `HeatmapSeriesModel` (sibling).
@@ -44,16 +44,18 @@ import ZRenderKit
 //     -> `labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels` (label/labelStyle.swift); the
 //        per-cell value label is wired in `_renderOnGridLike` (same pattern as BarView).
 //   import type Element from 'zrender/src/Element';                   -> `Element` (ZRenderKit).
-//   import type Matrix from '../../coord/matrix/Matrix';              -> PORT-TODO: matrix coord NOT wired for heatmap.
+//   import type Matrix from '../../coord/matrix/Matrix';              -> PORT-NOTE (deferred): `Matrix` coord
+//     (coord/matrix/Matrix.swift) is ported but NOT wired for heatmap yet.
 //   import { calcBandWidth } from '../../coord/axisBand';             -> `calcBandWidth` (coord/axisBand.swift).
-//   import { getIncrementalId } from '../../util/model';              -> PORT-TODO: incremental pipeline deferred.
+//   import { getIncrementalId } from '../../util/model';              -> PORT-NOTE (deferred): `getIncrementalId`
+//     is ported (util/modelUtil.swift) but heatmap's incremental-id use rides the deferred progressive pipeline.
 //
 // PORT SCOPE (per the heatmap milestone): the CARTESIAN2D colored-Rect path of `_renderOnGridLike` is the
 //   deliverable. One `Rect` per data item is placed at the cell (centered on `coord.dataToPoint([x, y])`,
 //   sized to the axis band width/height + 0.5px), FILLED with the per-datum color the visualMap encoding
 //   already wrote into the item visual `style` (visual/style + component/visualMap/visualEncoding →
 //   `data.getItemVisual(idx, 'style')`). The blurred canvas `HeatmapLayer` (`_renderOnGeo`) and the
-//   large/progressive path are PORT-TODOs; the matrix/calendar coord branches are not wired for heatmap
+//   large/progressive path are deferred (PORT-NOTE); the matrix/calendar coord branches are not wired for heatmap
 //   yet (the coord systems themselves are ported: coord/matrix/Matrix.swift, coord/calendar/Calendar.swift).
 
 // upstream: function getIsInContinuousRange(dataExtent, range) { ... }
@@ -190,7 +192,7 @@ open class HeatmapView: ChartView {
             }
         }
         else {
-            // PORT-TODO: matrix `_renderOnGridLike` branch is deferred.
+            // PORT-NOTE (deferred): matrix `_renderOnGridLike` branch is not wired for heatmap.
             _ = self.group.removeAll()
             self._resetCellState()
         }
@@ -275,13 +277,13 @@ open class HeatmapView: ChartView {
             self._renderOnGridLike(seriesModel, api, Int(params.start), Int(params.end), true)
         }
         else {
-            // PORT-TODO: geo incremental → `this.render(...)`; matrix/calendar deferred.
+            // PORT-NOTE (deferred): geo incremental → `this.render(...)`; matrix/calendar not wired.
         }
     }
 
     // upstream: eachRendered(cb) { graphic.traverseElements(this._progressiveEls || this.group, cb); }
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
-        // PORT-TODO: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, visit each
+        // PORT-NOTE (deferred): `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, visit each
         //   (incremental mode); otherwise traverse the group via `Group.traverse` (children only — same
         //   note as BarView.eachRendered / view/Chart.swift).
         if let progressiveEls = self._progressiveEls {
@@ -306,7 +308,7 @@ open class HeatmapView: ChartView {
         // const coordSys = seriesModel.coordinateSystem as Cartesian2D | Calendar | Matrix;
         // const isCartesian2d = isCoordinateSystemType<Cartesian2D>(coordSys, 'cartesian2d');
         guard let coordSys = seriesModel.coordinateSystem as? Cartesian2D else {
-            // PORT-TODO: matrix/calendar `_renderOnGridLike` branches deferred.
+            // PORT-NOTE (deferred): matrix/calendar `_renderOnGridLike` branches not wired for heatmap.
             return
         }
 
@@ -362,7 +364,9 @@ open class HeatmapView: ChartView {
         var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
 
         // const dataDims = isCartesian2d ? [mapDimension('x'), mapDimension('y'), mapDimension('value')] : ...
-        // PORT-TODO: `mapDimension` is force-unwrapped — a heatmap's x/y/value dims are always present.
+        // POTENTIAL-BUG: `mapDimension` is force-unwrapped — faithful to upstream's optimistic typing (a
+        //   valid heatmap always has x/y/value dims), but a malformed series would SIGTRAP here instead of
+        //   the JS `undefined` no-op. Left as-is to mirror upstream; guard only if a crash is observed.
         let dataDimX = data.mapDimension("x")!
         let dataDimY = data.mapDimension("y")!
         let dataDimValue = data.mapDimension("value")!
@@ -421,7 +425,7 @@ open class HeatmapView: ChartView {
             let cellY = point[1] - height / 2
 
             // el.useStyle(style) — the fill color the visualMap encoding wrote + the itemStyle border.
-            // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
+            // PORT-NOTE (language diff): the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
             //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
             //   keys (fill/stroke/lineWidth/opacity/...) — same deviation as BarView.
             var cellStyle = heatmapStyleFromDict(style)
@@ -514,7 +518,7 @@ open class HeatmapView: ChartView {
 
             // upstream (HeatmapView.ts:329-333): ensureState('emphasis'|'blur'|'select').style +
             //   toggleHoverEmphasis — the cell's hover wiring (setStatesStylesFromModel covers the three
-            //   ensureState style assignments). PORT-TODO: incremental id + hover layer deferred.
+            //   ensureState style assignments). PORT-NOTE (deferred): incremental id + hover layer.
             states.setStatesStylesFromModel(rect, stateModel)
             states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
 
@@ -615,14 +619,15 @@ open class HeatmapView: ChartView {
         else if let pm = visualMapModel as? PiecewiseModel {
             var pieceIntervals: [[Double]] = []
             var selected: [Bool] = []
-            for piece in pm.getPieceList() {
+            // upstream getIsInPiecewiseRange returns `selected[i]` where `i` is the loop position in the
+            //   ORIGINAL pieceList and `selected` is `option.selected` (a Dictionary). A numeric key coerces
+            //   to its string form, so upstream keys `option.selected` by the piece's array position. The
+            //   port pre-resolves that into a `[Bool]` in piece order (the helper then reads it by index).
+            let selectedDict = pm.get("selected") as? [String: Any]
+            for (i, piece) in pm.getPieceList().enumerated() {
                 let interval = heatmapCoerceDoubleArray(piece["interval"]) ?? [Double.nan, Double.nan]
                 pieceIntervals.append(interval)
-                // upstream: selected[i] keyed by piece INDEX. The port keys `option.selected` by the
-                //   piece map key; best-effort look up by index string, defaulting to selected (true).
-                // PORT-TODO: exact selected-key parity with PiecewiseModel.getSelectedMapKey.
-                let idx = Int(heatmapToNumber(piece["index"]))
-                let sel = (pm.get("selected") as? [String: Any])?[String(idx)]
+                let sel = selectedDict?[String(i)]
                 selected.append((sel as? Bool) ?? true)
             }
             isInRange = getIsInPiecewiseRange(dataExtent, pieceIntervals, selected)
@@ -721,7 +726,7 @@ private func heatmapRectRadius(_ v: Any?) -> RectRadius? {
     return nil
 }
 
-// PORT-TODO: `util/graphic`-level `useStyle(dict)` bridge — the item visual 'style' is a `[String: Any]`
+// PORT-NOTE (language diff): `util/graphic`-level `useStyle(dict)` bridge — the item visual 'style' is a `[String: Any]`
 //   bag (visual/style.swift, with the visualMap-encoded `fill`); ZRenderKit `Path.useStyle` takes a typed
 //   `PathStyleProps`. Maps the common paint keys so cells are actually colored. Gradient/pattern fills,
 //   decal, and lineDash are not bridged yet. Same deviation as BarView's `barStyleFromDict`.

@@ -5,10 +5,10 @@ extension DemoRegistry {
         name: "text-overflow", category: "Text", summary: "Width-boxed text blocks: overflow / padding / border / align"
     ) { zr in
         // text-overflow.html — standalone Text with a constrained `width`, padding, border and an
-        // `overflow` strategy. NOTE: the port's parseText seam is a stub — it splits lines only on
-        // explicit "\n" (auto break/breakAll/truncate, lineOverflow, ellipsis and rich text are
-        // PORT-TODO no-ops). So each block is pre-wrapped to its box width to show the intended
-        // layout, while the overflow/lineOverflow/ellipsis fields are set for API parity.
+        // `overflow` strategy. The port's parseText seam (parsePlainText/truncateText) now handles
+        // wrap 'break'/'breakAll', truncate, lineOverflow and ellipsis in full; each block is still
+        // pre-wrapped to its box width here so the demo's layout stays deterministic across the
+        // fixture, while the overflow/lineOverflow/ellipsis fields exercise the real code paths.
         func block(_ str: String, x: Double, overflow: String) {
             var st = TextStyleProps()
             st.text = str

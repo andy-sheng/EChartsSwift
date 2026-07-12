@@ -35,7 +35,9 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import Cartesian2D from '../../coord/cartesian/Cartesian2D';     -> Cartesian2D (coord/cartesian/Cartesian2D.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//     -> PORT-TODO: component/brush NOT ported; `brushSelector` is deferred (see below).
+//     -> PORT-NOTE (deferred): `BrushCommonSelectorsForSeries` IS ported (brushVisual.swift), but the
+//        central brush dispatch (`brushSelectorSupported`) does not yet enable candlestick, so the
+//        per-series `brushSelector` below stays deferred (see below).
 //   import { mixin } from 'zrender/src/core/util';                   -> see the mixin note above.
 //   import type Axis2D from '../../coord/cartesian/Axis2D';          -> Axis2D (coord/cartesian/Axis2D.swift).
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel';  (via whiskerBoxCommon) -> CartesianAxisModel.
@@ -139,9 +141,10 @@ open class CandlestickSeriesModel: SeriesModel {
     }
 
     // upstream: brushSelector(dataIndex, data, selectors): boolean
-    // PORT-TODO: component/brush (`BrushCommonSelectorsForSeries`, `selectors.rect`) is NOT ported.
-    //   The signature is preserved; `itemLayout.brushRect` is exposed by candlestickLayout for the
-    //   eventual wiring. Deferred → returns false.
+    // PORT-NOTE (deferred): `BrushCommonSelectorsForSeries`/`selectors.rect` ARE ported (brushVisual.swift),
+    //   but candlestick is not enabled in the central `brushSelectorSupported` dispatch, so this method is
+    //   never invoked yet. The signature is preserved; `itemLayout.brushRect` is exposed by candlestickLayout
+    //   for the eventual wiring. Deferred → returns false (matches scatter's deferred brushSelector).
     open func brushSelector(_ dataIndex: Int, _ data: SeriesData, _ selectors: Any) -> Bool {
         // const itemLayout = data.getItemLayout(dataIndex);
         // return itemLayout && selectors.rect(itemLayout.brushRect);
@@ -234,7 +237,7 @@ open class CandlestickSeriesModel: SeriesModel {
         // Clone a new data for next setOption({}) usage.
         // Avoid modifying current data will affect further update.
         if let data = data, addOrdinal {
-            // PORT-TODO (value-semantics): upstream keeps two aliases of each data item — it mutates the
+            // POTENTIAL-BUG (value-semantics): upstream keeps two aliases of each data item — it mutates the
             //   SOURCE-referenced originals in place (`item.unshift(index)` / `item.value.unshift(index)`)
             //   so the Source sees the base-category index, while assigning `option.data = newOptionData`
             //   (clones WITHOUT the index) for setOption idempotency. Swift `[Any]`/`[String:Any]` are

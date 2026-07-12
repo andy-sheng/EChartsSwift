@@ -27,9 +27,9 @@ import ZRenderKit
 // upstream imports:
 //   import { each, isObject, isArray, createHashMap, HashMap, map, assert, isString,
 //            indexOf, isStringSafe, isNumber, hasOwn, retrieve2 } from 'zrender/src/core/util';
-//       -> ZRenderKit.util  (createHashMap/HashMap/hasOwn are NOT yet ported in ZRenderKit — see
-//          ZRenderKit/Core/util.swift PORT-TODO. A local public shim `HashMap`/`createHashMap`
-//          is provided below; replace with `util.createHashMap` when ZRenderKit gains it.)
+//       -> ZRenderKit.util  (createHashMap/HashMap are intentionally NOT ported in ZRenderKit — see
+//          ZRenderKit/Core/util.swift PORT-NOTE "use Swift Dictionary directly". A local public shim
+//          `HashMap`/`createHashMap` is provided below for the JS-key-coerced ordered map model.ts needs.)
 //   import env from 'zrender/src/core/env';
 //       -> ZRenderKit `env` singleton is module-internal (not exposed); see getTooltipRenderMode.
 //   import GlobalModel, { QueryConditionKindA } from '../model/Global';
@@ -96,14 +96,14 @@ public protocol HasSubType: AnyObject {                                      // 
 }
 
 // ============================================================================
-// PORT-TODO: HashMap / createHashMap shim.
-// `createHashMap` / `HashMap` are zrender util exports that are NOT yet ported in
-// ZRenderKit (see ZRenderKit/Core/util.swift). This local public shim mirrors the
-// upstream surface used here (`get`/`set`/`each`/`keys`, insertion-ordered, string
-// keys via JS-style key coercion). Replace with `util.HashMap`/`util.createHashMap`
-// once ZRenderKit ports them. Generic `KEY` is dropped (keys are always string-like).
+// PORT-NOTE (deferred): HashMap / createHashMap shim.
+// `createHashMap` / `HashMap` are zrender util exports that ZRenderKit intentionally
+// did NOT port (see ZRenderKit/Core/util.swift PORT-NOTE: "use Swift Dictionary
+// directly"). model.ts needs an insertion-ordered map with JS-style string-key
+// coercion, so this local public shim mirrors the upstream surface used here
+// (`get`/`set`/`each`/`keys`). Generic `KEY` is dropped (keys are always string-like).
 // ============================================================================
-public final class HashMap<V> {                                             // PORT-TODO: temporary shim for zrender HashMap
+public final class HashMap<V> {                                             // PORT-NOTE: local shim for zrender HashMap
     private var data: [String: V] = [:]
     private var _keys: [String] = []   // preserves insertion order, like JS `Object.keys`
 
@@ -148,14 +148,14 @@ public final class HashMap<V> {                                             // P
         }
     }
 }
-public func createHashMap<V>() -> HashMap<V> {                              // PORT-TODO: temporary shim for zrender createHashMap
+public func createHashMap<V>() -> HashMap<V> {                              // PORT-NOTE: local shim for zrender createHashMap
     return HashMap<V>()
 }
 
 // JS object-key coercion (number -> its toString, string -> itself). Not part of upstream.
 fileprivate func hashKey(_ key: Any?) -> String {
     switch key {
-    case nil: return "undefined"   // PORT-TODO: JS distinguishes 'null'/'undefined' keys
+    case nil: return "undefined"   // PORT-NOTE (language-difference): JS coerces `null`→"null" and `undefined`→"undefined" as distinct keys; Swift has a single `nil`, mapped to "undefined"
     case let s as String: return s
     case let d as Double: return jsNumberStr(d)
     case let i as Int: return String(i)
@@ -172,6 +172,23 @@ fileprivate func jsNumberStr(_ x: Double) -> String {
         return String(Int64(x))
     }
     return String(x)
+}
+
+// JS `+v` numeric coercion to an integer index (Int passthrough, Double truncated). Not part of upstream.
+fileprivate func anyToInt(_ v: Any?) -> Int {
+    if let i = v as? Int { return i }
+    if let d = v as? Double { return Int(d) }
+    if let s = v as? String, let d = Double(s) { return Int(d) }
+    return -1
+}
+
+// Numeric coercion of an option value (Int or Double) to Double. Not part of upstream
+// (guards the Int-vs-Double option-read trap: defaultOptions box numbers as Int).
+fileprivate func pipelineNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let s = v as? String { return Double(s) }
+    return nil
 }
 
 // JS `x + ''` for a value of unknown type. Not part of upstream.
@@ -466,7 +483,7 @@ public enum model {
         if let v = value as? T {
             return [v]
         }
-        return []   // PORT-TODO: value is neither [T] nor T
+        return []   // PORT-NOTE (language-difference): upstream would wrap any non-null value as `[value]`; here a value that fails the `as? T` cast (type mismatch vs the call-site annotation) falls through to []
     }
 
     /**
@@ -891,7 +908,7 @@ public enum model {
         if __DEV__ {
             if val == nil {
                 // upstream: throw new Error();
-                util.assert(false)   // PORT-TODO: upstream throws Error()
+                util.assert(false)   // PORT-NOTE (language-difference): upstream `throw new Error()`; this fn is non-throwing, so the dev-only guard traps via assert (equivalent fail-fast)
             }
         }
         return convertOptionIdName(val, "") ?? ""
@@ -1093,10 +1110,7 @@ public enum model {
      */
     // upstream return: number | number[]
     public static func queryDataIndex(_ data: SeriesData, _ payload: Payload) -> Any? {
-        // PORT-TODO: payload dynamic keys (dataIndexInside/dataIndex/name) read from `.other`;
-        //   SeriesData placeholder (util/types.swift) has no `indexOfRawIndex`/`indexOfName`,
-        //   so the lookup is stubbed. Faithful body preserved in comments.
-        _ = data
+        // payload dynamic keys (dataIndexInside/dataIndex/name) read from `.other`.
         if let dataIndexInside = payload.other["dataIndexInside"], !(dataIndexInside is NSNull) {
             return dataIndexInside
         }
@@ -1104,15 +1118,19 @@ public enum model {
             // return isArray(dataIndex)
             //     ? map(dataIndex, v => data.indexOfRawIndex(v))
             //     : data.indexOfRawIndex(dataIndex);
-            _ = dataIndex
-            return nil   // PORT-TODO: data.indexOfRawIndex
+            if let arr = dataIndex as? [Any] {
+                return arr.map { data.indexOfRawIndex(anyToInt($0)) }
+            }
+            return data.indexOfRawIndex(anyToInt(dataIndex))
         }
         else if let name = payload.other["name"], !(name is NSNull) {
             // return isArray(name)
             //     ? map(name, v => data.indexOfName(v))
             //     : data.indexOfName(name);
-            _ = name
-            return nil   // PORT-TODO: data.indexOfName
+            if let arr = name as? [Any] {
+                return arr.map { data.indexOfName(jsToString($0)) }
+            }
+            return data.indexOfName(jsToString(name))
         }
         return nil
     }
@@ -1340,7 +1358,7 @@ public enum model {
     }
 
     public static func setAttribute(_ dom: HTMLElement, _ key: String, _ value: Any) {
-        // PORT-TODO: DOM seam (CONVENTIONS §9) — no HTMLElement on iOS.
+        // PORT-NOTE: DOM seam (CONVENTIONS §9) — no HTMLElement on iOS.
         //   dom.setAttribute ? dom.setAttribute(key, value) : (dom[key] = value);
         _ = dom
         _ = key
@@ -1348,7 +1366,7 @@ public enum model {
     }
 
     public static func getAttribute(_ dom: HTMLElement, _ key: String) -> Any? {
-        // PORT-TODO: DOM seam (CONVENTIONS §9).
+        // PORT-NOTE: DOM seam (CONVENTIONS §9).
         //   return dom.getAttribute ? dom.getAttribute(key) : dom[key];
         _ = dom
         _ = key
@@ -1358,7 +1376,7 @@ public enum model {
     public static func getTooltipRenderMode(_ renderModeOption: Any?) -> TooltipRenderMode {
         if (renderModeOption as? String) == "auto" {
             // Using html when `document` exists, use richText otherwise.
-            // PORT-TODO: zrender `env` is module-internal (not exposed to EChartsKit); on iOS
+            // PORT-NOTE: zrender `env` is module-internal (not exposed to EChartsKit); on iOS
             //   `env.domSupported` is always false -> richText.
             return .richText
         }
@@ -1444,28 +1462,31 @@ public enum model {
             var i = 0
             while i < length {
                 // const info = data.getDimensionInfo(i);
-                // PORT-TODO: SeriesData placeholder (util/types.swift) has no `getDimensionInfo`;
-                //   assume non-ordinal (`info` is nil) for now.
-                _ = data
-                // PORT-TODO: upstream skips interpolation for ordinal dims —
-                //   `const infoIsOrdinal = info && info.type === 'ordinal';`
-                //   `if (infoIsOrdinal) { interpolated[i] = (percent<1 && leftArr ? leftArr : rightArr)[i]; }`
-                //   `else { <numeric interpolation below> }`
-                //   The dimension `info` is not threaded into this helper yet (always non-ordinal
-                //   here), so only the numeric path is active. Restore the ordinal-skip branch when
-                //   dim info is wired (model/ phase).
-                // const leftVal = leftArr && leftArr[i] ? leftArr[i] as number : 0;
-                let leftVal: Double = (leftArr != nil && i < leftArr!.count ? (leftArr![i] as? Double) : nil) ?? 0
-                let rightVal: Double = (i < rightArr.count ? (rightArr[i] as? Double) : nil) ?? 0
-                let value = interpolateNumber(leftVal, rightVal, percent)
-                interpolated.append(number.round(
-                    value,
-                    isAutoPrecision ? number.mathMax(
-                        number.getPrecision(leftVal),
-                        number.getPrecision(rightVal)
-                    )
-                    : (precision as! Double)
-                ))
+                // getDimensionInfo(i) may be undefined for an out-of-range index (upstream returns
+                //   undefined; here getDimensionInfo force-unwraps, so guard on the public `dimensions`
+                //   count). Pass a Double index — `_recognizeDimIndex` force-casts a numeric dim to Double.
+                let info: SeriesDimensionDefine? = (i < data.dimensions.count) ? data.getDimensionInfo(Double(i)) : nil
+                // const infoIsOrdinal = info && info.type === 'ordinal';
+                let infoIsOrdinal = (info?.type == DataStoreDimensionType.ordinal)
+                if infoIsOrdinal {
+                    // interpolated[i] = (percent < 1 && leftArr ? leftArr : rightArr)[i];
+                    let src = (percent < 1 && leftArr != nil) ? leftArr! : rightArr
+                    interpolated.append(i < src.count ? src[i] : nil)
+                }
+                else {
+                    // const leftVal = leftArr && leftArr[i] ? leftArr[i] as number : 0;
+                    let leftVal: Double = (leftArr != nil && i < leftArr!.count ? (leftArr![i] as? Double) : nil) ?? 0
+                    let rightVal: Double = (i < rightArr.count ? (rightArr[i] as? Double) : nil) ?? 0
+                    let value = interpolateNumber(leftVal, rightVal, percent)
+                    interpolated.append(number.round(
+                        value,
+                        isAutoPrecision ? number.mathMax(
+                            number.getPrecision(leftVal),
+                            number.getPrecision(rightVal)
+                        )
+                        : (precision as! Double)
+                    ))
+                }
                 i += 1
             }
             return interpolated
@@ -1474,9 +1495,10 @@ public enum model {
 
     public static func clearTmpModel(_ model: Model) {
         // Clear to avoid memory leak.
-        // PORT-TODO: Model placeholder (util/types.swift) has no `option`/`parentModel`/`ecModel`.
-        //   model.option = model.parentModel = model.ecModel = null;
-        _ = model
+        // model.option = model.parentModel = model.ecModel = null;
+        model.option = nil
+        model.parentModel = nil
+        model.ecModel = nil
     }
 
     public static func initExtentForUnion() -> [Double] {
@@ -1638,11 +1660,8 @@ public enum model {
         // 0 means disable incremental.
         // 1 is preserved for backward compatibility.
         let inc = util.retrieve2(useIncremental, true) ?? true
-        // PORT-TODO: SeriesModel placeholder (util/types.swift) has no `seriesIndex`.
-        //   return retrieve2(useIncremental, true) ? seriesModel.seriesIndex + 2 : 0;
-        _ = seriesModel
-        let seriesIndex = 0.0   // PORT-TODO: seriesModel.seriesIndex
-        return inc ? seriesIndex + 2 : 0
+        // return retrieve2(useIncremental, true) ? seriesModel.seriesIndex + 2 : 0;
+        return inc ? seriesModel.seriesIndex + 2 : 0
     }
 
     public static func preparePipelineContext(
@@ -1650,18 +1669,23 @@ public enum model {
         _ view: ChartView,
         _ pipeline: PipelinePick
     ) -> PipelineContext {
-        // PORT-TODO: SeriesModel/ChartView placeholders (util/types.swift) have no
-        //   `getData`/`get`/`incrementalPrepareRender`. Faithful body preserved in comments.
         // const dataLen = seriesModel.getData().count();
-        // return {
-        //     progressiveRender: pipeline.progressiveEnabled && view.incrementalPrepareRender && dataLen >= pipeline.threshold,
-        //     large: seriesModel.get('large') && dataLen >= seriesModel.get('largeThreshold'),
-        //     modDataCount: seriesModel.get('progressiveChunkMode') === 'mod' ? seriesModel.getData().count() : null,
-        // };
-        _ = seriesModel
+        let dataLen = Double(seriesModel.getData().count())
+        // POTENTIAL-BUG (feature-detection): upstream gates progressiveRender on
+        //   `view.incrementalPrepareRender` *existing* (only progressive-capable views define it).
+        //   Swift can not feature-detect method existence — every ChartView has a no-op default
+        //   (see view/Chart.swift), and Scheduler.prepareView defers the same `!view.incrementalPrepareRender`
+        //   check — so the gate is dropped here. `pipeline.progressiveEnabled` (derived from
+        //   seriesModel.getProgressive()) is already false for non-progressive series, so the
+        //   over-approximation is narrow; restore the gate when the view layer feature-flags progressive.
         _ = view
-        _ = pipeline
-        return PipelineContext(progressiveRender: false, large: false, modDataCount: nil)
+        let progressiveRender = pipeline.progressiveEnabled && dataLen >= pipeline.threshold
+        // large: seriesModel.get('large') && dataLen >= seriesModel.get('largeThreshold')
+        let large = ((seriesModel.get("large") as? Bool) ?? false)
+            && dataLen >= (pipelineNum(seriesModel.get("largeThreshold")) ?? 0)
+        // modDataCount: seriesModel.get('progressiveChunkMode') === 'mod' ? dataLen : null
+        let modDataCount: Double? = ((seriesModel.get("progressiveChunkMode") as? String) == "mod") ? dataLen : nil
+        return PipelineContext(progressiveRender: progressiveRender, large: large, modDataCount: modDataCount)
     }
 
     /**

@@ -198,7 +198,9 @@ public func summarizeDimensions(
     summary.dataDimIndicesOnCoord = util.map(
         dataDimsOnCoord
     ) { dimName, _ in
-        // PORT-TODO: storeDimIndex is optional in SeriesDimensionDefine; upstream assumes it is set here.
+        // POTENTIAL-BUG (optional divergence): `storeDimIndex` is optional in SeriesDimensionDefine,
+        //   but upstream types it as `number` and assumes it is set for coord dims here. The `?? 0`
+        //   fallback would silently map an unset dim to store index 0 rather than surfacing the gap.
         data.getDimensionInfo(dimName).storeDimIndex ?? 0
     }
     summary.encodeFirstDimNotExtra = encodeFirstDimNotExtra

@@ -593,7 +593,7 @@ public final class ECharts: EChartsType {
         // -- chart/heatmap/install.ts (minimal) -- registerSeriesModel(HeatmapSeriesModel) +
         //   registerChartView(HeatmapView) (view keyed by subType 'heatmap' below). Heatmap renders ONLY on
         //   cartesian2d in the port (one colored Rect per cell); geo/calendar/matrix coord paths are
-        //   PORT-TODO. Cell fill comes from the per-datum color the visualMap ENCODING wrote, so a
+        //   PORT-NOTE (deferred): those HeatmapView coord branches are not ported. Cell fill comes from the per-datum color the visualMap ENCODING wrote, so a
         //   `visualMap` component MUST be present for cells to be colored. heatmapInstall.swift is
         //   commented-only (diffable surface); actual wiring lives here per the effectScatterInstall convention.
         ComponentModel.registerClass(HeatmapSeriesModel.self)
@@ -685,7 +685,7 @@ public final class ECharts: EChartsType {
         // -- chart/lines/install.ts (minimal) -- registerChartView(LinesView) +
         //   registerSeriesModel(LinesSeries) + registerLayout(linesLayout) + registerVisual(linesVisual).
         //   Lines is a coord-space series (default coord 'geo'; ONLY cartesian2d is rendered by the ported
-        //   static view — polar/geo/calendar are PORT-TODO in linesLayout/LinesView). `linesLayout` is a
+        //   static view — polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout/LinesView). `linesLayout` is a
         //   SERIES_STAGE_TASK (seriesType 'lines') whose reset→progress writes each line's per-item layout
         //   (`data.setItemLayout(i, pts)`), same wiring as candlestickLayout. LinesView also inlines the
         //   per-item dataToPoint + curveness control-point math (like ScatterView/LineView), so the layout
@@ -724,7 +724,8 @@ public final class ECharts: EChartsType {
         //   feed the IndicatorAxes the coord builds. `_coordSysMgr.create`/`.update` (update() stages 3/5)
         //   build + update each Radar; the radarLayout stage (run in render()) stores each datum's closed
         //   point ring, which RadarView reads back. The backwardCompat preprocessor runs in setOption.
-        //   registerVisual(legendIcon 'roundRect') → PORT-TODO: deferred (legend-select provider not wired).
+        //   registerVisual(legendIcon 'roundRect') → PORT-NOTE (deferred): requires the component/radar/install.ts
+        //     legendIcon visual stage (sets each datum's legendIcon='roundRect'); the visual-stage registry is not wired here.
         CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator()) // registerCoordinateSystem('radar', Radar)
         ComponentModel.registerClass(RadarModel.self)                             // registerComponentModel(RadarModel)
         ComponentModel.registerClass(RadarSeriesModel.self)                       // registerSeriesModel(RadarSeries)
@@ -783,7 +784,7 @@ public final class ECharts: EChartsType {
         //   active-interval selection ACTION is now wired (installParallelActions below → sets
         //   ParallelAxisModel.activeIntervals → Parallel.eachActiveState dims out-of-interval lines via
         //   parallelVisual). The LIVE axis-drag BrushController that would EMIT axisAreaSelect (ParallelAxisView
-        //   ._refreshBrushController/_onBrush) + the axis-expand pointer roam remain // PORT-TODO.
+        //   ._refreshBrushController/_onBrush) + the axis-expand pointer roam remain // PORT-NOTE (deferred): live brush/roam interaction unported.
         CoordinateSystemManager.register("parallel", ParallelCoordinateSystemCreator()) // registerCoordinateSystem('parallel', parallelCoordSysCreator)
         ComponentModel.registerClass(ParallelModel.self)                            // registerComponentModel(ParallelModel)
         ComponentModel.registerClass(ParallelAxisModel.self)                        // registerComponentModel(ParallelAxisModel) + axisModelCreator(..,'parallel',..)
@@ -800,8 +801,8 @@ public final class ECharts: EChartsType {
         //   registerCoordinateSystem('matrix', Matrix) + registerComponentModel(MatrixModel) +
         //   registerComponentView(MatrixView). The matrix coord maps an (x,y) header/body cell to a rect;
         //   MatrixView draws the table backdrop (header + body cell rects + header text labels).
-        //   PORT-TODO: matrixPrepareCustom (custom-series coord hook) is unregistered — same as
-        //   calendarPrepareCustom (no prepareCustom registry yet). Cell interaction is // PORT-TODO in MatrixView.
+        //   PORT-NOTE (deferred): matrixPrepareCustom (custom-series coord hook) is unregistered — same as
+        //   calendarPrepareCustom (no prepareCustom registry yet). Cell interaction is deferred (unported) in MatrixView.
         CoordinateSystemManager.register("matrix", MatrixCoordinateSystemCreator()) // registerCoordinateSystem('matrix', Matrix)
         ComponentModel.registerClass(MatrixModel.self)                              // registerComponentModel(MatrixModel)
 
@@ -811,7 +812,7 @@ public final class ECharts: EChartsType {
         //   The geo coord projects [lng, lat] to a pixel via the `View` transform (+ optional projection);
         //   GeoView draws the static GeoJSON region outlines + labels backdrop.
         //   `geoCreator` is the ported singleton `GeoCreator()` (conforms to CoordinateSystemCreator directly).
-        //   PORT-TODO (DEFERRED with events/roam): geoToggleSelect/geoSelect/geoUnSelect/geoRoam actions;
+        //   PORT-NOTE (deferred, with events/roam): geoToggleSelect/geoSelect/geoUnSelect/geoRoam actions;
         //   the geoPrepareCustom custom-series coord hook is unregistered (no prepareCustom registry yet —
         //   same as calendarPrepareCustom / polar prepareCustom, custom series is Phase 6b).
         CoordinateSystemManager.register("geo", geoCreator)                         // registerCoordinateSystem('geo', geoCreator)
@@ -836,7 +837,7 @@ public final class ECharts: EChartsType {
         //   CustomSeriesRenderItem (CustomSeriesModel.getRenderItem() casts it) OR registered globally via
         //   registerCustomSeries(subType, renderItem). CustomChartView resolves it as
         //   `series.getRenderItem() ?? getCustomSeries(subType)`. cartesian2d prepareCustom supplies
-        //   api.coord/api.size. transitions/morph/states are PORT-TODO. customInstall.swift is commented-only
+        //   api.coord/api.size. transitions/morph/states are PORT-NOTE (deferred): unported. customInstall.swift is commented-only
         //   (diffable surface); actual wiring lives here per the boxplot/heatmap install convention.
         ComponentModel.registerClass(CustomSeriesModel.self)                        // registerSeriesModel(CustomSeries)
 
@@ -969,7 +970,7 @@ public final class ECharts: EChartsType {
         //   implemented, so both COORDINATE markers (`{yAxis:v}`/`{coord:[x,y]}`) and STATISTIC markers
         //   (type:'min'/'max'/'average'/'median') resolve. markPoint renders via the real SymbolDraw
         //   (symbol + value label); markLine via a static LineDraw stand-in (dashed lineStyle + end
-        //   symbols + label); markArea via its Polygon band. PORT-TODO: enter/leave animation + emphasis.
+        //   symbols + label); markArea via its Polygon band. PORT-NOTE (deferred): enter/leave animation + emphasis unported.
         ComponentModel.registerClass(MarkPointModel.self)                  // registerComponentModel(MarkPointModel)
         ComponentModel.registerClass(MarkLineModel.self)                   // registerComponentModel(MarkLineModel)
         ComponentModel.registerClass(MarkAreaModel.self)                   // registerComponentModel(MarkAreaModel)
@@ -1015,7 +1016,7 @@ public final class ECharts: EChartsType {
         //   'axisAreaSelect', event 'axisAreaSelected') (sets each queried parallelAxis model's active
         //   intervals → Parallel.eachActiveState dims the out-of-interval lines via the visual stage on the
         //   full update) + registerAction('parallelAxisExpand') (the axis expand-window; the LIVE axis-drag
-        //   BrushController that would emit these is still // PORT-TODO in ParallelAxisView). See
+        //   BrushController that would emit these is still // PORT-NOTE (deferred): unported in ParallelAxisView). See
         //   component/axis/parallelAxisAction.swift.
         installParallelActions(ECharts._registers)
 
@@ -1317,7 +1318,7 @@ public final class ECharts: EChartsType {
         //   later task realigns to the real upstream PRIORITY and gates that reorder separately). dataZoom's
         //   AxisProxy was already created by prepareStageTasks' getTargetSeries at setOption, so this only
         //   runs its overallReset. Runs BETWEEN coordSysMgr.create (3) and coordSysMgr.update (5), faithful.
-        // updateStreamModes(...) — PORT-TODO skip (progressive/stream rendering out of scope).
+        // updateStreamModes(...) — PORT-NOTE (deferred): skipped (progressive/stream rendering out of scope).
         _scheduler.performDataProcessorTasks(ecModel)
 
         // (5) coordSysMgr.update — update axis pixel + data extents from the (now processed) series data,
@@ -1370,8 +1371,8 @@ public final class ECharts: EChartsType {
         //   brush visual CANNOT run here (item layout is still nil at this point); it runs at the end of
         //   `render()`, right before `renderSeries` — see the `brushVisual(...)` call there.
 
-        // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-TODO: the driver exposes a
-        //     bare Group; background is a host concern.
+        // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-NOTE (platform): the driver exposes a
+        //     bare Group; background is a host concern, handled by the native host, not this layer.
 
         // (7) LAYOUT + RENDER — `render(this, ecModel, api, ...)`.
         render(ecModel, api)
@@ -1684,7 +1685,7 @@ public final class ECharts: EChartsType {
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
         // `layout:'force'` — iterative physics simulation (graphForceLayoutStageHandler). Self-gates on
         //   the series `layout` option; for a static frame it settles the simulation synchronously (the
-        //   live per-frame tick is a PORT-TODO — see forceLayout.swift). Runs alongside the other two.
+        //   live per-frame tick is a PORT-NOTE (deferred): unported — see forceLayout.swift). Runs alongside the other two.
         graphForceLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
         graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
@@ -1717,7 +1718,7 @@ public final class ECharts: EChartsType {
         //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout. `LinesView.render`
         //   inlines the same math (like ScatterView/LineView), so the view does not strictly depend on this
         //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
-        //   (polar/geo/calendar are PORT-TODO in linesLayout).
+        //   (polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
@@ -2115,13 +2116,13 @@ public final class ECharts: EChartsType {
         let flush = opt.flush
         if flush == true {
             // upstream: this._zr.flush();
-            // PORT-TODO: forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
+            // PORT-NOTE (platform): forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
             //   this phase, and the driver's `update()` ALREADY renders synchronously inside
             //   doDispatchAction, so there is no pending frame to flush → no-op.
         }
         else if flush != false {
             // upstream: `else if (flush !== false && env.browser.weChat) this._throttledZrFlush();`
-            // PORT-TODO: the WeChat throttled-flush workaround is N/A (no browser env / live zr).
+            // PORT-NOTE (platform): the WeChat throttled-flush workaround is N/A (no browser env / live zr).
         }
 
         flushPendingActions(silent)
@@ -2249,8 +2250,8 @@ public final class ECharts: EChartsType {
         _inEcCycle = false
 
         // if (!silent) { … messageCenter.trigger(eventObj.type, eventObj); … }
-        //   PORT-TODO: the message center / user event listeners + refineEvent are not wired yet
-        //   (Phase 30+). eventObj is fully built above to preserve the round-trip structure; emission
+        //   PORT-NOTE (deferred): requires the message center / user event listeners + refineEvent (not wired yet,
+        //   Phase 30+). eventObj is fully built above to preserve the round-trip structure; emission
         //   is the documented no-op.
         _ = eventObj
         _ = silent
@@ -2268,7 +2269,7 @@ public final class ECharts: EChartsType {
     private func triggerUpdatedEvent(_ silent: Bool) {
         // upstream: !silent && this.trigger('updated');
         if !silent {
-            // PORT-TODO: no event-listener registry / `trigger` wired yet (Phase 30+). Structure preserved.
+            // PORT-NOTE (deferred): requires an event-listener registry / `trigger` (not wired yet, Phase 30+). Structure preserved.
         }
     }
 

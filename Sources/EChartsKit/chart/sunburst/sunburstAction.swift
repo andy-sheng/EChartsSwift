@@ -70,7 +70,7 @@ public func installSunburstAction(_ registers: EChartsExtensionInstallRegisters)
                 // const originViewRoot = model.getViewRoot();
                 // if (originViewRoot) { payload.direction = aboveViewRoot(...) ? 'rollUp' : 'drillDown'; }
                 //   `getViewRoot()` is non-optional in the port (always resolves), so the `if` is implicit.
-                // PORT-TODO: `payload.direction` is consumed only by the DEFERRED entrance-animation routing
+                // PORT-NOTE (deferred): `payload.direction` is consumed only by the DEFERRED entrance-animation routing
                 //   (rollUp/drillDown) in SunburstView; `Payload` is a value type here, so the write is a
                 //   no-op for the caller anyway. The `aboveViewRoot` classification is preserved for parity:
                 _ = treeHelper.aboveViewRoot(model.getViewRoot(), targetInfo.node)

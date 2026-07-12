@@ -25,8 +25,9 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';                  -> ZRenderKit `Group` / `Polygon` / `ZRText` (used directly).
 //   import {getECData} from '../../util/innerStore';                -> `innerStore.getECData`.
 //   import * as layout from '../../util/layout';                    -> `layout.*` (util/layout.swift).
-//   import {wrapTreePathInfo} from '../helper/treeHelper';          -> PORT-TODO: chart/helper/treeHelper NOT ported
-//       (treePathInfo for event data — DEFERRED).
+//   import {wrapTreePathInfo} from '../helper/treeHelper';          -> PORT-NOTE (deferred): requires
+//       treeHelper.wrapTreePathInfo (treeHelper.swift is ported but wrapTreePathInfo itself is not —
+//       treePathInfo for event data).
 //   import TreemapSeriesModel, { TreemapSeriesNodeItemOption, TreemapSeriesOption } from './TreemapSeries';
 //       -> sibling TreemapSeries.swift.
 //   import ExtensionAPI from '../../core/ExtensionAPI';             -> `ExtensionAPI`.
@@ -53,7 +54,7 @@ private let ARRAY_LENGTH: Double = 5
 private let Z2_EMPHASIS_LIFT: Double = 10
 
 // interface OnSelectCallback { (node: TreeNode, e: ZRElementEvent): void }
-// PORT-TODO: the `e: ZRElementEvent` arg is dropped (click events DEFERRED); the TreemapView call site
+// PORT-NOTE: the `e: ZRElementEvent` arg is dropped (click events DEFERRED); the TreemapView call site
 //   passes a single-arg closure, matching this signature.
 public typealias OnSelectCallback = (TreeNode) -> Void
 
@@ -244,12 +245,15 @@ open class Breadcrumb {
             // z2: Z2_EMPHASIS_LIFT * 1e4  // A very large z2
             el.z2 = Z2_EMPHASIS_LIFT * 1e4
             // onclick: curry(onSelect, itemNode)
-            // PORT-TODO: onclick (curry(onSelect, itemNode)) DEFERRED — events not ported.
+            // PORT-NOTE (deferred): requires ./treemapAction — the `onSelect` callback the click would
+            //   invoke is itself a deferred no-op at the call site (TreemapView._renderBreadcrumb: the
+            //   drill/zoom dispatchAction needs treemapAction, not ported), so wiring the click here
+            //   would accomplish nothing.
             _ = onSelect
 
             // (el as ECElement).disableLabelAnimation = true;
-            // PORT-TODO: disableLabelAnimation (ECElement label-animation flag) DEFERRED — label
-            //   animation not ported (matches sibling views SankeyView / MapView / GeoView).
+            // PORT-NOTE (deferred): the ECElement `disableLabelAnimation` flag gates label animation,
+            //   which is not ported — setting it is a no-op (matches sibling views SankeyView / MapView / GeoView).
 
             // el.getTextContent().ensureState('emphasis').style = createTextStyle(emphasisTextStyleModel, {text});
             //   textEl is the textContent created above; the emphasis text style is stored on ZRText's
@@ -327,7 +331,7 @@ private func packEventData(_ el: Element, _ seriesModel: TreemapSeriesModel, _ i
             "name": itemNode?.name as Any
         ] as [String: Any]
         // treePathInfo: itemNode && wrapTreePathInfo(itemNode, seriesModel)
-        // PORT-TODO: treeHelper.wrapTreePathInfo NOT ported (tree path info for tooltip/event DEFERRED).
+        // PORT-NOTE (deferred): requires treeHelper.wrapTreePathInfo (not ported — tree path info for tooltip/event).
     ]
 }
 

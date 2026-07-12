@@ -213,9 +213,10 @@ open class Displayable: Element {
     // Shapes for cascade clipping.
     // PORT-NOTE: upstream `__clipPaths?: Path[]` — inherited from Element (`__clipPaths`).
 
-    // PORT-TODO: FOR CANVAS PAINTER — __canvasFillGradient / __canvasStrokeGradient /
-    //   __canvasFillPattern / __canvasStrokePattern; FOR SVG PAINTER — __svgEl. Renderer seam
-    //   (CONVENTIONS §9); not modeled in render-only Phase 1.
+    // PORT-NOTE (unportable): the HTMLCanvas/SVG painter caches — __canvasFillGradient /
+    //   __canvasStrokeGradient / __canvasFillPattern / __canvasStrokePattern (Canvas) and __svgEl
+    //   (SVG) — are browser-renderer seams (CONVENTIONS §9). The native CALayer painter has no
+    //   equivalent; intentionally not modeled.
 
     public override init(_ props: ElementProps? = nil) {
         super.init(props)
@@ -331,10 +332,11 @@ open class Displayable: Element {
             let elRect = self.getBoundingRect()
 
             let style = self.style
-            // PORT-TODO: `|| 0` is JS falsy (also coerces NaN → 0); modeled as `?? 0`.
-            let shadowSize = style?.shadowBlur ?? 0
-            let shadowOffsetX = style?.shadowOffsetX ?? 0
-            let shadowOffsetY = style?.shadowOffsetY ?? 0
+            // upstream `style.shadowBlur || 0` — JS falsy coerces undefined/0/NaN → 0. `jsFalsyOr0`
+            //   reproduces the NaN→0 leg that a bare `?? 0` (nil-only) would miss.
+            let shadowSize = jsFalsyOr0(style?.shadowBlur)
+            let shadowOffsetX = jsFalsyOr0(style?.shadowOffsetX)
+            let shadowOffsetY = jsFalsyOr0(style?.shadowOffsetY)
 
             if self._paintRect == nil {
                 self._paintRect = BoundingRect(0, 0, 0, 0)
@@ -604,6 +606,13 @@ open class Displayable: Element {
 // PORT-NOTE: upstream `protected static initDefaultProps` (prototype seeding) is replaced by the
 //   stored-property initializers above + the `init` override (type='displayable',
 //   __dirty = REDRAW_BIT | STYLE_CHANGED_BIT).
+
+// upstream `x || 0`: undefined/nil, 0, and NaN all collapse to 0 (JS falsy). A bare `?? 0` only
+//   covers nil, so NaN would survive; this reproduces the NaN leg too.
+private func jsFalsyOr0(_ v: Double?) -> Double {
+    guard let v = v, !v.isNaN else { return 0 }
+    return v
+}
 
 private let tmpRect = BoundingRect(0, 0, 0, 0)
 private let viewRect = BoundingRect(0, 0, 0, 0)

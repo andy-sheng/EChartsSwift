@@ -29,9 +29,10 @@ import ZRenderKit
 //   are still placeholders (declared below). `makeLabelFormatter(axis)` is assumed to return
 //   `(ScaleTick, Double?) -> String` (the optional 2nd arg mirrors upstream `idx?`).
 
-// PORT-TODO: these two types belong to `coord/axisCommonTypes.ts`, whose Swift stub currently only
-//   exports `AxisScaleType`. Declared here as placeholders for this phase; remove them once
-//   axisCommonTypes.swift lands the real declarations (owned by the coord-option phase).
+// PORT-NOTE (deferred): these two types belong to `coord/axisCommonTypes.ts`, whose Swift port
+//   (coord/axisCommonTypes.swift) currently only exports `AxisScaleType`. Declared here as placeholders
+//   for this phase; remove them once axisCommonTypes.swift lands the real declarations (owned by the
+//   coord-option phase).
 public typealias AxisTickLabelCustomValuesOption = [Any] // upstream: (number | string | Date)[]
 public typealias CategoryTickLabelSplitIntervalCb = (
     _ linearTickValue: Double, // tick value before sorted. "sort" means `OrdinalScale['setSortInfo']`.

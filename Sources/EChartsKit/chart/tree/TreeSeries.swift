@@ -51,9 +51,9 @@ import ZRenderKit
 // is the `[String: Any]` bag; these types are kept as documentation only — no Swift types are emitted.
 // ============================================================================
 
-// PORT-TODO: TreeNode `depth`/`dataIndex` are `number` upstream; the sibling data/Tree.swift track fixes
+// PORT-NOTE: TreeNode `depth`/`dataIndex` are `number` upstream; the sibling data/Tree.swift tracks
 //   `depth: Double` and `dataIndex: Int`. Float-math uses of `depth` stay `Double`; array-index uses
-//   would wrap in `Int(...)`.
+//   wrap in `Int(...)` (language difference, semantically equivalent).
 
 // export const SERIES_TYPE_TREE = 'tree';
 public let SERIES_TYPE_TREE = "tree"
@@ -75,7 +75,7 @@ open class TreeSeriesModel: SeriesModel {
     //   Inherited from SeriesModel (`open var coordinateSystem: Any?`); upstream types it `View`.
 
     // layoutInfo: LayoutRect;
-    //   A field slot populated by the tree layout stage (treeLayout). PORT-TODO: LayoutRect == BoundingRect.
+    //   A field slot populated by the tree layout stage (treeLayout). PORT-NOTE: LayoutRect == BoundingRect (typealias).
     open var layoutInfo: LayoutRect?
 
     // hasSymbolVisual = true;
@@ -127,10 +127,11 @@ open class TreeSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // PORT-TODO: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
+        // POTENTIAL-BUG: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
         //   name — see data/SeriesData.swift), so the injected closure is NOT actually invoked. The
-        //   leaves-model parenting therefore does not take effect through this path; it is preserved
-        //   faithfully for the diffable surface and for when wrapMethod becomes real.
+        //   leaves-model parenting therefore does not take effect through this path (leaf nodes do not
+        //   inherit `leaves` styling). Preserved faithfully for the diffable surface and for when
+        //   wrapMethod becomes real; fix requires making SeriesData.wrapMethod actually rebind.
         let beforeLink: (SeriesData) -> Void = { nodeData in
             nodeData.wrapMethod("getItemModel") { args in
                 let model = args.first as? Model
@@ -246,9 +247,10 @@ open class TreeSeriesModel: SeriesModel {
 
     // Add tree path to tooltip param
     // getDataParams(dataIndex) { const params = super.getDataParams(...); params.treeAncestors = wrapTreePathInfo(node, this); params.collapsed = !node.isExpand; return params; }
-    // PORT-TODO: DEFERRED. Depends on `super.getDataParams` (DataFormatMixin — not yet a conformance on
-    //   SeriesModel, see model/Series.swift) and on `wrapTreePathInfo` (chart/helper/treeHelper.ts NOT
-    //   ported). `treeAncestors`/`collapsed` only feed labels/tooltip, both deferred. Faithful upstream
+    // PORT-NOTE (deferred): requires `super.getDataParams` (DataFormatMixin.getDataParams IS ported in
+    //   model/mixin/dataFormat.swift but not yet a conformance wired on this SeriesModel) and
+    //   `wrapTreePathInfo` (chart/helper/treeHelper.swift IS ported but `wrapTreePathInfo` within it is a
+    //   stub). `treeAncestors`/`collapsed` only feed labels/tooltip, both deferred. Faithful upstream
     //   body (for the eventual port):
     //     const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
@@ -257,8 +259,8 @@ open class TreeSeriesModel: SeriesModel {
     //     return params;
 
     // __ownRoamView() { return this.coordinateSystem; }
-    //   Part of the `RoamHostModel` interface. PORT-TODO: coord/View + roam are deferred; the
-    //   `coordinateSystem` slot is `Any?`.
+    //   Part of the `RoamHostModel` interface. PORT-NOTE (deferred): requires the View coord-sys + roam
+    //   (RoamController) modules; the `coordinateSystem` slot is `Any?`.
     open func __ownRoamView() -> Any? {
         return self.coordinateSystem
     }
@@ -295,7 +297,8 @@ open class TreeSeriesModel: SeriesModel {
             "nodeScaleRatio": 0.4,
 
             // Default on center of graph
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag
+            //   (the codebase convention for a null-valued default option — consumers treat NSNull as null).
             "center": NSNull(),
 
             "zoom": 1.0,

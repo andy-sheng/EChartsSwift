@@ -24,8 +24,8 @@ import ZRenderKit
 // import * as numberUtil from '../../util/number';                   -> EChartsKit `number`
 // import * as markerHelper from './markerHelper';                    -> sibling markerHelper.swift
 // import LineDraw from '../../chart/helper/LineDraw';
-//   -> PORT-TODO: the real `chart/helper/LineDraw` (+ `chart/helper/Line`, with enter/leave animation
-//      + emphasis/blur states) is not ported. A STATIC-SUBSET stand-in `LineDraw` is defined at the
+//   -> PORT-NOTE (deferred): the real `chart/helper/LineDraw` (+ `chart/helper/Line`, with enter/leave
+//      animation + emphasis/blur states) is not ported. A STATIC-SUBSET stand-in `LineDraw` is defined at the
 //      bottom of this file: it draws the from→to Polyline with the full `lineStyle` (dashed/width/
 //      opacity), the from/to end symbols (circle+arrow, tangent-rotated per Line.ts), and the default
 //      value label. Diff/enter-leave animation + emphasis are deferred.
@@ -48,7 +48,7 @@ import ZRenderKit
 // import { makeInner } from '../../util/model';                      -> EChartsKit `model.makeInner`
 // import { LineDataVisual } from '../../visual/commonVisualTypes';   -> util/types
 // import { getVisualFromData } from '../../visual/helper';
-//   -> PORT-TODO: visual/helper.getVisualFromData not ported; approximated by `getVisualFromData` below.
+//   -> PORT-NOTE (deferred): requires visual/helper.getVisualFromData (not ported); approximated by the local `getVisualFromData` below.
 // import Axis2D from '../../coord/cartesian/Axis2D';                 -> EChartsKit `Axis2D`
 // import SeriesDimensionDefine from '../../data/SeriesDimensionDefine'; -> EChartsKit `SeriesDimensionDefine`
 
@@ -241,14 +241,23 @@ private func updateSingleMarkerEndLayout(
         point = [xPx, yPx]
     }
     else {
+        let dims = coordSys?.dimensions ?? []
         // Chart like bar may have there own marker positioning logic
         // if (seriesModel.getMarkerPosition) { point = seriesModel.getMarkerPosition(...); }
-        // PORT-TODO (MarkLineView.ts:217): `SeriesModel.getMarkerPosition` (bar/candlestick override)
-        //   is not ported; the else branch (generic coord `dataToPoint`) is always taken.
-        let dims = coordSys?.dimensions ?? []
-        let x = data.get(dims[0], idx)
-        let y = data.get(dims[1], idx)
-        point = coordSys?.dataToPoint([(x as Any), (y as Any)], nil)
+        //   PORT-NOTE: `getMarkerPosition` is duck-typed on the series in upstream; only
+        //   `BaseBarSeriesModel` declares it in the port (mirrors MarkPointView). Feature-detect
+        //   via `as? BaseBarSeriesModel`; other series with custom positioning add it when they land.
+        if let barSeries = seriesModel as? BaseBarSeriesModel {
+            // Use the getMarkerPosition
+            point = barSeries.getMarkerPosition(
+                data.getValues(data.dimensions, idx) as [ScaleDataValue]
+            )
+        }
+        else {
+            let x = data.get(dims[0], idx)
+            let y = data.get(dims[1], idx)
+            point = coordSys?.dataToPoint([(x as Any), (y as Any)], nil)
+        }
 
         // Expand line to the edge of grid if value on one axis is Inifnity
         // In case
@@ -464,8 +473,11 @@ final class MarkLineView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mlData.line.eachItemGraphicEl(function (el) { getECData(el).dataModel = mlModel; ... });
-        // PORT-TODO: `getECData` (util/innerStore) not ported — tagging the graphic els with the host
-        //   data model (for tooltip) is deferred (interaction, out of static-render scope).
+        // PORT-NOTE (deferred): `getECData` (util/innerStore) IS ported, but `ECData.dataModel` requires
+        //   a `DataModel` and `MarkerModel` does not yet conform (DataFormatMixin conformance blocked —
+        //   see MarkerModel.swift). So `getECData(el).dataModel = mlModel` cannot be assigned; the host-model
+        //   tooltip tagging is deferred (interaction, out of static-render scope). MarkAreaView/MarkPointView
+        //   keep the same line commented for the same reason.
 
         self.markKeep(lineDraw)
 
@@ -489,8 +501,9 @@ private func createList(
             let md = data.mapDimension(coordDim)
             let base: SeriesDimensionDefine
             if let md = md {
-                // PORT-TODO: upstream's `|| {}` fallback when the dim info is genuinely absent is not
-                //   reproduced (getDimensionInfo force-unwraps); `md` resolves in practice for markLine.
+                // POTENTIAL-BUG: upstream's `|| {}` fallback when the dim info is genuinely absent is not
+                //   reproduced (SeriesData.getDimensionInfo force-unwraps internally); a truly absent dim
+                //   info would trap instead of yielding an empty define. `md` resolves in practice for markLine.
                 base = SeriesDimensionDefine(data.getDimensionInfo(md))
             }
             else {
@@ -571,7 +584,7 @@ private func createList(
 //   `label`), with enter/leave animation and emphasis/blur states. This stand-in builds the static
 //   from→to segment faithfully: the `Polyline` body with the full `lineStyle` (dashed/width/opacity),
 //   the from/to end SYMBOLS (circle+arrow) at the resolved endpoints with the Line.ts tangent
-//   rotation, and the default value LABEL at `label.position`. PORT-TODO: enter/leave animation,
+//   rotation, and the default value LABEL at `label.position`. PORT-NOTE (deferred): enter/leave animation,
 //   emphasis/blur states, curved (`percent`<1 / bezier) lines, and non-`end`/`start` label layouts
 //   are deferred (see the switch in chart/helper/Line.ts#beforeUpdate).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -705,8 +718,8 @@ final class LineDraw: MarkerDraw {
 
     // updateLayout()
     func updateLayout() {
-        // PORT-TODO: incremental layout update (re-reads item layouts onto existing els). The static
-        //   stand-in simply re-renders from the retained `_lineData`.
+        // PORT-NOTE (deferred): incremental layout update (re-reads item layouts onto existing els). The
+        //   static stand-in simply re-renders from the retained `_lineData`.
         if let lineData = self._lineData {
             self.updateData(lineData)
         }
@@ -829,8 +842,8 @@ private func retrieve2Any(_ value0: Any?, _ value1: Any?) -> Any? {
     return value0 != nil ? value0 : value1
 }
 
-// PORT-TODO: visual/helper.getVisualFromData not ported; approximate the series 'color' visual by
-//   reading `style.fill`, else the direct visual slot.
+// PORT-NOTE (deferred): requires visual/helper.getVisualFromData (not ported); approximate the series
+//   'color' visual by reading `style.fill`, else the direct visual slot.
 private func getVisualFromData(_ data: SeriesData, _ key: String) -> Any? {
     if key == "color", let style = data.getVisual("style") as? [String: Any], let fill = style["fill"] {
         return fill

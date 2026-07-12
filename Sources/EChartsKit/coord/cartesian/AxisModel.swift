@@ -86,9 +86,10 @@ public class CartesianAxisModel: AxisBaseModel {
     //     return this.getReferringComponents('grid', SINGLE_REFERRING).models[0] as GridModel;
     // }
     //
-    // PORT-TODO: upstream returns `GridModel` (coord/cartesian/GridModel.ts, this tier — not yet ported);
-    //   the `AxisModelCommonMixin.getCoordSysModel()` protocol requirement returns `Any?`, so the
-    //   `as GridModel` cast is deferred and `models[0]` (a `ComponentModel`) is returned as-is.
+    // PORT-NOTE: upstream returns `GridModel` (ported at coord/cartesian/GridModel.swift); the
+    //   `AxisModelCommonMixin.getCoordSysModel()` protocol requirement returns `Any?` (Swift protocol
+    //   witnesses can't narrow the return), so `models[0]` (a `ComponentModel`) is returned as-is and
+    //   callers cast to `GridModel` at the use site (e.g. CartesianAxisView).
     public func getCoordSysModel() -> Any? {
         return self.getReferringComponents("grid", model.SINGLE_REFERRING).models[0]
     }

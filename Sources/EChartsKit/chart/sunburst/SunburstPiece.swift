@@ -24,7 +24,8 @@ import ZRenderKit
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';               -> `util.*` (ZRenderKit).
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Sector` / `ZRText`;
-//       `graphic.initProps`/`updateProps` are the animation helpers — DEFERRED (see PORT-TODO below).
+//       `graphic.initProps`/`updateProps` are the animation helpers — ported (animation/basicTransition.swift)
+//       and wired below (sector entrance sweep / shape morph).
 //   import { toggleHoverEmphasis, SPECIAL_STATES, DISPLAY_STATES } from '../../util/states';
 //       -> states.toggleHoverEmphasis / states.SPECIAL_STATES / states.DISPLAY_STATES (util/states.swift).
 //   import { createTextStyle } from '../../label/labelStyle';       -> `labelStyle` (label/labelStyle.swift).
@@ -38,9 +39,10 @@ import ZRenderKit
 //   import Model from '../../model/Model';                          -> `Model`.
 //   import { getECData } from '../../util/innerStore';              -> `innerStore.getECData`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper'; -> `getSectorCornerRadius` (chart/helper/sectorHelper.swift).
-//   import { createOrUpdatePatternFromDecal } from '../../util/decal';  -> PORT-TODO: util/decal NOT ported (decal deferred).
+//   import { createOrUpdatePatternFromDecal } from '../../util/decal';  -> `createOrUpdatePatternFromDecal` (util/decal.swift, ported).
 //   import ExtensionAPI from '../../core/ExtensionAPI';             -> `ExtensionAPI`.
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: NOT ported (deferred).
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> `saveOldStyle` (animation/basicTransition.swift;
+//       ported as a no-op stub until universalTransition needs the WeakMap-backed saved style).
 //   import { normalizeRadian } from 'zrender/src/contain/util';     -> `contain_util.normalizeRadian` (ZRenderKit) — used by the deferred label-rotation math.
 //   import { isRadianAroundZero } from '../../util/number';         -> `number.isRadianAroundZero` — used by the deferred label-rotation math.
 
@@ -50,7 +52,7 @@ private let DEFAULT_SECTOR_Z: Double = 2
 private let DEFAULT_TEXT_Z: Double = 4
 
 // upstream: interface DrawTreeNode extends TreeNode { piece: SunburstPiece }
-// PORT-TODO: Swift `TreeNode` (sibling) is a `final class` that can not be externally augmented with a
+// PORT-NOTE: Swift `TreeNode` (sibling) is a `final class` that can not be externally augmented with a
 //   stored `piece` property. Upstream's `(node as DrawTreeNode).piece = this` write-back is used by
 //   the SunburstView DataDiffer (add/update/remove). The static SunburstView.render() rebuilds every
 //   render, so it does not consult `node.piece`; the write-back is therefore dropped here (marked at
@@ -108,8 +110,8 @@ open class SunburstPiece: Sector {
         // this.node = node;
         self.node = node
         // (node as DrawTreeNode).piece = this;
-        // PORT-TODO: `node.piece` write-back dropped — TreeNode carries no `piece` slot (see the
-        //   DrawTreeNode PORT-TODO above). Not needed by the static SunburstView.render().
+        // PORT-NOTE: `node.piece` write-back dropped — TreeNode carries no `piece` slot (see the
+        //   DrawTreeNode PORT-NOTE above). Not needed by the static SunburstView.render().
 
         // seriesModel = seriesModel || this._seriesModel;
         let seriesModel: SunburstSeriesModel = seriesModelIn ?? self._seriesModel
@@ -123,8 +125,8 @@ open class SunburstPiece: Sector {
         innerStore.getECData(sector).dataIndex = Double(node.dataIndex)
 
         // const itemModel = node.getModel<SunburstSeriesNodeItemOption>();
-        //   PORT-TODO: `node.getModel()` is `Model?` and returns nil for a node with dataIndex < 0
-        //   (the roll-up virtualRoot). Upstream assumes non-null; guard defensively — a node with no
+        //   PORT-NOTE: `node.getModel()` is `Model?` and returns nil for a node with dataIndex < 0
+        //   (the roll-up virtualRoot). Upstream assumes non-null; we guard defensively — a node with no
         //   item model can not be styled/labelled, so bail (no sector body drawn for it).
         guard let itemModel = node.getModel() else {
             return
@@ -146,8 +148,10 @@ open class SunburstPiece: Sector {
 
         // const decal = node.getVisual('decal');
         // if (decal) { normalStyle.decal = createOrUpdatePatternFromDecal(decal, api); }
-        // PORT-TODO: util/decal.createOrUpdatePatternFromDecal NOT ported (decal deferred).
-        _ = api
+        let decal = node.getVisual("decal")
+        if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
+            normalStyle.decal = pat
+        }
 
         // const cornerRadius = getSectorCornerRadius(itemModel.getModel('itemStyle'), sectorShape, true);
         // zrUtil.extend(sectorShape, cornerRadius);
@@ -160,9 +164,9 @@ open class SunburstPiece: Sector {
         //   itemModel.getModel([stateName, 'itemStyle']).getItemStyle()` over emphasis/blur/select) IS
         //   wired below via `states.setStatesStylesFromModel` (see the call ~line 232, which iterates the
         //   same SPECIAL_STATES and stores each state's itemStyle onto `ensureState(name).style`).
-        // PORT-TODO: only the per-state corner-radius augmentation
+        // PORT-NOTE (deferred): only the per-state corner-radius augmentation
         //   (`getSectorCornerRadius(itemStyleModel, sectorShape)` -> `ensureState(name).shape`) is still
-        //   DEFERRED — `setStatesStylesFromModel` sets `.style` but not `.shape`, and the static render
+        //   deferred — `setStatesStylesFromModel` sets `.style` but not `.shape`, and the static render
         //   only needs the normal-state corner radius (applied above).
 
         if firstCreate {
@@ -203,7 +207,9 @@ open class SunburstPiece: Sector {
                 "startAngle": sectorShape.startAngle,
                 "endAngle": sectorShape.endAngle
             ] as [String: Any]], seriesModel, node.dataIndex)
-            // saveOldStyle(sector);  — PORT-TODO: universalTransition style save DEFERRED (no-op stub).
+            // saveOldStyle(sector);  — universalTransition style save (ported; currently a no-op stub,
+            //   like the sibling BarView call — the WeakMap-backed impl lands with universalTransition).
+            saveOldStyle(sector)
         }
 
         // sector.useStyle(normalStyle);
@@ -229,7 +235,7 @@ open class SunburstPiece: Sector {
         //   upstream sets these inside the `SPECIAL_STATES` loop (ensureState(name).style =
         //   itemModel.getModel([name,'itemStyle']).getItemStyle()); `setStatesStylesFromModel` is the
         //   ported form of that loop (the per-state corner-radius augmentation stays deferred — see the
-        //   SPECIAL_STATES PORT-TODO above). The label's per-state text styles are already installed by
+        //   SPECIAL_STATES PORT-NOTE above). The label's per-state text styles are already installed by
         //   `setLabelStyle` in `_updateLabel` (getLabelStatesModels), so the sector body is all that
         //   remains here. Mirrors PieView / GraphView.
         // NOTE: `states` (the ported util/states enum) is qualified with the module name because a
@@ -268,7 +274,7 @@ open class SunburstPiece: Sector {
     // upstream: _updateLabel(seriesModel)
     func _updateLabel(_ seriesModel: SunburstSeriesModel) {
         // const itemModel = this.node.getModel<SunburstSeriesNodeItemOption>();
-        //   PORT-TODO: `Model?` — nil for dataIndex < 0 (roll-up virtualRoot); bail (no label).
+        //   PORT-NOTE: `Model?` — nil for dataIndex < 0 (roll-up virtualRoot); bail defensively (no label).
         guard let itemModel = self.node.getModel() else { return }
         // const normalLabelModel = itemModel.getModel('label');
         let normalLabelModel = itemModel.getModel("label")
@@ -332,8 +338,8 @@ open class SunburstPiece: Sector {
         label.ignore = !isNormalShown
 
         // ── Placement (upstream NORMAL-state branch of the DISPLAY_STATES loop). ──
-        //   PORT-TODO: per-state placement (emphasis/blur/select can each carry a different position /
-        //   rotate) DEFERRED — the static render applies the NORMAL geometry only (same deviation as the
+        //   PORT-NOTE (deferred): per-state placement (emphasis/blur/select can each carry a different position /
+        //   rotate) — the static render applies the NORMAL geometry only (same deviation as the
         //   former code; setLabelStyle already supplied all four states' text/style above).
         let labelPosition = _labelAttr(normalLabelModel, "position") as? String
         let labelPadding = ((_labelAttr(normalLabelModel, "distance") as? Double) ?? 0)

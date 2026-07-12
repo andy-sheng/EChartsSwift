@@ -41,9 +41,9 @@ import ZRenderKit
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
 //     -> PORT-NOTE: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
-//   import {throttle} from '../../util/throttle';                    -> PORT-TODO: NOT ported (large mode only).
+//   import {throttle} from '../../util/throttle';                    -> PORT-NOTE (deferred): requires util/throttle (not ported; large mode only).
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';  -> sibling `createClipPath`.
-//   import Sausage from '../../util/shape/sausage';                  -> PORT-TODO: NOT ported (polar roundCap only).
+//   import Sausage from '../../util/shape/sausage';                  -> PORT-NOTE (deferred): requires util/shape/sausage (not ported; polar roundCap only).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
 //   import SeriesData, {DefaultDataVisual} from '../../data/SeriesData';  -> `SeriesData`.
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
@@ -66,8 +66,8 @@ import ZRenderKit
 //   import {EventCallback} from 'zrender/src/core/Eventful';         -> `EventCallback` (ZRenderKit).
 //   import { warn } from '../../util/log';                           -> `log.warn`.
 //   import {createSectorCalculateTextPosition, SectorTextPosition, setSectorTextRotation}
-//       from '../../label/sectorLabel';                              -> PORT-TODO: polar/label deferred.
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (still a no-op stub; see Task 1 PORT-TODO).
+//       from '../../label/sectorLabel';                              -> PORT-NOTE (deferred): requires label/sectorLabel (not ported; polar/label).
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (PORT-NOTE: still a no-op stub in basicTransition.swift; universalTransition style save deferred).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-NOTE: sectorHelper is ported; polar bars deferred in this view.
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
@@ -136,8 +136,10 @@ open class BarView: ChartView {
 
     private var _isFirstFrame: Bool = true // First frame after series added
     // upstream: private _onRendered: EventCallback;
-    // PORT-TODO: realtimeSort uses `api.getZr().on('rendered', cb)`; ExtensionAPI has no `getZr`/event
-    //   plumbing here yet. Kept as a closure slot; realtimeSort is deferred (see `_enableRealtimeSort`).
+    // PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event plumbing (getZr is listed in
+    //   ExtensionAPI.availableMethods but the dynamic method binding is deferred to Phase 6b, so
+    //   `api.getZr().on('rendered', cb)` is not callable). Kept as a closure slot; realtimeSort is
+    //   deferred (see `_enableRealtimeSort`).
     private var _onRendered: (() -> Void)?
 
     private var _backgroundGroup: Group?
@@ -332,7 +334,9 @@ open class BarView: ChartView {
                 )
                 if realtimeSortCfg != nil {
                     // (el as ECElement).forceLabelAnimation = true;
-                    // PORT-TODO: ECElement.forceLabelAnimation (label animation) deferred with the label block.
+                    // PORT-NOTE (deferred): ECElement.forceLabelAnimation is only consumed by the label
+                    //   animation subsystem, which is deferred in this view (and this branch is
+                    //   realtimeSort-gated, itself deferred). No-op until the label block lands.
                 }
 
                 updateStyle(
@@ -400,13 +404,13 @@ open class BarView: ChartView {
 
                 // upstream: roundCapChanged = el && (el.type === 'sector' && roundCap || el.type === 'sausage' && !roundCap)
                 // Cartesian elements are always 'rect' → this is false at runtime; the polar
-                // (sector/sausage) recreate path is deferred (PORT-TODO). Read `el.type` at runtime to
+                // (sector/sausage) recreate path is deferred (PORT-NOTE: polar). Read `el.type` at runtime to
                 // mirror upstream faithfully rather than hard-coding `false` (which is dead code).
                 let elType = el?.type
                 let roundCapChanged = elType != nil
                     && ((elType == "sector" && roundCap) || (elType == "sausage" && !roundCap))
                 if roundCapChanged {
-                    // roundCap changed (polar only): remove old and recreate. PORT-TODO (polar deferred).
+                    // roundCap changed (polar only): remove old and recreate. PORT-NOTE (polar deferred).
                     if let el = el { removeElementWithFadeOut(el, seriesModel, oldIndex) }
                     el = nil
                 }
@@ -422,12 +426,12 @@ open class BarView: ChartView {
                 }
 
                 if realtimeSortCfg != nil {
-                    // (el as ECElement).forceLabelAnimation = true;  // PORT-TODO (label block deferred).
+                    // (el as ECElement).forceLabelAnimation = true;  // PORT-NOTE (deferred: label block).
                 }
 
                 if isChangeOrder {
                     // upstream reuses the previous label's prevValue to skip a new label animation.
-                    // PORT-TODO: label subsystem (labelInner / getTextContent label store) deferred.
+                    // PORT-NOTE (deferred): label subsystem (labelInner / getTextContent label store).
                 }
                 // Not change anything if only order changed.
                 // Especially not change label.
@@ -484,15 +488,15 @@ open class BarView: ChartView {
     private func _renderLarge(_ seriesModel: BarSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         self._clear()
         // upstream: createLarge(seriesModel, this.group);
-        // PORT-TODO: large/progressive draw (LargePath, data.getLayout('largePoints'), throttle) is
-        //   deferred per the bar milestone scope. Only the clip is updated.
+        // PORT-NOTE (deferred): large/progressive draw (LargePath, data.getLayout('largePoints'), throttle)
+        //   requires util/throttle + LargePath (not ported). Only the clip is updated.
         self._updateLargeClip(seriesModel)
     }
 
     private func _incrementalRenderLarge(_ params: StageHandlerProgressParams, _ seriesModel: BarSeriesModel) {
         self._removeBackground()
         // upstream: createLarge(seriesModel, this.group, this._progressiveEls, true);
-        // PORT-TODO: large/progressive draw deferred (see `_renderLarge`).
+        // PORT-NOTE (deferred): large/progressive draw (see `_renderLarge`).
     }
 
     private func _updateLargeClip(_ seriesModel: BarSeriesModel) {
@@ -512,9 +516,10 @@ open class BarView: ChartView {
     }
 
     // ------------------------------------------------------------------------------------------
-    // realtimeSort — PORT-TODO (deferred per the bar milestone scope).
-    //   The methods below need `api.getZr().on('rendered', …)` + `api.dispatchAction(…)` (ExtensionAPI
-    //   has no event/dispatch plumbing yet) and OrdinalScale sort helpers. `shouldRealtimeSort` returns
+    // realtimeSort — PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event/dispatch plumbing.
+    //   The methods below need `api.getZr().on('rendered', …)` + `api.dispatchAction(…)` (getZr is listed in
+    //   ExtensionAPI.availableMethods but its dynamic binding is deferred) and OrdinalScale sort helpers.
+    //   `shouldRealtimeSort` returns
     //   nil for the default (realtimeSort: false) path, so these are unreachable in the common case.
     //   Faithful signatures are preserved for a later mechanical port.
     // ------------------------------------------------------------------------------------------
@@ -524,7 +529,7 @@ open class BarView: ChartView {
         _ data: SeriesData,
         _ api: ExtensionAPI
     ) {
-        // PORT-TODO: realtimeSort deferred (see the block comment above). Upstream body:
+        // PORT-NOTE (deferred): realtimeSort (see the block comment above). Upstream body:
         //   if (!data.count()) return;
         //   if (this._isFirstFrame) { this._dispatchInitSort(...); this._isFirstFrame = false; }
         //   else { register an `orderMapping` + `api.getZr().on('rendered', ...)` listener. }
@@ -536,7 +541,7 @@ open class BarView: ChartView {
         _ baseAxis: Axis2D,
         _ orderMapping: OrderMapping
     ) -> OrdinalSortInfo {
-        // PORT-TODO: realtimeSort deferred (see the block comment above).
+        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
         _ = (data, baseAxis, orderMapping)
         return OrdinalSortInfo(ordinalNumbers: [])
     }
@@ -547,7 +552,7 @@ open class BarView: ChartView {
         _ baseAxis: Axis2D,
         _ api: ExtensionAPI
     ) {
-        // PORT-TODO: realtimeSort deferred (see the block comment above).
+        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
         _ = (data, orderMapping, baseAxis, api)
     }
 
@@ -556,7 +561,7 @@ open class BarView: ChartView {
         _ realtimeSortCfg: RealtimeSortConfig,
         _ api: ExtensionAPI
     ) {
-        // PORT-TODO: realtimeSort deferred (see the block comment above).
+        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
         _ = (data, realtimeSortCfg, api)
     }
 
@@ -572,7 +577,7 @@ open class BarView: ChartView {
     private func _removeOnRenderedListener(_ api: ExtensionAPI) {
         if self._onRendered != nil {
             // upstream: api.getZr().off('rendered', this._onRendered);
-            // PORT-TODO: ExtensionAPI has no `getZr`/event plumbing yet (realtimeSort deferred).
+            // PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event plumbing (realtimeSort).
             self._onRendered = nil
         }
     }
@@ -658,7 +663,7 @@ func clipCartesian2D(_ coordSysClipArea: CartesianCoordArea, _ layout: inout Rec
 
     return xClipped || yClipped
 }
-// PORT-TODO: `clip.polar` deferred (polar not ported).
+// PORT-NOTE (deferred): `clip.polar` (polar clip path).
 
 // ================================================================================================
 // upstream: `interface ElementCreator` + `const elementCreator: { [key in 'polar' | 'cartesian2d'] }`.
@@ -675,7 +680,8 @@ func elementCreatorCartesian2D(
     // upstream: new Rect({ shape: extend({}, layout), z2: 1 })  (RectShape is a value type → copy is implicit)
     let rect = Rect(["shape": layout as PathShape, "z2": Double(1)])
     // upstream: (rect as any).__dataIndex = newIndex;
-    // PORT-TODO: dynamic `__dataIndex` prop (used by large-mode hit-testing) has no Swift slot; deferred.
+    // PORT-NOTE (deferred): dynamic `__dataIndex` prop (used by large-mode hit-testing) has no Swift slot;
+    //   only needed by the deferred large-draw path.
     _ = newIndex
 
     rect.name = "item"
@@ -733,7 +739,7 @@ func updateRealtimeAnimation(
     // upstream splits the layout into an axis-driven target and a series-driven (growth) target and
     // animates them with different animation models. With the no-animation shims both collapse to
     // setting the final shape once — so this is equivalent to `el.setShape(layout)`.
-    // PORT-TODO: realtimeSort split-target animation deferred (see the realtimeSort block comment).
+    // PORT-NOTE (deferred): realtimeSort split-target animation (see the realtimeSort block comment).
     _ = (realtimeSortCfg, seriesAnimationModel, newIndex, isHorizontal, isUpdate, isChangeOrder)
     if !isChangeOrder {
         _ = el.setShape(layout)
@@ -794,9 +800,9 @@ func getLayoutCartesian2D(_ data: SeriesData, _ dataIndex: Int, _ itemModel: Mod
 // PORT-NOTE: `getLayout.polar` deferred in this cartesian-only bar view (coord/polar itself is ported).
 
 // upstream: function isZeroOnPolar(layout: SectorLayout) { ... }
-// PORT-TODO: polar deferred; cartesian rect layout has no startAngle/endAngle → always false.
+// PORT-NOTE (deferred): polar `isZeroOnPolar`; cartesian rect layout has no startAngle/endAngle → always false.
 
-// PORT-TODO: `createPolarPositionMapping` deferred (polar/label not ported).
+// PORT-NOTE (deferred): `createPolarPositionMapping` (polar/label).
 
 func updateStyle(
     _ el: BarPossiblePath,
@@ -814,18 +820,24 @@ func updateStyle(
         // upstream: const borderRadius = itemModel.get(['itemStyle', 'borderRadius']) as ... || 0;
         //   (el as Rect).setShape('r', borderRadius);
         let borderRadius = (itemModel.get(["itemStyle", "borderRadius"]) as? Double) ?? 0
-        // PORT-TODO: `setShape('r', …)` per-key set on a typed shape struct is a documented no-op in
-        //   Path (only whole-shape setShape). Corner radius therefore not applied yet.
+        // POTENTIAL-BUG: `setShape('r', …)` per-key set is a documented no-op in ZRenderKit Path
+        //   (Path.setShape(key,value) only marks dirty; only whole-shape setShape mutates). Corner radius
+        //   is therefore silently dropped: itemStyle.borderRadius does not round the bar corners. A local
+        //   whole-shape read-modify-write here would still be clobbered by the subsequent
+        //   setShape(layout)/initProps(layout) that replace the shape wholesale (the layout RectShape
+        //   carries no `r`). The real fix belongs in ZRenderKit (per-key setShape) or by threading `r`
+        //   into the layout shape. borderRadius also may be `number[]` (only Double read here).
         _ = el.setShape("r", borderRadius)
     }
     else {
-        // PORT-TODO: polar cornerRadius (getSectorCornerRadius) deferred.
+        // PORT-NOTE (deferred): polar cornerRadius; getSectorCornerRadius IS ported (sectorHelper.swift)
+        //   but the polar updateStyle branch is deferred in this cartesian-only path.
     }
 
     // upstream: el.useStyle(style)
-    // PORT-TODO: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
-    //   `useStyle` takes a typed `PathStyleProps`. `barStyleFromDict` bridges the common keys (this is
-    //   what colors the bar). Gradient/pattern fills, decal, and lineDash are not bridged yet.
+    // PORT-NOTE: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
+    //   `useStyle` takes a typed `PathStyleProps`. `barStyleFromDict` bridges the common paint keys
+    //   (this is what colors the bar) and decal. Gradient/pattern fills and lineDash are not bridged yet.
     el.useStyle(barStyleFromDict(style))
 
     let cursorStyle = itemModel.getShallow("cursor") as? String
@@ -880,8 +892,8 @@ func updateStyle(
     let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
     states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
     states.setStatesStylesFromModel(el, itemModel)
-    // PORT-TODO: upstream's `isZeroOnPolar(layout)` no-fill state fix-up (BarView.ts:1066-1074) is
-    //   polar-only; deferred (polar not ported).
+    // PORT-NOTE (deferred): upstream's `isZeroOnPolar(layout)` no-fill state fix-up (BarView.ts:1066-1074)
+    //   is polar-only.
 }
 
 // In case width or height are too small.
@@ -904,7 +916,7 @@ func getLineWidth(
 
 // upstream: class LargePath / interface LargePathProps / function createLarge / largePathUpdateDataIndex /
 //   largePathFindDataIndex — the large/progressive draw path.
-// PORT-TODO: large/progressive draw deferred per the bar milestone scope. It needs `throttle`,
+// PORT-NOTE (deferred): large/progressive draw. It needs `throttle` (util/throttle, not ported),
 //   `model.getIncrementalId`, `data.getLayout('largePoints' | 'size' | ...)`, and a raw
 //   `CanvasRenderingContext2D.rect` batch — none of which are on the cartesian normal path.
 
@@ -922,7 +934,7 @@ func createBackgroundShape(
     out.width = isHorizontalOrRadial ? rectShape.width : coordLayout.width
     out.height = isHorizontalOrRadial ? coordLayout.height : rectShape.height
     return out
-    // PORT-TODO: the `else` (polar Sector) branch is deferred (polar not ported).
+    // PORT-NOTE (deferred): the `else` (polar Sector) background branch.
 }
 
 func createBackgroundEl(
@@ -956,10 +968,10 @@ func getLabelPositionForVertical(_ layout: RectLayout, _ coordSys: CoordSysOfBar
     return layout.width >= 0 ? "right" : "left"
 }
 
-// PORT-TODO: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' and the background
+// PORT-NOTE: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' and the background
 //   `getItemStyle()` are `[String: Any]` bags; ZRenderKit `Path.useStyle` takes a typed
-//   `PathStyleProps`. This maps the common paint keys so bars/backgrounds are actually colored.
-//   Gradient/pattern fills, decal, and lineDash are not bridged yet.
+//   `PathStyleProps`. This maps the common paint keys (and decal) so bars/backgrounds are actually
+//   colored. Gradient/pattern fills and lineDash are not bridged yet.
 // Coerce a data-store cell to a Double (NaN for non-numeric / null), mirroring scatterToNumber.
 func barToNumber(_ v: Any?) -> Double {
     if let d = v as? Double { return d }
@@ -1008,14 +1020,14 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
 //   to RADIAL bars (baseAxis.dim === 'angle': a category angle axis + value radius axis — the
 //   canonical bar-on-polar and the gallery `bar-polar-radial` demo).
 //
-// PORT-TODO (deferred, matching the rest of the polar block):
-//   * layout/barPolar.ts is not ported, so the Sector layout (band width / bar offset / stacking) is
-//     reproduced inline from the axes for the single-series default rather than read back from
+// PORT-NOTE (deferred, matching the rest of the polar block):
+//   * requires layout/barPolar (not ported), so the Sector layout (band width / bar offset / stacking)
+//     is reproduced inline from the axes for the single-series default rather than read back from
 //     `data.getItemLayout`. Multi-series bar-width sharing & stacking on polar are deferred.
 //   * TANGENTIAL bars (baseAxis.dim === 'radius') are deferred — `_renderPolarBars` returns early.
-//   * roundCap → `util/shape/sausage` (Sausage) is NOT ported; roundCap is ignored (always a Sector).
+//   * roundCap → requires util/shape/sausage (Sausage, not ported); roundCap is ignored (always a Sector).
 //   * getSectorCornerRadius / sector text rotation / sector label position are deferred (see the
-//     `updateStyle` polar PORT-TODOs).
+//     `updateStyle` polar PORT-NOTEs).
 // ================================================================================================
 
 // upstream (BarView.ts `polarPropties`): ['cx','cy','r','startAngle','endAngle'].
@@ -1079,7 +1091,7 @@ extension BarView {
 
         // Only the RADIAL (category angle axis) case is ported; tangential bars are deferred.
         guard isHorizontalOrRadial, angleAxis.type == "category" else {
-            // PORT-TODO: tangential bars (radius base) deferred; clear stale bars if any.
+            // PORT-NOTE (deferred): tangential bars (radius base); clear stale bars if any.
             _ = group.removeAll()
             self._data = data
             return

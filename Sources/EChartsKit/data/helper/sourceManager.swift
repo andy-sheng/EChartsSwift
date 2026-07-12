@@ -210,9 +210,10 @@ public final class SourceManager {
             // When there is no upstream metaRawOption (upMetaRawOption == nil), the RHS of each
             // `!==` is JS `undefined`; the LHS `seriesLayoutBy` is `value|null` (never undefined),
             // so the first term is always true -> a source IS created for the inline-data series.
-            // PORT-TODO (sourceManager.ts:240): when `upMetaRawOption != nil` (dataset upstream,
-            //   unreachable this phase) the null-vs-undefined `!==` distinction for `seriesLayoutBy`
-            //   is collapsed by Swift Optionals; revisit once a dataset SourceManager exists.
+            // POTENTIAL-BUG (sourceManager.ts:240): when `upMetaRawOption != nil` (dataset upstream)
+            //   the null-vs-undefined `!==` distinction for `seriesLayoutBy` is collapsed by Swift
+            //   Optionals — a JS `null` and `undefined` both map to `nil`, so `needsCreateSource` may
+            //   diverge from upstream in the dataset-upstream path. Revisit with a dataset SourceManager.
             let needsCreateSource = (upMetaRawOption == nil || seriesLayoutBy != upMetaRawOption!.seriesLayoutBy)
                 || (jsTruthy(sourceHeader) != jsTruthy(upMetaRawOption?.sourceHeader ?? nil))
                 || (dimensions != nil)
@@ -493,7 +494,7 @@ public func disableTransformOptionMerge(_ datasetModel: DatasetModel) {
     let transformOption = (datasetModel.option as? [String: Any])?["transform"]
     if jsTruthy(transformOption) {
         // transformOption && setAsPrimitive(datasetModel.option.transform);
-        // PORT-TODO (zrender util.setAsPrimitive not ported — util.swift:474): `setAsPrimitive`
+        // PORT-NOTE (deferred): requires `util.setAsPrimitive` (not ported — util.swift:474): `setAsPrimitive`
         //   tags the transform option object with a hidden key so the option-merge pass replaces
         //   it wholesale instead of deep-merging it. Only affects a *second* `setOption` re-merge;
         //   the static single-setOption transform data path is unaffected. Wire once

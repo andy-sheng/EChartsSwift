@@ -29,7 +29,7 @@ import ZRenderKit
 // upstream free functions of treeHelper.ts, mapped to a caseless-enum namespace (à la the module import
 //   `import { retrieveTargetInfo, aboveViewRoot } from '../helper/treeHelper'`). Only the members used
 //   by the ported sunburst action are translated; `wrapTreePathInfo` stays DEFERRED (referenced only by
-//   the deferred tree/sunburst/treemap `getDataParams` — see those series' PORT-TODOs).
+//   the deferred tree/sunburst/treemap `getDataParams` — see those series' deferred PORT-NOTEs).
 public enum treeHelper {
 
     // upstream: retrieveTargetInfo returns `{ node: TreeNode }` (or undefined).

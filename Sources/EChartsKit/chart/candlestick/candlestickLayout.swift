@@ -40,7 +40,7 @@ import ZRenderKit
 //   import { createBandWidthBasedAxisContainShapeHandler, createMetricsNonOrdinalLinearPositiveMinGap,
 //            makeAxisStatKey } from '../helper/axisSnippets';
 //       -> chart/helper/axisSnippets.ts NOT ported; the three used helpers are provided as local
-//          PORT-TODO stubs at the bottom (mirrors layout/barGrid.swift + layout/barCommon.swift).
+//          PORT-NOTE (deferred) stubs at the bottom (mirrors layout/barGrid.swift + layout/barCommon.swift).
 //   import { calcBandWidth } from '../../coord/axisBand';              -> `calcBandWidth` (coord/axisBand.swift).
 
 // const callOnlyOnce = makeCallOnlyOnce();
@@ -99,8 +99,11 @@ public let candlestickLayout: StageHandler = {
 
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. Left unwired due to the optional-return
-    //   mismatch of `StageHandler.plan` (same deviation as layout/barGrid.swift `handler.plan = nil`).
+    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. Left unwired due to the optional-return
+    //   mismatch of `StageHandler.plan` — `createRenderPlanner()` yields a nil-for-no-reset plan, but the
+    //   `StageHandlerPlan` typealias has a NON-optional return here, so "no reset" cannot be represented
+    //   without relaxing that typealias (same deviation as layout/barGrid.swift `handler.plan = nil`). The
+    //   `reset` stage still recomputes layout each pass, so the non-progressive render is unaffected.
     _ = createRenderPlanner()
     handler.plan = nil
 
@@ -232,9 +235,9 @@ public let candlestickLayout: StageHandler = {
         }
 
         // ----- largeProgress -----
-        // PORT-TODO: the large-mode layout produces the flat `largePoints` buffer consumed only by the
-        //   DEFERRED large draw path (`LargeBoxPath` in CandlestickView). Ported for structural fidelity;
-        //   it is unreachable on the normal render path and its consumer is not yet ported.
+        // PORT-NOTE (deferred): the large-mode layout produces the flat `largePoints` buffer consumed only
+        //   by the DEFERRED large draw path (`LargeBoxPath` in CandlestickView), which is not yet ported.
+        //   Ported here for structural fidelity; it is unreachable on the normal render path.
         func largeProgress(_ params: StageHandlerProgressParams, _ data: SeriesData) {
             // Structure: [sign, x, yhigh, ylow, sign, x, yhigh, ylow, ...]
             var points = vendor.createFloat32Array(params.count * 4)
@@ -408,8 +411,8 @@ private func candlestickTruthy(_ v: Any?) -> Bool {
 }
 
 // ============================================================================
-// PORT-TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the upstream
-//   one-liners so this file compiles; remove them and import the real symbols from
+// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+//   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (same pattern as layout/barGrid.swift +
 //   layout/barCommon.swift).
 //

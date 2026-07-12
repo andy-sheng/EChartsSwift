@@ -37,9 +37,9 @@ import ZRenderKit
 //   import { calcBandWidth } from '../../coord/axisBand';               -> `calcBandWidth` (coord/axisBand.swift).
 //   import { createBandWidthBasedAxisContainShapeHandler, createMetricsNonOrdinalLinearPositiveMinGap,
 //       makeAxisStatKey } from '../helper/axisSnippets';
-//       -> PORT-TODO: chart/helper/axisSnippets.ts NOT ported. Mirrored below as private stubs (same
-//          convention as barGrid.swift / barCommon.swift). Remove and import the real symbols from
-//          chart/helper/axisSnippets.swift when it lands.
+//       -> PORT-NOTE (deferred): requires chart/helper/axisSnippets.swift (the shared module is not
+//          ported; mirrored below as private stubs, same convention as barGrid.swift / barCommon.swift /
+//          candlestickLayout.swift). Remove and import the real symbols when the module lands.
 
 // upstream: const callOnlyOnce = makeCallOnlyOnce();
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
@@ -295,8 +295,8 @@ private func parsePercentOr0(_ option: Any?, _ percentBase: Double) -> Double {
 
 
 // ============================================================================
-// PORT-TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the upstream
-//   one-liners so this file compiles; remove them and import the real symbols from
+// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+//   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (as barGrid.swift / barCommon.swift do for their stubs).
 //
 //   export function makeAxisStatKey(seriesType): AxisStatKey

@@ -70,8 +70,8 @@ public final class SliderZoomDisplayables {
 // class SliderZoomView extends DataZoomView (extends ComponentView)
 open class SliderZoomView: ComponentView {
 
-    // PORT-TODO: upstream toggles the handle-label emphasis visibility here; the handle labels are a
-    //   deferred niceties path (data-info), so this is a no-op stub consumed by the drag slice's _onDragEnd.
+    // PORT-NOTE (deferred): upstream toggles the handle-label emphasis visibility here; the handle labels
+    //   are a deferred niceties path (data-info), so this is a no-op stub consumed by the drag slice's _onDragEnd.
     func _showDataInfo(_ isEmphasis: Bool) { _ = isEmphasis }
 
     // static type = 'dataZoom.slider'; type = SliderZoomView.type;
@@ -481,8 +481,8 @@ open class SliderZoomView: ComponentView {
         // upstream: actualMoveZone.attr({ draggable: true, cursor, drift: bind(this._onDragMove, this,
         //   'all'), ondragend: bind(this._onDragEnd, this), ... }) — the pan-drag ('all') wiring on the
         //   moveZone when brushSelect, else on the filler. `draggable`/`cursor` set above.
-        //   PORT-TODO: ondragstart→_showDataInfo(true) + onmouseover/out label toggles stay deferred
-        //   (_showDataInfo is a stub).
+        //   PORT-NOTE (deferred): ondragstart→_showDataInfo(true) + onmouseover/out label toggles stay
+        //   deferred (_showDataInfo is a stub; handle-label data-info niceties path not yet ported).
         if let actualMoveZone: Element = brushSelect ? displayables.moveZone : displayables.filler {
             self._wireDrift(actualMoveZone, .all)
             _ = actualMoveZone.on("dragend", { [weak self] _, _ in self?._onDragEnd(); return nil })

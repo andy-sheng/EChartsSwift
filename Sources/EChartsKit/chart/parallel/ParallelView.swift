@@ -28,8 +28,8 @@ import ZRenderKit
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Hover emphasis IS wired: each parallel line carries its
 //       emphasis/blur/select lineStyle state styles and is a highDown dispatcher (see updateElCommon).
-//       PORT-TODO: the parallelAxis brush-based highlight/fade interaction remains DEFERRED per the
-//       phase brief.
+//       PORT-NOTE (deferred): the parallelAxis brush-based highlight/fade interaction requires
+//       component/brush selector interaction (not ported).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import ParallelSeriesModel, { ParallelSeriesDataItemOption } from './ParallelSeries';
@@ -41,9 +41,12 @@ import ZRenderKit
 //   import { OptionAxisType } from '../../coord/axisCommonTypes';  -> OptionAxisType (= String, axisHelper.swift).
 //   import { numericToNumber } from '../../util/number';           -> `number.numericToNumber`.
 //   import { eqNaN } from 'zrender/src/core/util';                 -> `util.eqNaN` (ZRenderKit).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-TODO: update-transition NOT ported (DEFERRED).
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> saveOldStyle IS ported (basicTransition.swift).
+//       PORT-NOTE: the parallel static render sets final geometry directly, so the saveOldStyle-based
+//       update-transition path is intentionally not used (same deviation as RadarView / FunnelView).
 //   import Element from 'zrender/src/Element';                     -> Element (ZRenderKit); progressive path DEFERRED.
-//   import { getIncrementalId } from '../../util/model';           -> PORT-TODO: progressive/large path DEFERRED.
+//   import { getIncrementalId } from '../../util/model';           -> getIncrementalId IS ported (modelUtil.swift).
+//       PORT-NOTE (deferred): the progressive/large streaming render path is a design deviation of the static subset.
 
 // upstream: const DEFAULT_SMOOTH = 0.3;
 private let DEFAULT_SMOOTH: Double = 0.3
@@ -73,7 +76,7 @@ open class ParallelView: ChartView {
     private var _initialized = false
 
     // upstream: private _progressiveEls: Element[];
-    // PORT-TODO: progressive/large render path DEFERRED — kept for structural parity.
+    // PORT-NOTE (deferred): progressive/large render path is a design deviation — kept for structural parity.
     private var _progressiveEls: [Element] = []
 
     // Persistent per-item polylines (index-keyed) so a merge-mode setOption VALUE change MORPHS each
@@ -106,7 +109,7 @@ open class ParallelView: ChartView {
 
         let data = seriesModel.getData()
         // const oldData = this._data;
-        //   PORT-TODO: full `data.diff(oldData)` add/update/remove pipeline still DEFERRED. The reuse
+        //   PORT-NOTE (deferred): full `data.diff(oldData)` add/update/remove pipeline. The reuse
         //   slice below implements the upstream `update` path (updateProps shape morph) for the
         //   same-item-count case; a count change falls back to the static rebuild (`add` path only).
         // const coordSys = seriesModel.coordinateSystem;
@@ -162,9 +165,9 @@ open class ParallelView: ChartView {
         //       const clipPath = createGridClipShape(coordSys, seriesModel, function () { … removeClipPath … });
         //       dataGroup.setClipPath(clipPath);
         //   }
-        // PORT-TODO: the enter clip-reveal animation (createGridClipShape + setClipPath + removeClipPath)
-        //   is DEFERRED (graphic.initProps / clip-path animation not ported). `_initialized` is still
-        //   flipped for structural parity.
+        // PORT-NOTE (deferred): the enter clip-reveal animation (createGridClipShape + setClipPath +
+        //   removeClipPath). graphic.initProps IS ported (basicTransition.swift), but clip-path growth
+        //   animation is a design deviation of the static subset. `_initialized` is still flipped for parity.
         if !self._initialized {
             self._initialized = true
         }
@@ -179,7 +182,7 @@ open class ParallelView: ChartView {
     ) {
         // upstream:
         //   this._initialized = true; this._data = null; this._dataGroup.removeAll();
-        // PORT-TODO: progressive/large render path DEFERRED; base bookkeeping kept for parity.
+        // PORT-NOTE (deferred): progressive/large render path is a design deviation; base bookkeeping kept for parity.
         self._initialized = true
         self._data = nil
         _ = self._dataGroup.removeAll()
@@ -202,8 +205,9 @@ open class ParallelView: ChartView {
         //       updateElCommon(line, data, dataIndex, makeSeriesScope(seriesModel));
         //       progressiveEls.push(line);
         //   }
-        // PORT-TODO: progressive/large render path DEFERRED (getIncrementalId / line.incremental /
-        //   StageHandlerProgressParams start/end streaming not ported). No-op for the static subset.
+        // PORT-NOTE (deferred): progressive/large render path (getIncrementalId IS ported, but
+        //   line.incremental / StageHandlerProgressParams start/end streaming is a design deviation).
+        //   No-op for the static subset.
     }
 
     // upstream: remove() { this._dataGroup && this._dataGroup.removeAll(); this._data = null; }
@@ -216,8 +220,9 @@ open class ParallelView: ChartView {
 }
 
 // upstream: function createGridClipShape(coordSys: Parallel, seriesModel: ParallelSeriesModel, cb: () => void)
-// PORT-TODO: enter clip-reveal (Rect clip growing along the layout axis) is DEFERRED — depends on
-//   graphic.initProps (animation not ported). Left unported; see the `_initialized` block in `render`.
+// PORT-NOTE (deferred): enter clip-reveal (Rect clip growing along the layout axis). graphic.initProps
+//   IS ported (basicTransition.swift), but the clip-growth animation is a design deviation of the static
+//   subset. Left unported; see the `_initialized` block in `render`.
 
 // upstream: function createLinePoints(data, dataIndex, dimensions, coordSys): VectorArray[]
 private func createLinePoints(

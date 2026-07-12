@@ -34,14 +34,14 @@ import ZRenderKit
 // function fillLabel(opt: DisplayStateHostOption) {
 //     defaultEmphasis(opt, 'label', ['show']);
 // }
-// PORT-TODO: upstream `defaultEmphasis` mutates the plain option object in place. The ported
+// PORT-NOTE (deferred): upstream `defaultEmphasis` mutates the plain option object in place. The ported
 //   `model.defaultEmphasis` takes a typed `DisplayStateHostOption` (struct); the marker data items
 //   are dynamic `[String: Any]` bags. Following the same treatment as `SeriesModel.fillDataTextStyle`
-//   (model/Series.swift), the `DisplayStateHostOption` bridging is deferred — the structural walk in
-//   `_mergeOption` is preserved so no branch is dropped.
+//   (model/Series.swift), the `[String: Any]` <-> DisplayStateHostOption bridging is deferred — the
+//   structural walk in `_mergeOption` is preserved so no branch is dropped.
 private func fillLabel(_ opt: Any?) {
     // defaultEmphasis(opt, 'label', ['show']);
-    // PORT-TODO: bridge `[String: Any]` <-> DisplayStateHostOption for `model.defaultEmphasis`.
+    // PORT-NOTE (deferred): bridge `[String: Any]` <-> DisplayStateHostOption for `model.defaultEmphasis`.
     _ = opt
 }
 
@@ -119,14 +119,14 @@ public struct MarkerOption {
     // upstream: data?: unknown[]
     public var data: [Any?]?
     // upstream: tooltip?: CommonTooltipOption<unknown> & { trigger?: 'item' | 'axis' | boolean | 'none' }
-    // PORT-TODO: tooltip option shape modeled as the dynamic bag.
+    // PORT-NOTE: tooltip option shape modeled as the dynamic bag.
     public var tooltip: Any?
     public init() {}
 }
 
 // { [componentType]: MarkerModel }
 // const inner = makeInner<Dictionary<MarkerModel>, SeriesModel>();
-// PORT-TODO: `makeInner` requires a reference (`AnyObject`) value type; the upstream value is a plain
+// PORT-NOTE: `makeInner` requires a reference (`AnyObject`) value type; the upstream value is a plain
 //   `Dictionary<MarkerModel>` object. Wrapped in a reference `MarkerModelInner` holding the map so the
 //   per-host storage semantics are preserved (`inner(seriesModel).map[componentType]`).
 final class MarkerModelInner {
@@ -139,12 +139,13 @@ private let inner: (SeriesModel) -> MarkerModelInner = model.makeInner { MarkerM
 //   The generic `Opts` is dropped per CONVENTIONS §2 (dynamic option bag). Abstract base for
 //   markPoint/markLine/markArea -> `open class`.
 //
-// PORT-TODO: upstream `zrUtil.mixin(MarkerModel, DataFormatMixin.prototype)` grafts the
-//   `DataFormatMixin` method set. As with `SeriesModel` (see model/Series.swift), the conformance is
-//   blocked by an impedance mismatch: `DataFormatMixin` requires a non-optional `ecModel: GlobalModel`
-//   (and `animatedValue`), but `Model.ecModel` is `GlobalModel?`. Until that is reconciled,
-//   `getFormattedLabel`/`getRawValue` from the mixin are unavailable here; `getDataParams`/
-//   `formatTooltip` are provided directly below. `DataHost` (the `getData` contract) is conformed.
+// PORT-NOTE (deferred): requires reconciling `DataFormatMixin` conformance. Upstream
+//   `zrUtil.mixin(MarkerModel, DataFormatMixin.prototype)` grafts the `DataFormatMixin` method set. As
+//   with `SeriesModel` (see model/Series.swift), the conformance is blocked by an impedance mismatch:
+//   `DataFormatMixin` requires a non-optional `ecModel: GlobalModel` (and `animatedValue`), but
+//   `Model.ecModel` is `GlobalModel?`. Until that is reconciled, `getFormattedLabel`/`getRawValue` from
+//   the mixin are unavailable here; `getDataParams`/`formatTooltip` are provided directly below.
+//   `DataHost` (the `getData` contract) is conformed.
 open class MarkerModel: ComponentModel, DataHost {
 
     // static type = 'marker';
@@ -158,7 +159,7 @@ open class MarkerModel: ComponentModel, DataHost {
     public var createdBySelf = false
 
     // preventAutoZ = true;  (upstream overrides ComponentModel's default `preventAutoZ`)
-    // PORT-TODO: `preventAutoZ` is an inherited stored property (ComponentModel); default it to true
+    // PORT-NOTE: `preventAutoZ` is an inherited stored property (ComponentModel); default it to true
     //   in `init`/`_manager` is not possible at declaration due to override, so set in `init` below.
 
     // static readonly dependencies = ['series', 'grid', 'polar', 'geo'];
@@ -198,7 +199,7 @@ open class MarkerModel: ComponentModel, DataHost {
     //   Swift port typed it Optional); returns a non-nil Bool.
     open override func isAnimationEnabled() -> Bool? {
         // if (env.node) { return false; }
-        // PORT-TODO: ZRenderKit's `env` is module-internal (not visible from EChartsKit) and the
+        // PORT-NOTE: ZRenderKit's `env` is module-internal (not visible from EChartsKit) and the
         //   native client is treated as browser-like (`env.node == false`), matching the treatment in
         //   model/Series.swift `isAnimationEnabled`. The node early-return is therefore dropped.
 
@@ -282,10 +283,10 @@ open class MarkerModel: ComponentModel, DataHost {
         // const itemName = data.getName(dataIndex);
         // return createTooltipMarkup('section', { header: this.name, blocks: [...] });
         //
-        // PORT-TODO: `getRawValue` (DataFormatMixin) is unavailable (conformance blocked, see class
-        //   header) and `createTooltipMarkup` (component/tooltip/tooltipMarkup) is not yet ported.
-        //   Tooltip markup is deferred (interaction/formatting, out of static-render scope). Returns
-        //   nil until the tooltip component + mixin conformance land.
+        // PORT-NOTE (deferred): requires `getRawValue` (DataFormatMixin, conformance blocked — see class
+        //   header). `createTooltipMarkup` (component/tooltip/tooltipMarkup) is ported, but the raw value
+        //   feeding it is unavailable until the mixin conformance lands. Tooltip markup deferred
+        //   (interaction/formatting, out of static-render scope). Returns nil until then.
         _ = (dataIndex, multipleSeries, dataType)
         return nil
     }
@@ -306,11 +307,11 @@ open class MarkerModel: ComponentModel, DataHost {
         _ dataType: SeriesDataType? = nil
     ) -> CallbackDataParams {
         // const params = DataFormatMixin.prototype.getDataParams.call(this, dataIndex, dataType);
-        // PORT-TODO: the `DataFormatMixin.getDataParams` base is unavailable (conformance blocked,
-        //   see class header). The base params (name/value/color/encode/…) are therefore not computed
-        //   here; only the host-series patch below (upstream's actual override contribution) is
-        //   applied on a params scaffold built from directly-available fields. Restore the full base
-        //   computation once `MarkerModel: DataFormatMixin` is unblocked.
+        // POTENTIAL-BUG: the `DataFormatMixin.getDataParams` base is unavailable (conformance blocked,
+        //   see class header). The base params (color/encode/dimensionNames/…) are therefore NOT computed
+        //   here — a divergence from upstream; only the host-series patch below (upstream's actual override
+        //   contribution) is applied on a params scaffold built from directly-available fields. Restore the
+        //   full base computation once `MarkerModel: DataFormatMixin` is unblocked.
         let data = self.getData()
         var params = CallbackDataParams(
             componentType: self.mainType,
@@ -348,7 +349,7 @@ open class MarkerModel: ComponentModel, DataHost {
      * Create slave marker model from series.
      */
     // abstract createMarkerModelFromSeries(markerOpt, masterMarkerModel, ecModel): MarkerModel
-    // PORT-TODO: abstract method — the per-type subclass (MarkerPointModel/MarkerLineModel/
+    // PORT-NOTE: abstract method — the per-type subclass (MarkerPointModel/MarkerLineModel/
     //   MarkerAreaModel, dependent stage) must override. `markerOpt` is the dynamic option bag.
     open func createMarkerModelFromSeries(
         _ markerOpt: Any?,
@@ -369,7 +370,7 @@ open class MarkerModel: ComponentModel, DataHost {
 
 // interface MarkerModel<Opts> extends DataFormatMixin {}
 // zrUtil.mixin(MarkerModel, DataFormatMixin.prototype);
-//   -> PORT-TODO: see class header (conformance blocked by `ecModel` optionality, mirrors SeriesModel).
+//   -> PORT-NOTE: see class header (conformance blocked by `ecModel` optionality, mirrors SeriesModel).
 
 // export default MarkerModel;  -> `open class MarkerModel` above.
 

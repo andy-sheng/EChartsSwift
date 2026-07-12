@@ -121,7 +121,7 @@ public func polarPrepareCustom(_ coordSys: Polar) -> [String: Any] {
 }
 
 // JS truthiness for the `dataItem || [0, 0]` guard: a nil/empty `dataItem` is falsy.
-// PORT-TODO: mirrors the jsTruthy helpers used across the port (CONVENTIONS §6); an empty array is
+// PORT-NOTE: mirrors the jsTruthy helpers used across the port (CONVENTIONS §6); an empty array is
 //   truthy in JS (only nil/undefined here triggers the fallback), so only nil is treated as falsy.
 private func jsTruthyArray(_ value: [Double]?) -> Bool {
     return value != nil

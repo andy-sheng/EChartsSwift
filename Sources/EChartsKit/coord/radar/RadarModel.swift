@@ -219,9 +219,9 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
             // else if (zrUtil.isFunction(nameFormatter)) { ... }
             else if util.isFunction(nameFormatter) {
                 // innerIndicatorOpt.name = nameFormatter(innerIndicatorOpt.name, innerIndicatorOpt);
-                // PORT-TODO: the formatter closure's dynamic type is erased in the option bag; cast to the
+                // POTENTIAL-BUG: the formatter closure's dynamic type is erased in the option bag; cast to the
                 //   conventional `RadarAxisNameFormatter` signature. If the stored closure was created with a
-                //   different signature this cast fails and the name is left unchanged.
+                //   different signature this cast fails and the name is left unchanged (upstream calls it directly).
                 if let fn = nameFormatter as? RadarAxisNameFormatter {
                     innerIndicatorOpt["name"] = fn(innerIndicatorOpt["name"] as? String, innerIndicatorOpt)
                 }

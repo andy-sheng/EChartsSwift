@@ -126,8 +126,10 @@ open class TreemapSeriesModel: SeriesModel {
         // const designatedVisualModel = new Model({itemStyle: designatedVisualItemStyle}, this, ecModel);
         //   Upstream keeps `designatedVisualItemStyle` as a live-shared object so `treemapVisual` can write
         //   into it and have `designatedVisualModel.get(['itemStyle', ...])` observe the write. The Swift
-        //   option bag is a value type, so this aliasing is lost (PORT-TODO: revisit when treemapVisual lands;
-        //   the visual-priority write-through does not take effect through this path).
+        //   option bag is a value type, so this aliasing is lost (POTENTIAL-BUG: treemapVisual has landed and
+        //   DOES write into `seriesModel.designatedVisualItemStyle`, but `designatedVisualModel` captured a COPY
+        //   of the empty dict here, so `designatedVisualModel.get(['itemStyle', ...])` never observes those
+        //   writes — the visual-priority write-through does not take effect through this path).
         self.designatedVisualItemStyle = [:]
         let designatedVisualModel = Model(["itemStyle": self.designatedVisualItemStyle], self, ecModel)
 
@@ -161,10 +163,11 @@ open class TreemapSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // PORT-TODO: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by name —
-        //   see data/SeriesData.swift), so the injected closure is NOT actually invoked; the per-depth
-        //   level-model / designatedVisualModel parenting does not take effect through this path. Preserved
-        //   faithfully for the diffable surface and for when wrapMethod becomes real.
+        // POTENTIAL-BUG: SeriesData.wrapMethod only invokes injections for the hard-coded wrappable methods
+        //   (cloneShallow/transferProperties); `getItemModel` never calls its registered injection, so the
+        //   injected closure below is stored but NOT invoked, and the per-depth level-model /
+        //   designatedVisualModel parenting does not take effect through this path. Preserved faithfully for
+        //   the diffable surface and for when getItemModel invokes wrapMethod injections.
         let beforeLink: (SeriesData) -> Void = { nodeData in
             nodeData.wrapMethod("getItemModel") { args in
                 let model = args.first as? Model
@@ -219,9 +222,10 @@ open class TreemapSeriesModel: SeriesModel {
     //     params.treePathInfo = params.treeAncestors;
     //     return params;
     // }
-    // PORT-TODO: DEFERRED. Depends on `wrapTreePathInfo` (chart/helper/treeHelper.ts NOT ported) and on
-    //   `CallbackDataParams` gaining `treeAncestors`/`treePathInfo` slots (they only feed labels/tooltip,
-    //   both deferred). Faithful upstream body preserved above for the eventual port.
+    // PORT-NOTE (deferred): requires `wrapTreePathInfo` — chart/helper/treeHelper.swift IS ported but
+    //   `wrapTreePathInfo` within it is still a deferred stub — and `CallbackDataParams` gaining
+    //   `treeAncestors`/`treePathInfo` slots (they only feed labels/tooltip, both deferred). Same deferral as
+    //   the sibling SunburstSeries.getDataParams. Faithful upstream body preserved above for the eventual port.
 
     /**
      * @public
@@ -275,7 +279,7 @@ open class TreemapSeriesModel: SeriesModel {
 
     // getViewRoot() { return this._viewRoot; }
     public func getViewRoot() -> TreeNode? {
-        // PORT-TODO: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
+        // PORT-NOTE: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
         //   lifecycle hook). If the driver has not invoked `optionUpdated` yet, `_viewRoot` is nil;
         //   lazily reset here so the layout/view see a valid root (safe fallback, mirrors SunburstSeries).
         if self._viewRoot == nil {

@@ -181,7 +181,7 @@ public final class Task<Ctx: TaskContext>: AnyTask {
     private var _dirty: Bool
     private var _modBy: Double?
     private var _modDataCount: Double?
-    // PORT-TODO: `_upstream`/`_downstream` form a strong reference cycle (upstream JS relies on GC;
+    // PORT-NOTE: `_upstream`/`_downstream` form a strong reference cycle (upstream JS relies on GC;
     //   `dispose()` breaks the chain). Kept strong to preserve upstream lifetime semantics.
     //   Erased to `(any AnyTask)?` (upstream `Task<Ctx>`) to allow cross-context piping (see AnyTask).
     public var _upstream: (any AnyTask)?

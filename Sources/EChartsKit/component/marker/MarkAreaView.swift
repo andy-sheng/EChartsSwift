@@ -51,8 +51,8 @@ import ZRenderKit
 //   import MarkerModel from './MarkerModel';                        -> sibling `MarkerModel`.
 //   import { makeInner } from '../../util/model';                   -> `model.makeInner`.
 //   import { getVisualFromData } from '../../visual/helper';
-//     -> PORT-TODO: `visual/helper.ts` NOT ported. Faithful minimal `getVisualFromData` at the bottom
-//        of this file (delete once visual/helper.swift lands and call it directly).
+//     -> PORT-NOTE (deferred): `visual/helper.ts` NOT ported as a module. Faithful minimal
+//        `getVisualFromData` at the bottom of this file (delete once visual/helper.swift lands).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //     -> `label/labelStyle.swift` (`labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels`).
 //        labelStyle IS ported; the label block below is still deferred, but NOT for lack of it —
@@ -72,7 +72,7 @@ final class MarkAreaDrawGroup: MarkerDraw {
 }
 
 // const inner = makeInner<{ data: SeriesData<MarkAreaModel> }, MarkAreaDrawGroup>();
-// PORT-TODO: `makeInner` requires a reference (`AnyObject`) value type; the `{ data }` bag is wrapped
+// PORT-NOTE: `makeInner` requires a reference (`AnyObject`) value type; the `{ data }` bag is wrapped
 //   in a reference `MarkAreaInnerData`; the host is the `MarkAreaDrawGroup` object.
 final class MarkAreaInnerData {
     var data: SeriesData?
@@ -85,7 +85,7 @@ private let inner: (AnyObject) -> MarkAreaInnerData = model.makeInner { MarkArea
 //     coord: MarkArea2DDataItemOption[number]['coord'][]
 //     x0: number | string; y0: number | string; x1: number | string; y1: number | string;
 // };
-// PORT-TODO: the merged item is a dynamic option bag `[String: Any]` (CONVENTIONS §2/§4). It must stay
+// PORT-NOTE: the merged item is a dynamic option bag `[String: Any]` (CONVENTIONS §2/§4). It must stay
 //   a dict so `data.getItemModel(idx)` (a `Model` over the raw item) can read passthrough keys
 //   (`itemStyle`/`z2`/`name`/`label`) AND the dim-value getter can read `coord`.
 typealias MarkAreaMergedItemOption = [String: Any]
@@ -100,9 +100,10 @@ private func markAreaTransform(
     // item may be null
     // const item0 = item[0]; const item1 = item[1];
     // `item` is the 2-end tuple `MarkArea2DDataItemOption` — a 2-element array of dim option dicts.
-    // PORT-TODO: a 1D markArea item (`MarkArea1DDataItemOption`, a single object) has no `[0]`/`[1]`,
-    //   so `item0`/`item1` are nil and this returns nil (upstream relies on prior normalization; a
-    //   raw 1D object would throw downstream). 1D markArea normalization is out of static-render scope.
+    // POTENTIAL-BUG: a 1D markArea item (`MarkArea1DDataItemOption`, a single object) has no `[0]`/`[1]`,
+    //   so `item0`/`item1` are nil and this returns nil — the item is silently dropped (see the filter
+    //   below). Upstream relies on prior normalization; 1D markArea normalization is not reproduced here,
+    //   so a 1D markArea data item renders nothing. Out of current static-render scope.
     let itemArr = itemInput as? [Any?]
     let item0Any: Any? = (itemArr != nil && itemArr!.count > 0) ? itemArr![0] : nil
     let item1Any: Any? = (itemArr != nil && itemArr!.count > 1) ? itemArr![1] : nil
@@ -134,7 +135,7 @@ private func markAreaTransform(
 
     // Merge option into one
     // const result: MarkAreaMergedItemOption = mergeAll([{}, lt, rb]);
-    // PORT-TODO: upstream merges the two TRANSFORMED position objects `lt`/`rb` (which are clones of
+    // PORT-NOTE: upstream merges the two TRANSFORMED position objects `lt`/`rb` (which are clones of
     //   `item0`/`item1` still carrying passthrough keys like itemStyle/name/z2). The ported
     //   `MarkerPositionOption` is a struct that drops those passthrough keys, so the merge is
     //   reconstructed from the ORIGINAL item dicts (preserving passthrough) and the struct-carried
@@ -162,7 +163,7 @@ private func markAreaTransform(
 
 // function isInfinity(val: ScaleDataValue) { return !isNaN(val as number) && !isFinite(val as number); }
 private func isInfinity(_ val: Any?) -> Bool {
-    // PORT-TODO: JS `isNaN`/`isFinite` coerce strings; only a `Double` (incl. the ±Infinity defaults
+    // PORT-NOTE: JS `isNaN`/`isFinite` coerce strings; only a `Double` (incl. the ±Infinity defaults
     //   assigned in `markAreaTransform`) is examined here — sufficient for the numeric coord path.
     let d = (val as? Double) ?? Double.nan
     return !d.isNaN && !d.isFinite
@@ -239,8 +240,8 @@ private func getSingleMarkerEndPoint(
         // Chart like bar may have there own marker positioning logic
         // if (seriesModel.getMarkerPosition) { ... pick the larger x/y as 'x1'/'y1' via clampData,
         //     then point = seriesModel.getMarkerPosition(pointValue, dims, true); }
-        // PORT-TODO (MarkAreaView.ts:173): `SeriesModel.getMarkerPosition` (the bar/candlestick override
-        //   that snaps markArea corners to category ticks) is deferred — same treatment as the sibling
+        // PORT-NOTE (deferred): (MarkAreaView.ts:173) `SeriesModel.getMarkerPosition` (the bar/candlestick
+        //   override that snaps markArea corners to category ticks) is deferred — same treatment as the sibling
         //   MarkLineView.swift (`updateSingleMarkerEndLayout`). The `else` branch (generic coord
         //   `dataToPoint`) is always taken; corner-picking for bar series is not reproduced yet.
         do {
@@ -252,8 +253,8 @@ private func getSingleMarkerEndPoint(
                 pt = clamped.map { $0 as ScaleDataValue }
             }
             // point = coordSys.dataToPoint(pt, true);
-            // PORT-TODO: `dataToPoint` dispatched on the concrete Cartesian2D (protocol default is []);
-            //   polar/geo out of static-render scope.
+            // PORT-NOTE (deferred): `dataToPoint` dispatched on the concrete Cartesian2D (protocol default
+            //   is []); polar/geo out of static-render scope.
             point = (coordSys as? Cartesian2D)?.dataToPoint(pt, true) ?? [Double.nan, Double.nan]
         }
         // if (isCoordinateSystemType<Cartesian2D>(coordSys, 'cartesian2d'))
@@ -298,9 +299,9 @@ public final class MarkAreaView: MarkerView {
     //   via `as?` at use sites (Swift cannot re-type an inherited generic property).
 
     // updateTransform(markAreaModel, ecModel, api)
-    // PORT-TODO: optional `ComponentView.updateTransform` hook (transform-only re-layout on zoom/pan);
-    //   the render-pipeline wiring that invokes it is deferred (interaction, CONVENTIONS §5). The
-    //   geometry is ported faithfully.
+    // PORT-NOTE (deferred): optional `ComponentView.updateTransform` hook (transform-only re-layout on
+    //   zoom/pan); the render-pipeline wiring that invokes it is deferred (interaction, CONVENTIONS §5).
+    //   The geometry is ported faithfully.
     public func updateTransform(_ markAreaModel: MarkAreaModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         ecModel.eachSeries({ seriesModel, _ in
             let maModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markArea") as? MarkAreaModel
@@ -315,8 +316,8 @@ public final class MarkAreaView: MarkerView {
                     areaData.setItemLayout(idx, points)
                     let el = areaData.getItemGraphicEl(idx) as? Polygon
                     // el.setShape('points', points);
-                    // PORT-TODO: per-key `setShape('points', …)` on a typed shape struct is a no-op in
-                    //   ZRenderKit Path; rebuild the whole PolygonShape to apply the new points.
+                    // PORT-NOTE: per-key `setShape('points', …)` on a typed shape struct is a no-op in
+                    //   ZRenderKit Path; rebuild the whole PolygonShape to apply the new points (equivalent).
                     _ = el?.setShape(makeMarkAreaPolygonShape(points))
                 }
             }
@@ -364,8 +365,8 @@ public final class MarkAreaView: MarkerView {
             }
             // const overlapped = ... — cartesian extent overlap test.
             var overlapped = true
-            // PORT-TODO: the overlap test reads `coordSys.getAxis('x'|'y').scale`, dispatched on the
-            //   concrete Cartesian2D (the protocol getAxis returns nil); polar is out of static-render
+            // PORT-NOTE (deferred): the overlap test reads `coordSys.getAxis('x'|'y').scale`, dispatched on
+            //   the concrete Cartesian2D (the protocol getAxis returns nil); polar is out of static-render
             //   scope. When not cartesian, treat the area as overlapped so it still renders.
             if let cartesian = coordSys as? Cartesian2D {
                 let xAxisScale = cartesian.getAxis("x")!.scale
@@ -468,7 +469,7 @@ public final class MarkAreaView: MarkerView {
             let itemModel = areaData.getItemModel(idx)
             let style = areaData.getItemVisual(idx, "style")
             // polygon.useStyle(areaData.getItemVisual(idx, 'style'));
-            // PORT-TODO: the item visual 'style' is a `[String: Any]` bag; bridge it to the typed
+            // PORT-NOTE (deferred): the item visual 'style' is a `[String: Any]` bag; bridge it to the typed
             //   `PathStyleProps` via the shared `barStyleFromDict` seam (BarView.swift). This is what
             //   fills/strokes the area. Gradient/pattern fills are not bridged yet.
             polygon.useStyle(barStyleFromDict(style))
@@ -484,7 +485,7 @@ public final class MarkAreaView: MarkerView {
             //     labelDataIndex: idx, defaultText: areaData.getName(idx) || '',
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
             // getECData(polygon).dataModel = maModel;
-            // PORT-TODO: `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens`
+            // PORT-NOTE (deferred): `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens`
             //   (neutral99) ARE ported now — but this label block stays deferred for a different reason:
             //   `labelFetcher: maModel` requires `maModel` (a MarkerModel) to be a `DataFormatMixin`
             //   (for the getFormattedLabel the fetcher provides), and `getECData(polygon).dataModel =
@@ -550,9 +551,9 @@ private func createList(
     if coordSys != nil {
         // optData = filter(optData, curry(markAreaFilter, coordSys));
         optData = util.filter(optData) { item, _ in
-            // PORT-TODO: upstream passes every mapped entry (including the `undefined` produced by 1D
+            // PORT-NOTE: upstream passes every mapped entry (including the `undefined` produced by 1D
             //   items) straight to `markAreaFilter`, which would then read `undefined.coord`. Nil
-            //   entries are dropped here (see the 1D PORT-TODO in `markAreaTransform`).
+            //   entries are dropped here (see the 1D POTENTIAL-BUG in `markAreaTransform`).
             guard let item = item else { return false }
             return markAreaFilter(coordSys!, item)
         }
@@ -583,7 +584,7 @@ private func createList(
 // export default MarkAreaView;  -> `public final class MarkAreaView` above.
 
 // ================================================================================================
-// PORT-TODO helpers — NOT part of MarkAreaView.ts upstream. These reproduce out-of-phase sibling APIs
+// PORT-NOTE helpers — NOT part of MarkAreaView.ts upstream. These reproduce out-of-phase sibling APIs
 // referenced above so the static markArea render compiles. Delete each when its real sibling lands.
 // ================================================================================================
 
@@ -602,9 +603,10 @@ private func makeMarkAreaPolygonShape(_ points: [[Double]]) -> PolygonShape {
     return s
 }
 
-// PORT-TODO: `util/graphic.updateProps` (== `animation/basicTransition.updateProps`) not ported. This
-//   reproduces the NO-ANIMATION branch (set the element to its final shape/z2 immediately). Restore the
-//   real transition once util/graphic + basicTransition land. Same deviation as BarView.swift.
+// PORT-NOTE (deferred): `animation/basicTransition.updateProps` IS ported, but this view deliberately
+//   uses the NO-ANIMATION branch (set the element to its final shape/z2 immediately) — a local shim so
+//   markArea does not animate yet. Route through the real transition once markArea animation lands. Same
+//   deviation as BarView.swift.
 private func updateProps(
     _ el: Polygon, _ props: [String: Any], _ animatableModel: Any? = nil, _ dataIndex: Int? = nil
 ) {
@@ -617,7 +619,7 @@ private func updateProps(
     _ = (animatableModel, dataIndex)
 }
 
-// PORT-TODO: faithful minimal reproduction of `visual/helper.getVisualFromData`. Only the `'color'`
+// PORT-NOTE (deferred): faithful minimal reproduction of `visual/helper.getVisualFromData`. Only the `'color'`
 //   case used here is populated (returns `style[data.getVisual('drawType')]`); the opacity/symbol/…
 //   cases live in visual/helper.ts. Delete when visual/helper.swift lands and call it directly.
 private func getVisualFromData(_ data: SeriesData, _ key: String) -> Any? {

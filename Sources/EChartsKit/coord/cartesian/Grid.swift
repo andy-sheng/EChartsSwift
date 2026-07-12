@@ -201,9 +201,12 @@ public final class Grid: CoordinateSystemMaster {
     }
 
     // upstream: getRect(): LayoutRect
-    //   PORT-TODO: upstream returns the concrete `LayoutRect`; the optional protocol requirement
-    //   `CoordinateSystemMaster.getRect(): RectLike?` therefore resolves to its nil default when Grid is
-    //   viewed as `CoordinateSystemMaster`. Reconcile if external (axisPointer, Phase 6b) needs it.
+    //   PORT-NOTE: upstream returns the concrete `LayoutRect`; return-type covariance means
+    //   `getRect() -> LayoutRect` does NOT witness the optional protocol requirement
+    //   `CoordinateSystemMaster.getRect(): RectLike?`, which resolves to its nil default through the
+    //   protocol. All current callers (cartesian2dPrepareCustom, EChartsView, barGrid) deliberately
+    //   downcast `master as? Grid` to reach this concrete method, so the gap is not exercised.
+    //   Reconcile the protocol signature if a protocol-typed caller (e.g. axisPointer) ever needs it.
     public func getRect() -> LayoutRect {
         return self._rect
     }
@@ -436,9 +439,10 @@ public final class Grid: CoordinateSystemMaster {
      * @implements
      */
     // upstream: convertFromPixel(ecModel, finder, value: number | number[]): number | number[]
-    //   PORT-TODO: `CoordinateSystemMaster.convertFromPixel` erased the `number | number[]` input to
-    //   `[Double]`. The single-axis branch (`value as number`) therefore reads the leading element as the
-    //   scalar proxy (a single-axis pixel value is passed as a 1-element array).
+    //   PORT-NOTE: `CoordinateSystemMaster.convertFromPixel` erases the `number | number[]` union to
+    //   `[Double]` (JS/Swift type difference). The single-axis branch (`value as number`) therefore
+    //   reads the leading element as the scalar proxy — a single-axis pixel value is passed as a
+    //   1-element array — which is semantically equivalent.
     public func convertFromPixel(
         _ ecModel: GlobalModel, _ finder: ParsedModelFinder, _ value: [Double], _ opt: Any? = nil
     ) -> Any? {
@@ -693,13 +697,16 @@ public final class Grid: CoordinateSystemMaster {
 
                 if __DEV__ {
                     if gridModel == nil {
-                        // PORT-TODO: upstream `throw new Error(...)`; replicated as a dev-mode error log.
+                        // PORT-NOTE: upstream `throw new Error(...)`. This coord-sys injection provider
+                        //   closure is non-throwing in the port, so the dev-mode guard is replicated as
+                        //   an error log instead of a thrown exception.
                         log.error(
                             "Grid \"\(util.retrieve3(xAxisModel.get("gridIndex"), xAxisModel.get("gridId"), 0) ?? 0)\" not found"
                         )
                     }
                     if (xAxisModel.getCoordSysModel() as AnyObject) !== (yAxisModel.getCoordSysModel() as AnyObject) {
-                        // PORT-TODO: upstream `throw new Error('xAxis and yAxis must use the same grid')`.
+                        // PORT-NOTE: upstream `throw new Error('xAxis and yAxis must use the same grid')`;
+                        //   replicated as a dev-mode error log (this closure is non-throwing).
                         log.error("xAxis and yAxis must use the same grid")
                     }
                 }
@@ -970,9 +977,11 @@ func layOutGridByOuterBounds(
     _ axisBuilderSharedCtx: Any?,  // PORT-NOTE: real type is AxisBuilderSharedContext (component/axis); kept Any? while layOutGridByOuterBounds is stubbed
     _ layoutRef: BoxLayoutReferenceResult
 ) -> Bool {
-    // PORT-TODO: full outerBounds shrink (createOrUpdateAxesView estimate + fillLabelNameOverflowOnOneDimension
-    //   + fillMarginOnOneDimension + expandOrShrinkRect + updateAllAxisExtentTransByGridRect) needs the
-    //   AxisBuilder-produced label/name rects. Stubbed: report no pixel change.
+    // PORT-NOTE (deferred): full outerBounds shrink (createOrUpdateAxesView estimate +
+    //   fillLabelNameOverflowOnOneDimension + fillMarginOnOneDimension + expandOrShrinkRect +
+    //   updateAllAxisExtentTransByGridRect) requires `fillLabelNameOverflowOnOneDimension` and
+    //   `fillMarginOnOneDimension` (util/graphic), which are NOT ported yet (expandOrShrinkRect and
+    //   updateAllAxisExtentTransByGridRect exist). Stubbed: report no pixel change.
     _ = (outerBoundsRect, outerBoundsContain, outerBoundsClamp, gridRect, axesMap, axisBuilderSharedCtx, layoutRef)
     return true
 }
@@ -986,9 +995,10 @@ func createAxisBiulders(
     _ api: ExtensionAPI
 ) -> Any? {  // upstream returns AxisBuilderSharedContext; typed `Any?` so callers (layOutGridByOuterBounds) stay loose.
     // upstream: const axisBuilderSharedCtx = new AxisBuilderSharedContext(resolveAxisNameOverlapForGrid);
-    // PORT-TODO: `resolveAxisNameOverlapForGrid` (grid-specific name-overlap resolver, Grid.swift:1053) is
-    //   not yet ported; the default resolver is sufficient to BUILD the axis elements (overlap nudging is a
-    //   refinement, not required for correct axisLine/tick/label geometry).
+    // PORT-NOTE (deferred): `resolveAxisNameOverlapForGrid` (grid-specific name-overlap resolver, see
+    //   the stub below) requires `moveIfOverlapByLinearLabels` (component/axis/AxisBuilder), which is
+    //   deferred. The ported `resolveAxisNameOverlapDefault` is sufficient to BUILD the axis elements
+    //   (overlap nudging is a refinement, not required for correct axisLine/tick/label geometry).
     let axisBuilderSharedCtx = AxisBuilderSharedContext(resolveAxisNameOverlapDefault)
     // See `AxisBaseOptionCommon['nameMoveOverlap']`: default is `!containLabel`.
     let defaultNameMoveOverlap = !((optionContainLabel as? Bool) ?? false)
@@ -1049,9 +1059,9 @@ func createOrUpdateAxesView(
     }
     axesMap.x.each { axis, _ in buildFor(axis) }
     axesMap.y.each { axis, _ in buildFor(axis) }
-    // PORT-TODO: upstream then computes `nameMarginLevelMap` via calcNameMarginLevel(0/1) to nudge axis
-    //   NAME margins by relative grid size — an axis-name refinement (not axisLine/tick/label geometry);
-    //   deferred with the name-overlap resolver.
+    // PORT-NOTE (deferred): upstream then computes `nameMarginLevelMap` via calcNameMarginLevel(0/1) to
+    //   nudge axis NAME margins by relative grid size — requires `calcNameMarginLevel` (not ported). An
+    //   axis-name refinement (not axisLine/tick/label geometry); deferred with the name-overlap resolver.
     _ = (outerBoundsContain, layoutRef)
 }
 
@@ -1107,8 +1117,9 @@ func prepareOuterBounds(
 }
 
 // upstream: const resolveAxisNameOverlapForGrid: AxisBuilderSharedContext['resolveAxisNameOverlap'] = (...) => {...}
-// PORT-TODO (OUT OF SCOPE): the axis-name overlap resolution against perpendicular axes needs component/axis
-//   (`resolveAxisNameOverlapDefault` / `moveIfOverlapByLinearLabels` / `AxisBuilderSharedContext`). Deferred to Phase 6b.
+// PORT-NOTE (deferred): the axis-name overlap resolution against perpendicular axes needs
+//   `moveIfOverlapByLinearLabels` (component/axis/AxisBuilder), which is deferred (AxisBuilder.swift).
+//   `resolveAxisNameOverlapDefault` / `AxisBuilderSharedContext` are ported and used in the meantime.
 
 // JS truthiness for a dynamic option value (used where upstream relies on `if (x)` / `!x`).
 // PORT-NOTE: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).

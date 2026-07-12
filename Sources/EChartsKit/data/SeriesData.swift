@@ -311,9 +311,11 @@ public final class SeriesData: DataStackSeriesData {
             }
             else if !(dimInfoInput is SeriesDimensionDefine) {
                 // new SeriesDimensionDefine(dimInfoInput)  — object-literal form
-                // PORT-TODO: `SeriesDimensionDefine.init` accepts only another
-                //   `SeriesDimensionDefine`; the object-literal dimension case (produced by the
-                //   model layer, Phase 5c) is reduced to copying the recognized `name` field.
+                // PORT-NOTE (deferred): `SeriesDimensionDefine.init` accepts only another
+                //   `SeriesDimensionDefine`; the object-literal dimension case is reduced to copying the
+                //   recognized `name` field — richer fields (type/coordDim) on a dict would be dropped, but
+                //   the model layer (Phase 5c) produces SeriesDimensionDefine objects, so this path is not
+                //   hit in practice. Widen the init when a dict dimension source lands.
                 let d = SeriesDimensionDefine()
                 if let dict = dimInfoInput as? [String: Any], let nm = dict["name"] as? String {
                     d.name = nm
@@ -410,7 +412,7 @@ public final class SeriesData: DataStackSeriesData {
         if let sourceDimDef = sourceDimDef, let name = sourceDimDef.name {
             return name
         }
-        return ""   // PORT-TODO: upstream may return undefined here
+        return ""   // PORT-NOTE: getDimension returns a non-optional String; upstream may return undefined — the "" fallback stands in.
     }
 
     /**
@@ -430,7 +432,7 @@ public final class SeriesData: DataStackSeriesData {
 
         let dimInfo = self._getDimInfo(dimAsName(dim))
         return dimInfo != nil
-            ? dimInfo!.storeDimIndex ?? -1   // PORT-TODO: storeDimIndex optional; upstream assumes set
+            ? dimInfo!.storeDimIndex ?? -1   // PORT-NOTE: storeDimIndex is Optional in the port; upstream assumes it set — the -1 fallback matches the "not found" return.
             : self._dimOmitted
             ? self._schema!.getSourceDimensionIndex(dimAsName(dim))
             : -1
@@ -475,8 +477,10 @@ public final class SeriesData: DataStackSeriesData {
      */
     public func getDimensionInfo(_ dim: SeriesDimensionLoose) -> SeriesDimensionDefine {
         // Do not clone, because there may be categories in dimInfo.
-        // PORT-TODO: upstream returns the value directly (may be undefined); force-unwrapped here
-        //   because callers pass concrete dims that exist in `_dimInfos`.
+        // POTENTIAL-BUG: upstream returns the value directly (may be undefined); force-unwrapped here
+        //   because callers pass concrete dims that exist in `_dimInfos`. A caller passing an unknown dim
+        //   would SIGTRAP rather than get undefined — the return type is non-optional, so widening it would
+        //   ripple to all callers; left as a guarded risk.
         return self._getDimInfo(self.getDimension(dim))!
     }
 
@@ -1221,8 +1225,8 @@ public final class SeriesData: DataStackSeriesData {
         //   made hovering series 1 blur against series 0's identity.)
         let seriesIndex: Double = (self.hostModel as? SeriesModel)?.seriesIndex ?? 0
 
-        // PORT-TODO: `innerStore.setCommonECData` requires a non-optional `SeriesDataType`
-        //   (sibling port); upstream `this.dataType` may be undefined for main series data.
+        // PORT-NOTE: `innerStore.setCommonECData` requires a non-optional `SeriesDataType` (sibling port);
+        //   upstream `this.dataType` may be undefined for main series data, reconciled here to `.main`.
         innerStore.setCommonECData(seriesIndex, self.dataType ?? .main, Double(idx), el)
 
         sparseSet(&self._graphicEls, idx, el)
@@ -1380,7 +1384,7 @@ public final class SeriesData: DataStackSeriesData {
     }
 
     private static func transferProperties(_ target: SeriesData, _ source: SeriesData) {
-        // PORT-TODO: upstream copies `TRANSFERABLE_PROPERTIES.concat(source.__wrappedMethods||[])`
+        // PORT-NOTE: upstream copies `TRANSFERABLE_PROPERTIES.concat(source.__wrappedMethods||[])`
         //   by string name with a `hasOwnProperty` guard. Swift has typed stored properties, so
         //   the existing ones are copied explicitly (`_rawData`/`_dimValueGetter` are legacy list
         //   entries that no longer exist on this class and are skipped).
@@ -1432,14 +1436,18 @@ public final class SeriesData: DataStackSeriesData {
     // ----------------------------------------------------------------------------------
     // upstream: `interface SeriesData { getLinkedData(...); getLinkedDataAll(); }` (TS
     // declaration-merging), implemented by Graph.ts / Tree.ts.
-    // PORT-TODO: provided by Graph/Tree (not ported this phase).
+    // PORT-NOTE: upstream runtime-attaches these to the instance (linkSeriesData.ts:182-183). Swift can't
+    //   attach methods at runtime, so the real logic lives as `LinkSeriesData.getLinkedData(thisData:)` /
+    //   `.getLinkedDataAll(thisData:)` static funcs (data/helper/linkSeriesData.swift), and Series.swift
+    //   routes through those. These instance stubs mirror the declaration-merged signature and are unused
+    //   (they fatalError if ever called directly).
     // ----------------------------------------------------------------------------------
     public func getLinkedData(_ dataType: SeriesDataType? = nil) -> SeriesData {
         _ = dataType
-        fatalError("PORT-TODO: getLinkedData is provided by Graph/Tree (not ported)")
+        fatalError("getLinkedData: use LinkSeriesData.getLinkedData(thisData:) — instance stub not attached")
     }
     public func getLinkedDataAll() -> [(data: SeriesData, type: SeriesDataType?)] {
-        fatalError("PORT-TODO: getLinkedDataAll is provided by Graph/Tree (not ported)")
+        fatalError("getLinkedDataAll: use LinkSeriesData.getLinkedDataAll(thisData:) — instance stub not attached")
     }
 }
 

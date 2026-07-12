@@ -610,7 +610,7 @@ private func ensureUniformListener(_ zr: ZRender, _ eventType: String) {
 }
 
 // upstream: removeUniformListener(zr, eventType) — `zr.off(eventType, uniform)`.
-//   PORT-TODO: the port's Eventful cannot remove a SPECIFIC closure (no closure identity), and calling
+//   PORT-NOTE: the port's Eventful cannot remove a SPECIFIC closure (no closure identity), and calling
 //   `zr.off(eventType)` with no handler would nuke unrelated listeners (EChartsView's own bindings). So
 //   the uniform listener stays bound; it reads the live (now empty) `store.roam[eventType]` list and
 //   fans out to nothing. `uniformBound` stays set so a re-enable does NOT double-bind. Faithful in effect.
@@ -670,7 +670,8 @@ private func isBehaviorSettingAvailable(_ setting: Any?, _ e: ElementEvent) -> B
         return b
     }
     if setting is String {
-        // PORT-TODO: modifier-key gating ('ctrl'|'shift'|'alt') — the port's ZRRawEvent carries no
+        // PORT-NOTE (deferred): requires shiftKey/ctrlKey/altKey on ZRRawEvent for modifier-key gating
+        //   ('ctrl'|'shift'|'alt') — the port's ZRRawEvent carries no
         //   shiftKey/ctrlKey/altKey, so a string-configured behavior cannot be verified and is treated
         //   as unavailable. Graph roam uses boolean flags, so this is not exercised there.
         return false

@@ -47,7 +47,8 @@
 // so `showTip`/`hideTip` flow through the pend/merge below rather than dispatching directly.
 //
 // DEFERRED:
-//   - THROTTLE: upstream throttles the handler fan-out; here it is called IMMEDIATELY (PORT-TODO).
+//   - THROTTLE (PORT-NOTE, deferred): requires util/throttle; upstream throttles the handler fan-out,
+//     here it is called IMMEDIATELY.
 //   - `env.node` guard (SSR) — native client is browser-like, so it is skipped.
 //
 // import * as zrUtil from 'zrender/src/core/util';   -> Swift stdlib / ZRenderKit

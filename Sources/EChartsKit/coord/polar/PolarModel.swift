@@ -82,11 +82,14 @@ public final class PolarModel: ComponentModel, CoordinateSystemHostModel {
         // }, this);
         //   NOTE: upstream binds the callback's `this` to this PolarModel via the 3rd `context` arg; Swift
         //   closures capture, so `self` is compared directly (`=== this`).
-        //   PORT-TODO: `getCoordSysModel()` is the override on `PolarAxisModel`. The axis models actually
-        //   instantiated by `axisModelCreator` are the file-scope `AxisModel` (coord/axisModelCreator.swift)
-        //   — a subclass of `AxisBaseModel`, NOT of `PolarAxisModel` — so the `as? PolarAxisModel` narrowing
-        //   fails until the creator's dynamic-subclass wiring lands (Phase 6b registrar). See the
-        //   protocol-witness/creator gap in axisModelCreator.swift; reconcile once it is resolved.
+        //   POTENTIAL-BUG: `getCoordSysModel()` is the override on `PolarAxisModel`, but the axis models
+        //   actually instantiated by `axisModelCreator` are the file-scope `AxisModel`
+        //   (coord/axisModelCreator.swift) — a subclass of `AxisBaseModel`, NOT of `PolarAxisModel` — so
+        //   the `as? PolarAxisModel` narrowing below FAILS at runtime and `foundAxisModel` stays nil
+        //   (the generic `AxisModel`'s `getCoordSysModel()` also falls back to the mixin's nil default).
+        //   `findAxisModel` therefore returns nil until the creator's dynamic-subclass wiring lands
+        //   (Phase 6b registrar). See the protocol-witness/creator gap in axisModelCreator.swift;
+        //   reconcile once it is resolved.
         ecModel?.eachComponent(axisType, { axisModel, _ in
             if let polarAxisModel = axisModel as? PolarAxisModel,
                let coordSysModel = polarAxisModel.getCoordSysModel(),

@@ -22,10 +22,10 @@ import Foundation
 import ZRenderKit
 
 // import * as axisPointerModelHelper from '../axisPointer/modelHelper';
-//   -> PORT-TODO: axisPointer machinery is OUT OF SCOPE for the bar+cartesian+axis milestone
-//      (component/axisPointer/modelHelper.ts not ported). Its two call sites here
-//      (`fixValue`, `getAxisPointerModel`) are guarded by `axisPointerClass` which is always
-//      nil in-scope, so they are dead code and preserved only as PORT-TODO comments.
+//   -> modelHelper (component/axisPointer/modelHelper.swift) is ported; its two call sites here
+//      (`fixValue`, `getAxisPointerModel`) are wired below as free functions. They are guarded by
+//      `axisPointerClass`, which no in-scope subclass sets, so the registry (`axisPointerClazz`) is
+//      never populated and these paths stay effectively dead — but faithfully wired.
 // import ComponentView from '../../view/Component';        -> EChartsKit `ComponentView` (view/ComponentView.swift).
 // import { AxisBaseModel } from '../../coord/AxisBaseModel'; -> EChartsKit `AxisBaseModel` (coord/AxisBaseModel.swift).
 // import GlobalModel from '../../model/Global';            -> EChartsKit `GlobalModel` (model/Global.swift).
@@ -44,10 +44,10 @@ import ZRenderKit
 //       new(): BaseAxisPointer
 //   }
 //
-// PORT-TODO: BaseAxisPointer is out of scope. The `new(): BaseAxisPointer` constructor interface is
-//   modeled as a factory closure `() -> AnyObject`. The registry starts empty and nothing registers
-//   into it in-scope (no axisPointer classes are ported), so `getAxisPointerClass` always yields nil
-//   and every axisPointer code path below short-circuits.
+// PORT-NOTE: BaseAxisPointer IS ported (component/axisPointer/BaseAxisPointer.swift). The
+//   `new(): BaseAxisPointer` constructor interface is modeled as a factory closure `() -> AnyObject`
+//   (the concrete registrant returns a BaseAxisPointer subclass). The registry starts empty and nothing
+//   registers into it in-scope, so `getAxisPointerClass` yields nil and the dispatch below short-circuits.
 public typealias AxisPointerConstructor = () -> AnyObject
 
 /**
@@ -69,8 +69,9 @@ open class AxisView: ComponentView {
      * @private
      */
     // upstream: private _axisPointer: BaseAxisPointer;
-    // PORT-NOTE: BaseAxisPointer is ported but unused by this base-AxisView path; typed `Any?`. Never assigned here.
-    private var _axisPointer: Any?
+    // PORT-NOTE: BaseAxisPointer is ported; typed faithfully. Assigned only when the axisPointer registry
+    //   is populated (never in-scope), so this stays nil in practice.
+    private var _axisPointer: BaseAxisPointer?
 
     /**
      * @protected
@@ -92,8 +93,8 @@ open class AxisView: ComponentView {
         // So put it here temporarily, although it is not appropriate to
         // put a model-writing procedure in `view`.
         if self.axisPointerClass != nil {
-            // PORT-TODO: axisPointerModelHelper.fixValue(axisModel) — axisPointer machinery out of
-            //   scope; `axisPointerClass` is always nil in-scope so this is dead code.
+            // axisPointerModelHelper.fixValue(axisModel);
+            fixValue(axisModel as! AxisBaseModel)
         }
 
         super.render(axisModel, ecModel, api, payload)
@@ -120,9 +121,9 @@ open class AxisView: ComponentView {
     //   surface it, so this is a fresh `open func` (not an `override`).
     open func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let axisPointer = self._axisPointer
-        if axisPointer != nil {
-            // PORT-NOTE: axisPointer.remove(api) — BaseAxisPointer is ported but unused by this path;
-            //   `_axisPointer` is never assigned here so this is dead code.
+        if let axisPointer = axisPointer {
+            // axisPointer.remove(api);
+            axisPointer.remove(api)
         }
     }
 
@@ -135,28 +136,28 @@ open class AxisView: ComponentView {
     }
 
     private func _doUpdateAxisPointerClass(_ axisModel: AxisBaseModel, _ api: ExtensionAPI, _ forceRender: Bool? = nil) {
-        let Clazz = AxisView.getAxisPointerClass(self.axisPointerClass)
-        if Clazz == nil {
+        guard let Clazz = AxisView.getAxisPointerClass(self.axisPointerClass) else {
             return
         }
-        // PORT-TODO: axisPointer machinery out of scope (axisPointer/modelHelper + BaseAxisPointer
-        //   not ported). Unreachable in-scope because `Clazz` is always nil (empty registry).
-        //   Upstream:
-        //     const axisPointerModel = axisPointerModelHelper.getAxisPointerModel(axisModel);
-        //     axisPointerModel
-        //         ? (this._axisPointer || (this._axisPointer = new Clazz()))
-        //             .render(axisModel, axisPointerModel, api, forceRender)
-        //         : this._disposeAxisPointer(api);
-        _ = axisModel
-        _ = api
-        _ = forceRender
+        // Unreachable in-scope because the registry is empty (`Clazz` is always nil), but faithfully wired.
+        // const axisPointerModel = axisPointerModelHelper.getAxisPointerModel(axisModel);
+        let axisPointerModel = getAxisPointerModel(axisModel)
+        if let axisPointerModel = axisPointerModel {
+            // (this._axisPointer || (this._axisPointer = new Clazz())).render(axisModel, axisPointerModel, api, forceRender)
+            if self._axisPointer == nil {
+                self._axisPointer = Clazz() as? BaseAxisPointer
+            }
+            self._axisPointer?.render(axisModel, axisPointerModel, api, forceRender ?? false)
+        }
+        else {
+            // this._disposeAxisPointer(api);
+            self._disposeAxisPointer(api)
+        }
     }
 
     private func _disposeAxisPointer(_ api: ExtensionAPI) {
-        if self._axisPointer != nil {
-            // PORT-NOTE: self._axisPointer.dispose(api) — BaseAxisPointer is ported but unused by this path;
-            //   `_axisPointer` never assigned here. Upstream: this._axisPointer && this._axisPointer.dispose(api);
-        }
+        // this._axisPointer && this._axisPointer.dispose(api);
+        self._axisPointer?.dispose(api)
         self._axisPointer = nil
     }
 

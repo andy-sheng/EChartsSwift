@@ -213,10 +213,10 @@ public enum createDimensions {
             encodeDef = encodeDefaulter(srcInst, dimCount)
         }
         // createHashMap<DimensionIndex[] | false, DimensionName>(encodeDef as any)
-        // PORT-TODO: the EChartsKit `createHashMap` shim has no init-from-object overload, so we
+        // PORT-NOTE: the EChartsKit `createHashMap` shim has no init-from-object overload, so we
         //   populate it manually. Values are either `[DimensionIndex?]` or `false` (or raw
-        //   OptionEncodeValue before normalization below). `[String: Any]` iteration loses JS
-        //   insertion order.
+        //   OptionEncodeValue before normalization below). Language diff: `[String: Any]` iteration
+        //   loses JS insertion order (a HashMap source preserves it).
         let encodeDefMap = HashMap<Any>()
         if let encodeDef = encodeDef {
             if let h = encodeDef as? HashMap<Any> {
@@ -227,7 +227,8 @@ public enum createDimensions {
                     encodeDefMap.set(k, v)
                 }
             }
-            // PORT-TODO: unknown encode shape -> ignored.
+            // PORT-NOTE: unknown encode shape -> ignored (only HashMap / [String: Any] sources are
+            //   producible by the port; any other dynamic shape is defensively skipped).
         }
 
         // new CtorInt32Array(dimCount)  (PORT-NOTE: CtorInt32Array is a data/DataStore export)
@@ -291,8 +292,8 @@ public enum createDimensions {
 
         func ifNoNameFillWithCoordName(_ resultItem: SeriesDimensionDefine) {
             // resultItem.name == null
-            // PORT-TODO: ported SeriesDimensionDefine.name is non-optional (defaults to ""),
-            //   so empty string is treated as the upstream `null`/unset state.
+            // PORT-NOTE: ported SeriesDimensionDefine.name is non-optional (defaults to ""),
+            //   so empty string is treated as the upstream `null`/unset state (language diff).
             if resultItem.name.isEmpty {
                 // Duplication will be removed in the next step.
                 resultItem.name = resultItem.coordDim ?? ""
@@ -430,8 +431,9 @@ public enum createDimensions {
         let generateCoord = opt.generateCoord
         let fromZero = opt.generateCoordCount != nil
         // generateCoordCount = generateCoord ? (generateCoordCount || 1) : 0;
-        // PORT-TODO: `generateCoord` truthiness modeled as non-nil (empty string edge case ignored).
-        var generateCoordCount: Double = (generateCoord != nil)
+        //   JS truthiness of the string `generateCoord`: an empty string is falsy, so `!= nil` is not
+        //   enough — a non-empty check matches `generateCoord ? ...` exactly.
+        var generateCoordCount: Double = (generateCoord?.isEmpty == false)
             ? ((opt.generateCoordCount != nil && opt.generateCoordCount != 0) ? opt.generateCoordCount! : 1)
             : 0
         let extra = generateCoord ?? "value"

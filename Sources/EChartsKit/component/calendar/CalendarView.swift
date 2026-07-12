@@ -320,8 +320,9 @@ public final class CalendarView: ComponentView {
         }
 
         // upstream: if (isFunction(formatter)) { return formatter(params); }
-        // PORT-TODO: a JS callback formatter can not be invoked from the option bag in this static port;
-        //   falls through to `params.nameMap` (the default), matching the no-formatter case.
+        // PORT-NOTE (deferred): a JS callback formatter can not be invoked from the option bag in this
+        //   static-render port; falls through to `params.nameMap` (the default), matching the
+        //   no-formatter case.
         if util.isFunction(formatter) {
             return (params["nameMap"] as? String) ?? ""
         }
@@ -493,7 +494,7 @@ public final class CalendarView: ComponentView {
         _ orient: LayoutOrient,
         _ group: Group
     ) {
-        let localeModel = localeModelIn
+        var localeModel = localeModelIn
         let monthLabel = calendarModel.getModel("monthLabel")
 
         if !jsTruthy(monthLabel.get("show")) {
@@ -513,9 +514,10 @@ public final class CalendarView: ComponentView {
         if !jsTruthy(nameMapRaw) || util.isString(nameMapRaw) {
             if jsTruthy(nameMapRaw) {
                 // case-sensitive
-                // PORT-TODO: `getLocaleModel(nameMap)` (core/locale) NOT ported — the by-name locale
-                //   override is deferred; keep the default `localeModel`.
-                _ = localeModel
+                // upstream: localeModel = getLocaleModel(nameMap) || localeModel;
+                if let langStr = nameMapRaw as? String {
+                    localeModel = locale.getLocaleModel(langStr) ?? localeModel
+                }
             }
             // PENDING
             // for ZH locale, original form is `一月` but current form is `1月`
@@ -626,7 +628,7 @@ public final class CalendarView: ComponentView {
         _ orient: LayoutOrient,
         _ group: Group
     ) {
-        let localeModel = localeModelIn
+        var localeModel = localeModelIn
         let dayLabel = calendarModel.getModel("dayLabel")
 
         if !jsTruthy(dayLabel.get("show")) {
@@ -643,8 +645,10 @@ public final class CalendarView: ComponentView {
         if !jsTruthy(nameMapRaw) || util.isString(nameMapRaw) {
             if jsTruthy(nameMapRaw) {
                 // case-sensitive
-                // PORT-TODO: `getLocaleModel(nameMap)` (core/locale) NOT ported — deferred; keep default.
-                _ = localeModel
+                // upstream: localeModel = getLocaleModel(nameMap) || localeModel;
+                if let langStr = nameMapRaw as? String {
+                    localeModel = locale.getLocaleModel(langStr) ?? localeModel
+                }
             }
             // Use the first letter of `dayOfWeekAbbr` if `dayOfWeekShort` doesn't exist in the locale file
             let dayOfWeekShort = localeModel.get(["time", "dayOfWeekShort"]) as? [Any]
@@ -707,7 +711,7 @@ public final class CalendarView: ComponentView {
     }
 
     // Apply an element-level `TextProps` bag (from `_yearTextPositionControl`) to a ZRText.
-    //   PORT-TODO: NOT part of CalendarView.ts. Upstream calls `yearText.attr(props)`, but ZRText.attr
+    //   PORT-NOTE: NOT part of CalendarView.ts. Upstream calls `yearText.attr(props)`, but ZRText.attr
     //   routes the `"style"` key through `Displayable.attrKV`, which merges via `CommonStyleProps` and
     //   drops the text-only `align`/`verticalAlign` fields. This helper applies rotation/x/y at the
     //   element level and merges `align`/`verticalAlign` into the ZRText's `textStyle` directly, matching
@@ -780,8 +784,9 @@ private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -
 ///   are read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap.
 private func calendarPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
-    //   form (incl. the sentinel 'none') is mapped here.
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string);
+    //   only the String form (incl. the sentinel 'none') is mapped here — the gradient/pattern object
+    //   form carried in the dynamic bag is not parsed.
     if let v = colorString(dict["fill"]) { s.fill = .string(v) }
     if let v = colorString(dict["stroke"]) { s.stroke = .string(v) }
     if let v = numOpt(dict["lineWidth"]) { s.lineWidth = v }
@@ -796,7 +801,7 @@ private func calendarPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps 
     if let v = numOpt(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
     if let v = numOpt(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
     if let v = numOpt(dict["lineDashOffset"]) { s.lineDashOffset = v }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping requires the LineDash enum bridge.
     return s
 }
 

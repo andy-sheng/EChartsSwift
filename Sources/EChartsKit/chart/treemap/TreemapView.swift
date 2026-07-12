@@ -30,7 +30,7 @@ import ZRenderKit
 //            Z2_EMPHASIS_LIFT } from '../../util/states';
 //       -> util/states IS ported (util/states.swift); treemap's states/emphasis/high-down dispatch is
 //          still DEFERRED here. `Z2_EMPHASIS_LIFT` is inlined below as its upstream literal (10).
-//   import DataDiffer from '../../data/DataDiffer';                 -> PORT-TODO: DataDiffer diff DEFERRED (static rebuild).
+//   import DataDiffer from '../../data/DataDiffer';                 -> PORT-NOTE (deferred): DataDiffer IS ported, but treemap's hierarchical dualTravel diff/reuse is deferred; static rebuild used.
 //   import * as helper from '../helper/treeHelper';                 -> treeHelper IS ported (chart/helper/treeHelper.swift);
 //       its retrieveTargetInfo / aboveViewRoot (drill-down/roll-up actions) are still DEFERRED here.
 //   import Breadcrumb from './Breadcrumb';                          -> sibling Breadcrumb.swift.
@@ -38,9 +38,9 @@ import ZRenderKit
 //       -> RoamController IS ported (component/helper/RoamController.swift); pan/zoom roam is still DEFERRED here.
 //   import BoundingRect, { RectLike } from 'zrender/src/core/BoundingRect';  -> `BoundingRect` (ZRenderKit).
 //   import * as matrix from 'zrender/src/core/matrix';             -> `matrix` (ZRenderKit) — used by the deferred zoom.
-//   import * as animationUtil from '../../util/animation';         -> PORT-TODO: util/animation NOT ported (DEFERRED).
+//   import * as animationUtil from '../../util/animation';         -> PORT-NOTE (deferred): the treemap _doAnimation subsystem is deferred; static render is the final state.
 //   import makeStyleMapper from '../../model/mixin/makeStyleMapper';
-//       -> PORT-TODO: makeStyleMapper's treemap-custom mapping (strokeColor→stroke, strokeWidth→lineWidth)
+//       -> PORT-NOTE: makeStyleMapper's treemap-custom mapping (strokeColor→stroke, strokeWidth→lineWidth)
 //          is approximated by `Model.getItemStyle()` + the three-field clear below.
 //   import ChartView from '../../view/Chart';                      -> `ChartView` (view/Chart.swift).
 //   import Tree, { TreeNode } from '../../data/Tree';              -> `Tree` / `TreeNode` (data/Tree.swift).
@@ -56,7 +56,7 @@ import ZRenderKit
 //   import { makeInner, convertOptionIdName } from '../../util/model';  -> `model.makeInner` / `model.convertOptionIdName`.
 //   import { PathStyleProps, PathProps } from 'zrender/src/graphic/Path';  -> `PathStyleProps` / `PathProps`.
 //   import { TreeSeriesNodeItemOption } from '../tree/TreeSeries';  -> type-only (link click; DEFERRED).
-//   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> PORT-TODO: treemapAction NOT ported (actions DEFERRED).
+//   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> PORT-NOTE (deferred): requires ./treemapAction (not ported; drill/zoom actions).
 //   import { ColorString, ECElement } from '../../util/types';     -> type-only.
 //   import { windowOpen } from '../../util/format';                -> PORT-NOTE: only used by the deferred link click.
 //   import { TextStyleProps } from 'zrender/src/graphic/Text';     -> `TextStyleProps`.
@@ -84,7 +84,7 @@ private let Z2_CONTENT = Z2_EMPHASIS_LIFT * 3
 
 // const getStateItemStyle = makeStyleMapper([ ['fill','color'], ['stroke','strokeColor'], ... ]);
 // const getItemStyleNormal = function (model) { const itemStyle = getStateItemStyle(model); itemStyle.stroke = itemStyle.fill = itemStyle.lineWidth = null; return itemStyle; };
-// PORT-TODO: makeStyleMapper's treemap-custom option→style mapping is DEFERRED. `Model.getItemStyle()`
+// PORT-NOTE: makeStyleMapper's treemap-custom option→style mapping is approximated. `Model.getItemStyle()`
 //   (the standard itemStyle mixin) is used as the base, then stroke/fill/lineWidth are cleared to mirror
 //   `getItemStyleNormal`. The remaining shadow* props carry through faithfully.
 private func getItemStyleNormal(_ model: Model) -> [String: Any] {
@@ -120,7 +120,7 @@ public struct FoundTargetInfo {
 }
 
 // upstream: RenderResult / ReRoot / LastCfg / inner(makeInner) — DEFERRED (animation/diff subsystem).
-// PORT-TODO: the animation storage (`lastsForAnimation`, `willDeleteEls`, `willInvisibleEls`,
+// PORT-NOTE (deferred): the animation storage (`lastsForAnimation`, `willDeleteEls`, `willInvisibleEls`,
 //   `renderFinally`), the reRoot drill/roll descriptor, and `inner(el).{nodeWidth,nodeHeight,willDelete}`
 //   are not ported — the static render rebuilds the group each pass (SunburstView/PieView convention).
 
@@ -186,8 +186,9 @@ open class TreemapView: ChartView {
 
         // const types = ['treemapZoomToNode', 'treemapRootToNode'];
         // const targetInfo = helper.retrieveTargetInfo(payload, types, seriesModel);
-        // PORT-TODO: chart/helper/treeHelper.retrieveTargetInfo (drill/zoom target from payload) DEFERRED;
-        //   with no payload target the breadcrumb tail is found by `findTarget` (see `_renderBreadcrumb`).
+        // PORT-NOTE (deferred): treeHelper.retrieveTargetInfo IS ported, but its input payload comes from
+        //   the drill/zoom actions (./treemapAction, not ported) which are never dispatched, so no target is
+        //   ever passed; the breadcrumb tail is instead found by `findTarget` (see `_renderBreadcrumb`).
         let targetInfo: FoundTargetInfo? = nil
         // const payloadType = payload && payload.type;  -> consumed only by the deferred animation routing.
         // const layoutInfo = seriesModel.layoutInfo;
@@ -208,7 +209,7 @@ open class TreemapView: ChartView {
 
         // const renderResult = this._doRender(containerGroup, seriesModel, reRoot);
         self._doRender(containerGroup, seriesModel)
-        // PORT-TODO: (hasAnimation && !isInit && ...) ? this._doAnimation(...) : renderResult.renderFinally();
+        // PORT-NOTE (deferred): (hasAnimation && !isInit && ...) ? this._doAnimation(...) : renderResult.renderFinally();
         //   Animation + `renderFinally` (deferred removal / invisible flagging) DEFERRED — the static
         //   rebuild already reflects the final state.
 
@@ -302,16 +303,17 @@ open class TreemapView: ChartView {
     }
 
     // upstream: _doAnimation(...) — DEFERRED (util/animation not ported; static render is the final state).
-    // PORT-TODO: delete/other animations (fade-out to corner, drill/roll re-root transitions, fade-in)
-    //   are not ported.
+    // PORT-NOTE (deferred): delete/other animations (fade-out to corner, drill/roll re-root transitions,
+    //   fade-in) are not ported.
 
     // upstream: _resetController(api) / _clearController() / _onPan(e) / _onZoom(e) — DEFERRED.
-    // PORT-TODO: RoamController (pan/zoom roam → treemapMove/treemapRender dispatchAction) not ported.
+    // PORT-NOTE (deferred): RoamController re-layout (pan/zoom roam → treemapMove/treemapRender dispatchAction)
+    //   is not ported (roam is instead applied as a container transform; see viewGroupRoamApplyStateToGroup).
 
     private func _initEvents(_ containerGroup: Group) {
         // containerGroup.on('click', (e) => { ... nodeClick zoomToNode | link | rootToNode ... });
-        // PORT-TODO: node click (zoomToNode / rootToNode drill actions, link windowOpen) DEFERRED
-        //   (treemapAction + events + windowOpen not ported).
+        // PORT-NOTE (deferred): node click (zoomToNode / rootToNode drill actions, link windowOpen)
+        //   requires ./treemapAction + util/event + util/format.windowOpen (not ported).
         _ = containerGroup
     }
 
@@ -343,8 +345,8 @@ open class TreemapView: ChartView {
         }
         self._breadcrumb!.render(seriesModel, api, targetInfo.node) { _ in
             // if (this._state !== 'animating') { aboveViewRoot(...) ? this._rootToNode(...) : this._zoomToNode(...); }
-            // PORT-TODO: breadcrumb click (drill/zoom dispatchAction via helper.aboveViewRoot) DEFERRED
-            //   (treemapAction + treeHelper.aboveViewRoot not ported).
+            // PORT-NOTE (deferred): breadcrumb click (drill/zoom dispatchAction via helper.aboveViewRoot)
+            //   requires ./treemapAction (not ported); treeHelper.aboveViewRoot IS ported but has no action to feed.
         }
     }
 
@@ -371,7 +373,7 @@ open class TreemapView: ChartView {
     }
 
     // upstream: _zoomToNode(targetInfo) / _rootToNode(targetInfo) — DEFERRED (dispatchAction not ported).
-    // PORT-TODO: treemapZoomToNode / treemapRootToNode actions not ported.
+    // PORT-NOTE (deferred): requires ./treemapAction — treemapZoomToNode / treemapRootToNode actions not ported.
 
     /**
      * @param x Global coord x.

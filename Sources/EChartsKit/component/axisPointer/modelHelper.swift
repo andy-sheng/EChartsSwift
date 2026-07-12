@@ -43,7 +43,7 @@ import ZRenderKit
 //      shared with `axisInfo.linkGroup`, so it must be a class (JS object semantics).
 public final class LinkGroup {
     // mapper: AxisPointerOption['link'][number]['mapper']
-    //   -> the user link `mapper` callback. PORT-TODO: link-group value mapping (`axisTrigger`'s
+    //   -> the user link `mapper` callback. PORT-NOTE (deferred): link-group value mapping (`axisTrigger`'s
     //      cross-axis linking) is deferred; the callback is stored opaquely as `Any?`.
     public var mapper: Any?
     // { [axisKey]: AxisInfo }
@@ -340,7 +340,8 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         //  `as? CoordinateSystem` cast would bind `getAxis(axis.dim)` to the nil-returning protocol
         //  default → `nil === axis` is always false → `axisInfo.seriesModels` never populated → the axis
         //  tooltip never appears. The concrete cast pins the real `Cartesian2D.getAxis -> Axis2D`. Mirrors
-        //  findPointFromSeries.swift:116. PORT-TODO: polar/single tooltip-axis series info is out of scope.
+        //  findPointFromSeries.swift:116. PORT-NOTE (deferred): polar/single tooltip-axis series info is
+        //  out of scope (only Cartesian2D is narrowed here).
         let coordSys = seriesModel.coordinateSystem as? Cartesian2D
         let seriesTooltipTrigger = seriesModel.get(["tooltip", "trigger"], true)
         let seriesTooltipShow = seriesModel.get(["tooltip", "show"], true)

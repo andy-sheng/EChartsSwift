@@ -497,7 +497,9 @@ public final class Tree: LinkableStruct {
             let children = dataNode["children"]
             if let children = children as? [Any] {
                 for i in 0..<children.count {
-                    // PORT-TODO: upstream children elements are TreeNodeOption; cast the dynamic bag.
+                    // PORT-NOTE: upstream `dataNode.children` is typed `TreeNodeOption[]`; in Swift the
+                    //   children arrive in the dynamic option bag as `[Any]`, so cast each element back
+                    //   to `TreeNodeOption` (semantically equivalent to upstream's static typing).
                     buildHierarchy(children[i] as! TreeNodeOption, node)
                 }
             }

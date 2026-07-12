@@ -63,7 +63,9 @@ public struct PaintStyle {
     /// Gradient stroke object. Stroked via `replacePathWithStrokedPath` + clip + gradient draw.
     public var strokeGradient: Gradient?
 
-    /// Pattern fill object (best-effort tiled image — exotic cases are PORT-TODO).
+    /// Pattern fill object (best-effort tiled image). PORT-NOTE: the CoreGraphics tiled-image draw
+    /// covers the common `repeat` case; exotic per-pattern `rotation`/`scaleX`/`scaleY` transforms
+    /// have no direct CGPattern analog here and are approximated rather than matched pixel-for-pixel.
     public var fillPattern: Pattern?
     /// Pattern stroke object.
     public var strokePattern: Pattern?

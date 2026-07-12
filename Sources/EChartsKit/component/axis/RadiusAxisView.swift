@@ -123,9 +123,9 @@ final class RadiusAxisView: AxisView {
         _ = newAxisGroup.add(axisBuilder.group)
 
         // upstream: graphic.groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel);
-        // PORT-TODO: `graphic.groupTransition` (util/graphic.ts) is NOT ported. It matches old/new
-        //   elements by `anid` and animates the transition (`updateProps`). Deferred with the animation
-        //   seam (CONVENTIONS §5); the freshly-built geometry above is correct without it.
+        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), NOT ported. It
+        //   matches old/new elements by `anid` and animates the transition (`updateProps`). Deferred with
+        //   the animation seam (CONVENTIONS §5); the freshly-built geometry above is correct without it.
         _ = oldAxisGroup
 
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
@@ -361,7 +361,8 @@ private let axisElementBuilders: [String: RadiusAxisElementBuilder] = [
 //   Return type is structurally an `AxisBuilderCfg` (consumed by `new AxisBuilder(..., layout)`), so it
 //   is built as one here. The `z2: 1` field ("Over splitLine and splitArea") is NOT part of
 //   `AxisBuilderCfg` upstream and is dropped — same deviation as CartesianAxisLayout → AxisBuilderCfg.
-//   PORT-TODO: the axis-line/ticks/labels z2 ordering (draw above split lines/areas) is not reproduced.
+//   PORT-NOTE: the axis-line/ticks/labels z2 ordering (draw above split lines/areas) is not reproduced
+//   (z2 is not part of AxisBuilderCfg; same deviation as CartesianAxisLayout → AxisBuilderCfg).
 private func layoutAxis(_ polar: Polar, _ radiusAxisModel: RadiusAxisModel, _ axisAngle: Double) -> AxisBuilderCfg {
     return AxisBuilderCfg(
         position: [polar.cx, polar.cy],
@@ -405,7 +406,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
+/// PORT-NOTE (deferred): requires `util/graphic`'s `useStyle` dict bridge, not ported. Map the dynamic style bag
 ///   ([String: Any] — the `defaults(...)` merge of split colors over getLineStyle()/getAreaStyle()) onto
 ///   the typed `PathStyleProps`. Same deviation as RadarComponentView.pathStyleFromDict; mirrored here for
 ///   both stroke (split/minor lines) and fill (split areas). The sentinel `NSNull()` (upstream `fill: null`)
@@ -421,7 +422,7 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
+    // PORT-NOTE: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
     //   form (incl. the sentinel 'none') is mapped here. `NSNull` (upstream null) leaves the paint unset.
     if let fill = dict["fill"] as? String { s.fill = .string(fill) }
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
@@ -435,6 +436,20 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
     if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // upstream: `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` → ZRenderKit `LineDash`.
+    if let dash = dict["lineDash"] as? [Double] {
+        s.lineDash = .values(dash)
+    } else if let dashInt = dict["lineDash"] as? [Int] {
+        s.lineDash = .values(dashInt.map(Double.init))
+    } else if let b = dict["lineDash"] as? Bool, b == false {
+        s.lineDash = .false
+    } else if let dashStr = dict["lineDash"] as? String {
+        switch dashStr {
+        case "solid": s.lineDash = .solid
+        case "dashed": s.lineDash = .dashed
+        case "dotted": s.lineDash = .dotted
+        default: break
+        }
+    }
     return s
 }

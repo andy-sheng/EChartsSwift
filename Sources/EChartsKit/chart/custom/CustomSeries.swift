@@ -45,11 +45,11 @@ import ZRenderKit
 //   import { GroupProps } from 'zrender/src/graphic/Group';               -> ZRenderKit (type-only).
 //   import { TransitionOptionMixin, TransitionBaseDuringAPI, TransitionDuringAPI }
 //       from '../../animation/customGraphicTransition';
-//       -> PORT-TODO: animation/customGraphicTransition NOT ported (enter/update/leave transition DEFERRED,
-//          per the CUSTOM port brief). The `during` / transition option shapes are documentation-only.
+//       -> PORT-NOTE (deferred): requires animation/customGraphicTransition (NOT ported — enter/update/leave
+//          transition, per the CUSTOM port brief). The `during` / transition option shapes are documentation-only.
 //   import { TransformProp } from 'zrender/src/core/Transformable';       -> ZRenderKit (type-only).
 //   import { ElementKeyframeAnimationOption } from '../../animation/customGraphicKeyframeAnimation';
-//       -> PORT-TODO: keyframe animation NOT ported (DEFERRED per the CUSTOM port brief).
+//       -> PORT-NOTE (deferred): requires animation/customGraphicKeyframeAnimation (keyframe animation NOT ported).
 
 // export type CustomExtraElementInfo = Dictionary<unknown>;
 public typealias CustomExtraElementInfo = [String: Any]
@@ -84,7 +84,7 @@ public let NON_STYLE_VISUAL_PROPS: [String: Double] = [
 // (`CustomElementOption`, `CustomRootElementOption`) name that bag so call sites read faithfully.
 // ============================================================================
 //
-// type ShapeMorphingOption = { morph?: boolean };  // only available on path. PORT-TODO: morph DEFERRED.
+// type ShapeMorphingOption = { morph?: boolean };  // only available on path. PORT-NOTE (deferred): shape morphing.
 //
 // interface CustomBaseElementOption extends Partial<Pick<Element,
 //     TransformProp | 'silent' | 'ignore' | 'textConfig'>> {
@@ -96,7 +96,7 @@ public let NON_STYLE_VISUAL_PROPS: [String: Double] = [
 //     clipPath?: CustomBaseZRPathOption | false; // `false` means remove the clipPath
 //     tooltipDisabled?: boolean; // `false` means not show tooltip
 //     extra?: Dictionary<unknown> & TransitionOptionMixin;
-//     during?(params: TransitionBaseDuringAPI): void;   // updateDuringAnimation. PORT-TODO: DEFERRED.
+//     during?(params: TransitionBaseDuringAPI): void;   // updateDuringAnimation. PORT-NOTE (deferred): requires customGraphicTransition.
 //     enterAnimation?: AnimationOption
 //     updateAnimation?: AnimationOption
 //     leaveAnimation?: AnimationOption
@@ -366,8 +366,8 @@ open class CustomSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.custom" }
 
     // static dependencies = ['grid', 'polar', 'geo', 'singleAxis', 'calendar', 'matrix'];
-    //   PORT-TODO: only grid/cartesian2d + polar coord systems are renderable now (geo/singleAxis/
-    //   calendar/matrix not ported); the list is kept verbatim so registration/topo order matches.
+    //   PORT-NOTE (deferred): only grid/cartesian2d + polar coord systems are renderable now (geo/singleAxis/
+    //   calendar/matrix not ported); the list is kept verbatim so registration/topo order matches upstream.
     public override class var dependencies: [String] {
         return ["grid", "polar", "geo", "singleAxis", "calendar", "matrix"]
     }

@@ -31,7 +31,7 @@ import ZRenderKit
 //   import DataDiffer from '../../data/DataDiffer';            -> DROPPED: the feature DIFF is reduced to a
 //     rebuild-each-render (no view reuse across setOption — same reduction as the other ported views).
 //   import * as listComponentHelper from '../helper/listComponent'; -> `makeBackground` reproduced below
-//     (component/helper/listComponent not ported — same PORT-TODO as LegendView).
+//     (component/helper/listComponent not ported — same PORT-NOTE as LegendView).
 //   import ComponentView from '../../view/Component';          -> `ComponentView`.
 //   import ToolboxModel from './ToolboxModel';                 -> `ToolboxModel`.
 //   import { getFeature, ToolboxFeature, ... } from './featureManager'; -> `getFeature` / `ToolboxFeature`
@@ -94,8 +94,8 @@ open class ToolboxView: ComponentView {
             let feature: ToolboxFeature
             if isUserFeatureName(featureName) {
                 // UserDefinedToolboxFeature { onclick: featureModel.option.onclick, featureName }.
-                // PORT-TODO: DEFERRED — the user `my*` feature's Swift `onclick` closure carried on the
-                //   option bag is not modeled (no on-canvas dispatch target). Skip so nothing crashes.
+                // PORT-NOTE (deferred): the user `my*` feature's `onclick` closure carried on the
+                //   option bag is not modeled (no on-canvas dispatch target — requires interaction dispatch). Skip.
                 continue
             }
             else {
@@ -156,8 +156,8 @@ open class ToolboxView: ComponentView {
         }
 
         // Adjust icon title positions to avoid them out of screen (`isVertical || group.eachChild(...)`).
-        // PORT-TODO: DEFERRED — the emphasis title-overflow reposition reads the icon's emphasis
-        //   textConfig/textContent state (util/states, deferred). Titles use their default position.
+        // PORT-NOTE (deferred): the emphasis title-overflow reposition reads the icon's emphasis
+        //   textConfig/textContent state (requires the live-host width/height overflow check). Titles use their default position.
         _ = isVertical
     }
 
@@ -271,7 +271,7 @@ open class ToolboxView: ComponentView {
 
             // Title default position. Upstream sets `path.setTextConfig({position})` on mouseover; the
             //   default is bottom (horizontal) / right (vertical) unless the toolbox is anchored there.
-            //   PORT-TODO: still deferred — the emphasis title-overflow reposition (the `emphasisState
+            //   PORT-NOTE (deferred): the emphasis title-overflow reposition (the `emphasisState
             //   .textConfig` block in render()) reads api.getWidth/Height; the default position is used.
             let defaultTextPosition: String = isVertical
                 ? ((toolboxModel.get("right") == nil && (toolboxModel.get("left") as? String) != "right")
@@ -283,7 +283,7 @@ open class ToolboxView: ComponentView {
             path.setTextConfig(titleTextConfig)
 
             // graphic.setTooltipConfig({ el: path, componentModel: toolboxModel, itemName: iconName, ... });
-            // PORT-TODO: DEFERRED — tooltip wiring (`graphic.setTooltipConfig`) out of static-render scope.
+            // PORT-NOTE (deferred): tooltip wiring (`graphic.setTooltipConfig`) — requires setTooltipConfig (interaction, unported).
 
             // Mark the icon a highDown dispatcher so a live-host hover (mouseover → enterEmphasisWhenMouseOver)
             //   enters emphasis (recolouring the icon + revealing the title). Replaces upstream's per-icon
@@ -346,7 +346,7 @@ private func isUserFeatureName(_ featureName: String) -> Bool {
 /// Reproduce `graphic.createIcon`'s `path://` / direct-svg branch: `makePath(str.replace('path://',''),
 ///   {rectHover:true, style:{strokeNoScale:true}}, rect, 'center')`. (The `image://` branch is DEFERRED.)
 private func toolboxCreateIcon(_ iconStr: String, _ rect: BoundingRect) -> SVGPath {
-    // PORT-TODO: `image://` icons (a ZRImage) are DEFERRED — only the path/svg branch is reproduced.
+    // PORT-NOTE (deferred): `image://` icons (a ZRImage) — requires the ZRImage icon branch; only path/svg reproduced.
     let pathData = iconStr.hasPrefix("path://") ? String(iconStr.dropFirst("path://".count)) : iconStr
     let path = ZRenderKit.makePath(pathData, nil, rect, "center")
     path.pathStyle.strokeNoScale = true
@@ -382,7 +382,7 @@ func toolboxNum(_ v: Any?) -> Double? {
     return nil
 }
 
-/// Faithful minimal reproduction of `component/helper/listComponent.makeBackground` (same PORT-TODO as
+/// Faithful minimal reproduction of `component/helper/listComponent.makeBackground` (same PORT-NOTE as
 ///   LegendView.makeBackground). Delete when component/helper/listComponent.swift lands.
 private func toolboxMakeBackground(_ rect: BoundingRect, _ componentModel: ComponentModel) -> Rect {
     let padding = toolboxNormalizeCssArray(componentModel.get("padding"))

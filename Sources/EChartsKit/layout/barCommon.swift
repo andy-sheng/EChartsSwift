@@ -24,8 +24,8 @@ import ZRenderKit
 // upstream imports:
 //   import { assert } from 'zrender/src/core/util';                          -> `util.assert` (ZRenderKit Core/util.swift)
 //   import { createMetricsNonOrdinalLinearPositiveMinGap } from '../chart/helper/axisSnippets';
-//       -> chart/helper/axisSnippets.ts NOT yet ported (PREREQ). PORT-TODO stub below mirrors its impl;
-//          remove it (and use the real symbol) once axisSnippets.swift lands.
+//       -> chart/helper/axisSnippets.ts NOT yet ported (PREREQ). PORT-NOTE (deferred) stub below mirrors
+//          its impl; remove it (and use the real symbol) once axisSnippets.swift lands.
 //   import type Axis from '../coord/Axis';                                   -> Axis (coord/Axis.swift)
 //   import { AxisStatKey, requireAxisStatistics } from '../coord/axisStatistics';
 //       -> AxisStatKey / requireAxisStatistics (coord/axisStatistics.swift, top-level free symbols)
@@ -63,20 +63,22 @@ public func requireAxisStatisticsForBaseBar(
 
 // See cases in `test/bar-start.html` and `#7412`, `#8747`.
 public func getStartValue(_ baseAxis: Axis) -> Double {
-    // PORT-TODO: `Scale.rawExtentInfo` is `ScaleRawExtentInfo?`; upstream treats it as present here
-    //   (it is created by the coord-sys pipeline before layout).
+    // POTENTIAL-BUG: `Scale.rawExtentInfo` is `ScaleRawExtentInfo?`; upstream treats it as present here
+    //   (it is created by the coord-sys pipeline before layout). Force-unwrap mirrors upstream's
+    //   optimistic access — a latent SIGTRAP if getStartValue is ever called before rawExtentInfo is set.
     let val = baseAxis.scale.rawExtentInfo!.makeRenderInfo().startValue
     if __DEV__ {
         util.assert(number.isNullableNumberFinite(val))
     }
-    // PORT-TODO: upstream returns `number` directly; `startValue` is `number | undefined` (Pick of
-    //   `ScaleRawExtentInternal`). The __DEV__ assert above guarantees it is finite when reached.
+    // POTENTIAL-BUG: upstream returns `number` directly; `startValue` is `number | undefined` (Pick of
+    //   `ScaleRawExtentInternal`). The __DEV__ assert above guarantees it is finite when reached in dev,
+    //   but the release-mode force-unwrap traps if startValue is nil (mirrors upstream optimistic typing).
     return val!
 }
 
 
 // ============================================================================
-// PORT-TODO: stub for `createMetricsNonOrdinalLinearPositiveMinGap` from
+// PORT-NOTE (deferred): requires `createMetricsNonOrdinalLinearPositiveMinGap` from
 //   `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirrors the upstream one-liner so this
 //   file compiles; remove and import the real symbol from `chart/helper/axisSnippets.swift` when it lands.
 //

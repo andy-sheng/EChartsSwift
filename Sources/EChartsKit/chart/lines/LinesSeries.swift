@@ -28,16 +28,16 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import { concatArray, mergeAll, map, isNumber } from 'zrender/src/core/util';
 //       -> ZRenderKit `util` (`util.mergeAll`, `util.map`, `util.isNumber`). `concatArray` is a
-//          PORT-TODO in ZRenderKit.util (typed-array concat) — Swift `a + b` is used inline for the
+//          PORT-NOTE in ZRenderKit.util (typed-array concat) — Swift `a + b` is used inline for the
 //          `ContiguousArray` flat-coord buffers in `appendData`.
 //   import CoordinateSystem from '../../core/CoordinateSystem';
-//       -> PORT-TODO: core/CoordinateSystem registry lookup (the __DEV__ "Unknown coordinate system"
-//          guard in getInitialData) NOT ported — the check is dev-only, deferred below.
+//       -> core/CoordinateSystemManager (CoordinateSystemManager.get); the __DEV__ "Unknown coordinate
+//          system" guard in getInitialData is ported below.
 //   import { ... option mixins ... } from '../../util/types';        -> util/types.swift (type-only; the
 //       dynamic option tree is the `[String: Any]` bag per CONVENTIONS §2).
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> PORT-TODO: component/tooltip/tooltipMarkup.ts NOT ported (tooltip component deferred).
+//       -> component/tooltip/tooltipMarkup.swift (createTooltipMarkup); used in formatTooltip below.
 //   import { LineDrawModelOption } from '../helper/baseDraw';        -> type-only (the `effect` sub-option
 //       shape); DEFERRED (effect is animated, CONVENTIONS §5).
 //
@@ -131,8 +131,8 @@ open class LinesSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.lines" }
 
     // static readonly dependencies = ['grid', 'polar', 'geo', 'calendar'];
-    //   PORT-TODO: only grid/cartesian2d is renderable now (polar/geo/calendar coord systems for lines
-    //   not ported); the dependency list is kept verbatim so registration/topo order matches.
+    //   PORT-NOTE (deferred): only grid/cartesian2d is renderable now (polar/geo/calendar coord systems
+    //   for lines not ported); the dependency list is kept verbatim so registration/topo order matches.
     open override class var dependencies: [String] {
         return ["grid", "polar", "geo", "calendar"]
     }
@@ -175,7 +175,7 @@ open class LinesSeriesModel: SeriesModel {
         self._flatCoordsOffset = result.flatCoordsOffset
         // if (result.flatCoords) { option.data = new Float32Array(result.count); }
         if result.flatCoords != nil {
-            // PORT-TODO: upstream `new Float32Array(count)` (a zero-filled placeholder, one slot per line —
+            // PORT-NOTE: upstream `new Float32Array(count)` (a zero-filled placeholder, one slot per line —
             //   the real coords live in `_flatCoords`). Modeled as a `[Double]` of zeros so the ported
             //   Source/DataStore pipeline (which expects an array-like) can build `count` line data items.
             opt["data"] = [Double](repeating: 0, count: Int(result.count))
@@ -225,7 +225,7 @@ open class LinesSeriesModel: SeriesModel {
             }
             else {
                 // this._flatCoords = concatArray(this._flatCoords, result.flatCoords);
-                //   concatArray -> ContiguousArray `+` (CONVENTIONS §8; util.concatArray is a PORT-TODO).
+                //   concatArray -> ContiguousArray `+` (CONVENTIONS §8; util.concatArray is a PORT-NOTE).
                 self._flatCoords = self._flatCoords! + resultFlatCoords
                 self._flatCoordsOffset = (self._flatCoordsOffset ?? []) + (result.flatCoordsOffset ?? [])
             }
@@ -395,10 +395,13 @@ open class LinesSeriesModel: SeriesModel {
         //     const CoordSys = CoordinateSystem.get(option.coordinateSystem);
         //     if (!CoordSys) { throw new Error('Unknown coordinate system ' + option.coordinateSystem); }
         // }
-        // PORT-TODO: core/CoordinateSystem registry lookup NOT ported — the dev-only "Unknown coordinate
-        //   system" guard is deferred.
-
         let opt = option as? [String: Any]
+        if __DEV__ {
+            let coordSysName = (opt?["coordinateSystem"] as? String) ?? ""
+            if CoordinateSystemManager.get(coordSysName) == nil {
+                log.error("Unknown coordinate system " + coordSysName)
+            }
+        }
 
         // const lineData = new SeriesData(['value'], this);
         let lineData = SeriesData(["value"], self)
@@ -427,7 +430,7 @@ open class LinesSeriesModel: SeriesModel {
                     return value
                 }
                 // (implicit `return undefined` fallthrough)
-                // PORT-TODO: upstream returns `undefined` here; modeled as NaN (ParsedValue is non-optional
+                // PORT-NOTE: upstream returns `undefined` here; modeled as NaN (ParsedValue is non-optional
                 //   in this port), matching the "no numeric value" intent for a coords-only data item.
                 return Double.nan
             }
@@ -477,8 +480,8 @@ open class LinesSeriesModel: SeriesModel {
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }
     open func preventIncremental() -> Bool {
-        // PORT-TODO: `effect` render is ANIMATED and DEFERRED (CONVENTIONS §5). The option flag is still
-        //   read faithfully so the (deferred) incremental/effect pipeline sees the right value.
+        // PORT-NOTE (deferred): `effect` render is ANIMATED and DEFERRED (CONVENTIONS §5). The option flag
+        //   is still read faithfully so the (deferred) incremental/effect pipeline sees the right value.
         return jsTruthy(self.get(["effect", "show"]))
     }
 
@@ -528,7 +531,7 @@ open class LinesSeriesModel: SeriesModel {
     open override class var defaultOption: ModelOption? {
         return [
             // coordinateSystem defaults to 'geo' upstream, but ONLY cartesian2d is rendered by the ported
-            //   static view (polar/geo/calendar are PORT-TODO in linesLayout). The default is kept faithful.
+            //   static view (polar/geo/calendar are deferred in linesLayout). The default is kept faithful.
             "coordinateSystem": "geo",
             // zlevel: 0,
             "z": 2.0,
@@ -544,9 +547,9 @@ open class LinesSeriesModel: SeriesModel {
             // Geo coordinate system
             "geoIndex": 0.0,
 
-            // PORT-TODO: `effect` (moving-dot / trail) render is ANIMATED and DEFERRED (CONVENTIONS §5).
-            //   The option sub-tree is preserved verbatim for the diffable surface + the (deferred)
-            //   effect pipeline.
+            // PORT-NOTE (deferred): `effect` (moving-dot / trail) render is ANIMATED and DEFERRED
+            //   (CONVENTIONS §5). The option sub-tree is preserved verbatim for the diffable surface +
+            //   the (deferred) effect pipeline.
             "effect": [
                 "show": false,
                 "period": 4.0,
@@ -557,8 +560,8 @@ open class LinesSeriesModel: SeriesModel {
                 "trailLength": 0.2
             ] as [String: Any],
 
-            // PORT-TODO: `large` / progressive draw path DEFERRED (the large layout buffer is produced by
-            //   linesLayout but its consumer draw is not ported).
+            // PORT-NOTE (deferred): `large` / progressive draw path DEFERRED (the large layout buffer is
+            //   produced by linesLayout but its consumer draw is not ported).
             "large": false,
             // Available when large is true
             "largeThreshold": 2000.0,

@@ -52,9 +52,9 @@ public func installBrushAction(_ registers: EChartsExtensionInstallRegisters) {
     brushInfo.update = "updateVisual"
     registerAction(brushInfo) { payload, ecModel, _ in
         // ecModel.eachComponent({mainType:'brush', query: payload}, brushModel => brushModel.setAreas(payload.areas))
-        // PORT-TODO: the `query: payload` filter (match by brushId/brushIndex/brushName) is simplified to
-        //   "every brush component" — sufficient for the single-brush cartesian scope. Restore the
-        //   QueryConditionKindA finder when multi-brush selection lands.
+        // PORT-NOTE (deferred): the `query: payload` filter (match by brushId/brushIndex/brushName) is
+        //   simplified to "every brush component" — sufficient for the single-brush cartesian scope.
+        //   Restore the QueryConditionKindA finder when multi-brush selection lands.
         let areas = brushPayloadAreas(payload.other["areas"])
         ecModel.eachComponent("brush") { brushModel, _ in
             guard let brush = brushModel as? BrushModelLike else { return }

@@ -219,9 +219,20 @@ open class EffectSymbol: Symbol {
             // Not playing on render — clear cache and stop.
             self._effectCfg = nil
             self.stopEffectAnimation()
-            // PORT-TODO: upstream also registers onHoverStateChange to start/stop the ripple on
-            //   emphasis in/out when showEffectOn === 'emphasis'. The hover-triggered ripple is DEFERRED
-            //   (matches the previous inline port, which only built ripples for the 'render' gate).
+            // (this as ECElement).onHoverStateChange = (toState) => { ... } — start/stop the ripple on
+            //   emphasis in/out when showEffectOn === 'emphasis'.
+            EChartsKit.states.getHighDownInner(self).onHoverStateChange = { [weak self] toState in
+                guard let self = self else { return }
+                if toState == .emphasis {
+                    if effectCfg.showEffectOn != "render" {
+                        self.startEffectAnimation(effectCfg)
+                    }
+                } else if toState == .normal {
+                    if effectCfg.showEffectOn != "render" {
+                        self.stopEffectAnimation()
+                    }
+                }
+            }
         }
     }
 }

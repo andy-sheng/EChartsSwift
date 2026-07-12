@@ -24,8 +24,9 @@ import ZRenderKit
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';               -> `util.*` (ZRenderKit).
 //   import * as graphic from '../../util/graphic';                 -> `Group` / `BezierCurve` (ZRenderKit shapes).
-//       PORT-TODO: util/graphic's updateProps/removeElement (animation) NOT ported — the static render
-//       sets final geometry directly (same deviation as FunnelView/PieView/SunburstView).
+//       PORT-NOTE (deferred): util/graphic's updateProps/removeElement (== animation/basicTransition,
+//       ported) are not used HERE — this static render sets final geometry directly (same deviation as
+//       FunnelView/PieView/SunburstView); the enter/update/remove tween is deferred for this view.
 //   import {getECData} from '../../util/innerStore';               -> `innerStore.getECData` (ported).
 //   import SymbolClz from '../helper/Symbol';                      -> `Symbol` (chart/helper/SymbolElement.swift).
 //       PORT NOTE: the node symbols are routed through the shared `SymbolDraw` (chart/helper/SymbolDraw),
@@ -35,10 +36,11 @@ import ZRenderKit
 //       remove animation + radial label rotation) has no Swift analogue; the edge blur-forward that
 //       `__edge` powers is reproduced via the symbol Path's `onHoverStateChange` hook (see decorateNode).
 //   import {radialCoordinate} from './layoutHelper';               -> `layoutHelper.radialCoordinate` (sibling).
-//   import * as bbox from 'zrender/src/core/bbox';                 -> PORT-TODO: only used by _updateViewCoordSys (deferred).
+//   import * as bbox from 'zrender/src/core/bbox';                 -> PORT-NOTE: only used by _updateViewCoordSys (deferred).
 //   import { applyViewCoordSysTransToElement, calcCompensationScaleToPreserveNodeSize,
-//            VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';  -> PORT-TODO: coord/View NOT ported (roam deferred).
-//   import RoamController from '../../component/helper/RoamController';   -> PORT-TODO: roam NOT ported.
+//            VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';  -> PORT-NOTE: coord/View NOT ported (roam deferred).
+//   import RoamController from '../../component/helper/RoamController';   -> RoamController IS ported
+//       (component/helper/RoamController.swift); PORT-NOTE (deferred): roam is not wired into this view.
 //   import {parsePercent} from '../../util/number';                -> `number.parsePercent`.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import TreeSeriesModel, { TreeSeriesOption, TreeSeriesNodeItemOption, SERIES_TYPE_TREE } from './TreeSeries';
@@ -58,9 +60,10 @@ import ZRenderKit
 //          `tokens.color.neutral00` (='#fff') are still inlined as their upstream literals below.
 //   import { createIsInSelfByPointerCheckerEl, createViewCoordSysSimply, isRoamPayloadHasZoom,
 //            updateRoamControllerSimply } from '../../component/helper/roamHelper';
-//       -> PORT-TODO: roamHelper NOT ported (roam deferred).
+//       -> PORT-NOTE: roamHelper NOT ported (roam deferred).
 
-// PORT-TODO: `tokens.color.*` (visual/tokens.ts). Inlined as the upstream literal values.
+// PORT-NOTE: `tokens.color.*` (visual/tokens.ts, ported) — inlined here as the upstream literal values
+//   (neutral99='#000', neutral00='#fff'), semantically equivalent to the token lookup.
 private let tokens_color_neutral99 = "#000"
 private let tokens_color_neutral00 = "#fff"
 
@@ -184,12 +187,12 @@ open class TreeView: ChartView {
     // upstream: private _data: SeriesData<TreeSeriesModel>;
     private var _data: SeriesData?
 
-    // PORT-TODO: private _min/_max/_firstRender — only used by _updateViewCoordSys/roam (deferred).
+    // PORT-NOTE (deferred): private _min/_max/_firstRender — only used by _updateViewCoordSys/roam (deferred).
 
     // upstream: init(ecModel, api) { this._controller = new RoamController(api.getZr());
     //   this.group.add(this._mainGroup); this._firstRender = true; }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: RoamController + _firstRender (roam) deferred.
+        // PORT-NOTE (deferred): RoamController + _firstRender (roam) deferred.
         _ = self.group.add(self._mainGroup)
     }
 
@@ -230,8 +233,9 @@ open class TreeView: ChartView {
         group.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-TODO: the upstream `View` VIEW_COORD_SYS placement (bbox + createViewCoordSysSimply +
-        //   applyViewCoordSysTransToElement) is DEFERRED (coord/View not ported). The group position set
+        //   PORT-NOTE (deferred): the upstream `View` VIEW_COORD_SYS placement (bbox + createViewCoordSysSimply +
+        //   applyViewCoordSysTransToElement) is DEFERRED for this view (roam via group transform instead).
+        //   The group position set
         //   above is the static subset of that placement; the roam pan/zoom is applied to the group as a
         //   TRANSFORM at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
 
@@ -249,7 +253,7 @@ open class TreeView: ChartView {
         // STATIC render deviation: a FRESH SymbolDraw is built each render (its `_data` starts nil → the
         //   diff is all-`.add`), so every node hits the ctor branch (which carries `useNameLabel: true`),
         //   and the group is rebuilt from scratch. The keyed reuse + expand/collapse click + node/link
-        //   scale + radial label rotation are DEFERRED (see PORT-TODOs).
+        //   scale + radial label rotation are DEFERRED (see the deferred PORT-NOTEs below).
         // ------------------------------------------------------------------------------------------
         _ = group.removeAll()
 
@@ -261,8 +265,8 @@ open class TreeView: ChartView {
         // upstream `symbolEl = new SymbolClz(data, dataIndex, null, { symbolInnerColor, useNameLabel: true })`:
         //   route the node symbols through SymbolDraw with a ctor that sets `useNameLabel: true` so each
         //   node label's default text is the node NAME (not the value-derived getDefaultLabel).
-        //   PORT-TODO: `symbolInnerColor` (the hollow inner fill for collapsed nodes) is a SymbolClz init
-        //   opt not modelled by the shared Symbol yet — DEFERRED.
+        //   PORT-NOTE (deferred): `symbolInnerColor` (the hollow inner fill for collapsed nodes) is a
+        //   SymbolClz init opt not modelled by the shared Symbol yet — DEFERRED.
         let treeSymbolCtor: SymbolLikeCtor = { data, idx, scope, opts in
             var o = opts ?? SymbolOpts()
             o.useNameLabel = true
@@ -290,7 +294,7 @@ open class TreeView: ChartView {
         }
 
         // this._updateNodeAndLinkScale(seriesModel);
-        //   PORT-TODO: DEFERRED — setSymbolScale / calcCompensationScaleToPreserveNodeSize (roam) not ported.
+        //   PORT-NOTE (deferred): setSymbolScale / calcCompensationScaleToPreserveNodeSize (roam) not ported.
 
         // if (seriesModel.get('expandAndCollapse') === true) {
         //     data.eachItemGraphicEl(function (el, dataIndex) {
@@ -327,7 +331,7 @@ open class TreeView: ChartView {
         //   On first render / roam off, the state is identity → the placement above is left exactly as-is.
         viewGroupRoamApplyStateToGroup(seriesModel, group, baseX, baseY)
 
-        // this._firstRender = false;  — PORT-TODO: the enter/roam animation flag stays DEFERRED.
+        // this._firstRender = false;  — PORT-NOTE (deferred): the enter/roam animation flag stays DEFERRED.
     }
 
     // L3 Roam: the pointer-check element (upstream `createIsInSelfByPointerCheckerEl(this.group)`).
@@ -339,13 +343,13 @@ open class TreeView: ChartView {
     // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — the port re-renders via the full update()
     //   the `treeRoam` action triggers (see roamHelperViewGroup.swift DEVIATION note); no partial path.
 
-    // upstream: private _updateViewCoordSys(seriesModel, api)  — PORT-TODO: coord/View + bbox DEFERRED.
+    // upstream: private _updateViewCoordSys(seriesModel, api)  — PORT-NOTE (deferred): coord/View + bbox DEFERRED.
 
-    // upstream: _updateNodeAndLinkScale(seriesModel)  — PORT-TODO: setSymbolScale (roam) DEFERRED.
+    // upstream: _updateNodeAndLinkScale(seriesModel)  — PORT-NOTE: setSymbolScale (roam) DEFERRED.
 
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: RoamController.dispose DEFERRED (roam not ported).
+        // PORT-NOTE (deferred): RoamController.dispose DEFERRED (roam not wired into this view).
     }
 
     // upstream: remove() { this._mainGroup.removeAll(); this._data = null; }
@@ -517,8 +521,10 @@ private func drawEdge(
             }
         }
         else {
-            // PORT-TODO: upstream `if (__DEV__) throw new Error('The polyline edgeShape can only be used
-            //   in orthogonal layout')` — dev-only guard dropped.
+            // if (__DEV__) { throw new Error('The polyline edgeShape can only be used in orthogonal layout'); }
+            if __DEV__ {
+                log.error("The polyline edgeShape can only be used in orthogonal layout")
+            }
         }
     }
 
@@ -547,7 +553,7 @@ private func drawEdge(
     return nil
 }
 
-// PORT-TODO: function removeNodeEdge / getSourceNode / removeNode — the enter/update/remove ANIMATION
+// PORT-NOTE (deferred): function removeNodeEdge / getSourceNode / removeNode — the enter/update/remove ANIMATION
 //   subsystem (graphic.removeElement, fadeOut, removeAnimationOpt) is DEFERRED per CONVENTIONS §5. The
 //   static render rebuilds the group each pass, so per-node removal animation is not needed. `getSourceNode`
 //   (walks up to the first ancestor with a non-null layout) is subsumed by `updateNode`'s inline

@@ -198,8 +198,8 @@ private func computeNodeBreadths(
     for i in 0..<remainEdges.count {
         if remainEdges[i] == 1 {
             // upstream: `throw new Error('Sankey is a DAG, the original data has cycle!');`
-            // PORT-TODO: the layout stage handler closure is non-throwing; mirror the unrecoverable
-            //   throw with a fatalError (cyclic input is invalid data).
+            // PORT-NOTE: the layout stage handler closure is non-throwing, so the unrecoverable upstream
+            //   throw is mirrored with a fatalError (cyclic input is invalid data) — semantically equivalent.
             fatalError("Sankey is a DAG, the original data has cycle!")
         }
     }

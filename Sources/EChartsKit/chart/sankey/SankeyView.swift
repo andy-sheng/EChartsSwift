@@ -112,7 +112,7 @@ public struct SankeyPathShape: PathShape {
 }
 
 // upstream: interface SankeyPathProps extends PathProps { shape?: Partial<SankeyPathShape> }
-// PORT-TODO: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
+// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
 //   (== DisplayableProps); the `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias SankeyPathProps = PathProps
 
@@ -222,7 +222,7 @@ open class SankeyView: ChartView {
         let graph = seriesModel.getGraph()
         let mainGroup = self._mainGroup
         // const layoutInfo = seriesModel.layoutInfo;
-        //   PORT-TODO: `layoutInfo` is `LayoutRect?` in the sibling port (upstream is non-null, set by
+        //   PORT-NOTE: `layoutInfo` is `LayoutRect?` in the sibling port (upstream is non-null, set by
         //   sankeyLayout); guard and bail if absent (no geometry to draw).
         guard let layoutInfo = seriesModel.layoutInfo else { return }
         // view width / height
@@ -485,8 +485,8 @@ open class SankeyView: ChartView {
             nodeLabelOpt.defaultText = node.id
             nodeLabelOpt.inheritColor = sankeyColorString(node.getVisual("color"))
             labelStyle.setLabelStyle(rect, nodeLabelModels, nodeLabelOpt)
-            // PORT-TODO: `(rect as ECElement).disableLabelAnimation = true` — ECElement label-animation
-            //   opt-out not bridged (label value animation is DEFERRED in labelStyle.swift anyway).
+            // PORT-NOTE (deferred): `(rect as ECElement).disableLabelAnimation = true` — the ECElement
+            //   label-animation opt-out is not bridged (label value animation is deferred in labelStyle.swift anyway).
 
             // rect.setStyle('fill', node.getVisual('color'));
             if let fill = sankeyColor(node.getVisual("color")) {
@@ -507,14 +507,14 @@ open class SankeyView: ChartView {
                 initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
             }
             // rect.setStyle('decal', node.getVisual('style').decal);
-            //   PORT-TODO: node decal (Pattern) not bridged (decal out of the static-render scope).
+            //   PORT-NOTE (deferred): node decal (Pattern) not bridged (decal is out of the static-render scope).
 
             // upstream (SankeyView.ts:315): setStatesStylesFromModel(rect, itemModel); + (323-332)
             //   toggleHoverEmphasis. The node rect is marked a highDown dispatcher carrying its
             //   emphasis-state itemStyle, so a hover restyles it. Mirror ScatterView.render's block.
-            //   PORT-TODO: `focus === 'adjacency'|'trajectory'` (getAdjacentDataIndices /
-            //   getTrajectoryDataIndices exist in data/Graph.swift) — the graph-topology focus that also
-            //   blurs unrelated nodes/edges — is not yet wired here (raw focus passed through).
+            //   `focus === 'adjacency'|'trajectory'` (the graph-topology focus that also blurs unrelated
+            //   nodes/edges) IS wired: `sankeyResolveNodeFocus` maps it to the adjacent/trajectory data
+            //   index set via GraphNode.getAdjacentDataIndices / getTrajectoryDataIndices (data/Graph.swift).
             let emphasisModel = itemModel.getModel(["emphasis"])
             let focusRaw: InnerFocus? = emphasisModel.get("focus")
             let focus: InnerFocus? = sankeyResolveNodeFocus(focusRaw, node)   // Phase 45: adjacency/trajectory
@@ -581,8 +581,9 @@ open class SankeyView: ChartView {
         }, nil)
 
         // if (!this._data && seriesModel.isAnimationEnabled()) { mainGroup.setClipPath(createGridClipShape(...)); }
-        //   PORT-TODO: the first-render grow-in clip animation (createGridClipShape + graphic.initProps)
-        //   is deferred here (graphic.initProps is ported in animation/basicTransition.swift; CONVENTIONS §5 — animation deferred).
+        //   PORT-NOTE (deferred): the first-render grow-in clip animation (createGridClipShape + a clip
+        //   Rect whose width tweens) is deferred — clip-path animation is not ported (CONVENTIONS §5).
+        //   graphic.initProps itself is ported (animation/basicTransition.swift); reinstate with it later.
 
         self._data = seriesModel.getData()
 
@@ -643,7 +644,7 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
         // curveProps.fill = edge.node1.getVisual('color');
         curve.pathStyle.fill = sankeyColor(edge.node1.getVisual("color"))
         // curveProps.decal = edge.node1.getVisual('style').decal;
-        //   PORT-TODO: edge decal (Pattern) not bridged (out of static-render scope).
+        //   PORT-NOTE (deferred): edge decal (Pattern) not bridged (out of static-render scope).
     case .some(.string("target")):
         curve.pathStyle.fill = sankeyColor(edge.node2.getVisual("color"))
     case .some(.string("gradient")):
@@ -668,9 +669,10 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
 
 // ================================================================================================
 // upstream: function createGridClipShape(rect: RectLike, seriesModel, cb)
-//   PORT-TODO: the first-render grow-in clip animation is deferred. It builds a zero-width Rect and
-//   `graphic.initProps` tweens its width to `rect.width + 20`, revealing the diagram left-to-right.
-//   `graphic.initProps` is ported (animation/basicTransition.swift); reinstate this clip with it (animation deferred per CONVENTIONS §5).
+//   PORT-NOTE (deferred): the first-render grow-in clip animation is deferred (clip-path animation not
+//   ported per CONVENTIONS §5). It builds a zero-width Rect and `graphic.initProps` tweens its width to
+//   `rect.width + 20`, revealing the diagram left-to-right. `graphic.initProps` is ported
+//   (animation/basicTransition.swift); reinstate this clip with it when clip-path animation lands.
 // ================================================================================================
 
 // export default SankeyView;  -> `open class SankeyView` above.

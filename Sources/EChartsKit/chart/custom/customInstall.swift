@@ -29,7 +29,7 @@ import ZRenderKit
 //   import CustomChartView from './CustomView';                          -> sibling CustomView.swift
 //       (STATIC render layer — DEFERRED per the CUSTOM port brief; enter/update/leave transition +
 //        animation + morphing + group-DIFF + emphasis/blur/select states + clipPath animation +
-//        legacy-echarts compat are all PORT-TODOs).
+//        legacy-echarts compat are all DEFERRED).
 
 // export function install(registers: EChartsExtensionInstallRegisters) {
 //     registers.registerChartView(CustomChartView);

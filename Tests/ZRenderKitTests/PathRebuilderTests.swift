@@ -3,7 +3,7 @@ import XCTest
 
 /// Smoke test: confirms the renderer-seam protocol is conformable and that a recorder
 /// receives commands in order. Real PathProxy.rebuildPath tests land once PathProxy is
-/// ported. PORT-TODO: add golden-path replay tests against upstream fixtures.
+/// ported. PORT-NOTE: add golden-path replay tests against upstream fixtures.
 final class PathRebuilderTests: XCTestCase {
 
     /// Minimal in-memory PathRebuilder that records the ops it receives.

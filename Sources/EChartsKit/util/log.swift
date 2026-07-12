@@ -39,7 +39,7 @@ public enum log {
     private static let ECHARTS_PREFIX = "[ECharts] "
     private static var storedLogs: Dictionary<Bool> = [:]
 
-    // PORT-TODO: upstream feature-detects `console` (`typeof console !== 'undefined' && console.warn && console.log`).
+    // PORT-NOTE: upstream feature-detects `console` (`typeof console !== 'undefined' && console.warn && console.log`).
     //            Swift has no `console`; output is routed through `print` (see outputLog), which is always available.
     private static let hasConsole = true
 
@@ -52,8 +52,9 @@ public enum log {
                 storedLogs[str] = true
             }
             // console[type](ECHARTS_PREFIX + str);
-            // PORT-TODO: console seam — `type` ('log' | 'warn' | 'error') is collapsed onto `print`.
-            //            Wire 'warn'/'error' to stderr or a logging facility when one exists.
+            // PORT-NOTE (platform): no browser `console` in Swift — `type` ('log' | 'warn' | 'error') is
+            //            collapsed onto `print`. There is no strict parity target (browser warn/error share
+            //            the devtools console, not a separate stderr stream); left as a single stdout seam.
             _ = type
             print(ECHARTS_PREFIX + str)
         }
@@ -137,7 +138,7 @@ public enum log {
                     }
                     // typeof JSON !== 'undefined' && JSON.stringify
                     else {
-                        // PORT-TODO: upstream JSON.stringify takes a replacer that re-applies
+                        // PORT-NOTE (platform): upstream JSON.stringify takes a replacer that re-applies
                         //            makePrintableStringIfPossible to nested values; Foundation's
                         //            JSONSerialization has no such callback, so nested
                         //            Infinity/NaN/Date/function/RegExp are not specially printed.

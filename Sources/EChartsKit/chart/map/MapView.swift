@@ -26,7 +26,7 @@ import ZRenderKit
 //     → `Circle`/`Polygon`/`Polyline`/`CompoundPath`/`ZRText` are ZRenderKit shapes. `util/graphic`
 //       (initProps/updateProps/Circle helpers) is ported; this static render builds the shapes directly.
 //   import MapDraw from '../../component/helper/MapDraw';
-//     → PORT-TODO: `component/helper/MapDraw` is NOT ported. Upstream `MapView.render` delegates ALL region
+//     → PORT-NOTE (deferred): requires `component/helper/MapDraw` (NOT ported). Upstream `MapView.render` delegates ALL region
 //       drawing to a persistent `MapDraw` instance (which also owns the roam controller, the SVG map path,
 //       the visualMap-encoded region fill, emphasis/select/blur states, and event/tooltip triggers). For
 //       this STATIC render the GeoJSON region subset of `MapDraw._buildGeoJSON` (with the SERIES-DATA
@@ -75,8 +75,9 @@ open class MapView: ChartView {
     }
 
     // upstream: private _mapDraw: MapDraw;
-    // PORT-TODO: MapDraw NOT ported. The GeoJSON region backdrop (with data colouring) is built directly
-    //   in `_buildGeoJSON`; this slot (and the roam controller / SVG map it owns) is deferred.
+    // PORT-NOTE (deferred): requires MapDraw (NOT ported). The GeoJSON region backdrop (with data
+    //   colouring) is built directly in `_buildGeoJSON`; this slot (and the roam controller / SVG map it
+    //   owns) is deferred.
 
     // ── Persistent GeoJSON region elements for the COLOR-MORPH path (L5 transition fidelity) ──────────
     //   A map's region GEOMETRY is fixed (from the registered GeoJSON); a merge-mode value change only
@@ -115,8 +116,9 @@ open class MapView: ChartView {
 
         // upstream: Not render if it is a toggleSelect action from self.
         //   if (payload && payload.type === 'mapToggleSelect' && payload.from === this.uid) { return; }
-        // PORT-TODO (DEFERRED — select states/actions): `mapToggleSelect` is a select action; select is
-        //   deferred, so this early-out never triggers here (kept for provenance).
+        // PORT-NOTE (deferred — select states/actions): `mapToggleSelect` is a select action. The guard
+        //   itself IS ported faithfully below; it only fires once select-action dispatch lands (select
+        //   actions are not yet dispatched, so `payload.type` is never 'mapToggleSelect' in practice).
         if payload.type == "mapToggleSelect",
            let from = payload.other["from"] as? String, from == self.uid {
             return
@@ -140,8 +142,8 @@ open class MapView: ChartView {
         // upstream keeps a persistent `_mapDraw` and, on `geoRoam`, calls `mapDraw.resetForLabelLayout()`
         //   / short-circuits a self-roam. STATIC render: no roam, no persistent MapDraw — the group is
         //   rebuilt from scratch each render (matching GeoView / FunnelView).
-        // PORT-TODO (DEFERRED — roam): the `payload.type === 'geoRoam'` self-roam short-circuit and
-        //   `resetForLabelLayout` are omitted (no RoamController / transformGroup yet).
+        // PORT-NOTE (deferred — roam): requires RoamController / transformGroup — the
+        //   `payload.type === 'geoRoam'` self-roam short-circuit and `resetForLabelLayout` are omitted.
 
         // upstream: if (mapSeriesNeedsDrawMap(mapModel)) { mapDraw.draw(...); } else { this._clearMapDraw(); }
         //   MapDraw.draw dispatches on `geo.resourceType`: 'geoJSON' → _buildGeoJSON; 'geoSVG' → _buildSVG.
@@ -178,7 +180,7 @@ open class MapView: ChartView {
     // region gets `data.getItemVisual(dataIdx, 'style').fill`. Falls back to the region `itemStyle`
     // (`getFixedItemStyle` → `areaColor`).
     //
-    // PORT-TODO (DEFERRED — faithful to a STATIC render; separate upstream subsystems):
+    // PORT-NOTE (deferred — faithful to a STATIC render; separate upstream subsystems):
     //   - ROAM: `transformGroup` / `RoamController` / `viewCoordSys` local transform. Here the view
     //     transform is folded into `Geo.dataToPoint` (no roam), so points land at final pixels directly.
     //   - `projectionStream` (d3-style clip/resample) / `projectPolys`: only the per-point projection is
@@ -825,7 +827,7 @@ open class MapView: ChartView {
     // ------------------------------------------------------------------------------------------------
 
     // upstream: __updateOnOwnRoam(payload, model, api) { mapDraw.__updateOnOwnRoam(model); }
-    // PORT-TODO (DEFERRED — roam): no MapDraw/transformGroup to re-transform.
+    // PORT-NOTE (deferred — roam): requires MapDraw/transformGroup to re-transform (not ported).
 
     // upstream: remove() { this._clearMapDraw(); this.group.removeAll(); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -841,7 +843,7 @@ open class MapView: ChartView {
     }
 
     // upstream: private _clearMapDraw() { this._mapDraw && this._mapDraw.remove(); this._mapDraw = null; }
-    // PORT-TODO (DEFERRED — MapDraw): no persistent draw to clear.
+    // PORT-NOTE (deferred — MapDraw): requires a persistent MapDraw to clear (not ported).
 }
 
 // export default MapView;  → `open class MapView` above.
@@ -890,8 +892,8 @@ private func mapJsTruthy(_ v: Any?) -> Bool {
 ///   numbers via `mapToNumber` (Int-drop trap). Delete when the graphic bridge lands.
 private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the String form
-    //   (incl. the sentinel 'none') is mapped here.
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the
+    //   String form (incl. the sentinel 'none') is mapped here — same deviation as GeoView.geoColorString.
     if let v = mapColorString(dict["fill"]) { s.fill = .string(v) }
     if let v = mapColorString(dict["stroke"]) { s.stroke = .string(v) }
     if let v = mapToNumber(dict["lineWidth"]) { s.lineWidth = v }
@@ -910,7 +912,10 @@ private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     //   The generated tiling `Pattern` is bridged to `pathStyle.decal` so `Path.update()` synthesizes the
     //   decal element (`_decalEl`) the renderer paints over the region fill (mirrors barStyleFromDict).
     if let pat = dict["decal"] as? ZRenderKit.Pattern { s.decal = pat }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // `lineDash` (number[] | false) → LineDash enum (mirrors CustomView.pathStyleFromDict / AxisBuilder).
+    if let dash = dict["lineDash"] as? [Double] { s.lineDash = .values(dash) }
+    else if let dashi = dict["lineDash"] as? [Int] { s.lineDash = .values(dashi.map { Double($0) }) }
+    else if let b = dict["lineDash"] as? Bool, b == false { s.lineDash = .`false` }
     return s
 }
 

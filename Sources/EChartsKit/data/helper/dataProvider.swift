@@ -651,12 +651,6 @@ public func retrieveRawAttr(_ data: SeriesData?, _ dataIndex: Double, _ attr: St
         return nil
     }
 
-    // PORT-TODO: `SeriesData` is an empty protocol stub and `DataStore` is not yet ported.
-    // Body preserved verbatim below; re-enable once `SeriesData.getStore/getRawDataItem`
-    // and `DataStore.getSource` land.
-    _ = data
-    return nil
-    /*
     let sourceFormat = data.getStore().getSource().sourceFormat
 
     if sourceFormat != SOURCE_FORMAT_ORIGINAL
@@ -664,7 +658,7 @@ public func retrieveRawAttr(_ data: SeriesData?, _ dataIndex: Double, _ attr: St
         return nil
     }
 
-    var dataItem = data.getRawDataItem(dataIndex)
+    var dataItem: Any? = data.getRawDataItem(Int(dataIndex))
     if sourceFormat == SOURCE_FORMAT_ORIGINAL && !util.isObject(dataItem) {
         dataItem = nil
     }
@@ -672,7 +666,6 @@ public func retrieveRawAttr(_ data: SeriesData?, _ dataIndex: Double, _ attr: St
         return (dataItem as? [String: OptionDataValue])?[attr] ?? nil
     }
     return nil
-    */
 }
 
 

@@ -75,7 +75,8 @@ public typealias RegoinOption = RegionOption
 // upstream: class GeoModel extends ComponentModel<GeoOption> implements RoamHostModel { ... }
 //   Component reference type -> `final class : ComponentModel, CoordinateSystemHostModel` (mirrors RadarModel;
 //   its `coordinateSystem: Geo` satisfies CoordinateSystemHostModel since Geo is a CoordinateSystemMaster).
-//   PORT-TODO: upstream also `implements RoamHostModel` (via `__ownRoamView()` below). ROAM (pan/zoom)
+//   PORT-NOTE (deferred): requires the ROAM interaction module (RoamHostModel). Upstream also
+//   `implements RoamHostModel` (via `__ownRoamView()` below). ROAM (pan/zoom)
 //   interaction is DEFERRED per the phase brief; the `RoamHostModel` conformance (whose `__ownRoamView`
 //   returns a `View?`) is not declared here until View/Geo land — the method is kept below, staged.
 public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
@@ -223,7 +224,8 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
 
         // Default label emphasis `show`
         // modelUtil.defaultEmphasis(option, 'label', ['show']);
-        //   PORT-TODO: model.defaultEmphasis takes a typed `DisplayStateHostOption` (struct); bridging the
+        //   PORT-NOTE (deferred): requires the [String: Any] <-> DisplayStateHostOption bridge.
+        //   model.defaultEmphasis takes a typed `DisplayStateHostOption` (struct); bridging the
         //   dynamic option bag ([String: Any]) <-> DisplayStateHostOption is not wired yet (same deferral as
         //   Series.swift / MarkerModel). Re-enable once the bridge lands:
         //   modelUtil.defaultEmphasis(&self.option, "label", ["show"])

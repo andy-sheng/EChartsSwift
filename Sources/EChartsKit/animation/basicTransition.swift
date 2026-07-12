@@ -2,11 +2,11 @@
 // Real animation replacing the per-view no-op shims (BarView/CandlestickView). `initProps`/`updateProps`
 // animate via el.animateTo when the series has animation enabled, else set the props instantly.
 //
-// PORT-TODO (scope for this task): upstream's `getAnimationConfig` also reads a global animation
-//   override from `ecModel.getUpdatePayload()` (dataZoom/resize actions) and supports a
-//   `getAnimationDelayParams` hook (pictorial bar only) plus a `removeOpt` override for the leave
-//   path. None of those are wired here — they are out of scope for the shared-helper port and are
-//   left for the task(s) that actually need them (dataZoom/pictorial bar).
+// PORT-NOTE (deferred): upstream's `getAnimationConfig` also reads a global animation
+//   override from `ecModel.getUpdatePayload()` (dataZoom/resize actions — the method IS ported on
+//   Global but not consumed here) and supports a `getAnimationDelayParams` hook (pictorial bar only)
+//   plus a `removeOpt` override for the leave path. None of those are wired here — they are out of
+//   scope for the shared-helper port and land with the task(s) that need them (dataZoom/pictorial bar).
 import Foundation
 import ZRenderKit
 
@@ -158,7 +158,7 @@ func removeElementWithFadeOut(_ el: Element, _ model: Model? = nil, _ dataIndex:
 }
 
 // ---- Saved old style for style transition in universalTransition (later sub-project). ----
-// PORT-TODO (B1 stub): upstream stores `Displayable['style']` (the concrete style bag, whatever
+// PORT-NOTE (deferred): requires the universalTransition sub-project (not ported). Upstream stores `Displayable['style']` (the concrete style bag, whatever
 //   subtype it is) via a `makeInner`-style per-element WeakMap. Our `Displayable.style` is typed
 //   `CommonStyleProps!`, not `PathStyleProps` — the two are not interchangeable, and `model.makeInner`
 //   requires an `AnyObject` value type, which a style struct is not. Since nothing in this task's

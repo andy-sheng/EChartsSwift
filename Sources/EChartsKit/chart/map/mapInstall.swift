@@ -31,7 +31,7 @@ import ZRenderKit
 //          fill instead of the region itemStyle backdrop).
 //   import MapSeries from './MapSeries';                         -> MapSeriesModel (sibling MapSeries.swift, ported).
 //   import {createLegacyDataSelectAction} from '../../legacy/dataSelectAction';
-//       -> PORT-TODO: legacy/dataSelectAction.ts NOT ported (select actions deferred).
+//       -> PORT-NOTE (deferred): requires legacy/dataSelectAction.ts (select actions) — NOT ported.
 //   import {install as installGeo} from '../../component/geo/install';
 //       -> the geo component install (geoCreator + GeoModel + GeoView). Wired by the driver via `use`.
 //   import { mapSymbolLayoutStageHandler } from './mapSymbolLayout';

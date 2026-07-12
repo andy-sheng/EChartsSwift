@@ -335,7 +335,7 @@ public enum number {
      */
     public static func getPrecisionSafe(_ val: Any?) -> Double {
         // toLowerCase for: '3.4E-12'
-        // PORT-TODO: JS `Number.prototype.toString` uses a different scientific-notation threshold
+        // POTENTIAL-BUG: JS `Number.prototype.toString` uses a different scientific-notation threshold
         //  and exponent format than `jsNumberString`; tiny/huge magnitudes may diverge here.
         let str = jsNumberString(numberCoerce(val)).lowercased()
 
@@ -876,8 +876,9 @@ public enum number {
     public static func numericToNumber(_ val: Any?) -> Double {
         let valFloat = parseFloatLeading(jsString(val))
         // upstream: `valFloat == val` is a loose (==) comparison between a number and `unknown`.
-        // PORT-TODO: only number/string/bool/null loose-equality is modeled; exotic coercions
-        //  (objects via ToPrimitive) are not reproduced.
+        // PORT-NOTE: only number/string/bool/null loose-equality is modeled; exotic coercions
+        //  (objects via ToPrimitive) are not reproduced. Semantically equivalent for internal usage,
+        //  which never passes objects to `numericToNumber`.
         let looseEq: Bool
         if val == nil {
             // `number == null` is always false in JS.
@@ -974,7 +975,7 @@ public enum number {
     }
 
     // JS `'' + x` / `Number.prototype.toString` for a Double.
-    // PORT-TODO: JS uses a specific scientific-notation threshold/format; only the common
+    // POTENTIAL-BUG: JS uses a specific scientific-notation threshold/format; only the common
     //  finite/integer/decimal cases are reproduced here.
     static func jsNumberString(_ x: Double) -> String {
         if x.isNaN { return "NaN" }

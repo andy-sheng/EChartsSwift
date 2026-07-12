@@ -1,4 +1,4 @@
-// Regression tests for the PORT-TODO audit "tooltip stale-cluster": per-series `formatTooltip`
+// Regression tests for the PORT-NOTE audit "tooltip stale-cluster": per-series `formatTooltip`
 // overrides that used to `return nil` behind a stale "tooltipMarkup.ts NOT ported" comment, even
 // though `createTooltipMarkup` / `defaultSeriesFormatTooltip` are ported and live. Each test drives
 // the full headless content pipeline (formatTooltip -> normalizeTooltipFormatResult ->
@@ -12,7 +12,7 @@ final class ZZTooltipClusterTests: XCTestCase {
     private func htmlTooltip(_ series: SeriesModel, _ dataIndex: Double,
                              _ dataType: SeriesDataType? = nil) -> String {
         let result = series.formatTooltip(dataIndex, nil, dataType)
-        XCTAssertNotNil(result, "formatTooltip must produce content, not the old nil PORT-TODO stub")
+        XCTAssertNotNil(result, "formatTooltip must produce content, not the old nil PORT-NOTE stub")
         let frag = normalizeTooltipFormatResult(result).frag
         XCTAssertNotNil(frag, "result must normalize to a fragment")
         let html = buildTooltipMarkup(frag, TooltipMarkupStyleCreator(), .html, nil, false, [:])

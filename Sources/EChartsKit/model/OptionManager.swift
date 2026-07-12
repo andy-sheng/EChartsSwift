@@ -112,9 +112,9 @@ final class OptionManager {
                 if let seriesDict = series as? [String: Any],
                    let data = seriesDict["data"],
                    util.isTypedArray(data) {
-                    // PORT-TODO: `util.setAsPrimitive(series.data)` — hidden-key tagging is not
-                    //   ported (util/setAsPrimitive is a PORT-TODO). The typed-array-reuse guard
-                    //   is inert until it lands.
+                    // PORT-NOTE (deferred): requires `util.setAsPrimitive(series.data)` — JS hidden-key
+                    //   tagging (util.swift:474), not ported. The typed-array-reuse guard is inert until
+                    //   it lands.
                     _ = data
                 }
             }
@@ -124,7 +124,7 @@ final class OptionManager {
                 if let datasetDict = dataset as? [String: Any],
                    let source = datasetDict["source"],
                    util.isTypedArray(source) {
-                    // PORT-TODO: `util.setAsPrimitive(dataset.source)` — see the series note above.
+                    // PORT-NOTE (deferred): requires `util.setAsPrimitive(dataset.source)` — see the series note above.
                     _ = source
                 }
             }
@@ -235,13 +235,12 @@ final class OptionManager {
     func getMediaOption(_ ecModel: GlobalModel) -> [ECUnitOption] {
         // const ecWidth = this._api.getWidth();
         // const ecHeight = this._api.getHeight();
-        // PORT-TODO: `ExtensionAPI` is still an empty placeholder protocol (util/types.swift) with
-        //   no `getWidth()`/`getHeight()` (core/ExtensionAPI not ported yet). Viewport-driven media
-        //   resolution is deferred; using 0 keeps the method total and the width/height branch inert.
-        _ = self._api
+        // upstream: const ecWidth = this._api.getWidth(); const ecHeight = this._api.getHeight();
+        //   `core/ExtensionAPI` now provides `getWidth()`/`getHeight()` (forwarded to the EC instance),
+        //   so viewport-driven media resolution reads the real size.
         _ = ecModel  // upstream `getMediaOption(ecModel)` never reads `ecModel`.
-        let ecWidth: Double = 0
-        let ecHeight: Double = 0
+        let ecWidth: Double = self._api.getWidth()
+        let ecHeight: Double = self._api.getHeight()
         let mediaList = self._mediaList
         let mediaDefault = self._mediaDefault
         var indices: [Int] = []
@@ -425,12 +424,13 @@ private func parseRawOption(
     util.each(timelineOptionsOnRoot) { option, _ in doPreprocess(option) }
     util.each(mediaList) { media, _ in doPreprocess(media.option) }
 
-    // PORT-TODO: upstream preprocessors mutate the shared `option` object in place (JS reference).
+    // POTENTIAL-BUG: upstream preprocessors mutate the shared `option` object in place (JS reference).
     //   The conventional `OptionPreprocessor = (ECUnitOption, Bool) -> Void` typealias takes the
     //   option by value (`ECUnitOption` = `[String: Any]`), so mutations cannot propagate back to
-    //   the stored `baseOption`/`timelineOptions`/`mediaList`. Preprocessing is therefore
-    //   effectively a no-op until the preprocessor seam returns/mutates via `inout`. No preprocessor
-    //   is registered yet (echarts.registerPreprocessor is not ported), so this is currently inert.
+    //   the stored `baseOption`/`timelineOptions`/`mediaList`. Preprocessing via THIS seam is
+    //   therefore effectively a no-op until the typealias returns/mutates via `inout`. Currently
+    //   inert: the built-in preprocessors run separately via `&opt` in ECharts.setOption, and no
+    //   external preprocessor is registered here (echarts.registerPreprocessor is not ported).
     func doPreprocess(_ option: ECUnitOption) {
         util.each(optionPreprocessorFuncs) { preProcess, _ in
             preProcess(option, isNew)

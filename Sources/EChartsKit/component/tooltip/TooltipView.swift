@@ -34,9 +34,10 @@
 //   - the `manuallyShowTip` (seriesIndex branch) / `manuallyHideTip` action entries
 //   - the `showTip`/`hideTip` action REGISTRATION (install.ts)
 //
-// DEFERRED (left as PORT-TODOs, exactly like the brief):
-//   - `trigger:'axis'` (`_showAxisTooltip`, `_showComponentItemTooltip`, `dataByCoordSys`, axisPointer,
-//     globalListener, `_updateContentNotChangedOnAxis`, `_keepShow`, `_manuallyAxisShowTip`)
+// DEFERRED (left as PORT-NOTEs, exactly like the brief):
+//   - `trigger:'axis'` — SINCE PORTED via `_showAxisTooltip` (invoked from EChartsView/axisTrigger, not this
+//     item entry). Still deferred within the axis path: `_showComponentItemTooltip`, globalListener,
+//     `_updateContentNotChangedOnAxis`, `_keepShow`, `_manuallyAxisShowTip`.
 //   - the HTML content host (`TooltipHTMLContent`) — this port is native, renderMode is FORCED 'richText'
 //   - `transitionDuration` animation + throttled `_updatePosition` (`createOrUpdate`/`clear`)
 //   - `confine` + the position CALLBACK / string / box-layout position exprs (only the default
@@ -50,7 +51,7 @@
 //   port `ECharts` is render-once with NO live zr; the live zr lives in `EChartsView`. So this view is
 //   a PLAIN class OWNED by `EChartsView`, constructed over the live `zr` passed in. Its `TooltipRichContent`
 //   adds its `ZRText` to THAT zr, so the tooltip floats above the chart and is not cleared on re-render.
-//   PORT-TODO: re-unify with `ComponentView` (init/render(ecModel, api) + the `_componentViewFactories`
+//   PORT-NOTE (deferred): re-unify with `ComponentView` (init/render(ecModel, api) + the `_componentViewFactories`
 //   registry) once `ECharts` grows a live zr / `ExtensionAPI.getZr()`.
 //
 // ============================================================================
@@ -167,13 +168,14 @@ public final class TooltipView {
         // upstream `_showSeriesItemTooltip` guard (TooltipView.ts:690): trigger must be nil or 'item'.
         let tooltipTrigger = tooltipModel.get("trigger") as? String
         if let t = tooltipTrigger, t != "item" {
-            // PORT-TODO (DEFERRED): trigger:'axis' → `_showAxisTooltip`. Not ported this phase.
+            // PORT-NOTE: this item-only entry bails on trigger:'axis'; the axis tooltip IS ported
+            //   (`_showAxisTooltip`) and reached via the axisTrigger path (EChartsView), not from here.
             return
         }
 
         // --- build markup (upstream TooltipView.ts:695-717) -----------------------------------------
         let markupStyleCreator = TooltipMarkupStyleCreator()
-        // PORT-TODO (DEFERRED): upstream pre-creates `params.marker` from `getDataParams().color` so a
+        // PORT-NOTE (deferred): upstream pre-creates `params.marker` from `getDataParams().color` so a
         //   user `formatter` can reference it. The default markup path builds its own markers, so the
         //   pre-created marker is only needed once the `formatter` override lands (also deferred).
 
@@ -186,7 +188,7 @@ public final class TooltipView {
 
         let markupText: String?
         if let frag = seriesTooltipResult.frag {
-            // PORT-TODO (DEFERRED): upstream wraps the frag with `{ valueFormatter }` from the model.
+            // PORT-NOTE (deferred): upstream wraps the frag with `{ valueFormatter }` from the model.
             markupText = buildTooltipMarkup(
                 frag, markupStyleCreator, self._renderMode, orderMode, useUTC, textStyle
             )
@@ -220,7 +222,7 @@ public final class TooltipView {
     //   /*multipleSeries*/ true)` fragment (e.g. "seriesName 20"). The sections are collected into one
     //   article section, built to a markup string, and shown in the SAME box on the live zr near the pointer.
     //
-    //   DEFERRED (faithful PORT-TODOs):
+    //   DEFERRED (faithful PORT-NOTEs):
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
     //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
@@ -273,7 +275,7 @@ public final class TooltipView {
                         series.formatTooltip(dataIndex, true, nil)
                     )
                     if let frag = seriesTooltipResult.frag {
-                        // PORT-TODO (DEFERRED): upstream wraps the frag with `{ valueFormatter }` from
+                        // PORT-NOTE (deferred): upstream wraps the frag with `{ valueFormatter }` from
                         //   buildTooltipModel([series], globalTooltipModel).get('valueFormatter').
                         axisSectionMarkup.blocks?.append(frag)
                     }
@@ -353,7 +355,7 @@ public final class TooltipView {
         content.setEnterable(tooltipModel.get("enterable") as? Bool)
 
         // upstream `_getNearestPoint` (item branch): `borderColor || params.color || params.borderColor`.
-        //   PORT-TODO: the `params.color`/`params.borderColor` fallback needs the hovered datum's
+        //   PORT-NOTE (deferred): the `params.color`/`params.borderColor` fallback needs the hovered datum's
         //   getDataParams (now available), but `_showTooltipContent` is not passed the dataIndex — wiring
         //   it requires threading dataIndex from the caller. Until then: border color from the model,
         //   else the default border color.
@@ -432,7 +434,7 @@ public final class TooltipView {
             return
         }
 
-        // PORT-TODO (DEFERRED): upstream `findPointFromSeries(payload, ecModel)` computes the on-chart
+        // PORT-NOTE (deferred): upstream `findPointFromSeries(payload, ecModel)` computes the on-chart
         //   point from the series layout when the payload has no x/y. Slim: use the payload's x/y, else
         //   fall back to the view centre (best-effort for a data-only showTip).
         let px = asDouble(payload.other["x"]) ?? ((_zr.getWidth() ?? 0) / 2)
@@ -495,7 +497,7 @@ private func asDouble(_ v: Any?) -> Double? {
 //   actions. The action DESCRIPTORS are still registered faithfully (type/event/update) so the payloads
 //   flow through the ported dispatchAction pipeline.
 //
-// PORT-TODO (DEFERRED): per-instance `update`-field routing (`tooltip:manuallyShowTip`) — needs the
+// PORT-NOTE (deferred): per-instance `update`-field routing (`tooltip:manuallyShowTip`) — needs the
 //   ComponentView update dispatch, which the path does not have. Multi-chart correctness (each
 //   chart's own tooltip view) rides on that routing; the single-chart headless path is driven by
 //   `EChartsView` invoking `manuallyShowTip`/`manuallyHideTip` on its owned view.
@@ -520,6 +522,6 @@ public func installTooltipActions(_ registers: EChartsExtensionInstallRegisters)
     hideTip.update = "tooltip:manuallyHideTip"
     registerAction(hideTip, tooltipNoopAction)
 
-    // PORT-TODO (DEFERRED): `use(installAxisPointer)` (install.ts:27) — the axisPointer install is part
-    //   of the trigger:'axis' path, not ported this phase.
+    // PORT-NOTE: `use(installAxisPointer)` (install.ts:27) — the trigger:'axis' path IS ported; axisPointer
+    //   is installed via EChartsView's axisTrigger wiring (component/axisPointer), not a tooltip-side use().
 }

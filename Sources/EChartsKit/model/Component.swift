@@ -30,13 +30,13 @@ import ZRenderKit
 //     makeInner, ModelFinderIndexQuery, queryReferringComponents,
 //     ModelFinderIdQuery, QueryReferringOpt
 // } from '../util/model';                                       -> EChartsKit `model` namespace + finder types (util/model.swift)
-// import * as layout from '../util/layout';                     -> PORT-TODO: util/layout.ts not yet ported (layout-mode merge deferred)
+// import * as layout from '../util/layout';                     -> util/layout.swift (getBoxLayoutParams/mergeLayoutParam ported; fetchLayoutMode/getLayoutParams deferred — layout-mode merge)
 // import GlobalModel from './Global';                           -> GlobalModel (util/types.swift placeholder protocol; real type is a sibling this phase)
 // import {
 //     ComponentOption, ComponentMainType, ComponentSubType, ComponentFullType,
 //     ComponentLayoutMode, BoxLayoutOptionMixin, NullUndefined
 // } from '../util/types';                                       -> EChartsKit util/types.swift (same module)
-// import { CoordinateSystem } from '../coord/CoordinateSystem'; -> PORT-TODO: coord/CoordinateSystem.ts not yet ported
+// import { CoordinateSystem } from '../coord/CoordinateSystem'; -> coord/CoordinateSystem.swift (provenance only; the type is used solely by commented-out `coordinateSystem` members here)
 
 // const inner = makeInner<{ defaultOption: ComponentOption }, ComponentModel>();
 //
@@ -196,14 +196,20 @@ open class ComponentModel: Model, ClassManageable {
     open func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = layout.fetchLayoutMode(this);
         // const inputPositionParams = layoutMode ? layout.getLayoutParams(option) : {};
-        // PORT-TODO: `layout` util (util/layout.ts) not yet ported — layout-mode param extraction
+        // PORT-NOTE (deferred): requires layout.fetchLayoutMode / layout.getLayoutParams (layout.swift
+        //   ports mergeLayoutParam/getBoxLayoutParams but not these two) — layout-mode param extraction
         //   and the final `mergeLayoutParam` below are deferred.
 
         // const themeModel = ecModel.getTheme();
         // zrUtil.merge(option, themeModel.get(this.mainType));
-        // PORT-TODO: GlobalModel is still a placeholder protocol (util/types.swift) with no
-        //   `getTheme()`; the theme merge is deferred until model/Global lands.
-        _ = ecModel
+        // PORT-NOTE: mirrors mergeOption's value-type writeback (upstream mutates `option` in place;
+        //   at call time `option === self.option`). `overwrite` is false (theme must not clobber
+        //   existing option values). Skipped when `ecModel` is nil (upstream `this.ecModel` is non-null).
+        if var target = (self.option ?? option) as? [String: Any],
+           let themeOption = ecModel?.getTheme().get(self.mainType) as? [String: Any] {
+            util.merge(&target, themeOption, false)
+            self.option = target
+        }
 
         // zrUtil.merge(option, this.getDefaultOption());
         // PORT-NOTE: upstream mutates the shared `option` object in place; Swift option bags are
@@ -232,7 +238,8 @@ open class ComponentModel: Model, ClassManageable {
         // if (layoutMode) {
         //     layout.mergeLayoutParam(this.option, option, layoutMode);
         // }
-        // PORT-TODO: `layout` util not yet ported — layout-mode merge deferred.
+        // PORT-NOTE (deferred): requires layout.fetchLayoutMode (layout.swift ports mergeLayoutParam
+        //   but not fetchLayoutMode) — layout-mode merge deferred.
         _ = ecModel
     }
 
@@ -338,8 +345,9 @@ open class ComponentModel: Model, ClassManageable {
         userOption.id = self.get(idKey, true)          // this.get(idKey, true) as ModelFinderIdQuery
 
         return model.queryReferringComponents(
-            // PORT-TODO: `ecModel` is `GlobalModel?` on Model; force-unwrap mirrors upstream's
-            //   non-null `this.ecModel` (the component is always mounted by then).
+            // POTENTIAL-BUG: `ecModel` is `GlobalModel?` on Model; force-unwrap mirrors upstream's
+            //   non-null `this.ecModel` (the component is always mounted by then). SIGTRAPs if called
+            //   on an unmounted component.
             self.ecModel!,
             mainType,
             userOption,

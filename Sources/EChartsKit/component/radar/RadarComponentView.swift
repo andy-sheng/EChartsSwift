@@ -301,11 +301,11 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-TODO: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style
-///   bag ([String: Any] — the `defaults(...)` merge of split colors over getLineStyle()/getAreaStyle())
-///   onto the typed `PathStyleProps`. Same deviation as AxisBuilder.swift's `pathStyleFromLineStyleDict`
-///   (kept file-private there); mirrored here for both stroke (split lines) and fill (split areas).
-///   Delete when the graphic style bridge lands.
+/// PORT-NOTE: `util/graphic`'s `useStyle` dict bridge is not ported, so the dynamic style bag
+///   ([String: Any] — the `defaults(...)` merge of split colors over getLineStyle()/getAreaStyle())
+///   is mapped onto the typed `PathStyleProps` here. Same deviation as AxisBuilder.swift's
+///   `pathStyleFromLineStyleDict` (kept file-private there); mirrored here for both stroke (split
+///   lines) and fill (split areas). Delete when the graphic style bridge lands.
 // Coerce a dynamic style-bag number tolerating Int boxing (e.g. lineWidth: 2 as an Int literal);
 // a bare `as? Double` drops the value (the recurring Int-vs-Double option-read trap).
 private func styleNum(_ v: Any?) -> Double? {
@@ -317,10 +317,15 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the
-    //   String form (incl. the sentinel 'none') is mapped here.
-    if let fill = dict["fill"] as? String { s.fill = .string(fill) }
-    if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
+    // A pre-built ZRColor (gradient/pattern already bridged) passes through; the String form
+    //   (incl. the sentinel 'none') is wrapped.
+    // PORT-NOTE (deferred): requires the option-dict → ZRColor bridge — a RAW gradient/pattern
+    //   OBJECT (a JSON option dict) is not converted here (same gap as the sibling
+    //   `pathStyleFromLineStyleDict`); it is dropped until that bridge lands.
+    if let fill = dict["fill"] as? ZRenderKit.ZRColor { s.fill = fill }
+    else if let fill = dict["fill"] as? String { s.fill = .string(fill) }
+    if let stroke = dict["stroke"] as? ZRenderKit.ZRColor { s.stroke = stroke }
+    else if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
     if let lineJoin = dict["lineJoin"] as? String { s.lineJoin = lineJoin }
@@ -331,6 +336,26 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
     if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` → the `LineDash` enum
+    //   (mirrors AxisBuilder.pathStyleFromLineStyleDict).
+    if let dash = dict["lineDash"] {
+        if let arr = dash as? [Double] {
+            s.lineDash = .values(arr)
+        }
+        else if let arr = dash as? [Any] {
+            s.lineDash = .values(arr.compactMap { styleNum($0) })
+        }
+        else if let b = dash as? Bool, b == false {
+            s.lineDash = .`false`
+        }
+        else if let str = dash as? String {
+            switch str {
+            case "solid": s.lineDash = .solid
+            case "dashed": s.lineDash = .dashed
+            case "dotted": s.lineDash = .dotted
+            default: break
+            }
+        }
+    }
     return s
 }

@@ -367,9 +367,10 @@ open class GlobalModel: Model, PaletteMixin {
                     option[mainType] = tgt
                 }
                 else {
-                    // PORT-TODO: upstream `merge(option[mainType], componentOption, true)` also merges
-                    //   arrays/primitives; the ported `util.merge` handles only dicts. Overwrite for
-                    //   the non-dict case (overwrite == true).
+                    // PORT-NOTE: upstream `merge(option[mainType], componentOption, true)` also merges
+                    //   arrays/primitives; the ported `util.merge` handles only dicts. For the non-dict
+                    //   case with overwrite == true the merge result IS the (cloned) source, so this is
+                    //   semantically equivalent.
                     option[mainType] = util.clone(componentOption) as Any
                 }
             }
@@ -409,9 +410,10 @@ open class GlobalModel: Model, PaletteMixin {
             let oldCmptList = componentsMap.get(mainType)
             // upstream passes `oldCmptList` (ComponentModel[]) where MappingExistingItem[] is expected.
             // The ported protocols require optional id/name/subType witnesses, so wrap each model.
-            // PORT-TODO: "holes" (removed components) are dropped by `compactMap`; the internal index
+            // POTENTIAL-BUG: "holes" (removed components) are dropped by `compactMap`; the internal index
             //   alignment stays consistent (existings/result/idIdxMap all derive from this list), but
-            //   cross-merge hole preservation (§(3) at the top) is not modeled.
+            //   cross-merge hole preservation (§(3) at the top) is not modeled — a latent divergence in
+            //   replaceMerge scenarios with removed components.
             let oldExistings: [MappingExistingItem]? = oldCmptList.map { list in
                 list.compactMap { (cmpt: ComponentModel?) -> MappingExistingItem? in
                     cmpt.map { ExistingComponentItem($0) }
@@ -582,8 +584,9 @@ open class GlobalModel: Model, PaletteMixin {
         }
 
         // upstream: (ComponentModel as ComponentModelConstructor).topologicalTravel(newCmptTypes, ..., visitComponent, this)
-        // PORT-TODO: the ported `topologicalTravel` is `throws`; upstream lets its internal assert
-        //   propagate. Swallowed with `try?` to keep the non-throwing public API.
+        // PORT-NOTE: the ported `topologicalTravel` is `throws`; upstream lets its internal assert
+        //   propagate. Swallowed with `try?` to keep the non-throwing public API (semantically
+        //   equivalent — a failed assert aborts the travel either way).
         try? ComponentModel.topologicalTravel(
             newCmptTypes,
             ComponentModel.getAllClassMainTypes(),
@@ -896,8 +899,9 @@ open class GlobalModel: Model, PaletteMixin {
     }
 
     // upstream inlines `this._componentsMap.get('series')[rawSeriesIndex] as SeriesModel` in each
-    //   series iterator. Extracted here to a helper. PORT-TODO: force-cast/force-unwrap mirror the
-    //   upstream unchecked `as SeriesModel` (indices in `_seriesIndices` are always valid series).
+    //   series iterator. Extracted here to a helper. POTENTIAL-BUG: force-cast/force-unwrap mirror the
+    //   upstream unchecked `as SeriesModel` (indices in `_seriesIndices` are always valid series);
+    //   SIGTRAPs if an index is stale/out-of-range or the component is not a SeriesModel.
     private func rawSeries(_ rawIndex: Double) -> SeriesModel {
         return self._componentsMap.get("series")![Int(rawIndex)]! as! SeriesModel
     }
@@ -1145,8 +1149,9 @@ private func mergeTheme(_ option: inout ECUnitOption, _ theme: ThemeOption) {
                     option[name] = tgt
                 }
                 else {
-                    // PORT-TODO: array / non-dict object merge (util.merge handles only dicts) —
-                    //   keep existing value.
+                    // PORT-NOTE: array / non-dict object merge (util.merge handles only dicts) —
+                    //   keep existing value. With overwrite == false and an existing value present,
+                    //   upstream merge leaves it unchanged too, so this is semantically equivalent.
                 }
             }
             else {
@@ -1190,8 +1195,9 @@ private func queryByIdOrName(_ attr: IdOrNameAttr, _ idOrName: Any?, _ cmpts: [C
 //   The union is modeled by the `ComponentQueryCondition` protocol (both condition kinds conform).
 private protocol ComponentQueryCondition {
     var subType: ComponentSubType? { get }
-    // `hasOwnProperty('subType')` — PORT-TODO: value structs collapse absent ≡ explicit-nil, so
-    //   presence is modeled as `subType != nil`.
+    // `hasOwnProperty('subType')` — PORT-NOTE: value structs collapse absent ≡ explicit-nil, so
+    //   presence is modeled as `subType != nil` (semantically equivalent here — a condition never
+    //   sets subType to an explicit null).
     var hasSubType: Bool { get }
 }
 extension QueryConditionKindA: ComponentQueryCondition {

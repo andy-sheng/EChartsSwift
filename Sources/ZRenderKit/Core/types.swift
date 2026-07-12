@@ -72,10 +72,10 @@ public enum BuiltinTextPosition: String {
     case insideBottomRight
 }
 
-// PORT-TODO: WXCanvasRenderingContext = CanvasRenderingContext2D & { draw: () => void } —
+// PORT-NOTE: WXCanvasRenderingContext = CanvasRenderingContext2D & { draw: () => void } —
 // canvas backend type (CONVENTIONS §9), routed through Renderer/Painter seam.
 
-// PORT-TODO: ZRCanvasRenderingContext = CanvasRenderingContext2D & { dpr; __attrCachedBy } —
+// PORT-NOTE: ZRCanvasRenderingContext = CanvasRenderingContext2D & { dpr; __attrCachedBy } —
 // canvas backend type (CONVENTIONS §9), routed through Renderer/Painter seam.
 
 // Properties zrender will extended to the raw event

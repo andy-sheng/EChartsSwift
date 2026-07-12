@@ -14,7 +14,7 @@ import ZRenderKit
 //   if (typeof navigator !== 'undefined') {
 //       platform = navigator.platform || '';
 //   }
-// PORT-TODO: no `navigator` on Apple platforms; platform stays '' (never matches /^Win/), so
+// PORT-NOTE (platform): no `navigator` on Apple platforms; platform stays '' (never matches /^Win/), so
 // `textStyle.fontFamily` resolves to 'sans-serif' below — same as the node branch upstream.
 private let platform = ""
 

@@ -429,14 +429,14 @@ private func createPathOptions(_ str: String?, _ opts: SVGPathOption?) -> InnerS
             // path.setData(pathProxy.data);
             path.appendPath(pathProxy)
             // Svg and vml renderer don't have context
-            // PORT-TODO: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
+            // PORT-NOTE: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
             //   getContext()/rebuildPath(ctx) are the CanvasRenderingContext2D renderer seam
             //   (CONVENTIONS §9, not ported). The native backend rebuilds from the appended proxy.
         }
         else {
             // const ctx = beProxy ? path.getContext() : path;
             // if (ctx) { pathProxy.rebuildPath(ctx, 1); }
-            // PORT-TODO: renderer seam (CONVENTIONS §9) — getContext()/rebuildPath not ported.
+            // PORT-NOTE: renderer seam (CONVENTIONS §9) — getContext()/rebuildPath not ported.
             _ = pathProxy
         }
     }
@@ -542,7 +542,7 @@ final class MergedPath: Path {
         // isPathProxy is always true in the Swift seam (ctx is a PathProxy).
         ctx.appendPath(pathList)
         // Svg and vml renderer don't have context
-        // PORT-TODO: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
+        // PORT-NOTE: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
         //   Path bundle not support percent draw. (renderer seam — CONVENTIONS §9, not ported).
     }
 }
@@ -592,7 +592,7 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
     path.useStyle(sourcePath.pathStyle)
 
     if opts.bakeTransform == true {
-        // PORT-TODO: `path.path` is created lazily (nil until buildPath/getBoundingRect). Upstream
+        // PORT-NOTE: `path.path` is created lazily (nil until buildPath/getBoundingRect). Upstream
         //   relies on it existing; morph callers build the proxy first. Faithful call kept.
         transformPath(path.path, sourcePath.getComputedTransform())
     }
@@ -607,7 +607,7 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
     }
 
     // These methods may be overridden
-    // PORT-TODO: upstream reassigns `path.buildPath = sourcePath.buildPath` and
+    // PORT-NOTE: upstream reassigns `path.buildPath = sourcePath.buildPath` and
     //   `(path as SVGPath).applyTransform = (path as SVGPath).applyTransform`. Swift methods are not
     //   assignable; an overridden `buildPath` would need a `MergedPath`/`SVGPath` carrier. For a
     //   plain `Path` clone the base no-op `buildPath` is used (geometry is carried via `setShape`).

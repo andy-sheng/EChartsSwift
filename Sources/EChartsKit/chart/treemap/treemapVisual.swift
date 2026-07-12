@@ -110,8 +110,8 @@ private func travelTree(
     _ fallbackPalette: [Any]
 ) {
     // const nodeModel = node.getModel<TreemapSeriesNodeItemOption>();
-    //   PORT-TODO: `node.getModel()` is `Model?` (nil for dataIndex < 0); upstream assumes non-null.
-    //   Bail defensively — a node with no item model can not be visually encoded.
+    //   PORT-NOTE: `node.getModel()` is `Model?` (nil for dataIndex < 0); upstream assumes non-null.
+    //   Bail defensively — a node with no item model can not be visually encoded (handled by the guard).
     guard let nodeModel = node.getModel() else {
         return
     }
@@ -192,9 +192,9 @@ private func buildVisuals(
     var visuals: TreemapVisual = [:]
     _ = util.extend(&visuals, designatedVisual)
     // const designatedVisualItemStyle = seriesModel.designatedVisualItemStyle;
-    // PORT-TODO: `seriesModel.designatedVisualItemStyle` is a scratch bag on TreemapSeriesModel that the
-    //   node itemStyle resolution consults (parent-designated visual). Mutated in place below; assumed
-    //   present on the sibling model as a `var designatedVisualItemStyle: [String: Any]`.
+    // PORT-NOTE: `seriesModel.designatedVisualItemStyle` is a scratch bag on TreemapSeriesModel that the
+    //   node itemStyle resolution consults (parent-designated visual). Mutated in place below; it IS
+    //   present on the sibling model as `var designatedVisualItemStyle: [String: Any]` (TreemapSeries.swift).
 
     // each(['color', 'colorAlpha', 'colorSaturation'] as const, function (visualName) {
     for visualName in ["color", "colorAlpha", "colorSaturation"] {

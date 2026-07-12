@@ -21,11 +21,12 @@
 import Foundation
 import ZRenderKit
 
-// PORT-TODO: This is a PARTIAL port of util/layout.ts. positionElement / mergeLayoutParam /
-//   getCircleLayout / copyLayoutParams have since landed below; the still-unported surface
-//   (applyPreserveAspect / fetchLayoutMode / getLayoutParams, and the `boxCoordinateSystem` branch of
-//   `createBoxLayoutReference`) lands with the layout/orchestrator phase. `LayoutRect` is currently the
-//   `typealias LayoutRect = BoundingRect` declared in coord/cartesian/cartesianAxisHelper.swift.
+// PORT-NOTE (deferred): This is a PARTIAL port of util/layout.ts. positionElement / mergeLayoutParam /
+//   getCircleLayout / copyLayoutParams have landed below. The still-unported surface —
+//   applyPreserveAspect / fetchLayoutMode / getLayoutParams (confirmed absent from this file), and the
+//   `boxCoordinateSystem` branch of `createBoxLayoutReference` — lands with the layout/orchestrator phase.
+//   `LayoutRect` is currently the `typealias LayoutRect = BoundingRect` declared in
+//   coord/cartesian/cartesianAxisHelper.swift.
 //
 // import * as formatUtil from './format';        -> `format.*` (util/format.swift)
 // import { parsePercent } from './number';       -> `number.parsePercent` (util/number.swift)
@@ -193,9 +194,12 @@ public enum layout {
     ) -> BoxLayoutReferenceResult {
         _ = model
         _ = opt
-        // PORT-TODO: the `model.boxCoordinateSystem` branch (getCoordForCoordSysUsageKindBox +
-        //   dataToLayout / dataToPoint) is Phase 6b; only the viewport reference is produced here,
-        //   which is the default (`layoutRefType === rect`, no box coord sys) path upstream.
+        // PORT-NOTE (deferred): the `model.boxCoordinateSystem` branch (getCoordForCoordSysUsageKindBox +
+        //   dataToLayout / dataToPoint) is Phase 6b. getCoordForCoordSysUsageKindBox is ported, but the
+        //   `point`-kind result requires `BoxLayoutReferenceResult.refContainer` to become Optional (it is
+        //   non-Optional here, and callers read it non-optionally), so the faithful port needs that struct
+        //   change first. Only the viewport reference is produced here — the default (`layoutRefType ===
+        //   rect`, no box coord sys) path upstream.
         let refContainer = BoundingRect(0, 0, api.getWidth(), api.getHeight())
         let refPoint = [
             refContainer.x + refContainer.width / 2,

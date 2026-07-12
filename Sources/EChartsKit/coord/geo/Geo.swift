@@ -457,8 +457,11 @@ private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Geo? {
         if let cs = seriesModel.coordinateSystem as? Geo {
             return cs
         }
-        // upstream fallback: seriesModel.getReferringComponents('geo', SINGLE_REFERRING).models[0].coordinateSystem
-        // PORT-TODO: `getReferringComponents(_, SINGLE_REFERRING)` referring-resolution fallback is deferred.
+        // upstream: ((seriesModel.getReferringComponents('geo', SINGLE_REFERRING).models[0] || {}) as GeoModel).coordinateSystem
+        let models = seriesModel.getReferringComponents("geo", model.SINGLE_REFERRING).models
+        if let geoModel = models.first as? GeoModel {
+            return geoModel.coordinateSystem as? Geo
+        }
         return nil
     }
     return nil

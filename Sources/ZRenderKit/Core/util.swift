@@ -185,7 +185,7 @@ public enum util {
         return Array(obj.keys)
     }
 
-    // PORT-TODO: createCanvas = platformApi.createCanvas — renderer seam (§9), not ported.
+    // PORT-NOTE: createCanvas = platformApi.createCanvas — renderer seam (§9), not ported.
 
     /**
      * 查询数组中元素的index
@@ -373,7 +373,7 @@ public enum util {
     public static func isDom(_ value: Any?) -> Bool {
         // typeof value === 'object' && typeof value.nodeType === 'number'
         //     && typeof value.ownerDocument === 'object'
-        // PORT-TODO: DOM / HTMLElement detection — renderer/DOM seam (CONVENTIONS §9),
+        // PORT-NOTE: DOM / HTMLElement detection — renderer/DOM seam (CONVENTIONS §9),
         //            no HTMLElement in the native port; always false.
         _ = value
         return false
@@ -496,7 +496,7 @@ public enum util {
         return obj
     }
 
-    // PORT-TODO: disableUserSelect(dom) — DOM style mutation; renderer/DOM seam, not ported.
+    // PORT-NOTE: disableUserSelect(dom) — DOM style mutation; renderer/DOM seam, not ported.
 
     // PORT-NOTE: hasOwn(own, prop) — JS hasOwnProperty; use `dict[prop] != nil`.
 

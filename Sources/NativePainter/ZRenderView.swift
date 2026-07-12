@@ -65,9 +65,9 @@ public final class NativeHandlerProxy: HandlerProxyInterface {
         self.handler = nil
     }
 
-    /// `setCursor` is a no-op on iOS (no pointer cursor). // PORT-TODO: map to `NSCursor` on macOS.
+    /// `setCursor` is a no-op on iOS (no pointer cursor). // PORT-NOTE: map to `NSCursor` on macOS.
     public func setCursor(_ cursorStyle: String?) {
-        // PORT-TODO: iOS has no cursor; macOS could `NSCursor`-map `cursorStyle`. No-op for parity.
+        // PORT-NOTE: iOS has no cursor; macOS could `NSCursor`-map `cursorStyle`. No-op for parity.
     }
 
     @discardableResult

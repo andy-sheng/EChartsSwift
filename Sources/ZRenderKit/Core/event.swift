@@ -25,7 +25,7 @@ import Foundation
 // instances are produced by the hand-written UIKit bridge (the replacement for
 // dom/HandlerProxy.ts) and fed into these helpers.
 
-// PORT-TODO: provided by the native UIKit bridge.
+// PORT-NOTE: provided by the native UIKit bridge.
 // upstream type union `ZRRawEvent | FirefoxMouseEvent | Touch` — the common set of
 // coordinate fields read by `clientToLocal`. `layerX`/`layerY` are the `FirefoxMouseEvent`
 // fields; `offsetX`/`offsetY` are the `MouseEvent` fields (Optional — they drive the null
@@ -49,14 +49,14 @@ extension Touch: PointerLike {
     public var offsetY: Double? { nil }
 }
 
-// PORT-TODO: provided by the native UIKit bridge — models a DOM `EventTarget`
+// PORT-NOTE: provided by the native UIKit bridge — models a DOM `EventTarget`
 // (`HTMLElement | HTMLDocument`) for add/removeEventListener.
 public protocol DOMEventTarget: AnyObject {
     func addEventListener(_ name: String, _ handler: @escaping EventListener, _ opt: EventListenerOptions?)
     func removeEventListener(_ name: String, _ handler: @escaping EventListener, _ opt: EventListenerOptions?)
 }
 
-// PORT-TODO: provided by the native UIKit bridge — models a DOM `HTMLElement`.
+// PORT-NOTE: provided by the native UIKit bridge — models a DOM `HTMLElement`.
 public protocol HTMLElement: DOMEventTarget {
     func getBoundingClientRect() -> ClientRect?
     var nodeName: String { get }
@@ -78,7 +78,7 @@ public struct ClientRect {
 // `normalizeEvent`. The `zr*` fields are the zrender-extended properties (see types.ts
 // `ZREventProperties`); they are Optional here so the `e.zrX != null` short-circuit in
 // `normalizeEvent` ports faithfully.
-// PORT-TODO: provided by the native UIKit bridge.
+// PORT-NOTE: provided by the native UIKit bridge.
 public final class ZRRawEvent: PointerLike {
     // raw event identity
     public var type: String?
@@ -117,7 +117,7 @@ public final class ZRRawEvent: PointerLike {
     // ZRPinchEvent fields. Swift has no untagged union, so `ZRRawEvent` collapses the upstream
     //   `ZRRawMouseEvent | ZRRawTouchEvent | ZRRawPointerEvent` union AND the `ZRPinchEvent`
     //   intersection (these are written by `GestureMgr`'s pinch recognizer and read by
-    //   `Handler.makeEventPacket`). // PORT-TODO: provided by the native UIKit bridge.
+    //   `Handler.makeEventPacket`). // PORT-NOTE: provided by the native UIKit bridge.
     public var gestureEvent: String?
     public var pinchX: Double?
     public var pinchY: Double?
@@ -128,7 +128,7 @@ public final class ZRRawEvent: PointerLike {
     // bubbling control
     public var cancelBubble: Bool = false
 
-    // PORT-TODO: provided by the native UIKit bridge — DOM `preventDefault`/`stopPropagation`.
+    // PORT-NOTE: provided by the native UIKit bridge — DOM `preventDefault`/`stopPropagation`.
     public var onPreventDefault: (() -> Void)?
     public var onStopPropagation: (() -> Void)?
     public func preventDefault() { onPreventDefault?() }
@@ -260,7 +260,7 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
     ) -> ZrXY {
         var out = out
         // BlackBerry 5, iOS 3 (original iPhone) don't have getBoundingRect.
-        // PORT-TODO: upstream also feature-detects `el.getBoundingClientRect`; on iOS
+        // PORT-NOTE: upstream also feature-detects `el.getBoundingClientRect`; on iOS
         // `env.domSupported` is false, so the native bridge supplies these coords instead.
         if env.domSupported {
             let ex = e.clientX     // (e as MouseEvent).clientX
@@ -291,13 +291,13 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
         return out
     }
 
-    // PORT-TODO: from zrender/src/core/dom.ts — provided by the native UIKit bridge.
+    // PORT-NOTE: from zrender/src/core/dom.ts — provided by the native UIKit bridge.
     // `isCanvasEl(el)` returns `el.nodeName.toUpperCase() === 'CANVAS'`.
     static func isCanvasEl(_ el: HTMLElement) -> Bool {
         return el.nodeName.uppercased() == "CANVAS"
     }
 
-    // PORT-TODO: from zrender/src/core/dom.ts (CSS-transform viewport mapping) — provided by
+    // PORT-NOTE: from zrender/src/core/dom.ts (CSS-transform viewport mapping) — provided by
     // the native UIKit bridge. Upstream writes into `out` and returns a Bool; here it is
     // value-returning (returns the `[x, y]` pair, or nil when transform is unavailable —
     // equivalent to upstream returning `false`).
@@ -314,7 +314,7 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
      * @return The native event.
      */
     public static func getNativeEvent(_ e: ZRRawEvent) -> ZRRawEvent {
-        // PORT-TODO: upstream falls back to `window.event` for legacy IE — no `window` on iOS.
+        // PORT-NOTE: upstream falls back to `window.event` for legacy IE — no `window` on iOS.
         return e
     }
 
@@ -466,7 +466,7 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
         // we use other way but not preventDefault of mousewheel and touchmove, browser
         // compatibility should be handled.
 
-        // PORT-TODO: provided by the native UIKit bridge — actual DOM `addEventListener`
+        // PORT-NOTE: provided by the native UIKit bridge — actual DOM `addEventListener`
         // is replaced by the hand-written UIKit gesture/touch bridge.
         el.addEventListener(name, handler, opt)
     }
@@ -484,7 +484,7 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
         _ handler: @escaping EventListener,
         _ opt: EventListenerOptions? = nil
     ) {
-        // PORT-TODO: provided by the native UIKit bridge — actual DOM `removeEventListener`.
+        // PORT-NOTE: provided by the native UIKit bridge — actual DOM `removeEventListener`.
         el.removeEventListener(name, handler, opt)
     }
 
@@ -496,8 +496,8 @@ public enum eventTool {   // upstream alias: `import * as eventTool from './core
      * @param {Event} e A mouse or touch event.
      */
     public static let stop: (ZRRawEvent) -> Void = { e in
-        e.preventDefault()      // PORT-TODO: provided by the native UIKit bridge
-        e.stopPropagation()     // PORT-TODO: provided by the native UIKit bridge
+        e.preventDefault()      // PORT-NOTE: provided by the native UIKit bridge
+        e.stopPropagation()     // PORT-NOTE: provided by the native UIKit bridge
         e.cancelBubble = true
     }
 

@@ -121,8 +121,9 @@ public final class PiecewiseVisualMapView: VisualMapView {
             // TODO Category
             // const representValue = visualMapModel.getRepresentValue(piece) as number;
             //   `getRepresentValue` returns `Any?`; upstream casts `as number`. Coerce to Double.
-            //   PORT-TODO: category ('categories') pieces whose represent value is non-numeric collapse
-            //   to 0 here (out of the numeric static-render scope).
+            //   PORT-NOTE (deferred): category ('categories') pieces whose represent value is non-numeric
+            //   collapse to 0 here (out of the numeric static-render scope; matches upstream's own
+            //   `// TODO Category` marker above).
             let representValue = visualMapAsDouble(visualMapModel.getRepresentValue(piece)) ?? 0
 
             let itemSymbolPath = self._createItemSymbol(

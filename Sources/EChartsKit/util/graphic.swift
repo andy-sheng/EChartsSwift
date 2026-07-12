@@ -1,6 +1,7 @@
 // Ported from echarts/src/util/graphic.ts — keep in sync with upstream
-// (Partial: only `expandOrShrinkRect` / `expandRectOnOneDimension` are landed here so far; the rest of
-//  util/graphic.ts — createIcon/setTooltipConfig/getTransformedTouches etc. — is PORT-TODO.)
+// (Partial: only `expandOrShrinkRect` / `expandRectOnOneDimension` are landed here so far.
+//  PORT-NOTE (deferred): the rest of util/graphic.ts — createIcon/setTooltipConfig/getTransformedTouches
+//  etc. — is not ported here yet.)
 
 import Foundation
 import ZRenderKit

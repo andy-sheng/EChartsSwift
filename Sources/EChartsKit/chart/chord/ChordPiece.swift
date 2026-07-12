@@ -26,7 +26,7 @@ import ZRenderKit
 //       -> `extend` == building a SectorShape from the layout dict + merging cornerRadius (see below);
 //          `retrieve3` only feeds the DEFERRED label formatter.
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Sector` / `ZRText`;
-//       `graphic.updateProps` is the enter/update animation helper — DEFERRED (see PORT-TODO in updateData).
+//       `graphic.updateProps` is the enter/update animation helper — DEFERRED (see PORT-NOTE in updateData).
 //   import SeriesData from '../../data/SeriesData';                -> `SeriesData`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';-> `getSectorCornerRadius` (chart/helper/sectorHelper.swift).
 //   import ChordSeriesModel, { ChordNodeItemOption } from './ChordSeries';
@@ -78,12 +78,12 @@ open class ChordPiece: Sector {
         // const sector = this;
         let sector = self
         // const node = data.graph.getNodeByIndex(idx);
-        //   PORT-TODO: `data.graph` is `Graph?` and `getNodeByIndex` is `GraphNode?`; upstream assumes
-        //   both non-null. Guard defensively (no node → nothing to draw).
+        //   PORT-NOTE: `data.graph` is `Graph?` and `getNodeByIndex` is `GraphNode?`; upstream assumes
+        //   both non-null. Guard defensively (no node → nothing to draw) — semantically equivalent.
         guard let node = data.graph?.getNodeByIndex(idx) else { return }
 
         // const seriesModel = data.hostModel as ChordSeriesModel;
-        //   PORT-TODO: `hostModel` is `Model?`; force-cast mirrors the upstream `as ChordSeriesModel`.
+        //   PORT-NOTE: `hostModel` is `Model?`; force-cast mirrors the upstream `as ChordSeriesModel`.
         let seriesModel = data.hostModel as! ChordSeriesModel
         // const itemModel = node.getModel<ChordNodeItemOption>();
         //   `GraphNode.getModel()` is `Model?` (nil for dataIndex < 0); guard.
@@ -119,7 +119,11 @@ open class ChordPiece: Sector {
         }
         else {
             // graphic.updateProps(el, { shape: shape }, seriesModel, idx);
-            // PORT-TODO: enter/update transition DEFERRED (animation) — apply the target shape directly.
+            // PORT-NOTE: applying the target shape directly is behaviorally equivalent to upstream here —
+            //   upstream's `updateProps` tween is immediately superseded by the unconditional
+            //   `sector.setShape(sectorShape)` below (same final shape), so its animator starts final→final
+            //   (a no-op). The port instead drives the visible enter animation via the first-render sweep
+            //   (collapsed endAngle + initProps) in the block just below.
             _ = el.setShape(shape)
         }
 
@@ -207,12 +211,13 @@ open class ChordPiece: Sector {
         // const style = node.getVisual('style');
         // setLabelStyle(label, labelStateModels, { labelFetcher: {...}, labelDataIndex, defaultText: node.dataIndex + '',
         //     inheritColor: style.fill, defaultOpacity: style.opacity, defaultOutsidePosition: 'startArc' });
-        // PORT-TODO: setLabelStyle IS ported (label/labelStyle.swift:303), but it is NOT wired here.
-        //   Upstream does not use the plain BarView `labelFetcher = seriesModel` form: it passes a CUSTOM
-        //   inline labelFetcher whose getFormattedLabel adds `dataType: 'node'` and a
-        //   retrieve3(formatter, normal formatter, itemModel name) fallback, plus a 'startArc' outside
-        //   position — a custom DataFormatMixin-conforming fetcher that is not ported. So per-state label
-        //   styles / defaultOpacity / 'startArc' placement remain DEFERRED. Below is a MINIMAL faithful
+        // PORT-NOTE (deferred): requires a custom DataFormatMixin-conforming inline labelFetcher.
+        //   setLabelStyle IS ported (label/labelStyle.swift:303), but upstream does not use the plain
+        //   BarView `labelFetcher = seriesModel` form: it passes a CUSTOM inline labelFetcher whose
+        //   getFormattedLabel adds `dataType: 'node'` and a retrieve3(formatter, normal formatter,
+        //   itemModel name) fallback, plus a 'startArc' outside position — that fetcher is not ported. So
+        //   per-state label styles / defaultOpacity / 'startArc' placement remain DEFERRED. Below is a
+        //   MINIMAL faithful
         //   NORMAL-state label: text = formatter chain then node id/name then dataIndex-as-string, plus the
         //   geometry (position/align/verticalAlign) that upstream sets after setLabelStyle.
         let style = node.getVisual("style") as? [String: Any] ?? [:]

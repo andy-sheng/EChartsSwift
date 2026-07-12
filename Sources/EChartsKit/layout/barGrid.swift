@@ -50,9 +50,9 @@ import ZRenderKit
 //     -> BaseBarSeriesSubType / getStartValue / requireAxisStatisticsForBaseBar (layout/barCommon.swift)
 //   import { COORD_SYS_TYPE_CARTESIAN_2D } from '../coord/cartesian/GridModel';   -> COORD_SYS_TYPE_CARTESIAN_2D
 //   import { createBandWidthBasedAxisContainShapeHandler, makeAxisStatKey2 } from '../chart/helper/axisSnippets';
-//     -> chart/helper/axisSnippets.ts NOT yet ported (PREREQ). PORT-TODO stubs at the bottom mirror the
-//        upstream one-liners so this file compiles; remove them and import the real symbols once
-//        chart/helper/axisSnippets.swift lands.
+//     -> PORT-NOTE (deferred): chart/helper/axisSnippets.ts NOT yet ported (PREREQ). The stubs at the
+//        bottom mirror the upstream one-liners so this file compiles; remove them and import the real
+//        symbols once chart/helper/axisSnippets.swift lands.
 
 
 // PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
@@ -193,9 +193,9 @@ public func computeBarLayoutForCustomSeries(_ opt: BarGridLayoutOption) -> BarGr
     var i = 0
     while Double(i) < opt.count {   // upstream: `i < opt.count || 0`
         // upstream: defaults({stackId: STACK_PREFIX + i}, opt) as BarGridLayoutAxisSeriesInfo
-        // PORT-TODO: `defaults` merges `opt`'s (number | string) bar-size fields into a series-info
-        //   whose fields are typed `number`; upstream relies on an unsafe cast. Custom series is not in
-        //   the bar-chart scope, so string percents are not resolved here (coerced numerically only).
+        // PORT-NOTE (deferred): `defaults` merges `opt`'s (number | string) bar-size fields into a
+        //   series-info whose fields are typed `number`; upstream relies on an unsafe cast. Custom series
+        //   is not in the bar-chart scope, so string percents are not resolved here (coerced numerically only).
         params.append(BarGridLayoutAxisSeriesInfo(
             barWidth: barGridOptionSize(opt.barWidth),
             barMaxWidth: barGridOptionSize(opt.barMaxWidth),
@@ -481,7 +481,7 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
 
     handler.seriesType = seriesType
 
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. The ported `createRenderPlanner()` yields a
+    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. The ported `createRenderPlanner()` yields a
     //   `(SeriesModel) -> StageHandlerPlanReturn?` (nil == no reset), but `StageHandler.plan`
     //   (`StageHandlerPlan`) has a NON-optional `StageHandlerPlanReturn` return in this port, so
     //   "no reset" cannot be represented without either forcing `.reset` (spurious re-plans) or
@@ -501,8 +501,9 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
         let cartesian = seriesModel.coordinateSystem as! Cartesian2D
         let baseAxis = cartesian.getBaseAxis()
         let valueAxis = cartesian.getOtherAxis(baseAxis)
-        // PORT-TODO: `mapDimension` returns `String?`; for a bar's value/base axis the mapped dim is
+        // POTENTIAL-BUG: `mapDimension` returns `String?`; for a bar's value/base axis the mapped dim is
         //   always present, so it is force-unwrapped (upstream passes it straight into `getDimensionIndex`).
+        //   A nil map (malformed dataset) would SIGTRAP here rather than degrade like JS `undefined`.
         let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
         let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
         let drawBackground = (seriesModel.get("showBackground", true) as? Bool) ?? false
@@ -745,7 +746,7 @@ private func barGridTruthy(_ v: Any?) -> Bool {
 
 // Coerce a custom-series bar-size option (`number | string`) to `Double`. Numbers pass through;
 //   `nil`/strings collapse to `0` (so upstream's `if (barWidth && ...)` reads as falsy).
-// PORT-TODO: string percents (e.g. "50%") are not resolved here — custom series is out of bar scope.
+// PORT-NOTE (deferred): string percents (e.g. "50%") are not resolved here — custom series is out of bar scope.
 private func barGridOptionSize(_ v: Any?) -> Double {
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
@@ -755,8 +756,8 @@ private func barGridOptionSize(_ v: Any?) -> Double {
 
 
 // ============================================================================
-// PORT-TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the upstream
-//   one-liners so this file compiles; remove them and import the real symbols from
+// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+//   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (as barCommon.swift does for its stub).
 //
 //   export function createBandWidthBasedAxisContainShapeHandler(axisStatKey): AxisContainShapeHandler

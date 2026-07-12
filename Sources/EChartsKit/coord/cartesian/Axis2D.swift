@@ -170,9 +170,8 @@ public final class Axis2D: Axis {
         }
         (self.scale as! OrdinalScale).setSortInfo(info)
         // upstream: no explicit return here (implicitly returns `undefined`, which is falsy).
-        // PORT-TODO: Swift requires an explicit return; upstream's declared `boolean` return is not
-        //   produced on the success path.
-        return true
+        //   Swift requires an explicit return, so mirror the falsy `undefined` with `false`.
+        return false
     }
 
 }

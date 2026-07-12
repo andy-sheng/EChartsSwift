@@ -35,10 +35,12 @@ public final class Entry<T> {
     var key: LRUKey!
 
     // upstream: next/prev typed Entry<T> but assigned null at runtime → Optional
-    // PORT-TODO: doubly-linked strong refs form a retain cycle (upstream relies on GC).
+    // PORT-NOTE: upstream relies on GC for the doubly-linked list. To avoid a retain
+    //   cycle (A.next→B, B.prev→A) in ARC, the forward `next` link stays strong (the
+    //   list is kept alive by head + the next-chain) and the back `prev` link is weak.
     var next: Entry<T>?
 
-    var prev: Entry<T>?
+    weak var prev: Entry<T>?
 
     init(_ val: T) {
         self.value = val

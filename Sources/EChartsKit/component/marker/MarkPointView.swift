@@ -117,9 +117,9 @@ open class MarkPointView: MarkerView {
     // markerGroupMap: HashMap<SymbolDraw>;  (inherited `markerGroupMap: HashMap<MarkerDraw>` on MarkerView)
 
     // updateTransform(markPointModel, ecModel, api)
-    //   PORT-TODO: interaction/transform path (roam / dataZoom). It recomputes layout and calls
-    //   `symbolDraw.updateLayout()` — SymbolDraw is not ported, so the per-draw relayout is deferred.
-    //   The layout recompute is kept; the `.updateLayout()` call is stubbed.
+    //   PORT-NOTE: interaction/transform path (roam / dataZoom). It recomputes layout and calls
+    //   `symbolDraw.updateLayout()`; SymbolDraw IS ported, so the per-draw relayout is now fully wired
+    //   below (the method is reached only when a roam/dataZoom transform fires).
     open func updateTransform(_ markPointModel: MarkPointModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         ecModel.eachSeries { seriesModel, _ in
             let mpModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markPoint") as? MarkPointModel
@@ -129,8 +129,7 @@ open class MarkPointView: MarkerView {
                     seriesModel, api
                 )
                 // this.markerGroupMap.get(seriesModel.id).updateLayout();
-                // PORT-TODO: SymbolDraw.updateLayout not ported.
-                _ = self.markerGroupMap.get(seriesModel.id)
+                (self.markerGroupMap.get(seriesModel.id) as? SymbolDraw)?.updateLayout()
             }
         }
     }
@@ -176,9 +175,9 @@ open class MarkPointView: MarkerView {
             // TODO: refactor needed: single data item should not support callback function
             if util.isFunction(symbol) || util.isFunction(symbolSize)
                 || util.isFunction(symbolRotate) || util.isFunction(symbolOffset) {
-                // PORT-TODO (MarkPointView.ts:144-160): callback-in-data-item — invoking an arbitrary user
-                //   function against `mpModel.getRawValue(idx)` + `mpModel.getDataParams(idx)` is out of
-                //   static-render scope (dynamic/interaction). `getRawValue` is additionally unavailable
+                // PORT-NOTE (deferred, MarkPointView.ts:144-160): callback-in-data-item — invoking an arbitrary
+                //   user function against `mpModel.getRawValue(idx)` + `mpModel.getDataParams(idx)` is out of
+                //   static-render scope (dynamic/interaction). Requires `getRawValue`, which is unavailable
                 //   (DataFormatMixin conformance blocked, see MarkerModel.swift). The four function
                 //   invocations are deferred:
                 //     const rawIdx = mpModel.getRawValue(idx);
@@ -223,7 +222,7 @@ open class MarkPointView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mpData.eachItemGraphicEl(el => el.traverse(child => getECData(child).dataModel = mpModel));
-        //   PORT-TODO: tooltip host-model wiring deferred (rule 5 — interaction/tooltip). Additionally the
+        //   PORT-NOTE (deferred): tooltip host-model wiring (interaction/tooltip). Additionally the
         //   direct build above does not register graphic els into `mpData._graphicEls` (that is
         //   SymbolDraw's job), so this loop would iterate nothing; and `getECData(child).dataModel`
         //   requires `MarkPointModel: DataModel` (blocked — DataFormatMixin conformance, see MarkerModel).

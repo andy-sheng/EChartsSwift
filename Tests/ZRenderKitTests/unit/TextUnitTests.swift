@@ -12,6 +12,6 @@ final class TextUnitTests: XCTestCase {
             + "into text.textStyle (Element.useState / ZRText._mergeStyle path). Additionally, "
             + "ensureState returns a typed ElementState whose `.style` cannot hold a TextStyleProps "
             + "rich bag. The whole assertion (text.style.rich.foo == {fill, stroke}) is "
-            + "unreachable until the states machinery lands. (Element.swift / Text.swift PORT-TODO)")
+            + "unreachable until the states machinery lands. (Element.swift / Text.swift PORT-NOTE)")
     }
 }

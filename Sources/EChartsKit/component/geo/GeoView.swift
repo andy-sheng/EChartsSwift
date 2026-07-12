@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import MapDraw from '../helper/MapDraw';
-//     → PORT-TODO: `component/helper/MapDraw` is NOT ported. Upstream `GeoView` delegates ALL region
+//     → PORT-NOTE (deferred): `component/helper/MapDraw` is NOT ported. Upstream `GeoView` delegates ALL region
 //       drawing to a `MapDraw` instance (which also owns the roam controller, SVG map path, series-map
 //       data/visualMap encoding, emphasis/select/blur states, and event/tooltip triggers). For this
 //       STATIC render the GeoJSON region-backdrop subset of `MapDraw._buildGeoJSON` is inlined below
@@ -36,7 +36,7 @@ import ZRenderKit
 //     → `Payload` (util/types.swift). `ZRElementEvent`/`ECEventData`/`RoamPayload` are used only by the
 //       DEFERRED click/roam handlers below.
 //   import { getECData } from '../../util/innerStore';            → `innerStore.getECData` (util/innerStore.swift); geo events deferred.
-//   import { findEventDispatcher } from '../../util/event';       → PORT-TODO: util/event NOT ported (events deferred).
+//   import { findEventDispatcher } from '../../util/event';       → PORT-NOTE (deferred): requires util/event (not ported; events deferred).
 //   import Element from 'zrender/src/Element';                    → ZRenderKit `Element`.
 //
 // ── Assumed sibling API (coord/geo/Geo.swift, coord/geo/Region.swift, coord/geo/GeoModel.swift) ──
@@ -78,7 +78,7 @@ public final class GeoView: ComponentView {
     public let type = "geo"
 
     // upstream: private _mapDraw: MapDraw;
-    // PORT-TODO: MapDraw NOT ported. The GeoJSON region backdrop is built directly in `_buildGeoJSON`;
+    // PORT-NOTE (deferred): MapDraw NOT ported. The GeoJSON region backdrop is built directly in `_buildGeoJSON`;
     //   this slot (and the roam controller / SVG map it owns) is deferred.
 
     // upstream: private _api: ExtensionAPI;
@@ -152,7 +152,7 @@ public final class GeoView: ComponentView {
     // `itemStyle` (via `getFixedItemStyle`), and draw the region-name label (`ZRText`) at the projected
     // centroid.
     //
-    // PORT-TODO (DEFERRED — faithful to a STATIC render; separate upstream subsystems):
+    // PORT-NOTE (deferred — faithful to a STATIC render; separate upstream subsystems):
     //   - ROAM: the `transformGroup` + `applyViewCoordSysTransToElement` (pan/zoom) and the
     //     `RoamController`. Here the view transform is folded into `Geo.dataToPoint` (no roam), so points
     //     land at final pixels directly. `geo.shouldClip()` / `setClipPath` is likewise omitted.
@@ -308,7 +308,7 @@ public final class GeoView: ComponentView {
     //   single svg wrapper group. On `geoRoam` the full `update()` re-seeds the view roam state
     //   (geoRoamApplyStateToView) and this method re-copies the fresh OVERALL trans → the SVG root pans/zooms.
     //
-    // PORT-TODO (DEFERRED — faithful to a STATIC render):
+    // PORT-NOTE (deferred — faithful to a STATIC render):
     //   - series-map DATA: handled by MapView._buildSVG (the geo component backdrop has no series data).
     //   - `el.z2EmphasisLift = 0` (ECElement augmentation not ported) — the states engine may apply the
     //     default emphasis z2 lift to an SVG region on hover; harmless for the standard case.
@@ -485,7 +485,7 @@ public final class GeoView: ComponentView {
     //   nil-vs-[] contract: `findComponentHighDownDispatchers` treats non-nil (even empty) as "the
     //   feature is supported here" and then SKIPS the series-style fallback emphasis of the hovered
     //   element. Only the geoSVG branch is ported (upstream MapDraw's geoJSON branch returns the
-    //   region group from `_regionsGroupByName` — PORT-TODO, deferred with geo highDown wiring), so a
+    //   region group from `_regionsGroupByName` — PORT-NOTE, deferred with geo highDown wiring), so a
     //   geoJSON map (empty `_svgDispatcherMap`) must return nil = unsupported, or it would silently
     //   swallow all region hover emphasis once geo regions become highDown dispatchers.
     public override func findHighDownDispatchers(_ name: String?) -> [Element]? {
@@ -517,7 +517,7 @@ public final class GeoView: ComponentView {
         // upstream defaultText: regionName; label formatter via `getFormattedLabel(regionName, 'normal')`.
         let content = geoModel.getFormattedLabel(regionName, "normal") ?? regionName
 
-        // PORT-TODO: minimal faithful reproduction of `setLabelStyle`'s NORMAL text style (text / font /
+        // PORT-NOTE: minimal faithful reproduction of `setLabelStyle`'s NORMAL text style (text / font /
         //   fill / align), mirroring CalendarView.calendarCreateTextStyle + FunnelView._updateLabel.
         var style = TextStyleProps()
         style.text = content
@@ -542,13 +542,13 @@ public final class GeoView: ComponentView {
     // ------------------------------------------------------------------------------------------------
 
     // upstream: __updateOnOwnRoam(payload, model, api) { this._mapDraw && this._mapDraw.__updateOnOwnRoam(model); }
-    // PORT-TODO (DEFERRED — roam): no MapDraw/transformGroup to re-transform. A no-op until roam lands.
+    // PORT-NOTE (deferred — roam): no MapDraw/transformGroup to re-transform. A no-op until roam lands.
 
     // upstream: private _handleRegionClick(e) { findEventDispatcher(...); this._api.dispatchAction({ type: 'geoToggleSelect', ... }); }
-    // PORT-TODO (DEFERRED — events/select): region click → `geoToggleSelect` dispatch. Not wired.
+    // PORT-NOTE (deferred — events/select): region click → `geoToggleSelect` dispatch. Not wired (requires util/event).
 
     // upstream: updateSelectStatus(model, ecModel, api) { traverse group, enter/leaveSelect per isSelected }
-    // PORT-TODO (DEFERRED — select states): select highlight traversal. Not wired.
+    // PORT-NOTE (deferred — select states): select highlight traversal. Not wired.
 
     // upstream: findHighDownDispatchers(name) { return this._mapDraw && this._mapDraw.findHighDownDispatchers(...); }
     //   → ported as the `ComponentView` override above (geoSVG branch only; geoJSON returns nil).
@@ -607,8 +607,8 @@ private func jsTruthy(_ v: Any?) -> Bool {
 ///   when the graphic bridge lands.
 private func geoPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-TODO: `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the String form
-    //   (incl. the sentinel 'none') is mapped here.
+    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the String
+    //   form (incl. the sentinel 'none') is mapped here — gradient/pattern out of region-backdrop scope.
     if let v = geoColorString(dict["fill"]) { s.fill = .string(v) }
     if let v = geoColorString(dict["stroke"]) { s.stroke = .string(v) }
     if let v = numOpt(dict["lineWidth"]) { s.lineWidth = v }
@@ -623,7 +623,7 @@ private func geoPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let v = numOpt(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
     if let v = numOpt(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
     if let v = numOpt(dict["lineDashOffset"]) { s.lineDashOffset = v }
-    // PORT-TODO: `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
+    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping deferred (LineDash enum bridge).
     return s
 }
 

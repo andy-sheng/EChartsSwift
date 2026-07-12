@@ -139,7 +139,8 @@ open class View: Transformable {
     var viewRect: BoundingRect?
 
     // upstream: syncBackEl / syncBackType  (ROAM animation, DEFERRED).
-    // PORT-TODO: view roam sync-back is deferred; these are unused in the static path.
+    // PORT-NOTE (deferred): requires the ROAM interaction module; view roam sync-back
+    //   (syncBackEl / syncBackType) is unused in the static path.
 
     // upstream: constructor(invertY?, legacyCenterBase?, legacyGeo?) { super(); ... }
     public init(
@@ -674,7 +675,7 @@ public func viewCoordSysApplyRoamPayloadSyncBack(
     return ([cData[0], cData[1]], z)
 }
 
-// PORT-TODO (ROAM, DEFERRED): the following upstream exports are part of the roam interaction /
+// PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
 //     applyViewCoordSysTransToElement, ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
 //     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl, invertBackToCenterOption,

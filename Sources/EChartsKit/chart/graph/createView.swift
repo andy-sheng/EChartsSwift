@@ -28,7 +28,7 @@ import ZRenderKit
 //          ports the *pure box/scale computation* only (see `GraphViewBox`).
 //   import {createBoxLayoutReference, getLayoutRect, applyPreserveAspect} from '../../util/layout';
 //       -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` (util/layout.swift).
-//          `applyPreserveAspect` is NOT ported (see util/layout.swift header) -> PORT-TODO below.
+//          `applyPreserveAspect` is NOT ported (see util/layout.swift header) -> PORT-NOTE (deferred) below.
 //   import * as bbox from 'zrender/src/core/bbox';                   -> `bbox` (ZRenderKit Core/bbox.swift).
 //   import GraphSeriesModel, { GraphNodeItemOption } from './GraphSeries';
 //       -> PORT-NOTE: GraphSeries.swift is ported; `GraphSeriesModel` referenced as sibling.
@@ -218,8 +218,9 @@ private func getViewRect(_ seriesModel: GraphSeriesModel, _ api: ExtensionAPI, _
     let option = seriesModel.getBoxLayoutParams()
     let viewRect = layout.getLayoutRect(option, layoutRef.refContainer)
     // return applyPreserveAspect(seriesModel, viewRect, aspect);
-    // PORT-TODO: `applyPreserveAspect` (util/layout.ts) NOT ported — returns the un-adjusted viewRect
-    //   until it lands. `aspect` referenced to preserve the faithful call shape.
+    // PORT-NOTE (deferred): requires layout.applyPreserveAspect (util/layout.ts, not ported — see
+    //   layout.swift header) — returns the un-adjusted viewRect until it lands. `aspect` referenced to
+    //   preserve the faithful call shape.
     _ = aspect
     return viewRect
 }

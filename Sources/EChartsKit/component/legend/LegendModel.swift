@@ -195,8 +195,8 @@ open class LegendModel: ComponentModel {
     // optionUpdated()
     open override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
         // this._updateData(this.ecModel);
-        // PORT-TODO: `this.ecModel` is non-null upstream; force-unwrap mirrors that (component is
-        //   mounted by then).
+        // POTENTIAL-BUG: `this.ecModel` is non-null upstream; force-unwrap mirrors that optimistic typing
+        //   (component is mounted by then). Latent SIGTRAP if `optionUpdated` is ever reached pre-mount.
         self._updateData(self.ecModel!)
 
         // const legendData = this._data;
@@ -209,7 +209,7 @@ open class LegendModel: ComponentModel {
             // If has any selected in option.selected
             for i in 0..<legendData.count {
                 // const name = legendData[i].get('name');
-                let name = legendData[i].get("name") as? String ?? ""   // PORT-TODO: name may be numeric
+                let name = legendData[i].get("name") as? String ?? ""   // POTENTIAL-BUG: a numeric legend.data name (upstream allows string|number) coerces to "" here; the whole file assumes String names (select/allSelect/isSelected all `as? String`), so a systemic string-coercion is needed, not a local fix.
                 if self.isSelected(name) {
                     // Force to unselect others
                     self.select(name)

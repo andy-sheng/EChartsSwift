@@ -40,8 +40,12 @@ public let linesLayout: StageHandler = {
     handler.seriesType = "lines"
 
     // plan: createRenderPlanner(),
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. Left unwired due to the optional-return mismatch
-    //   of `StageHandler.plan` (same deviation as candlestickLayout.swift / layout/barGrid.swift).
+    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. Left unwired due to the signature
+    //   mismatch of `StageHandler.plan` — `createRenderPlanner()` yields a 1-arg `(SeriesModel) ->
+    //   StageHandlerPlanReturn?` (nil-for-no-reset), but `StageHandlerPlan` is the 4-arg
+    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn` (non-optional return)
+    //   and cannot be assigned without relaxing that typealias (same deviation as candlestickLayout.swift /
+    //   layout/barGrid.swift `handler.plan = nil`).
     _ = createRenderPlanner()
     handler.plan = nil
 
@@ -59,9 +63,11 @@ public let linesLayout: StageHandler = {
             return nil
         }
 
-        // PORT-TODO: only cartesian2d `dataToPoint` is supported here; the polar / geo / calendar coord
-        //   systems (the default for lines is 'geo') are DEFERRED until those coord systems land. Guard the
-        //   cartesian path (the established scatter/line/graph deviation); other systems produce no layout.
+        // PORT-NOTE (deferred): only cartesian2d `dataToPoint` is used here. Although Polar/Geo have landed,
+        //   only `Cartesian2D.dataToPoint` witnesses the `CoordinateSystem.dataToPoint(_:_:)` protocol
+        //   requirement; `Polar.dataToPoint(_:clamp:)` / `Geo.dataToPoint(_:noRoam:)` have divergent
+        //   signatures (protocol-witness gap), so a generic dispatch would not resolve. Guard the cartesian
+        //   path (the established scatter/line/graph deviation); other systems produce no layout.
         guard let coordSys = coordSysAny as? Cartesian2D else {
             return nil
         }
@@ -78,9 +84,10 @@ public let linesLayout: StageHandler = {
             var lineCoords: [[Double]] = []
             // if (isLarge) {
             if isLarge {
-                // PORT-TODO: the large-mode layout produces the flat `linesPoints` buffer consumed only by
-                //   the DEFERRED large draw path. Ported for structural fidelity; its consumer is not yet
-                //   ported (same deferral pattern as candlestickLayout's largeProgress).
+                // PORT-NOTE (deferred): the large-mode layout produces the flat `linesPoints` buffer consumed
+                //   only by the large draw path (a `LargeLinesPath`-style consumer), which is not yet ported —
+                //   confirmed no reader of `linesPoints` exists outside this file. Ported here for structural
+                //   fidelity (same deferral pattern as candlestickLayout's largeProgress).
                 // let points;
                 var points: [Double]
                 // const segCount = params.end - params.start;

@@ -124,8 +124,8 @@ public typealias DimensionUserOuputEncode = Dictionary<[Double]>           // PO
 //   Now fully ported in core/task.swift (same module); the placeholders were removed.
 
 // DOM lib types referenced by upstream (browser only / backend seam, CONVENTIONS §9):
-public typealias HTMLElement = Any                                         // PORT-TODO: DOM type
-public typealias HTMLDivElement = Any                                      // PORT-TODO: DOM type
+public typealias HTMLElement = Any                                         // PORT-NOTE: DOM type
+public typealias HTMLDivElement = Any                                      // PORT-NOTE: DOM type
 // lib.dom CanvasLineCap = 'butt' | 'round' | 'square'
 public typealias CanvasLineCap = String                                    // PORT-NOTE: DOM union
 // lib.dom CanvasLineJoin = 'round' | 'bevel' | 'miter'

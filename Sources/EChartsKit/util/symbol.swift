@@ -617,10 +617,10 @@ public enum symbol {
         let symbolPath: ECSymbol
 
         if symbolType.hasPrefix("image://") {
-            // PORT-TODO: `graphic.makeImage(symbolType.slice(8), new BoundingRect(x,y,w,h),
-            //   keepAspect ? 'center' : 'cover')` — Image + makeImage not ported (deferred). Fall back
-            //   to a SymbolClz so the call site still receives an ECSymbol (renders via the rect
-            //   fallback in buildPath).
+            // PORT-NOTE (deferred): `graphic.makeImage(symbolType.slice(8), new BoundingRect(x,y,w,h),
+            //   keepAspect ? 'center' : 'cover')` — requires the ZRenderKit `Image` element + `graphic.makeImage`,
+            //   neither of which is ported yet. Fall back to a SymbolClz so the call site still receives an
+            //   ECSymbol (renders via the rect fallback in buildPath).
             _ = keepAspect
             symbolPath = makeFallbackSymbol(symbolType, x, y, w, h)
         }

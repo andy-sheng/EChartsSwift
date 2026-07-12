@@ -129,46 +129,49 @@ public func createGridClipPath(
 }
 
 // upstream: export function createPolarClipPath(polar, hasAnimation, seriesModel): graphic.Sector
-//
-// PORT-TODO: the polar branch is out of scope for the bar/cartesian milestone and its dependency
-//   `coord/polar/Polar` is not ported, so `createPolarClipPath` cannot be expressed yet. The upstream
-//   body is preserved verbatim below for a later mechanical port; `createClipPath` short-circuits the
-//   `'polar'` type to `nil` in the meantime.
-//
-//   export function createPolarClipPath(
-//       polar: Polar,
-//       hasAnimation: boolean,
-//       seriesModel: SeriesModelWithLineWidth
-//   ) {
-//       const sectorArea = polar.getArea();
-//       // Avoid float number rounding error for symbol on the edge of axis extent.
-//       const r0 = round(sectorArea.r0, 1);
-//       const r = round(sectorArea.r, 1);
-//       const clipPath = new graphic.Sector({
-//           shape: {
-//               cx: round(polar.cx, 1),
-//               cy: round(polar.cy, 1),
-//               r0: r0,
-//               r: r,
-//               startAngle: sectorArea.startAngle,
-//               endAngle: sectorArea.endAngle,
-//               clockwise: sectorArea.clockwise
-//           }
-//       });
-//       if (hasAnimation) {
-//           const isRadial = polar.getBaseAxis().dim === 'angle';
-//           if (isRadial) {
-//               clipPath.shape.endAngle = sectorArea.startAngle;
-//           }
-//           else {
-//               clipPath.shape.r = r0;
-//           }
-//           graphic.initProps(clipPath, {
-//               shape: { endAngle: sectorArea.endAngle, r: r }
-//           }, seriesModel);
-//       }
-//       return clipPath;
-//   }
+public func createPolarClipPath(
+    _ polar: Polar,
+    _ hasAnimation: Bool,
+    _ seriesModel: SeriesModelWithLineWidth
+) -> Sector {
+    let sectorArea = polar.getArea()
+    // Avoid float number rounding error for symbol on the edge of axis extent.
+    let r0 = number.round(sectorArea.r0, 1)
+    let r = number.round(sectorArea.r, 1)
+
+    // upstream: new graphic.Sector({ shape: { cx, cy, r0, r, startAngle, endAngle, clockwise } })
+    var initialShape = SectorShape()
+    initialShape.cx = number.round(polar.cx, 1)
+    initialShape.cy = number.round(polar.cy, 1)
+    initialShape.r0 = r0
+    initialShape.r = r
+    initialShape.startAngle = sectorArea.startAngle
+    initialShape.endAngle = sectorArea.endAngle
+    initialShape.clockwise = sectorArea.clockwise
+    let clipPath = Sector(["shape": initialShape])
+
+    if hasAnimation {
+        let isRadial = polar.getBaseAxis().dim == "angle"
+        // upstream mutates `clipPath.shape.endAngle`/`.r` in place; our `shape` is a value-typed
+        //   `SectorShape` behind `PathShape!`, so read-modify-write it wholesale (see createGridClipPath).
+        var shape = clipPath.shape as! SectorShape
+        if isRadial {
+            shape.endAngle = sectorArea.startAngle
+        }
+        else {
+            shape.r = r0
+        }
+        clipPath.shape = shape
+
+        // upstream: graphic.initProps(clipPath, { shape: { endAngle, r } }, seriesModel);
+        //   Shape props are passed as a DICT (not a SectorShape struct) so the animator diffs per-field.
+        initProps(clipPath,
+                  ["shape": ["endAngle": sectorArea.endAngle, "r": r] as [String: Any]],
+                  seriesModel)
+    }
+
+    return clipPath
+}
 
 public func createClipPath(
     _ coordSys: CoordinateSystem?,
@@ -182,8 +185,10 @@ public func createClipPath(
     }
     else if coordSys!.type == "polar" {
         // upstream: return createPolarClipPath(coordSys as Polar, hasAnimation, seriesModel);
-        // PORT-TODO: deferred — see `createPolarClipPath` above (Polar not ported).
-        return nil
+        guard let polar = coordSys as? Polar else {
+            return nil
+        }
+        return createPolarClipPath(polar, hasAnimation, seriesModel)
     }
     else if coordSys!.type == "cartesian2d" {
         guard let cartesian = coordSys as? Cartesian2D else {
@@ -251,12 +256,12 @@ public func createCoordSysClipAreaSimply(
        (coordSys.shouldClip() ?? true) {
         // PENDING make `0.1` configurable, for example, `clipTolerance`?
         // upstream: return coordSys.getArea && coordSys.getArea(.1);
-        // PORT-TODO: `getArea` is an optional coord-sys method whose default returns nil, and (per the
+        // POTENTIAL-BUG: `getArea` is an optional coord-sys method whose default returns nil, and (per the
         //   note in Cartesian2D.getArea) the concrete `Cartesian2D.getArea` does NOT satisfy the
-        //   protocol witness (concrete `Cartesian2DArea` return vs the protocol's existential), so this
-        //   protocol-dispatched call currently yields `nil` for cartesian2d. Callers of this helper are
-        //   symbol-clipping paths (scatter/line), out of the bar milestone's scope; revisit when the
-        //   coord-sys `getArea` witness is unified.
+        //   protocol witness (covariant `Cartesian2DArea` return vs the protocol's `CoordinateSystemClipArea?`
+        //   existential — Swift does not accept a covariant return as a witness), so this protocol-dispatched
+        //   call currently yields `nil` for cartesian2d. Fix requires unifying the `getArea` witness in
+        //   coord/cartesian/Cartesian2D.swift (out of this file's scope).
         return coordSys.getArea(0.1)
     }
     return nil

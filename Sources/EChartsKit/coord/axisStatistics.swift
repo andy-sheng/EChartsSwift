@@ -16,7 +16,7 @@ import ZRenderKit
 // import type ComponentModel from '../model/Component';           -> ComponentModel (model/Component.swift); ComponentModel['uid'] = String
 // import { getCachePerECFullUpdate, getCachePerECPrepare, GlobalModelCachePerECFullUpdate,
 //          GlobalModelCachePerECPrepare } from '../util/cycleCache';
-//   -> PORT-TODO placeholders below (util/cycleCache.ts not yet ported)
+//   -> PORT-NOTE (deferred): requires util/cycleCache.ts — placeholders below (not yet ported)
 // import { CoordinateSystem } from './CoordinateSystem';          -> `CoordinateSystem['type']` modeled as String (coord/CoordinateSystem.ts not yet ported)
 //
 // NOTE: upstream is a named-import free-function module, so it is ported as top-level free
@@ -41,18 +41,18 @@ import ZRenderKit
 //   The real impl is cleared at the beginning of each EC_FULL_UPDATE / EC_PREPARE by echarts.ts.
 //   This placeholder keeps one stable host per `ecModel` (no per-cycle reset) so `makeInner`
 //   caching stays coherent; replace with the real util/cycleCache.swift when it lands.
-public final class GlobalModelCachePerECFullUpdate { public init() {} }    // PORT-TODO
-public final class GlobalModelCachePerECPrepare { public init() {} }       // PORT-TODO
-private final class CycleCacheHolderStub {                                 // PORT-TODO
+public final class GlobalModelCachePerECFullUpdate { public init() {} }    // PORT-NOTE (deferred): requires util/cycleCache
+public final class GlobalModelCachePerECPrepare { public init() {} }       // PORT-NOTE (deferred): requires util/cycleCache
+private final class CycleCacheHolderStub {                                 // PORT-NOTE (deferred): requires util/cycleCache
     var fullUpdate = GlobalModelCachePerECFullUpdate()
     var prepare = GlobalModelCachePerECPrepare()
 }
-private let _cycleCacheInnerStub: (GlobalModel) -> CycleCacheHolderStub    // PORT-TODO
+private let _cycleCacheInnerStub: (GlobalModel) -> CycleCacheHolderStub    // PORT-NOTE (deferred): requires util/cycleCache
     = model.makeInner { CycleCacheHolderStub() }
-public func getCachePerECFullUpdate(_ ecModel: GlobalModel) -> GlobalModelCachePerECFullUpdate { // PORT-TODO
+public func getCachePerECFullUpdate(_ ecModel: GlobalModel) -> GlobalModelCachePerECFullUpdate { // PORT-NOTE (deferred): requires util/cycleCache
     return _cycleCacheInnerStub(ecModel).fullUpdate
 }
-public func getCachePerECPrepare(_ ecModel: GlobalModel) -> GlobalModelCachePerECPrepare {       // PORT-TODO
+public func getCachePerECPrepare(_ ecModel: GlobalModel) -> GlobalModelCachePerECPrepare {       // PORT-NOTE (deferred): requires util/cycleCache
     return _cycleCacheInnerStub(ecModel).prepare
 }
 // upstream: `resetCachePerECFullUpdate(ecModel)` is called at the START of every `updateMethods.update`
@@ -73,9 +73,9 @@ public struct AxisStatProcessorRegistration {                              // PO
     public var overallReset: (GlobalModel) -> Void
     public init(overallReset: @escaping (GlobalModel) -> Void) { self.overallReset = overallReset }
 }
-public struct ECPriorityProcessorStub { public let AXIS_STATISTICS: Double = 0 } // PORT-TODO
-public struct ECPriorityStub { public let PROCESSOR = ECPriorityProcessorStub() } // PORT-TODO
-open class EChartsExtensionInstallRegisters {                              // PORT-TODO: stub registrar (Phase 6b)
+public struct ECPriorityProcessorStub { public let AXIS_STATISTICS: Double = 0 } // PORT-NOTE (deferred): requires extension.ts registrar (Phase 6b)
+public struct ECPriorityStub { public let PROCESSOR = ECPriorityProcessorStub() } // PORT-NOTE (deferred): requires extension.ts registrar (Phase 6b)
+open class EChartsExtensionInstallRegisters {                              // PORT-NOTE (deferred): stub registrar, requires extension.ts (Phase 6b)
     open var PRIORITY: ECPriorityStub { ECPriorityStub() }
     open func registerProcessor(_ priority: Double, _ processor: AxisStatProcessorRegistration) {}
     public init() {}
@@ -485,7 +485,8 @@ public func associateSeriesWithAxis(
         return
     }
 
-    // PORT-TODO: `Model.ecModel` is `GlobalModel?`; upstream treats it as non-null here.
+    // POTENTIAL-BUG: `Model.ecModel` is `GlobalModel?`; upstream treats it as non-null here.
+    //   The force-unwrap is a latent SIGTRAP if a seriesModel ever reaches here without an ecModel.
     let ecModel = seriesModel.ecModel!
     let ecFullUpdateCache = ecModelCacheFullUpdateInner(getCachePerECFullUpdate(ecModel))
     let axisModelUid = axis.model.uid

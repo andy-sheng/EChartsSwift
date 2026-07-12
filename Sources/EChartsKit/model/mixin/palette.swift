@@ -111,7 +111,7 @@ private func coerceZRColorArray(_ raw: Any?) -> [ZRColor] {
 
 private func getNearestPalette<T>(
     _ palettes: [[T]], _ requestColorNum: Double
-) -> [T] {
+) -> [T]? {
     let paletteNum = palettes.count
     // TODO palettes must be in order
     for i in 0..<paletteNum {
@@ -119,10 +119,10 @@ private func getNearestPalette<T>(
             return palettes[i]
         }
     }
-    // PORT-TODO: upstream `palettes[paletteNum - 1]` returns `undefined` when `palettes` is empty
-    //   (then handled by `palette = palette || defaultPalette` at the call site); the Swift
-    //   subscript would trap on an empty array. `palettes` is non-empty in practice.
-    return palettes[paletteNum - 1]
+    // upstream: `return palettes[paletteNum - 1];` — returns `undefined` when `palettes` is empty
+    //   (then handled by `palette = palette || defaultPalette` at the call site). Return nil for the
+    //   empty case so the Swift subscript never traps on an empty array (upstream's undefined).
+    return paletteNum > 0 ? palettes[paletteNum - 1] : nil
 }
 
 /**
@@ -153,8 +153,12 @@ private func getFromPalette<T>(
     if let existing = scopeFields.paletteNameMap![name] {
         return existing
     }
-    var palette: [T]? = ((requestNum == nil || layeredPalette == nil)
-        ? defaultPalette : getNearestPalette(layeredPalette!, requestNum!))
+    var palette: [T]?
+    if requestNum == nil || layeredPalette == nil {
+        palette = defaultPalette
+    } else {
+        palette = getNearestPalette(layeredPalette!, requestNum!)
+    }
 
     // In case can't find in layered color palette.
     palette = palette ?? defaultPalette

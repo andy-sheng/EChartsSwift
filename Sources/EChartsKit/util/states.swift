@@ -564,8 +564,12 @@ public enum states {
 
         getComponentStates(componentModel).isBlured = true
 
-        // PORT-TODO: upstream gates on `view.focusBlurEnabled` (an optional `ComponentView` flag not yet
-        //   modeled — see view/ComponentView.swift). Without it, blur every child of the component view.
+        // POTENTIAL-BUG (dropped guard): upstream returns early unless `view.focusBlurEnabled`
+        //   (states.ts:536 `if (!view || !view.focusBlurEnabled)`). That flag is only declared on the
+        //   concrete GeoView (=true), not on the base `ComponentView` (see view/ComponentView.swift), so it
+        //   cannot be read polymorphically here. Without the gate this blurs every child of ANY component
+        //   view, whereas upstream only blurs views that opt in (currently just Geo) — an over-blur
+        //   divergence. Fix requires declaring `focusBlurEnabled` on the base ComponentView (not this file).
         guard let view = api.getViewOfComponentModel(componentModel) else { return }   // viewless → skip
         _ = view.group.traverse({ child in singleEnterBlur(child); return false })
     }
@@ -856,9 +860,11 @@ public enum states {
     public static func setAsHighDownDispatcher(_ el: Element, _ asDispatcher: Bool) {
         let disable = (asDispatcher == false)
         let inner = getHighDownInner(el)
-        // PORT-TODO: `(el as ECElement).highDownSilentOnTouch` — `Element` does not carry the ECElement
-        //   `highDownSilentOnTouch` prop; when the ECElement augmentation lands, copy it into
-        //   `inner.__highDownSilentOnTouch` here. Skipped for now (no touch-silent source yet).
+        // PORT-NOTE (deferred): requires the ECElement augmentation to be consumed (no Element type
+        //   conforms to `ECElement` yet, so `el as? ECElement` is always nil) plus a touch-silent source
+        //   (upstream `el.highDownSilentOnTouch` is set only from touch-mode paths — GeoView/MapView,
+        //   both DEFERRED as touch handling). When both land, copy `(el as ECElement).highDownSilentOnTouch`
+        //   into `inner.__highDownSilentOnTouch` here. No-op for now.
         if !disable || inner.__highDownDispatcher {
             // __highByOuter already defaults to 0.
             inner.__highDownDispatcher = !disable

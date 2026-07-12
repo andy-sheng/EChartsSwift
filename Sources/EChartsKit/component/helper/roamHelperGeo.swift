@@ -37,7 +37,7 @@ import ZRenderKit
 //   driver has no partial updateTransform, so this registers the DEFAULT `update: 'update'` — after the handler
 //   writes the roam state, the full `update()` rebuilds the Geo coord sys (seeded from the stored roam state
 //   via `geoRoamApplyStateToView` in geoCreator.resizeGeo) and re-renders the shifted/scaled regions.
-//   PORT-TODO (DEFERRED): MAP_SERIES_GROUP sync-to-all (`otherModelsToSync`) — a single roam host is handled.
+//   PORT-NOTE (deferred): MAP_SERIES_GROUP sync-to-all (`otherModelsToSync`) — a single roam host is handled.
 
 // ---------------------------------------------------------------------------------------------------
 // Roam state — the single source of truth for a geo/map host's (center, zoom), carried across update()

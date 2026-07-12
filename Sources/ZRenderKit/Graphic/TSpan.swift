@@ -233,11 +233,14 @@ public final class TSpan: Displayable {
     public override func getBoundingRect() -> BoundingRect? {
         if self._rect == nil {
             // upstream: this._rect = tSpanCreateBoundingRect(this.style);
-            // PORT-TODO: graphic/helper/parseText.ts (tSpanCreateBoundingRect — text measurement via
-            //   measureWidth / getLineHeight / adjustTextX / adjustTextY) is not ported yet. Bounding
-            //   rect is normally injected via `setBoundingRect` by the text layout layer; until
-            //   parseText lands the lazy fallback is stubbed.
-            // self._rect = tSpanCreateBoundingRect(self.tspanStyle)
+            //   tSpanCreateBoundingRect measures the single line and delegates to
+            //   tSpanCreateBoundingRect2 (both ported in Text.swift / ContainText.swift).
+            //   formatText(text): coerce nil → "".
+            let text = self.tspanStyle.text ?? ""
+            let font = self.tspanStyle.font
+            let contentWidth = ZRenderKit.text.measureWidth(ZRenderKit.text.ensureFontMeasureInfo(font), text)
+            let contentHeight = ZRenderKit.text.getLineHeight(font)
+            self._rect = parseText.tSpanCreateBoundingRect2(self.tspanStyle, contentWidth, contentHeight, nil)
         }
         return self._rect
     }

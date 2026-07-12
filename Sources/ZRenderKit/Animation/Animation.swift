@@ -12,7 +12,7 @@ import Foundation
 
 // upstream: import Eventful from '../core/Eventful';                        → Core/Eventful.swift
 // upstream: import requestAnimationFrame from './requestAnimationFrame';
-//   PORT-TODO: animation/requestAnimationFrame.ts not ported — the per-frame tick is supplied
+//   PORT-NOTE: animation/requestAnimationFrame.ts not ported — the per-frame tick is supplied
 //   by the host. On iOS NativePainter drives a CADisplayLink that calls `update()` each frame
 //   (Morph+Wire phase) instead of the browser's requestAnimationFrame recursion.
 // upstream: import Animator from './Animator';                              → Animation/Animator.swift
@@ -197,7 +197,7 @@ public final class Animation {
 
         self._running = true
 
-        // PORT-TODO: requestAnimationFrame seam — upstream recursively schedules `step` via
+        // PORT-NOTE: requestAnimationFrame seam — upstream recursively schedules `step` via
         //   requestAnimationFrame; on iOS the host (NativePainter's CADisplayLink) drives the
         //   loop by calling `update()` each frame while `_running` && !`_paused`. The recursive
         //   `step` below is retained for provenance; the actual frame tick is host-supplied.

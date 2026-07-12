@@ -24,13 +24,14 @@ import ZRenderKit
 // import axisDefault from './axisDefault';                               -> axisDefault (coord/axisDefault.swift; map is `axisDefault.option`)
 // import ComponentModel from '../model/Component';                       -> ComponentModel (model/Component.swift)
 // import { getLayoutParams, mergeLayoutParam, fetchLayoutMode } from '../util/layout';
-//     -> PORT-TODO: util/layout.ts not yet ported (Phase 6b). The layout-mode param extraction/merge in
+//     -> PORT-NOTE (deferred): requires util/layout `fetchLayoutMode` / `getLayoutParams` (still absent;
+//        only `mergeLayoutParam` is ported in util/layout.swift). The layout-mode param extraction/merge in
 //        `mergeDefaultAndTheme` is deferred (same deferral as ComponentModel.mergeDefaultAndTheme).
 // import OrdinalMeta from '../data/OrdinalMeta';                         -> OrdinalMeta (data/OrdinalMeta.swift)
 // import { DimensionName, BoxLayoutOptionMixin, OrdinalRawValue } from '../util/types';
 //     -> DimensionName / BoxLayoutOptionMixin / OrdinalRawValue (util/types.swift)
 // import { AxisBaseOption, AXIS_TYPES, CategoryAxisBaseOption } from './axisCommonTypes';
-//     -> PORT-TODO: coord/axisCommonTypes.swift is still a minimal stub (only `AxisScaleType`). The axis
+//     -> PORT-NOTE (deferred): requires the full coord/axisCommonTypes (still a minimal stub — only `AxisScaleType`). The axis
 //        option interfaces `AxisBaseOption` / `CategoryAxisBaseOption` are modeled as the dynamic option
 //        bag ([String: Any]) per the option-tree convention, and `AXIS_TYPES` is inlined below (see
 //        `AXIS_TYPES` / `AXIS_TYPES_ORDER`) until the full axisCommonTypes lands.
@@ -41,7 +42,7 @@ import ZRenderKit
 //      registerComponentModel / registerSubTypeDefaulter surface — Phase 6b registrar wiring).
 // import { BaseAxisBreakPayload } from '../component/axis/axisAction';
 // import { AxisBreakUpdateResult, getAxisBreakHelper } from '../component/axis/axisBreakHelper';
-//     -> PORT-TODO: component/axis/{axisAction,axisBreakHelper} are out of scope this phase (Phase 6b).
+//     -> PORT-NOTE (deferred): requires component/axis/{axisAction,axisBreakHelper} (still absent, out of scope this phase — Phase 6b).
 //        Minimal stubs are provided below so the creator's method set ports faithfully.
 
 // ============================================================================
@@ -60,14 +61,14 @@ private let AXIS_TYPES_ORDER: [String] = ["value", "category", "time", "log"]
 public typealias AxisBaseOption = [String: Any]
 
 // upstream: import { BaseAxisBreakPayload } from '../component/axis/axisAction';
-public typealias BaseAxisBreakPayload = Any                                // PORT-TODO: axisAction not ported
+public typealias BaseAxisBreakPayload = Any                                // PORT-NOTE (deferred): requires component/axis/axisAction (not ported)
 
 // upstream: import { AxisBreakUpdateResult, getAxisBreakHelper } from '../component/axis/axisBreakHelper';
-public struct AxisBreakUpdateResult {                                      // PORT-TODO: axisBreakHelper not ported
+public struct AxisBreakUpdateResult {                                      // PORT-NOTE (deferred): requires component/axis/axisBreakHelper (not ported)
     public var breaks: [Any]
     public init(breaks: [Any]) { self.breaks = breaks }
 }
-public protocol AxisBreakHelper {                                          // PORT-TODO: axisBreakHelper not ported
+public protocol AxisBreakHelper {                                          // PORT-NOTE (deferred): requires component/axis/axisBreakHelper (not ported)
     func updateModelAxisBreak(_ model: Any, _ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult
 }
 // getAxisBreakHelper(): AxisBreakHelper | undefined — installed by an optional module; nil in this port.
@@ -209,8 +210,8 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
         // const layoutMode = fetchLayoutMode(this);
         // const inputPositionParams = layoutMode
         //     ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-TODO: util/layout.ts (fetchLayoutMode / getLayoutParams / mergeLayoutParam) not yet
-        //   ported (Phase 6b). Layout-mode param extraction/merge deferred (same as ComponentModel).
+        // PORT-NOTE (deferred): requires util/layout `fetchLayoutMode` / `getLayoutParams` (still absent;
+        //   only `mergeLayoutParam` is ported). Layout-mode param extraction/merge deferred (same as ComponentModel).
         let layoutMode: Any? = nil  // fetchLayoutMode(self)
 
         // const themeModel = ecModel.getTheme();

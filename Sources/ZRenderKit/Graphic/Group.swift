@@ -302,9 +302,7 @@ open class Group: Element {
         for i in 0..<children.count {
             let child = children[i]
             // TODO invisible?
-            // PORT-TODO: upstream also skips `(child as Displayable).invisible`; Displayable
-            //   (graphic/Displayable.ts) is not ported yet, so only `child.ignore` is checked.
-            if child.ignore /* || (child as Displayable).invisible */ {
+            if child.ignore || ((child as? Displayable)?.invisible ?? false) {
                 continue
             }
 

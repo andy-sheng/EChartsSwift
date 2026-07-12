@@ -115,11 +115,15 @@ open class SunburstSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // PORT-TODO: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
-        //   name — see data/SeriesData.swift), so the injected closure is NOT actually invoked. The
-        //   level-model parenting therefore does not take effect through this path; it is preserved
-        //   faithfully for the diffable surface and for when wrapMethod becomes real. (`getLevelModel`
-        //   below still resolves the per-depth level model directly for the layout.)
+        // POTENTIAL-BUG: SeriesData.wrapMethod cannot rebind a method by name (see data/SeriesData.swift);
+        //   `getItemModel` never invokes the stored injection, and `_wrappedMethodInjections` is typed
+        //   `[String: [(SeriesData) -> Void]]` (only SeriesData-returning methods like cloneShallow),
+        //   whereas getItemModel returns Model. So this injected closure is NEVER run and the per-node
+        //   level-model parenting (`model.parentModel = levelModel`) does NOT take effect through this
+        //   path — per-datum option inheritance from a `levels[]` entry is silently dropped. Preserved
+        //   faithfully for the diffable surface; fixing needs SeriesData.getItemModel to call the
+        //   injection (out of scope here). (`getLevelModel` below still resolves the per-depth level
+        //   model directly for the layout, so the layout itself is unaffected.)
         let beforeLink: (SeriesData) -> Void = { nodeData in
             nodeData.wrapMethod("getItemModel") { args in
                 let model = args.first as? Model
@@ -150,10 +154,10 @@ open class SunburstSeriesModel: SeriesModel {
      * @override
      */
     // upstream: getDataParams(dataIndex): SunburstDataParams { ... params.treePathInfo = wrapTreePathInfo(node, this); ... }
-    // PORT-TODO: DEFERRED. Depends on `super.getDataParams` (DataFormatMixin — blocked on
-    //   Model.ecModel optionality, see model/Series.swift) and on `wrapTreePathInfo`
-    //   (chart/helper/treeHelper.ts NOT ported). `treePathInfo` only feeds labels/tooltip, both
-    //   deferred. Faithful upstream body (for the eventual port):
+    // PORT-NOTE (deferred): requires `wrapTreePathInfo` — chart/helper/treeHelper.swift IS ported but
+    //   `wrapTreePathInfo` within it is still a deferred stub (same status the sibling TreeSeries /
+    //   TreemapSeries getDataParams cite) — and `super.getDataParams` (DataFormatMixin). `treePathInfo`
+    //   only feeds labels/tooltip. Faithful upstream body (for the eventual port):
     //     const params = super.getDataParams.apply(this, arguments) as SunburstDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
     //     params.treePathInfo = wrapTreePathInfo(node, this);

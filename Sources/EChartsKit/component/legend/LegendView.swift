@@ -30,7 +30,7 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Text` / `graphic.Rect`
 //        are the ZRenderKit scene-graph types `Group` / `ZRText` / `Rect` (used directly).
-//        `graphic.setTooltipConfig` is deferred (interaction — PORT-TODO in `_createItem`).
+//        `graphic.setTooltipConfig` is deferred (interaction — PORT-NOTE in `_createItem`).
 //   import { enableHoverEmphasis } from '../../util/states';
 //     -> `states.enableHoverEmphasis` (util/states.swift; ported). Wired at both upstream call sites
 //        (`_createSelector` selector label + `_createItem` item group), each with the single-arg form
@@ -42,8 +42,8 @@ import ZRenderKit
 //        static-render scope). `setLabelStyle` (selector labels) -> `label/labelStyle.setLabelStyle`
 //        (ported; wired in `_createSelector`).
 //   import {makeBackground} from '../helper/listComponent';
-//     -> PORT-TODO: `component/helper/listComponent` NOT ported. A faithful minimal `makeBackground`
-//        lives at the bottom of this file (delete once component/helper/listComponent.swift lands).
+//     -> PORT-NOTE (deferred): requires `component/helper/listComponent` (NOT ported). A faithful minimal
+//        `makeBackground` lives at the bottom of this file (delete once component/helper/listComponent.swift lands).
 //   import * as layoutUtil from '../../util/layout';                 -> `layout.*` (util/layout.swift):
 //        `layout.createBoxLayoutReference` / `layout.getLayoutRect` / `layout.box` / `layout.markNewline`.
 //   import ComponentView from '../../view/Component';                -> `ComponentView` (view/ComponentView.swift).
@@ -62,7 +62,7 @@ import ZRenderKit
 //   import {createSymbol, ECSymbol} from '../../util/symbol';        -> `symbol.createSymbol` / `ECSymbol`.
 //   import SeriesModel from '../../model/Series';                    -> `SeriesModel`.
 //   import { createOrUpdatePatternFromDecal } from '../../util/decal';
-//     -> PORT-TODO: `util/decal` NOT ported — decal pattern from option deferred (PORT-TODO in `getLegendStyle`).
+//     -> `util/decal.createOrUpdatePatternFromDecal` (util/decal.swift, ported; wired in `getLegendStyle`).
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData` (event wiring — deferred).
 //   import tokens from '../../visual/tokens';
 //     -> `visual/tokens.swift` is ported; `tokens.color.neutral00` still inlined verbatim as '#fff'
@@ -153,7 +153,7 @@ open class LegendView: ComponentView {
     ) {
         let legendModel = model as! LegendModel
 
-        // PORT-TODO: defensive lazy init of the persistent content/selector groups. Upstream relies on
+        // PORT-NOTE: defensive lazy init of the persistent content/selector groups. Upstream relies on
         //   the pipeline calling `init(ecModel, api)` before `render`; other ported views (TitleView /
         //   CartesianAxisView) build their groups in `render`, so we guarantee the groups exist here.
         if self._contentGroup == nil {
@@ -258,14 +258,15 @@ open class LegendView: ComponentView {
                 let g = Group()
                 // @ts-ignore
                 // g.newline = true;
-                layout.markNewline(g)   // PORT-TODO: NewlineElement flag via side table (util/layout.swift).
+                layout.markNewline(g)   // PORT-NOTE (language): JS `g.newline = true` modeled as a NewlineElement flag via side table (util/layout.swift).
                 _ = contentGroup.add(g)
                 return
             }
 
             // Representitive series.
             // const seriesModel = ecModel.getSeriesByName(name)[0] as SeriesModel<...>;
-            //   `name` is `String?` here (PORT-TODO: numeric names become nil, LegendModel); a nil name
+            //   `name` is `String?` here (POTENTIAL-BUG: numeric legend names become nil in LegendModel, so a
+            //   numeric data name would not resolve a series by name); a nil name
             //   yields no series -> the pie/funnel (`else`) branch, matching upstream when name is a data name.
             let seriesModel = name.flatMap { ecModel.getSeriesByName($0).first }
 
@@ -317,11 +318,12 @@ open class LegendView: ComponentView {
                     return nil
                 }, nil)
 
-                // PORT-TODO: DEFERRED SSR wiring — `if (ecModel.ssr) { itemGroup.eachChild(child => {
-                //   getECData(child).seriesIndex/dataIndex/ssrType = ... }) }`.
+                // PORT-NOTE (platform): SSR wiring — `if (ecModel.ssr) { itemGroup.eachChild(child => {
+                //   getECData(child).seriesIndex/dataIndex/ssrType = ... }) }` — server-side rendering is
+                //   a browser/SSR concern, N/A in the native host.
 
-                // PORT-TODO: DEFERRED event wiring — `if (triggerEvent) { itemGroup.eachChild(child =>
-                //   this.packEventData(child, legendModel, seriesModel, dataIndex, name)) }`.
+                // PORT-NOTE (deferred): requires event wiring — `if (triggerEvent) { itemGroup.eachChild(child =>
+                //   this.packEventData(child, legendModel, seriesModel, dataIndex, name)) }` (event registry not wired).
                 _ = triggerEvent
 
                 legendDrawnMap.set(name, true)
@@ -341,12 +343,20 @@ open class LegendView: ComponentView {
                     if let provider = seriesModel.legendVisualProvider as? LegendVisualProviderLike {
                         guard let name = name, provider.containName(name) else { return }
                         let dataIdx = provider.indexOfName(name)
-                        let style = (provider.getItemVisual(dataIdx, "style") as? [String: Any]) ?? [:]
+                        var style = (provider.getItemVisual(dataIdx, "style") as? [String: Any]) ?? [:]
                         let legendIcon = provider.getItemVisual(dataIdx, "legendIcon") as? String
 
-                        // PORT-TODO: the transparent-fill → 0.2-alpha fix-up (color.parse/stringify) and the
-                        //   mouseover/mouseout dispatch wiring are DEFERRED (interaction). The click →
-                        //   legendToggleSelect(dataName) IS wired (pie/funnel slice show/hide).
+                        // const colorArr = parse(style.fill as ColorString);
+                        // Color may be set to transparent in visualMap when data is out of range.
+                        // Do not show nothing.
+                        if let fillStr = style["fill"] as? String,
+                           var colorArr = color.parse(fillStr), colorArr.count >= 4, colorArr[3] == 0 {
+                            colorArr[3] = 0.2
+                            // TODO color is set to 0, 0, 0, 0. Should show correct RGBA
+                            if let rgba = color.stringify(colorArr, "rgba") {
+                                style["fill"] = rgba
+                            }
+                        }
                         let dataItemGroup = self._createItem(
                             seriesModel, name, Double(dataIndex),
                             legendItemModel, legendModel, itemAlign,
@@ -384,7 +394,7 @@ open class LegendView: ComponentView {
             }
 
             // if (__DEV__) { if (!legendDrawnMap.get(name)) { console.warn(name + ' series not exists...'); } }
-            // PORT-TODO: __DEV__ warning dropped (dev-only diagnostic).
+            // PORT-NOTE: __DEV__ warning dropped (dev-only diagnostic).
         }
 
         // if (selector) { this._createSelector(selector, legendModel, api, orient, selectorPosition); }
@@ -394,8 +404,8 @@ open class LegendView: ComponentView {
     }
 
     // private packEventData(el, legendModel, seriesModel, dataIndex, name)
-    // PORT-TODO: DEFERRED — event-data packing (`getECData(el).eventData = {...}`) is interaction/event
-    //   wiring, out of static-render scope. Reproduce with `innerStore.getECData` when events land.
+    // PORT-NOTE (deferred): requires event wiring — event-data packing (`getECData(el).eventData = {...}`) is
+    //   interaction/event wiring, out of static-render scope. Reproduce with `innerStore.getECData` when events land.
 
     // private _createSelector(selector, legendModel, api, orient, selectorPosition)
     open func _createSelector(
@@ -538,7 +548,7 @@ open class LegendView: ComponentView {
             content = legendReplaceOnce(fmt, "{name}", name)
         }
         // else if (zrUtil.isFunction(formatter)) { content = formatter(name); }
-        // PORT-TODO: DEFERRED — function `formatter(name)` (dynamic callback) not modeled in the option bag.
+        // PORT-NOTE (deferred): function `formatter(name)` (dynamic callback) is not modeled in the option bag.
 
         // const textColor = isSelected ? textStyleModel.getTextColor() : legendItemModel.get('inactiveColor');
         let textColor = isSelected
@@ -547,7 +557,7 @@ open class LegendView: ComponentView {
 
         // itemGroup.add(new graphic.Text({ style: createTextStyle(textStyleModel, {text, x, y, fill, align,
         //   verticalAlign}, {inheritColor: textColor}) }));
-        // PORT-TODO: the `{inheritColor: textColor}` 3rd arg (labelStyle rich behavior) is out of scope.
+        // PORT-NOTE: the `{inheritColor: textColor}` 3rd arg (labelStyle rich behavior) is out of static-render scope.
         var textStyle = createTextStyle(
             textStyleModel,
             text: content,
@@ -575,7 +585,7 @@ open class LegendView: ComponentView {
 
         // const tooltipModel = legendItemModel.getModel('tooltip') as Model<...>;
         // if (tooltipModel.get('show')) { graphic.setTooltipConfig({...}); }
-        // PORT-TODO: DEFERRED — tooltip wiring (`graphic.setTooltipConfig`) out of static-render scope.
+        // PORT-NOTE (deferred): requires `util/graphic.setTooltipConfig` (not ported) — tooltip wiring, out of static-render scope.
         _ = itemGroup.add(hitRect)
 
         // itemGroup.eachChild(function (child) { child.silent = true; });
@@ -738,11 +748,9 @@ private func getLegendStyle(
         itemStyle["decal"] = itemVisualStyle["decal"]
     }
     else {
-        // PORT-TODO: DEFERRED — `createOrUpdatePatternFromDecal(decalStyle, api)` (util/decal) NOT ported.
-        //   Fall back to the series-visual decal so nothing crashes; wire the real pattern when decal lands.
-        itemStyle["decal"] = itemVisualStyle["decal"]
+        // itemStyle.decal = createOrUpdatePatternFromDecal(decalStyle, api);
+        itemStyle["decal"] = createOrUpdatePatternFromDecal(decalStyle, api)
     }
-    _ = api
 
     if (itemStyle["fill"] as? String) == "inherit" {
         // Series with visualDrawType as 'stroke' should have series stroke as legend fill
@@ -801,7 +809,7 @@ private func getDefaultLegendIcon(_ opt: LegendIconParams) -> ECSymbol {
     )
 
     // icon.setStyle(opt.itemStyle);
-    // PORT-TODO: `ECSymbol.setStyle` — the concrete conformer is a `Path` (`SymbolPath`); bridge the
+    // PORT-NOTE: `ECSymbol.setStyle` — the concrete conformer is a `Path` (`SymbolPath`); bridge the
     //   dynamic style bag via `barStyleFromDict` + `useStyle` (same seam as the rest of the port).
     let iconPath = icon as! Path
     iconPath.useStyle(barStyleFromDict(opt.itemStyle))
@@ -831,7 +839,7 @@ private func getDefaultLegendIcon(_ opt: LegendIconParams) -> ECSymbol {
 // export default LegendView;  -> `open class LegendView` above.
 
 // ============================================================================
-// PORT-TODO helpers — NOT part of legend/LegendView.ts upstream. These reproduce out-of-phase
+// PORT-NOTE helpers — NOT part of legend/LegendView.ts upstream. These reproduce out-of-phase
 // sibling APIs / JS idioms so the static legend render compiles. Delete each when its real
 // sibling lands and call the sibling directly.
 // ============================================================================
@@ -860,11 +868,11 @@ private func legendReplaceOnce(_ s: String, _ target: String, _ replacement: Str
 /// Bridge a dynamic style-bag color value (`String`) to `ZRColor` for `createSymbol`.
 private func legendZRColor(_ v: Any) -> ZRenderKit.ZRColor? {
     if let s = v as? String { return .string(s) }
-    // PORT-TODO: gradient/pattern color objects not bridged (out of static-render scope).
+    // PORT-NOTE (deferred): gradient/pattern color objects not bridged (out of static-render scope).
     return nil
 }
 
-/// PORT-TODO: faithful minimal reproduction of `component/helper/listComponent.makeBackground`.
+/// PORT-NOTE (deferred): requires `component/helper/listComponent` — faithful minimal reproduction of its `makeBackground`.
 ///   Delete when component/helper/listComponent.swift lands and call `makeBackground(rect, model)` directly.
 ///   upstream:
 ///     const padding = formatUtil.normalizeCssArray(componentModel.get('padding'));

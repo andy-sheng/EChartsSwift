@@ -3,8 +3,8 @@
 // SHARED LABEL CORE. This is the foundational module every chart's label rendering routes through
 // (`setLabelStyle` creates/updates the ZRText attached to a data element; `getLabelStatesModels`
 // reads the normal/emphasis/blur/select `label` sub-models off an item model). Most chart views
-// (Pie/Bar/Line/... ) now route through this API; a few (see the remaining `labelStyle.`-referencing
-// PORT-TODO comments in `chart/*/*.swift`, e.g. RadarView/ChordPiece) still have wiring gaps.
+// (Pie/Bar/Line/... ) now route through this API; a few chart views (e.g. RadarView/ChordPiece) still
+// have documented label-wiring gaps, tracked at their own sites in `chart/*/*.swift`.
 //
 // upstream imports (resolved to the ported modules):
 //   import ZRText, { TextProps, TextStyleProps } from 'zrender/src/graphic/Text';   -> ZRenderKit.ZRText / TextStyleProps
@@ -525,16 +525,17 @@ public enum labelStyle {
             // `minMargin` only supports a number value.
             let mm: Double = util.isNumber(minMarginRaw) ? ((_num(minMarginRaw) ?? 0) / 2) : 0
             textStyle.margin = .array([mm, mm, mm, mm])
-            // PORT-TODO (documented gap — see file header): upstream also stamps
-            //   `__marginType = LabelMarginType.minMargin` on the style object here, for later
-            //   margin-conflict resolution. `TextStyleProps` has no such field.
+            // PORT-NOTE (deferred): requires a `TextStyleProps.__marginType` field + `LabelMarginType`.
+            //   Upstream also stamps `__marginType = LabelMarginType.minMargin` on the style object here,
+            //   for later margin-conflict resolution. `TextStyleProps` (ZRenderKit) has no such field; the
+            //   whole margin machinery is a documented gap (see labelLayoutHelper.swift).
         }
         else if let textMarginRaw = textStyleModel.get("textMargin") {
             if let normalized = _normalizeCssArrayAny(textMarginRaw) {
                 textStyle.margin = .array(normalized)
             }
-            // PORT-TODO (documented gap — see file header): `__marginType = LabelMarginType.textMargin`
-            //   not stored — same gap as above.
+            // PORT-NOTE (deferred): `__marginType = LabelMarginType.textMargin` not stored — same missing
+            //   `TextStyleProps.__marginType` field + `LabelMarginType` gap as above.
         }
 
         setTokenTextStyle(

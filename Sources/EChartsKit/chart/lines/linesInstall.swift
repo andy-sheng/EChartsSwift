@@ -32,7 +32,7 @@ import ZRenderKit
 //   import LinesSeriesModel from './LinesSeries';                         -> sibling LinesSeries.swift (ported here).
 //   import linesLayout from './linesLayout';                             -> sibling linesLayout.swift (ported here).
 //   import linesVisual from './linesVisual';
-//       -> PORT-TODO: chart/lines/linesVisual.ts NOT ported — the lines visual stage (per-line stroke color
+//       -> PORT-NOTE (deferred): requires chart/lines/linesVisual — the lines visual stage (per-line stroke color
 //          from the palette + `symbol`/`symbolSize` for the endpoint arrows) lands with its own phase. Until
 //          then the series relies on the shared visual/style stage (lineStyle -> stroke) like the line chart.
 
@@ -45,7 +45,7 @@ import ZRenderKit
 //         registers.registerChartView(LinesView);          // -> LinesView (LinesView.swift, ported)
 //         registers.registerSeriesModel(LinesSeriesModel);  // -> LinesSeriesModel (LinesSeries.swift)
 //         registers.registerLayout(linesLayout);            // -> linesLayout (linesLayout.swift)
-//         registers.registerVisual(linesVisual);            // PORT-TODO: linesVisual (later phase)
+//         registers.registerVisual(linesVisual);            // PORT-NOTE (deferred): requires linesVisual
 //     }
 //
 // INTEGRATION SURFACE (for the driver):

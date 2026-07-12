@@ -83,32 +83,32 @@ final class PathUnitTests: XCTestCase {
     func test_Path_setShape_should_merge_style_properly() throws {
         throw XCTSkip("Path#setShape partial-merge is not ported: setShape(PathShape) replaces the "
             + "shape wholesale and setShape(key,value) is a no-op that only marks dirty "
-            + "(Path.swift PORT-TODO: dict-merge of a partial shape into a typed shape struct).")
+            + "(Path.swift PORT-NOTE: dict-merge of a partial shape into a typed shape struct).")
     }
 
     // upstream: it('Path#useState should switch state properly')
     func test_Path_useState_should_switch_state_properly() throws {
         throw XCTSkip("States machinery (useState applying x/y/scale/style/shape/z/z2/invisible) is "
             + "a Phase-2 stub: Element.useState() returns nil and does not mutate currentStates or "
-            + "apply the state object (Element.swift / Displayable.swift / Path.swift PORT-TODO).")
+            + "apply the state object (Element.swift / Displayable.swift / Path.swift PORT-NOTE).")
     }
 
     // upstream: it('Path#clearStates should be able to restore to normal state properly')
     func test_Path_clearStates_should_be_able_to_restore_to_normal_state_properly() throws {
         throw XCTSkip("States machinery is a Phase-2 stub (useState/clearStates do not apply or "
-            + "restore state). See Element.swift / Path.swift PORT-TODO.")
+            + "restore state). See Element.swift / Path.swift PORT-NOTE.")
     }
 
     // upstream: it('Path#useStates. Mutiple states should be merged properly')
     func test_Path_useStates_Multiple_states_should_be_merged_properly() throws {
         throw XCTSkip("States machinery is a Phase-2 stub (useStates merge/apply is a no-op). See "
-            + "Element.useStates / _mergeStates / _applyStateObj PORT-TODO.")
+            + "Element.useStates / _mergeStates / _applyStateObj PORT-NOTE.")
     }
 
     // upstream: it('Path#useState. Can switch back to single state')
     func test_Path_useState_Can_switch_back_to_single_state() throws {
         throw XCTSkip("States machinery is a Phase-2 stub (useStates/useState apply is a no-op). "
-            + "See Element.swift / Displayable.swift / Path.swift PORT-TODO.")
+            + "See Element.swift / Displayable.swift / Path.swift PORT-NOTE.")
     }
 
     // upstream: it('Path#clearStates() should not throw error on stateless object.')
@@ -155,7 +155,7 @@ final class PathUnitTests: XCTestCase {
     func test_Path_getBoundingRect_should_update_bounding_rect_after_setShape() throws {
         throw XCTSkip("Depends on Path#setShape partial-merge (setShape({width,height}) keeping x,y) "
             + "which is not ported — see test_Path_setShape_should_merge_style_properly. "
-            + "(Path.swift PORT-TODO)")
+            + "(Path.swift PORT-NOTE)")
     }
 
     // upstream: it('Path#getBoundingRect() should still cache bounding rect after setStyle')

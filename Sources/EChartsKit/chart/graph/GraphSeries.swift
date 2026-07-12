@@ -25,7 +25,7 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> ZRenderKit `util`.
 //   import {defaultEmphasis} from '../../util/model';                -> modelUtil.defaultEmphasis (typed;
-//       see mergeDefaultAndTheme PORT-TODO below).
+//       see mergeDefaultAndTheme PORT-NOTE below).
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import createGraphFromNodeEdge from '../helper/createGraphFromNodeEdge';
 //       -> the sibling free function `createGraphFromNodeEdge` (chart/helper/createGraphFromNodeEdge.swift).
@@ -57,8 +57,9 @@ import ZRenderKit
 //       -> visual/tokens.ts IS ported (visual/tokens.swift); the consumed values are still inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
 //   import { isViewCoordSys } from '../../coord/View';
-//       -> PORT-TODO: coord/View.ts NOT ported (the graph's `View` box coordinate system + roam are
-//          deferred); `__ownRoamView` returns the `coordinateSystem` slot (`Any?`) unfiltered.
+//       -> PORT-NOTE (deferred): isViewCoordSys IS ported (coord/View.swift), but View's CoordinateSystem
+//          protocol conformance is dropped there, so it cannot be applied to filter the `Any?` slot; the
+//          graph's roam is deferred anyway, so `__ownRoamView` returns the slot unfiltered (harmless).
 
 // export const SERIES_TYPE_GRAPH = 'graph';
 public let SERIES_TYPE_GRAPH = "graph"
@@ -77,8 +78,8 @@ open class GraphSeriesModel: SeriesModel {
     }
 
     // private _categoriesData: SeriesData;
-    // PORT-TODO: upstream typed non-optional; set by `_updateCategoriesData` during `init`. Modeled
-    //   implicitly-unwrapped so `getCategoriesData()` can return non-optional.
+    // PORT-NOTE: upstream typed non-optional; set by `_updateCategoriesData` during `init`. Modeled
+    //   implicitly-unwrapped so `getCategoriesData()` can return non-optional (language difference).
     private var _categoriesData: SeriesData!
 
     // private _categoriesModels: Model<GraphCategoryItemOption>[];
@@ -138,7 +139,7 @@ open class GraphSeriesModel: SeriesModel {
         super.mergeDefaultAndTheme(option, ecModel)
 
         // defaultEmphasis(option, 'edgeLabel', ['show']);
-        // PORT-TODO: modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
+        // PORT-NOTE (deferred): modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
         //   (CONVENTIONS §4); the dynamic option tree here is the `[String: Any]` bag. Bridging the
         //   dynamic bag to the typed struct is deferred (mirrors the same deferral in
         //   SeriesModel.fillDataTextStyle). The `edgeLabel` emphasis-`show` default is therefore not
@@ -191,10 +192,10 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-TODO: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
+        // POTENTIAL-BUG: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
         //   name — see data/SeriesData.swift), so the injected closure is NOT actually invoked. The
-        //   category-model parenting therefore does not take effect through this path; it is preserved
-        //   faithfully for the diffable surface and for when wrapMethod becomes real.
+        //   category-model parenting therefore does not take effect through this path (correctness gap:
+        //   per-category node styling); it is preserved faithfully for when wrapMethod becomes real.
         nodeData.wrapMethod("getItemModel") { [weak self] args in
             guard let self = self, let model = args.first as? Model else { return args.first as Any? }
             let categoriesModels = self._categoriesModels
@@ -231,11 +232,11 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return pathArr;
         // }
-        // PORT-TODO: this dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
+        // POTENTIAL-BUG: this dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
         //   (JS prototype-method swap) so an edge's `label` path resolves against `edgeLabel`. Swift
         //   cannot swap instance methods by assignment, and `wrapMethod` is a stub, so the `edgeLabel`
-        //   path-redirect is NOT applied. Preserved faithfully for when Model gains a settable
-        //   `resolveParentPath` hook.
+        //   path-redirect is NOT applied (correctness gap: edge labels ignore edgeLabel config). Preserved
+        //   faithfully for when Model gains a settable `resolveParentPath` hook.
         edgeData.wrapMethod("getItemModel") { args in
             return args.first as Any?
         }
@@ -243,8 +244,9 @@ open class GraphSeriesModel: SeriesModel {
 
     // getGraph(): Graph { return this.getData().graph; }
     open func getGraph() -> Graph {
-        // PORT-TODO: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-cast to
-        //   the ported Graph. linkSeriesData guarantees it is a Graph for graph series.
+        // POTENTIAL-BUG: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap
+        //   mirrors upstream optimistic typing — linkSeriesData is assumed to have set it for graph series,
+        //   but a call before linking would SIGTRAP (latent crash hazard).
         return self.getData().graph!
     }
 
@@ -374,7 +376,8 @@ open class GraphSeriesModel: SeriesModel {
         // Be an exclusive coord sys of graph series iff it is a `View` coord sys.
         // Otherwise graph series is based on an external geo or Cartesian.
         let coordSys = self.coordinateSystem
-        // PORT-TODO: coord/View.isViewCoordSys NOT ported — the `View`-ness filter is deferred; the
+        // PORT-NOTE (deferred): isViewCoordSys IS ported, but View's CoordinateSystem conformance is
+        //   dropped (coord/View.swift) so the `View`-ness filter cannot be applied here; the
         //   `coordinateSystem` slot is returned unfiltered (roam is deferred anyway).
         return coordSys
     }
@@ -395,7 +398,9 @@ open class GraphSeriesModel: SeriesModel {
 
             "legendHoverLink": true,
 
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            // POTENTIAL-BUG: upstream value is `null` (key present, null value); NSNull() matches the
+            //   key-present semantics but a read returns NSNull() not nil — code doing `dict["layout"] != nil`
+            //   (rather than jsTruthy) would diverge from JS falsy-null.
             "layout": NSNull(),
 
             // Configuration of circular layout
@@ -404,7 +409,8 @@ open class GraphSeriesModel: SeriesModel {
             ] as [String: Any],
             // Configuration of force directed layout
             "force": [
-                // PORT-TODO: upstream `initLayout: null`; NSNull() retains the key.
+                // POTENTIAL-BUG: upstream `initLayout: null`; NSNull() retains the key (key-present matches
+                //   upstream) but reads yield NSNull() not nil — hazard for `!= nil` checks vs jsTruthy.
                 "initLayout": NSNull(),
                 // Node repulsion. Can be an array to represent range.
                 "repulsion": [0.0, 50.0],
@@ -441,7 +447,8 @@ open class GraphSeriesModel: SeriesModel {
             "roam": false,
 
             // Default on center of graph
-            // PORT-TODO: upstream value is `null`; NSNull() retains the key.
+            // POTENTIAL-BUG: upstream value is `null`; NSNull() retains the key (key-present matches
+            //   upstream) but reads yield NSNull() not nil — hazard for `!= nil` checks vs jsTruthy.
             "center": NSNull(),
 
             "zoom": 1.0,

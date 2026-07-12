@@ -1,7 +1,7 @@
 // Ported from zrender/src/core/env.ts — keep in sync with upstream
 import Foundation
 
-// PORT-TODO: upstream `declare const wx: { getSystemInfoSync: Function }` — WeChat
+// PORT-NOTE: upstream `declare const wx: { getSystemInfoSync: Function }` — WeChat
 // mini-program global. Not available on iOS; the `wx` detection branch below is dropped.
 
 final class Browser {
@@ -30,7 +30,7 @@ final class Env {
     var transform3dSupported = false
 
     // upstream: `typeof window !== 'undefined'`
-    // PORT-TODO: browser-only — no global `window` on iOS, so this is always false.
+    // PORT-NOTE: browser-only — no global `window` on iOS, so this is always false.
     var hasGlobalWindow = false
 }
 
@@ -100,7 +100,7 @@ func configureNativeEnv(_ env: Env) {
 // (c) 2010-2013 Thomas Fuchs
 // Zepto.js may be freely distributed under the MIT license.
 
-// PORT-TODO: dead, not faithful. `detect` parses a navigator userAgent string and probes
+// PORT-NOTE: dead, not faithful. `detect` parses a navigator userAgent string and probes
 // browser globals (SVGRect, window, document, WebKitCSSMatrix). It is NEVER called on iOS
 // (configureNativeEnv takes the node branch instead), and the global-membership guards —
 // `'ontouchstart' in window`, `'onpointerdown' in window`, `typeof SVGRect !== 'undefined'`,
@@ -138,18 +138,18 @@ func detect(_ ua: String, _ env: Env) {
         browser.weChat = true
     }
 
-    // PORT-TODO: `typeof SVGRect !== 'undefined'` — browser global, no SVG on iOS.
+    // PORT-NOTE: `typeof SVGRect !== 'undefined'` — browser global, no SVG on iOS.
     env.svgSupported = false
-    // PORT-TODO: `'ontouchstart' in window && !browser.ie && !browser.edge` — browser globals.
+    // PORT-NOTE: `'ontouchstart' in window && !browser.ie && !browser.edge` — browser globals.
     env.touchEventsSupported = !browser.ie && !browser.edge
-    // PORT-TODO: `'onpointerdown' in window && (browser.edge || (browser.ie && +browser.version >= 11))`
+    // PORT-NOTE: `'onpointerdown' in window && (browser.edge || (browser.ie && +browser.version >= 11))`
     env.pointerEventsSupported = browser.edge || (browser.ie && (Double(browser.version ?? "") ?? 0) >= 11)
 
-    // PORT-TODO: `typeof document !== 'undefined'` — browser global, no DOM on iOS.
+    // PORT-NOTE: `typeof document !== 'undefined'` — browser global, no DOM on iOS.
     let domSupported = false
     env.domSupported = domSupported
     if domSupported {
-        // PORT-TODO: browser-only style/transform feature detection through
+        // PORT-NOTE: browser-only style/transform feature detection through
         // `document.documentElement.style`, `WebKitCSSMatrix`, etc. Cannot be replicated on iOS.
         //
         // const style = document.documentElement.style;

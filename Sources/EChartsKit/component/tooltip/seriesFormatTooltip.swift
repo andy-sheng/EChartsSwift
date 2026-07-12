@@ -116,10 +116,11 @@ private func formatTooltipArrayValue(
     // check: category-no-encode-has-axis-data in dataset.html
     let data = series.getData()
     // `reduce(value, (isValueMultipleLine, val, idx) => ...)` -> Swift reduce over indices.
-    // PORT-TODO: upstream guards `dimItem && ...`; `SeriesData.getDimensionInfo` is non-optional
-    //   (force-unwraps), so the nil-guard cannot fire (idx here always indexes an existing dim).
+    // upstream guards `dimItem && ...`; `SeriesData.getDimensionInfo(idx)` force-unwraps and would
+    //   SIGTRAP on an out-of-range index, so reproduce the nil-guard by bounding on the dim count
+    //   (an idx past the last dimension yields `undefined` upstream → contributes false).
     var isValueMultipleLine = false
-    for idx in 0..<value.count {
+    for idx in 0..<value.count where idx < data.dimensions.count {
         let dimItem = data.getDimensionInfo(idx)
         // `dimItem.tooltip !== false && dimItem.displayName != null`
         isValueMultipleLine = isValueMultipleLine

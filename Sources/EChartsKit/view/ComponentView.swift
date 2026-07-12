@@ -171,7 +171,11 @@ open class ComponentView: ViewRootGroup {
     }
 
     // upstream (optional): focusBlurEnabled?: boolean;
-    // PORT-TODO: optional flag consulted by the emphasis/blur system. Deferred with states.
+    // PORT-NOTE (deferred): the focus/blur guard that consults this flag (states.ts:536
+    //   `if (!view || !view.focusBlurEnabled)`) is itself deferred — tracked as a POTENTIAL-BUG in
+    //   util/states.swift. Only GeoView sets it (`focusBlurEnabled = true`, declared locally there),
+    //   so no base declaration is needed until that guard is wired; adding one here would also require
+    //   an `override` on GeoView.
 
     // upstream: static registerClass: clazzUtil.ClassManager['registerClass'];
     //

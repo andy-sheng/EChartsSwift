@@ -37,7 +37,7 @@ import ZRenderKit
 // interaction (axis-expand on click / mousemove, throttled + debounced). Per the task scope, the
 // brush/axis-drag/roam interaction for PARALLEL is DEFERRED (CONVENTIONS §5). The class structure is
 // preserved faithfully so it re-syncs against upstream, but every handler body that reaches into the
-// unported interaction seam is a PORT-TODO. The visible N-axis backdrop is produced by the
+// unported interaction seam is a PORT-NOTE (deferred). The visible N-axis backdrop is produced by the
 // `ParallelAxisView` below (upstream file 2).
 //
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
@@ -58,8 +58,9 @@ import ZRenderKit
 //       is modeled as a `[String: Any]` bag.
 //   import { each, bind, extend } from 'zrender/src/core/util';         → `util.*` (ZRenderKit).
 //   import { ThrottleController, createOrUpdate, clear } from '../../util/throttle';
-//     → PORT-TODO: `util/throttle` (throttle/debounce controller) is NOT ported. Deferred with the
-//       interaction seam; `createOrUpdate`/`clear`/`debounceNextCall` calls below are PORT-TODOs.
+//     → PORT-NOTE (deferred): requires `util/throttle` (throttle/debounce controller), NOT ported.
+//       Deferred with the interaction seam; the `createOrUpdate`/`clear`/`debounceNextCall` call sites
+//       below are correspondingly deferred.
 // ================================================================================================
 
 // upstream: const CLICK_THRESHOLD = 5; // > 4
@@ -113,8 +114,9 @@ public final class ParallelComponentView: ComponentView {
         //           api.getZr().on(eventName, this._handlers[eventName] = bind(handler, this));
         //       }, this);
         //   }
-        // PORT-TODO: PARALLEL axis-expand pointer interaction is DEFERRED (CONVENTIONS §5). `ExtensionAPI`
-        //   does not yet expose `getZr()` (part of the `availableMethods` forwarding — see ExtensionAPI),
+        // PORT-NOTE (deferred): PARALLEL axis-expand pointer interaction is DEFERRED (CONVENTIONS §5).
+        //   `ExtensionAPI` does not yet expose a callable `getZr()` (the `availableMethods` dynamic
+        //   forwarding is deferred to Phase 6b — see ExtensionAPI),
         //   and the `handlers` table below reaches the deferred `getSlidedAxisExpandWindow` /
         //   `dispatchAction` interaction seam. Preserved structurally; not wired.
         if self._handlers == nil {
@@ -124,7 +126,7 @@ public final class ParallelComponentView: ComponentView {
 
         // upstream: createOrUpdate(this, '_throttledDispatchExpand',
         //     parallelModel.get('axisExpandRate'), 'fixRate');
-        // PORT-TODO: `util/throttle.createOrUpdate` NOT ported (interaction seam). Deferred.
+        // PORT-NOTE (deferred): requires `util/throttle.createOrUpdate` (interaction seam), NOT ported.
         _ = payload
     }
 
@@ -134,7 +136,7 @@ public final class ParallelComponentView: ComponentView {
         //   clear(this, '_throttledDispatchExpand');
         //   each(this._handlers, function (handler, eventName) { api.getZr().off(eventName, handler); });
         //   this._handlers = null;
-        // PORT-TODO: `util/throttle.clear` + `getZr().off` NOT ported (interaction seam). Deferred.
+        // PORT-NOTE (deferred): requires `util/throttle.clear` + `getZr().off` (interaction seam), NOT ported.
         self._handlers = nil
     }
 
@@ -166,8 +168,8 @@ public final class ParallelComponentView: ComponentView {
 
 // upstream:
 //   const handlers: Partial<Record<ElementEventName, ElementEventHandler>> = { mousedown, mouseup, mousemove };
-// PORT-TODO: the pointer-interaction handler table (mousedown/mouseup/mousemove → axis-expand) is
-//   DEFERRED with the interaction seam (CONVENTIONS §5). It reaches `coordinateSystem
+// PORT-NOTE (deferred): the pointer-interaction handler table (mousedown/mouseup/mousemove → axis-expand)
+//   is DEFERRED with the interaction seam (CONVENTIONS §5). It reaches `coordinateSystem
 //   .getSlidedAxisExpandWindow(point)` (a deferred Parallel method) and `_dispatchExpand`
 //   (deferred action). The bodies are reproduced verbatim as comments so they re-sync 1:1 when the
 //   interaction seam lands.
@@ -199,8 +201,8 @@ public final class ParallelComponentView: ComponentView {
 //       const model = view._model;
 //       return model.get('axisExpandable') && model.get('axisExpandTriggerOn') === triggerOn;
 //   }
-// PORT-TODO: DEFERRED with the interaction seam (reads `axisExpandable` / `axisExpandTriggerOn` off the
-//   ParallelModel to gate the pointer handlers above).
+// PORT-NOTE (deferred): DEFERRED with the interaction seam (reads `axisExpandable` / `axisExpandTriggerOn`
+//   off the ParallelModel to gate the pointer handlers above).
 
 // export default ParallelView;  -> `public final class ParallelView` above.
 
@@ -220,9 +222,9 @@ public final class ParallelComponentView: ComponentView {
 //   import * as zrUtil from 'zrender/src/core/util';                    → `util.*` (ZRenderKit).
 //   import AxisBuilder from './AxisBuilder';                            → `AxisBuilder` (component/axis).
 //   import BrushController, { ... } from '../helper/BrushController';
-//     → PORT-TODO: `component/helper/BrushController` NOT ported (brush interaction seam). Deferred.
+//     → PORT-NOTE (deferred): requires `component/helper/BrushController` (brush interaction seam), NOT ported.
 //   import * as brushHelper from '../helper/brushHelper';
-//     → PORT-TODO: `component/helper/brushHelper` NOT ported (brush panels/clip). Deferred.
+//     → PORT-NOTE (deferred): requires `component/helper/brushHelper` (brush panels/clip), NOT ported.
 //   import * as graphic from '../../util/graphic';
 //     → `graphic.Group` is the ZRenderKit `Group`; `graphic.BoundingRect` is ZRenderKit
 //       `BoundingRect` (used only in the deferred brush rect); `graphic.groupTransition` is the
@@ -266,7 +268,7 @@ public final class ParallelAxisView: ComponentView {
     public let type = "parallelAxis"
 
     // private _brushController: BrushController;
-    // PORT-TODO: `BrushController` NOT ported (brush interaction seam). Deferred; typed `Any?`.
+    // PORT-NOTE (deferred): requires `BrushController` (brush interaction seam), NOT ported; typed `Any?`.
     private var _brushController: Any?
 
     // private _axisGroup: graphic.Group;
@@ -286,11 +288,12 @@ public final class ParallelAxisView: ComponentView {
     //       (this._brushController = new BrushController(api.getZr()))
     //           .on('brush', zrUtil.bind(this._onBrush, this));
     //   }
-    // PORT-TODO: the BrushController construction/mount is DEFERRED (brush interaction seam). The base
-    //   `ComponentView.init(ecModel, api)` is a no-op; nothing else to do statically.
+    // PORT-NOTE (deferred): the BrushController construction/mount is DEFERRED (brush interaction seam,
+    //   requires BrushController). The base `ComponentView.init(ecModel, api)` is a no-op; nothing else
+    //   to do statically.
     public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         super.`init`(ecModel, api)
-        // PORT-TODO: this._brushController = new BrushController(api.getZr()).on('brush', ...);
+        // PORT-NOTE (deferred): this._brushController = new BrushController(api.getZr()).on('brush', ...);
     }
 
     // upstream: render(axisModel: ParallelAxisModel, ecModel, api, payload)
@@ -378,14 +381,15 @@ public final class ParallelAxisView: ComponentView {
 
         // upstream: this._refreshBrushController(builderOpt, areaSelectStyle, axisModel,
         //     coordSysModel, areaWidth, api);
-        // PORT-TODO: the brush controller refresh (select-area rect, panels, covers) is DEFERRED (brush
-        //   interaction seam). The static axis backdrop above is complete without it.
+        // PORT-NOTE (deferred): the brush controller refresh (select-area rect, panels, covers) is DEFERRED
+        //   (brush interaction seam, requires BrushController). The static axis backdrop above is complete
+        //   without it.
         self._refreshBrushController(&builderOpt, areaSelectStyle, axisModel, coordSysModel, areaWidth, api)
 
         // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-        // PORT-TODO: `graphic.groupTransition` (util/graphic.ts) is NOT ported — matches old/new elements
-        //   by `anid` and animates the transition (CONVENTIONS §5). The freshly-built geometry is correct
-        //   without it.
+        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), NOT ported — matches
+        //   old/new elements by `anid` and animates the transition (CONVENTIONS §5). The freshly-built
+        //   geometry is correct without it.
         _ = oldAxisGroup
     }
 
@@ -407,8 +411,8 @@ public final class ParallelAxisView: ComponentView {
     //           .enableBrush({ brushType: 'lineX', brushStyle: areaSelectStyle, removeOnClick: true })
     //           .updateCovers(getCoverInfoList(axisModel));
     //   }
-    // PORT-TODO: DEFERRED — brush/areaSelect drawing (BrushController + brushHelper NOT ported). The
-    //   whole body reaches the brush interaction seam. Signature preserved so it re-syncs 1:1.
+    // PORT-NOTE (deferred): brush/areaSelect drawing — requires BrushController + brushHelper, NOT ported.
+    //   The whole body reaches the brush interaction seam. Signature preserved so it re-syncs 1:1.
     func _refreshBrushController(
         _ builderOpt: inout AxisBuilderCfg,
         _ areaSelectStyle: [String: Any],
@@ -417,7 +421,7 @@ public final class ParallelAxisView: ComponentView {
         _ areaWidth: Double?,
         _ api: ExtensionAPI
     ) {
-        // PORT-TODO: brush controller mount/panels/covers — DEFERRED (see method comment above).
+        // PORT-NOTE (deferred): brush controller mount/panels/covers — requires BrushController (see method comment above).
         _ = (builderOpt, areaSelectStyle, axisModel, coordSysModel, areaWidth, api)
     }
 
@@ -433,15 +437,16 @@ public final class ParallelAxisView: ComponentView {
     //               parallelAxisId: axisModel.id, intervals: intervals });
     //       }
     //   }
-    // PORT-TODO: DEFERRED — brush selection path (emits the `axisAreaSelect` action). Not wired.
+    // PORT-NOTE (deferred): brush selection path (emits the `axisAreaSelect` action) — requires
+    //   BrushController. Not wired.
     func _onBrush(_ eventParam: Any) {
-        // PORT-TODO: brush→axisAreaSelect action dispatch — DEFERRED.
+        // PORT-NOTE (deferred): brush→axisAreaSelect action dispatch — requires BrushController.
         _ = eventParam
     }
 
     // upstream: dispose() { this._brushController.dispose(); }
     public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-TODO: this._brushController.dispose() — BrushController NOT ported (brush seam). Deferred.
+        // PORT-NOTE (deferred): this._brushController.dispose() — requires BrushController (brush seam), NOT ported.
         _ = (ecModel, api)
     }
 }
@@ -482,8 +487,9 @@ private func fromAxisAreaSelect(
 //           brushType: 'lineX', panelId: 'pl',
 //           range: [axis.dataToCoord(interval[0], true), axis.dataToCoord(interval[1], true)] }));
 //   }
-// PORT-TODO: DEFERRED — active-interval → brush cover mapping (feeds the deferred BrushController.
-//   updateCovers). Reads `ParallelAxisModel.activeIntervals` and `ParallelAxis.dataToCoord`.
+// PORT-NOTE (deferred): active-interval → brush cover mapping (feeds the deferred BrushController.
+//   updateCovers) — requires BrushController. Reads `ParallelAxisModel.activeIntervals` and
+//   `ParallelAxis.dataToCoord`.
 
 // upstream:
 //   function getCoordSysModel(axisModel, ecModel): ParallelModel {

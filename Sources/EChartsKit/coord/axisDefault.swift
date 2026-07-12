@@ -4,12 +4,11 @@ import Foundation
 import ZRenderKit
 
 // import * as zrUtil from 'zrender/src/core/util';  → util.* (ZRenderKit)
-// import tokens from '../visual/tokens';
+// import tokens from '../visual/tokens';               → `tokens` (visual/tokens.swift, global `let tokens`)
 // import { AxisBaseOption } from './axisCommonTypes';  → dynamic option bag ([String: Any])
 //
-// PORT-TODO: visual/tokens.ts is not ported yet (this phase ports only this file, and visual/ lands
-// in a later phase). The individual `tokens.color.*` values consumed below are inlined verbatim as
-// their resolved constants; re-wire to the real `tokens` namespace once visual/tokens.swift lands.
+// PORT-NOTE: visual/tokens.swift is ported; the `tokens.color.*` values consumed below are wired to the
+// real `tokens` namespace (resolved constants for reference):
 //   tokens.color.axisLine           = color.neutral70            = '#54555a'
 //   tokens.color.axisLabel          = color.neutral70            = '#54555a'
 //   tokens.color.axisSplitLine      = color.neutral15            = '#dbdee4'
@@ -70,7 +69,7 @@ public enum axisDefault {
             // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
             "onZeroAxisIndex": NSNull(),
             "lineStyle": [
-                "color": "#54555a",  // upstream: tokens.color.axisLine
+                "color": tokens.color.axisLine,
                 "width": 1,
                 "type": "solid"
             ] as [String: Any],
@@ -103,7 +102,7 @@ public enum axisDefault {
             "margin": 8,
             // formatter: null,
             "fontSize": 12,
-            "color": "#54555a",  // upstream: tokens.color.axisLabel
+            "color": tokens.color.axisLabel,
             // In scenarios like axis labels, when labels text's progression direction matches the label
             // layout direction (e.g., when all letters are in a single line), extra start/end margin is
             // needed to prevent the text from appearing visually joined. In the other case, when lables
@@ -116,7 +115,7 @@ public enum axisDefault {
             "showMinLine": true,
             "showMaxLine": true,
             "lineStyle": [
-                "color": "#dbdee4",  // upstream: tokens.color.axisSplitLine
+                "color": tokens.color.axisSplitLine,
                 "width": 1,
                 "type": "solid"
             ] as [String: Any]
@@ -125,18 +124,18 @@ public enum axisDefault {
             "show": false,
             "areaStyle": [
                 "color": [
-                    "rgba(234,237,245,0.5)",  // upstream: tokens.color.backgroundTint
-                    "rgba(255,255,255,0)"     // upstream: tokens.color.backgroundTransparent
+                    tokens.color.backgroundTint,
+                    tokens.color.backgroundTransparent
                 ]
             ] as [String: Any]
         ] as [String: Any],
         "breakArea": [
             "show": true,
             "itemStyle": [
-                "color": "#fff",  // upstream: tokens.color.neutral00
+                "color": tokens.color.neutral00,
                 // Break border color should be darker than the splitLine
                 // because it has opacity and should be more prominent
-                "borderColor": "#b7b9be",  // upstream: tokens.color.border
+                "borderColor": tokens.color.border,
                 "borderWidth": 1,
                 "borderType": [3, 3],
                 "opacity": 0.6
@@ -219,7 +218,7 @@ public enum axisDefault {
                 "show": false,
 
                 "lineStyle": [
-                    "color": "#f4f7fd",  // upstream: tokens.color.axisMinorSplitLine
+                    "color": tokens.color.axisMinorSplitLine,
                     "width": 1
                 ] as [String: Any]
             ] as [String: Any]
