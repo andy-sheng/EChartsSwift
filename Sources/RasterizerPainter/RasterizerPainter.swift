@@ -15,12 +15,17 @@
 // snapshot — animation usually moves transforms, not shapes), solid paints (by quantized
 // RGBA), and text glyph outlines (by font+text).
 //
-// MOTION BLUR (zr.configLayer): the engine writes each frame afresh (the GPU holds no
-// state), so the CG painter's retain-last-frame-at-alpha trick has no analog. Emulated by
-// SCENE-HISTORY REPLAY: paint ops of a blurred zlevel are recorded per frame and re-emitted
-// on later frames with weight lastFrameAlpha^age until they fade below 1/255 (bounded by
-// `blurOpCap`). Solid-color ops decay exactly; gradient/image ops appear in the current
-// frame only (PORT-NOTE).
+// MOTION BLUR (zr.configLayer): implemented in the ENGINE layer (a local modification to
+// the vendored RasterizerLayer) as a feedback pass — a persistent texture retains each
+// presented frame, and the next frame composites it at lastFrameAlpha over the clear color
+// before the scene renders; the drawable is blitted back after. That is byte-for-byte the
+// zrender canvas/Layer.ts back-buffer mechanism (and the CG painter's port of it), so
+// self-overlap, non-solid paints and edge accumulation all match pixel-wise.
+// PORT-NOTE: the feedback covers the WHOLE layer (max lastFrameAlpha across configured
+// zlevels), not per-zlevel — non-blurred zlevels redraw opaquely each frame so static
+// content stays crisp; only MOVING content on a non-blurred zlevel would incorrectly trail.
+// PORT-NOTE: the headless CG reference render (renderToImage) has no feedback loop — use
+// renderMetalFrame() (real pipeline readback) to verify blur.
 //
 // KNOWN GAPS (PORT-NOTEs inline):
 //   - shadows (shadowBlur/offset)      — engine has no shadow support; skipped.
@@ -169,12 +174,9 @@ public final class RasterizerPainter {
     /// isEqual for CF types, memory-pressure eviction).
     private let _imagePaintCache = NSCache<AnyObject, RAPaint>()
 
-    // MARK: Motion-blur history (see MOTION BLUR note in the header)
+    // MARK: Motion blur (engine feedback pass; see MOTION BLUR note in the header)
 
     private var _layerConfigs: [Double: LayerConfig] = [:]
-    private var _blurHistory: [Double: [(ops: [PaintOp], weight: Double)]] = [:]
-    /// Upper bound on replayed history ops per blurred zlevel (drops oldest frames first).
-    private static let blurOpCap = 20_000
 
     public init(size: CGSize, dpr: Double? = nil, backgroundColor: CGColor? = nil) {
         let scale = dpr ?? Self.defaultScale()
@@ -202,9 +204,7 @@ public final class RasterizerPainter {
     private struct PaintOp {
         var path: RAPath
         var ctm: CGAffineTransform
-        var paint: RAPaint            // ready-to-use paint for weight == 1
-        var solidColor: CGColor?      // non-nil => decayable solid (base color, pre-alpha)
-        var solidAlpha: Double = 1    // element alpha the base color is multiplied by
+        var paint: RAPaint
         var isFill: Bool
         var evenOdd: Bool = false
         var width: Double = 0
@@ -214,18 +214,12 @@ public final class RasterizerPainter {
         var clipPath: RAPath?
     }
 
-    private func apply(_ op: PaintOp, weight: Double, to scene: RAScene) {
-        var paint = op.paint
-        if weight < 1 {
-            // History replay: only solid ops decay; others were emitted in their own frame.
-            guard let base = op.solidColor else { return }
-            paint = solidPaint(base, alpha: op.solidAlpha * weight)
-        }
+    private func apply(_ op: PaintOp, to scene: RAScene) {
         if op.isFill {
-            scene.addFill(op.path, ctm: op.ctm, color: paint, evenOdd: op.evenOdd,
+            scene.addFill(op.path, ctm: op.ctm, color: op.paint, evenOdd: op.evenOdd,
                           clip: op.clipRect, clipPath: op.clipPath)
         } else {
-            scene.addStroke(op.path, ctm: op.ctm, color: paint, width: op.width,
+            scene.addStroke(op.path, ctm: op.ctm, color: op.paint, width: op.width,
                             capStyle: op.cap, joinStyle: op.join,
                             clip: op.clipRect, clipPath: op.clipPath)
         }
@@ -237,43 +231,8 @@ public final class RasterizerPainter {
     /// Public so the headless verification path can build + CPU-render without a display.
     public func buildSceneList(_ displayList: [Displayable]) -> RASceneList {
         let scene = RAScene()
-
-        if _layerConfigs.isEmpty {
-            for el in displayList {
-                addDisplayable(el) { self.apply($0, weight: 1, to: scene) }
-            }
-        } else {
-            // Per-zlevel runs (the list is z-sorted, so zlevels are contiguous). A blurred
-            // zlevel replays its decayed history UNDER the current frame — the same visual
-            // as the CG painter compositing last frame at lastFrameAlpha before drawing.
-            var i = 0
-            while i < displayList.count {
-                let z = displayList[i].zlevel
-                var current: [PaintOp] = []
-                var j = i
-                while j < displayList.count, displayList[j].zlevel == z {
-                    addDisplayable(displayList[j]) { current.append($0) }
-                    j += 1
-                }
-                if let cfg = _layerConfigs[z], cfg.motionBlur, cfg.lastFrameAlpha > 0 {
-                    var hist = _blurHistory[z] ?? []
-                    for k in hist.indices { hist[k].weight *= cfg.lastFrameAlpha }
-                    hist.removeAll { $0.weight < 1.0 / 255.0 }
-                    var total = hist.reduce(0) { $0 + $1.ops.count } + current.count
-                    while total > Self.blurOpCap, !hist.isEmpty {
-                        total -= hist.removeFirst().ops.count
-                    }
-                    for frame in hist {
-                        for op in frame.ops { apply(op, weight: frame.weight, to: scene) }
-                    }
-                    for op in current { apply(op, weight: 1, to: scene) }
-                    hist.append((ops: current, weight: 1))
-                    _blurHistory[z] = hist
-                } else {
-                    for op in current { apply(op, weight: 1, to: scene) }
-                }
-                i = j
-            }
+        for el in displayList {
+            addDisplayable(el) { self.apply($0, to: scene) }
         }
 
         let list = RASceneList(scene: scene)
@@ -423,7 +382,7 @@ public final class RasterizerPainter {
         let evenOdd = paint.fillRule == .evenOdd
         if let g = paint.fillGradient {
             if let gp = makeGradientPaint(g, alpha: paint.fillAlpha * alpha, localRect: localRect) {
-                sink(PaintOp(path: geom.raPath, ctm: world, paint: gp, solidColor: nil,
+                sink(PaintOp(path: geom.raPath, ctm: world, paint: gp,
                              isFill: true, evenOdd: evenOdd,
                              clipRect: clip.rect, clipPath: clip.path))
             }
@@ -434,7 +393,7 @@ public final class RasterizerPainter {
             // enters a scene. (The engine stretches the texture over the path's own bounds.)
             if let pp = makePatternPaint(pat, coverRect: geom.cgPath.boundingBoxOfPath,
                                          alpha: paint.fillAlpha * alpha) {
-                sink(PaintOp(path: geom.raPath, ctm: world, paint: pp, solidColor: nil,
+                sink(PaintOp(path: geom.raPath, ctm: world, paint: pp,
                              isFill: true, evenOdd: evenOdd,
                              clipRect: clip.rect, clipPath: clip.path))
             }
@@ -442,7 +401,7 @@ public final class RasterizerPainter {
         }
         guard let fill = paint.fill else { return }
         sink(PaintOp(path: geom.raPath, ctm: world, paint: solidPaint(fill, alpha: alpha),
-                     solidColor: fill, solidAlpha: alpha, isFill: true, evenOdd: evenOdd,
+                     isFill: true, evenOdd: evenOdd,
                      clipRect: clip.rect, clipPath: clip.path))
     }
 
@@ -464,13 +423,13 @@ public final class RasterizerPainter {
             let outlinePath = RAPath(cgPath: outlined)
             if let g = paint.strokeGradient,
                let gp = makeGradientPaint(g, alpha: paint.strokeAlpha * alpha, localRect: localRect) {
-                sink(PaintOp(path: outlinePath, ctm: world, paint: gp, solidColor: nil,
+                sink(PaintOp(path: outlinePath, ctm: world, paint: gp,
                              isFill: true, clipRect: clip.rect, clipPath: clip.path))
             }
             else if let pat = paint.strokePattern,
                     let pp = makePatternPaint(pat, coverRect: outlined.boundingBoxOfPath,
                                               alpha: paint.strokeAlpha * alpha) {
-                sink(PaintOp(path: outlinePath, ctm: world, paint: pp, solidColor: nil,
+                sink(PaintOp(path: outlinePath, ctm: world, paint: pp,
                              isFill: true, clipRect: clip.rect, clipPath: clip.path))
             }
             return
@@ -487,7 +446,7 @@ public final class RasterizerPainter {
         }
         sink(PaintOp(path: strokePath, ctm: world,
                      paint: solidPaint(stroke, alpha: alpha),
-                     solidColor: stroke, solidAlpha: alpha, isFill: false,
+                     isFill: false,
                      width: paint.lineWidth,
                      cap: mapCap(paint.lineCap),
                      join: mapJoin(paint.lineJoin),   // PORT-NOTE: bevel falls back to miter
@@ -586,14 +545,14 @@ public final class RasterizerPainter {
         func emitTextFill() {
             if let fill = textStyle.fill {
                 sink(PaintOp(path: raPath, ctm: ctm, paint: solidPaint(fill, alpha: alpha),
-                             solidColor: fill, solidAlpha: alpha, isFill: true,
+                             isFill: true,
                              clipRect: clip.rect, clipPath: clip.path))
             }
         }
         func emitTextStroke() {
             if let stroke = textStyle.stroke, textStyle.lineWidth > 0 {
                 sink(PaintOp(path: raPath, ctm: ctm, paint: solidPaint(stroke, alpha: alpha),
-                             solidColor: stroke, solidAlpha: alpha, isFill: false,
+                             isFill: false,
                              width: textStyle.lineWidth,
                              clipRect: clip.rect, clipPath: clip.path))
             }
@@ -645,7 +604,7 @@ public final class RasterizerPainter {
         let raPath = RAPath(rect: CGRect(x: 0, y: 0, width: dw, height: dh))
         let world = (img.getComputedTransform().map { AffineTransform($0).cg }) ?? .identity
         let ctm = CGAffineTransform(translationX: dx, y: dy).concatenating(world)
-        sink(PaintOp(path: raPath, ctm: ctm, paint: paint, solidColor: nil, isFill: true,
+        sink(PaintOp(path: raPath, ctm: ctm, paint: paint, isFill: true,
                      clipRect: clip.rect, clipPath: clip.path))
     }
 
@@ -886,9 +845,23 @@ public final class RasterizerPainter {
                                       frames: Int32(frames))
     }
 
+    /// Force a synchronous Metal render pass of the last presented scene (headless testing,
+    /// no CoreAnimation commit needed).
+    public func displayNow() {
+        host.displayNow()
+    }
+
+    /// CPU readback of the engine's retained feedback frame — a REAL screenshot of the
+    /// Metal pipeline's output (only available while motion blur is enabled, which is what
+    /// keeps the feedback texture alive).
+    public func renderMetalFrame() -> CGImage? {
+        return host.copyFeedbackFrame()
+    }
+
     /// Render the last published scene list through the engine's own CoreGraphics reference
     /// interpreter (`RasterizerCG`) — verifies the display-list translation without a
     /// display/drawable. The GPU path renders the same `RASceneList`.
+    /// PORT-NOTE: no feedback loop here — verify motion blur via `renderMetalFrame()`.
     public func renderToImage() -> CGImage? {
         guard let list = lastSceneList else { return nil }
         let w = Double(surfaceSize.width), h = Double(surfaceSize.height)
@@ -926,7 +899,6 @@ extension RasterizerPainter: LayerHostedPainter {
 
     public func clear() {
         lastSceneList = nil
-        _blurHistory.removeAll()
         host.present(buildSceneList([]), width: Double(surfaceSize.width),
                      height: Double(surfaceSize.height))
     }
@@ -937,9 +909,9 @@ extension RasterizerPainter: LayerHostedPainter {
 
     public func getViewportRoot() -> Any? { return rootLayer }
 
-    /// upstream painter.configLayer(zLevel, config) — per-zlevel motion blur, emulated via
-    /// scene-history replay (see the MOTION BLUR note in the header). `motionBlur == false`
-    /// clears the zlevel's config + history (a series turning its effect off reverts cleanly),
+    /// upstream painter.configLayer(zLevel, config) — per-zlevel motion blur, implemented
+    /// as the engine feedback pass (see the MOTION BLUR note in the header). `motionBlur ==
+    /// false` clears the zlevel's config (a series turning its effect off reverts cleanly),
     /// mirroring CALayerPainter.configLayer.
     public func configLayer(_ zLevel: Double, _ config: Any?) {
         guard let c = config as? LayerConfig else { return }
@@ -947,13 +919,14 @@ extension RasterizerPainter: LayerHostedPainter {
             _layerConfigs[zLevel] = c
         } else {
             _layerConfigs[zLevel] = nil
-            _blurHistory[zLevel] = nil
         }
+        // PORT-NOTE: whole-layer feedback — max lastFrameAlpha across configured zlevels.
+        let alpha = _layerConfigs.values.map { $0.lastFrameAlpha }.max() ?? 0
+        host.setMotionBlurAlpha(alpha)
     }
 
     public func dispose() {
         lastSceneList = nil
-        _blurHistory.removeAll()
     }
 }
 

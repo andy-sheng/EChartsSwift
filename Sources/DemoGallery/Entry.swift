@@ -939,9 +939,10 @@ func runCLI() -> Bool {
         exit(0)
 
     case "--selftest-blur":
-        // --selftest-blur <out.png> : headless check of the RasterizerPainter motion-blur
-        // emulation (configLayer history replay) — a red dot sweeps right over 25 refreshes;
-        // the render must show a fading trail behind the final dot.
+        // --selftest-blur <out.png> : headless check of the motion-blur ENGINE feedback pass
+        // (configLayer -> RasterizerLayer feedback texture) — a red dot sweeps right over 25
+        // Metal frames; the readback must show a fading trail behind the final dot. This
+        // drives the REAL pipeline: refresh -> displayNow (render+blit) -> texture readback.
         guard args.count >= 2 else {
             FileHandle.standardError.write(Data("usage: --selftest-blur <out.png>\n".utf8)); exit(2)
         }
@@ -952,8 +953,9 @@ func runCLI() -> Bool {
         for i in 0..<25 {
             dot.x = Double(20 + i * 11)
             painter.refresh(flattenDisplayList(dot))
+            painter.displayNow()
         }
-        guard let img = painter.renderToImage() else { print("FAILED to render"); exit(1) }
+        guard let img = painter.renderMetalFrame() else { print("FAILED to render"); exit(1) }
         let rep = NSBitmapImageRep(cgImage: img)
         guard let png = rep.representation(using: .png, properties: [:]),
               (try? png.write(to: URL(fileURLWithPath: args[1]))) != nil else {
