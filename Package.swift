@@ -93,7 +93,8 @@ let package = Package(
         //   swift run EChartsDemoGallery --compare bar-basic <dir>   # native + web PNGs
         .executableTarget(
             name: "EChartsDemoGallery",
-            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit", "EChartsDemoCore"],
+            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit", "EChartsDemoCore",
+                           "RasterizerPainter"],
             path: "Sources/EChartsDemoGallery"
         ),
         // iOS ECharts demo gallery — the same gallery as a UIKit app (UISplitViewController: demo

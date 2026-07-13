@@ -32,13 +32,15 @@ import EChartsKit
 final class EChartsHostView: NSView {
 
     let echartsView: EChartsView
-    private let painter: CALayerPainter
+    /// `CALayerPainter` by default; an alternative backend (the Metal `RasterizerPainter`)
+    /// can be injected at init — same seam as `ZRenderView`.
+    private let painter: LayerHostedPainter
     private let proxy: NativeHandlerProxy
     private let animationLoop: AnimationLoop
 
-    init(frame: CGRect, dpr: Double? = nil) {
+    init(frame: CGRect, dpr: Double? = nil, painter injected: LayerHostedPainter? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
-        let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: NSColor.white.cgColor)
+        let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: NSColor.white.cgColor)
         let proxy = NativeHandlerProxy()
         let ecView = EChartsView(width: Double(size.width), height: Double(size.height),
                                  painter: painter, proxy: proxy)

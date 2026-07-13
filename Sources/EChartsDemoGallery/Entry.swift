@@ -17,6 +17,7 @@ import ZRenderKit
 import EChartsKit
 import NativePainter
 import EChartsDemoCore
+import RasterizerPainter
 
 // NOTE: the demo definitions (`EChartsDemo`, `EChartsDemoRegistry`, `Demos/*.swift`), the `Upstream`
 // dist locator and the `echartsHTMLPage(_:)` web-pane builder all live in EChartsDemoCore, shared
@@ -303,6 +304,10 @@ final class ContentViewController: NSViewController {
     private let webHost = NSView()
     private let webView = WKWebView()
     private let animSwitch = NSSwitch()
+    // Rendering-backend toggle: CoreGraphics (CALayerPainter, default) vs the experimental
+    // Metal RasterizerPainter — same seam as DemoGallery's checkbox.
+    private let metalSwitch = NSSwitch()
+    private let nativeCap = NSTextField(labelWithString: "Native · EChartsKit + NativePainter")
     private var currentDemo: EChartsDemo?
 
     override func loadView() {
@@ -368,7 +373,9 @@ final class ContentViewController: NSViewController {
             webView.bottomAnchor.constraint(equalTo: webHost.bottomAnchor),
         ])
 
-        let nativeCap = caption("Native · EChartsKit + NativePainter")
+        nativeCap.font = .systemFont(ofSize: 11, weight: .medium)
+        nativeCap.textColor = .secondaryLabelColor
+        nativeCap.translatesAutoresizingMaskIntoConstraints = false
         let webCap = caption("Real · echarts.js 6.1.0 (WKWebView)")
 
         let animLabel = caption("Native 动画")
@@ -377,7 +384,14 @@ final class ContentViewController: NSViewController {
         animSwitch.target = self
         animSwitch.action = #selector(toggleAnim)
 
-        [header, nativeCap, webCap, nativeHost, webHost, animLabel, animSwitch].forEach { root.addSubview($0) }
+        let metalLabel = caption("Metal")
+        metalSwitch.translatesAutoresizingMaskIntoConstraints = false
+        metalSwitch.state = ProcessInfo.processInfo.environment["DEMO_GALLERY_RASTERIZER"] == "1" ? .on : .off
+        metalSwitch.target = self
+        metalSwitch.action = #selector(toggleAnim)   // same handler: re-show the current demo
+
+        [header, nativeCap, webCap, nativeHost, webHost, animLabel, animSwitch,
+         metalLabel, metalSwitch].forEach { root.addSubview($0) }
         // Pin to the SAFE AREA (not raw view): with `.fullSizeContentView` + a unified toolbar
         // the content extends under the toolbar; safeAreaLayoutGuide.top sits below it.
         let safe = root.safeAreaLayoutGuide
@@ -395,6 +409,11 @@ final class ContentViewController: NSViewController {
             animSwitch.trailingAnchor.constraint(equalTo: nativeHost.trailingAnchor, constant: -2),
             animLabel.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
             animLabel.trailingAnchor.constraint(equalTo: animSwitch.leadingAnchor, constant: -6),
+
+            metalSwitch.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
+            metalSwitch.trailingAnchor.constraint(equalTo: animLabel.leadingAnchor, constant: -14),
+            metalLabel.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
+            metalLabel.trailingAnchor.constraint(equalTo: metalSwitch.leadingAnchor, constant: -6),
 
             nativeHost.topAnchor.constraint(equalTo: nativeCap.bottomAnchor, constant: 6),
             nativeHost.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
@@ -431,8 +450,16 @@ final class ContentViewController: NSViewController {
         if demo.nativeSupported {
             var opt = demo.option
             if animSwitch.state == .off { opt["animation"] = false }   // ON → leave echarts default (animate)
-            let host = EChartsHostView(
-                frame: NSRect(x: 0, y: 0, width: demo.width, height: demo.height), dpr: 2.0)
+            let useMetal = metalSwitch.state == .on
+            nativeCap.stringValue = useMetal
+                ? "Native · EChartsKit + Rasterizer (Metal)"
+                : "Native · EChartsKit + NativePainter"
+            let logical = NSRect(x: 0, y: 0, width: demo.width, height: demo.height)
+            let painter: LayerHostedPainter? = useMetal
+                ? RasterizerPainter(size: logical.size, dpr: 2.0,
+                                    backgroundColor: NSColor.white.cgColor)
+                : nil
+            let host = EChartsHostView(frame: logical, dpr: 2.0, painter: painter)
             host.setOption(opt)
             liveScroll.documentView = host
             currentHostView = host
@@ -635,6 +662,27 @@ func runCLI() -> Bool {
             FileHandle.standardError.write(Data("usage: --web-snapshot <name> <out.png>\n".utf8)); exit(2)
         }
         loadWebAndSnapshot(demo, out: URL(fileURLWithPath: args[2]))
+
+    case "--render-rasterizer":
+        // --render-rasterizer <name> <out.png> : headless render of the demo's static frame
+        // through the RasterizerPainter translation + the engine's RasterizerCG CPU reference
+        // (the Metal toggle renders the same scene list on the GPU).
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]),
+              demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --render-rasterizer <name> <out.png>\n".utf8)); exit(2)
+        }
+        let group = renderNativeGroup(demo)
+        let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+        let painter = RasterizerPainter(size: CGSize(width: demo.width, height: demo.height),
+                                        dpr: 1, backgroundColor: white)
+        painter.refresh(flattenDisplayList(group))
+        guard let img = painter.renderToImage(),
+              let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]),
+              (try? png.write(to: URL(fileURLWithPath: args[2]))) != nil else {
+            print("FAILED"); exit(1)
+        }
+        print("wrote \(args[2])")
+        exit(0)
 
     case "--compare":
         // --compare <name> <dir> : native PNG now, then web PNG (the web path exits the process).
