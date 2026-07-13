@@ -180,6 +180,32 @@ extension EChartsDemoRegistry {
     // `option` the native pane consumes; `nativeSupported: false` marks the ones EChartsKit can't
     // drive yet. Keep this list in the official gallery's order — it is the tab's reading order.
     public static let officialDemos: [EChartsDemo] = [
-        EChartsDemoRegistry.official_line_simple,        // line
+        EChartsDemoRegistry.official_line_simple,             // line
+        EChartsDemoRegistry.official_bar_simple,              // bar
+        EChartsDemoRegistry.official_pie_simple,              // pie
+        EChartsDemoRegistry.official_scatter_simple,          // scatter
+        EChartsDemoRegistry.official_candlestick_simple,      // candlestick
+        EChartsDemoRegistry.official_radar,                   // radar
+        EChartsDemoRegistry.official_boxplot_light_velocity,  // boxplot   (native N/A — dataset transform)
+        EChartsDemoRegistry.official_heatmap_cartesian,       // heatmap
+        EChartsDemoRegistry.official_graph_simple,            // graph
+        EChartsDemoRegistry.official_tree_basic,              // tree
+        EChartsDemoRegistry.official_treemap_simple,          // treemap
+        EChartsDemoRegistry.official_sunburst_simple,         // sunburst
+        EChartsDemoRegistry.official_parallel_simple,         // parallel
+        EChartsDemoRegistry.official_sankey_simple,           // sankey
+        EChartsDemoRegistry.official_funnel,                  // funnel
+        EChartsDemoRegistry.official_gauge_simple,            // gauge
+        EChartsDemoRegistry.official_pictorialbar_hill,       // pictorialBar (native N/A)
+        EChartsDemoRegistry.official_themeriver_basic,        // themeRiver
+        EChartsDemoRegistry.official_calendar_simple,         // calendar
+        EChartsDemoRegistry.official_matrix_simple,           // matrix
+        EChartsDemoRegistry.official_chord_simple,            // chord
+        EChartsDemoRegistry.official_custom_profile,          // custom     (native N/A)
+        EChartsDemoRegistry.official_dataset_simple0,         // dataset
+        EChartsDemoRegistry.official_map_usa,                 // map
+        EChartsDemoRegistry.official_area_simple,             // dataZoom
+        EChartsDemoRegistry.official_line_graphic,            // graphic    (native N/A)
+        EChartsDemoRegistry.official_pie_rich_text,           // rich       (native N/A)
     ]
 }

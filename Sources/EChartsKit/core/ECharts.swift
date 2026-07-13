@@ -170,16 +170,24 @@ struct MatrixCoordinateSystemCreator: CoordinateSystemCreator {
 // `xAxis.<type>` / `yAxis.<type>`. They read `axis.data` for category ordinal metadata.
 // ============================================================================
 
-/// Merge the per-type `axisDefault` (show:true + axisLine/axisTick/axisLabel/splitLine sub-defaults)
-/// UNDER the model's own option, so `axisModel.get("show")` / the AxisBuilder's sub-option reads resolve.
-/// This stands in for the deferred `AxisModel.mergeDefaultAndTheme` default-merge (the real
-/// axisModelCreator path injects `getDefaultOption()`; the stand-in models never run through it).
+/// Resolve the axis sub-type, then merge the per-type `axisDefault` (show:true + axisLine/axisTick/
+/// axisLabel/splitLine sub-defaults) UNDER the model's own option, so `axisModel.get("show")` / the
+/// AxisBuilder's sub-option reads resolve. This stands in for the deferred
+/// `AxisModel.mergeDefaultAndTheme` (the real axisModelCreator path never runs for these models).
+///
+/// The `option.type = getAxisType(option)` WRITE-BACK is load-bearing, not bookkeeping: upstream an
+/// axis carrying `data` but no explicit `type` IS a category axis, and that resolved type is what
+/// `axisHelper.determineAxisType` (→ the scale) and `optionUpdated` (→ OrdinalMeta) read back off the
+/// option. Without it every type-less axis degraded to `value`, so any option written the way the
+/// official examples write them (`xAxis: { data: [...] }`) drew an empty value axis.
 /// Overwrite=false → user option wins; nested dicts deep-merge (util.merge).
-private func mergeAxisDefaults(_ model: CartesianAxisModel, _ defaultType: String) {
+private func mergeAxisDefaults(_ model: CartesianAxisModel) {
     guard var opt = model.option as? [String: Any] else { return }
-    let axisType = (opt["type"] as? String) ?? defaultType
-    guard let def = axisDefault.option[axisType] as? [String: Any] else { return }
-    _ = util.merge(&opt, def, false)
+    let axisType = getAxisType(opt)   // option.type || (option.data ? 'category' : 'value')
+    opt["type"] = axisType
+    if let def = axisDefault.option[axisType] as? [String: Any] {
+        _ = util.merge(&opt, def, false)
+    }
     model.option = opt
 }
 
@@ -189,7 +197,7 @@ final class EChartsXAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
-        mergeAxisDefaults(self, "category")
+        mergeAxisDefaults(self)
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
@@ -211,7 +219,7 @@ final class EChartsYAxisModel: CartesianAxisModel, AxisModelExtendedInCreator {
     private var __ordinalMeta: OrdinalMeta?
     override func optionUpdated(_ n: ModelOption?, _ isInit: Bool) {
         super.optionUpdated(n, isInit)
-        mergeAxisDefaults(self, "value")
+        mergeAxisDefaults(self)
         if (self.option as? [String: Any])?["type"] as? String == "category" {
             __ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }

@@ -59,7 +59,11 @@ final class FitBox: UIView {
 // Demo list (primary column) — name + category rows, mirroring the mac sidebar.
 // ---------------------------------------------------------------------------
 final class DemoListViewController: UITableViewController {
-    private let demos = EChartsDemoRegistry.everything
+    /// The mac gallery's two tabs, as two table sections (the phone list has no room for a tab bar).
+    private let groups: [(title: String, demos: [EChartsDemo])] = [
+        ("移植 · Port", EChartsDemoRegistry.portDemos),
+        ("官方示例 · Official", EChartsDemoRegistry.officialDemos),
+    ]
     var onSelect: ((EChartsDemo) -> Void)?
 
     override func viewDidLoad() {
@@ -68,15 +72,21 @@ final class DemoListViewController: UITableViewController {
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
     }
 
+    override func numberOfSections(in tableView: UITableView) -> Int { groups.count }
+
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        groups[section].title
+    }
+
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        demos.count
+        groups[section].demos.count
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-        let d = demos[indexPath.row]
+        let d = groups[indexPath.section].demos[indexPath.row]
         var conf = UIListContentConfiguration.subtitleCell()
-        conf.text = d.name
+        conf.text = d.displayName
         conf.secondaryText = d.nativeSupported ? d.category : d.category + " · native N/A"
         conf.secondaryTextProperties.color = .secondaryLabel
         conf.secondaryTextProperties.font = .systemFont(ofSize: 11)
@@ -85,7 +95,7 @@ final class DemoListViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        onSelect?(demos[indexPath.row])
+        onSelect?(groups[indexPath.section].demos[indexPath.row])
     }
 }
 
@@ -196,7 +206,7 @@ final class DemoDetailViewController: UIViewController {
     }
 
     private func render(_ demo: EChartsDemo) {
-        title = demo.name
+        title = demo.displayName
         navigationItem.prompt = demo.summary
         updatePaneAspect()
 

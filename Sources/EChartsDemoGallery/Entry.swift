@@ -299,7 +299,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let d = item as! EChartsDemo
         let id = NSUserInterfaceItemIdentifier("cell")
         let cell = (ov.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? Self.makeCell(id)
-        cell.textField?.stringValue = d.name
+        cell.textField?.stringValue = d.displayName
         cell.textField?.textColor = d.nativeSupported ? .labelColor : .secondaryLabelColor
         cell.toolTip = d.nativeSupported ? d.summary : d.summary + " (native N/A)"
         cell.imageView?.image = NSImage(systemSymbolName: symbol(for: d.category),
@@ -480,7 +480,7 @@ final class ContentViewController: NSViewController {
 
     func show(_ demo: EChartsDemo) {
         currentDemo = demo
-        titleLabel.stringValue = demo.name
+        titleLabel.stringValue = demo.displayName
         subtitleLabel.stringValue = "\(demo.category) · \(demo.summary)"
 
         // Tear down the previous live chart (dropping the last strong ref deallocates the host,

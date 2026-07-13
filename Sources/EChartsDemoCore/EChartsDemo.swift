@@ -27,7 +27,10 @@ import EChartsKit
 
 /// One gallery case: a named ECharts `option` plus the logical canvas size both panes render at.
 public struct EChartsDemo {
-    public let name: String        // stable id (also the PNG basename)
+    /// Stable id, also the PNG basename and the `--render` / `--compare` argument. Official-tab demos
+    /// are named `official-<example-id>`: the two collections' ids overlap (both have a `gauge-simple`
+    /// and a `tree-basic`), and `byName` must stay unambiguous. The galleries show `displayName`.
+    public let name: String
     public let category: String    // sidebar grouping
     public let summary: String     // one-line description
     public let width: Double
@@ -54,6 +57,13 @@ public struct EChartsDemo {
     /// to JSON — option closures (formatters, renderItem, ...) then execute as real JS, which
     /// JSON round-tripping cannot express. The native pane always uses `option`.
     public let webOptionJS: String?
+
+    /// What the galleries label this demo: the bare example id for the official tab (the tab already
+    /// says these are the official examples), the plain name otherwise.
+    public var displayName: String {
+        let p = "official-"
+        return name.hasPrefix(p) ? String(name.dropFirst(p.count)) : name
+    }
 
     public init(name: String, category: String, summary: String,
                 width: Double = 400, height: Double = 300,

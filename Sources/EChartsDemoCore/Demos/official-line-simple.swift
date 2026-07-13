@@ -2,7 +2,7 @@
 // title: Basic Line Chart / titleCN: 基础折线图
 extension EChartsDemoRegistry {
     static let official_line_simple = EChartsDemo(
-        name: "line-simple", category: "line",
+        name: "official-line-simple", category: "line",
         summary: "基础折线图 — Basic Line Chart",
         width: 640, height: 420,
         nativeSupported: true,
