@@ -15,6 +15,10 @@ upstream/upstream/
 third_party/**/.build/
 .swiftpm/
 
+# Vendored Rasterizer checkout — reconstructed from third_party/rasterizer.lock +
+# rasterizer-local.patch via scripts/sync-rasterizer.sh (like the upstream/ checkouts).
+/third_party/Rasterizer/
+
 # macOS / Xcode
 .DS_Store
 *.xcodeproj
