@@ -84,11 +84,21 @@ public final class Single: CoordinateSystemMaster {
     //   Witnesses `CoordinateSystemMaster.axisPointerEnabled: Bool?` (optional in the protocol).
     public var axisPointerEnabled: Bool? = true
 
-    // upstream: model: SingleAxisModel;  (injected outside — assigned in `_init`).
-    //   NOTE: `CoordinateSystemMaster.model` requires `ComponentModel?`; SingleAxisModel is a
-    //   `ComponentModel` subclass, so this concrete property both stores the model and witnesses that
-    //   requirement (mirroring Polar's `model: PolarModel!`).
-    public var model: SingleAxisModel!
+    // upstream: model: SingleAxisModel;  (injected outside — assigned in `init`).
+    //   PROTOCOL-WITNESS FIX (mirrors Grid/Cartesian2D): a stored `var model: SingleAxisModel!` does NOT
+    //   witness `CoordinateSystemMaster.model: ComponentModel? { get set }` — Optional is invariant, so
+    //   `SingleAxisModel?` ≠ `ComponentModel?`, and `coordSys.model` dispatched through the
+    //   `CoordinateSystemMaster` existential hit the nil-returning default extension. That silently broke
+    //   axisPointer `modelHelper.collect` (`guard let coordSysModel = coordSys.model` always failed →
+    //   empty `coordSysAxesInfo` → NO axis tooltip for themeRiver). Store the concrete model privately and
+    //   expose a settable `var model: ComponentModel?` that actually witnesses the requirement;
+    //   `singleAxisModel` keeps the concrete-typed accessor for internal use.
+    private var _singleAxisModel: SingleAxisModel!
+    public var singleAxisModel: SingleAxisModel! { _singleAxisModel }
+    public var model: ComponentModel? {
+        get { return _singleAxisModel }
+        set { _singleAxisModel = newValue as? SingleAxisModel }
+    }
 
     // upstream: boxCoordinateSystem?: CoordinateSystem  (CoordinateSystemMaster requirement).
     //   Not used by Single; satisfies the protocol (upstream leaves it unset → undefined).
@@ -106,7 +116,7 @@ public final class Single: CoordinateSystemMaster {
     //     this._init(axisModel, ecModel, api);
     // }
     public init(_ axisModel: SingleAxisModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        self.model = axisModel
+        self._singleAxisModel = axisModel
         self._init(axisModel, ecModel, api)
     }
 

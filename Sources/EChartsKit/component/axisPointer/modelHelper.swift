@@ -332,21 +332,34 @@ private func makeAxisPointerModel(
 private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalModel) {
     // Prepare data for axis trigger
     ecModel.eachSeries { seriesModel, _ in
-        // Notice this case: this coordSys is `cartesian2D` but not `grid`.
-        // `coordinateSystem` is the executive coord sys (Cartesian2D, ...); it carries both `.model`
-        //  and `.getAxis(dim)`. CRITICAL: narrow to the concrete `Cartesian2D` (NOT the existential
-        //  `CoordinateSystem`): `Cartesian2D.getAxis(_ dim: DimensionName)` (non-optional param) does NOT
-        //  witness the protocol's `getAxis(_ dim: DimensionName?) -> Axis?` requirement, so an
-        //  `as? CoordinateSystem` cast would bind `getAxis(axis.dim)` to the nil-returning protocol
-        //  default → `nil === axis` is always false → `axisInfo.seriesModels` never populated → the axis
-        //  tooltip never appears. The concrete cast pins the real `Cartesian2D.getAxis -> Axis2D`. Mirrors
-        //  findPointFromSeries.swift:116. PORT-NOTE (deferred): polar/single tooltip-axis series info is
-        //  out of scope (only Cartesian2D is narrowed here).
-        let coordSys = seriesModel.coordinateSystem as? Cartesian2D
         let seriesTooltipTrigger = seriesModel.get(["tooltip", "trigger"], true)
         let seriesTooltipShow = seriesModel.get(["tooltip", "show"], true)
-        guard let coordSys = coordSys, let coordSysModel = coordSys.model else {
-            return   // !coordSys || !coordSys.model
+
+        // Resolve the series' coord-sys model + a per-axis membership test. Upstream is generic
+        //  (`coordSys.getAxis(axis.dim) === axis`), but here we narrow to the CONCRETE coord-sys type:
+        //  neither `Cartesian2D.getAxis(_ dim: DimensionName)` (non-optional param) nor `Single.getAxis()`
+        //  (no param) witnesses the `CoordinateSystem` protocol's `getAxis(_ dim: DimensionName?) -> Axis?`
+        //  requirement, so an existential cast would bind the nil-returning protocol default → `nil === axis`
+        //  is always false → `axisInfo.seriesModels` never populates → the axis tooltip never appears.
+        //  - Cartesian2D: `getAxis(axis.dim)` (grid, x/y).
+        //  - Single: themeRiver / streamgraph on the SINGLE coord sys — exactly one axis, so match it
+        //    directly (this is what makes trigger:'axis' tooltip work for themeRiver). Mirrors
+        //    findPointFromSeries.swift. PORT-NOTE (deferred): polar/other coord systems still out of scope.
+        let coordSysModel: ComponentModel?
+        let belongsToAxis: (Axis) -> Bool
+        if let coordSys = seriesModel.coordinateSystem as? Cartesian2D {
+            coordSysModel = coordSys.model
+            belongsToAxis = { axis in coordSys.getAxis(axis.dim) === axis }
+        }
+        else if let coordSys = seriesModel.coordinateSystem as? Single {
+            coordSysModel = coordSys.model
+            belongsToAxis = { axis in coordSys.getAxis() === axis }
+        }
+        else {
+            return   // !coordSys (or a coord system whose tooltip-axis series info is not ported)
+        }
+        guard let coordSysModel = coordSysModel else {
+            return   // !coordSys.model
         }
         if (seriesTooltipTrigger as? String) == "none"
             || (seriesTooltipTrigger as? Bool) == false
@@ -359,8 +372,7 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         // each(result.coordSysAxesInfo[makeKey(coordSys.model)], function (axisInfo) { ... });
         let axesInfoMap = result.coordSysAxesInfo[makeKey(coordSysModel)] ?? [:]
         for (_, axisInfo) in axesInfoMap {
-            let axis = axisInfo.axis
-            if coordSys.getAxis(axis.dim) === axis {
+            if belongsToAxis(axisInfo.axis) {
                 axisInfo.seriesModels.append(seriesModel)
                 if axisInfo.seriesDataCount == nil {
                     axisInfo.seriesDataCount = 0

@@ -546,9 +546,17 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         //   PROTOCOL-WITNESS: `coordinateSystem.getAxis(axisDim)` through the erased `CoordinateSystem`
         //   existential dispatches the nil-returning protocol default (Cartesian2D's non-optional-param
         //   `getAxis(_:)` does not witness `getAxis(_ dim: DimensionName?) -> Axis?`). Narrow to the
-        //   concrete `Cartesian2D` (as findPointFromSeries / modelHelper do). Polar/single are out of scope.
-        guard let coordSys = self.coordinateSystem as? Cartesian2D,
-              let axis = coordSys.getAxis(axisDim) else {
+        //   concrete coord sys: Cartesian2D takes the named axis; Single (themeRiver streamgraph) has
+        //   exactly one axis (axisDim is its "single" dimension) — required for its trigger:'axis' tooltip
+        //   snap. Polar/other coord systems remain out of scope.
+        let axis: Axis
+        if let coordSys = self.coordinateSystem as? Cartesian2D, let a = coordSys.getAxis(axisDim) {
+            axis = a
+        }
+        else if let coordSys = self.coordinateSystem as? Single {
+            axis = coordSys.getAxis()
+        }
+        else {
             return []
         }
         // const targetCoord = axis.dataToCoord(value);
