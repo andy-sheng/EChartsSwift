@@ -1,7 +1,22 @@
 // Registry.swift — index of every demo (one per Demos/<name>.swift), grouped by category.
 // Add a new Demos/*.swift then append its constant here.
+//
+// Two collections (see EChartsDemo.Collection), surfaced as separate gallery tabs:
+//   .port     — `portDemos`, the port-driven cases grown alongside EChartsKit.
+//   .official — `officialDemos`, replicas of echarts.apache.org/examples (Demos/official-*.swift),
+//               one representative per chart-type category from `line` through `rich`.
 extension EChartsDemoRegistry {
-    public static let everything: [EChartsDemo] = [
+    /// Every demo in both collections (port first). `--list` / `--render-all` walk this.
+    public static let everything: [EChartsDemo] = portDemos + officialDemos
+
+    /// The demos of one collection, in registry order.
+    public static func demos(in collection: EChartsDemo.Collection) -> [EChartsDemo] {
+        collection == .port ? portDemos : officialDemos
+    }
+
+    // MARK: - .port — grown alongside the EChartsKit port
+
+    public static let portDemos: [EChartsDemo] = [
         EChartsDemoRegistry.demo_dark_basic,    // Theme (built-in dark theme palette)
         EChartsDemoRegistry.demo_bar_basic,     // Bar
         EChartsDemoRegistry.demo_bar_seven,     // Bar
@@ -155,5 +170,16 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_marker_markpoint,      // Marker (markPoint max + min)
         EChartsDemoRegistry.demo_marker_markline,       // Marker (markLine average + yAxis line)
         EChartsDemoRegistry.demo_marker_markarea,       // Marker (markArea band)
+    ]
+
+    // MARK: - .official — replicas of echarts.apache.org/examples
+    //
+    // One representative example per chart-type category, in the order the official gallery lists
+    // them (`line` … `rich`). Each carries the example's VERBATIM JS (`webOptionJS`, what the web
+    // pane runs — so its formatters/renderItem closures execute as real JS) alongside the Swift
+    // `option` the native pane consumes; `nativeSupported: false` marks the ones EChartsKit can't
+    // drive yet. Keep this list in the official gallery's order — it is the tab's reading order.
+    public static let officialDemos: [EChartsDemo] = [
+        EChartsDemoRegistry.official_line_simple,        // line
     ]
 }

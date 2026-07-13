@@ -43,15 +43,31 @@ public struct EChartsDemo {
     /// Declare a demo's maps here so BOTH panes register them. Order is not significant.
     public let mapRegistrations: [String: Any]
 
+    /// Which demo set this belongs to: the port-driven gallery (`.port`, default) or the
+    /// official-examples replica tab (`.official` — cases mirrored from
+    /// echarts.apache.org/examples, one representative per chart-type category).
+    public enum Collection { case port, official }
+    public let collection: Collection
+
+    /// Verbatim JS from the official example (must assign `option`; may define helper vars/
+    /// functions above it). When set, the HTML pane RUNS THIS instead of serializing `option`
+    /// to JSON — option closures (formatters, renderItem, ...) then execute as real JS, which
+    /// JSON round-tripping cannot express. The native pane always uses `option`.
+    public let webOptionJS: String?
+
     public init(name: String, category: String, summary: String,
                 width: Double = 400, height: Double = 300,
                 nativeSupported: Bool = true,
                 mapRegistrations: [String: Any] = [:],
+                collection: Collection = .port,
+                webOptionJS: String? = nil,
                 option: [String: Any]) {
         self.name = name; self.category = category; self.summary = summary
         self.width = width; self.height = height
         self.nativeSupported = nativeSupported
         self.mapRegistrations = mapRegistrations
+        self.collection = collection
+        self.webOptionJS = webOptionJS
         self.option = option
     }
 }

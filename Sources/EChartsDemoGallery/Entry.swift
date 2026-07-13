@@ -87,48 +87,55 @@ func writeNativePNG(_ demo: EChartsDemo, to url: URL) -> Bool {
 /// Demos grouped by category, in first-seen order (drives the source list sections).
 struct DemoSection { let title: String; let demos: [EChartsDemo] }
 
-func demoSections() -> [DemoSection] {
+func demoSections(_ collection: EChartsDemo.Collection) -> [DemoSection] {
     var order: [String] = []
     var byCat: [String: [EChartsDemo]] = [:]
-    for d in EChartsDemoRegistry.everything {
+    for d in EChartsDemoRegistry.demos(in: collection) {
         if byCat[d.category] == nil { order.append(d.category) }
         byCat[d.category, default: []].append(d)
     }
     return order.map { DemoSection(title: $0, demos: byCat[$0]!) }
 }
 
+/// The official tab's categories are the official gallery's own ids (lowercase, e.g. `themeRiver`,
+/// `pictorialBar`); the port tab's are capitalized (`ThemeRiver`). Match case-insensitively so one
+/// table serves both.
 func symbol(for category: String) -> String {
-    switch category {
-    case "Bar":           return "chart.bar"
-    case "Line":          return "chart.xyaxis.line"
-    case "Scatter":       return "circle.grid.3x3"
-    case "EffectScatter": return "dot.radiowaves.left.and.right"
-    case "Lines":         return "scribble"
-    case "Pie":           return "chart.pie"
-    case "Component":     return "slider.horizontal.3"
-    case "Funnel":        return "arrowtriangle.down"
-    case "Candlestick":   return "chart.bar.xaxis"
-    case "Boxplot":       return "square.split.2x1"
-    case "Sunburst":      return "sun.max"
-    case "Treemap":       return "square.grid.2x2"
-    case "Tree":          return "arrow.triangle.branch"
-    case "Graph":         return "point.3.connected.trianglepath.dotted"
-    case "Radar":         return "hexagon"
-    case "Polar":         return "circle.circle"
-    case "Gauge":         return "gauge"
-    case "Sankey":        return "arrow.triangle.merge"
-    case "Chord":         return "circle.hexagonpath"
-    case "ThemeRiver":    return "waveform.path"
-    case "Parallel":      return "line.3.horizontal"
-    case "Calendar":      return "calendar"
-    case "Matrix":        return "tablecells"
-    case "Geo":           return "map"
-    case "Map":           return "map.fill"
-    case "VisualMap":     return "slider.horizontal.below.rectangle"
-    case "Heatmap":       return "square.grid.3x3.fill"
-    case "DataZoom":      return "magnifyingglass"
-    case "Dataset":       return "tablecells.badge.ellipsis"
-    case "Custom":        return "wrench.and.screwdriver"
+    switch category.lowercased() {
+    case "bar":           return "chart.bar"
+    case "line":          return "chart.xyaxis.line"
+    case "scatter":       return "circle.grid.3x3"
+    case "effectscatter": return "dot.radiowaves.left.and.right"
+    case "lines":         return "scribble"
+    case "pie":           return "chart.pie"
+    case "component":     return "slider.horizontal.3"
+    case "funnel":        return "arrowtriangle.down"
+    case "candlestick":   return "chart.bar.xaxis"
+    case "boxplot":       return "square.split.2x1"
+    case "sunburst":      return "sun.max"
+    case "treemap":       return "square.grid.2x2"
+    case "tree":          return "arrow.triangle.branch"
+    case "graph":         return "point.3.connected.trianglepath.dotted"
+    case "radar":         return "hexagon"
+    case "polar":         return "circle.circle"
+    case "gauge":         return "gauge"
+    case "sankey":        return "arrow.triangle.merge"
+    case "chord":         return "circle.hexagonpath"
+    case "themeriver":    return "waveform.path"
+    case "parallel":      return "line.3.horizontal"
+    case "calendar":      return "calendar"
+    case "matrix":        return "tablecells"
+    case "geo":           return "map"
+    case "map":           return "map.fill"
+    case "visualmap":     return "slider.horizontal.below.rectangle"
+    case "heatmap":       return "square.grid.3x3.fill"
+    case "datazoom":      return "magnifyingglass"
+    case "dataset":       return "tablecells.badge.ellipsis"
+    case "custom":        return "wrench.and.screwdriver"
+    // official-only categories
+    case "pictorialbar":  return "chart.bar.doc.horizontal"
+    case "graphic":       return "square.on.circle"
+    case "rich":          return "textformat"
     default:              return "chart.bar"
     }
 }
@@ -149,9 +156,17 @@ final class DemoOutlineView: NSOutlineView {
 }
 
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuItemValidation {
-    let sections = demoSections()
+    /// The demo set the sidebar is showing — switched by the tab picker above the list.
+    /// `ECHARTS_GALLERY_TAB=official` opens straight on the official-examples tab.
+    private(set) var collection: EChartsDemo.Collection =
+        ProcessInfo.processInfo.environment["ECHARTS_GALLERY_TAB"] == "official" ? .official : .port
+    private(set) lazy var sections: [DemoSection] = demoSections(collection)
     var onSelect: ((EChartsDemo) -> Void)?
+    /// Fired when the tab changes, so the window subtitle can follow the visible demo count.
+    var onCollectionChange: ((EChartsDemo.Collection) -> Void)?
     private let outline = DemoOutlineView()
+    private let tabs = NSSegmentedControl(labels: ["移植", "官方示例"],
+                                          trackingMode: .selectOne, target: nil, action: nil)
 
     override func loadView() {
         outline.headerView = nil
@@ -180,10 +195,22 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         scroll.documentView = outline
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
+        // Tab picker: which demo set the list shows (.port | .official).
+        tabs.translatesAutoresizingMaskIntoConstraints = false
+        tabs.segmentDistribution = .fillEqually
+        tabs.selectedSegment = collection == .official ? 1 : 0
+        tabs.target = self
+        tabs.action = #selector(tabChanged)
+
         let container = NSView()
+        container.addSubview(tabs)
         container.addSubview(scroll)
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: container.topAnchor),
+            tabs.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 8),
+            tabs.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            tabs.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+
+            scroll.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -193,9 +220,24 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        expandAndSelectFirst()
+    }
+
+    @objc private func tabChanged() {
+        collection = tabs.selectedSegment == 1 ? .official : .port
+        sections = demoSections(collection)
+        outline.reloadData()
+        expandAndSelectFirst()
+        onCollectionChange?(collection)
+    }
+
+    /// Show every category and land on the first demo — the list is never left with no selection
+    /// (`allowsEmptySelection` is off, but a reload clears the selection without notifying).
+    private func expandAndSelectFirst() {
         outline.expandItem(nil, expandChildren: true)
         for r in 0..<outline.numberOfRows where outline.item(atRow: r) is EChartsDemo {
             outline.selectRowIndexes(IndexSet(integer: r), byExtendingSelection: false)
+            if let d = outline.item(atRow: r) as? EChartsDemo { onSelect?(d) }
             break
         }
     }
@@ -530,6 +572,12 @@ final class GallerySplitViewController: NSSplitViewController {
         addSplitViewItem(main)
 
         sidebar.onSelect = { [weak self] demo in self?.content.show(demo) }
+        sidebar.onCollectionChange = { [weak self] c in
+            let n = EChartsDemoRegistry.demos(in: c).count
+            self?.view.window?.subtitle = c == .official
+                ? "Official Examples · \(n) demos"
+                : "ECharts Demo Gallery · \(n) demos"
+        }
     }
 }
 
@@ -543,7 +591,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         win.title = "echarts → Swift"
-        win.subtitle = "ECharts Demo Gallery · \(EChartsDemoRegistry.everything.count) demos"
+        let tab = splitVC.sidebar.collection
+        let shown = EChartsDemoRegistry.demos(in: tab).count
+        win.subtitle = tab == .official
+            ? "Official Examples · \(shown) demos"
+            : "ECharts Demo Gallery · \(shown) demos"
         win.contentViewController = splitVC
 
         let toolbar = NSToolbar(identifier: "main")
@@ -630,7 +682,8 @@ func runCLI() -> Bool {
     switch cmd {
     case "--list":
         for d in EChartsDemoRegistry.everything {
-            print("\(d.name)\t[\(d.category)]\tnative:\(d.nativeSupported ? "yes" : "N/A")\t\(d.summary)")
+            let tab = d.collection == .official ? "official" : "port"
+            print("\(d.name)\t[\(tab)/\(d.category)]\tnative:\(d.nativeSupported ? "yes" : "N/A")\t\(d.summary)")
         }
         return true
 

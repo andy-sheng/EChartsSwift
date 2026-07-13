@@ -30,8 +30,16 @@ public enum Upstream {
 /// renders tiny). macOS WKWebView ignores viewport metas, so the mac pane is unaffected.
 public func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
     guard let dist = try? String(contentsOf: Upstream.echartsDistJS, encoding: .utf8) else { return nil }
-    guard let optionData = try? JSONSerialization.data(withJSONObject: demo.option, options: []),
-          let optionJSON = String(data: optionData, encoding: .utf8) else { return nil }
+    // The option script: either the official example's verbatim JS (assigns `option`; runs
+    // real closures the JSON path cannot express), or the JSON-serialized Swift option.
+    let optionScript: String
+    if let js = demo.webOptionJS {
+        optionScript = "var option;\n\(js)"
+    } else {
+        guard let optionData = try? JSONSerialization.data(withJSONObject: demo.option, options: []),
+              let optionJSON = String(data: optionData, encoding: .utf8) else { return nil }
+        optionScript = "var option = \(optionJSON);"
+    }
     // Guard against a stray `</script>` inside the bundle closing the tag early.
     let safeDist = dist.replacingOccurrences(of: "</script", with: "<\\/script")
 
@@ -57,10 +65,10 @@ public func echartsHTMLPage(_ demo: EChartsDemo) -> String? {
     </head><body style="margin:0;background:#fff">
     <div id="main" style="width:\(Int(demo.width))px;height:\(Int(demo.height))px"></div>
     <script>
-    \(registerJS)  var opt = \(optionJSON);
-      opt.animation = false;
-      var chart = echarts.init(document.getElementById('main'), null, { renderer: 'canvas' });
-      chart.setOption(opt);
+    \(registerJS)\(optionScript)
+      option.animation = false;
+      var myChart = echarts.init(document.getElementById('main'), null, { renderer: 'canvas' });
+      myChart.setOption(option);
     </script>
     </body></html>
     """
