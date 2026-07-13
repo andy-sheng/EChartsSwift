@@ -17,6 +17,7 @@ import AppKit
 import WebKit
 import ZRenderKit
 import NativePainter
+import RasterizerPainter
 
 let DEMO_SIZE = CGSize(width: 680, height: 220)
 
@@ -267,9 +268,17 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     override func viewDidAppear() {
         super.viewDidAppear()
         outline.expandItem(nil, expandChildren: true)
-        for r in 0..<outline.numberOfRows where outline.item(atRow: r) is Demo {
-            outline.selectRowIndexes(IndexSet(integer: r), byExtendingSelection: false)
-            break
+        // Headless/CI convenience: DEMO_GALLERY_START=<name> opens on that demo.
+        let startName = ProcessInfo.processInfo.environment["DEMO_GALLERY_START"]
+        var startRow = -1
+        for r in 0..<outline.numberOfRows {
+            guard let d = outline.item(atRow: r) as? Demo else { continue }
+            if startRow < 0 { startRow = r }
+            if d.name == startName { startRow = r; break }
+        }
+        if startRow >= 0 {
+            outline.selectRowIndexes(IndexSet(integer: startRow), byExtendingSelection: false)
+            outline.scrollRowToVisible(startRow)
         }
     }
 
@@ -374,6 +383,13 @@ final class CanvasViewController: NSViewController {
     private var currentZRView: ZRenderView?
     private var controlsPanel: NSView?     // floating dat.GUI-equivalent panel (demos with controls)
     private let webView = WKWebView()
+    // Rendering-backend toggle: CoreGraphics (CALayerPainter, the default) vs the
+    // experimental Metal RasterizerPainter. Swapping re-builds the demo's ZRenderView with
+    // the alternate painter injected — everything else (events, animation clock) is shared.
+    private var currentDemo: Demo?
+    private var useRasterizer = false
+    private let nativeCap = NSTextField(labelWithString: "Native · Swift + NativePainter")
+    private let backendToggle = NSButton(checkboxWithTitle: "Metal (Rasterizer)", target: nil, action: nil)
 
     /// upstream test/ dir, baked in at compile time via #filePath (same trick GoldenTests uses
     /// for the Oracle path). Entry.swift lives at <repo>/Sources/DemoGallery/Entry.swift.
@@ -458,16 +474,26 @@ final class CanvasViewController: NSViewController {
             webView.bottomAnchor.constraint(equalTo: webHost.bottomAnchor),
         ])
 
-        let nativeCap = NSTextField(labelWithString: "Native · Swift + NativePainter")
         let webCap = NSTextField(labelWithString: "Original · zrender test/*.html")
         for c in [nativeCap, webCap] {
             c.font = .systemFont(ofSize: 11, weight: .medium)
             c.textColor = .secondaryLabelColor
             c.translatesAutoresizingMaskIntoConstraints = false
         }
+        backendToggle.target = self
+        backendToggle.action = #selector(backendToggled(_:))
+        backendToggle.controlSize = .small
+        backendToggle.font = .systemFont(ofSize: 11)
+        backendToggle.translatesAutoresizingMaskIntoConstraints = false
+        // Headless/CI convenience: DEMO_GALLERY_RASTERIZER=1 starts with the Metal backend on.
+        if ProcessInfo.processInfo.environment["DEMO_GALLERY_RASTERIZER"] == "1" {
+            useRasterizer = true
+            backendToggle.state = .on
+        }
 
         root.addSubview(header)
         root.addSubview(nativeCap); root.addSubview(webCap)
+        root.addSubview(backendToggle)
         root.addSubview(canvasHost); root.addSubview(webHost)
         // Pin to the SAFE AREA (not raw view): with `.fullSizeContentView` + a unified toolbar
         // the content extends under the toolbar; safeAreaLayoutGuide.top sits below it.
@@ -482,6 +508,10 @@ final class CanvasViewController: NSViewController {
             webCap.topAnchor.constraint(equalTo: nativeCap.topAnchor),
             webCap.leadingAnchor.constraint(equalTo: webHost.leadingAnchor, constant: 2),
 
+            backendToggle.centerYAnchor.constraint(equalTo: nativeCap.centerYAnchor),
+            backendToggle.leadingAnchor.constraint(equalTo: nativeCap.trailingAnchor, constant: 12),
+            backendToggle.trailingAnchor.constraint(lessThanOrEqualTo: canvasHost.trailingAnchor, constant: -2),
+
             canvasHost.topAnchor.constraint(equalTo: nativeCap.bottomAnchor, constant: 6),
             canvasHost.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
             canvasHost.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -20),
@@ -495,13 +525,29 @@ final class CanvasViewController: NSViewController {
         self.view = root
     }
 
+    /// Re-show the current demo with the newly selected rendering backend.
+    @objc private func backendToggled(_ sender: NSButton) {
+        useRasterizer = (sender.state == .on)
+        if let d = currentDemo { show(d) }
+    }
+
     func show(_ demo: Demo) {
         // Tear down the previous live scene (dropping the last strong ref deallocates the old
         // ZRenderView, whose deinit stops its animation clock + disposes its ZRender).
         currentZRView?.removeFromSuperview()
         controlsPanel?.removeFromSuperview(); controlsPanel = nil
+        currentDemo = demo
         let logical = CGRect(x: 0, y: 0, width: demo.width, height: demo.height)
-        let zrView = ZRenderView(frame: logical, backgroundColor: NSColor.white.cgColor)
+        // Backend per the toggle: nil painter -> the default CALayerPainter; the Metal
+        // RasterizerPainter is injected through the same LayerHostedPainter seam.
+        let painter: LayerHostedPainter? = useRasterizer
+            ? RasterizerPainter(size: logical.size, backgroundColor: NSColor.white.cgColor)
+            : nil
+        nativeCap.stringValue = useRasterizer
+            ? "Native · Swift + Rasterizer (Metal)"
+            : "Native · Swift + NativePainter"
+        let zrView = ZRenderView(frame: logical, backgroundColor: NSColor.white.cgColor,
+                                 painter: painter)
         // Demos with a control panel build the scene AND return their controls (so the controls can
         // capture the live element refs); others just build. Either way the scene is built once.
         let controls: [DemoControl]
@@ -829,6 +875,91 @@ func runCLI() -> Bool {
                 try? png.write(to: URL(fileURLWithPath: args[2])); print("wrote \(args[2])")
             }
         }
+        exit(0)
+
+    case "--render-rasterizer":
+        // --render-rasterizer <name> <out.png> : build the demo through the experimental
+        // RasterizerPainter and render its RASceneList via the engine's CPU reference
+        // interpreter (RasterizerCG) — headless verification of the display-list translation
+        // (the GUI's Metal toggle renders the SAME scene list on the GPU).
+        guard args.count >= 3, let demo = DemoRegistry.byName(args[1]) else {
+            FileHandle.standardError.write(Data("usage: --render-rasterizer <name> <out.png>\n".utf8)); exit(2)
+        }
+        let size = CGSize(width: demo.width, height: demo.height)
+        let painter = RasterizerPainter(size: size, dpr: 1, backgroundColor: NSColor.white.cgColor)
+        let view = ZRenderView(frame: CGRect(origin: .zero, size: size), painter: painter)
+        demo.build(view.zr)
+        view.layoutSubtreeIfNeeded()
+        view.zr.refreshImmediately()
+        guard let img = painter.renderToImage() else {
+            print("FAILED to render \(demo.name) via RasterizerCG"); exit(1)
+        }
+        let rep = NSBitmapImageRep(cgImage: img)
+        guard let png = rep.representation(using: .png, properties: [:]),
+              (try? png.write(to: URL(fileURLWithPath: args[2]))) != nil else {
+            print("FAILED to write \(args[2])"); exit(1)
+        }
+        print("wrote \(args[2])")
+        exit(0)
+
+    case "--bench-rasterizer":
+        // --bench-rasterizer <name> [frames] : per-frame cost split of the Rasterizer path —
+        // (a) display-list -> RASceneList translation (our layer), (b) the engine's CPU stage
+        // (Context::drawList into an Ra::Buffer, what writeBuffer runs per frame).
+        guard args.count >= 2, let demo = DemoRegistry.byName(args[1]) else {
+            FileHandle.standardError.write(Data("usage: --bench-rasterizer <name> [frames]\n".utf8)); exit(2)
+        }
+        let frames = args.count >= 3 ? (Int(args[2]) ?? 120) : 120
+        let size = CGSize(width: demo.width, height: demo.height)
+        let painter = RasterizerPainter(size: size, dpr: 2, backgroundColor: NSColor.white.cgColor)
+        let view = ZRenderView(frame: CGRect(origin: .zero, size: size), painter: painter)
+        if let make = demo.controls { _ = make(view.zr) } else { demo.build(view.zr) }
+        view.layoutSubtreeIfNeeded()
+        view.zr.refreshImmediately()
+        let displayList = view.zr.storage.getDisplayList(true)
+        print("\(demo.name): \(displayList.count) displayables")
+        // (a) translation
+        _ = painter.buildSceneList(displayList)   // warm-up
+        let t0 = CFAbsoluteTimeGetCurrent()
+        for _ in 0..<frames { _ = painter.buildSceneList(displayList) }
+        let translateMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000 / Double(frames)
+        // (b) engine CPU stage
+        let scene = painter.buildSceneList(displayList)
+        let engineMs = painter.benchEngine(scene, frames: frames)
+        print(String(format: "rasterizer  translate: %.2f ms/frame   engine CPU: %.2f ms/frame   total: %.2f ms/frame",
+                     translateMs, engineMs, translateMs + engineMs))
+        // Reference: the CG painter's full frame (draw display list + makeImage), what the
+        // default backend spends per frame on the same scene.
+        let cgPainter = CALayerPainter(size: size, dpr: 2, backgroundColor: NSColor.white.cgColor)
+        cgPainter.refresh(displayList)   // warm-up
+        let t1 = CFAbsoluteTimeGetCurrent()
+        for _ in 0..<frames { cgPainter.refresh(displayList) }
+        let cgMs = (CFAbsoluteTimeGetCurrent() - t1) * 1000 / Double(frames)
+        print(String(format: "coregraphics frame: %.2f ms/frame", cgMs))
+        exit(0)
+
+    case "--selftest-blur":
+        // --selftest-blur <out.png> : headless check of the RasterizerPainter motion-blur
+        // emulation (configLayer history replay) — a red dot sweeps right over 25 refreshes;
+        // the render must show a fading trail behind the final dot.
+        guard args.count >= 2 else {
+            FileHandle.standardError.write(Data("usage: --selftest-blur <out.png>\n".utf8)); exit(2)
+        }
+        let size = CGSize(width: 320, height: 80)
+        let painter = RasterizerPainter(size: size, dpr: 1, backgroundColor: NSColor.white.cgColor)
+        painter.configLayer(0, LayerConfig(motionBlur: true, lastFrameAlpha: 0.9))
+        let dot = styled(circle(0, 40, 8), fill: "#e01f1f")
+        for i in 0..<25 {
+            dot.x = Double(20 + i * 11)
+            painter.refresh(flattenDisplayList(dot))
+        }
+        guard let img = painter.renderToImage() else { print("FAILED to render"); exit(1) }
+        let rep = NSBitmapImageRep(cgImage: img)
+        guard let png = rep.representation(using: .png, properties: [:]),
+              (try? png.write(to: URL(fileURLWithPath: args[1]))) != nil else {
+            print("FAILED to write"); exit(1)
+        }
+        print("wrote \(args[1])")
         exit(0)
 
     case "--render-all":
