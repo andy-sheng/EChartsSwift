@@ -12,6 +12,7 @@ upstream/upstream/
 
 # SwiftPM
 /.build/
+third_party/**/.build/
 .swiftpm/
 
 # macOS / Xcode
