@@ -180,32 +180,229 @@ extension EChartsDemoRegistry {
     // `option` the native pane consumes; `nativeSupported: false` marks the ones EChartsKit can't
     // drive yet. Keep this list in the official gallery's order — it is the tab's reading order.
     public static let officialDemos: [EChartsDemo] = [
-        EChartsDemoRegistry.official_line_simple,             // line
-        EChartsDemoRegistry.official_bar_simple,              // bar
-        EChartsDemoRegistry.official_pie_simple,              // pie
-        EChartsDemoRegistry.official_scatter_simple,          // scatter
-        EChartsDemoRegistry.official_candlestick_simple,      // candlestick
-        EChartsDemoRegistry.official_radar,                   // radar
-        EChartsDemoRegistry.official_boxplot_light_velocity,  // boxplot   (native N/A — dataset transform)
-        EChartsDemoRegistry.official_heatmap_cartesian,       // heatmap
-        EChartsDemoRegistry.official_graph_simple,            // graph
-        EChartsDemoRegistry.official_tree_basic,              // tree
-        EChartsDemoRegistry.official_treemap_simple,          // treemap
-        EChartsDemoRegistry.official_sunburst_simple,         // sunburst
-        EChartsDemoRegistry.official_parallel_simple,         // parallel
-        EChartsDemoRegistry.official_sankey_simple,           // sankey
-        EChartsDemoRegistry.official_funnel,                  // funnel
-        EChartsDemoRegistry.official_gauge_simple,            // gauge
-        EChartsDemoRegistry.official_pictorialbar_hill,       // pictorialBar (native N/A)
-        EChartsDemoRegistry.official_themeriver_basic,        // themeRiver
-        EChartsDemoRegistry.official_calendar_simple,         // calendar
-        EChartsDemoRegistry.official_matrix_simple,           // matrix
-        EChartsDemoRegistry.official_chord_simple,            // chord
-        EChartsDemoRegistry.official_custom_profile,          // custom     (native N/A)
-        EChartsDemoRegistry.official_dataset_simple0,         // dataset
-        EChartsDemoRegistry.official_map_usa,                 // map
-        EChartsDemoRegistry.official_area_simple,             // dataZoom
-        EChartsDemoRegistry.official_line_graphic,            // graphic    (native N/A)
-        EChartsDemoRegistry.official_pie_rich_text,           // rich       (native N/A)
+        EChartsDemoRegistry.official_line_simple,                            // line
+        EChartsDemoRegistry.official_line_smooth,                            // line
+        EChartsDemoRegistry.official_area_basic,                             // line
+        EChartsDemoRegistry.official_line_stack,                             // line
+        EChartsDemoRegistry.official_area_stack,                             // line
+        EChartsDemoRegistry.official_area_stack_gradient,                    // line
+        EChartsDemoRegistry.official_bump_chart,                             // line
+        EChartsDemoRegistry.official_line_marker,                            // line
+        EChartsDemoRegistry.official_area_pieces,                            // line
+        EChartsDemoRegistry.official_data_transform_filter,                  // line
+        EChartsDemoRegistry.official_line_gradient,                          // line
+        EChartsDemoRegistry.official_line_sections,                          // line
+        EChartsDemoRegistry.official_confidence_band,                        // line
+        EChartsDemoRegistry.official_grid_multiple,                          // line
+        EChartsDemoRegistry.official_line_aqi,                               // line
+        EChartsDemoRegistry.official_multiple_x_axis,                        // line
+        EChartsDemoRegistry.official_area_rainfall,                          // line
+        EChartsDemoRegistry.official_area_time_axis,                         // line
+        EChartsDemoRegistry.official_dynamic_data2,                          // line
+        EChartsDemoRegistry.official_line_function,                          // line
+        EChartsDemoRegistry.official_line_race,                              // line
+        EChartsDemoRegistry.official_line_markline,                          // line
+        EChartsDemoRegistry.official_line_style,                             // line
+        EChartsDemoRegistry.official_line_in_cartesian_coordinate_system,    // line
+        EChartsDemoRegistry.official_line_log,                               // line
+        EChartsDemoRegistry.official_line_step,                              // line
+        EChartsDemoRegistry.official_line_easing,                            // line
+        EChartsDemoRegistry.official_line_fisheye_lens,                      // line
+        EChartsDemoRegistry.official_line_y_category,                        // line
+        EChartsDemoRegistry.official_line_pen,                               // line
+        EChartsDemoRegistry.official_line_polar,                             // line
+        EChartsDemoRegistry.official_line_polar2,                            // line
+        EChartsDemoRegistry.official_line_tooltip_touch,                     // line
+        EChartsDemoRegistry.official_line_draggable,                         // line
+        EChartsDemoRegistry.official_bar_simple,                             // bar
+        EChartsDemoRegistry.official_bar_tick_align,                         // bar
+        EChartsDemoRegistry.official_bar_background,                         // bar
+        EChartsDemoRegistry.official_bar_data_color,                         // bar
+        EChartsDemoRegistry.official_bar_waterfall,                          // bar
+        EChartsDemoRegistry.official_bar_polar_label_radial,                 // bar
+        EChartsDemoRegistry.official_bar_polar_label_tangential,             // bar
+        EChartsDemoRegistry.official_bar_y_category,                         // bar
+        EChartsDemoRegistry.official_polar_endangle,                         // bar
+        EChartsDemoRegistry.official_bar_breaks_simple,                      // bar
+        EChartsDemoRegistry.official_bar_gradient,                           // bar
+        EChartsDemoRegistry.official_bar_label_rotation,                     // bar
+        EChartsDemoRegistry.official_bar_stack,                              // bar
+        EChartsDemoRegistry.official_bar_stack_borderradius,                 // bar
+        EChartsDemoRegistry.official_bar_stack_normalization,                // bar
+        EChartsDemoRegistry.official_bar_stack_normalization_and_variation,  // bar
+        EChartsDemoRegistry.official_bar_waterfall2,                         // bar
+        EChartsDemoRegistry.official_bar_y_category_stack,                   // bar
+        EChartsDemoRegistry.official_bar_brush,                              // bar
+        EChartsDemoRegistry.official_bar_negative,                           // bar
+        EChartsDemoRegistry.official_bar1,                                   // bar
+        EChartsDemoRegistry.official_mix_line_bar,                           // bar
+        EChartsDemoRegistry.official_mix_zoom_on_value,                      // bar
+        EChartsDemoRegistry.official_multiple_y_axis,                        // bar
+        EChartsDemoRegistry.official_bar_animation_delay,                    // bar
+        EChartsDemoRegistry.official_bar_drilldown,                          // bar
+        EChartsDemoRegistry.official_bar_large,                              // bar
+        EChartsDemoRegistry.official_bar_race,                               // bar
+        EChartsDemoRegistry.official_bar_multi_drilldown,                    // bar
+        EChartsDemoRegistry.official_bar_race_country,                       // bar
+        EChartsDemoRegistry.official_bar_rich_text,                          // bar
+        EChartsDemoRegistry.official_dynamic_data,                           // bar
+        EChartsDemoRegistry.official_mix_timeline_finance,                   // bar
+        EChartsDemoRegistry.official_watermark,                              // bar
+        EChartsDemoRegistry.official_bar_polar_real_estate,                  // bar
+        EChartsDemoRegistry.official_bar_polar_stack,                        // bar
+        EChartsDemoRegistry.official_bar_polar_stack_radial,                 // bar
+        EChartsDemoRegistry.official_polar_roundcap,                         // bar
+        EChartsDemoRegistry.official_bar_breaks_brush,                       // bar
+        EChartsDemoRegistry.official_pie_simple,                             // pie
+        EChartsDemoRegistry.official_pie_borderradius,                       // pie
+        EChartsDemoRegistry.official_pie_doughnut,                           // pie
+        EChartsDemoRegistry.official_pie_half_donut,                         // pie
+        EChartsDemoRegistry.official_pie_padangle,                           // pie
+        EChartsDemoRegistry.official_pie_custom,                             // pie
+        EChartsDemoRegistry.official_pie_pattern,                            // pie
+        EChartsDemoRegistry.official_pie_rosetype,                           // pie
+        EChartsDemoRegistry.official_pie_rosetype_simple,                    // pie
+        EChartsDemoRegistry.official_pie_alignto,                            // pie
+        EChartsDemoRegistry.official_pie_labelline_adjust,                   // pie
+        EChartsDemoRegistry.official_pie_legend,                             // pie
+        EChartsDemoRegistry.official_pie_nest,                               // pie
+        EChartsDemoRegistry.official_scatter_simple,                         // scatter
+        EChartsDemoRegistry.official_scatter_anscombe_quartet,               // scatter
+        EChartsDemoRegistry.official_scatter_clustering,                     // scatter
+        EChartsDemoRegistry.official_scatter_clustering_process,             // scatter   (native N/A)
+        EChartsDemoRegistry.official_scatter_exponential_regression,         // scatter   (native N/A)
+        EChartsDemoRegistry.official_scatter_effect,                         // scatter
+        EChartsDemoRegistry.official_scatter_linear_regression,              // scatter   (native N/A)
+        EChartsDemoRegistry.official_scatter_polynomial_regression,          // scatter   (native N/A)
+        EChartsDemoRegistry.official_scatter_jitter,                         // scatter
+        EChartsDemoRegistry.official_scatter_punchcard,                      // scatter
+        EChartsDemoRegistry.official_scatter_single_axis,                    // scatter
+        EChartsDemoRegistry.official_scatter_weight,                         // scatter
+        EChartsDemoRegistry.official_scatter_aggregate_bar,                  // scatter
+        EChartsDemoRegistry.official_scatter_label_align_right,              // scatter
+        EChartsDemoRegistry.official_scatter_label_align_top,                // scatter
+        EChartsDemoRegistry.official_scatter_symbol_morph,                   // scatter
+        EChartsDemoRegistry.official_scatter_large,                          // scatter
+        EChartsDemoRegistry.official_scatter_nebula,                         // scatter
+        EChartsDemoRegistry.official_scatter_stream_visual,                  // scatter
+        EChartsDemoRegistry.official_bubble_gradient,                        // scatter
+        EChartsDemoRegistry.official_scatter_aqi_color,                      // scatter
+        EChartsDemoRegistry.official_scatter_nutrients,                      // scatter
+        EChartsDemoRegistry.official_scatter_nutrients_matrix,               // scatter
+        EChartsDemoRegistry.official_scatter_polar_punchcard,                // scatter
+        EChartsDemoRegistry.official_scatter_life_expectancy_timeline,       // scatter
+        EChartsDemoRegistry.official_scatter_painter_choice,                 // scatter
+        EChartsDemoRegistry.official_scatter_world_population,               // scatter
+        EChartsDemoRegistry.official_scatter_logarithmic_regression,         // scatter   (native N/A)
+        EChartsDemoRegistry.official_effectscatter_map,                      // scatter
+        EChartsDemoRegistry.official_scatter_map,                            // scatter
+        EChartsDemoRegistry.official_scatter_map_brush,                      // scatter
+        EChartsDemoRegistry.official_scatter_weibo,                          // scatter
+        EChartsDemoRegistry.official_map_iceland_pie,                        // map
+        EChartsDemoRegistry.official_geo_choropleth_scatter,                 // map
+        EChartsDemoRegistry.official_geo_graph,                              // map
+        EChartsDemoRegistry.official_geo_beef_cuts,                          // map
+        EChartsDemoRegistry.official_geo_organ,                              // map
+        EChartsDemoRegistry.official_geo_seatmap_flight,                     // map
+        EChartsDemoRegistry.official_geo_svg_lines,                          // map
+        EChartsDemoRegistry.official_geo_svg_map,                            // map
+        EChartsDemoRegistry.official_geo_svg_scatter_simple,                 // map
+        EChartsDemoRegistry.official_geo_svg_traffic,                        // map
+        EChartsDemoRegistry.official_lines_airline,                          // map
+        EChartsDemoRegistry.official_map_bar_morph,                          // map
+        EChartsDemoRegistry.official_map_hk,                                 // map
+        EChartsDemoRegistry.official_map_usa,                                // map
+        EChartsDemoRegistry.official_geo_lines,                              // map
+        EChartsDemoRegistry.official_geo_map_scatter,                        // map
+        EChartsDemoRegistry.official_intraday_breaks_1,                      // candlestick
+        EChartsDemoRegistry.official_intraday_breaks_2,                      // candlestick
+        EChartsDemoRegistry.official_candlestick_simple,                     // candlestick
+        EChartsDemoRegistry.official_custom_ohlc,                            // candlestick   (native N/A)
+        EChartsDemoRegistry.official_candlestick_sh,                         // candlestick
+        EChartsDemoRegistry.official_candlestick_large,                      // candlestick
+        EChartsDemoRegistry.official_candlestick_touch,                      // candlestick
+        EChartsDemoRegistry.official_candlestick_brush,                      // candlestick
+        EChartsDemoRegistry.official_candlestick_sh_2015,                    // candlestick
+        EChartsDemoRegistry.official_radar,                                  // radar
+        EChartsDemoRegistry.official_radar_aqi,                              // radar
+        EChartsDemoRegistry.official_radar_custom,                           // radar
+        EChartsDemoRegistry.official_radar2,                                 // radar
+        EChartsDemoRegistry.official_radar_multiple,                         // radar
+        EChartsDemoRegistry.official_boxplot_light_velocity,                 // boxplot   (native N/A)
+        EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot   (native N/A)
+        EChartsDemoRegistry.official_heatmap_cartesian,                      // heatmap
+        EChartsDemoRegistry.official_graph_simple,                           // graph
+        EChartsDemoRegistry.official_tree_basic,                             // tree
+        EChartsDemoRegistry.official_treemap_simple,                         // treemap
+        EChartsDemoRegistry.official_sunburst_simple,                        // sunburst
+        EChartsDemoRegistry.official_scatter_matrix,                         // parallel
+        EChartsDemoRegistry.official_parallel_simple,                        // parallel
+        EChartsDemoRegistry.official_sankey_simple,                          // sankey
+        EChartsDemoRegistry.official_funnel,                                 // funnel
+        EChartsDemoRegistry.official_gauge_simple,                           // gauge
+        EChartsDemoRegistry.official_pictorialbar_hill,                      // pictorialBar   (native N/A)
+        EChartsDemoRegistry.official_themeriver_basic,                       // themeRiver
+        EChartsDemoRegistry.official_calendar_pie,                           // calendar
+        EChartsDemoRegistry.official_calendar_charts,                        // calendar
+        EChartsDemoRegistry.official_calendar_heatmap,                       // calendar
+        EChartsDemoRegistry.official_calendar_simple,                        // calendar
+        EChartsDemoRegistry.official_matrix_sparkline,                       // matrix
+        EChartsDemoRegistry.official_matrix_mini_bar_geo,                    // matrix
+        EChartsDemoRegistry.official_matrix_simple,                          // matrix
+        EChartsDemoRegistry.official_chord_simple,                           // chord
+        EChartsDemoRegistry.official_custom_hexbin,                          // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_profile,                         // custom   (native N/A)
+        EChartsDemoRegistry.official_dataset_link,                           // dataset
+        EChartsDemoRegistry.official_data_transform_sort_bar,                // dataset
+        EChartsDemoRegistry.official_dataset_encode0,                        // dataset
+        EChartsDemoRegistry.official_dataset_series_layout_by,               // dataset
+        EChartsDemoRegistry.official_dataset_simple0,                        // dataset
+        EChartsDemoRegistry.official_dataset_simple1,                        // dataset
+        EChartsDemoRegistry.official_data_transform_multiple_pie,            // dataset
+        EChartsDemoRegistry.official_dataset_default,                        // dataset
+        EChartsDemoRegistry.official_area_simple,                            // dataZoom
+        EChartsDemoRegistry.official_line_graphic,                           // graphic   (native N/A)
+        EChartsDemoRegistry.official_pie_rich_text,                          // rich   (native N/A)
+    ]
+
+    /// The official gallery's chart-type categories, in ITS nav order (`line` … `rich`) — the
+    /// official tab's sidebar reads in this order rather than registry order.
+    public static let officialCategoryOrder: [String] = [
+        "line", "bar", "pie", "scatter", "map", "candlestick", "radar", "boxplot", "heatmap", "graph", "lines", "tree", "treemap", "sunburst", "parallel", "sankey", "funnel", "gauge", "pictorialBar", "themeRiver", "calendar", "matrix", "chord", "custom", "dataset", "dataZoom", "graphic", "rich"
+    ]
+
+    /// Examples the official gallery lists under MORE than one chart-type category (`pie-rich-text`
+    /// sits under both `pie` and `rich`). We keep one demo file per example and let the sidebar show
+    /// it under each — without this, `rich` / `lines` / `dataZoom`, whose examples are ALL
+    /// cross-listed, would have no section at all. demo name -> the categories beyond its primary.
+    public static let officialAlsoIn: [String: [String]] = [
+        "official-area-simple": ["line"],
+        "official-bar-rich-text": ["rich"],
+        "official-calendar-charts": ["scatter"],
+        "official-calendar-heatmap": ["heatmap"],
+        "official-calendar-pie": ["pie"],
+        "official-custom-hexbin": ["map"],
+        "official-data-transform-multiple-pie": ["pie"],
+        "official-data-transform-sort-bar": ["bar"],
+        "official-dataset-default": ["pie"],
+        "official-dataset-encode0": ["bar"],
+        "official-dataset-link": ["line", "pie"],
+        "official-dataset-series-layout-by": ["bar"],
+        "official-dataset-simple0": ["bar"],
+        "official-dataset-simple1": ["bar"],
+        "official-geo-choropleth-scatter": ["scatter"],
+        "official-geo-graph": ["graph"],
+        "official-intraday-breaks-1": ["line"],
+        "official-intraday-breaks-2": ["line"],
+        "official-line-draggable": ["graphic"],
+        "official-line-graphic": ["line"],
+        "official-line-tooltip-touch": ["dataZoom"],
+        "official-lines-airline": ["lines"],
+        "official-map-iceland-pie": ["pie"],
+        "official-matrix-mini-bar-geo": ["bar"],
+        "official-matrix-sparkline": ["line"],
+        "official-pie-nest": ["rich"],
+        "official-pie-rich-text": ["pie"],
+        "official-scatter-matrix": ["scatter"],
     ]
 }

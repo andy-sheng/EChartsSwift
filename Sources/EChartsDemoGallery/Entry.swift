@@ -90,9 +90,22 @@ struct DemoSection { let title: String; let demos: [EChartsDemo] }
 func demoSections(_ collection: EChartsDemo.Collection) -> [DemoSection] {
     var order: [String] = []
     var byCat: [String: [EChartsDemo]] = [:]
+    func add(_ d: EChartsDemo, to cat: String) {
+        if byCat[cat] == nil { order.append(cat) }
+        byCat[cat, default: []].append(d)
+    }
     for d in EChartsDemoRegistry.demos(in: collection) {
-        if byCat[d.category] == nil { order.append(d.category) }
-        byCat[d.category, default: []].append(d)
+        add(d, to: d.category)
+        // The official gallery lists some examples under SEVERAL chart-type categories (pie-rich-text
+        // sits under both `pie` and `rich`). One demo file per example, but the sidebar mirrors the
+        // site and shows it under each — otherwise `rich`, `lines` and `dataZoom`, whose examples are
+        // all cross-listed, would have no section at all.
+        for extra in EChartsDemoRegistry.officialAlsoIn[d.name] ?? [] { add(d, to: extra) }
+    }
+    // The official tab reads in the site's own category order; the port tab keeps registry order.
+    if collection == .official {
+        let rank = Dictionary(uniqueKeysWithValues: EChartsDemoRegistry.officialCategoryOrder.enumerated().map { ($1, $0) })
+        order.sort { (rank[$0] ?? .max, $0) < (rank[$1] ?? .max, $1) }
     }
     return order.map { DemoSection(title: $0, demos: byCat[$0]!) }
 }
