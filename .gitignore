@@ -22,12 +22,16 @@ upstream/upstream/
 # DemoGallery staged .app (local dev/test artifact, built by scripts/build-demo-gallery.sh)
 /build/
 
+# Native-vs-web snapshot diff output (transient verification artifacts)
+/out/
+
 # Local editor / tool state + secrets (never commit)
 .vscode/
 .env
 **/.archon/
 **/.cursor/
 **/.codebuddy/
+**/.codex/
 
 # Claude Code local config
 .claude/

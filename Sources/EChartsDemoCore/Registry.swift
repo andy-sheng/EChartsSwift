@@ -6,6 +6,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_bar_basic,     // Bar
         EChartsDemoRegistry.demo_bar_seven,     // Bar
         EChartsDemoRegistry.demo_line_basic,    // Line
+        EChartsDemoRegistry.demo_line_stacked_area, // Line (5-series stacked area, official example)
         EChartsDemoRegistry.demo_line_lttb,     // Line (10k points down-sampled via sampling:"lttb")
         EChartsDemoRegistry.demo_scatter_basic, // Scatter
         EChartsDemoRegistry.demo_large_scatter, // Scatter (large-mode single LargeSymbolPath)
@@ -30,6 +31,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_sankey_basic,      // Sankey
         EChartsDemoRegistry.demo_chord_basic,       // Chord
         EChartsDemoRegistry.demo_themeriver_basic,  // ThemeRiver
+        EChartsDemoRegistry.demo_themeriver_full,   // ThemeRiver (6 layers + tooltip/legend/time axis)
         EChartsDemoRegistry.demo_parallel_basic,    // Parallel
         EChartsDemoRegistry.demo_calendar_basic,    // Calendar
         EChartsDemoRegistry.demo_matrix_basic,      // Matrix (table backdrop — header cells + body cells)
@@ -37,6 +39,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.demo_map_svg_basic,     // Geo (SVG-backed map — labels + hover-emphasis + roam)
         EChartsDemoRegistry.demo_map_svg_series,    // Geo (series:"map" on an SVG map — regions coloured by value)
         EChartsDemoRegistry.demo_map_basic,         // Map (choropleth — toy GeoJSON regions filled by value)
+        EChartsDemoRegistry.demo_map_bar_morph,     // Map (USA population choropleth — map↔bar universalTransition example, static map frame)
         EChartsDemoRegistry.demo_visualmap_basic,   // VisualMap (continuous, scatter colored by value)
         EChartsDemoRegistry.demo_heatmap_basic,     // Heatmap (cartesian, cells colored by value via visualMap)
         EChartsDemoRegistry.demo_custom_basic,      // Custom (cartesian, renderItem hand-rolls one rect bar per datum)
