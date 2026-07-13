@@ -172,8 +172,9 @@ public final class NativeHandlerProxy: HandlerProxyInterface {
 /// `Handler` through a `NativeHandlerProxy`. Add elements via `view.zr.add(...)`.
 public final class ZRenderView: UIView {
 
-    /// The painter whose `rootLayer` this view hosts.
-    public let painter: CALayerPainter
+    /// The painter whose `rootLayer` this view hosts. `CALayerPainter` by default; an
+    /// alternative backend (e.g. the Metal `RasterizerPainter`) can be injected at init.
+    public let painter: LayerHostedPainter
 
     /// The ZRender host facade (owns the `Handler` wired to `proxy`).
     public let zr: ZRender
@@ -183,9 +184,10 @@ public final class ZRenderView: UIView {
 
     private let animationLoop: AnimationLoop
 
-    public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil) {
+    public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil,
+                painter injected: LayerHostedPainter? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
-        let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
+        let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
         let proxy = NativeHandlerProxy()
         let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
 
@@ -311,7 +313,9 @@ public final class ZRenderView: UIView {
 /// `Handler` through a `NativeHandlerProxy`. Add elements via `view.zr.add(...)`.
 public final class ZRenderView: NSView {
 
-    public let painter: CALayerPainter
+    /// `CALayerPainter` by default; an alternative backend (e.g. the Metal
+    /// `RasterizerPainter`) can be injected at init.
+    public let painter: LayerHostedPainter
     public let zr: ZRender
     public let proxy: NativeHandlerProxy
 
@@ -331,9 +335,10 @@ public final class ZRenderView: NSView {
     private var pendingMove: ZRRawEvent?
     private let _loopBox = _FrameHook()
 
-    public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil) {
+    public init(frame: CGRect, dpr: Double? = nil, backgroundColor bg: CGColor? = nil,
+                painter injected: LayerHostedPainter? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
-        let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
+        let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
         let proxy = NativeHandlerProxy()
         let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
 

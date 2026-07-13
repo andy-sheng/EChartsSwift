@@ -570,7 +570,8 @@ private let _cgImageDecodeCache = NSCache<NSString, CGImage>()
 /// Decode a `string` image source (file path or `data:` URI) to a `CGImage` via ImageIO.
 /// PORT-NOTE (deferred): this is the `string` arm of zrender's `ImageLike | string`; remote URL loading
 /// (`platform.loadImage`) and the cached `ImageLike` handle are the deferred renderer seam.
-func loadCGImage(_ src: String) -> CGImage? {
+/// (public: shared with RasterizerPainter's image/pattern resolution.)
+public func loadCGImage(_ src: String) -> CGImage? {
     #if canImport(ImageIO)
     let cacheKey = src as NSString
     if let cached = _cgImageDecodeCache.object(forKey: cacheKey) { return cached }

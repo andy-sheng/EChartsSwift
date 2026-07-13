@@ -367,6 +367,16 @@ func defaultDPR() -> Double {
     #endif
 }
 
+// MARK: - Layer-hosted painter seam
+
+/// A `PainterBase` whose output surface is a `CALayer` that a host view (`ZRenderView`) can
+/// attach and size. `CALayerPainter` (CoreGraphics bitmap) and `RasterizerPainter`
+/// (Metal, Sources/RasterizerPainter) both conform, which is what lets the host swap the
+/// rasterization backend without touching the input/animation plumbing.
+public protocol LayerHostedPainter: PainterBase {
+    var rootLayer: CALayer { get }
+}
+
 // MARK: - CALayerPainter
 
 public final class CALayerPainter: Painter {
@@ -586,7 +596,7 @@ public final class CALayerPainter: Painter {
 ///
 /// `refresh(_:)` receives the already-flattened, z-sorted display list from `ZRender._refresh`
 /// (`storage.getDisplayList(true)`), so it paints in order without re-flattening.
-extension CALayerPainter: PainterBase {
+extension CALayerPainter: LayerHostedPainter {
 
     public func refresh(_ displayList: [Displayable]) {
         // No per-zlevel motion-blur config → single-buffer fast path (byte-identical to before). Every

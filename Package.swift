@@ -16,6 +16,12 @@ let package = Package(
         .library(name: "NativePainter", targets: ["NativePainter"]),
         .library(name: "EChartsKit", targets: ["EChartsKit"])
     ],
+    dependencies: [
+        // Vendored mindbrix/Rasterizer (GPU/Metal 2D vector rasterizer) — the experimental
+        // alternative live painter. Personal-use zlib license; see third_party/Rasterizer/
+        // README-VENDORED.md for provenance + local modifications.
+        .package(path: "third_party/Rasterizer")
+    ],
     targets: [
         // Faithful translation of zrender/src/** — keep in sync with upstream.
         .target(
@@ -34,6 +40,19 @@ let package = Package(
             name: "EChartsKit",
             dependencies: ["ZRenderKit"],
             path: "Sources/EChartsKit"
+        ),
+        // EXPERIMENTAL alternative live painter over mindbrix/Rasterizer (GPU/Metal).
+        // Conforms to the same PainterBase seam as CALayerPainter; translates the flattened
+        // display list into an RASceneList per frame. NOT a default backend — DemoGallery
+        // offers a runtime toggle for side-by-side evaluation. Known gaps: shadows, blend
+        // modes, bevel joins, multi-path clip chains (see RasterizerPainter.swift header).
+        .target(
+            name: "RasterizerPainter",
+            dependencies: [
+                "ZRenderKit", "NativePainter",
+                .product(name: "RasterizerObjC", package: "Rasterizer")
+            ],
+            path: "Sources/RasterizerPainter"
         ),
         .testTarget(
             name: "ZRenderKitTests",
@@ -55,7 +74,7 @@ let package = Package(
         //   swift run DemoGallery --render-all <dir>   # headless render every demo to PNG
         .executableTarget(
             name: "DemoGallery",
-            dependencies: ["ZRenderKit", "NativePainter"],
+            dependencies: ["ZRenderKit", "NativePainter", "RasterizerPainter"],
             path: "Sources/DemoGallery"
         ),
         // Shared ECharts demo definitions (EChartsDemo value type + Demos/<name>.swift registry +
