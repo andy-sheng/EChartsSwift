@@ -187,6 +187,12 @@ public final class RasterizerPainter {
         self.rootLayer = host.layer
         rootLayer.bounds = CGRect(origin: .zero, size: size)
         rootLayer.isOpaque = (backgroundColor?.alpha ?? 0) >= 1
+        // Upstream RasterizerLayer sets magnificationFilter = nearest (pixel inspection in
+        // their demo app). Under a fit-scaling host (the galleries magnify the pane up for
+        // small demos) nearest turns edge anti-aliasing into visible stair-steps — composite
+        // like CALayerPainter's layer (default linear) so both backends scale identically.
+        rootLayer.magnificationFilter = .linear
+        rootLayer.minificationFilter = .linear
     }
 
     private static func defaultScale() -> Double {
