@@ -471,21 +471,29 @@ public final class ECharts: EChartsType {
         //    which now runs at prepareStageTasks/setOption time — safe: AxisProxy reads only models) +
         //    overallReset (window calc + filter, at performDataProcessorTasks/update time).
         list.append(_mkHandler(nextPrio(), dataZoomProcessor))
-        // 2. dataStack (DATASTACK). Global overall.
+        // 2. legendFilter — series show/hide (SERIES_FILTER 800). Global overall. MUST run BEFORE
+        //    dataStack: upstream orders SERIES_FILTER (800) < DATASTACK (900), and dataStack.ts itself
+        //    notes it "Should be executed after series is filtered" — the stack series list changes with
+        //    legend selection. If dataStack ran first it would stack EVERY series (incl. a series about
+        //    to be legend-hidden), and legendFilter merely dropping it from the render set afterwards
+        //    leaves the survivors with a stale stackResult (still stacked over the hidden one) → the
+        //    y-axis never rescales and the chart "doesn't re-layout" on a legend click. (Only legendFilter
+        //    is pulled up to its upstream slot here; the remaining handlers keep their C1 order — the full
+        //    __prio realignment is the separate gated reorder, see the block header + scheduler design doc.)
+        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in legendFilter(ecModel) }))
+        // 3. dataStack (DATASTACK). Global overall.
         list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in dataStack(ecModel) }))
-        // 3. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
+        // 4. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
         //    EChartsInstallRegisters.registerProcessor, so wrap each as a global overall (no seriesType).
         for cp in ECharts._registers.capturedProcessors {
             list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in cp(ecModel) }))
         }
-        // 4. negativeDataFilter (DEFAULT, per-series reset+seriesType).
+        // 5. negativeDataFilter (DEFAULT, per-series reset+seriesType).
         for h in ECharts._negativeDataFilters { list.append(_mkHandler(nextPrio(), h)) }
-        // 5. dataFilter — data-item legend show/hide (DEFAULT, per-series).
+        // 6. dataFilter — data-item legend show/hide (DEFAULT, per-series).
         for h in ECharts._dataFilters { list.append(_mkHandler(nextPrio(), h)) }
-        // 6. dataSample down-sampling (STATISTIC, per-series).
+        // 7. dataSample down-sampling (STATISTIC, per-series).
         for h in ECharts._dataSamplers { list.append(_mkHandler(nextPrio(), h)) }
-        // 7. legendFilter — series show/hide (SERIES_FILTER). Global overall.
-        list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in legendFilter(ecModel) }))
         // 8. graph categoryFilter (FILTER). StageHandler (createSimpleOverallStageHandler).
         list.append(_mkHandler(nextPrio(), graphCategoryFilterStageHandler))
         // 9. map data statistic (STATISTIC). StageHandler.
