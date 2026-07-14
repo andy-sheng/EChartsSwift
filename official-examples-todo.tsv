@@ -1,0 +1,114 @@
+batch	id	cat	cats	src	sym	w	h	asset	map	loc	excluded	titleCN	title
+1	calendar-vertical	calendar	calendar|heatmap	calendar-vertical.ts	official_calendar_vertical	720	460			85		纵向日历图	Calendar Heatmap Vertical
+1	heatmap-large	heatmap	heatmap	heatmap-large.ts	official_heatmap_large	640	420			193		热力图 - 2w 数据	Heatmap - 20K data
+1	graph-npm	graph	graph	graph-npm.ts	official_graph_npm	720	460	yes		89		NPM 依赖关系图	NPM Dependencies
+1	tree-legend	tree	tree	tree-legend.ts	official_tree_legend	720	460			259		多棵树	Multiple Trees
+1	tree-orient-bottom-top	tree	tree	tree-orient-bottom-top.ts	official_tree_orient_bottom_top	720	460	yes		63		从下到上树状图	From Bottom to Top Tree
+1	parallel-aqi	parallel	parallel	parallel-aqi.ts	official_parallel_aqi	720	460			230		AQI 分布（平行坐标）	Parallel Aqi
+1	sankey-itemstyle	sankey	sankey	sankey-itemstyle.ts	official_sankey_itemstyle	720	460			1284		桑基图节点自定义样式	Specify ItemStyle for Each Node in Sankey
+1	sankey-energy	sankey	sankey	sankey-energy.ts	official_sankey_energy	720	460	yes		40		桑基图渐变色边	Gradient Edge
+1	gauge	gauge	gauge	gauge.ts	official_gauge	640	420			30		基础仪表盘	Gauge Basic chart
+1	pictorialBar-vehicle	pictorialBar	pictorialBar	pictorialBar-vehicle.ts	official_pictorialbar_vehicle	640	420			129		交通工具	Vehicles
+1	custom-calendar-icon	custom	custom|calendar	custom-calendar-icon.ts	official_custom_calendar_icon	720	460			143		日历图自定义图标	Custom Calendar Icon
+1	matrix-covariance	matrix	matrix	matrix-covariance.ts	official_matrix_covariance	720	460			112		协方差矩阵	Covariance Matrix
+1	matrix-graph	matrix	matrix	matrix-graph.ts	official_matrix_graph	720	460			125		矩阵布局下的关系图	Graph Chart in Matrix
+1	matrix-pie	matrix	matrix	matrix-pie.ts	official_matrix_pie	720	460			76		矩阵布局下的饼图	Pie Charts in Matrix
+1	matrix-mini-bar-data-collection	matrix	matrix	matrix-mini-bar-data-collection.ts	official_matrix_mini_bar_data_collection	720	460			109		矩阵坐标系表头数据自动收集（以微型条形图为例）	Matrix Header Data Collection (Mini Bar)
+1	chord-minAngle	chord	chord	chord-minAngle.ts	official_chord_minangle	640	420			35		和弦图 minAngle	Chord minAngle
+1	chord-style	chord	chord	chord-style.ts	official_chord_style	640	420			66		和弦图样式	Chord Style
+1	custom-profit	custom	custom	custom-profit.ts	official_custom_profit	720	460			83		利润分布直方图	Profit
+1	custom-error-scatter	custom	custom|dataZoom	custom-error-scatter.ts	official_custom_error_scatter	720	460			174		使用自定系列给散点图添加误差范围	Error Scatter on Catesian
+1	flame-graph	custom	custom	flame-graph.ts	official_flame_graph	720	460	yes		250		火焰图	Flame graph
+1	custom-gauge	custom	custom	custom-gauge.js	official_custom_gauge	720	460	yes		181		自定义仪表	Custom Gauge
+2	bar-negative2	bar	bar	bar-negative2.ts	official_bar_negative2	640	420			80		交错正负轴标签	Bar Chart with Negative Value
+2	graph-grid	graph	graph	graph-grid.ts	official_graph_grid	720	460			53		笛卡尔坐标系上的 Graph	Graph on Cartesian
+2	graph-circular-layout	graph	graph	graph-circular-layout.ts	official_graph_circular_layout	720	460	yes		71		悲惨世界人物关系图(环形布局)	Les Miserables
+2	graph-life-expectancy	graph	graph	graph-life-expectancy.ts	official_graph_life_expectancy	720	460	yes		105		预期寿命	Graph Life Expectancy
+2	tree-polyline	tree	tree	tree-polyline.ts	official_tree_polyline	720	460			180		折线树图	Tree with Polyline Edge
+2	treemap-disk	treemap	treemap	treemap-disk.ts	official_treemap_disk	720	460	yes		84		磁盘占用	Disk Usage
+2	sunburst-monochrome	sunburst	sunburst	sunburst-monochrome.ts	official_sunburst_monochrome	640	420			247		单色旭日图	Monochrome Sunburst
+2	sunburst-drink	sunburst	sunburst	sunburst-drink.ts	official_sunburst_drink	640	420			867		饮品风味分类	Drink Flavors
+2	sunburst-book	sunburst	sunburst	sunburst-book.js	official_sunburst_book	640	420			447		书籍分布	Book Records
+2	sankey-nodeAlign-left	sankey	sankey	sankey-nodeAlign-left.ts	official_sankey_nodealign_left	720	460	yes		41		桑基图左对齐布局	Node Align Left in Sankey
+2	funnel-mutiple	funnel	funnel	funnel-mutiple.ts	official_funnel_mutiple	640	420			105		多漏斗图	Multiple Funnels
+2	gauge-progress	gauge	gauge	gauge-progress.ts	official_gauge_progress	640	420			63		进度仪表盘	Progress Gauge
+2	gauge-grade	gauge	gauge	gauge-grade.ts	official_gauge_grade	640	420			96		等级仪表盘	Grade Gauge
+2	gauge-ring	gauge	gauge	gauge-ring.ts	official_gauge_ring	640	420			117		得分环	Ring Gauge
+2	pictorialBar-body-fill	pictorialBar	pictorialBar	pictorialBar-body-fill.ts	official_pictorialbar_body_fill	640	420			170		人体含水量	Water Content
+2	pictorialBar-spirit	pictorialBar	pictorialBar	pictorialBar-spirit.ts	official_pictorialbar_spirit	640	420			122		精灵	Spirits
+2	custom-cartesian-polygon	custom	custom	custom-cartesian-polygon.ts	official_custom_cartesian_polygon	720	460			70		自定义多边形图	Custom Cartesian Polygon
+2	custom-error-bar	custom	custom	custom-error-bar.ts	official_custom_error_bar	720	460			129		使用自定系列给柱状图添加误差范围	Error Bar on Catesian
+2	cycle-plot	custom	custom	cycle-plot.js	official_cycle_plot	720	460			146		周期图	Cycle Plot
+2	geo-svg-custom-effect	custom	custom	geo-svg-custom-effect.ts	official_geo_svg_custom_effect	720	460	yes	yes	128		自定义特效	GEO SVG with Customized Effect
+2	custom-spiral-race	custom	custom	custom-spiral-race.js	official_custom_spiral_race	720	460			301		自定义螺旋线竞速	Custom Spiral Race
+3	matrix-stock	matrix	matrix|candlestick	matrix-stock.ts	official_matrix_stock	720	460			714		股市矩阵图	Matrix Stock Application
+3	heatmap-large-piecewise	heatmap	heatmap	heatmap-large-piecewise.ts	official_heatmap_large_piecewise	640	420			203		热力图 - 颜色的离散映射	Heatmap - Discrete Mapping of Color
+3	heatmap-map	heatmap	heatmap	heatmap-map.js	official_heatmap_map	640	420			451		全国主要城市空气质量	Air Qulity
+3	graph-force	graph	graph	graph-force.ts	official_graph_force	720	460	yes		59		力引导布局	Force Layout
+3	calendar-graph	calendar	calendar|graph	calendar-graph.ts	official_calendar_graph	720	460			107		日历关系图	Calendar Graph
+3	tree-orient-right-left	tree	tree	tree-orient-right-left.ts	official_tree_orient_right_left	720	460	yes		68		从右到左树状图	From Right to Left Tree
+3	treemap-drill-down	treemap	treemap	treemap-drill-down.ts	official_treemap_drill_down	720	460	yes		104		ECharts 配置项查询分布	ECharts Option Query
+3	treemap-visual	treemap	treemap	treemap-visual.ts	official_treemap_visual	720	460	yes		155		映射为渐变色	Gradient Mapping
+3	parallel-nutrients	parallel	parallel	parallel-nutrients.ts	official_parallel_nutrients	720	460	yes		184		营养结构（平行坐标）	Parallel Nutrients
+3	funnel-customize	funnel	funnel	funnel-customize.ts	official_funnel_customize	640	420			90		漏斗图	Customized Funnel
+3	gauge-temperature	gauge	gauge	gauge-temperature.ts	official_gauge_temperature	640	420			146		气温仪表盘	Temperature Gauge chart
+3	gauge-barometer	gauge	gauge	gauge-barometer.ts	official_gauge_barometer	640	420			135		气压表	Gauge Barometer chart
+3	pictorialBar-bar-transition	pictorialBar	pictorialBar	pictorialBar-bar-transition.ts	official_pictorialbar_bar_transition	640	420			166		象形主图变形为柱状图	Transition between pictorialBar and bar
+3	pictorialBar-forest	pictorialBar	pictorialBar	pictorialBar-forest.ts	official_pictorialbar_forest	640	420			121		森林的增长	Expansion of forest
+3	calendar-horizontal	calendar	calendar	calendar-horizontal.ts	official_calendar_horizontal	720	460			75		横向日历图	Calendar Heatmap Horizontal
+3	matrix-correlation-scatter	matrix	matrix	matrix-correlation-scatter.ts	official_matrix_correlation_scatter	720	460			82		相关矩阵（散点图）	Correlation Matrix (Scatter)
+3	matrix-confusion	matrix	matrix	matrix-confusion.ts	official_matrix_confusion	720	460			112		混淆矩阵	Confusion Matrix
+3	matrix-grid-layout	matrix	matrix	matrix-grid-layout.js	official_matrix_grid_layout	720	460			408		矩阵中响应式网格布局	Responsive grid layout based on matrix
+3	chord-lineStyle-color	chord	chord	chord-lineStyle-color.ts	official_chord_linestyle_color	640	420			59		和弦图边的颜色	Chord lineStyle.color
+3	custom-wind	custom	custom	custom-wind.ts	official_custom_wind	720	460	yes		127		使用自定义系列绘制风场	Use custom series to draw wind vectors
+3	graphic-stroke-animation	graphic	graphic	graphic-stroke-animation.ts	official_graphic_stroke_animation	640	420			58		关键帧描边动画	Stroke Animation
+4	lines-ny	map	map|lines	lines-ny.ts	official_lines_ny	720	460	yes		96		使用线图绘制近100万纽约街道数据	Use lines to draw 1 million New York streets
+4	map-usa-projection	map	map	map-usa-projection.ts	official_map_usa_projection	720	460	yes	yes	146		自定义地图投影	USA Choropleth Map with Projection
+4	boxplot-multi	boxplot	boxplot	boxplot-multi.ts	official_boxplot_multi	640	420			121		多系列盒须图	Multiple Categories
+4	graph-force2	graph	graph	graph-force2.ts	official_graph_force2	720	460			65		力引导布局	Force Layout
+4	graph-label-overlap	graph	graph	graph-label-overlap.ts	official_graph_label_overlap	720	460	yes		54		关系图自动隐藏重叠标签	Hide Overlapped Label
+4	graph-webkit-dep	graph	graph	graph-webkit-dep.ts	official_graph_webkit_dep	720	460	yes		63		WebKit 模块关系依赖图	Graph Webkit Dep
+4	tree-radial	tree	tree	tree-radial.ts	official_tree_radial	720	460	yes		46		径向树状图	Radial Tree
+4	sankey-levels	sankey	sankey	sankey-levels.ts	official_sankey_levels	720	460	yes		80		桑基图层级自定义样式	Sankey with Levels Setting
+4	gauge-speed	gauge	gauge	gauge-speed.ts	official_gauge_speed	640	420			99		速度仪表盘	Speed Gauge
+4	gauge-multi-title	gauge	gauge	gauge-multi-title.ts	official_gauge_multi_title	640	420			100		多标题仪表盘	Multi Title Gauge
+4	pictorialBar-velocity	pictorialBar	pictorialBar	pictorialBar-velocity.ts	official_pictorialbar_velocity	640	420			119		驯鹿的速度	Velocity of Christmas Reindeers
+4	calendar-lunar	calendar	calendar	calendar-lunar.ts	official_calendar_lunar	720	460			470		农历日历图	Calendar Lunar
+4	matrix-correlation-heatmap	matrix	matrix	matrix-correlation-heatmap.ts	official_matrix_correlation_heatmap	720	460			68		相关矩阵（热力图）	Correlation Matrix (Heatmap)
+4	matrix-periodic-table	matrix	matrix	matrix-periodic-table.ts	official_matrix_periodic_table	720	460			268		元素周期表	Periodic Table
+4	custom-bar-trend	custom	custom	custom-bar-trend.ts	official_custom_bar_trend	720	460			128		使用自定义系列添加柱状图趋势	Custom Bar Trend
+4	custom-gantt-flight	custom	custom|dataZoom	custom-gantt-flight.js	official_custom_gantt_flight	720	460	yes		586		机场航班甘特图	Gantt Chart of Airport Flights
+4	custom-polar-heatmap	custom	custom	custom-polar-heatmap.ts	official_custom_polar_heatmap	720	460			82		极坐标热力图（自定义系列）	Polar Heatmap
+4	pie-parliament-transition	custom	custom	pie-parliament-transition.ts	official_pie_parliament_transition	720	460			150		自定义议会图与饼图过渡动画	Transition of Parliament and Pie Chart
+4	circle-packing-with-d3	custom	custom	circle-packing-with-d3.js	official_circle_packing_with_d3	720	460	yes		225		基于 d3 的圆形包络图	Circle Packing with d3
+4	dataset-encode1	dataset	dataset	dataset-encode1.ts	official_dataset_encode1	640	420	yes		124		指定数据到坐标轴的映射	Encode and Matrix
+4	graphic-loading	graphic	graphic	graphic-loading.ts	official_graphic_loading	640	420			51		加载动画	Customized Loading Animation
+5	data-transform-aggregate	boxplot	boxplot	data-transform-aggregate.js	official_data_transform_aggregate	640	420	yes		146		简单的数据聚合	Data Transform Simple Aggregate
+5	graph	graph	graph	graph.ts	official_graph	720	460	yes		74		悲惨世界人物关系图	Les Miserables
+5	graph-force-dynamic	graph	graph	graph-force-dynamic.ts	official_graph_force_dynamic	720	460			66		动态增加图节点	Graph Dynamic
+5	tree-vertical	tree	tree	tree-vertical.ts	official_tree_vertical	720	460	yes		59		从上到下树状图	From Top to Bottom Tree
+5	treemap-sunburst-transition	treemap	treemap	treemap-sunburst-transition.ts	official_treemap_sunburst_transition	720	460	yes		67		矩形树图和旭日图的动画过渡	Transition between Treemap and Sunburst
+5	treemap-obama	treemap	treemap	treemap-obama.ts	official_treemap_obama	720	460	yes		243		3.7 万亿美元支出构成	How $3.7 Trillion is Spent
+5	treemap-show-parent	treemap	treemap	treemap-show-parent.ts	official_treemap_show_parent	720	460	yes		98		显示父层级标签	Show Parent Labels
+5	sunburst-borderRadius	sunburst	sunburst	sunburst-borderRadius.ts	official_sunburst_borderradius	640	420			87		圆角旭日图	Sunburst with Rounded Corner
+5	sunburst-label-rotate	sunburst	sunburst	sunburst-label-rotate.ts	official_sunburst_label_rotate	640	420			129		旭日图标签旋转	Sunburst Label Rotate
+5	sunburst-visualMap	sunburst	sunburst	sunburst-visualMap.ts	official_sunburst_visualmap	640	420			127		旭日图使用视觉编码	Sunburst VisualMap
+5	sankey-vertical	sankey	sankey	sankey-vertical.ts	official_sankey_vertical	720	460			50		垂直方向的桑基图	Sankey Orient Vertical
+5	sankey-nodeAlign-right	sankey	sankey	sankey-nodeAlign-right.ts	official_sankey_nodealign_right	720	460	yes		42		桑基图右对齐布局	Node Align Right in Sankey
+5	funnel-align	funnel	funnel	funnel-align.ts	official_funnel_align	640	420			109		漏斗图(对比)	Funnel Compare
+5	gauge-stage	gauge	gauge	gauge-stage.ts	official_gauge_stage	640	420			75		阶段速度仪表盘	Stage Speed Gauge
+5	gauge-clock	gauge	gauge	gauge-clock.ts	official_gauge_clock	640	420			236		时钟仪表盘	Clock
+5	gauge-car	gauge	gauge	gauge-car.ts	official_gauge_car	640	420			524		汽车仪表盘	Gauge Car
+5	pictorialBar-dotted	pictorialBar	pictorialBar	pictorialBar-dotted.ts	official_pictorialbar_dotted	640	420			110		虚线柱状图效果	Dotted bar
+5	themeRiver-lastfm	themeRiver	themeRiver	themeRiver-lastfm.ts	official_themeriver_lastfm	720	460			82		Lastfm 主题河流图	ThemeRiver Lastfm
+5	matrix-mbti	matrix	matrix	matrix-mbti.ts	official_matrix_mbti	720	460			587		MBTI 伴侣相容性	MBTI Partner Compatibility
+5	bar-histogram	custom	custom	bar-histogram.ts	official_bar_histogram	720	460			147		直方图（自定义系列）	Histogram with Custom Series
+5	wind-barb	custom	custom|dataZoom	wind-barb.ts	official_wind_barb	720	460	yes		322		风向图	Wind Barb
+	effectScatter-bmap	scatter	scatter|map	effectScatter-bmap.ts	official_effectscatter_bmap	640	420			607	bmap/echarts-gl	全国主要城市空气质量 - 百度地图	Air Quality - Baidu Map
+	lines-bmap	map	map|lines	lines-bmap.ts	official_lines_bmap	720	460	yes		166	bmap/echarts-gl	杭州热门步行路线 - 百度地图	A Hiking Trail in Hangzhou - Baidu Map
+	lines-bmap-bus	map	map|lines	lines-bmap-bus.ts	official_lines_bmap_bus	720	460	yes		174	bmap/echarts-gl	北京公交路线 - 百度地图	Bus Lines of Beijing - Baidu Map
+	lines-bmap-effect	map	map|lines	lines-bmap-effect.ts	official_lines_bmap_effect	720	460	yes		205	bmap/echarts-gl	北京公交路线 - 线特效	Bus Lines of Beijing - Line Effect
+	map-bin	map	map	map-bin.js	official_map_bin	720	460			245	bmap/echarts-gl	在地图上显示分箱图	Binning on Map
+	map-polygon	map	map	map-polygon.js	official_map_polygon	720	460			664	bmap/echarts-gl	在地图上绘制多边形	Draw Polygon on Map
+	heatmap-bmap	heatmap	heatmap	heatmap-bmap.js	official_heatmap_bmap	640	420	yes		53	bmap/echarts-gl	热力图与百度地图扩展	Heatmap on Baidu Map Extension
+	graphic-wave-animation	graphic	graphic	graphic-wave-animation.js	official_graphic_wave_animation	640	420			0	no-source-upstream	波浪动画	Wave Animation
