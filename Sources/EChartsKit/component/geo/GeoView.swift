@@ -396,8 +396,8 @@ public final class GeoView: ComponentView {
         var s = path.pathStyle ?? PathStyleProps()
         // MERGE (upstream `el.setStyle(normalStyle)`): only overwrite keys present in itemStyle, so a
         //   geoSVG shape keeps its authored SVG `fill` when the region option sets no color.
-        if let v = geoColorString(itemStyle["fill"]) { s.fill = .string(v) }
-        if let v = geoColorString(itemStyle["stroke"]) { s.stroke = .string(v) }
+        if let v = zrPaintFromStyleValue(itemStyle["fill"]) { s.fill = v }
+        if let v = zrPaintFromStyleValue(itemStyle["stroke"]) { s.stroke = v }
         if let v = numOpt(itemStyle["lineWidth"]) { s.lineWidth = v }
         if let v = numOpt(itemStyle["opacity"]) { s.opacity = v }
         if let v = numOpt(itemStyle["fillOpacity"]) { s.fillOpacity = v }
@@ -609,8 +609,8 @@ private func geoPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
     // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the String
     //   form (incl. the sentinel 'none') is mapped here — gradient/pattern out of region-backdrop scope.
-    if let v = geoColorString(dict["fill"]) { s.fill = .string(v) }
-    if let v = geoColorString(dict["stroke"]) { s.stroke = .string(v) }
+    if let v = zrPaintFromStyleValue(dict["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = v }
     if let v = numOpt(dict["lineWidth"]) { s.lineWidth = v }
     if let v = dict["lineCap"] as? String { s.lineCap = v }
     if let v = dict["lineJoin"] as? String { s.lineJoin = v }
@@ -627,10 +627,5 @@ private func geoPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     return s
 }
 
-/// Bridge a visual/style paint value (raw `String` or EChartsKit `ZRColor`) to a solid color string.
-///   (gradient/pattern are out of the region-backdrop scope.) Mirrors CalendarView.colorString.
-private func geoColorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    return nil
-}
+// Region fills/strokes bridge through the shared `zrPaintFromStyleValue` (BarView.swift), which handles
+//   solid strings, EChartsKit `ZRColor`, and gradient dicts — so no local `String`-only color helper here.

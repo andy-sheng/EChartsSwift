@@ -215,7 +215,7 @@ open class GraphView: ChartView {
             //   `stroke`), then the series edge visual style, then whatever lineStyle carries.
             let edgeItemStyle = (edgeData.getItemVisual(i, "style") as? [String: Any]) ?? seriesEdgeStyle
             var edgeStyle = graphEdgeStyle(lineStyle)
-            if let cs = graphColorString(edgeItemStyle?["stroke"]) { edgeStyle.stroke = .string(cs) }
+            if let cs = zrPaintFromStyleValue(edgeItemStyle?["stroke"]) { edgeStyle.stroke = cs }
 
             let edge: Path
             if let cp = cp {
@@ -376,14 +376,9 @@ private func graphEdgeStyle(_ lineStyle: [String: Any]) -> PathStyleProps {
     return s
 }
 
-// The palette color lands under the item/series visual style as an EChartsKit `ZRColor.color(String)`
-//   or a raw `String`. Bridge both to a solid color string (same bridge as ScatterView / TreeView).
-//   Gradient / pattern out of scope.
-private func graphColorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    return nil
-}
+// The palette color lands under the item/series visual style as an EChartsKit `ZRColor.color(String)`,
+//   a raw `String`, or a gradient dict; edge strokes now bridge via the shared `zrPaintFromStyleValue`
+//   (BarView.swift), so no local `String`-only color helper is needed here.
 
 // `store.get(...)`-style numeric coercion for a dynamic layout value.
 private func graphToNumber(_ v: Any?) -> Double {

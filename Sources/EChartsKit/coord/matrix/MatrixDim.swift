@@ -506,7 +506,14 @@ public final class MatrixDim {
         // rather than a double-wrapped Optional that would defeat the null check.
         let raw: Any = value ?? NSNull()
         let ordinal = self._scale.parse(raw)
-        return util.eqNaN(ordinal) ? nil : self._cells[Int(ordinal)]
+        // upstream: `isNaN(ordinal) ? null : this._cells[ordinal]`. `OrdinalScale.parse` passes a
+        // numeric coord straight through (`Math.round(val)`), so a value beyond the cell count yields
+        // an in-bounds-looking ordinal that JS reads as `undefined` but Swift traps on. Guard the
+        // subscript (mirrors `getUnitLayoutInfo`); the caller (`coordDataToAllCellLevelLayout`)
+        // already treats a nil cell as "not found in body".
+        if util.eqNaN(ordinal) { return nil }
+        let i = Int(ordinal)
+        return (i >= 0 && i < self._cells.count) ? self._cells[i] : nil
     }
 
     /**

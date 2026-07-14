@@ -354,8 +354,8 @@ public final class LargeSymbolDraw {
         //           const visualColor = globalStyle && globalStyle.fill;
         //           if (visualColor) { symbolEl.setColor(visualColor); }
         let globalStyle = data.getVisual("style") as? [String: Any]
-        if let vc = symbolColorString(globalStyle?["fill"]) {
-            symbolEl.setColor(.string(vc), nil)
+        if let vc = zrPaintFromStyleValue(globalStyle?["fill"]) {
+            symbolEl.setColor(vc, nil)
         }
 
         // upstream: enable tooltip — seriesIndex on the path; mousemove maps hoverDataIdx → dataIndex.

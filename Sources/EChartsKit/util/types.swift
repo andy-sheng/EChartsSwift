@@ -396,20 +396,132 @@ public protocol ViewRootGroup: AnyObject {
     var __ecComponentInfo: ViewRootGroupComponentInfo? { get set }
 }
 
+// ============================================================================
+// The PACKED EVENT the user's `chart.on(...)` handler receives.
+//
+// PORT-NOTE (union type → protocol): upstream hands the handler ONE flat JS object whose TS type
+//   varies with the event FAMILY — an `ECElementEvent` for the zr mouse events (it IS the
+//   `getDataParams()` result, plus `type`/`event`), an `ECActionEvent` for the action events replayed
+//   through the `MessageCenter` (it is a copy of the action payload). Swift has no union type, so both
+//   conform to `ECEventParams`, which exposes exactly the fields upstream user code reads off `params`
+//   (`params.seriesIndex`, `params.dataIndex`, `params.name`, `params.value`, `params.componentType`, …)
+//   plus a `params[key]` subscript for the keys that only exist in the flat JS object (`batch`, `areas`,
+//   `selected`, `axesInfo`, the payload's own fields, a component's custom `eventData`).
+//   A field the port cannot fill for a given event is `nil` — it is never invented.
+// ============================================================================
+public protocol ECEventParams {
+    /// The event name ('click', 'legendselectchanged', …). Upstream: `params.type`.
+    var type: String { get }
+    /// The originating zr element event (mouse events only; nil on action events). Upstream: `params.event`.
+    var event: ElementEvent? { get }
+    var componentType: String? { get }
+    var componentSubType: String? { get }
+    var componentIndex: Double? { get }
+    var seriesType: String? { get }
+    var seriesIndex: Double? { get }
+    var seriesId: String? { get }
+    var seriesName: String? { get }
+    var name: String? { get }
+    var dataIndex: Double? { get }
+    var data: Any? { get }
+    var dataType: SeriesDataType? { get }
+    var value: Any? { get }
+    var color: ZRColor? { get }
+    /// Everything else the flat upstream object carries (payload fields on an action event, a
+    /// component's custom `eventData` keys on an element event).
+    subscript(key: String) -> Any? { get }
+}
+
+/// JS-number coercion for the dynamic event bags (a small integer boxes as `Int`, not `Double`).
+func ecEventNumber(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let f = v as? Float { return Double(f) }
+    return nil
+}
+
 // upstream: interface ECElementEvent extends ECEventData, CallbackDataParams { type, event? }
-//   Multiple data-bag inheritance is not representable; modeled with the explicit own fields plus
-//   an embedded `CallbackDataParams` and the dynamic `ECEventData` remainder.
-public struct ECElementEvent {
-    public var type: ZRElementEventName
+//   Multiple data-bag inheritance is not representable, so the `CallbackDataParams` fields are
+//   FLATTENED onto the struct (upstream's object literally has them as own properties — and
+//   `_initEvents` MUTATES two of them, remapping markLine/markPoint/markArea onto their series).
+//   The whole `CallbackDataParams` is also kept in `dataParams` for lossless access, and the
+//   `ECEventData` remainder in `eventData`.
+public struct ECElementEvent: ECEventParams {
+    // PORT-NOTE: upstream types this `ZRElementEventName` — a STRING-LITERAL UNION ('click' | 'mouseover'
+    //   | …), which is still just a string at runtime. Our `ZRElementEventName` is a Swift `enum`, and the
+    //   packed-event protocol must expose ONE `type` type across both event families (an ACTION event's
+    //   type is an arbitrary registered event name, e.g. 'legendselectchanged' — not in that enum). So the
+    //   stored `type` is a plain `String`, exactly as it is in JS; `elementEventName` recovers the enum.
+    public var type: String
+    public var elementEventName: ZRElementEventName? { return ZRElementEventName(rawValue: type) }
     public var event: ElementEvent?
-    public var dataParams: CallbackDataParams                              // PORT-NOTE: extends CallbackDataParams
+    // ---- extends CallbackDataParams (flattened) ----
+    public var componentType: String?
+    public var componentSubType: String?
+    public var componentIndex: Double?
+    public var seriesType: String?
+    public var seriesIndex: Double?
+    public var seriesId: String?
+    public var seriesName: String?
+    public var name: String?
+    public var dataIndex: Double?
+    public var data: Any?
+    public var dataType: SeriesDataType?
+    public var value: Any?
+    public var color: ZRColor?
+    /// The full `getDataParams()` result, when this event was packed off a data-bearing element.
+    public var dataParams: CallbackDataParams?                            // PORT-NOTE: extends CallbackDataParams
     public var eventData: ECEventData = [:]                               // PORT-NOTE: extends ECEventData
+
+    public init(type: String) { self.type = type }
+
+    public subscript(key: String) -> Any? { return eventData[key] }
+
+    /// Pack from a `getDataParams()` result — upstream `params = dataModel.getDataParams(...)`
+    /// (the params object IS the event object; `type`/`event` are stamped on afterwards).
+    public init(type: String, dataParams p: CallbackDataParams) {
+        self.type = type
+        self.componentType = p.componentType
+        self.componentSubType = p.componentSubType
+        self.componentIndex = p.componentIndex
+        self.seriesType = p.seriesType
+        self.seriesIndex = p.seriesIndex
+        self.seriesId = p.seriesId
+        self.seriesName = p.seriesName
+        self.name = p.name
+        self.dataIndex = p.dataIndex
+        self.data = p.data
+        self.dataType = p.dataType
+        self.value = p.value
+        self.color = p.color
+        self.dataParams = p
+    }
+
+    /// Pack from a component's `ecData.eventData` bag — upstream `params = extend({}, ecData.eventData)`
+    /// (an axis label, a legend item, a `graphic` element: no data params, a componentType/index instead).
+    public init(type: String, eventData d: ECEventData) {
+        self.type = type
+        self.eventData = d
+        self.componentType = d["componentType"] as? String
+        self.componentSubType = d["componentSubType"] as? String
+        self.componentIndex = ecEventNumber(d["componentIndex"])
+        self.seriesType = d["seriesType"] as? String
+        self.seriesIndex = ecEventNumber(d["seriesIndex"])
+        self.seriesId = d["seriesId"] as? String
+        self.seriesName = d["seriesName"] as? String
+        self.name = d["name"] as? String
+        self.dataIndex = ecEventNumber(d["dataIndex"])
+        self.data = d["data"]
+        self.dataType = d["dataType"] as? SeriesDataType
+        self.value = d["value"]
+        self.color = d["color"] as? ZRColor
+    }
 }
 /**
  * The echarts event type to user.
  * Also known as packedEvent.
  */
-public struct ECActionEvent {
+public struct ECActionEvent: ECEventParams {
     // event type
     public var type: String
     public var componentType: String?
@@ -419,6 +531,27 @@ public struct ECActionEvent {
     public var batch: [ECEventData]?
     public var eventData: ECEventData = [:]                               // PORT-NOTE: extends ECEventData
     public init(type: String) { self.type = type }
+
+    // ---- ECEventParams: an action event is a copy of the PAYLOAD, so everything beyond the three
+    //      explicit fields above lives in the dynamic `eventData` bag (upstream: all own properties of
+    //      the same flat object). No `event` (it did not come from a pointer).
+    public var event: ElementEvent? { return nil }
+    public var componentSubType: String? { return eventData["componentSubType"] as? String }
+    public var seriesType: String? { return eventData["seriesType"] as? String }
+    public var seriesId: String? { return eventData["seriesId"] as? String }
+    public var seriesName: String? { return eventData["seriesName"] as? String }
+    public var name: String? { return eventData["name"] as? String }
+    public var dataIndex: Double? { return ecEventNumber(eventData["dataIndex"]) }
+    public var data: Any? { return eventData["data"] }
+    public var dataType: SeriesDataType? { return eventData["dataType"] as? SeriesDataType }
+    public var value: Any? { return eventData["value"] }
+    public var color: ZRColor? { return eventData["color"] as? ZRColor }
+    public subscript(key: String) -> Any? {
+        // The batch is an explicit field on the struct; expose it through the dynamic bag too, since
+        // upstream user code reads `params.batch` off the same flat object.
+        if key == "batch" { return batch }
+        return eventData[key]
+    }
 }
 /**
  * TODO: not applicable in `ECEventProcessor` yet.

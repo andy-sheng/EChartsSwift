@@ -110,6 +110,178 @@ private func expandRectOnOneDimension(
 }
 
 // ============================================================================
+// Transform helpers (upstream util/graphic.ts:331-394) — the pieces the brush cover-drag
+// (component/helper/BrushController) needs: the accumulated ancestor transform of an element, a
+// vertex transform, and the "which global edge is my local edge" cursor mapping.
+// ============================================================================
+
+// upstream: export function getTransform(target: Transformable, ancestor?: Transformable): matrix.MatrixArray
+public func getTransform(_ target: Transformable?, _ ancestor: Transformable? = nil) -> MatrixArray {
+    // const mat = matrix.identity([]);
+    var mat = matrix.identity()
+
+    var target = target
+    // while (target && target !== ancestor) { matrix.mul(mat, target.getLocalTransform(), mat); target = target.parent; }
+    //   CONVENTIONS §3: `matrix.mul(out, m1, m2)` is value-returning here, so the self-aliased
+    //   `mul(mat, ..., mat)` becomes `mat = mul(..., mat)`.
+    while let t = target, t !== ancestor {
+        mat = matrix.mul(t.getLocalTransform(), mat)
+        target = t.parent
+    }
+
+    return mat
+}
+
+/**
+ * Apply transform to an vertex.
+ * @param target [x, y]
+ * @param transform Transform matrix: like [1, 0, 0, 1, 0, 0]
+ * @param invert Whether use invert matrix.
+ * @return [x, y]
+ */
+// upstream: export function applyTransform(target, transform: Transformable | matrix.MatrixArray, invert?)
+//   PORT-NOTE: the `Transformable` arm of the union (`transform = Transformable.getLocalTransform(transform)`)
+//   is dropped — every call site in the ported code passes a MatrixArray. Pass
+//   `Transformable.getLocalTransform(t)` explicitly if a Transformable is ever needed.
+public func applyTransform(
+    _ target: VectorArray,
+    _ transform: MatrixArray?,
+    _ invert: Bool? = nil
+) -> [Double] {
+    var transform = transform
+
+    if invert == true, let t = transform {
+        // transform = matrix.invert([], transform);
+        transform = matrix.invert(t)
+    }
+
+    // return vector.applyTransform([], target, transform);
+    guard let t = transform else { return [target[0], target[1]] }
+    let out = vector.applyTransform(target, t)
+    return [out[0], out[1]]
+}
+
+// upstream: export function transformDirection(direction, transform, invert?): 'left'|'right'|'top'|'bottom'
+public func transformDirection(
+    _ direction: String,
+    _ transform: MatrixArray,
+    _ invert: Bool? = nil
+) -> String {
+
+    // Pick a base, ensure that transform result will not be (0, 0).
+    let hBase: Double = (transform[4] == 0 || transform[5] == 0 || transform[0] == 0)
+        ? 1 : Swift.abs(2 * transform[4] / transform[0])
+    let vBase: Double = (transform[4] == 0 || transform[5] == 0 || transform[2] == 0)
+        ? 1 : Swift.abs(2 * transform[4] / transform[2])
+
+    var vertex: VectorArray = VectorArray(
+        direction == "left" ? -hBase : direction == "right" ? hBase : 0,
+        direction == "top" ? -vBase : direction == "bottom" ? vBase : 0
+    )
+
+    let applied = applyTransform(vertex, transform, invert)
+    vertex = VectorArray(applied[0], applied[1])
+
+    return Swift.abs(vertex[0]) > Swift.abs(vertex[1])
+        ? (vertex[0] > 0 ? "right" : "left")
+        : (vertex[1] > 0 ? "bottom" : "top")
+}
+
+// upstream: export function clipPointsByRect(points: vector.VectorArray[], rect: ZRRectLike): number[][]
+public func clipPointsByRect(_ points: [[Double]], _ rect: RectLike) -> [[Double]] {
+    // FIXME: This way might be incorrect when graphic clipped by a corner
+    // and when element has a border.
+    return util.map(points) { point, _ in
+        var x = point[0]
+        x = Swift.max(x, rect.x)
+        x = Swift.min(x, rect.x + rect.width)
+        var y = point[1]
+        y = Swift.max(y, rect.y)
+        y = Swift.min(y, rect.y + rect.height)
+        return [x, y]
+    }
+}
+
+/**
+ * Return `true` if the given line (line `a`) and the given polygon
+ * are intersect.
+ * Note that we do not count colinear as intersect here because no
+ * requirement for that. We could do that if required in future.
+ */
+// upstream: export function linePolygonIntersect(a1x, a1y, a2x, a2y, points): boolean
+public func linePolygonIntersect(
+    _ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
+    _ points: [[Double]]
+) -> Bool {
+    if points.isEmpty { return false }
+    var p2 = points[points.count - 1]
+    for i in 0..<points.count {
+        let p = points[i]
+        if lineLineIntersect(a1x, a1y, a2x, a2y, p[0], p[1], p2[0], p2[1]) {
+            return true
+        }
+        p2 = p
+    }
+    // upstream falls off the end -> `undefined` (falsy).
+    return false
+}
+
+/**
+ * Return `true` if the given two lines (line `a` and line `b`)
+ * are intersect.
+ * Note that we do not count colinear as intersect here because no
+ * requirement for that. We could do that if required in future.
+ */
+// upstream: export function lineLineIntersect(a1x, a1y, a2x, a2y, b1x, b1y, b2x, b2y): boolean
+public func lineLineIntersect(
+    _ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
+    _ b1x: Double, _ b1y: Double, _ b2x: Double, _ b2y: Double
+) -> Bool {
+    // let `vec_m` to be `vec_a2 - vec_a1` and `vec_n` to be `vec_b2 - vec_b1`.
+    let mx = a2x - a1x
+    let my = a2y - a1y
+    let nx = b2x - b1x
+    let ny = b2y - b1y
+
+    // `vec_m` and `vec_n` are parallel iff
+    //     existing `k` such that `vec_m = k · vec_n`, equivalent to `vec_m X vec_n = 0`.
+    let nmCrossProduct = crossProduct2d(nx, ny, mx, my)
+    if nearZero(nmCrossProduct) {
+        return false
+    }
+
+    // `vec_m` and `vec_n` are intersect iff
+    //     existing `p` and `q` in [0, 1] such that `vec_a1 + p * vec_m = vec_b1 + q * vec_n`,
+    //     such that `q = ((vec_a1 - vec_b1) X vec_m) / (vec_n X vec_m)`
+    //           and `p = ((vec_a1 - vec_b1) X vec_n) / (vec_n X vec_m)`.
+    let b1a1x = a1x - b1x
+    let b1a1y = a1y - b1y
+    let q = crossProduct2d(b1a1x, b1a1y, mx, my) / nmCrossProduct
+    if q < 0 || q > 1 {
+        return false
+    }
+    let p = crossProduct2d(b1a1x, b1a1y, nx, ny) / nmCrossProduct
+    if p < 0 || p > 1 {
+        return false
+    }
+
+    return true
+}
+
+/**
+ * Cross product of 2-dimension vector.
+ */
+// upstream: function crossProduct2d(x1, y1, x2, y2)
+private func crossProduct2d(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
+    return x1 * y2 - x2 * y1
+}
+
+// upstream: function nearZero(val)
+private func nearZero(_ val: Double) -> Bool {
+    return val <= 1e-6 && val >= -1e-6
+}
+
+// ============================================================================
 // The name -> shape-class registry (upstream util/graphic.ts:95-175 + the registrations at :952-960).
 //
 // `graphic: [{ type: 'polygon', ... }]` names its element by STRING; upstream resolves it through

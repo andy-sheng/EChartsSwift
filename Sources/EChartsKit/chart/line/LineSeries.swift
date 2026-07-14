@@ -64,7 +64,13 @@ open class LineSeriesModel: SeriesModel {
             "showSymbol": true,
             // upstream LineSeries.ts:210 — 'auto' hides the point symbols when the line is dense (see
             //   LineView's getIsIgnoreFunc / canShowAllSymbolForCategory density check).
-            "showAllSymbol": "auto"
+            "showAllSymbol": "auto",
+            // upstream LineSeries.ts:218 — LOAD-BEARING for the draw-on reveal CURVE. The line series
+            //   OVERRIDES the global default `animationEasing: 'cubicInOut'` (globalDefault.swift:131)
+            //   with 'linear'. Without this override here, `getAnimationConfig` → `getShallow` walks up
+            //   to the global model and the native reveal eases (cubicInOut) while echarts.js reveals at
+            //   constant speed (linear) — a visible animation-curve mismatch (e.g. official-line-race).
+            "animationEasing": "linear"
         ] as [String: Any]
     }
 

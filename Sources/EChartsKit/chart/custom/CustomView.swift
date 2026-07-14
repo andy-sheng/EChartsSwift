@@ -1352,11 +1352,10 @@ private func bridgeRectRadius(_ v: Any?) -> RectRadius? {
     return nil
 }
 
-// color coercion — string | ZRColor → ZRenderKit.ZRColor (gradient/pattern out of static scope).
+// color coercion — string | EChartsKit ZRColor | gradient dict | already-built ZRenderKit paint.
 private func toZRColor(_ v: Any?) -> ZRenderKit.ZRColor? {
-    if let s = v as? String { return .string(s) }
-    if let z = v as? ZRenderKit.ZRColor { return z }
-    return nil
+    if let z = v as? ZRenderKit.ZRColor { return z }   // renderItem may hand back a ZRenderKit paint directly
+    return zrPaintFromStyleValue(v)                    // String | EChartsKit.ZRColor | {type:'linear'|'radial',…}
 }
 
 // `[String: Any]` style bag → PathStyleProps (fill/stroke/lineWidth/opacity/… subset).
@@ -1379,8 +1378,8 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
     out.strokeNoScale = s["strokeNoScale"] as? Bool
     out.strokeFirst = s["strokeFirst"] as? Bool
     if let dash = s["lineDash"] as? [Double] { out.lineDash = .values(dash) }
-    // PORT-NOTE (deferred): requires decal-pattern / lineDash-string / gradient-fill modeling; those
-    //   style-bridge cases are deferred.
+    // fill/stroke gradients now bridge via `toZRColor` → `zrPaintFromStyleValue`.
+    // PORT-NOTE (deferred): decal-pattern / lineDash-string style-bridge cases are still deferred.
     return out
 }
 

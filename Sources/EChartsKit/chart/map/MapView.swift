@@ -470,7 +470,7 @@ open class MapView: ChartView {
                 // Re-stamp the non-tweened paint keys (stroke/lineWidth/decal) INSTANTLY, PRESERVING the
                 //   current fill/opacity so `updateProps` tweens them (rather than `useStyle` snapping).
                 var s = poly.pathStyle ?? PathStyleProps()
-                if let v = mapColorString(normalStyle["stroke"]) { s.stroke = .string(v) }
+                if let v = zrPaintFromStyleValue(normalStyle["stroke"]) { s.stroke = v }
                 if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
                 if let pat = normalStyle["decal"] as? ZRenderKit.Pattern { s.decal = pat }
                 s.strokeNoScale = true
@@ -629,8 +629,8 @@ open class MapView: ChartView {
         var s = path.pathStyle ?? PathStyleProps()
         // MERGE (upstream `el.setStyle(normalStyle)`): overwrite only keys present in normalStyle, so a
         //   geoSVG shape keeps its authored SVG `fill` when neither region option nor visualMap sets one.
-        if let v = mapColorString(normalStyle["fill"]) { s.fill = .string(v) }
-        if let v = mapColorString(normalStyle["stroke"]) { s.stroke = .string(v) }
+        if let v = zrPaintFromStyleValue(normalStyle["fill"]) { s.fill = v }
+        if let v = zrPaintFromStyleValue(normalStyle["stroke"]) { s.stroke = v }
         if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
         if let v = mapToNumber(normalStyle["opacity"]) { s.opacity = v }
         if let v = mapToNumber(normalStyle["fillOpacity"]) { s.fillOpacity = v }
@@ -753,8 +753,8 @@ open class MapView: ChartView {
             // upstream fill: mapModel.getData().getVisual('style').fill  (series legend colour, not per-item)
             var circleStyle = PathStyleProps()
             let seriesStyle = mapModel.getData().getVisual("style") as? [String: Any]
-            if let fill = mapColorString(seriesStyle?["fill"]) {
-                circleStyle.fill = .string(fill)
+            if let fill = zrPaintFromStyleValue(seriesStyle?["fill"]) {
+                circleStyle.fill = fill
             }
             circle.useStyle(circleStyle)
 
@@ -894,8 +894,8 @@ private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
     // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the
     //   String form (incl. the sentinel 'none') is mapped here — same deviation as GeoView.geoColorString.
-    if let v = mapColorString(dict["fill"]) { s.fill = .string(v) }
-    if let v = mapColorString(dict["stroke"]) { s.stroke = .string(v) }
+    if let v = zrPaintFromStyleValue(dict["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = v }
     if let v = mapToNumber(dict["lineWidth"]) { s.lineWidth = v }
     if let v = dict["lineCap"] as? String { s.lineCap = v }
     if let v = dict["lineJoin"] as? String { s.lineJoin = v }

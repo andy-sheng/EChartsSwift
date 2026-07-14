@@ -733,16 +733,10 @@ private func heatmapRectRadius(_ v: Any?) -> RectRadius? {
 private func heatmapStyleFromDict(_ style: Any?) -> PathStyleProps {
     var s = PathStyleProps()
     guard let d = style as? [String: Any] else { return s }
-    // The visual/style stage stores paint colors as EChartsKit `ZRColor` (the visualMap-encoded color is
-    //   `.color("#...")`) OR as a raw `String`. Bridge both to the ZRenderKit `ZRColor.string` (solid
-    //   colors only; gradient/pattern out of scope for the static render).
-    func colorString(_ v: Any?) -> String? {
-        if let str = v as? String { return str }
-        if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-        return nil
-    }
-    if let v = colorString(d["fill"]) { s.fill = .string(v) }
-    if let v = colorString(d["stroke"]) { s.stroke = .string(v) }
+    // Paint colors are stored as a raw `String`, an EChartsKit `ZRColor`, or a gradient dict; the shared
+    //   `zrPaintFromStyleValue` bridges all three (solid + linear/radial gradient) to a ZRenderKit paint.
+    if let v = zrPaintFromStyleValue(d["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(d["stroke"]) { s.stroke = v }
     if let v = d["opacity"] as? Double { s.opacity = v }
     if let v = d["fillOpacity"] as? Double { s.fillOpacity = v }
     if let v = d["strokeOpacity"] as? Double { s.strokeOpacity = v }

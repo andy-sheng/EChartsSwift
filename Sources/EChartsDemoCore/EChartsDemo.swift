@@ -52,11 +52,22 @@ public protocol EChartsDemoChart: AnyObject {
     /// no way to reproduce it natively and (as happened) deletes the behaviour instead, turning a
     /// framework gap into an invisible demo simplification.
     ///
-    /// NOTE what is still missing: `myChart.on('click', ...)` — chart-level event SUBSCRIPTION.
-    /// Upstream `ECharts extends Eventful`; the port's `ECharts` does not, so an example whose
-    /// dynamics are a round-trip (dispatch → listen → re-setOption) cannot be fully replayed on the
-    /// native pane yet. Such demos must say so in their header, not quietly drop the behaviour.
     func dispatch(_ payload: [String: Any])
+
+    /// The example's `myChart.on('click', handler)` — chart-level event SUBSCRIPTION.
+    ///
+    /// The other half of the round trip: plenty of official examples are driven by LISTENING (a click
+    /// that drills down, a `brushselected` that recomputes a bar chart, an `updateAxisPointer` that
+    /// links two views). `ECharts` is now `Eventful`-backed (upstream `class ECharts extends Eventful`
+    /// + `MessageCenter`), so those examples can be replayed natively.
+    ///
+    /// `params` is the packed event upstream hands the handler: `params.seriesIndex`,
+    /// `params.dataIndex`, `params.name`, `params.value`, `params.componentType`, … plus
+    /// `params["…"]` for the keys that only live in the flat JS object (an action event's payload
+    /// fields: `batch`, `areas`, `selected`, `axesInfo`). A field this port cannot fill is `nil` —
+    /// see the PORT-NOTEs on `ECharts._initZrEvents` (marker events pack from the host series;
+    /// custom-series `el`-derived params are not packed).
+    func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void)
 }
 
 // MARK: - Demo value type (mirrors DemoGallery.Demo, option-driven)

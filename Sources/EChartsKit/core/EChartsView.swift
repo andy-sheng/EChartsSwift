@@ -537,12 +537,44 @@ public final class EChartsView {
         // Slider-dataZoom brush select: forward the zr mousemove/mouseup legs (see _bindSliderZoomBrush).
         _bindSliderZoomBrush()
 
-        // PORT-NOTE (deferred): the generic `MOUSE_EVENT_NAMES` fan-out onto the public ECharts event bus
-        //   (`this.trigger(eveName, ECElementEvent)`) — needs `getDataParams` param assembly + the message
-        //   center (ECharts.swift `messageCenter.trigger` is still commented out).
+        // The generic `MOUSE_EVENT_NAMES` fan-out onto the PUBLIC ECharts event bus (`chart.on('click', …)`):
+        //   upstream `ECharts._initEvents` binds it on its own zr; this driver is zr-less, so the binding is
+        //   `ec._initZrEvents(zr)` and the host passes its live zr (see the SPLIT note in ECharts.swift).
+        //   Bound LAST on purpose — it registers with `callAtLast: true` (upstream's
+        //   `handler.zrEventfulCallAtLast`), so the user's handler runs AFTER the inner component handlers
+        //   above (tooltip/brush/axisPointer), which is what lets a user handler safely `setOption` /
+        //   `dispatchAction` from inside the callback.
+        ec._initZrEvents(zr)
+
         // PORT-NOTE (deferred): `globalout` (no `e.target`) → leave-emphasis reset. `allLeaveBlur` IS ported
         //   (util/states.swift), but wiring it onto a globalout handler is not done (would need care not to
-        //   fight the drag-end globalout bindings in _bindInsidePan/_bindBrush).
+        //   fight the drag-end globalout bindings in _bindInsidePan/_bindBrush). NOTE the public 'globalout'
+        //   EVENT itself IS now emitted (it is one of MOUSE_EVENT_NAMES) — only the internal emphasis reset
+        //   is missing.
+    }
+
+    // ------------------------------------------------------------------------
+    // The public chart event bus, forwarded to the driver: `view.on("click") { params in … }`.
+    //   (Upstream there is ONE object — `myChart` — that is both the renderer and the Eventful. Here the
+    //   driver owns the bus and the host view owns the zr, so the host forwards.)
+    // ------------------------------------------------------------------------
+    @discardableResult
+    public func on(_ eventName: String, _ handler: @escaping (ECEventParams) -> Void) -> EChartsView {
+        ec.on(eventName, handler)
+        return self
+    }
+
+    /// `on` with an upstream event QUERY ('series', `["seriesIndex": 1]`, …) — see `ECEventProcessor`.
+    @discardableResult
+    public func on(_ eventName: String, _ query: EventQuery?, _ handler: @escaping (ECEventParams) -> Void) -> EChartsView {
+        ec.on(eventName, query, handler)
+        return self
+    }
+
+    @discardableResult
+    public func off(_ eventName: String? = nil) -> EChartsView {
+        ec.off(eventName)
+        return self
     }
 
     // ------------------------------------------------------------------------

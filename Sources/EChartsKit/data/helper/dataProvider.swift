@@ -438,13 +438,23 @@ private let getItemSimply: RawSourceItemGetter = { rawData, _, _, idx, _ in
 
 private let rawSourceItemGetterMap: [String: RawSourceItemGetter] = [
     SOURCE_FORMAT_ARRAY_ROWS + "_" + SERIES_LAYOUT_BY_COLUMN: { rawData, startIndex, _, idx, _ in
-        let data = (rawData as? [[OptionDataValue]]) ?? []
-        return data[Int(idx + startIndex)]
+        // PERF (port-specific): cast the OUTER container to `[[Any]]`, NOT `[[OptionDataValue]]`
+        //   (= `[[Any?]]`). This getter is called once per row inside `filterTransform`'s loop, and
+        //   `rawData` (the whole source table) is re-cast on every call. `[[Any]] as? [[Any]]` is an
+        //   O(1) identity cast, whereas `[[Any]] as? [[Any?]]` is a DEEP `_arrayConditionalCast` that
+        //   re-boxes every scalar (`Any` -> `Any?`) of every row — O(rows·cols) per call, i.e. O(n²)
+        //   over a filter, which made `official-line-race` (1539-row table × 8 filters) take ~8s.
+        //   The returned row (`[Any]`) is value-identical; the small per-row `as? [OptionDataValue]`
+        //   in the value getter still normalizes elements downstream.
+        let data = (rawData as? [[Any]]) ?? []
+        let i = Int(idx + startIndex)
+        return (i >= 0 && i < data.count) ? data[i] : NSNull()
     },
     SOURCE_FORMAT_ARRAY_ROWS + "_" + SERIES_LAYOUT_BY_ROW: { rawData, startIndex, _, idxIn, out in
         let idx = idxIn + startIndex
         var item: ArrayLike<OptionDataValue> = out ?? []
-        let data = (rawData as? [[OptionDataValue]]) ?? []
+        // PERF: `[[Any]]` (identity) instead of `[[Any?]]` (deep re-box) — see the COLUMN getter above.
+        let data = (rawData as? [[Any]]) ?? []
         for i in 0..<data.count {
             let row = data[i]   // row may be empty in upstream (`row ? row[idx] : null`)
             ensureSize(&item, i + 1)

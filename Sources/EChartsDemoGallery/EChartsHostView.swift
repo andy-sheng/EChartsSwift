@@ -181,5 +181,26 @@ extension EChartsHostView: EChartsDemoChart {
         echartsView.ec.dispatchAction(p)
         echartsView.syncAfterAction()   // the action mutated the model; pull it back into the zr scene
     }
+
+    /// The example's `myChart.on('click', params => ...)`. Forwards to the ported chart event bus
+    /// (`ECharts.on` — `Eventful` + `MessageCenter`, echarts.ts `_initEvents`).
+    ///
+    /// The zr pointer events that feed this bus are already delivered on the main thread (they come
+    /// from this NSView's mouse handlers → `NativeHandlerProxy` → `zr.handler`), so hopping is not
+    /// needed; `MainActor.assumeIsolated` states that invariant rather than deferring the call (a demo
+    /// handler that re-enters `setOption` must run BEFORE the click returns, as it does in JS).
+    ///
+    /// After the handler runs, the scene is re-pulled: a handler that `dispatchAction`s (or otherwise
+    /// mutates the model) goes through `ECharts` directly, and — as with `dispatch` above — the zr copy
+    /// of the display list has to be refreshed. `setOption` on this host already syncs itself; a second
+    /// sync is idempotent.
+    func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void) {
+        echartsView.on(event) { [weak self] params in
+            MainActor.assumeIsolated {
+                handler(params)
+                self?.echartsView.syncAfterAction()
+            }
+        }
+    }
 }
 #endif

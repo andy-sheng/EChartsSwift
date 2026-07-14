@@ -629,10 +629,10 @@ private func stringify(_ v: Any) -> String {
 ///   read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap. Delete when the graphic bridge lands.
 private func matrixPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern/decal object (ZRColor non-string); only the String
-    //   form (incl. the sentinel 'none') is mapped here.
-    if let v = matrixColorString(dict["fill"]) { s.fill = .string(v) }
-    if let v = matrixColorString(dict["stroke"]) { s.stroke = .string(v) }
+    // `fill`/`stroke` may be a solid string, an EChartsKit `ZRColor`, or a gradient dict; the shared
+    //   `zrPaintFromStyleValue` bridges all three (the sentinel 'none' stays a no-paint string).
+    if let v = zrPaintFromStyleValue(dict["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = v }
     if let v = numOpt(dict["lineWidth"]) { s.lineWidth = v }
     if let v = dict["lineCap"] as? String { s.lineCap = v }
     if let v = dict["lineJoin"] as? String { s.lineJoin = v }
@@ -647,12 +647,4 @@ private func matrixPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let v = numOpt(dict["lineDashOffset"]) { s.lineDashOffset = v }
     // PORT-NOTE (deferred): `lineDash` (number[] | false) / `decal` mapping deferred.
     return s
-}
-
-/// Bridge a visual/style paint value (raw `String` or EChartsKit `ZRColor`) to a solid color string.
-///   (gradient/pattern/decal are out of the matrix-backdrop scope.) Mirrors CalendarView.colorString.
-private func matrixColorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    return nil
 }

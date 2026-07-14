@@ -11,6 +11,9 @@
 //     no network, so both files are mirrored into assets/data/ and read at demo time via
 //     Upstream.repoRoot; the callback BODY is kept and `option` is assigned at the top level. The web
 //     pane gets the two files' RAW JSON text spliced in, so its closures see byte-identical inputs.
+//     The callback's first two lines (`shotData = shotData[0]; nbaCourt = nbaCourt[0]`) unwrap jQuery's
+//     `[data, statusText, jqXHR]` envelope; with the JSON spliced in directly there is no envelope, so
+//     they go. Diffing the rest of webOptionJS against the official source is byte-for-byte clean.
 //   - registerMap MOVED OUT. Upstream calls `echarts.registerMap('nbaCourt', nbaCourt.borderGeoJSON)`
 //     inside the callback; here it is declared in `mapRegistrations` so WebPage.swift injects it into
 //     the page before the option script and the native pane registers the same map.
@@ -393,6 +396,8 @@ option = {
     }
   ]
 };
+
+myChart.setOption(option);
 """#,
         option: {
             // Upstream: `echarts.registerMap('nbaCourt', nbaCourt.borderGeoJSON)` inside the $.when callback.

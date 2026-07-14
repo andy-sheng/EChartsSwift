@@ -152,13 +152,17 @@ open class ComponentView: ViewRootGroup {
      * Pass only when return `true`.
      * Implement it if needed.
      */
-    // PORT-NOTE: `packedEvent: ECActionEvent | ECElementEvent` union modeled as `Any`. This is a
-    //   required interface member; the base default returns `false` (event exposure is opt-in per
-    //   subclass — deferred with events, out of the bar+axis scope).
+    // PORT-NOTE: `packedEvent: ECActionEvent | ECElementEvent` union modeled as `Any`.
+    //   Upstream this is an OPTIONAL member (`filterForExposedEvent?`), and `ECEventProcessor.filter`
+    //   short-circuits with `!view.filterForExposedEvent || view.filterForExposedEvent(...)` — i.e. a
+    //   view that does not implement it lets every queried event THROUGH. A Swift `open func` is always
+    //   present, so the base returns `true` to model that absence (ChartView already does). Returning
+    //   `false` here — as this base did while the event bus was deferred — silently swallowed every
+    //   query-filtered component event (`chart.on('click', 'xAxis', …)`).
     open func filterForExposedEvent(
         _ eventType: String, _ query: EventQueryItem, _ targetEl: Element, _ packedEvent: Any
     ) -> Bool {
-        return false
+        return true
     }
 
     // upstream (optional): findHighDownDispatchers?(name): Element[];

@@ -735,11 +735,11 @@ private func sankeyBorderRadius(_ v: Any?) -> RectRadius {
     return .number(0)
 }
 
-// Bridge a node/edge visual color (`getVisual('color')`, stored as an EChartsKit `ZRColor.color(String)`
-//   or a raw `String`) to a ZRenderKit `ZRColor.string`. Gradient/pattern node colors out of scope.
+// Bridge a node visual color (`getVisual('color')` — an EChartsKit `ZRColor` (solid OR gradient), a raw
+//   `String`, or a gradient dict) to a ZRenderKit paint via the shared `zrPaintFromStyleValue`, so a
+//   gradient node `itemStyle.color` renders as a gradient fill.
 private func sankeyColor(_ v: Any?) -> ZRenderKit.ZRColor? {
-    if let s = sankeyColorString(v) { return .string(s) }
-    return nil
+    return zrPaintFromStyleValue(v)
 }
 
 // The raw solid-color string of a visual color (used by the 'gradient' branch, which needs both node

@@ -985,15 +985,14 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
     var s = PathStyleProps()
     guard let d = style as? [String: Any] else { return s }
     // The visual/style stage stores paint colors as EChartsKit `ZRColor` (e.g. the palette color is
-    //   `.color("#...")`) OR as a raw `String`. Bridge both to the ZRenderKit `ZRColor.string` (only
-    //   solid colors are bridged; gradient/pattern are out of the bar-render scope).
-    func colorString(_ v: Any?) -> String? {
-        if let str = v as? String { return str }
-        if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-        return nil
-    }
-    if let v = colorString(d["fill"]) { s.fill = .string(v) }
-    if let v = colorString(d["stroke"]) { s.stroke = .string(v) }
+    //   `.color("#...")`) OR as a raw `String`. Bridge both to the ZRenderKit `ZRColor.string`. A
+    //   gradient fill — expressed either as an EChartsKit `ZRColor.linearGradient/.radialGradient` or
+    //   as the plain option dict `{type:'linear'|'radial', ...}` (echarts accepts the object form of
+    //   `new echarts.graphic.LinearGradient(...)`) — is bridged to a ZRenderKit `LinearGradient`/
+    //   `RadialGradient` (the painter renders both; see CGRenderer.drawGradient). Pattern/other values
+    //   still return nil, falling back to the series solid color.
+    if let v = zrPaintFromStyleValue(d["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(d["stroke"]) { s.stroke = v }
     // decal: the `visual/decalVisual` stage stores a generated `Pattern` (tiling texture) under the
     //   item/series 'style' visual's `decal` key. Bridge it to `pathStyle.decal` so `Path.update()`
     //   synthesizes the decal element (`_decalEl`) that the renderer paints over the fill.
@@ -1010,6 +1009,76 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
     if let v = d["shadowOffsetX"] as? Double { s.shadowOffsetX = v }
     if let v = d["shadowOffsetY"] as? Double { s.shadowOffsetY = v }
     return s
+}
+
+// Bridge an echarts option color value to a ZRenderKit paint color (`ZRenderKit.ZRColor`).
+//   - `String` / EChartsKit `ZRColor.color`   -> `.string`
+//   - EChartsKit `ZRColor.linearGradient/.radialGradient` (payload is a `ZRenderKit` gradient object)
+//     or the plain option dict `{type:'linear'|'radial', x,y,x2,y2|r, colorStops, global}` -> a
+//     `ZRenderKit.LinearGradient`/`RadialGradient`.
+//   - pattern / unknown -> nil (caller keeps the fallback solid color).
+// Module-internal (not `private`): the shared gradient-aware paint bridge reused by every view whose
+//   fill/stroke resolution previously accepted solid colors only (line stroke, custom, large scatter,
+//   effectScatter, map, geo, candlestick, heatmap, graph edge, sankey node, matrix). See those sites.
+func zrPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
+    if let str = v as? String { return .string(str) }
+
+    if let zr = v as? EChartsKit.ZRColor {
+        switch zr {
+        case .color(let s):
+            return .string(s)
+        case .linearGradient(let g):
+            let lg = (g as? ZRenderKit.LinearGradient)
+                ?? ZRenderKit.LinearGradient(g.x, g.y, g.x2, g.y2, g.colorStops, g.global)
+            return .linearGradient(lg)
+        case .radialGradient(let g):
+            let rg = (g as? ZRenderKit.RadialGradient)
+                ?? ZRenderKit.RadialGradient(g.x, g.y, g.r, g.colorStops, g.global)
+            return .radialGradient(rg)
+        case .pattern:
+            return nil
+        }
+    }
+
+    if let dict = v as? [String: Any], let type = dict["type"] as? String {
+        let stops = gradientColorStopsFromAny(dict["colorStops"])
+        let global = dict["global"] as? Bool
+        if type == "linear" {
+            return .linearGradient(ZRenderKit.LinearGradient(
+                styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["x2"]), styleNum(dict["y2"]),
+                stops, global))
+        } else if type == "radial" {
+            return .radialGradient(ZRenderKit.RadialGradient(
+                styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["r"]),
+                stops, global))
+        }
+    }
+
+    return nil
+}
+
+// Parse `colorStops: [{offset, color}, ...]` (the option-dict gradient form) into ZRenderKit stops.
+private func gradientColorStopsFromAny(_ v: Any?) -> [ZRenderKit.GradientColorStop] {
+    guard let arr = v as? [Any] else { return [] }
+    var out: [ZRenderKit.GradientColorStop] = []
+    for item in arr {
+        guard let d = item as? [String: Any] else { continue }
+        let offset = styleNum(d["offset"]) ?? 0
+        let color = (d["color"] as? String) ?? ""
+        out.append(ZRenderKit.GradientColorStop(offset: offset, color: color))
+    }
+    return out
+}
+
+// JS-number coercion for a gradient coord/offset option value (Double | Int | NSNumber | numeric String).
+private func styleNum(_ v: Any?) -> Double? {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    case let s as String: return Double(s.trimmingCharacters(in: .whitespacesAndNewlines))
+    default: return nil
+    }
 }
 
 // export default BarView;  -> `open class BarView` above.

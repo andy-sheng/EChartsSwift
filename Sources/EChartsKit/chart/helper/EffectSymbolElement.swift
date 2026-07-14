@@ -31,7 +31,10 @@ import ZRenderKit
 //   ScatterSeriesModel/EffectScatterSeriesModel -> read via the generic SeriesModel option bag.
 
 // upstream: interface EffectCfg — the ripple config computed once per updateData and cached as `_effectCfg`.
-struct EffectSymbolCfg: Equatable {
+// NOTE: not `Equatable` — the "difficult prop changed?" check in `updateEffectAnimation` compares the
+//   individual scalar fields, and `color` is now a `ZRenderKit.ZRColor?` (a paint that may be a gradient,
+//   which is not Equatable), so whole-struct equality is neither synthesizable nor used.
+struct EffectSymbolCfg {
     var showEffectOn: String
     var rippleScale: Double
     var brushType: String
@@ -40,7 +43,7 @@ struct EffectSymbolCfg: Equatable {
     var z: Double
     var zlevel: Double
     var symbolType: String
-    var color: String?
+    var color: ZRenderKit.ZRColor?   // symbol fill paint; solid OR gradient (bridged via zrPaintFromStyleValue)
     var rippleEffectColor: String?
     var rippleNumber: Int
 }
@@ -52,7 +55,7 @@ private func updateRipplePath(_ rippleGroup: Group, _ effectCfg: EffectSymbolCfg
         guard let ripplePath = child as? Path else { return }
         ripplePath.z = effectCfg.z
         ripplePath.zlevel = effectCfg.zlevel
-        let c = effectCfg.color.map { ZRenderKit.ZRColor.string($0) }
+        let c = effectCfg.color
         // upstream: style.stroke = brushType === 'stroke' ? color : null; fill = 'fill' ? color : null.
         ripplePath.pathStyle.stroke = effectCfg.brushType == "stroke" ? c : nil
         ripplePath.pathStyle.fill = effectCfg.brushType == "fill" ? c : nil
@@ -93,7 +96,7 @@ open class EffectSymbol: Symbol {
     func startEffectAnimation(_ effectCfg: EffectSymbolCfg) {
         guard let rippleGroup = self.childAt(1) as? Group else { return }
         let symbolType = effectCfg.symbolType
-        let color = effectCfg.color.map { ZRenderKit.ZRColor.string($0) }
+        let color = effectCfg.color
         let rippleNumber = effectCfg.rippleNumber
 
         for i in 0..<rippleNumber {
@@ -179,7 +182,7 @@ open class EffectSymbol: Symbol {
         let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? "circle"
         let symbolSize = Symbol.getSymbolSize(data, idx)          // [w, h]
         let symbolStyle = data.getItemVisual(idx, "style") as? [String: Any]
-        let color = symbolColorString(symbolStyle?["fill"])
+        let color = zrPaintFromStyleValue(symbolStyle?["fill"])
 
         // upstream: rippleGroup.setScale(symbolSize) — the rings live in a group scaled to the symbol size.
         rippleGroup.scaleX = symbolSize[0]

@@ -275,6 +275,74 @@ public struct DispatchActionOpt {
 // util/statesPayload.swift (which also drive the ported `updateDirectly` light update).
 
 // ============================================================================
+// The CHART EVENT BUS — ported from echarts.ts:328-353 + `class ECharts extends Eventful`.
+//
+// upstream:
+//   type EventMethodName = 'on' | 'off';
+//   function createRegisterEventWithLowercaseECharts(method) { ... }
+//   function createRegisterEventWithLowercaseMessageCenter(method) { ... }
+//   function toLowercaseNameAndCallEventful(host, method, args) {
+//       // `args[0]` is event name. Event name is all lowercase.
+//       args[0] = args[0] && args[0].toLowerCase();
+//       return Eventful.prototype[method].apply(host, args);
+//   }
+//   class MessageCenter extends Eventful {}
+//   messageCenterProto.on  = createRegisterEventWithLowercaseMessageCenter('on');
+//   messageCenterProto.off = createRegisterEventWithLowercaseMessageCenter('off');
+//
+// The `on`/`off` prototype REWRITE is upstream's way of lowercasing the event name on the way in
+// (registered event types are always lowercase — see `registerAction`'s `createEventType`). Here that
+// is simply what `MessageCenter.on/off` and `ECharts.on/off` do inline.
+//
+// PORT-NOTE (CONVENTIONS §2): ZRenderKit's `Eventful` is a `final class` (upstream applies it as a
+//   MIXIN to Element via `applyMixin`), so `extends Eventful` becomes COMPOSITION + forwarding — the
+//   same shape `Element`/`Handler`/`ZRender` already use.
+// ============================================================================
+
+// upstream: `class MessageCenter extends Eventful {}` — the INTERNAL bus. Actions publish their event
+//   here (`doDispatchAction`: `messageCenter.trigger(eventObj.type, eventObj)`), and `_initEvents`
+//   re-publishes every registered public event type onto the USER-facing `ECharts` bus. The indirection
+//   is what `connect` (cross-chart event mirroring) hooks into — see `connectionEventRevertMap`.
+final class MessageCenter {
+
+    private let _eventful = Eventful()
+
+    // `args[0]` is event name. Event name is all lowercase.
+    private static func toLowercaseName(_ event: String) -> String { return event.lowercased() }
+
+    @discardableResult
+    func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject? = nil) -> MessageCenter {
+        _eventful.on(MessageCenter.toLowercaseName(event), handler, context)
+        return self
+    }
+
+    @discardableResult
+    func off(_ eventType: String? = nil, _ handler: EventCallback? = nil) -> MessageCenter {
+        _eventful.off(eventType.map(MessageCenter.toLowercaseName), handler)
+        return self
+    }
+
+    @discardableResult
+    func trigger(_ eventType: String, _ args: Any?...) -> MessageCenter {
+        // Forward by arg count (Swift cannot splat a variadic into another variadic). The message
+        //   center only ever carries ONE packed event object, so 0/1 covers every upstream path.
+        if args.isEmpty {
+            _eventful.trigger(eventType)
+        }
+        else {
+            _eventful.trigger(eventType, args[0])
+        }
+        return self
+    }
+}
+
+// upstream echarts.ts:2864 — const MOUSE_EVENT_NAMES: ZRElementEventName[] = [...]
+let MOUSE_EVENT_NAMES: [String] = [
+    "click", "dblclick", "mouseover", "mouseout", "mousemove",
+    "mousedown", "mouseup", "globalout", "contextmenu"
+]
+
+// ============================================================================
 // The ECharts driver.
 // ============================================================================
 public final class ECharts: EChartsType {
@@ -339,6 +407,18 @@ public final class ECharts: EChartsType {
     /// under the symbol-ish key `IN_EC_CYCLE_KEY` (`'__flagInMainProcess'`).
     private var _inEcCycle = false
 
+    // ---- the chart event bus (upstream: `class ECharts extends Eventful<ECEventDefinition>`) ----
+    /// upstream: `protected _$eventProcessor: never` — really an `ECEventProcessor`, whose `eventInfo`
+    /// is written before each `trigger` so the query filter (`chart.on('click', {seriesIndex: 1}, …)`)
+    /// can match the event against the source model/view.
+    private let _$eventProcessor = ECEventProcessor()
+    /// upstream: `super(new ECEventProcessor())` — the Eventful `ECharts` IS. Composed, not inherited
+    /// (`Eventful` is final here; CONVENTIONS §2 — same shape as `Element`/`Handler`/`ZRender`).
+    /// `lazy` only because it reads a sibling stored property (Swift forbids that in phase-1 init).
+    private lazy var _eventful: Eventful = Eventful(self._$eventProcessor.asEventProcessor())
+    /// upstream: `private _messageCenter: MessageCenter`.
+    private let _messageCenter = MessageCenter()
+
     // upstream: echarts.init(dom, theme?, opts?) — `theme` is a registered name or a theme object,
     //   `opts.locale` a registered lang name or a locale object. Both are optional; nil theme merges
     //   nothing, nil locale resolves to `locale.SYSTEM_LANG` (EN).
@@ -350,6 +430,10 @@ public final class ECharts: EChartsType {
         ECharts.installOnce()
         // `_api` needs `self`; all stored properties are initialized above, so it is safe now.
         self._api = EChartsExtensionAPI(ec: self)
+
+        // Init mouse events. (upstream: `this._initEvents()` in the constructor — its zr half needs a
+        //   live zrender, which this driver does not own; see `_initEvents` / `_initZrEvents`.)
+        self._initEvents()
     }
 
     // ------------------------------------------------------------------------
@@ -2266,7 +2350,14 @@ public final class ECharts: EChartsType {
             // refineEvent path (actionInfo.refineEvent) is DEFERRED (Phase 30). Non-refined event replicates
             //   the payload: eventObj = actionResult || extend({}, batchItem); eventObj.type = nonRefinedEventType.
             var e = ECActionEvent(type: nonRefinedEventType)
-            if let ar = actionResult { e.eventData = ar }
+            // upstream: `eventObj = eventObj || extend({} as ECActionEvent, batchItem)` — when the action
+            //   handler returns nothing, the event IS a copy of the payload (that is how a user's
+            //   `legendselectchanged` handler reads `params.name` / `params.selected`). The payload's
+            //   dynamic bag is `batchItem.other`; the action's returned bag wins when present.
+            e.eventData = actionResult ?? batchItem.other
+            e.componentType = e.eventData["componentType"] as? String
+            e.componentIndex = ecEventNumber(e.eventData["componentIndex"])
+            e.seriesIndex = ecEventNumber(e.eventData["seriesIndex"])
             e.escapeConnect = batchItem.escapeConnect
             eventObj = e
             eventObjBatch.append(e)
@@ -2325,12 +2416,23 @@ public final class ECharts: EChartsType {
 
         _inEcCycle = false
 
-        // if (!silent) { … messageCenter.trigger(eventObj.type, eventObj); … }
-        //   PORT-NOTE (deferred): requires the message center / user event listeners + refineEvent (not wired yet,
-        //   Phase 30+). eventObj is fully built above to preserve the round-trip structure; emission
-        //   is the documented no-op.
-        _ = eventObj
-        _ = silent
+        if !silent {
+            // let refinedEvent: ECActionEvent;
+            // if (actionInfo.refineEvent) { ... refinedEvent = defaults({type: actionInfo.refinedEventType}, eventContent); ... }
+            //   PORT-NOTE (gap): `refineEvent` is not ported (it needs `makeSelectChangedEvent` →
+            //   `getAllSelectedIndices`; see core/actionRegister.swift, which registers select/unselect/
+            //   toggleSelect WITHOUT it). Consequence: the REFINED 'selectchanged' event is not emitted;
+            //   the non-refined per-action event ('select'/'unselect'/'toggleselect') IS — those are the
+            //   `nonRefinedEventType`s `registerAction` computed, and they carry the payload's fields.
+            let messageCenter = self._messageCenter
+            // - If `refineEvent` created a `refinedEvent`, `eventObj` (replicated from the original payload)
+            //  is still needed to be triggered for the feature `connect`. But it will not be triggered to
+            //  users in this case.
+            // - If no `refineEvent` used, `eventObj` will be triggered for both `connect` and users.
+            if let eventObj = eventObj {
+                messageCenter.trigger(eventObj.type, eventObj)
+            }
+        }
     }
 
     /// Ported from `flushPendingActions` (echarts.ts:2274-2280). Drain + re-dispatch queued actions.
@@ -2345,7 +2447,7 @@ public final class ECharts: EChartsType {
     private func triggerUpdatedEvent(_ silent: Bool) {
         // upstream: !silent && this.trigger('updated');
         if !silent {
-            // PORT-NOTE (deferred): requires an event-listener registry / `trigger` (not wired yet, Phase 30+). Structure preserved.
+            self.trigger("updated")
         }
     }
 
@@ -2467,6 +2569,345 @@ public final class ECharts: EChartsType {
             default: break
             }
         }
+    }
+
+    // ========================================================================
+    // THE PUBLIC CHART EVENT BUS — `chart.on('click', handler)`.
+    //
+    // upstream `class ECharts extends Eventful<ECEventDefinition>` + the prototype rewrite at
+    //   echarts.ts:329-336:
+    //     function createRegisterEventWithLowercaseECharts(method) {
+    //         return function (this: ECharts, ...args: any): ECharts {
+    //             if (this.isDisposed()) { disposedWarning(this.id); return; }
+    //             return toLowercaseNameAndCallEventful<ECharts>(this, method, args);
+    //         };
+    //     }
+    //   i.e. `on`/`off` lowercase the event name and forward to `Eventful`. `trigger` is Eventful's own.
+    //
+    // The handler param: upstream hands ONE object — an `ECElementEvent` for the mouse events, an
+    //   `ECActionEvent` for the action events. Both conform to `ECEventParams` (util/types.swift).
+    // ========================================================================
+
+    /// upstream: `chart.on(eventName, handler)`.
+    @discardableResult
+    public func on(_ eventName: String, _ handler: @escaping (ECEventParams) -> Void) -> ECharts {
+        return self.on(eventName, nil, handler)
+    }
+
+    /// upstream: `chart.on(eventName, query, handler)` — `query` is a component-type string
+    /// ('series', 'xAxis.category') or a query object (`["seriesIndex": 1]`, `["dataIndex": 3]`).
+    /// See `ECEventProcessor` for the full query grammar.
+    @discardableResult
+    public func on(
+        _ eventName: String,
+        _ query: EventQuery?,
+        _ handler: @escaping (ECEventParams) -> Void
+    ) -> ECharts {
+        // PORT-NOTE: `if (this.isDisposed()) { disposedWarning(this.id); return; }` — the driver has no
+        //   `_disposed` flag / dispose lifecycle (see `dispatchAction`), so there is no guard to port.
+        // `args[0]` is event name. Event name is all lowercase.
+        let lowerName = eventName.lowercased()
+        _eventful.on(lowerName, query, { _, args in
+            // Eventful's callback is the raw `(thisCtx, [Any?])`; unwrap the single packed event.
+            if let params = (args.first ?? nil) as? ECEventParams {
+                handler(params)
+            }
+            else {
+                // PORT-NOTE: upstream triggers the LIFECYCLE events with NO param object
+                //   (`this.trigger('updated')`, `trigger('finished')`), so the JS handler's `params` is
+                //   `undefined`. The Swift handler takes a non-optional `ECEventParams`, so a param-less
+                //   trigger is delivered as an otherwise-EMPTY packed event carrying only `type`. No field
+                //   is invented — every other property is nil.
+                handler(ECActionEvent(type: lowerName))
+            }
+            return nil   // `boolean | void` — we never cancel the bubble.
+        })
+        return self
+    }
+
+    /// upstream: `chart.off(eventName)`.
+    ///
+    /// PORT-NOTE (closure identity): upstream also supports `off(eventName, handler)` — removing ONE
+    ///   handler. Swift closures have no identity, so `Eventful.off(event, handler)` cannot filter a
+    ///   specific handler out (documented in ZRenderKit/Core/Eventful.swift) and is not exposed here.
+    ///   Consequence: you can unbind ALL handlers of an event, not a single one.
+    @discardableResult
+    public func off(_ eventName: String? = nil) -> ECharts {
+        _eventful.off(eventName?.lowercased())
+        return self
+    }
+
+    /// upstream: `Eventful.prototype.trigger` — used internally (`_initEvents` re-publishes the message
+    /// center onto this bus) and available to a host that wants to inject an event.
+    @discardableResult
+    public func trigger(_ eventType: String, _ params: ECEventParams? = nil) -> ECharts {
+        if let params = params {
+            _eventful.trigger(eventType, params)
+        }
+        else {
+            _eventful.trigger(eventType)
+        }
+        return self
+    }
+
+    /// upstream: `Eventful.prototype.isSilent` — whether any handler is bound.
+    public func isSilent(_ eventName: String) -> Bool {
+        return _eventful.isSilent(eventName.lowercased())
+    }
+
+    // ------------------------------------------------------------------------
+    // _initEvents — ported from `ECharts.prototype._initEvents` (echarts.ts:1290).
+    //
+    // SPLIT (documented deviation): upstream, one `_initEvents()` does BOTH halves —
+    //   (a) the `MOUSE_EVENT_NAMES` fan-out, which binds `this._zr.on(eveName, handler)`, and
+    //   (b) the message-center fan-out, which re-publishes every registered public event type
+    //       (`publicEventTypeMap`) from the internal bus onto the public `ECharts` bus.
+    //   This driver is deliberately ZR-LESS (it owns a bare `Storage`, so it can be driven headlessly);
+    //   the live zrender lives on the host-binding `EChartsView`. So (b) runs here, at construction —
+    //   it needs no zr — and (a) is exposed as `_initZrEvents(zr)`, which `EChartsView.init` calls with
+    //   its live zr. Same handlers, same order, just a seam where upstream has none.
+    // ------------------------------------------------------------------------
+    private func _initEvents() {
+        // const messageCenter = this._messageCenter;
+        // each(publicEventTypeMap, (_, eventType) => {
+        //     messageCenter.on(eventType, event => { this.trigger(eventType, event); });
+        // });
+        //
+        // `publicEventTypeMap` is populated by `registerAction` — `installOnce()` (run just above in
+        //   `init`) has registered every built-in + component action by now, exactly as upstream's
+        //   module-load registration has by the time an `ECharts` is constructed.
+        let messageCenter = self._messageCenter
+        for (eventType, _) in publicEventTypeMap {
+            messageCenter.on(eventType, { [weak self] _, args in
+                guard let self = self else { return nil }
+                self.trigger(eventType, (args.first ?? nil) as? ECEventParams)
+                return nil
+            })
+        }
+
+        // handleLegacySelectEvents(messageCenter, this, this._api);
+        //   PORT-NOTE (gap): `legacy/dataSelectAction.ts` is NOT ported (the deprecated
+        //   'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat events, which re-emit the
+        //   modern 'selectchanged' under the pre-v5 names). Consequence: a listener bound to one of the
+        //   DEPRECATED event names never fires. The modern events are unaffected.
+    }
+
+    // ------------------------------------------------------------------------
+    // _initZrEvents — the `MOUSE_EVENT_NAMES` half of upstream `_initEvents` (echarts.ts:1291-1377),
+    //   line-for-line. Called by the host-binding (`EChartsView`) with its live zr (see the SPLIT note
+    //   on `_initEvents`). Turns a zrender ELEMENT event into a CHART event with the upstream param
+    //   shape and publishes it on the public bus.
+    // ------------------------------------------------------------------------
+    func _initZrEvents(_ zr: ZRender) {
+        // each(MOUSE_EVENT_NAMES, (eveName) => {
+        for eveName in MOUSE_EVENT_NAMES {
+            // const handler = (e: ElementEvent) => { ... }
+            let handler: EventCallback = { [weak self] _, args in
+                guard let self = self else { return nil }
+                guard let ecModel = self.getModel() else { return nil }
+                let e = (args.first ?? nil) as? ElementEvent
+                let el = e?.target
+                var params: ECElementEvent?
+                let isGlobalOut = (eveName == "globalout")
+                // no e.target when 'globalout'.
+                if isGlobalOut {
+                    params = ECElementEvent(type: eveName)   // upstream: `params = {} as ECElementEvent`
+                }
+                else {
+                    // el && findEventDispatcher(el, (parent) => { ... }, true)
+                    //   The `det` closure has a SIDE EFFECT upstream (it assigns `params`) — ported as-is.
+                    _ = findEventDispatcher(el, { parent in
+                        let ecData = innerStore.getECData(parent)
+                        if let dataIndex = ecData.dataIndex {
+                            // const dataModel = ecData.dataModel || ecModel.getSeriesByIndex(ecData.seriesIndex);
+                            // params = dataModel && dataModel.getDataParams(ecData.dataIndex, ecData.dataType, el) || {};
+                            //
+                            // PORT-NOTE: `ecData.dataModel` is never populated in this port (the
+                            //   markPoint/markLine/markArea views that set it are blocked on
+                            //   `MarkerModel: DataModel` conformance — see MarkPointView.swift). So the
+                            //   `|| ecModel.getSeriesByIndex(...)` arm always runs. Consequence: a click on a
+                            //   MARKER element packs its params from the HOST SERIES, not the marker model.
+                            // PORT-NOTE: `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
+                            //   exists only on the CustomSeries override (`DataFormatMixin.getDataParams` takes
+                            //   two). Custom series' extra `el`-derived params are therefore not packed.
+                            let dataModel: SeriesModel? = ecData.seriesIndex != nil
+                                ? ecModel.getSeriesByIndex(ecData.seriesIndex!) : nil
+                            if let dataModel = dataModel {
+                                params = ECElementEvent(
+                                    type: eveName,
+                                    dataParams: dataModel.getDataParams(dataIndex, ecData.dataType)
+                                )
+                            }
+                            else {
+                                params = ECElementEvent(type: eveName)   // `|| {}`
+                            }
+                            return true
+                        }
+                        // If element has custom eventData of components
+                        // else if (ecData.eventData) { params = extend({}, ecData.eventData); return true; }
+                        else if let eventData = ecData.eventData {
+                            params = ECElementEvent(type: eveName, eventData: eventData)
+                            return true
+                        }
+                        return false
+                    }, true)
+                }
+
+                // Contract: if params prepared in mouse event,
+                // these properties must be specified:
+                // {
+                //    componentType: string (component main type)
+                //    componentIndex: number
+                // }
+                // Otherwise event query can not work.
+
+                if var params = params {
+                    var componentType = params.componentType
+                    var componentIndex = params.componentIndex
+                    // Special handling for historic reason: when trigger by
+                    // markLine/markPoint/markArea, the componentType is
+                    // 'markLine'/'markPoint'/'markArea', but we should better
+                    // enable them to be queried by seriesIndex, since their
+                    // option is set in each series.
+                    if componentType == "markLine"
+                        || componentType == "markPoint"
+                        || componentType == "markArea"
+                    {
+                        componentType = "series"
+                        componentIndex = params.seriesIndex
+                    }
+                    let model: ComponentModel? = (componentType != nil && componentIndex != nil)
+                        ? ecModel.getComponent(componentType!, componentIndex!) : nil
+                    let view: AnyObject? = model.flatMap { m -> AnyObject? in
+                        m.mainType == "series"
+                            ? self._chartViewByModel[ObjectIdentifier(m)]
+                            : self._componentViewByModel[ObjectIdentifier(m)]
+                    }
+
+                    // (__DEV__ warn 'model or view can not be found by params' — no dev logging path.)
+
+                    params.componentType = componentType
+                    params.componentIndex = componentIndex
+                    params.event = e
+                    params.type = eveName
+
+                    self._$eventProcessor.eventInfo = ECEventProcessor.EventInfo(
+                        targetEl: el,
+                        packedEvent: params,
+                        model: model,
+                        view: view
+                    )
+
+                    self.trigger(eveName, params)
+                }
+                return nil
+            }
+            // Consider that some component (like tooltip, brush, ...)
+            // register zr event handler, but user event handler might
+            // do anything, such as call `setOption` or `dispatchAction`,
+            // which probably update any of the content and probably
+            // cause problem if it is called previous other inner handlers.
+            // (handler as any).zrEventfulCallAtLast = true;   → the `callAtLast:` parameter (Eventful.on).
+            // this._zr.on(eveName, handler, this);
+            //   ctx is `nil`, NOT `self`: `Eventful` holds `ctx` STRONGLY and the zr→handler→eventful chain
+            //   is owned by the host view, so passing `self` would leak the whole chart (same rule as every
+            //   other binding in EChartsView; the closure already captures `[weak self]`).
+            zr.on(eveName, handler, nil, callAtLast: true)
+        }
+
+        // upstream: `bindRenderedEvent(zr, this)` (echarts.ts:612 / 2298) — also a constructor-time zr
+        //   binding, so it belongs to this half of the split.
+        bindRenderedEvent(zr)
+    }
+
+    // ------------------------------------------------------------------------
+    // bindRenderedEvent — ported from the module-local `bindRenderedEvent` (echarts.ts:2298-2324).
+    //
+    // Event `rendered` is triggered when zr rendered. It is useful for realtime snapshot (reflect animation).
+    // Event `finished` is triggered when:
+    // (1) zrender rendering finished.
+    // (2) initial animation finished.
+    // (3) progressive rendering finished.
+    // (4) no pending action.
+    // (5) no delayed setOption needs to be processed.
+    // ------------------------------------------------------------------------
+    private func bindRenderedEvent(_ zr: ZRender) {
+        zr.on("rendered", { [weak self] _, args in
+            guard let self = self else { return nil }
+
+            // ecIns.trigger('rendered', params);
+            //   PORT-NOTE: upstream's param is zrender's `RenderedEvent` ({elapsedTime}). The chart bus
+            //   carries `ECEventParams`, which that struct is not, so 'rendered' is published with an
+            //   otherwise-empty packed event whose `elapsedTime` is put in the dynamic bag — the one place
+            //   the packed event is assembled from a zr event rather than a model.
+            var params = ECActionEvent(type: "rendered")
+            if let re = (args.first ?? nil) as? RenderedEvent {
+                params.eventData["elapsedTime"] = re.elapsedTime
+            }
+            self.trigger("rendered", params)
+
+            // The `finished` event should not be triggered repeatedly, so it should only be triggered
+            // when rendering indeed happens in zrender.
+            if zr.animation.isFinished()
+                // !ecIns[PENDING_UPDATE] — PORT-NOTE: the driver has no lazy/pending setOption
+                //   (`setOption` renders synchronously), so there is no pending-update flag to check.
+                && !(self._scheduler?.unfinished ?? false)
+                && self._pendingActions.isEmpty
+            {
+                self.trigger("finished")
+            }
+            else {
+                // Make sure this method can be entered again in next frames.
+                zr.refresh()
+            }
+            return nil
+        }, nil)
+    }
+
+    // ------------------------------------------------------------------------
+    // containPixel — ported from `ECharts.prototype.containPixel` (echarts.ts:1190-1230).
+    //   "Is the specified coordinate systems or components contain the given pixel point."
+    // ------------------------------------------------------------------------
+    public func containPixel(_ finder: ModelFinder, _ value: [Double]) -> Bool {
+        // if (this._disposed) { disposedWarning(this.id); return; }  — no dispose lifecycle (see above).
+        guard let ecModel = self._model else { return false }
+        var result: Bool = false
+
+        let findResult = model.parseFinder(ecModel, finder)
+
+        // each(findResult, function (models, key) {
+        //     key.indexOf('Models') >= 0 && each(models, function (model) { ... });
+        // });
+        for (key, models) in findResult {
+            guard key.contains("Models"), let models = models as? [ComponentModel] else { continue }
+            for m in models {
+                // const coordSys = (model as CoordinateSystemHostModel).coordinateSystem;
+                // if (coordSys && coordSys.containPoint) { result = result || !!coordSys.containPoint(value); }
+                //
+                // PORT-NOTE: `model.coordinateSystem` is not one property in this port — a coord-sys HOST
+                //   model (GridModel/PolarModel/…) declares it through `CoordinateSystemHostModel`
+                //   (a `CoordinateSystemMaster`), while a SeriesModel stores its own as `Any?` (a
+                //   `CoordinateSystem`). Both are checked; both protocols declare `containPoint`.
+                if let host = m as? CoordinateSystemHostModel, let coordSys = host.coordinateSystem {
+                    result = result || coordSys.containPoint(value)
+                }
+                else if let series = m as? SeriesModel, let coordSys = series.coordinateSystem as? CoordinateSystem {
+                    result = result || coordSys.containPoint(value)
+                }
+                else if key == "seriesModels" {
+                    // const view = this._chartsMap[model.__viewId];
+                    // if (view && view.containPoint) { result = result || view.containPoint(value, model); }
+                    if let series = m as? SeriesModel,
+                       let view = self._chartViewByModel[ObjectIdentifier(series)] {
+                        result = result || view.containPoint(value, series)
+                    }
+                    // (__DEV__ warn: 'The found component do not support containPoint.' — no dev logging.)
+                }
+                // (__DEV__ warn: key + ': containPoint is not supported' — no dev logging path.)
+            }
+        }
+
+        return result
     }
 
     // ------------------------------------------------------------------------

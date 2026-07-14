@@ -608,6 +608,17 @@ public final class Handler: DraggableHandler {
         return self._eventful.on(event, query, handler, context ?? self)
     }
 
+    // `callAtLast` — upstream sets the flag ON THE FUNCTION OBJECT (`handler.zrEventfulCallAtLast = true`,
+    //   echarts `_initEvents`); Swift closures cannot carry properties, so it is an explicit parameter.
+    //   Declared as a SEPARATE overload (no default value) rather than a defaulted 4th parameter on the
+    //   witness above: `DraggableHandler` requires `on(_:_:_:)` verbatim, and a Swift protocol witness
+    //   must match the requirement's full selector — `on(_:_:_:callAtLast:)` would not satisfy it.
+    @discardableResult
+    public func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject?,
+                   callAtLast: Bool) -> Eventful {
+        return self._eventful.on(event, nil, handler, context ?? self, callAtLast: callAtLast)
+    }
+
     @discardableResult
     public func off(_ eventType: String? = nil, _ handler: EventCallback? = nil) -> Eventful {
         return self._eventful.off(eventType, handler)

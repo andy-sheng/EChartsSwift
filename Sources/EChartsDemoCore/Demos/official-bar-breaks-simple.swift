@@ -1,21 +1,31 @@
 // official-bar-breaks-simple — replica of https://echarts.apache.org/examples/zh/editor.html?c=bar-breaks-simple
-// title: Bar Chart with Axis Breaks / titleCN: 断轴上的柱状图
-// Four bar series whose magnitudes span three orders of magnitude (10^3, 10^5, 10^6); two `breaks`
-// on the value axis collapse the empty ranges (5k–100k, 105k–3.1M) so all four stay readable.
+// title: Bar Chart with Axis Breaks / titleCN: 断轴上的柱状图  (needs echarts >= 6.0.0)
+// Four bar series whose magnitudes span three orders of magnitude (~10^3, ~10^5, ~10^6); two `breaks`
+// on the value axis collapse the empty ranges (5k–100k, 105k–3.1M) — each drawn as a zig-zag
+// `breakArea` — so all four series stay readable at once. Clicking a break area expands it.
 //
 // DEVIATIONS from the official source:
-//   - The `initAxisBreakInteraction()` block (setTimeout-scheduled: an 'axisbreakchanged' + 'click'
-//     handler pair that re-setOptions a `graphic` "Collapse Axis Breaks" button and dispatches
-//     `collapseAxisBreak`) is DROPPED from both panes. The gallery renders one static frame, so the
-//     button never appears (it is `ignore: true` until a break is expanded by a click) — and the
-//     block is TypeScript, not JS: `params: echarts.AxisBreakChangedEvent` / `params as ...` are
-//     type annotations that would be a SyntaxError in the reference pane's classic script.
-//     Both panes therefore show the INITIAL state: both breaks collapsed.
-//   - The trailing `export {};` is dropped (a bare export is a SyntaxError in a classic script).
-//   - The reference pane keeps the `_currentAxisBreaks` var verbatim (still referenced by
-//     `yAxis.breaks`); the native pane carries the same two breaks as `barBreaksSimpleBreaks`.
-// Everything else — title/subtext styling, shadow axisPointer tooltip, legend, grid.top, breakArea,
-// per-series `emphasis.focus: 'series'` — is verbatim.
+//   - REFERENCE PANE: verbatim, INCLUDING the setTimeout-scheduled `initAxisBreakInteraction()` block
+//     (the 'axisbreakchanged' + 'click' handler pair that re-setOptions the `graphic` "Collapse Axis
+//     Breaks" button and dispatches `collapseAxisBreak`) — so click-to-expand/collapse really works
+//     there. Only removed: the two TypeScript-only annotations (`params as echarts.AxisBreakChangedEvent`
+//     and the `params: echarts.AxisBreakChangedEvent` parameter type), which a classic script cannot
+//     parse, and the trailing `export {};` (a bare export is a SyntaxError that kills the page).
+//   - NATIVE PANE: the initial `option` only, and deliberately NO `drive` closure — the example has no
+//     self-running timeline to replay (its lone `setTimeout(..., 0)` only REGISTERS listeners; nothing
+//     moves until a human clicks). Its dynamics are pure INTERACTION, and BOTH halves of the round-trip
+//     are missing from the port, so neither `drive` hook could stand in:
+//       · listen — `myChart.on('axisbreakchanged'/'click', ...)` is chart-level event SUBSCRIPTION, which
+//         `EChartsDemoChart` does not expose (the port's `ECharts` is not `Eventful`; see EChartsDemo.swift).
+//       · dispatch — `EChartsDemoChart.dispatch` exists, but EChartsKit registers NO `expandAxisBreak` /
+//         `collapseAxisBreak` action (only the `expandOnClick: true` default in coord/axisDefault.swift),
+//         so the `collapseAxisBreak` payload has nothing to land on either.
+//     Native therefore shows both breaks collapsed and inert: no expand-on-click, no collapse button, no
+//     `collapseAxisBreak` dispatch. The axis breaks themselves ARE ported — they are the chart.
+//   - The web pane keeps `_currentAxisBreaks` as a var (referenced by both `yAxis.breaks` and the
+//     collapse dispatch); the native pane carries the same two breaks as `barBreaksSimpleBreaks`.
+// Everything else — title/subtext styling, shadow-axisPointer tooltip, legend, grid.top, breakArea,
+// per-series `emphasis.focus: 'series'` — is verbatim on both panes.
 extension EChartsDemoRegistry {
     static let official_bar_breaks_simple = EChartsDemo(
         name: "official-bar-breaks-simple", category: "bar",
@@ -34,6 +44,7 @@ var _currentAxisBreaks = [{
   end: 3100000,
   gap: '1.5%'
 }];
+
 
 option = {
   title: {
@@ -108,6 +119,71 @@ option = {
     }
   ]
 };
+
+/**
+ * This is some interaction logic with axis break:
+ *  - Click to expand and reset button.
+ *
+ * You can ignore this part if you do not need it.
+ */
+function initAxisBreakInteraction() {
+
+  myChart.on('axisbreakchanged', function (params) {
+    updateCollapseButton(params);
+  });
+
+  myChart.on('click', function (params) {
+    if (params.name === 'collapseAxisBreakBtn') {
+      collapseAxisBreak();
+    }
+  });
+
+  function updateCollapseButton(params) {
+    // If there is any axis break expanded, we need to show the collapse button.
+    var needReset = false;
+    for (let i = 0; i < params.breaks.length; i++) {
+      const changedBreakItem = params.breaks[i];
+      if (changedBreakItem.isExpanded) {
+        needReset = true;
+        break;
+      }
+    }
+    myChart.setOption({
+      // Draw the collapse button.
+      graphic: [{
+        elements: [{
+          type: 'rect',
+          ignore: !needReset,
+          name: 'collapseAxisBreakBtn',
+          top: 5,
+          left: 5,
+          shape: {r: 3, width: 140, height: 24},
+          style: {fill: '#eee', stroke: '#999', lineWidth: 1},
+          textContent: {
+            type: 'text',
+            style: {
+              text: 'Collapse Axis Breaks',
+              fontSize: 13,
+              fontWeight: 'bold'
+            }
+          },
+          textConfig: {position: 'inside'}
+        }]
+      }]
+    });
+  }
+
+  function collapseAxisBreak() {
+    myChart.dispatchAction({
+      type: 'collapseAxisBreak',
+      yAxisIndex: 0,
+      breaks: _currentAxisBreaks
+    });
+  }
+
+} // End of initAxisBreakInteraction
+
+setTimeout(initAxisBreakInteraction, 0);
 """#,
         option: [
             "title": [
@@ -180,12 +256,14 @@ option = {
         ])
 }
 
-// The two collapsed ranges on the value axis. `start`/`end` double as each break's identifier.
+// The two collapsed ranges on the value axis — upstream's `_currentAxisBreaks`. `start`/`end` double
+// as each break's identifier (the `collapseAxisBreak` action addresses breaks by them).
 private let barBreaksSimpleBreaks: [[String: Any]] = [
     ["start": 5000.0, "end": 100000.0, "gap": "1.5%"],
     ["start": 105000.0, "end": 3100000.0, "gap": "1.5%"]
 ]
 
+// The three value bands the breaks exist to compress: ~10^3 (A, B), ~10^5 (C), ~3·10^6 (D).
 private let barBreaksSimpleDataA: [Double] = [1500, 2032, 2001, 3154, 2190, 4330, 2410]
 private let barBreaksSimpleDataB: [Double] = [1200, 1320, 1010, 1340, 900, 2300, 2100]
 private let barBreaksSimpleDataC: [Double] = [103200, 100320, 103010, 102340, 103900, 103300, 103200]

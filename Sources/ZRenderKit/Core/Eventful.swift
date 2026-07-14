@@ -115,9 +115,10 @@ public final class Eventful {
     public func on(
         _ event: String,
         _ handler: @escaping EventCallback,
-        _ context: AnyObject? = nil
+        _ context: AnyObject? = nil,
+        callAtLast: Bool = false
     ) -> Eventful {
-        return self.on(event, nil, handler, context)
+        return self.on(event, nil, handler, context, callAtLast: callAtLast)
     }
 
     /**
@@ -128,12 +129,18 @@ public final class Eventful {
      * @param handler The event handler.
      * @param context
      */
+    // `callAtLast` — upstream reads the flag OFF THE FUNCTION OBJECT (`(handler as any).zrEventfulCallAtLast`,
+    //   set by echarts `_initEvents` on its generic MOUSE_EVENT_NAMES handler so the public chart-event bus
+    //   fires AFTER the inner component handlers — tooltip/brush/… — which may `setOption`/`dispatchAction`).
+    //   Swift closures cannot carry properties, so the flag is an explicit (defaulted) parameter instead.
+    //   The insertion rule below is upstream's, unchanged.
     @discardableResult
     public func on(
         _ event: String,
         _ query: EventQuery?,
         _ handler: @escaping EventCallback,
-        _ context: AnyObject? = nil
+        _ context: AnyObject? = nil,
+        callAtLast: Bool = false
     ) -> Eventful {
         var query = query
         let context = context
@@ -174,9 +181,9 @@ public final class Eventful {
             query: query,
             // FIXME
             // Do not publish this feature util it is proved that it makes sense.
-            // PORT-NOTE: `handler.zrEventfulCallAtLast` — JS tacks a flag onto the
-            // function object; Swift closures cannot carry properties, so default false.
-            callAtLast: false
+            // upstream: `callAtLast: (handler as any).zrEventfulCallAtLast` — the flag JS tacks onto the
+            // function object; Swift closures cannot carry properties, so it arrives as a parameter.
+            callAtLast: callAtLast
         )
 
         let lastIndex = self._$handlers![event]!.count - 1

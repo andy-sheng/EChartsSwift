@@ -436,6 +436,20 @@ public final class ZRender {
         return self
     }
 
+    /// Bind event, `callAtLast` variant. Upstream reads the flag off the function object
+    /// (`handler.zrEventfulCallAtLast`; see `Eventful.on`) — echarts' `_initEvents` sets it on the
+    /// chart-event handler so the public chart bus fires AFTER the inner component handlers (tooltip,
+    /// brush, …), which may themselves `setOption`/`dispatchAction`. Separate overload (not a defaulted
+    /// 4th parameter) so `Handler`'s `on(_:_:_:)` protocol witness stays intact.
+    @discardableResult
+    public func on(_ eventName: String, _ eventHandler: @escaping EventCallback, _ context: AnyObject?,
+                   callAtLast: Bool) -> Self {
+        if !self._disposed {
+            self.handler.on(eventName, eventHandler, context, callAtLast: callAtLast)
+        }
+        return self
+    }
+
     /// Unbind event
     /// - eventName: Event name
     /// - eventHandler: Handler function

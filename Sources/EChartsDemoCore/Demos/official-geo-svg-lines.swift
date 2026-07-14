@@ -1,23 +1,21 @@
 // official-geo-svg-lines — replica of https://echarts.apache.org/examples/zh/editor.html?c=geo-svg-lines
 // title: GEO SVG Lines / titleCN: GEO 路径图（SVG）
 // A library floor plan registered as an SVG map (`registerMap(name, { svg })`), with a single 18-point
-// `lines` polyline drawn on `coordinateSystem: 'geo'` in the SVG's own coordinate space — a walking route
-// through the stacks, dotted, with a walker-shaped `effect` symbol that runs along it.
+// `lines` polyline drawn on `coordinateSystem: 'geo'` in the SVG's own coordinate space — a dotted walking
+// route through the stacks, with a walker-shaped `effect` symbol pacing along it.
 //
 // DEVIATIONS from the official source:
-//   - The `$.get(ROOT_PATH + '/data/asset/geo/MacOdrum-LV5-floorplan-web.svg', ...)` fetch is dropped:
-//     the SVG lives at assets/geo/MacOdrum-LV5-floorplan-web.svg and is read at demo time via
-//     Upstream.repoRoot (same #filePath-relative repo read WebPage.swift uses for the echarts dist).
-//     The `option` from the callback body is assigned unconditionally at the top level instead.
-//   - `echarts.registerMap('MacOdrum-LV5-floorplan-web', { svg: svg })` is NOT called inside
-//     webOptionJS; it is declared in `mapRegistrations` so BOTH panes register the same map
-//     (WebPage.swift injects registerMap into the page before the option script).
-//   - `series[0].effect` animates the walker symbol along the route. The gallery snapshots ONE static
-//     frame with animation forced off, so the effect symbol is captured at its start position (or not
-//     at all) rather than travelling — the route polyline itself is the static content.
-//   - Native pane: `geo.emphasis.itemStyle.color: undefined` is omitted (see PORT-NOTE) — Swift has no
-//     `undefined`, and the key is a no-op in the official source anyway.
-// Everything else (title, tooltip, geo, lines geometry + lineStyle + effect) is verbatim.
+//   - The `$.get(ROOT_PATH + '/data/asset/geo/MacOdrum-LV5-floorplan-web.svg', ...)` fetch is dropped: the
+//     SVG lives at assets/geo/MacOdrum-LV5-floorplan-web.svg and is read at demo time via Upstream.repoRoot
+//     (the same #filePath-relative repo read WebPage.swift uses for the echarts dist). The callback body is
+//     hoisted to the top level unchanged, `myChart.setOption(option)` and all.
+//   - `echarts.registerMap('MacOdrum-LV5-floorplan-web', { svg: svg })` is NOT called inside webOptionJS;
+//     it moves to `mapRegistrations` so BOTH panes register the same map (WebPage.swift injects registerMap
+//     into the page ahead of the option script; the native pane registers it in the option IIFE).
+//   - Native pane only: `geo.emphasis.itemStyle.color: undefined` is omitted (see PORT-NOTE) — Swift has no
+//     `undefined`, and the key is a no-op upstream.
+// NOT a deviation: `series[0].effect` (the walker running the route) is a plain option key, carried verbatim
+// by both panes and animated by each — no timeline is involved, so this demo needs no `drive`.
 import Foundation
 import EChartsKit
 
@@ -32,7 +30,7 @@ private let macOdrumFloorplanSVG: String = {
     return svg
 }()
 
-// The walker `effect.symbol`: a person-with-a-bag glyph, verbatim from the official example.
+// The `effect.symbol`: a walker-with-a-bag glyph, verbatim from the official example.
 private let macOdrumWalkerSymbol = "path://M35.5 40.5c0-22.16 17.84-40 40-40s40 17.84 40 40c0 1.6939-.1042 3.3626-.3067 5H35.8067c-.2025-1.6374-.3067-3.3061-.3067-5zm90.9621-2.6663c-.62-1.4856-.9621-3.1182-.9621-4.8337 0-6.925 5.575-12.5 12.5-12.5s12.5 5.575 12.5 12.5a12.685 12.685 0 0 1-.1529 1.9691l.9537.5506-15.6454 27.0986-.1554-.0897V65.5h-28.7285c-7.318 9.1548-18.587 15-31.2715 15s-23.9535-5.8452-31.2715-15H15.5v-2.8059l-.0937.0437-8.8727-19.0274C2.912 41.5258.5 37.5549.5 33c0-6.925 5.575-12.5 12.5-12.5S25.5 26.075 25.5 33c0 .9035-.0949 1.784-.2753 2.6321L29.8262 45.5h92.2098z"
 
 // The visit route: 18 points in the SVG's own coordinate space (coordinateSystem: 'geo' on an SVG map).
@@ -140,6 +138,8 @@ option = {
     }
   ]
 };
+
+myChart.setOption(option);
 """#,
         option: {
             // Register the floor-plan SVG map before the option is consumed

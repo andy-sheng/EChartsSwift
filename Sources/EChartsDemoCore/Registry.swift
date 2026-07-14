@@ -219,6 +219,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_bar_background,                         // bar
         EChartsDemoRegistry.official_bar_data_color,                         // bar
         EChartsDemoRegistry.official_bar_waterfall,                          // bar
+        EChartsDemoRegistry.official_bar_negative2,                          // bar
         EChartsDemoRegistry.official_bar_polar_label_radial,                 // bar
         EChartsDemoRegistry.official_bar_polar_label_tangential,             // bar
         EChartsDemoRegistry.official_bar_y_category,                         // bar
@@ -309,6 +310,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_geo_svg_scatter_simple,                 // map
         EChartsDemoRegistry.official_geo_svg_traffic,                        // map
         EChartsDemoRegistry.official_lines_airline,                          // map
+        EChartsDemoRegistry.official_lines_ny,                               // map
         EChartsDemoRegistry.official_map_bar_morph,                          // map
         EChartsDemoRegistry.official_map_hk,                                 // map
         EChartsDemoRegistry.official_map_usa,                                // map
@@ -334,24 +336,32 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot   (native N/A)
         EChartsDemoRegistry.official_heatmap_cartesian,                      // heatmap
         EChartsDemoRegistry.official_heatmap_large,                          // heatmap
+        EChartsDemoRegistry.official_heatmap_large_piecewise,                // heatmap
         EChartsDemoRegistry.official_heatmap_map,                            // heatmap
         EChartsDemoRegistry.official_graph_force2,                           // graph
+        EChartsDemoRegistry.official_graph_grid,                             // graph
         EChartsDemoRegistry.official_graph_simple,                           // graph
+        EChartsDemoRegistry.official_graph_label_overlap,                    // graph
         EChartsDemoRegistry.official_graph_circular_layout,                  // graph
         EChartsDemoRegistry.official_graph_force_dynamic,                    // graph
+        EChartsDemoRegistry.official_graph_life_expectancy,                  // graph
         EChartsDemoRegistry.official_graph_webkit_dep,                       // graph
         EChartsDemoRegistry.official_graph_npm,                              // graph
         EChartsDemoRegistry.official_tree_basic,                             // tree
         EChartsDemoRegistry.official_tree_legend,                            // tree
         EChartsDemoRegistry.official_tree_orient_bottom_top,                 // tree
         EChartsDemoRegistry.official_tree_orient_right_left,                 // tree
+        EChartsDemoRegistry.official_tree_polyline,                          // tree
         EChartsDemoRegistry.official_tree_vertical,                          // tree
+        EChartsDemoRegistry.official_treemap_sunburst_transition,            // treemap
         EChartsDemoRegistry.official_treemap_drill_down,                     // treemap
         EChartsDemoRegistry.official_treemap_show_parent,                    // treemap
         EChartsDemoRegistry.official_treemap_simple,                         // treemap
+        EChartsDemoRegistry.official_treemap_visual,                         // treemap
         EChartsDemoRegistry.official_sunburst_simple,                        // sunburst
         EChartsDemoRegistry.official_sunburst_borderradius,                  // sunburst
         EChartsDemoRegistry.official_sunburst_label_rotate,                  // sunburst
+        EChartsDemoRegistry.official_sunburst_monochrome,                    // sunburst
         EChartsDemoRegistry.official_sunburst_visualmap,                     // sunburst
         EChartsDemoRegistry.official_sunburst_drink,                         // sunburst
         EChartsDemoRegistry.official_sunburst_book,                          // sunburst
@@ -360,21 +370,31 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_parallel_aqi,                           // parallel
         EChartsDemoRegistry.official_parallel_nutrients,                     // parallel
         EChartsDemoRegistry.official_sankey_simple,                          // sankey
+        EChartsDemoRegistry.official_sankey_vertical,                        // sankey
         EChartsDemoRegistry.official_sankey_itemstyle,                       // sankey
         EChartsDemoRegistry.official_sankey_levels,                          // sankey
         EChartsDemoRegistry.official_sankey_energy,                          // sankey
         EChartsDemoRegistry.official_sankey_nodealign_left,                  // sankey
         EChartsDemoRegistry.official_sankey_nodealign_right,                 // sankey
         EChartsDemoRegistry.official_funnel,                                 // funnel
+        EChartsDemoRegistry.official_funnel_align,                           // funnel
         EChartsDemoRegistry.official_gauge,                                  // gauge
         EChartsDemoRegistry.official_gauge_simple,                           // gauge
+        EChartsDemoRegistry.official_gauge_speed,                            // gauge
         EChartsDemoRegistry.official_gauge_stage,                            // gauge
+        EChartsDemoRegistry.official_gauge_grade,                            // gauge
         EChartsDemoRegistry.official_gauge_multi_title,                      // gauge
+        EChartsDemoRegistry.official_gauge_temperature,                      // gauge
+        EChartsDemoRegistry.official_gauge_barometer,                        // gauge
+        EChartsDemoRegistry.official_gauge_clock,                            // gauge
         EChartsDemoRegistry.official_pictorialbar_bar_transition,            // pictorialBar
+        EChartsDemoRegistry.official_pictorialbar_body_fill,                 // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_dotted,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_forest,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_hill,                      // pictorialBar   (native N/A)
+        EChartsDemoRegistry.official_pictorialbar_spirit,                    // pictorialBar   (native N/A)
         EChartsDemoRegistry.official_pictorialbar_vehicle,                   // pictorialBar
+        EChartsDemoRegistry.official_pictorialbar_velocity,                  // pictorialBar
         EChartsDemoRegistry.official_themeriver_basic,                       // themeRiver
         EChartsDemoRegistry.official_themeriver_lastfm,                      // themeRiver
         EChartsDemoRegistry.official_calendar_pie,                           // calendar
@@ -383,28 +403,40 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_calendar_vertical,                      // calendar
         EChartsDemoRegistry.official_calendar_graph,                         // calendar
         EChartsDemoRegistry.official_calendar_simple,                        // calendar
+        EChartsDemoRegistry.official_calendar_horizontal,                    // calendar
+        EChartsDemoRegistry.official_calendar_lunar,                         // calendar
         EChartsDemoRegistry.official_matrix_sparkline,                       // matrix
         EChartsDemoRegistry.official_matrix_mini_bar_geo,                    // matrix
+        EChartsDemoRegistry.official_matrix_stock,                           // matrix
         EChartsDemoRegistry.official_matrix_simple,                          // matrix
         EChartsDemoRegistry.official_matrix_covariance,                      // matrix
         EChartsDemoRegistry.official_matrix_graph,                           // matrix
         EChartsDemoRegistry.official_matrix_pie,                             // matrix
+        EChartsDemoRegistry.official_matrix_confusion,                       // matrix   (native N/A)
+        EChartsDemoRegistry.official_matrix_grid_layout,                     // matrix
         EChartsDemoRegistry.official_matrix_periodic_table,                  // matrix   (native N/A)
         EChartsDemoRegistry.official_matrix_mini_bar_data_collection,        // matrix   (native N/A)
         EChartsDemoRegistry.official_chord_simple,                           // chord
         EChartsDemoRegistry.official_chord_minangle,                         // chord
+        EChartsDemoRegistry.official_chord_linestyle_color,                  // chord
         EChartsDemoRegistry.official_chord_style,                            // chord
         EChartsDemoRegistry.official_custom_hexbin,                          // custom   (native N/A)
         EChartsDemoRegistry.official_custom_calendar_icon,                   // custom   (native N/A)
         EChartsDemoRegistry.official_bar_histogram,                          // custom   (native N/A)
         EChartsDemoRegistry.official_custom_profit,                          // custom   (native N/A)
         EChartsDemoRegistry.official_custom_error_scatter,                   // custom
+        EChartsDemoRegistry.official_custom_bar_trend,                       // custom
+        EChartsDemoRegistry.official_custom_cartesian_polygon,               // custom
         EChartsDemoRegistry.official_custom_error_bar,                       // custom
         EChartsDemoRegistry.official_custom_profile,                         // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_gantt_flight,                    // custom   (native N/A)
         EChartsDemoRegistry.official_custom_polar_heatmap,                   // custom
         EChartsDemoRegistry.official_flame_graph,                            // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_wind,                            // custom   (native N/A)
         EChartsDemoRegistry.official_custom_gauge,                           // custom   (native N/A)
         EChartsDemoRegistry.official_geo_svg_custom_effect,                  // custom   (native N/A)
+        EChartsDemoRegistry.official_pie_parliament_transition,              // custom
+        EChartsDemoRegistry.official_circle_packing_with_d3,                 // custom
         EChartsDemoRegistry.official_dataset_link,                           // dataset
         EChartsDemoRegistry.official_data_transform_sort_bar,                // dataset
         EChartsDemoRegistry.official_dataset_encode0,                        // dataset
@@ -417,6 +449,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_area_simple,                            // dataZoom
         EChartsDemoRegistry.official_line_graphic,                           // graphic   (native N/A)
         EChartsDemoRegistry.official_graphic_stroke_animation,               // graphic   (native N/A)
+        EChartsDemoRegistry.official_graphic_loading,                        // graphic
         EChartsDemoRegistry.official_pie_rich_text,                          // rich   (native N/A)
     ]
 
@@ -440,6 +473,7 @@ extension EChartsDemoRegistry {
         "official-calendar-vertical": ["heatmap"],
         "official-custom-calendar-icon": ["calendar"],
         "official-custom-error-scatter": ["dataZoom"],
+        "official-custom-gantt-flight": ["dataZoom"],
         "official-custom-hexbin": ["map"],
         "official-data-transform-multiple-pie": ["pie"],
         "official-data-transform-sort-bar": ["bar"],
@@ -457,9 +491,11 @@ extension EChartsDemoRegistry {
         "official-line-graphic": ["line"],
         "official-line-tooltip-touch": ["dataZoom"],
         "official-lines-airline": ["lines"],
+        "official-lines-ny": ["lines"],
         "official-map-iceland-pie": ["pie"],
         "official-matrix-mini-bar-geo": ["bar"],
         "official-matrix-sparkline": ["line"],
+        "official-matrix-stock": ["candlestick"],
         "official-pie-nest": ["rich"],
         "official-pie-rich-text": ["pie"],
         "official-scatter-matrix": ["scatter"],

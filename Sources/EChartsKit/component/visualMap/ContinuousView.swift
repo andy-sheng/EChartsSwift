@@ -958,16 +958,9 @@ private func numberOrString(_ v: Any?) -> NumberOrString {
 // sibling APIs (`util/graphic` transform helpers, `visualMap/helper.getItemAlign`) so the view compiles.
 // ============================================================================
 
-/// upstream `util/graphic.getTransform(target, ancestor)` — matrix from `target` up to (excluding) `ancestor`.
-private func getTransform(_ target: Transformable?, _ ancestor: Transformable?) -> MatrixArray {
-    var mat = matrix.identity()
-    var t = target
-    while let cur = t, cur !== ancestor {
-        mat = matrix.mul(cur.getLocalTransform(), mat)
-        t = cur.parent
-    }
-    return mat
-}
+// `getTransform` — the local stand-in is GONE: `util/graphic.getTransform(target, ancestor?)` is now the
+//   real ported helper (util/graphic.swift), with an identical body, so the call sites below resolve to it.
+//   (Keeping both is a hard "invalid redeclaration": same module, same signature.)
 
 /// upstream `util/graphic.applyTransform(target, transform, invert?)`.
 private func applyTransformPoint(_ target: [Double], _ transform: MatrixArray, _ invert: Bool) -> [Double] {

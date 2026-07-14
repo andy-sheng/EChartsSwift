@@ -6,19 +6,21 @@
 // content of the series is each route's `effect` — a car-shaped symbol that drives along it at its own
 // per-item `constantSpeed` (100 / 80 / 60) and colour (#a10000 / #00067d / #997405).
 //
+// The example is NOT dynamic in the `drive` sense: it has no setInterval/setTimeout and never re-setOptions.
+// The cars move because `series[].effect` is a DECLARATIVE echarts animation, carried by the option itself —
+// so both panes get it from the same option and no timeline replay is needed.
+//
 // DEVIATIONS from the official source:
 //   - The `$.get(ROOT_PATH + '/data/asset/geo/ksia-ext-plan-min.svg', ...)` fetch is dropped (the pane has
 //     no network). The SAME asset is vendored at assets/geo/ksia-ext-plan-min.svg and read at demo time via
 //     Upstream.repoRoot (the #filePath-relative repo read WebPage.swift uses for the echarts dist), so the
-//     callback BODY is kept verbatim and `option` is assigned unconditionally at the top level.
+//     callback BODY — including its closing `myChart.setOption(option)` — is kept verbatim at the top level.
 //   - `echarts.registerMap('ksia-ext-plan', { svg: svg })` is NOT called inside webOptionJS: the SVG is
 //     declared in `mapRegistrations`, so WebPage.swift injects registerMap into the page before the option
 //     script and the native pane registers the identical map (see official-geo-svg-lines.swift).
-//   - `series[0].effect` is a CONTINUOUS animation (the cars loop along the routes). The gallery snapshots
-//     ONE static frame with animation forced off, so the three cars are captured at their start positions
-//     rather than driving — and since `lineStyle.width` is 0 there is no static route line behind them,
-//     leaving the SVG plan plus three parked car glyphs.
-// Everything else (tooltip, geo, series incl. per-item effect, the polyline coords, z) is verbatim.
+//   - The trailing `export {};` is dropped — a bare export is a SyntaxError in the page's classic script.
+// Everything else (tooltip, geo, series incl. per-item effect, the polyline coords, z, the setOption call)
+// is verbatim; the native option carries every key (no closures to omit).
 import Foundation
 import EChartsKit
 
@@ -324,6 +326,8 @@ option = {
     }
   ]
 };
+
+myChart.setOption(option);
 """#,
         option: {
             // Register the airport-plan SVG map before the option is consumed — upstream

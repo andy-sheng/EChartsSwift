@@ -543,8 +543,13 @@ private func applyLineStyleOption(_ st: inout PathStyleProps, _ seriesModel: Ser
     guard let ls = seriesModel.get("lineStyle") as? [String: Any] else { return }
     if let w = ls["width"] as? Double { st.lineWidth = w }
     else if let wi = ls["width"] as? Int { st.lineWidth = Double(wi) }
-    if let c = ls["color"] as? String, c != "inherit", c != "auto", !c.isEmpty {
-        st.stroke = .string(c)
+    // `color: 'inherit'`/'auto'/'' leaves the visual stroke in place; an explicit solid color wins,
+    //   and a gradient/dict color (`{type:'linear'|'radial',…}` or an EChartsKit `ZRColor` gradient)
+    //   is bridged via the shared `zrPaintFromStyleValue` (line-gradient-stroke examples).
+    if let c = ls["color"] as? String {
+        if c != "inherit", c != "auto", !c.isEmpty { st.stroke = .string(c) }
+    } else if let paint = zrPaintFromStyleValue(ls["color"]) {
+        st.stroke = paint
     }
     if let op = ls["opacity"] as? Double { st.strokeOpacity = op }
     switch ls["type"] {

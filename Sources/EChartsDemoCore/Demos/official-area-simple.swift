@@ -12,11 +12,11 @@
 //      Swift pane generate the SAME 20,000 values. The generation loop is otherwise verbatim, so the
 //      data is NOT inlined — each pane runs the same algorithm.
 //   2. `tooltip.position` is a JS closure; omitted from the Swift option (see the PORT-NOTE below).
-//   3. NATIVE PANE: the gradient `areaStyle.color` does not render as a gradient. EChartsKit's style
-//      bridge (`barStyleFromDict`, shared by LineView's area pass) only bridges solid colors — a
-//      gradient/pattern fill falls back to the solid series color — so the native area is flat
-//      rgb(255,70,131) where the echarts.js pane fades orange→pink. Everything else (lttb sampling,
-//      the dataZoom window, the toolbox) renders on both panes.
+//   3. (Was a deviation; now fixed.) The gradient `areaStyle.color` renders as a gradient on the
+//      native pane. EChartsKit's style bridge (`barStyleFromDict`, shared by LineView's area pass)
+//      now converts a gradient option dict `{type:'linear'|'radial', ...}` (or an EChartsKit
+//      `ZRColor.linearGradient/.radialGradient`) into a ZRenderKit `LinearGradient`/`RadialGradient`,
+//      which NativePainter paints against the fill's bounding rect. Both panes now fade orange→pink.
 //   4. Upstream's own off-by-one is preserved verbatim: `date` gets 19,999 labels while `data` gets
 //      20,000 values (the loop starts at i=1 but seeds data[0] before it). Both panes see it.
 import Foundation
@@ -202,8 +202,8 @@ option = {
                     "sampling": "lttb",
                     "itemStyle": ["color": "rgb(255, 70, 131)"] as [String: Any],
                     // The plain-object form of `new echarts.graphic.LinearGradient(0, 0, 0, 1, stops)`
-                    //   (echarts accepts both). Deviation 3: the native pane paints this flat — the
-                    //   option-dict → gradient bridge is not there yet.
+                    //   (echarts accepts both). `barStyleFromDict` bridges this dict to a ZRenderKit
+                    //   `LinearGradient`, so the native pane now paints the orange→pink gradient too.
                     "areaStyle": [
                         "color": [
                             "type": "linear",
