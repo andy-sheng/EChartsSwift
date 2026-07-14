@@ -312,6 +312,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_map_bar_morph,                          // map
         EChartsDemoRegistry.official_map_hk,                                 // map
         EChartsDemoRegistry.official_map_usa,                                // map
+        EChartsDemoRegistry.official_map_usa_projection,                     // map
         EChartsDemoRegistry.official_geo_lines,                              // map
         EChartsDemoRegistry.official_geo_map_scatter,                        // map
         EChartsDemoRegistry.official_intraday_breaks_1,                      // candlestick
@@ -328,11 +329,17 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_radar_custom,                           // radar
         EChartsDemoRegistry.official_radar2,                                 // radar
         EChartsDemoRegistry.official_radar_multiple,                         // radar
+        EChartsDemoRegistry.official_data_transform_aggregate,               // boxplot   (native N/A)
         EChartsDemoRegistry.official_boxplot_light_velocity,                 // boxplot   (native N/A)
         EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot   (native N/A)
         EChartsDemoRegistry.official_heatmap_cartesian,                      // heatmap
         EChartsDemoRegistry.official_heatmap_large,                          // heatmap
+        EChartsDemoRegistry.official_heatmap_map,                            // heatmap
+        EChartsDemoRegistry.official_graph_force2,                           // graph
         EChartsDemoRegistry.official_graph_simple,                           // graph
+        EChartsDemoRegistry.official_graph_circular_layout,                  // graph
+        EChartsDemoRegistry.official_graph_force_dynamic,                    // graph
+        EChartsDemoRegistry.official_graph_webkit_dep,                       // graph
         EChartsDemoRegistry.official_graph_npm,                              // graph
         EChartsDemoRegistry.official_tree_basic,                             // tree
         EChartsDemoRegistry.official_tree_legend,                            // tree
@@ -340,25 +347,32 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_tree_orient_right_left,                 // tree
         EChartsDemoRegistry.official_tree_vertical,                          // tree
         EChartsDemoRegistry.official_treemap_drill_down,                     // treemap
+        EChartsDemoRegistry.official_treemap_show_parent,                    // treemap
         EChartsDemoRegistry.official_treemap_simple,                         // treemap
         EChartsDemoRegistry.official_sunburst_simple,                        // sunburst
         EChartsDemoRegistry.official_sunburst_borderradius,                  // sunburst
+        EChartsDemoRegistry.official_sunburst_label_rotate,                  // sunburst
         EChartsDemoRegistry.official_sunburst_visualmap,                     // sunburst
         EChartsDemoRegistry.official_sunburst_drink,                         // sunburst
         EChartsDemoRegistry.official_sunburst_book,                          // sunburst
         EChartsDemoRegistry.official_scatter_matrix,                         // parallel
         EChartsDemoRegistry.official_parallel_simple,                        // parallel
         EChartsDemoRegistry.official_parallel_aqi,                           // parallel
+        EChartsDemoRegistry.official_parallel_nutrients,                     // parallel
         EChartsDemoRegistry.official_sankey_simple,                          // sankey
         EChartsDemoRegistry.official_sankey_itemstyle,                       // sankey
         EChartsDemoRegistry.official_sankey_levels,                          // sankey
         EChartsDemoRegistry.official_sankey_energy,                          // sankey
+        EChartsDemoRegistry.official_sankey_nodealign_left,                  // sankey
+        EChartsDemoRegistry.official_sankey_nodealign_right,                 // sankey
         EChartsDemoRegistry.official_funnel,                                 // funnel
         EChartsDemoRegistry.official_gauge,                                  // gauge
         EChartsDemoRegistry.official_gauge_simple,                           // gauge
         EChartsDemoRegistry.official_gauge_stage,                            // gauge
+        EChartsDemoRegistry.official_gauge_multi_title,                      // gauge
         EChartsDemoRegistry.official_pictorialbar_bar_transition,            // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_dotted,                    // pictorialBar
+        EChartsDemoRegistry.official_pictorialbar_forest,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_hill,                      // pictorialBar   (native N/A)
         EChartsDemoRegistry.official_pictorialbar_vehicle,                   // pictorialBar
         EChartsDemoRegistry.official_themeriver_basic,                       // themeRiver
@@ -385,7 +399,9 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_bar_histogram,                          // custom   (native N/A)
         EChartsDemoRegistry.official_custom_profit,                          // custom   (native N/A)
         EChartsDemoRegistry.official_custom_error_scatter,                   // custom
+        EChartsDemoRegistry.official_custom_error_bar,                       // custom
         EChartsDemoRegistry.official_custom_profile,                         // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_polar_heatmap,                   // custom
         EChartsDemoRegistry.official_flame_graph,                            // custom   (native N/A)
         EChartsDemoRegistry.official_custom_gauge,                           // custom   (native N/A)
         EChartsDemoRegistry.official_geo_svg_custom_effect,                  // custom   (native N/A)
@@ -397,6 +413,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_dataset_simple1,                        // dataset
         EChartsDemoRegistry.official_data_transform_multiple_pie,            // dataset
         EChartsDemoRegistry.official_dataset_default,                        // dataset
+        EChartsDemoRegistry.official_dataset_encode1,                        // dataset
         EChartsDemoRegistry.official_area_simple,                            // dataZoom
         EChartsDemoRegistry.official_line_graphic,                           // graphic   (native N/A)
         EChartsDemoRegistry.official_graphic_stroke_animation,               // graphic   (native N/A)

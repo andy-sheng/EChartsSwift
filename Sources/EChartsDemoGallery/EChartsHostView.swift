@@ -170,5 +170,16 @@ extension EChartsHostView: EChartsDemoChart {
         }
         driveTimers.append(t)
     }
+
+    /// The example's `myChart.dispatchAction({ type: 'brush', ... })`. The JS payload is a bag; the
+    /// port's `Payload` is a struct with a `type` plus an `other` dictionary for everything else, so
+    /// map it that way.
+    func dispatch(_ payload: [String: Any]) {
+        guard let type = payload["type"] as? String else { return }
+        var p = Payload(type: type)
+        p.other = payload.filter { $0.key != "type" }
+        echartsView.ec.dispatchAction(p)
+        echartsView.syncAfterAction()   // the action mutated the model; pull it back into the zr scene
+    }
 }
 #endif

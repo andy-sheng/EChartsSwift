@@ -45,6 +45,18 @@ public protocol EChartsDemoChart: AnyObject {
     func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void)
     /// The example's `setTimeout(fn, ms)`.
     func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void)
+    /// The example's `myChart.dispatchAction({ type: ..., ... })`.
+    ///
+    /// Not every dynamic example is a timer. Plenty drive the chart by DISPATCHING an action — a
+    /// brush selection, a highlight, a drilldown. Without this, an agent porting such an example has
+    /// no way to reproduce it natively and (as happened) deletes the behaviour instead, turning a
+    /// framework gap into an invisible demo simplification.
+    ///
+    /// NOTE what is still missing: `myChart.on('click', ...)` — chart-level event SUBSCRIPTION.
+    /// Upstream `ECharts extends Eventful`; the port's `ECharts` does not, so an example whose
+    /// dynamics are a round-trip (dispatch → listen → re-setOption) cannot be fully replayed on the
+    /// native pane yet. Such demos must say so in their header, not quietly drop the behaviour.
+    func dispatch(_ payload: [String: Any])
 }
 
 // MARK: - Demo value type (mirrors DemoGallery.Demo, option-driven)

@@ -223,6 +223,13 @@ public final class EChartsView {
         _afterSetOption()
     }
 
+    /// Re-sync the scene graph after something OTHER than `setOption` mutated the model — a
+    /// `dispatchAction` (a brush selection, a highlight). Upstream the driver repaints itself through
+    /// its update loop; here the zr scene is a copy of `ec.getRoot()`, so it has to be re-pulled.
+    public func syncAfterAction() {
+        _afterSetOption()
+    }
+
     private func _afterSetOption() {
         _syncRoot()
         // L3 Roam: (re)wire the graph RoamController against the freshly-built model (upstream GraphView.render
