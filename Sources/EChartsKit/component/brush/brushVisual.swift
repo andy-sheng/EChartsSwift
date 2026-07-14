@@ -1,6 +1,7 @@
-// Ported from echarts/src/component/brush/visualEncoding.ts (+ the rect branch of
-// echarts/src/component/brush/selector.ts and the grid/rect subset of
-// echarts/src/component/helper/BrushTargetManager.ts) — keep in sync with upstream.
+// Ported from echarts/src/component/brush/visualEncoding.ts — keep in sync with upstream.
+// FILE NAME: upstream `visualEncoding.ts`; renamed here because SwiftPM requires unique source
+//   basenames per module and `component/visualMap/visualEncoding.swift` already claims that name
+//   (cf. the model/Component.swift -> view/ComponentView.swift precedent). No identifiers change.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -23,349 +24,286 @@
 import Foundation
 import ZRenderKit
 
-// ============================================================================
-// PORT SCOPE (Phase 44 — brush milestone)
-//
-// This is the RECTANGLE brush on a cartesian grid only. DEFERRED (marked PORT-NOTE inline):
-//   - lineX / lineY / polygon brush types (selector.ts `getLineSelectors` + polygon branch).
-//   - geo / parallel coordinate systems (BrushTargetManager `geo` builder + `stepAParallel`).
-//   - the throttle machinery + the `zr[DISPATCH_FLAG]` re-entrancy guard around `brushSelect`
-//     (throttleUtil.createOrUpdate needs a live zr — not available headlessly).
-//
-// UPSTREAM SURFACE consumed from Task 1 (the ported BrushModel). `BrushModel` is expected to
-// conform to `BrushModelLike` below (its `areas` runtime state + `setAreas`). Areas are modeled
-// as the CONVENTIONS dynamic bag `[String: Any]` (BrushAreaParamInternal), with keys:
-//   "brushType"   : String ("rect" here)
-//   "range"       : [[Double]] pixel min/max  [[x0,x1],[y0,y1]]  (computed from coordRange)
-//   "coordRange"  : [[Double]] data min/max    (the dispatch input for a coord-bound area)
-//   "panelId"     : String?    (assigned by setInputRanges once a target grid is matched)
-//   "gridIndex"/"xAxisIndex"/"yAxisIndex" : finder to bind the area to a grid.
-//
-// PORT DEVIATION: upstream stores `brushModel.brushTargetManager` on the model and reads it in
-// `stepAOthers`. Here the target manager is a local built once per `brushVisual` pass and threaded
-// through — it avoids adding a stored property to the Task-1 class and keeps the two invocation
-// sites (layoutCovers + stepAOthers) using the same instance.
-// ============================================================================
-
-/// The Task-1 `BrushModel` is expected to conform to this so the visual encoder can read/write its
-/// runtime `areas`. (Mirrors the dataZoomAction convention of assuming a Task-1 model surface.)
-public protocol BrushModelLike: AnyObject {
-    var areas: [[String: Any]] { get set }
-    func setAreas(_ areas: [[String: Any]]?)
-}
+// import * as zrUtil from 'zrender/src/core/util';
+// import BoundingRect from 'zrender/src/core/BoundingRect';
+// import * as visualSolution from '../../visual/visualSolution';
+// import { BrushSelectableArea, makeBrushCommonSelectorForSeries } from './selector';  -> selector.swift
+// import * as throttleUtil from '../../util/throttle';   -> PORT-NOTE (deferred), see `dispatchAction`
+// import BrushTargetManager from '../helper/BrushTargetManager';   -> BrushTargetManager.swift
+// import ParallelSeriesModel from '../../chart/parallel/ParallelSeries';
+// import { createSimpleOverallStageHandler2, initExtentForUnion } from '../../util/model';
 
 // type BrushVisualState = 'inBrush' | 'outOfBrush';
-// const STATE_LIST = ['inBrush', 'outOfBrush'];
+public typealias BrushVisualState = String
+
+// const STATE_LIST = ['inBrush', 'outOfBrush'] as const;
 private let STATE_LIST: [String] = ["inBrush", "outOfBrush"]
+// const DISPATCH_METHOD = '__ecBrushSelect';
+// const DISPATCH_FLAG = '__ecInBrushSelectEvent';
+//   -> see the `dispatchAction` PORT-NOTE (no zr-attached throttle in this port).
 
-// ---------------------------------------------------------------------------
-// selector.ts — the RECT selector + `makeBrushCommonSelectorForSeries`.
-// ---------------------------------------------------------------------------
-
-// export interface BrushSelectableArea extends BrushAreaParamInternal {
-//     boundingRect: BoundingRect; selectors: BrushCommonSelectorsForSeries;
-// }
-//   Modeled as a class carrying the raw area bag + the computed boundingRect + bound selectors.
-final class BrushSelectableArea {
-    var area: [String: Any]
-    var brushType: String
-    var range: Any?
-    var boundingRect: BoundingRect?
-    // Bound selectors (upstream `area.selectors`), assigned right after construction.
-    var selectors: BrushCommonSelectorsForSeries!
-
-    init(_ area: [String: Any]) {
-        self.area = area
-        self.brushType = (area["brushType"] as? String) ?? ""
-        self.range = area["range"]
-        self.boundingRect = boundingRectBuilders[self.brushType].map { $0(area) } ?? nil
+// interface BrushSelectedItem { brushId; brushIndex; brushName; areas; selected: {seriesId; seriesIndex;
+//     seriesName; dataIndex: number[]}[] }
+//   Modeled as classes (they are MUTATED while building: `seriesBrushSelected.dataIndex.push(...)`),
+//   serialized to the `[String: Any]` bag the `brushSelect` action payload / `brushselected` event carries.
+public final class BrushSelectedSeries {
+    public let seriesId: String
+    public let seriesIndex: Int
+    public let seriesName: String
+    public var dataIndex: [Int] = []
+    init(seriesId: String, seriesIndex: Int, seriesName: String) {
+        self.seriesId = seriesId; self.seriesIndex = seriesIndex; self.seriesName = seriesName
+    }
+    public func toDict() -> [String: Any] {
+        return ["seriesId": seriesId, "seriesIndex": seriesIndex, "seriesName": seriesName,
+                "dataIndex": dataIndex]
+    }
+}
+public final class BrushSelectedItem {
+    public let brushId: String
+    public let brushIndex: Int
+    public let brushName: String
+    public let areas: [BrushAreaParamInternal]
+    public var selected: [BrushSelectedSeries] = []
+    init(brushId: String, brushIndex: Int, brushName: String, areas: [BrushAreaParamInternal]) {
+        self.brushId = brushId; self.brushIndex = brushIndex; self.brushName = brushName; self.areas = areas
+    }
+    public func toDict() -> [String: Any] {
+        return ["brushId": brushId, "brushIndex": brushIndex, "brushName": brushName,
+                "areas": areas, "selected": selected.map { $0.toDict() }]
+    }
+    /// The selected raw dataIndices of one series — the headless test oracle.
+    public func selectedDataIndices(_ seriesIndex: Int) -> [Int] {
+        return selected.first { $0.seriesIndex == seriesIndex }?.dataIndex ?? []
     }
 }
 
-// export interface BrushCommonSelectorsForSeries { point(itemLayout); rect(itemLayout); }
-final class BrushCommonSelectorsForSeries {
-    let pointFn: ([Double]?) -> Bool
-    let rectFn: (RectLike?) -> Bool
-    init(point: @escaping ([Double]?) -> Bool, rect: @escaping (RectLike?) -> Bool) {
-        self.pointFn = point
-        self.rectFn = rect
-    }
-    func point(_ itemLayout: [Double]?) -> Bool { pointFn(itemLayout) }
-    func rect(_ itemLayout: RectLike?) -> Bool { rectFn(itemLayout) }
+// The `takeGlobalCursor` arm/disarm, factored out of `brushVisual`'s first `eachComponent` loop:
+//     payload && payload.type === 'takeGlobalCursor' && brushModel.setBrushOption(
+//         payload.key === 'brush' ? payload.brushOption : {brushType: false}
+//     );
+//
+// PORT-NOTE (stage order): upstream runs the VISUAL stages BEFORE `renderComponents`, so by the time
+//   BrushView renders, `brushModel.brushOption` is already fresh and its controller arms on the SAME
+//   frame the `takeGlobalCursor` action arrives. This driver renders the components FIRST and runs the
+//   brush visual near the end of `render()` (it must follow the LAYOUT stages — the selectors read each
+//   datum's `getItemLayout`). So `BrushView._updateController` calls this too. It is idempotent: same
+//   payload, same `setBrushOption` result. Without it the paint cursor would only arm one frame late, and
+//   the very first drag after clicking the brush button would do nothing.
+func applyTakeGlobalCursor(_ brushModel: BrushModel, _ payload: Payload?) {
+    guard let payload = payload, payload.type == "takeGlobalCursor" else { return }
+    let key = payload.other["key"] as? String
+    let brushOption = (payload.other["brushOption"] as? [String: Any]) ?? [:]
+    // `{brushType: false}` -> `["brushType": NSNull()]`: `generateBrushOption` merges this over the
+    //   component option (which carries a `brushType` default), so the key must be PRESENT and falsy to
+    //   disable — an absent key would let the default win. `as? String` on NSNull is nil, i.e. exactly
+    //   upstream's falsy `false`.
+    brushModel.setBrushOption(key == "brush" ? brushOption : ["brushType": NSNull()])
 }
 
-// export function makeBrushCommonSelectorForSeries(area): BrushCommonSelectorsForSeries
-func makeBrushCommonSelectorForSeries(_ area: BrushSelectableArea) -> BrushCommonSelectorsForSeries {
-    let brushType = area.brushType
-    // selectorsByBrushType dispatch (upstream `selector[brushType]`).
-    switch brushType {
-    case "rect":
-        return BrushCommonSelectorsForSeries(
-            // rect.point: itemLayout && area.boundingRect.contain(itemLayout[0], itemLayout[1])
-            point: { itemLayout in
-                guard let p = itemLayout, p.count >= 2, let br = area.boundingRect else { return false }
-                return br.contain(p[0], p[1])
-            },
-            // rect.rect: itemLayout && area.boundingRect.intersect(itemLayout)
-            rect: { itemLayout in
-                guard let rl = itemLayout, let br = area.boundingRect else { return false }
-                return br.intersect(rl)
-            }
+// export function layoutCovers(ecModel: GlobalModel): void
+public func layoutCovers(_ ecModel: GlobalModel) {
+    // ecModel.eachComponent({mainType: 'brush'}, function (brushModel: BrushModel) {
+    //     const brushTargetManager = brushModel.brushTargetManager = new BrushTargetManager(brushModel.option, ecModel);
+    //     brushTargetManager.setInputRanges(brushModel.areas, ecModel);
+    // });
+    ecModel.eachComponent("brush") { brushModelIn, _ in
+        guard let brushModel = brushModelIn as? BrushModel else { return }
+        let brushTargetManager = BrushTargetManager(
+            (brushModel.option as? [String: Any]) ?? [:], ecModel
         )
-    case "lineX":
-        // getLineSelectors(0): area.range is the 1D pixel band [x0, x1] on the X dim.
-        let range = brushRange1D(area.area["range"])
-        return BrushCommonSelectorsForSeries(
-            // point: range[0] <= itemLayout[0] <= range[1]
-            point: { itemLayout in
-                guard let p = itemLayout, p.count >= 1, let r = range else { return false }
-                return r[0] <= p[0] && p[0] <= r[1]
-            },
-            // rect: range[0] <= x+width && x <= range[1] (x-overlap)
-            rect: { itemLayout in
-                guard let rl = itemLayout, let r = range else { return false }
-                return r[0] <= rl.x + rl.width && rl.x <= r[1]
-            }
-        )
-    case "lineY":
-        // getLineSelectors(1): area.range is the 1D pixel band [y0, y1] on the Y dim.
-        let range = brushRange1D(area.area["range"])
-        return BrushCommonSelectorsForSeries(
-            // point: range[0] <= itemLayout[1] <= range[1]
-            point: { itemLayout in
-                guard let p = itemLayout, p.count >= 2, let r = range else { return false }
-                return r[0] <= p[1] && p[1] <= r[1]
-            },
-            // rect: range[0] <= y+height && y <= range[1] (y-overlap)
-            rect: { itemLayout in
-                guard let rl = itemLayout, let r = range else { return false }
-                return r[0] <= rl.y + rl.height && rl.y <= r[1]
-            }
-        )
-    case "polygon":
-        // selector.ts polygon: point-in-polygon (ray casting) within the area's boundingRect.
-        let points = brushPolygonPoints(area.area["range"])
-        return BrushCommonSelectorsForSeries(
-            // point: boundingRect.contain(x,y) && polygonContain.contain(range, x, y)
-            point: { itemLayout in
-                guard let p = itemLayout, p.count >= 2, let br = area.boundingRect, let pts = points else { return false }
-                return br.contain(p[0], p[1]) && ZRenderKit.polygon.contain(pts, p[0], p[1])
-            },
-            // rect: any bar corner inside the polygon, OR a polygon vertex inside the bar, OR a bar edge
-            //   crossing a polygon edge (upstream selector.ts polygon.rect).
-            rect: { itemLayout in
-                guard let rl = itemLayout, let pts = points, pts.count > 1 else { return false }
-                let x = rl.x, y = rl.y, w = rl.width, h = rl.height
-                if ZRenderKit.polygon.contain(pts, x, y) || ZRenderKit.polygon.contain(pts, x + w, y)
-                    || ZRenderKit.polygon.contain(pts, x, y + h) || ZRenderKit.polygon.contain(pts, x + w, y + h) {
-                    return true
-                }
-                // a polygon vertex inside the bar rect
-                if let first = pts.first, BoundingRect.contain(rl, first[0], first[1]) { return true }
-                // a bar edge crossing any polygon edge
-                return linePolygonIntersect(x, y, x + w, y, pts)
-                    || linePolygonIntersect(x, y, x, y + h, pts)
-                    || linePolygonIntersect(x + w, y, x + w, y + h, pts)
-                    || linePolygonIntersect(x, y + h, x + w, y + h, pts)
-            }
-        )
-    default:
-        return BrushCommonSelectorsForSeries(point: { _ in false }, rect: { _ in false })
+        brushModel.brushTargetManager = brushTargetManager
+        brushTargetManager.setInputRanges(&brushModel.areas, ecModel)
     }
 }
 
-// A polygon area's `range` is a point list `[[x0,y0], [x1,y1], …]` (pixel). Returned as `VectorArray`
-//   (SIMD2<Double>) so it feeds `ZRenderKit.polygon.contain` directly; `p[0]`/`p[1]` still subscript it.
-private func brushPolygonPoints(_ v: Any?) -> [VectorArray]? {
-    guard let arr = v as? [Any] else { return nil }
-    let pts = arr.compactMap { row -> VectorArray? in
-        if let r = row as? [Double], r.count >= 2 { return VectorArray(r[0], r[1]) }
-        if let r = row as? [Any] {
-            let d = r.compactMap { coerceDouble($0) }
-            if d.count >= 2 { return VectorArray(d[0], d[1]) }
-        }
-        return nil
-    }
-    return pts.count >= 2 ? pts : nil
-}
-
-// linePolygonIntersect(a1x, a1y, a2x, a2y, points): true if segment (a1→a2) crosses any polygon edge.
-private func linePolygonIntersect(_ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
-                                  _ points: [VectorArray]) -> Bool {
-    let n = points.count
-    for i in 0..<n {
-        let p1 = points[i], p2 = points[(i + 1) % n]
-        if brushSegIntersect(a1x, a1y, a2x, a2y, p1[0], p1[1], p2[0], p2[1]) { return true }
-    }
-    return false
-}
-
-// Standard orientation-based segment intersection (proper crossings; collinear-overlap edge cases elided).
-private func brushSegIntersect(_ a1x: Double, _ a1y: Double, _ a2x: Double, _ a2y: Double,
-                               _ b1x: Double, _ b1y: Double, _ b2x: Double, _ b2y: Double) -> Bool {
-    func cross(_ ox: Double, _ oy: Double, _ ax: Double, _ ay: Double, _ bx: Double, _ by: Double) -> Double {
-        return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox)
-    }
-    let d1 = cross(b1x, b1y, b2x, b2y, a1x, a1y)
-    let d2 = cross(b1x, b1y, b2x, b2y, a2x, a2y)
-    let d3 = cross(a1x, a1y, a2x, a2y, b1x, b1y)
-    let d4 = cross(a1x, a1y, a2x, a2y, b2x, b2y)
-    return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0))
-}
-
-// A lineX/lineY area's `range` is a 1-D `[min, max]` pixel band (NOT the rect `[[x0,x1],[y0,y1]]`).
-private func brushRange1D(_ v: Any?) -> [Double]? {
-    if let a = v as? [Double], a.count >= 2 { return [Swift.min(a[0], a[1]), Swift.max(a[0], a[1])] }
-    if let a = v as? [Any] {
-        let d = a.compactMap { coerceDouble($0) }
-        if d.count >= 2 { return [Swift.min(d[0], d[1]), Swift.max(d[0], d[1])] }
-    }
-    return nil
-}
-
-// const boundingRectBuilders: Partial<Record<BrushType, AreaBoundingRectBuilder>>
-private let boundingRectBuilders: [String: ([String: Any]) -> BoundingRect?] = [
-    // rect: getBoundingRectFromMinMax(area.range)
-    "rect": { area in
-        guard let range = brushRangeMinMax(area["range"]) else { return nil }
-        return getBoundingRectFromMinMax(range)
-    },
-    // polygon: the bounding box (min/max union) over the range's point list.
-    "polygon": { area in
-        guard let pts = brushPolygonPoints(area["range"]) else { return nil }
-        var minX = pts[0][0], maxX = pts[0][0], minY = pts[0][1], maxY = pts[0][1]
-        for p in pts {
-            minX = Swift.min(minX, p[0]); maxX = Swift.max(maxX, p[0])
-            minY = Swift.min(minY, p[1]); maxY = Swift.max(maxY, p[1])
-        }
-        return BoundingRect(minX, minY, maxX - minX, maxY - minY)
-    }
-]
-
-// function getBoundingRectFromMinMax(minMax): BoundingRect
-private func getBoundingRectFromMinMax(_ minMax: [[Double]]) -> BoundingRect {
-    return BoundingRect(
-        minMax[0][0],
-        minMax[1][0],
-        minMax[0][1] - minMax[0][0],
-        minMax[1][1] - minMax[1][0]
-    )
-}
-
-// ---------------------------------------------------------------------------
-// The visual stage handler.
 // export const brushVisualStageHandler = createSimpleOverallStageHandler2(brushVisual);
-// ---------------------------------------------------------------------------
 public let brushVisualStageHandler: StageHandler = model.createSimpleOverallStageHandler2(brushVisual)
 
-// export function layoutCovers(ecModel): void
-//   Upstream builds a BrushTargetManager and calls setInputRanges (coordRange -> pixel range).
-public func layoutCovers(_ ecModel: GlobalModel) {
-    ecModel.eachComponent("brush") { brushModel, _ in
-        guard let brush = brushModel as? BrushModelLike else { return }
-        let mgr = BrushTargetManagerLite(brushModel, ecModel)
-        mgr.setInputRanges(&brush.areas, ecModel)
-    }
-}
-
-// function brushVisual(ecModel, api, payload)
+/**
+ * Register the visual encoding if this modules required.
+ */
+// function brushVisual(ecModel: GlobalModel, api: ExtensionAPI, payload: Payload)
 public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) {
 
-    // The `brushSelected` event batch (one entry per brush component).
-    let brushSelected = BrushSelectedBatch()
+    // const brushSelected: BrushSelectedItem[] = [];
+    var brushSelected: [BrushSelectedItem] = []
+    var throttleType: String?
+    var throttleDelay: Double?
 
-    // PORT-NOTE (deferred): requires the BrushController paint flow — `takeGlobalCursor` ->
-    //   brushModel.setBrushOption(...) drives the paint cursor. The layout below still runs so `range`
-    //   is fresh.
+    // ecModel.eachComponent({mainType: 'brush'}, function (brushModel) {
+    //     payload && payload.type === 'takeGlobalCursor' && brushModel.setBrushOption(
+    //         payload.key === 'brush' ? payload.brushOption : {brushType: false}
+    //     );
+    // });
+    ecModel.eachComponent("brush") { brushModelIn, _ in
+        guard let brushModel = brushModelIn as? BrushModel else { return }
+        applyTakeGlobalCursor(brushModel, payload)
+    }
 
     layoutCovers(ecModel)
 
-    ecModel.eachComponent("brush") { brushModel, brushIndexD in
+    ecModel.eachComponent("brush") { brushModelIn, brushIndexD in
+        guard let brushModel = brushModelIn as? BrushModel else { return }
         let brushIndex = Int(brushIndexD)
-        guard let brush = brushModel as? BrushModelLike else { return }
-        let brushOption = (brushModel.option as? [String: Any]) ?? [:]
 
-        // const thisBrushSelected = { brushId, brushIndex, brushName, areas: clone(areas), selected: [] };
+        // const thisBrushSelected: BrushSelectedItem = {brushId, brushIndex, brushName,
+        //     areas: zrUtil.clone(brushModel.areas), selected: []};
         let thisBrushSelected = BrushSelectedItem(
             brushId: brushModel.id,
             brushIndex: brushIndex,
             brushName: brushModel.name,
-            areas: util.clone(brush.areas)
+            areas: util.clone(brushModel.areas)
         )
-        brushSelected.items.append(thisBrushSelected)
+        // Every brush component exists in event params, convenient
+        // for user to find by index.
+        brushSelected.append(thisBrushSelected)
 
-        // brushLink (number[] | 'all' | 'none'); selectedDataIndexForLink; rangeInfoBySeries.
+        let brushOption = (brushModel.option as? [String: Any]) ?? [:]
         let brushLink = brushOption["brushLink"]
         var linkedSeriesMap: [Int: Bool] = [:]
         var selectedDataIndexForLink: [Int: Bool] = [:]
         var rangeInfoBySeries: [Int: [BrushSelectableArea]] = [:]
         var hasBrushExists = false
 
-        let mgr = BrushTargetManagerLite(brushModel, ecModel)
+        // if (!brushIndex) { // Only the first throttle setting works.
+        //     throttleType = brushOption.throttleType; throttleDelay = brushOption.throttleDelay;
+        // }
+        if brushIndex == 0 {
+            throttleType = brushOption["throttleType"] as? String
+            throttleDelay = brushCoerceDouble(brushOption["throttleDelay"])
+        }
 
-        // Add boundingRect + selectors to each area (map over brushModel.areas).
-        let areas: [BrushSelectableArea] = util.map(brush.areas) { areaBag, _ in
-            let selectableArea = BrushSelectableArea(areaBag)
+        // Add boundingRect and selectors to range.
+        // const areas: BrushSelectableArea[] = zrUtil.map(brushModel.areas, function (area) {
+        //     const builder = boundingRectBuilders[area.brushType];
+        //     const selectableArea = zrUtil.defaults({boundingRect: builder ? builder(area) : void 0}, area);
+        //     selectableArea.selectors = makeBrushCommonSelectorForSeries(selectableArea);
+        //     return selectableArea;
+        // });
+        let areas: [BrushSelectableArea] = util.map(brushModel.areas) { area, _ in
+            let builder = boundingRectBuilders[(area["brushType"] as? BrushType) ?? ""]
+            let selectableArea = BrushSelectableArea(area, boundingRect: builder != nil ? builder!(area) : nil)
             selectableArea.selectors = makeBrushCommonSelectorForSeries(selectableArea)
             return selectableArea
         }
 
-        // const visualMappings = createVisualMappings(option, STATE_LIST, mo => mo.mappingMethod = 'fixed');
+        // const visualMappings = visualSolution.createVisualMappings(brushModel.option, STATE_LIST,
+        //     function (mappingOption) { mappingOption.mappingMethod = 'fixed'; });
         let visualMappings = visualSolution.createVisualMappings(
             brushOption, STATE_LIST
         ) { mappingOption, _ in
             mappingOption["mappingMethod"] = "fixed"
         }
 
-        // isArray(brushLink) && each(brushLink, i => linkedSeriesMap[i] = 1);
+        // zrUtil.isArray(brushLink) && zrUtil.each(brushLink, seriesIndex => { linkedSeriesMap[seriesIndex] = 1; });
         if let linkArr = brushLink as? [Any] {
             util.each(linkArr) { si, _ in
-                if let i = coerceInt(si) { linkedSeriesMap[i] = true }
+                if let i = brushCoerceInt(si) { linkedSeriesMap[i] = true }
             }
         }
 
+        // function linkOthers(seriesIndex) { return brushLink === 'all' || !!linkedSeriesMap[seriesIndex]; }
         func linkOthers(_ seriesIndex: Int) -> Bool {
-            // brushLink === 'all' || !!linkedSeriesMap[seriesIndex]
             return (brushLink as? String) == "all" || (linkedSeriesMap[seriesIndex] ?? false)
         }
 
+        // If no supported brush or no brush on the series,
+        // all visuals should be in original state.
         // function brushed(rangeInfoList) { return !!rangeInfoList.length; }
-        func brushed(_ rangeInfoList: [BrushSelectableArea]) -> Bool { !rangeInfoList.isEmpty }
+        func brushed(_ rangeInfoList: [BrushSelectableArea]) -> Bool {
+            return !rangeInfoList.isEmpty
+        }
 
-        // ---- Step A ----
+        /**
+         * Logic for each series: (If the logic has to be modified one day, do it carefully!)
+         *
+         * ( brushed ┬ && ┬hasBrushExist ┬ && linkOthers  ) => StepA: ┬record, ┬ StepB: ┬visualByRecord.
+         *   !brushed┘    ├hasBrushExist ┤                            └nothing,┘        ├visualByRecord.
+         *                └!hasBrushExist┘                                              └nothing.
+         * ( !brushed  && ┬hasBrushExist ┬ && linkOthers  ) => StepA:  nothing,  StepB: ┬visualByRecord.
+         *                └!hasBrushExist┘                                              └nothing.
+         * ( brushed ┬ &&                     !linkOthers ) => StepA:  nothing,  StepB: ┬visualByCheck.
+         *   !brushed┘                                                                  └nothing.
+         * ( !brushed  &&                     !linkOthers ) => StepA:  nothing,  StepB:  nothing.
+         */
+
+        // function stepAParallel(seriesModel: ParallelSeriesModel, seriesIndex: number): void
+        func stepAParallel(_ seriesModel: SeriesModel, _ seriesIndex: Int) {
+            // const coordSys = seriesModel.coordinateSystem;
+            // hasBrushExists = hasBrushExists || coordSys.hasAxisBrushed();
+            // linkOthers(seriesIndex) && coordSys.eachActiveState(seriesModel.getData(),
+            //     (activeState, dataIndex) => { activeState === 'active' && (selectedDataIndexForLink[dataIndex] = 1); });
+            //
+            // PORT-NOTE (deferred): `Parallel.hasAxisBrushed()` / `Parallel.eachActiveState()` express the
+            //   PARALLEL-AXIS brush state, which is painted by ParallelAxisView's own BrushController — and
+            //   that view's live axis-drag brush is itself unported (see the PORT-NOTE at
+            //   `installParallelActions` in core/ECharts.swift). WHAT WE DO: a parallel series contributes
+            //   nothing to `hasBrushExists` and adds no linked selection. USER-VISIBLE CONSEQUENCE: with
+            //   `brushLink`, a selection made on a PARALLEL axis does not propagate to the other series.
+            //   A rect/lineX/lineY/polygon brush over cartesian/geo series is unaffected.
+            _ = (seriesModel, seriesIndex)
+        }
+
+        // function stepAOthers(seriesModel, seriesIndex, rangeInfoList): void
+        func stepAOthers(
+            _ seriesModel: SeriesModel, _ seriesIndex: Int, _ rangeInfoList: inout [BrushSelectableArea]
+        ) {
+            // if (!seriesModel.brushSelector || brushModelNotControll(brushModel, seriesIndex)) { return; }
+            guard let brushSelector = seriesModel.brushSelector,
+                  !brushModelNotControll(brushModel, seriesIndex) else {
+                return
+            }
+
+            // zrUtil.each(areas, function (area) {
+            //     if (brushModel.brushTargetManager.controlSeries(area, seriesModel, ecModel)) { rangeInfoList.push(area); }
+            //     hasBrushExists = hasBrushExists || brushed(rangeInfoList);
+            // });
+            for area in areas {
+                if brushModel.brushTargetManager?.controlSeries(area.area, seriesModel, ecModel) == true {
+                    rangeInfoList.append(area)
+                }
+                hasBrushExists = hasBrushExists || brushed(rangeInfoList)
+            }
+
+            // if (linkOthers(seriesIndex) && brushed(rangeInfoList)) {
+            //     const data = seriesModel.getData();
+            //     data.each(function (dataIndex) {
+            //         if (checkInRange(seriesModel, rangeInfoList, data, dataIndex)) {
+            //             selectedDataIndexForLink[dataIndex] = 1;
+            //         }
+            //     });
+            // }
+            if linkOthers(seriesIndex) && brushed(rangeInfoList) {
+                let data = seriesModel.getData()
+                let list = rangeInfoList
+                for dataIndex in 0..<data.count() {
+                    if checkInRange(brushSelector, list, data, dataIndex) {
+                        selectedDataIndexForLink[dataIndex] = true
+                    }
+                }
+            }
+        }
+
+        // Step A
+        // ecModel.eachSeries(function (seriesModel, seriesIndex) {
+        //     const rangeInfoList = rangeInfoBySeries[seriesIndex] = [];
+        //     seriesModel.subType === 'parallel' ? stepAParallel(...) : stepAOthers(...);
+        // });
         ecModel.eachSeries { seriesModel, seriesIndexD in
             let seriesIndex = Int(seriesIndexD)
             var rangeInfoList: [BrushSelectableArea] = []
 
-            // subType === 'parallel' ? stepAParallel(...) : stepAOthers(...)
             if seriesModel.subType == "parallel" {
-                // PORT-NOTE (deferred): requires ParallelSeries.coordinateSystem.hasAxisBrushed /
-                //   eachActiveState (stepAParallel; parallel coord out of scope). No brush contribution.
+                stepAParallel(seriesModel, seriesIndex)
             }
             else {
-                // stepAOthers
-                if brushSelectorSupported(seriesModel) && !brushModelNotControll(brushOption, seriesIndex) {
-                    util.each(areas) { area, _ in
-                        if mgr.controlSeries(area, seriesModel, ecModel) {
-                            rangeInfoList.append(area)
-                        }
-                        hasBrushExists = hasBrushExists || brushed(rangeInfoList)
-                    }
-                    if linkOthers(seriesIndex) && brushed(rangeInfoList) {
-                        let data = seriesModel.getData()
-                        data.each { args in
-                            let dataIndex = Int((args.first as? Double) ?? 0)
-                            if checkInRange(seriesModel, rangeInfoList, data, dataIndex) {
-                                selectedDataIndexForLink[dataIndex] = true
-                            }
-                        }
-                    }
-                }
+                stepAOthers(seriesModel, seriesIndex, &rangeInfoList)
             }
             rangeInfoBySeries[seriesIndex] = rangeInfoList
         }
 
-        // ---- Step B ----
+        // Step B
         ecModel.eachSeries { seriesModel, seriesIndexD in
             let seriesIndex = Int(seriesIndexD)
             let seriesBrushSelected = BrushSelectedSeries(
@@ -373,23 +311,36 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
                 seriesIndex: seriesIndex,
                 seriesName: seriesModel.name
             )
+            // Every series exists in event params, convenient
+            // for user to find series by seriesIndex.
             thisBrushSelected.selected.append(seriesBrushSelected)
 
             let rangeInfoList = rangeInfoBySeries[seriesIndex] ?? []
-            let data = seriesModel.getData()
 
-            // getValueState: valueOrIndex(here == dataIndex) -> 'inBrush' | 'outOfBrush'
-            let getValueState: (Any?) -> String = { valueOrIndex in
-                let dataIndex = Int((valueOrIndex as? Double) ?? 0)
-                if linkOthers(seriesIndex) {
+            let data = seriesModel.getData()
+            let brushSelector = seriesModel.brushSelector
+
+            // const getValueState = linkOthers(seriesIndex)
+            //     ? dataIndex => selectedDataIndexForLink[dataIndex]
+            //         ? (seriesBrushSelected.dataIndex.push(data.getRawIndex(dataIndex)), 'inBrush') : 'outOfBrush'
+            //     : dataIndex => checkInRange(seriesModel, rangeInfoList, data, dataIndex)
+            //         ? (seriesBrushSelected.dataIndex.push(data.getRawIndex(dataIndex)), 'inBrush') : 'outOfBrush';
+            let getValueState: (Any?) -> String
+            if linkOthers(seriesIndex) {
+                getValueState = { valueOrIndex in
+                    let dataIndex = brushCoerceInt(valueOrIndex) ?? 0
                     if selectedDataIndexForLink[dataIndex] ?? false {
                         seriesBrushSelected.dataIndex.append(data.getRawIndex(dataIndex))
                         return "inBrush"
                     }
                     return "outOfBrush"
                 }
-                else {
-                    if checkInRange(seriesModel, rangeInfoList, data, dataIndex) {
+            }
+            else {
+                getValueState = { valueOrIndex in
+                    let dataIndex = brushCoerceInt(valueOrIndex) ?? 0
+                    if let brushSelector = brushSelector,
+                       checkInRange(brushSelector, rangeInfoList, data, dataIndex) {
                         seriesBrushSelected.dataIndex.append(data.getRawIndex(dataIndex))
                         return "inBrush"
                     }
@@ -397,297 +348,165 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
                 }
             }
 
-            // (linkOthers ? hasBrushExists : brushed(rangeInfoList)) && applyVisual(...)
-            let shouldApply = linkOthers(seriesIndex) ? hasBrushExists : brushed(rangeInfoList)
-            if shouldApply {
+            // If no supported brush or no brush, all visuals are in original state.
+            // (linkOthers(seriesIndex) ? hasBrushExists : brushed(rangeInfoList))
+            //     && visualSolution.applyVisual(STATE_LIST, visualMappings, data, getValueState);
+            if linkOthers(seriesIndex) ? hasBrushExists : brushed(rangeInfoList) {
                 visualSolution.applyVisual(STATE_LIST, visualMappings, data, getValueState, nil)
             }
         }
     }
 
-    dispatchBrushSelected(api, brushSelected, payload)
+    dispatchAction(api, throttleType, throttleDelay, brushSelected, payload)
 }
 
-// function dispatchAction(api, throttleType, throttleDelay, brushSelected, payload)
-//   PORT-NOTE (deferred): requires throttleUtil.createOrUpdate + a live zr's `zr[DISPATCH_FLAG]`
-//   re-entrancy guard; here we dispatch synchronously when a `payload` is present (matches upstream's "only on a
-//   real action, never on setOption" gate). `brushSelect` has update:'none', so it does not re-run visual.
-private func dispatchBrushSelected(_ api: ExtensionAPI, _ brushSelected: BrushSelectedBatch, _ payload: Payload?) {
-    if payload == nil { return }
+/**
+ * payload: {
+ *      brushComponents: [
+ *          {
+ *              brushId, brushIndex, brushName,
+ *              series: [{seriesId, seriesIndex, seriesName, rawIndices: [21, 34, ...]}, ...]
+ *          },
+ *          ...
+ *      ]
+ * }
+ */
+// function dispatchAction(api, throttleType, throttleDelay, brushSelected, payload): void
+private func dispatchAction(
+    _ api: ExtensionAPI,
+    _ throttleType: String?,
+    _ throttleDelay: Double?,
+    _ brushSelected: [BrushSelectedItem],
+    _ payload: Payload?
+) {
+    // This event will not be triggered when `setOption`, otherwise dead lock may
+    // triggered when do `setOption` in event listener, which we do not find
+    // satisfactory way to solve yet. Some considered resolutions:
+    // (a) Diff with previous selected data ant only trigger event when changed.
+    // But store previous data and diff precisely (i.e., not only by dataIndex, but
+    // also detect value changes in selected data) might bring complexity or fragility.
+    // (b) Use special param like `silent` to suppress event triggering.
+    // But such kind of volatile param may be weird in `setOption`.
+    if payload == nil {
+        return
+    }
+
+    // FIXME: [INCONSISTENCY_OF_BRUSH_SELECTED_EVENT_IN_UPDATE_TRANSFORM]  (upstream comment retained
+    //   verbatim in the .ts; it describes an upstream inconsistency, not a port gap.)
+
+    // const zr = api.getZr() as BrushGlobalDispatcher;
+    // if (zr[DISPATCH_FLAG]) { return; }
+    // if (!zr[DISPATCH_METHOD]) { zr[DISPATCH_METHOD] = doDispatch; }
+    // const fn = throttleUtil.createOrUpdate(zr, DISPATCH_METHOD, throttleDelay, throttleType);
+    // fn(api, brushSelected);
+    //
+    // PORT-NOTE (deferred): `util/throttle.ts` is not ported, so the throttle wrapper and the
+    //   zr-attached `DISPATCH_FLAG` re-entrancy guard are dropped; `doDispatch` runs synchronously.
+    //   WHY IT IS SAFE: `throttleDelay` defaults to 0 (BrushModel.defaultOption) and upstream's
+    //   `throttleUtil.createOrUpdate(..., 0, ...)` returns the raw function — so for the default
+    //   configuration this IS upstream behavior. The re-entrancy flag guards against `brushSelect`
+    //   re-entering the visual stage, which cannot happen here either: the action is registered with
+    //   `update: 'none'`. USER-VISIBLE CONSEQUENCE: a brush configured with a non-zero `throttleDelay`
+    //   emits `brushselected` on every drag step rather than at most once per delay window (the same
+    //   selection data, just more events).
+    _ = (throttleType, throttleDelay)
+    doDispatch(api, brushSelected)
+}
+
+// function doDispatch(api: ExtensionAPI, brushSelected: BrushSelectedItem[]): void
+private func doDispatch(_ api: ExtensionAPI, _ brushSelected: [BrushSelectedItem]) {
+    // if (!api.isDisposed()) {
+    //     zr[DISPATCH_FLAG] = true;
+    //     api.dispatchAction({type: 'brushSelect', batch: brushSelected});
+    //     zr[DISPATCH_FLAG] = false;
+    // }
+    //
+    // PORT-NOTE: `Payload.batch` is typed `[PayloadItem]?` in this port (util/types.swift) and cannot
+    //   carry the brushSelected items; the batch rides in the dynamic `other` bag instead. That IS the
+    //   channel the ported event system reads — `ECharts.doDispatchAction` copies `payload.other` into the
+    //   emitted `ECActionEvent.eventData` — so a `chart.on("brushselected")` handler sees
+    //   `params.eventData["batch"]` exactly where upstream puts `params.batch`.
     var p = Payload(type: "brushSelect")
-    p.other["batch"] = brushSelected.toEventBatch()
+    p.other["batch"] = brushSelected.map { $0.toDict() }
+    // ADDITIVE: the typed items, so an in-process consumer (a test, a native host) need not re-parse bags.
+    p.other["batchItems"] = brushSelected
     api.dispatchAction(p)
 }
 
 // function checkInRange(seriesModel, rangeInfoList, data, dataIndex)
+//   PORT-NOTE: `seriesModel` is replaced by its already-resolved `brushSelector` (upstream reads
+//   `seriesModel.brushSelector` — an optional declaration-merged method — on every call).
 private func checkInRange(
-    _ seriesModel: SeriesModel,
+    _ brushSelector: BrushSelectorFn,
     _ rangeInfoList: [BrushSelectableArea],
     _ data: SeriesData,
     _ dataIndex: Int
 ) -> Bool {
-    for area in rangeInfoList {
-        // seriesModel.brushSelector(dataIndex, data, area.selectors, area)
-        if seriesBrushSelector(seriesModel, dataIndex, data, area.selectors) {
+    for i in 0..<rangeInfoList.count {
+        let area = rangeInfoList[i]
+        // if (seriesModel.brushSelector(dataIndex, data, area.selectors, area)) { return true; }
+        if brushSelector(dataIndex, data, area.selectors, area) {
             return true
         }
     }
     return false
 }
 
-// function brushModelNotControll(brushModel, seriesIndex)
-//   seriesIndex != null && !== 'all' && (isArray ? indexOf < 0 : seriesIndex !== seriesIndices)
-private func brushModelNotControll(_ brushOption: [String: Any], _ seriesIndex: Int) -> Bool {
-    let seriesIndices = brushOption["seriesIndex"]
+// function brushModelNotControll(brushModel: BrushModel, seriesIndex: number): boolean
+private func brushModelNotControll(_ brushModel: BrushModel, _ seriesIndex: Int) -> Bool {
+    // const seriesIndices = brushModel.option.seriesIndex;
+    // return seriesIndices != null && seriesIndices !== 'all'
+    //     && (isArray(seriesIndices) ? indexOf(seriesIndices, seriesIndex) < 0 : seriesIndex !== seriesIndices);
+    let seriesIndices = ((brushModel.option as? [String: Any]) ?? [:])["seriesIndex"]
     if seriesIndices == nil || seriesIndices is NSNull { return false }
     if let s = seriesIndices as? String, s == "all" { return false }
     if let arr = seriesIndices as? [Any] {
-        return util.indexOf(arr.compactMap { coerceInt($0) }, seriesIndex) < 0
+        return util.indexOf(arr.compactMap { brushCoerceInt($0) }, seriesIndex) < 0
     }
-    if let single = coerceInt(seriesIndices) {
+    if let single = brushCoerceInt(seriesIndices) {
         return seriesIndex != single
     }
     return false
 }
 
-// ---------------------------------------------------------------------------
-// Per-series brushSelector dispatch.
-//
-// Upstream defines `brushSelector` on each series prototype:
-//   scatter/effectScatter: return selectors.point(data.getItemLayout(dataIndex))
-//   bar:                   return selectors.rect(data.getItemLayout(dataIndex))
-// Those overrides are not yet ported onto the Swift series subclasses (see the PORT-NOTEs in
-// ScatterSeries.swift / BarSeries.swift), so the dispatch is centralized here, keyed by subType.
-// PORT-NOTE: move each branch onto its series subclass once `brushSelector` lands there.
-// ---------------------------------------------------------------------------
-private func brushSelectorSupported(_ seriesModel: SeriesModel) -> Bool {
-    switch seriesModel.subType {
-    case "scatter", "effectScatter", "bar": return true
-    default: return false   // upstream: `!seriesModel.brushSelector` short-circuits stepAOthers.
-    }
-}
+// type AreaBoundingRectBuilder = (area: BrushAreaParamInternal) => BoundingRect;
+// const boundingRectBuilders: Partial<Record<BrushType, AreaBoundingRectBuilder>>
+private let boundingRectBuilders: [BrushType: (BrushAreaParamInternal) -> BoundingRect?] = [
 
-private func seriesBrushSelector(
-    _ seriesModel: SeriesModel,
-    _ dataIndex: Int,
-    _ data: SeriesData,
-    _ selectors: BrushCommonSelectorsForSeries
-) -> Bool {
-    let layout = data.getItemLayout(dataIndex)
-    switch seriesModel.subType {
-    case "scatter", "effectScatter":
-        // selectors.point(itemLayout: number[])
-        if let arr = layout as? [Double] { return selectors.point(arr) }
-        if let arr = layout as? [Any] { return selectors.point(arr.compactMap { coerceDouble($0) }) }
-        return false
-    case "bar":
-        // selectors.rect(itemLayout: RectLike)  — bar layout is {x,y,width,height}.
-        if let rl = layout as? RectLike { return selectors.rect(rl) }
-        if let d = layout as? [String: Any] {
-            let x = coerceDouble(d["x"]) ?? 0, y = coerceDouble(d["y"]) ?? 0
-            let w = coerceDouble(d["width"]) ?? 0, h = coerceDouble(d["height"]) ?? 0
-            return selectors.rect(BoundingRect(x, y, w, h))
-        }
-        return false
-    default:
-        return false
-    }
-}
+    // rect: function (area) { return getBoundingRectFromMinMax(area.range as BrushDimensionMinMax[]); }
+    "rect": { area in
+        guard let range = brushDimensionMinMaxList(area["range"]), range.count >= 2 else { return nil }
+        return getBoundingRectFromMinMax(range)
+    },
 
-// ---------------------------------------------------------------------------
-// BrushTargetManager (grid / rect subset).
-// ---------------------------------------------------------------------------
-final class BrushTargetManagerLite {
+    "polygon": { area in
+        // let minMax;  const range = area.range as BrushDimensionMinMax[];
+        var minMax: [BrushDimensionMinMax]?
+        guard let range = brushDimensionMinMaxList(area["range"]) else { return nil }
 
-    struct GridTarget {
-        let panelId: String
-        let gridIndex: Int
-        let coordSyses: [Cartesian2D]
-    }
-
-    private var targets: [GridTarget] = []
-    // Finder parsed from the brush option (which grids/axes this brush is bound to).
-    private let gridIndexFinder: FinderSel
-    private let xAxisIndexFinder: FinderSel
-    private let yAxisIndexFinder: FinderSel
-
-    enum FinderSel {
-        case all              // undefined/absent -> match everything in scope
-        case indices([Int])
-    }
-
-    init(_ brushModel: ComponentModel, _ ecModel: GlobalModel) {
-        let opt = (brushModel.option as? [String: Any]) ?? [:]
-        gridIndexFinder = BrushTargetManagerLite.parseFinderSel(opt["gridIndex"])
-        xAxisIndexFinder = BrushTargetManagerLite.parseFinderSel(opt["xAxisIndex"])
-        yAxisIndexFinder = BrushTargetManagerLite.parseFinderSel(opt["yAxisIndex"])
-
-        // Build one GridTarget per grid coordinate system.
-        // PORT-NOTE (deferred): geo targetInfoBuilder (geo coord system out of scope).
-        ecModel.eachComponent("grid") { gridModel, gridIdxD in
-            let gridIdx = Int(gridIdxD)
-            guard let gm = gridModel as? GridModel,
-                  let grid = gm.coordinateSystem as? Grid else { return }
-            let cartesians = grid.getCartesians()
-            if cartesians.isEmpty { return }
-            self.targets.append(GridTarget(
-                panelId: "grid--" + gridModel.id,
-                gridIndex: gridIdx,
-                coordSyses: cartesians
-            ))
-        }
-    }
-
-    private static func parseFinderSel(_ v: Any?) -> FinderSel {
-        if v == nil || v is NSNull { return .all }
-        if let s = v as? String, s == "all" { return .all }
-        if let arr = v as? [Any] { return .indices(arr.compactMap { coerceInt($0) }) }
-        if let i = coerceInt(v) { return .indices([i]) }
-        return .all
-    }
-
-    // findTargetInfo: match by area.panelId first, then by finder, else global (nil).
-    func findTargetInfo(_ area: BrushSelectableArea, _ ecModel: GlobalModel) -> GridTarget? {
-        // Match by panelId.
-        if let panelId = area.area["panelId"] as? String {
-            return targets.first { $0.panelId == panelId }
-        }
-        // Match by finder (area-level overrides, else brush-option-level).
-        let areaGridSel = BrushTargetManagerLite.parseFinderSel(area.area["gridIndex"])
-        let gridSel = isAll(areaGridSel) ? gridIndexFinder : areaGridSel
-        if case .indices(let gi) = gridSel {
-            if let t = targets.first(where: { gi.contains($0.gridIndex) }) { return t }
-        }
-        // xAxis/yAxis finder: in single-grid scope, any coord finder binds to the first grid.
-        let hasCoordFinder = area.area["gridIndex"] != nil
-            || area.area["xAxisIndex"] != nil || area.area["yAxisIndex"] != nil
-            || !isAll(xAxisIndexFinder) || !isAll(yAxisIndexFinder) || !isAll(gridIndexFinder)
-        if hasCoordFinder {
-            return targets.first
-        }
-        // No coord binding -> global area (upstream returns `true`; nil here means "global").
-        return nil
-    }
-
-    // controlSeries(area, seriesModel): true if the series' cartesian is inside the matched target.
-    func controlSeries(_ area: BrushSelectableArea, _ seriesModel: SeriesModel, _ ecModel: GlobalModel) -> Bool {
-        let target = findTargetInfo(area, ecModel)
-        if target == nil {
-            return true   // global area controls all series (upstream `targetInfo === true`).
-        }
-        guard let series2d = seriesModel.coordinateSystem as? Cartesian2D else { return false }
-        return target!.coordSyses.contains { $0 === series2d }
-    }
-
-    // setInputRanges: convert each area's coordRange -> pixel range (rect) and stamp panelId.
-    func setInputRanges(_ areas: inout [[String: Any]], _ ecModel: GlobalModel) {
-        for i in areas.indices {
-            let selectable = BrushSelectableArea(areas[i])
-            let target = findTargetInfo(selectable, ecModel)
-
-            // area.range = area.range || [];
-            if areas[i]["range"] == nil { areas[i]["range"] = [[Double]]() }
-
-            guard let target = target, let coordSys = target.coordSyses.first else {
-                // Global area: keep its (pixel) range as given.
-                continue
+        for i in 0..<range.count {
+            // minMax = minMax || [initExtentForUnion(), initExtentForUnion()];
+            if minMax == nil {
+                minMax = [model.initExtentForUnion(), model.initExtentForUnion()]
             }
-            areas[i]["panelId"] = target.panelId
-
-            // rect coordConvert(to=0 / dataToPoint): range = f(coordRange).
-            guard let coordRange = brushRangeMinMax(areas[i]["coordRange"]) else { continue }
-            let range = rectCoordConvertDataToPoint(coordSys, coordRange)
-            areas[i]["range"] = range
-            // PORT-NOTE (deferred): __rangeOffset (category-axis non-reversible rebuild + dataZoom scale).
+            let rg = range[i]
+            if rg[0] < minMax![0][0] { minMax![0][0] = rg[0] }
+            if rg[0] > minMax![0][1] { minMax![0][1] = rg[0] }
+            if rg[1] < minMax![1][0] { minMax![1][0] = rg[1] }
+            if rg[1] > minMax![1][1] { minMax![1][1] = rg[1] }
         }
-    }
 
-    private func isAll(_ f: FinderSel) -> Bool {
-        if case .all = f { return true }
-        return false
+        // return minMax && getBoundingRectFromMinMax(minMax);
+        return minMax != nil ? getBoundingRectFromMinMax(minMax!) : nil
     }
-}
+]
 
-// rect coordConvert (to = 0, dataToPoint): the pixel min/max box for a data-space [[x0,x1],[y0,y1]].
-//   xminymin = dataToPoint([cr[0][0], cr[1][0]]); xmaxymax = dataToPoint([cr[0][1], cr[1][1]]);
-//   values = [ formatMinMax([xminymin[0], xmaxymax[0]]), formatMinMax([xminymin[1], xmaxymax[1]]) ]
-private func rectCoordConvertDataToPoint(_ coordSys: Cartesian2D, _ coordRange: [[Double]]) -> [[Double]] {
-    let xminymin = coordSys.dataToPoint([coordRange[0][0], coordRange[1][0]])
-    let xmaxymax = coordSys.dataToPoint([coordRange[0][1], coordRange[1][1]])
-    return [
-        formatMinMax([xminymin[0], xmaxymax[0]]),
-        formatMinMax([xminymin[1], xmaxymax[1]])
-    ]
-}
-
-// function formatMinMax(minMax) { minMax[0] > minMax[1] && minMax.reverse(); return minMax; }
-private func formatMinMax(_ minMax: [Double]) -> [Double] {
-    return minMax[0] > minMax[1] ? [minMax[1], minMax[0]] : minMax
-}
-
-// ---------------------------------------------------------------------------
-// brushSelected event payload model (BrushSelectedItem[]).
-// ---------------------------------------------------------------------------
-final class BrushSelectedSeries {
-    let seriesId: String
-    let seriesIndex: Int
-    let seriesName: String
-    var dataIndex: [Int] = []
-    init(seriesId: String, seriesIndex: Int, seriesName: String) {
-        self.seriesId = seriesId; self.seriesIndex = seriesIndex; self.seriesName = seriesName
-    }
-    func toDict() -> [String: Any] {
-        return ["seriesId": seriesId, "seriesIndex": seriesIndex, "seriesName": seriesName,
-                "dataIndex": dataIndex]
-    }
-}
-final class BrushSelectedItem {
-    let brushId: String
-    let brushIndex: Int
-    let brushName: String
-    let areas: [[String: Any]]
-    var selected: [BrushSelectedSeries] = []
-    init(brushId: String, brushIndex: Int, brushName: String, areas: [[String: Any]]) {
-        self.brushId = brushId; self.brushIndex = brushIndex; self.brushName = brushName; self.areas = areas
-    }
-    func toDict() -> [String: Any] {
-        return ["brushId": brushId, "brushIndex": brushIndex, "brushName": brushName,
-                "areas": areas, "selected": selected.map { $0.toDict() }]
-    }
-    /// The selected raw dataIndices per series — the headless test oracle.
-    func selectedDataIndices(_ seriesIndex: Int) -> [Int] {
-        return selected.first { $0.seriesIndex == seriesIndex }?.dataIndex ?? []
-    }
-}
-final class BrushSelectedBatch {
-    var items: [BrushSelectedItem] = []
-    func toEventBatch() -> [[String: Any]] { items.map { $0.toDict() } }
-}
-
-// ---------------------------------------------------------------------------
-// Small numeric coercers (Int-vs-Double option/payload-read trap).
-// ---------------------------------------------------------------------------
-private func brushRangeMinMax(_ v: Any?) -> [[Double]]? {
-    guard let arr = v as? [Any], arr.count >= 2 else { return nil }
-    func toPair(_ x: Any?) -> [Double]? {
-        guard let a = x as? [Any], a.count >= 2,
-              let lo = coerceDouble(a[0]), let hi = coerceDouble(a[1]) else { return nil }
-        return [lo, hi]
-    }
-    guard let d0 = toPair(arr[0]), let d1 = toPair(arr[1]) else { return nil }
-    return [d0, d1]
-}
-
-private func coerceInt(_ v: Any?) -> Int? {
-    if let i = v as? Int { return i }
-    if let d = v as? Double { return Int(d) }
-    if let f = v as? CGFloat { return Int(f) }
-    return nil
-}
-
-private func coerceDouble(_ v: Any?) -> Double? {
-    if let d = v as? Double { return d }
-    if let i = v as? Int { return Double(i) }
-    if let f = v as? CGFloat { return Double(f) }
-    return nil
+// function getBoundingRectFromMinMax(minMax: BrushDimensionMinMax[]): BoundingRect
+private func getBoundingRectFromMinMax(_ minMax: [BrushDimensionMinMax]) -> BoundingRect {
+    return BoundingRect(
+        minMax[0][0],
+        minMax[1][0],
+        minMax[0][1] - minMax[0][0],
+        minMax[1][1] - minMax[1][0]
+    )
 }

@@ -23,23 +23,24 @@ import Foundation
 import ZRenderKit
 
 // upstream imports (install.ts):
+//   import brushPreprocessor from './preprocessor';              -> brushPreprocessor.swift
+//   import BrushView from './BrushView';                         -> BrushView.swift
+//   import BrushModel, { BrushAreaParam } from './BrushModel';   -> BrushModel.swift
 //   import { brushVisualStageHandler } from './visualEncoding';  -> brushVisual.swift
-//   import BrushModel, { BrushAreaParam } from './BrushModel';   -> Task-1 BrushModel (BrushModelLike)
+//   import BrushFeature from '../toolbox/feature/Brush';         -> ToolboxBrushFeature.swift
+//   import { registerFeature } from '../toolbox/featureManager'; -> `registerFeature`
 //   import { noop } from 'zrender/src/core/util';                -> the `nil` handler / no-op below
-//
-// DEFERRED (marked TODO/`// TODO` upstream too):
-//   registers.registerComponentView(BrushView) / registerComponentModel(BrushModel)  (Task 1 / view phase)
-//   registers.registerPreprocessor(brushPreprocessor)                                 (Task 1)
-//   registerFeature('brush', BrushFeature)  — the toolbox brush button.               (deferred by scope)
 
 // upstream: export function install(registers) { ... }
-//   This ports the ACTION + VISUAL-stage part of install.ts. Model/view/preprocessor/feature
-//   registration is Task-1 / later-phase wiring.
 //
-// PORT-NOTE: like `installDataZoomAction`, the `EChartsExtensionInstallRegisters` stub does not model
-//   `registerVisual`; the driver invokes `brushVisualStageHandler.overallReset?(ecModel, api, payload)`
-//   directly in its visual stage (same pattern as the sunburst/tree overall visual handlers). Here we only
-//   register the three actions via the Phase-29 module-level `registerAction`.
+// PORT-NOTE (registrar shape): the `EChartsExtensionInstallRegisters` stub in this port does not model
+//   `registerComponentModel` / `registerComponentView` / `registerVisual` / `registerPreprocessor` — the
+//   driver holds those in explicit maps/call sites (see the header of core/ECharts.swift). So:
+//     - registerComponentModel(BrushModel)     -> `ComponentModel.registerClass(BrushModel.self)` (ECharts.swift)
+//     - registerComponentView(BrushView)       -> the "brush" entry of `_componentViewFactories` (ECharts.swift)
+//     - registerVisual(PRIORITY.VISUAL.BRUSH,…) -> the `brushVisual(ecModel, api, payload)` call in render()
+//     - registerPreprocessor(brushPreprocessor) -> the `brushPreprocessor(&opt)` call in setOption (ECharts.swift)
+//   This function registers the three ACTIONS + the toolbox brush FEATURE, which do have registrars.
 public func installBrushAction(_ registers: EChartsExtensionInstallRegisters) {
     _ = registers
 
@@ -51,16 +52,22 @@ public func installBrushAction(_ registers: EChartsExtensionInstallRegisters) {
     brushInfo.event = "brush"
     brushInfo.update = "updateVisual"
     registerAction(brushInfo) { payload, ecModel, _ in
-        // ecModel.eachComponent({mainType:'brush', query: payload}, brushModel => brushModel.setAreas(payload.areas))
-        // PORT-NOTE (deferred): the `query: payload` filter (match by brushId/brushIndex/brushName) is
-        //   simplified to "every brush component" — sufficient for the single-brush cartesian scope.
-        //   Restore the QueryConditionKindA finder when multi-brush selection lands.
+        // ecModel.eachComponent(
+        //     {mainType: 'brush', query: payload},
+        //     function (brushModel: BrushModel) { brushModel.setAreas(payload.areas); }
+        // );
+        //   The finder query is the payload itself (brushId / brushIndex / brushName), so a
+        //   `dispatchAction({type:'brush', brushId: ...})` only reaches that brush component. The
+        //   payload's dynamic bag IS the ModelFinderObject (same convention as the rest of the port).
         let areas = brushPayloadAreas(payload.other["areas"])
-        ecModel.eachComponent("brush") { brushModel, _ in
-            guard let brush = brushModel as? BrushModelLike else { return }
-            // If `areas` is nil/undefined, setAreas keeps the current range state (upstream contract).
-            brush.setAreas(areas)
-        }
+        ecModel.eachComponent(
+            QueryConditionKindA(mainType: "brush", query: payload.other),
+            { brushModel, _ in
+                guard let brush = brushModel as? BrushModel else { return }
+                // If `areas` is nil/undefined, setAreas keeps the current range state (upstream contract).
+                brush.setAreas(areas)
+            }
+        )
         return nil
     }
 
@@ -75,6 +82,16 @@ public func installBrushAction(_ registers: EChartsExtensionInstallRegisters) {
     brushEndInfo.event = "brushEnd"
     brushEndInfo.update = "none"
     registerAction(brushEndInfo, brushNoopAction)
+
+    // registerFeature('brush', BrushFeature);
+    //   The toolbox brush BUTTONS (rect / polygon / lineX / lineY / keep / clear). Clicking one dispatches
+    //   `takeGlobalCursor` with a `brushOption`, which is what ARMS the paint cursor — i.e. this is how a
+    //   user starts a brush in the official examples (`brush: { toolbox: [...] }`; the button list itself is
+    //   injected into the toolbox option by `brushPreprocessor`).
+    registerFeature("brush", ToolboxFeatureRegistration(
+        create: { ToolboxBrushFeature() },
+        getDefaultOption: { ecModel in ToolboxBrushFeature.getDefaultOption(ecModel) }
+    ))
 }
 
 // upstream: `noop` handler — the action only publishes an event; it mutates no model.

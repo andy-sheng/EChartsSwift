@@ -140,16 +140,19 @@ open class CandlestickSeriesModel: SeriesModel {
         return "open"
     }
 
-    // upstream: brushSelector(dataIndex, data, selectors): boolean
-    // PORT-NOTE (deferred): `BrushCommonSelectorsForSeries`/`selectors.rect` ARE ported (brushVisual.swift),
-    //   but candlestick is not enabled in the central `brushSelectorSupported` dispatch, so this method is
-    //   never invoked yet. The signature is preserved; `itemLayout.brushRect` is exposed by candlestickLayout
-    //   for the eventual wiring. Deferred → returns false (matches scatter's deferred brushSelector).
-    open func brushSelector(_ dataIndex: Int, _ data: SeriesData, _ selectors: Any) -> Bool {
-        // const itemLayout = data.getItemLayout(dataIndex);
-        // return itemLayout && selectors.rect(itemLayout.brushRect);
-        _ = (dataIndex, data, selectors)
-        return false
+    // upstream:
+    //   brushSelector(dataIndex, data, selectors): boolean {
+    //       const itemLayout = data.getItemLayout(dataIndex);
+    //       return itemLayout && selectors.rect(itemLayout.brushRect);
+    //   }
+    //   `itemLayout.brushRect` is the per-candle hit rect written by candlestickLayout.
+    open override var brushSelector: BrushSelectorFn? {
+        return { dataIndex, data, selectors, _ in
+            guard let itemLayout = data.getItemLayout(dataIndex) as? CandlestickItemLayout else {
+                return false
+            }
+            return selectors.rect(itemLayout.brushRect)
+        }
     }
 
     // ========================================================================================

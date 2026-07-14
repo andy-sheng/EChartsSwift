@@ -26,17 +26,17 @@ import ZRenderKit
 // import Model from '../../model/Model';                     -> Model (model/Model.swift)
 // import ComponentModel from '../../model/Component';        -> ComponentModel (model/Component.swift)
 // import BrushTargetManager from '../helper/BrushTargetManager';
-//   -> PORT-NOTE (deferred): requires BrushTargetManager (DEFERRED with the full BrushController). The
-//      `brushTargetManager` inject slot is preserved below as an untyped `Any?` for the later
-//      target-matching task.
+//   -> BrushTargetManager (component/helper/BrushTargetManager.swift) — the grid + geo coord-system
+//      targets, the coordRange<->pixel converts, and `controlSeries`. Injected below.
 // import {
 //     BrushCoverCreatorConfig, BrushMode, BrushCoverConfig, BrushDimensionMinMax,
 //     BrushAreaRange, BrushTypeUncertain, BrushType
 // } from '../helper/BrushController';
-//   -> BrushController is DEFERRED (1151 lines). Its config/type surface is modeled here as the
-//      `[String: Any]` option bag (CONVENTIONS §2). `BrushType`/`BrushDimensionMinMax` are declared
-//      in selector.swift; `BrushMode`/`BrushTypeUncertain` collapse to `String`; the various
-//      `*Config` interfaces collapse to `[String: Any]`.
+//   -> BrushController (component/helper/BrushController.swift) declares all of these:
+//      `BrushType`/`BrushMode`/`BrushTypeUncertain` collapse to `String`(?) per CONVENTIONS §2;
+//      `BrushDimensionMinMax` = [Double]; `BrushAreaRange` = Any (the TS union); `BrushCoverConfig` /
+//      `BrushCoverCreatorConfig` are classes there. This model still carries its own option/area state
+//      as the `[String: Any]` bag (that IS the upstream shape — `areas` are plain option objects).
 // import { ModelFinderObject } from '../../util/model';      -> ModelFinderObject (util/modelUtil.swift, = [String: Any])
 // import tokens from '../../visual/tokens';                  -> `tokens` (visual/tokens.swift)
 
@@ -102,8 +102,9 @@ open class BrushModel: ComponentModel {
     public var brushOption: [String: Any] = [:]
 
     // Inject brushTargetManager: BrushTargetManager;
-    // PORT-NOTE (deferred): requires BrushTargetManager; kept untyped for the later target-matching task.
-    public var brushTargetManager: Any?
+    //   Assigned by `layoutCovers` (brushVisual.swift) on every visual pass; read by `stepAOthers`
+    //   (controlSeries) and by BrushView (`makePanelOpts` / `setOutputRanges`).
+    public var brushTargetManager: BrushTargetManager?
 
     // optionUpdated(newOption: BrushOption, isInit: boolean): void
     open override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
@@ -191,12 +192,6 @@ private func generateBrushOption(_ option: [String: Any], _ brushOption: [String
 }
 
 // export default BrushModel; -> `open class BrushModel` above.
-
-// The visual encoder (brushVisual.swift) + brushAction read/write the model's runtime `areas`
-// through `BrushModelLike`. The stored `areas: [BrushAreaParamInternal]` and `setAreas(_:)`
-// members (both over `[String: Any]`) already satisfy it — declare the conformance so the
-// runtime `as? BrushModelLike` casts succeed (without this the whole brush path is a silent no-op).
-extension BrushModel: BrushModelLike {}
 
 // ---- port-local helpers (not in upstream) ----
 

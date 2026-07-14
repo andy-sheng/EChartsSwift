@@ -1204,7 +1204,11 @@ public final class ECharts: EChartsType {
         "markArea": { MarkAreaView() },
         // toolbox icon row (component/toolbox/install.ts `registerComponentView(ToolboxView)`). Renders
         //   the feature icon buttons (saveAsImage/restore/dataZoom/magicType) via makePath in a box row.
-        "toolbox": { ToolboxView() }
+        "toolbox": { ToolboxView() },
+        // brush component view (component/brush/install.ts `registerComponentView(BrushView)`). Owns the
+        //   BrushController: it paints the COVER (the draggable selection rect / polygon / line band) into
+        //   the zr, and turns a user drag into a `brush` / `brushEnd` action. Keyed by mainType 'brush'.
+        "brush": { BrushView() }
     ]
     private let _chartViewFactories: [String: () -> ChartView] = [
         "bar": { BarView() },
@@ -1310,6 +1314,11 @@ public final class ECharts: EChartsType {
         markPointPreprocessor(&opt)
         markLinePreprocessor(&opt)
         markAreaPreprocessor(&opt)
+        // Preprocessor from component/brush/install.ts (registerPreprocessor(brushPreprocessor)): turn a
+        //   brush component's `toolbox: ['rect','polygon',…]` list into `toolbox.feature.brush.type`, i.e.
+        //   put the brush BUTTONS in the toolbar. Those buttons dispatch `takeGlobalCursor` — the way a
+        //   user arms the brush paint cursor in the official examples. Self-gates on `option.brush`.
+        brushPreprocessor(&opt)
         // Preprocessor from component/timeline/preprocessor.ts (registerPreprocessor(timelinePreprocessor)):
         //   normalize the `timeline` option (ec2-compat: type→axisType, controlPosition→controlStyle.position,
         //   transfer label/itemStyle on each data item). Mutates option.timeline in place (inout ECUnitOption).
@@ -1879,14 +1888,31 @@ public final class ECharts: EChartsType {
         //   AFTER the generic performVisualStage (it only extends `opacity` onto the existing style bag).
         runSeriesStageHandler(parallelVisual, ecModel, api)
 
+        // LAYOUT — point-series pixel projection (upstream `registerLayout(layoutPoints('scatter'))` in
+        //   chart/scatter/install.ts and `layoutPoints('effectScatter')` in chart/effectScatter/install.ts).
+        //   A SERIES_STAGE_TASK whose `progress` runs each datum through `coordSys.dataToPoint` and stores
+        //   the pixel point with `data.setItemLayout(i, point)`. ScatterView/EffectScatterView inline the
+        //   same math for drawing, but `SeriesModel#brushSelector` reads `data.getItemLayout(dataIndex)` —
+        //   so WITHOUT this stage a brush over a scatter selects nothing at all.
+        //   PORT-NOTE: upstream also registers `layoutPoints('line', true)` (chart/line/install.ts), whose
+        //   `forceStoreInTypedArray` branch writes the flat `data.setLayout('points')` buffer instead of
+        //   per-item layouts. LineView inlines its own point projection and owns that layout key, so the
+        //   line registration is intentionally not wired here (line has no `brushSelector` upstream either
+        //   — it is not brushable — so nothing depends on it).
+        runSeriesStageHandler(pointsLayout("scatter"), ecModel, api)
+        runSeriesStageHandler(pointsLayout("effectScatter"), ecModel, api)
+
         // VISUAL (brush) — upstream PRIORITY.VISUAL.BRUSH (5000), the same priority as parallelVisual above,
         //   i.e. AFTER every layout stage (so each datum's `getItemLayout` pixel geometry exists for the rect
         //   selector) and BEFORE `renderSeries` draws (so the in/out-of-brush item-visual color the encoder
         //   writes is picked up by the draw). `brushVisual` self-gates (eachComponent("brush") → no-op when
         //   absent), rebuilds each area's pixel range from its coordRange (layoutCovers), tests every series
         //   datum against the rect selector, and marks inBrush/outOfBrush — recoloring the unselected to the
-        //   `outOfBrush` color (dim). This is the Phase-44 KEY deliverable (rect select + dim unselected).
-        brushVisual(ecModel, api, nil)
+        //   `outOfBrush` color (dim).
+        //   The PAYLOAD is threaded through (upstream `visualEncoding.brushVisual(ecModel, api, payload)`):
+        //   it is what arms the paint cursor (`takeGlobalCursor` -> `brushModel.setBrushOption`) and what
+        //   gates the `brushSelect` dispatch (upstream never fires `brushselected` for a plain setOption).
+        brushVisual(ecModel, api, _payload)
 
         renderSeries(ecModel, api, updateParams)
 
@@ -2058,7 +2084,11 @@ public final class ECharts: EChartsType {
     }
 
     private func renderComponents(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        let payload = Payload(type: "")
+        // upstream: `renderComponents(ecModel, api, payload)` — the in-flight action payload is handed to
+        //   every component view's `render`. Views read it to skip work they themselves caused: BrushView
+        //   compares `payload.$from` with its own model id so a cover being DRAGGED is not rebuilt underneath
+        //   the drag. The driver stashes it in `_payload` for the duration of a dispatch (see doDispatchAction).
+        let payload = _payload ?? Payload(type: "")
         for componentView in _componentsViews {
             guard let model = componentView.__model else { continue }
             // upstream renderComponents wraps render with clearStates (before) — reset a reused view.
@@ -2396,6 +2426,14 @@ public final class ECharts: EChartsType {
             //   updateVisual/updateLayout/updateTransform) reuse the persistent views and skip data
             //   reprocessing; 'update'/'prepareAndUpdate' run the full pipeline. (In the every
             //   layout stage lives inside render(), so updateView/updateLayout re-lay-out too.)
+            //
+            // The update methods take no payload argument here (upstream: `updateMethods[m].call(this,
+            //   payload)`), so park it on the driver for the duration — `render()` hands it to the
+            //   component views + the brush visual stage. Restored (not just cleared) so a nested
+            //   dispatch — e.g. brushVisual's own `brushSelect` — cannot strand the outer payload.
+            let prevPayload = _payload
+            _payload = payload
+            defer { _payload = prevPayload }
             switch updateMethod {
             case "updateView":      updateView()
             case "updateVisual":    updateVisual()
@@ -2948,6 +2986,23 @@ public final class ECharts: EChartsType {
     // ------------------------------------------------------------------------
     public var dataZoomSelectActive: Bool = false
 
+    // ------------------------------------------------------------------------
+    // The in-flight action payload (upstream: `updateMethods.update(payload)` threads it down through
+    //   `renderComponents(ecModel, api, payload)` and the visual stages). This port's update methods take
+    //   no payload argument, so `doDispatchAction` parks it here for the duration of the dispatch and
+    //   `render()` reads it back (component views' `render`; the brush visual's takeGlobalCursor +
+    //   brushSelect gate). `nil` outside a dispatch — i.e. during a `setOption` — which is exactly the
+    //   condition upstream's brush visual uses to NOT emit `brushselected` on setOption.
+    // ------------------------------------------------------------------------
+    fileprivate var _payload: Payload?
+
+    // upstream: `getZr()` returns `this._zr`. This driver owns no ZRender (see ExtensionAPI.getZr's PORT
+    //   SEAM note): the live host adds `getRoot()` to its zr, which stamps the `__zr` back-pointer on the
+    //   group. Resolve it from there so `api.getZr()` works with zero host wiring. nil in pure headless.
+    public func getZr() -> ZRenderType? {
+        return root.__zr
+    }
+
     // For `api.getViewOf*` forwarding.
     fileprivate func viewOfComponentModel(_ model: ComponentModel) -> ComponentView? {
         return _componentViewByModel[ObjectIdentifier(model)]
@@ -2973,6 +3028,8 @@ final class EChartsExtensionAPI: ExtensionAPI {
     }
     override func getWidth() -> Double { ec.getWidth() }
     override func getHeight() -> Double { ec.getHeight() }
+    // upstream `availableMethods` binds `getZr` to the ec instance. See ExtensionAPI.getZr's PORT SEAM.
+    override func getZr() -> ZRenderType? { ec.getZr() }
     override func getModel() -> GlobalModel { ec.getModel()! }
     override func getCoordinateSystems() -> [CoordinateSystemMaster] { ec.coordinateSystems() }
     override func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {

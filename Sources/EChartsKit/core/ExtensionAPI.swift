@@ -134,6 +134,19 @@ open class ExtensionAPI {
         fatalError("abstract method ExtensionAPI.getHeight must be overridden") // PORT-NOTE: abstract
     }
 
+    // upstream: part of the `availableMethods` forwarding (`getZr`) — `ECharts` OWNS the ZRender
+    //   (`this._zr = zrender.init(dom, ...)`), so every interaction controller reaches it through
+    //   `api.getZr()` (BrushController, RoamController, MapDraw, tooltip …).
+    //
+    //   PORT SEAM: this port's `ECharts` driver is host-independent and owns NO ZRender — the live host
+    //   (`EChartsView`) creates one and wires `ec.getRoot()` into it. `EChartsExtensionAPI` therefore
+    //   resolves the zr through the root group's `__zr` back-pointer (set by `zr.add(root)`), which is
+    //   live from the first `_syncRoot` onward. Returns nil in pure headless (no host zr): a consumer
+    //   must then degrade gracefully — see BrushView's PORT-NOTE.
+    open func getZr() -> ZRenderType? {
+        return nil
+    }
+
     // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
     //   Upstream returns `zr.painter.dpr` (the device pixel ratio). Used by `util/decal`'s tile
     //   rasterization (createOrUpdatePatternFromDecal). Defaults to 1 (the headless/test dpr); the

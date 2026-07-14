@@ -191,8 +191,13 @@ open class ScatterSeriesModel: SeriesModel {
     //   brushSelector(dataIndex, data, selectors): boolean {
     //       return selectors.point(data.getItemLayout(dataIndex));
     //   }
-    // PORT-NOTE: component/brush/selector.ts (BrushCommonSelectorsForSeries) not ported — brush is out of
-    //   scope for the scatter milestone. Restore this override when the brush component lands.
+    //   (`brushSelector` is an OPTIONAL declaration-merged member of SeriesModel, modeled as an optional
+    //    function-valued property — see the PORT-NOTE on `SeriesModel.brushSelector`.)
+    open override var brushSelector: BrushSelectorFn? {
+        return { dataIndex, data, selectors, _ in
+            return selectors.point(brushItemLayoutAsPoint(data.getItemLayout(dataIndex)))
+        }
+    }
 
     // upstream: static defaultOption: ScatterSeriesOption = { ... }
     open override class var defaultOption: ModelOption? {

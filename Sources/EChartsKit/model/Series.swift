@@ -368,6 +368,23 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     }
 
     /**
+     * See `component/brush/selector.js`
+     * Defined the brush selector for this series.
+     */
+    // upstream (declaration-merged `interface SeriesModel`):
+    //   brushSelector(dataIndex: number, data: SeriesData, selectors: BrushCommonSelectorsForSeries,
+    //       area: BrushSelectableArea): boolean;
+    //
+    // It is an OPTIONAL member: `component/brush/visualEncoding.ts` gates on its EXISTENCE
+    // (`if (!seriesModel.brushSelector || ...) return;`) — a series that does not define it is not
+    // brushable at all. Swift has no method-existence check, so the member is modeled as an OPTIONAL
+    // FUNCTION-VALUED property: `nil` here == "not defined" (base default), and each brushable series
+    // (scatter / effectScatter / bar / candlestick, exactly as upstream) overrides it with its selector.
+    open var brushSelector: BrushSelectorFn? {
+        return nil
+    }
+
+    /**
      * Consider some method like `filter`, `map` need make new data,
      * We should make sure that `seriesModel.getData()` get correct
      * data in the stream procedure. So we fetch data from upstream

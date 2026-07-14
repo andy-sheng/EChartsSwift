@@ -108,8 +108,11 @@ open class EffectScatterSeriesModel: SeriesModel {
     //   brushSelector(dataIndex, data, selectors): boolean {
     //       return selectors.point(data.getItemLayout(dataIndex));
     //   }
-    // PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); this
-    //   brushSelector override is simply not restored here yet (brush out of scope for this milestone).
+    open override var brushSelector: BrushSelectorFn? {
+        return { dataIndex, data, selectors, _ in
+            return selectors.point(brushItemLayoutAsPoint(data.getItemLayout(dataIndex)))
+        }
+    }
 
     // upstream: static defaultOption: EffectScatterSeriesOption = { ... }
     open override class var defaultOption: ModelOption? {

@@ -94,7 +94,11 @@ public func mapSymbolLayout(_ ecModel: GlobalModel) {
                     let offset = mapSymbolOffsets[name] ?? 0
 
                     // upstream: const point = geo.dataToPoint(region.getCenter());
-                    let point = geo.dataToPoint(region.getCenter(), false)
+                    //   The explicit `[Double]?` picks Geo's own (Optional-returning) `dataToPoint`
+                    //   overload rather than the `CoordinateSystem` protocol witness added in Geo.swift
+                    //   (which collapses a null projection to [NaN, NaN]); a nil point must stay nil here
+                    //   so the symbol is skipped, as it was before.
+                    let point: [Double]? = geo.dataToPoint(region.getCenter(), false)
 
                     // upstream: mapSymbolOffsets[name] = offset + 1;
                     mapSymbolOffsets[name] = offset + 1

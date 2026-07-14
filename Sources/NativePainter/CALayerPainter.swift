@@ -427,6 +427,7 @@ public final class CALayerPainter: Painter {
         let layer = CALayer()
         layer.bounds = CGRect(origin: .zero, size: size)
         layer.contentsScale = CGFloat(self.dpr)
+        layer.actions = CALayerPainter.noImplicitActions
         #if canImport(AppKit) && !canImport(UIKit)
         // AppKit CALayers are y-up by default; flip so retained-mode shape layers (whose paths are
         // in zrender's y-down space) render upright, matching iOS / canvas.
@@ -553,13 +554,38 @@ public final class CALayerPainter: Painter {
     public func endFrame() {
         guard let ctx = _frameContext else { return }
         if let image = ctx.makeImage() {
-            rootLayer.contents = image
+            // Publish WITHOUT Core Animation's implicit action. `contents` has a default animation — a
+            // ~0.25s cross-fade — so assigning a new frame dissolves it over the previous one. With the
+            // animation loop running the frames arrive faster than the fade and it mostly hides; but a
+            // one-off repaint (drag a dataZoom with chart animation off) visibly GHOSTS the old chart
+            // under the new one. Canvas has no such behaviour, and neither does the Metal painter
+            // (CAMetalLayer presents drawables directly) — which is exactly why the ghosting only showed
+            // up on this backend.
+            withoutImplicitAnimation { rootLayer.contents = image }
             // Retain this frame as the source for the next frame's motion-blur composite.
             if _motionBlur { _lastFrameImage = image }
         }
         _frameContext = nil
         _frameRenderer = nil
     }
+
+    /// Run a layer mutation with Core Animation's implicit actions off — a painter publishes finished
+    /// frames, so every layer write here is a `set`, never something to animate.
+    private func withoutImplicitAnimation(_ body: () -> Void) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        body()
+        CATransaction.commit()
+    }
+
+    /// Kill Core Animation's implicit actions on every layer this painter owns, declaratively — a
+    /// per-call-site `CATransaction` only protects the sites you remember to wrap, and the next
+    /// `layer.contents = …` added would silently reintroduce the cross-fade. Canvas (and CAMetalLayer)
+    /// have no such behaviour; a painter's layer must not either.
+    static let noImplicitActions: [String: CAAction] = [
+        "contents": NSNull(), "bounds": NSNull(), "position": NSNull(),
+        "sublayers": NSNull(), "onOrderIn": NSNull(), "onOrderOut": NSNull(), "hidden": NSNull()
+    ]
 
     /// upstream painter.configLayer(zLevel, config) — per-zlevel motion-blur config. Storing a config with
     /// `motionBlur == true` for any zlevel switches `refresh` to the per-zlevel layer path (see the
@@ -695,6 +721,7 @@ extension CALayerPainter: LayerHostedPainter {
         let s = CALayer()
         s.frame = CGRect(origin: .zero, size: surfaceSize)
         s.contentsScale = CGFloat(dpr)
+        s.actions = CALayerPainter.noImplicitActions
         #if canImport(AppKit) && !canImport(UIKit)
         s.isGeometryFlipped = true   // match rootLayer so the pre-rendered frame image is upright
         #endif

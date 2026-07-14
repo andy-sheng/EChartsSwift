@@ -168,7 +168,17 @@ public final class Geo: Transformable, CoordinateSystemMaster {
     public var projection: GeoProjection?
 
     // upstream: model: GeoModel | NullUndefined;  // Injected outside.
-    public var model: GeoModel?
+    //
+    // PORT-NOTE: typed `ComponentModel?`, not `GeoModel?`, so it WITNESSES the `model` requirement of
+    //   BOTH `CoordinateSystemMaster` and `CoordinateSystem` (Geo conforms to both — see the extension at
+    //   the bottom of this file). With a `GeoModel?` here, neither protocol's requirement is satisfied by
+    //   it, and the two protocol-extension defaults collide ("multiple matching properties named 'model'").
+    //   This is exactly the shape `Grid` already uses (`_gridModel` + a witnessing `model`), and it also
+    //   makes `coordSys.model` work through the existential (which is what the axisPointer/tooltip paths
+    //   read). The concrete accessor below preserves the typed reads.
+    public var model: ComponentModel?
+    /// Concrete GeoModel accessor (upstream `this.model`).
+    public var geoModel: GeoModel? { return model as? GeoModel }
 
     // upstream: resize: resizeGeoType;  // Injected outside (by geoCreator: `geo.resize = resizeGeo`).
     //   PORT-NOTE: geoCreator assigns this (coord/geo/geoCreator.swift: `geo.resize = resizeGeo`). Signature mirrors `resizeGeo(this: Geo, geoModel, api)`.
@@ -465,6 +475,48 @@ private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Geo? {
         return nil
     }
     return nil
+}
+
+// ============================================================================
+// upstream: `class Geo extends View implements CoordinateSystemMaster, CoordinateSystem`.
+//
+// PORT-NOTE (gap fix): the class above declared only `CoordinateSystemMaster`. The `CoordinateSystem`
+//   half was missing, and it is load-bearing: `geoCreator`'s `coordSysProvider` returns
+//   `geoModel.coordinateSystem as? CoordinateSystem` (CoordSysInjectionProvider's type), so that cast
+//   always failed and `injectCoordSysByOption` NEVER set `seriesModel.coordinateSystem` for a geo-bound
+//   series. Consequences that this restores:
+//     - `layout/points.ts` could not project a geo scatter (`if (!coordSys) return`), so
+//       `data.getItemLayout(i)` stayed nil and a BRUSH over a geo scatter selected nothing;
+//     - `BrushTargetManager#controlSeries` (`indexOf(targetInfo.coordSyses, seriesModel.coordinateSystem)`)
+//       could never match a geo series;
+//     - ScatterView's `seriesModel.coordinateSystem as? Geo` branch was dead code.
+//
+//   Only the two members whose signatures differ from Geo's own typed ones need witnesses (`type`,
+//   `dimensions`, `containPoint`, `getBoundingRect`, `getViewRect`, `getRoamTransform` already match;
+//   every other requirement has a nil/no-op default). This is the same overload pattern `Calendar`
+//   uses (its `dataToPoint(CoordinateSystemDataCoord, Any?)` witness alongside its typed `dataToPoint`).
+// ============================================================================
+extension Geo: CoordinateSystem {
+
+    // The `CoordinateSystem.dataToPoint` witness. Forwards to the typed `dataToPoint(_:_:)` above.
+    //   Upstream's Geo signature is `dataToPoint(data, noRoam?, out?)`, i.e. the `opt` slot IS `noRoam`.
+    //   The contract says an invalid point is `[NaN, NaN]`, never null — so the Optional collapses here.
+    public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double] {
+        return self.dataToPoint(data as Any?, opt as? Bool) ?? [Double.nan, Double.nan]
+    }
+
+    // The `CoordinateSystem.pointToData` witness (upstream `pointToData(point, reserved?, out?)`).
+    public func pointToData(_ point: [Double], _ opt: Any?) -> Any? {
+        return self.pointToData(point, opt as Any?)
+    }
+
+    // Geo declares NO axes (upstream: `getAxes` is an optional member it does not implement). Both
+    //   `CoordinateSystemMaster` and `CoordinateSystem` supply a nil default for it, and conforming to
+    //   both makes those two defaults ambiguous ("multiple matching functions named 'getAxes()'"), so
+    //   the disambiguating witness is declared here explicitly.
+    public func getAxes() -> [Axis]? {
+        return nil
+    }
 }
 
 // export default Geo;  -> `public final class Geo` above.

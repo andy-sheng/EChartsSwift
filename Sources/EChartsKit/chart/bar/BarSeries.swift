@@ -166,9 +166,14 @@ open class BarSeriesModel: BaseBarSeriesModel {
     //   brushSelector(dataIndex: number, data: SeriesData, selectors: BrushCommonSelectorsForSeries): boolean {
     //       return selectors.rect(data.getItemLayout(dataIndex));
     //   }
-    // PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); this
-    //   per-series `brushSelector` override is centralized there (seriesBrushSelector, bar → selectors.rect
-    //   branch) rather than restored on this subclass. Move it back here once brushSelector lands per-series.
+    //   PORT-NOTE: bar's item layout is stored as the `["x":,"y":,"width":,"height":]` bag
+    //   (layout/barGrid.swift) where upstream stores a `RectLike` object; `brushItemLayoutAsRect`
+    //   accepts either.
+    open override var brushSelector: BrushSelectorFn? {
+        return { dataIndex, data, selectors, _ in
+            return selectors.rect(brushItemLayoutAsRect(data.getItemLayout(dataIndex)))
+        }
+    }
 
     // upstream: static defaultOption: BarSeriesOption = inheritDefaultOption(BaseBarSeriesModel.defaultOption, {...})
     open override class var defaultOption: ModelOption? {

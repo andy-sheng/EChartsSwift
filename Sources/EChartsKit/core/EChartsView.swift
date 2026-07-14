@@ -898,6 +898,15 @@ public final class EChartsView {
             guard self.ec.getModel()?.getComponent("brush") != nil || self.ec.dataZoomSelectActive else {
                 return nil
             }
+            // STAND DOWN when the REAL brush is armed: the ported BrushView owns a BrushController that
+            //   paints the cover and dispatches `brush`/`brushEnd` with a proper `coordRange` (via
+            //   BrushTargetManager.setOutputRanges). This block predates that controller and is only the
+            //   fallback for a brush component whose paint cursor was never armed (no `takeGlobalCursor`);
+            //   running both would dispatch twice and clobber the controller's areas with a pixel-only rect.
+            if let brushModel = self.ec.getModel()?.getComponent("brush") as? BrushModel,
+               brushModel.brushType != nil {
+                return nil
+            }
             self._brushDrag = (startX: e.offsetX, startY: e.offsetY)
             return nil
         }, nil)
