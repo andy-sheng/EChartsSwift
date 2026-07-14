@@ -67,7 +67,7 @@ import ZRenderKit
 //   import { warn } from '../../util/log';                           -> `log.warn`.
 //   import {createSectorCalculateTextPosition, SectorTextPosition, setSectorTextRotation}
 //       from '../../label/sectorLabel';                              -> PORT-NOTE (deferred): requires label/sectorLabel (not ported; polar/label).
-//   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (PORT-NOTE: still a no-op stub in basicTransition.swift; universalTransition style save deferred).
+//   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (real since universalTransition landed).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-NOTE: sectorHelper is ported; polar bars deferred in this view.
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).

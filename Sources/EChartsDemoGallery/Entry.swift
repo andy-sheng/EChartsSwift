@@ -755,6 +755,28 @@ func runCLI() -> Bool {
         print(ok ? "wrote \(args[2])" : "FAILED to native-render \(demo.name)")
         exit(ok ? 0 : 1)
 
+    case "--port-stubs":
+        // --port-stubs <name> : which knowingly-unimplemented behaviour does THIS demo silently
+        // depend on? Renders the demo and prints one `STUB\t<id>\t<consequence>` line per hit.
+        //
+        // This is the forcing function the port lacked. A stub that CRASHES is harmless — it gets
+        // fixed on day one. A stub that silently degrades (an axis quietly becoming a value axis)
+        // survives for a year, because everything downstream still looks plausible. Now it is a list.
+        //
+        // One demo per process, driven by scripts/port-stubs.sh: some demos still hit a `fatalError`,
+        // and an in-process sweep would be killed by the first one — losing the whole report to the
+        // very kind of gap it exists to find.
+        guard args.count >= 2, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --port-stubs <name>   (see scripts/port-stubs.sh)\n".utf8))
+            exit(2)
+        }
+        PortStub.reset()
+        _ = renderNativeGroup(demo)
+        for (gap, count) in PortStub.hits.sorted(by: { $0.key.id < $1.key.id }) {
+            print("STUB\t\(gap.id)\t\(count)\t\(gap.consequence)")
+        }
+        exit(0)
+
     case "--render-all":
         guard args.count >= 2 else {
             FileHandle.standardError.write(Data("usage: --render-all <dir>\n".utf8)); exit(2)

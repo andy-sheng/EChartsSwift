@@ -70,9 +70,13 @@ public final class SliderZoomDisplayables {
 // class SliderZoomView extends DataZoomView (extends ComponentView)
 open class SliderZoomView: ComponentView {
 
-    // PORT-NOTE (deferred): upstream toggles the handle-label emphasis visibility here; the handle labels
-    //   are a deferred niceties path (data-info), so this is a no-op stub consumed by the drag slice's _onDragEnd.
-    func _showDataInfo(_ isEmphasis: Bool) { _ = isEmphasis }
+    // PORT-STUB: upstream toggles the handle-label emphasis visibility here; the handle labels are not
+    //   ported, so dragging a slider handle never shows the value under the cursor.
+    func _showDataInfo(_ isEmphasis: Bool) {
+        PortStub.hit("SliderZoomView._showDataInfo",
+                     "dataZoom slider handle labels are not ported; dragging a handle shows no value")
+        _ = isEmphasis
+    }
 
     // static type = 'dataZoom.slider'; type = SliderZoomView.type;
     public static let type = "dataZoom.slider"

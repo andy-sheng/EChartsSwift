@@ -89,14 +89,28 @@ extension EChartsExtensionInstallRegisters {
     // PORT-NOTE: upstream signature is `registerComponentModel(ComponentModelClass)`. Ported as
     //   (type, factory) to carry the dynamically-generated class's per-type identity/defaults.
     public func registerComponentModel(_ componentModelType: ComponentFullType, _ factory: @escaping AxisModelFactory) {
-        // no-op stub (Phase 6b registrar wiring)
+        // PORT-STUB: the registrar does not instantiate dynamically-generated axis model classes.
+        PortStub.hit("axisModelCreator.registerComponentModel",
+                     "axis model classes are not registered dynamically; ECharts.swift's hand-written "
+                     + "stand-in models (EChartsXAxisModel / EChartsYAxisModel / …) serve instead")
         _ = componentModelType
         _ = factory
     }
     // PORT-NOTE: upstream defaulter type is `SubTypeDefaulter = (ComponentOption) -> ComponentSubType`;
     //   `getAxisType` reads the dynamic option bag, so `[String: Any]` is used here.
     public func registerSubTypeDefaulter(_ componentType: String, _ defaulter: @escaping ([String: Any]) -> ComponentSubType) {
-        // no-op stub (Phase 6b registrar wiring)
+        // PORT-STUB — THE ONE THAT COST US A YEAR. Upstream resolves a component's sub-type from its
+        // option through this defaulter; for axes that is `getAxisType` ("has `data` -> category").
+        // While this was silently empty, every axis written the way the official examples write them
+        // (`xAxis: { data: [...] }`, no `type`) degraded to a VALUE axis — a plausible chart, so
+        // nothing crashed and no test went red.
+        //
+        // The axis case is no longer reachable: ECharts.swift's stand-in axis models apply
+        // `getAxisType` themselves (see mergeAxisDefaults). Any OTHER component that registers a
+        // defaulter is still silently unresolved, which is what this hit records.
+        PortStub.hit("axisModelCreator.registerSubTypeDefaulter",
+                     "component sub-type defaulters are not consulted; a component whose subType must "
+                     + "be inferred from its option resolves to its default instead")
         _ = componentType
         _ = defaulter
     }

@@ -42,7 +42,7 @@ import ZRenderKit
 //   import {CandlestickItemLayout} from './candlestickLayout';       -> `CandlestickItemLayout`.
 //   import Model from '../../model/Model';                           -> `Model`.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> shared module `saveOldStyle`
-//     (`animation/basicTransition.swift`), still a B1 no-op stub (see comment there) but no longer
+//     (`animation/basicTransition.swift`), real since universalTransition landed, but no longer
 //     a local shim.
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getBorderColor, getColor } from './candlestickVisual';  -> sibling `getBorderColor` / `getColor`.

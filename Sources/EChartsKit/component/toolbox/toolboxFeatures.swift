@@ -63,7 +63,11 @@ open class ToolboxSaveAsImageFeature: ToolboxFeature {
             opts["pixelRatio"] = pixelRatio
         }
         guard let data = api.getConnectedDataURL(opts) else {
-            return   // no host rasterizer wired (pure headless) → export is a no-op.
+            // PORT-STUB: the host has no rasterizer wired (`ExtensionAPI.getConnectedDataURL`), so
+            // clicking Save-as-Image does nothing at all — the toolbox icon is drawn and inert.
+            PortStub.hit("toolboxFeatures.SaveAsImage",
+                         "no host rasterizer wired; the Save-as-Image toolbox button silently does nothing")
+            return
         }
         // The browser `<a download>` → the host save callback (PORT SEAM).
         api.saveAsImage(data, title + "." + imgType)

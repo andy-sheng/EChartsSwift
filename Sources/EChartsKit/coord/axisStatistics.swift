@@ -77,7 +77,14 @@ public struct ECPriorityProcessorStub { public let AXIS_STATISTICS: Double = 0 }
 public struct ECPriorityStub { public let PROCESSOR = ECPriorityProcessorStub() } // PORT-NOTE (deferred): requires extension.ts registrar (Phase 6b)
 open class EChartsExtensionInstallRegisters {                              // PORT-NOTE (deferred): stub registrar, requires extension.ts (Phase 6b)
     open var PRIORITY: ECPriorityStub { ECPriorityStub() }
-    open func registerProcessor(_ priority: Double, _ processor: AxisStatProcessorRegistration) {}
+    open func registerProcessor(_ priority: Double, _ processor: AxisStatProcessorRegistration) {
+        // PORT-STUB: the base registrar drops processors on the floor. The real path uses the
+        // capturing subclass (`EChartsInstallRegisters`, ECharts.swift), which overrides this and
+        // runs them in the data-processor stage — so a hit here means an install ran against the
+        // BASE registrar and its processor will never execute.
+        PortStub.hit("axisStatistics.EChartsExtensionInstallRegisters.registerProcessor",
+                     "processor registered against the base registrar is discarded; it never runs")
+    }
     public init() {}
 }
 // ============================================================================

@@ -332,7 +332,7 @@ open class CustomChartView: ChartView {
         // PORT-NOTE (equivalent substitute): `graphicUtil.traverseElements` is not ported; the walk below
         //   reproduces it — traverse the progressive els or group.
         //   `traverseElements` invokes `cb` on each root element itself and then walks its descendants;
-        //   `Element.traverse` is a no-op stub while `Group.traverse` walks children, so invoke `cb` on
+        //   `Element.traverse` is empty UPSTREAM TOO (zrender Element.ts) and only `Group` overrides it, so invoke `cb` on
         //   each root and recurse into groups.
         if let progressiveEls = self._progressiveEls {
             for el in progressiveEls {

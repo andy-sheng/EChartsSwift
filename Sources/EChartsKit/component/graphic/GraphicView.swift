@@ -429,11 +429,7 @@ private func newEl(_ graphicType: String) -> Element? {
         el = nil
     default:
         // graphicUtil.getShapeClass(graphicType)
-        // PORT-NOTE (deferred): requires `util/graphic.getShapeClass` (the `extendShape` string->class
-        //   registry), NOT ported yet. ZRenderKit has the concrete shape classes (Circle/Rect/Line/
-        //   Polygon/...), but no name lookup, so non-group/image/text graphic elements cannot be
-        //   constructed here. Until it lands this returns nil.
-        el = nil
+        el = getShapeClass(graphicType).map { $0(nil) }
     }
 
     if __DEV__ {

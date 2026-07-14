@@ -42,7 +42,7 @@ import ZRenderKit
 //   import { createOrUpdatePatternFromDecal } from '../../util/decal';  -> `createOrUpdatePatternFromDecal` (util/decal.swift, ported).
 //   import ExtensionAPI from '../../core/ExtensionAPI';             -> `ExtensionAPI`.
 //   import { saveOldStyle } from '../../animation/basicTransition'; -> `saveOldStyle` (animation/basicTransition.swift;
-//       ported as a no-op stub until universalTransition needs the WeakMap-backed saved style).
+//       real since universalTransition landed — the makeInner-backed saved style).
 //   import { normalizeRadian } from 'zrender/src/contain/util';     -> `contain_util.normalizeRadian` (ZRenderKit) — used by the deferred label-rotation math.
 //   import { isRadianAroundZero } from '../../util/number';         -> `number.isRadianAroundZero` — used by the deferred label-rotation math.
 
@@ -207,8 +207,7 @@ open class SunburstPiece: Sector {
                 "startAngle": sectorShape.startAngle,
                 "endAngle": sectorShape.endAngle
             ] as [String: Any]], seriesModel, node.dataIndex)
-            // saveOldStyle(sector);  — universalTransition style save (ported; currently a no-op stub,
-            //   like the sibling BarView call — the WeakMap-backed impl lands with universalTransition).
+            // saveOldStyle(sector);  — universalTransition style save.
             saveOldStyle(sector)
         }
 

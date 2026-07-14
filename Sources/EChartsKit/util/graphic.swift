@@ -108,3 +108,39 @@ private func expandRectOnOneDimension(
     }
     if isX { rect.width = newSize } else { rect.height = newSize }
 }
+
+// ============================================================================
+// The name -> shape-class registry (upstream util/graphic.ts:95-175 + the registrations at :952-960).
+//
+// `graphic: [{ type: 'polygon', ... }]` names its element by STRING; upstream resolves it through
+// this map. It was never ported, so GraphicView could only build group/image/text and asserted on
+// everything else — `graphic type polygon can not be found`. 14 official examples use `graphic`.
+// ============================================================================
+
+// const _customShapeMap: Dictionary<{ new(): Path }> = {};
+//   -> the value is a FACTORY, not a metatype: ZRenderKit's shapes take `init(_ opts: ElementProps?)`,
+//      and Swift cannot express "a Path subclass constructible from opts" as a single existential.
+private var _customShapeMap: [String: (ElementProps?) -> Path] = [
+    // registerShape('circle', Circle); … (upstream util/graphic.ts:952-960)
+    "circle":      { Circle($0) },
+    "ellipse":     { Ellipse($0) },
+    "sector":      { Sector($0) },
+    "ring":        { Ring($0) },
+    "polygon":     { Polygon($0) },
+    "polyline":    { Polyline($0) },
+    "rect":        { Rect($0) },
+    "line":        { Line($0) },
+    "bezierCurve": { BezierCurve($0) }
+]
+
+// export function registerShape(name: string, ShapeClass: {new(): Path})
+public func registerShape(_ name: String, _ factory: @escaping (ElementProps?) -> Path) {
+    _customShapeMap[name] = factory
+}
+
+// export function getShapeClass(name: string): {new(): Path}
+//   -> returns the FACTORY (see above); nil when the name is unknown, exactly as upstream returns
+//      `undefined` (its callers assert on it in DEV).
+public func getShapeClass(_ name: String) -> ((ElementProps?) -> Path)? {
+    return _customShapeMap[name]
+}
