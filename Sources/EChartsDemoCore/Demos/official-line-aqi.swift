@@ -1,22 +1,24 @@
 // official-line-aqi — replica of https://echarts.apache.org/examples/zh/editor.html?c=line-aqi
 // title: Beijing AQI / titleCN: 北京 AQI 可视化
 // A 4928-point daily AQI line (2000-06-05 … 2015-02-24) coloured by a piecewise `visualMap` (the six
-// official AQI bands), with `markLine`s at the band thresholds, a `dataZoom` window opening at
-// 2014-06-01, and the dataZoom/restore/saveAsImage toolbox.
+// official AQI bands, out-of-range grey), with silent `markLine`s at the band thresholds, a `dataZoom`
+// pair (slider opening at `startValue: '2014-06-01'` + `type: 'inside'`), and the
+// dataZoom/restore/saveAsImage toolbox.
 //
 // DEVIATIONS from the official source:
 //   - DATA INLINED. Upstream fetches the series with `$.get(ROOT_PATH + '/data/asset/data/aqi-beijing.json',
 //     function (data) { ... })`. The gallery page has no network, so the asset is vendored at
 //     assets/data/aqi-beijing.json and read at demo time via Upstream.repoRoot (the same #filePath-relative
 //     repo read WebPage.swift uses for the echarts dist). The web pane gets the raw JSON text spliced in as
-//     `var data = [...]` and then runs the callback body VERBATIM — including both `data.map(...)` closures —
-//     so `option` is assigned unconditionally at the top level. The native pane derives the same two arrays
-//     (dates, values) in Swift.
-//   - The TypeScript parameter annotations (`item: string[]` / `item: number[]`) are dropped from the web
-//     pane's closures: the page is a classic script, and an annotation there is a SyntaxError.
+//     a top-level `var data = [...]`; the `$.get` wrapper is dropped and its callback BODY — including the
+//     `myChart.setOption((option = {...}))` call and both `data.map(...)` closures — runs verbatim at the
+//     top level. The native pane derives the same two arrays (dates, values) in Swift.
+//   - The TypeScript parameter annotations (`item: string[]` / `item: number[]`) and the trailing
+//     `export {};` are dropped from the web pane: the page is a classic script, and either is a SyntaxError.
 //   - Upstream writes `series` as a bare object; the native pane uses the equivalent single-element array
-//     (echarts normalizes the two to the same thing).
-// No timers, no animated re-setOption: the official example is a single static frame already.
+//     (echarts and the port both normalize the two to the same thing).
+// No timers and no JS closures inside the option itself, so the native pane carries the option 1:1 and
+// needs no `drive` timeline: the official example is a single static frame plus interaction (zoom/tooltip).
 import Foundation
 
 // The vendored asset, raw, for the web pane: spliced in as `var data = ...` so the official callback body
@@ -42,7 +44,7 @@ private let aqiBeijingSeries: (dates: [String], values: [Double]) = {
     return (dates, values)
 }()
 
-// The six official AQI bands (good → hazardous) plus the out-of-range grey.
+// The six official AQI bands (good → hazardous).
 private let aqiBeijingPieces: [[String: Any]] = [
     ["gt": 0.0, "lte": 50.0, "color": "#93CE07"],
     ["gt": 50.0, "lte": 100.0, "color": "#FBDB0F"],
@@ -67,112 +69,114 @@ extension EChartsDemoRegistry {
         webOptionJS: #"""
 var data = \#(aqiBeijingRawJSON);
 
-option = {
-  title: {
-    text: 'Beijing AQI',
-    left: '1%'
-  },
-  tooltip: {
-    trigger: 'axis'
-  },
-  grid: {
-    left: '5%',
-    right: '15%',
-    bottom: '10%'
-  },
-  xAxis: {
-    data: data.map(function (item) {
-      return item[0];
-    })
-  },
-  yAxis: {},
-  toolbox: {
-    right: 10,
-    feature: {
-      dataZoom: {
-        yAxisIndex: 'none'
-      },
-      restore: {},
-      saveAsImage: {}
-    }
-  },
-  dataZoom: [
-    {
-      startValue: '2014-06-01'
+myChart.setOption(
+  (option = {
+    title: {
+      text: 'Beijing AQI',
+      left: '1%'
     },
-    {
-      type: 'inside'
-    }
-  ],
-  visualMap: {
-    top: 50,
-    right: 10,
-    pieces: [
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '5%',
+      right: '15%',
+      bottom: '10%'
+    },
+    xAxis: {
+      data: data.map(function (item) {
+        return item[0];
+      })
+    },
+    yAxis: {},
+    toolbox: {
+      right: 10,
+      feature: {
+        dataZoom: {
+          yAxisIndex: 'none'
+        },
+        restore: {},
+        saveAsImage: {}
+      }
+    },
+    dataZoom: [
       {
-        gt: 0,
-        lte: 50,
-        color: '#93CE07'
+        startValue: '2014-06-01'
       },
       {
-        gt: 50,
-        lte: 100,
-        color: '#FBDB0F'
-      },
-      {
-        gt: 100,
-        lte: 150,
-        color: '#FC7D02'
-      },
-      {
-        gt: 150,
-        lte: 200,
-        color: '#FD0100'
-      },
-      {
-        gt: 200,
-        lte: 300,
-        color: '#AA069F'
-      },
-      {
-        gt: 300,
-        color: '#AC3B2A'
+        type: 'inside'
       }
     ],
-    outOfRange: {
-      color: '#999'
-    }
-  },
-  series: {
-    name: 'Beijing AQI',
-    type: 'line',
-    data: data.map(function (item) {
-      return item[1];
-    }),
-    markLine: {
-      silent: true,
-      lineStyle: {
-        color: '#333'
-      },
-      data: [
+    visualMap: {
+      top: 50,
+      right: 10,
+      pieces: [
         {
-          yAxis: 50
+          gt: 0,
+          lte: 50,
+          color: '#93CE07'
         },
         {
-          yAxis: 100
+          gt: 50,
+          lte: 100,
+          color: '#FBDB0F'
         },
         {
-          yAxis: 150
+          gt: 100,
+          lte: 150,
+          color: '#FC7D02'
         },
         {
-          yAxis: 200
+          gt: 150,
+          lte: 200,
+          color: '#FD0100'
         },
         {
-          yAxis: 300
+          gt: 200,
+          lte: 300,
+          color: '#AA069F'
+        },
+        {
+          gt: 300,
+          color: '#AC3B2A'
         }
-      ]
+      ],
+      outOfRange: {
+        color: '#999'
+      }
+    },
+    series: {
+      name: 'Beijing AQI',
+      type: 'line',
+      data: data.map(function (item) {
+        return item[1];
+      }),
+      markLine: {
+        silent: true,
+        lineStyle: {
+          color: '#333'
+        },
+        data: [
+          {
+            yAxis: 50
+          },
+          {
+            yAxis: 100
+          },
+          {
+            yAxis: 150
+          },
+          {
+            yAxis: 200
+          },
+          {
+            yAxis: 300
+          }
+        ]
+      }
     }
-  }
-};
+  })
+);
 """#,
         option: [
             "title": [

@@ -331,27 +331,64 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_boxplot_light_velocity,                 // boxplot   (native N/A)
         EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot   (native N/A)
         EChartsDemoRegistry.official_heatmap_cartesian,                      // heatmap
+        EChartsDemoRegistry.official_heatmap_large,                          // heatmap
         EChartsDemoRegistry.official_graph_simple,                           // graph
+        EChartsDemoRegistry.official_graph_npm,                              // graph
         EChartsDemoRegistry.official_tree_basic,                             // tree
+        EChartsDemoRegistry.official_tree_legend,                            // tree
+        EChartsDemoRegistry.official_tree_orient_bottom_top,                 // tree
+        EChartsDemoRegistry.official_tree_orient_right_left,                 // tree
+        EChartsDemoRegistry.official_tree_vertical,                          // tree
+        EChartsDemoRegistry.official_treemap_drill_down,                     // treemap
         EChartsDemoRegistry.official_treemap_simple,                         // treemap
         EChartsDemoRegistry.official_sunburst_simple,                        // sunburst
+        EChartsDemoRegistry.official_sunburst_borderradius,                  // sunburst
+        EChartsDemoRegistry.official_sunburst_visualmap,                     // sunburst
+        EChartsDemoRegistry.official_sunburst_drink,                         // sunburst
+        EChartsDemoRegistry.official_sunburst_book,                          // sunburst
         EChartsDemoRegistry.official_scatter_matrix,                         // parallel
         EChartsDemoRegistry.official_parallel_simple,                        // parallel
+        EChartsDemoRegistry.official_parallel_aqi,                           // parallel
         EChartsDemoRegistry.official_sankey_simple,                          // sankey
+        EChartsDemoRegistry.official_sankey_itemstyle,                       // sankey
+        EChartsDemoRegistry.official_sankey_levels,                          // sankey
+        EChartsDemoRegistry.official_sankey_energy,                          // sankey
         EChartsDemoRegistry.official_funnel,                                 // funnel
+        EChartsDemoRegistry.official_gauge,                                  // gauge
         EChartsDemoRegistry.official_gauge_simple,                           // gauge
+        EChartsDemoRegistry.official_gauge_stage,                            // gauge
+        EChartsDemoRegistry.official_pictorialbar_bar_transition,            // pictorialBar
+        EChartsDemoRegistry.official_pictorialbar_dotted,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_hill,                      // pictorialBar   (native N/A)
+        EChartsDemoRegistry.official_pictorialbar_vehicle,                   // pictorialBar
         EChartsDemoRegistry.official_themeriver_basic,                       // themeRiver
+        EChartsDemoRegistry.official_themeriver_lastfm,                      // themeRiver
         EChartsDemoRegistry.official_calendar_pie,                           // calendar
         EChartsDemoRegistry.official_calendar_charts,                        // calendar
         EChartsDemoRegistry.official_calendar_heatmap,                       // calendar
+        EChartsDemoRegistry.official_calendar_vertical,                      // calendar
+        EChartsDemoRegistry.official_calendar_graph,                         // calendar
         EChartsDemoRegistry.official_calendar_simple,                        // calendar
         EChartsDemoRegistry.official_matrix_sparkline,                       // matrix
         EChartsDemoRegistry.official_matrix_mini_bar_geo,                    // matrix
         EChartsDemoRegistry.official_matrix_simple,                          // matrix
+        EChartsDemoRegistry.official_matrix_covariance,                      // matrix
+        EChartsDemoRegistry.official_matrix_graph,                           // matrix
+        EChartsDemoRegistry.official_matrix_pie,                             // matrix
+        EChartsDemoRegistry.official_matrix_periodic_table,                  // matrix   (native N/A)
+        EChartsDemoRegistry.official_matrix_mini_bar_data_collection,        // matrix   (native N/A)
         EChartsDemoRegistry.official_chord_simple,                           // chord
+        EChartsDemoRegistry.official_chord_minangle,                         // chord
+        EChartsDemoRegistry.official_chord_style,                            // chord
         EChartsDemoRegistry.official_custom_hexbin,                          // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_calendar_icon,                   // custom   (native N/A)
+        EChartsDemoRegistry.official_bar_histogram,                          // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_profit,                          // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_error_scatter,                   // custom
         EChartsDemoRegistry.official_custom_profile,                         // custom   (native N/A)
+        EChartsDemoRegistry.official_flame_graph,                            // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_gauge,                           // custom   (native N/A)
+        EChartsDemoRegistry.official_geo_svg_custom_effect,                  // custom   (native N/A)
         EChartsDemoRegistry.official_dataset_link,                           // dataset
         EChartsDemoRegistry.official_data_transform_sort_bar,                // dataset
         EChartsDemoRegistry.official_dataset_encode0,                        // dataset
@@ -362,6 +399,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_dataset_default,                        // dataset
         EChartsDemoRegistry.official_area_simple,                            // dataZoom
         EChartsDemoRegistry.official_line_graphic,                           // graphic   (native N/A)
+        EChartsDemoRegistry.official_graphic_stroke_animation,               // graphic   (native N/A)
         EChartsDemoRegistry.official_pie_rich_text,                          // rich   (native N/A)
     ]
 
@@ -379,8 +417,12 @@ extension EChartsDemoRegistry {
         "official-area-simple": ["line"],
         "official-bar-rich-text": ["rich"],
         "official-calendar-charts": ["scatter"],
+        "official-calendar-graph": ["graph"],
         "official-calendar-heatmap": ["heatmap"],
         "official-calendar-pie": ["pie"],
+        "official-calendar-vertical": ["heatmap"],
+        "official-custom-calendar-icon": ["calendar"],
+        "official-custom-error-scatter": ["dataZoom"],
         "official-custom-hexbin": ["map"],
         "official-data-transform-multiple-pie": ["pie"],
         "official-data-transform-sort-bar": ["bar"],
