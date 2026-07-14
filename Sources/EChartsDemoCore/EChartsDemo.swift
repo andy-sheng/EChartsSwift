@@ -23,6 +23,30 @@ import Foundation
 import ZRenderKit
 import EChartsKit
 
+// MARK: - Live chart handle (the native pane's `myChart`)
+
+/// The live chart a demo's `drive` hook talks to — the native counterpart of the `myChart` the
+/// official example editor puts in scope.
+///
+/// Plenty of official examples are not a static option at all: their behaviour IS a timeline
+/// (`map-bar-morph` flips a map series and a bar series every 2s; `dynamic-data` shifts a point in
+/// every second). Rendering only their first frame turns them into a different, duller example.
+/// A demo therefore ships an `option` (the initial frame) AND, when the example is dynamic, a
+/// `drive` closure that reproduces the example's own `setInterval` / `setOption` timeline.
+///
+/// The gallery's live pane implements this; the headless still-frame render does not call `drive`
+/// (a PNG has no timeline). Timers are owned by the host and die with it.
+@MainActor
+public protocol EChartsDemoChart: AnyObject {
+    /// `notMerge: true` REPLACES the option (upstream's `setOption(option, true)`) — what an example
+    /// swapping one chart type for another passes.
+    func setOption(_ option: [String: Any], notMerge: Bool)
+    /// The example's `setInterval(fn, ms)`.
+    func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void)
+    /// The example's `setTimeout(fn, ms)`.
+    func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void)
+}
+
 // MARK: - Demo value type (mirrors DemoGallery.Demo, option-driven)
 
 /// One gallery case: a named ECharts `option` plus the logical canvas size both panes render at.
@@ -58,6 +82,12 @@ public struct EChartsDemo {
     /// JSON round-tripping cannot express. The native pane always uses `option`.
     public let webOptionJS: String?
 
+    /// Reproduces the example's own timeline on the NATIVE pane, after the initial `option` is applied
+    /// — the Swift counterpart of the `setInterval` / `myChart.setOption` the example runs in JS.
+    /// Only set it for examples that ARE dynamic; the still-frame render ignores it. See
+    /// `EChartsDemoChart`.
+    public let drive: (@MainActor (EChartsDemoChart) -> Void)?
+
     /// What the galleries label this demo: the bare example id for the official tab (the tab already
     /// says these are the official examples), the plain name otherwise.
     public var displayName: String {
@@ -71,6 +101,7 @@ public struct EChartsDemo {
                 mapRegistrations: [String: Any] = [:],
                 collection: Collection = .port,
                 webOptionJS: String? = nil,
+                drive: (@MainActor (EChartsDemoChart) -> Void)? = nil,
                 option: [String: Any]) {
         self.name = name; self.category = category; self.summary = summary
         self.width = width; self.height = height
@@ -78,6 +109,7 @@ public struct EChartsDemo {
         self.mapRegistrations = mapRegistrations
         self.collection = collection
         self.webOptionJS = webOptionJS
+        self.drive = drive
         self.option = option
     }
 }

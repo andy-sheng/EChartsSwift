@@ -575,7 +575,12 @@ open class TreemapView: ChartView {
             // content && renderContent(group, content);
             renderContent(group, content, contentReuse)
 
-            // (bg as ECElement).disableMorphing = true;  -> DEFERRED (morph/animation not ported).
+            // (bg as ECElement).disableMorphing = true;
+            //   PORT-NOTE: `ECElement` is an augmentation interface Swift cannot add stored props for;
+            //   the flag lives in the `makeInner` side store (animation/morphTransitionHelper.swift),
+            //   read by `getPathList` — so the node BACKGROUND rect is not a universalTransition morph
+            //   endpoint (only its content rect is), exactly as upstream.
+            getMorphInner(bg).disableMorphing = true
             // Leaf node: the whole node GROUP is the highDown dispatcher (upstream TreemapView.ts:852-859) —
             //   its child traverse (in enableHoverEmphasis) attaches the state proxy to the bg + content.
             // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, group);

@@ -28,6 +28,7 @@ import AppKit
 import ZRenderKit
 import NativePainter
 import EChartsKit
+import EChartsDemoCore
 
 final class EChartsHostView: NSView {
 
@@ -37,6 +38,10 @@ final class EChartsHostView: NSView {
     private let painter: LayerHostedPainter
     private let proxy: NativeHandlerProxy
     private let animationLoop: AnimationLoop
+    /// Timers a demo's `drive` hook scheduled (the native side of the example's setInterval /
+    /// setTimeout). Owned here so they die with the view — the gallery builds a fresh host per demo,
+    /// and a leaked timer would keep setOption-ing a disposed chart.
+    private var driveTimers: [Timer] = []
 
     init(frame: CGRect, dpr: Double? = nil, painter injected: LayerHostedPainter? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
@@ -61,6 +66,7 @@ final class EChartsHostView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     deinit {
+        self.driveTimers.forEach { $0.invalidate() }
         self.animationLoop.stop()
         self.echartsView.zr.dispose()
     }
@@ -134,6 +140,35 @@ final class EChartsHostView: NSView {
         e.which = which
         e.button = which > 0 ? which - 1 : nil
         return e
+    }
+}
+
+// MARK: - EChartsDemoChart: the native pane's `myChart`
+//
+// An official example's behaviour is often a timeline, not an option (map-bar-morph flips a map
+// series and a bar series every 2s). The demo carries a `drive` closure that replays that timeline;
+// this is the handle it drives. Timers are retained by the view and invalidated in `deinit`, so a
+// demo the user has navigated away from stops setOption-ing a disposed chart.
+extension EChartsHostView: EChartsDemoChart {
+
+    func setOption(_ option: [String: Any], notMerge: Bool) {
+        echartsView.setOption(option, notMerge: notMerge)
+    }
+
+    /// The example's `setInterval(fn, ms)`.
+    func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { _ in
+            MainActor.assumeIsolated { body() }
+        }
+        driveTimers.append(t)
+    }
+
+    /// The example's `setTimeout(fn, ms)`.
+    func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in
+            MainActor.assumeIsolated { body() }
+        }
+        driveTimers.append(t)
     }
 }
 #endif

@@ -180,6 +180,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private let outline = DemoOutlineView()
     private let tabs = NSSegmentedControl(labels: ["移植", "官方示例"],
                                           trackingMode: .selectOne, target: nil, action: nil)
+    /// True while `select(row:)` is driving the selection — the delegate stays quiet and lets it announce.
+    private var announcingSelection = false
 
     override func loadView() {
         outline.headerView = nil
@@ -233,7 +235,32 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        // `ECHARTS_GALLERY_START=<demo name>` opens straight on one demo — how a dynamic demo gets
+        // eyeballed (a still PNG cannot show a 2s morph; you have to watch the live pane).
+        if let want = ProcessInfo.processInfo.environment["ECHARTS_GALLERY_START"],
+           selectDemo(named: want) {
+            return
+        }
         expandAndSelectFirst()
+    }
+
+    /// Select a demo by name (switching tabs if it lives in the other collection). False if unknown.
+    @discardableResult
+    private func selectDemo(named name: String) -> Bool {
+        guard let demo = EChartsDemoRegistry.byName(name) else { return false }
+        if demo.collection != collection {
+            collection = demo.collection
+            tabs.selectedSegment = demo.collection == .official ? 1 : 0
+            sections = demoSections(collection)
+            outline.reloadData()
+        }
+        outline.expandItem(nil, expandChildren: true)
+        for r in 0..<outline.numberOfRows {
+            guard let d = outline.item(atRow: r) as? EChartsDemo, d.name == name else { continue }
+            select(row: r)
+            return true
+        }
+        return false
     }
 
     @objc private func tabChanged() {
@@ -249,10 +276,22 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private func expandAndSelectFirst() {
         outline.expandItem(nil, expandChildren: true)
         for r in 0..<outline.numberOfRows where outline.item(atRow: r) is EChartsDemo {
-            outline.selectRowIndexes(IndexSet(integer: r), byExtendingSelection: false)
-            if let d = outline.item(atRow: r) as? EChartsDemo { onSelect?(d) }
+            select(row: r)
             break
         }
+    }
+
+    /// Select a row and announce it EXACTLY once. `selectRowIndexes` posts the selection
+    /// notification when the selection changes but stays silent when the row is already selected, so
+    /// neither "always announce" nor "let the delegate do it" is correct on its own — announcing from
+    /// both built the demo twice, giving it two live hosts each running its own `drive` timers.
+    private func select(row: Int) {
+        guard let d = outline.item(atRow: row) as? EChartsDemo else { return }
+        announcingSelection = true
+        outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        outline.scrollRowToVisible(row)
+        announcingSelection = false
+        onSelect?(d)
     }
 
     // MARK: Copy demo name
@@ -341,6 +380,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard !announcingSelection else { return }   // select(row:) announces it itself
         if let d = outline.item(atRow: outline.selectedRow) as? EChartsDemo { onSelect?(d) }
     }
 }
@@ -516,12 +556,16 @@ final class ContentViewController: NSViewController {
                 : nil
             let host = EChartsHostView(frame: logical, dpr: 2.0, painter: painter)
             host.setOption(opt)
+            // Replay the example's own timeline (its setInterval / setOption), if it has one. Without
+            // this a dynamic example — map-bar-morph's map<->bar morph, dynamic-data's shifting
+            // window — would sit frozen on its first frame while the web pane next to it animated.
+            demo.drive?(host)
             liveScroll.documentView = host
             currentHostView = host
             fitNativeMagnification()
         }
 
-        // HTML pane
+        // HTML pane — the example as the website runs it (timers, dispatchAction and all).
         if let page = echartsHTMLPage(demo) {
             webView.loadHTMLString(page, baseURL: nil)
         }
@@ -675,7 +719,10 @@ func loadWebAndSnapshot(_ demo: EChartsDemo, out: URL) -> Never {
     win.contentView = wv; win.orderFrontRegardless()
     let snapper = WebSnapper(out: out)
     wv.navigationDelegate = snapper
-    guard let page = echartsHTMLPage(demo) else {
+    // Headless PNG: one deterministic frame (animation off, the example's setInterval neutered) —
+    // otherwise a repeating example would race the snapshot and the same demo would diff against
+    // itself between runs.
+    guard let page = echartsHTMLPage(demo, snapshot: true) else {
         FileHandle.standardError.write(Data("could not build html (missing echarts dist?)\n".utf8)); exit(1)
     }
     wv.loadHTMLString(page, baseURL: nil)

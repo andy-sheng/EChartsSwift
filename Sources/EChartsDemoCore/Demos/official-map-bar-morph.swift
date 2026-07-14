@@ -4,12 +4,12 @@
 // toggles every 2s with a `bar` series sharing `id:'population'` + `universalTransition:true`, so each
 // state MORPHS into its bar and back.
 //
+// THE 2s TOGGLE IS PORTED, on both panes. The web pane runs the example's own
+// `setInterval(function () { myChart.setOption(currentOption, true); }, 2000)` verbatim; the native
+// pane replays the same timeline through `drive` (see EChartsDemoChart). The still-frame PNG paths
+// capture the first frame — `mapOption` — and neuter the timer, so a snapshot stays deterministic.
+//
 // DEVIATIONS from the official source:
-//   - ANIMATION REDUCED TO ITS FIRST FRAME. The morph is an animation across two `setOption` calls
-//     driven by `setInterval(..., 2000)`; the gallery renders ONE static frame with animation forced
-//     off, so only the INITIAL state — `myChart.setOption(mapOption)` — is ported. The web pane still
-//     defines `barOption` verbatim (inert) so the reference JS stays a faithful copy; the `setInterval`
-//     toggle and `myChart.setOption` calls are gone from both panes.
 //   - DATA INLINED. Upstream fetches the USA GeoJSON with `$.get(ROOT_PATH + '/data/asset/geo/USA.json')`
 //     and builds the option in the callback. The page has no network, so the map is read from the repo
 //     asset assets/geo/USA.json (via Upstream.repoRoot, the same #filePath-relative read WebPage.swift
@@ -168,9 +168,6 @@ var mapOption = {
   ]
 };
 
-// The other half of the morph. Upstream flips to it every 2s via
-// `setInterval(function () { myChart.setOption(currentOption = currentOption === mapOption ? barOption : mapOption, true); }, 2000)`.
-// The gallery renders one static frame, so it stays inert here — kept for reference fidelity.
 var barOption = {
   xAxis: {
     type: 'value'
@@ -195,34 +192,76 @@ var barOption = {
   }
 };
 
-option = mapOption;
+let currentOption = mapOption;
+myChart.setOption(mapOption);
+
+setInterval(function () {
+  currentOption = currentOption === mapOption ? barOption : mapOption;
+  myChart.setOption(currentOption, true);
+}, 2000);
 """#,
+        // The native pane's half of the same timeline: flip the two options every 2s, exactly as the
+        // example's setInterval does. `notMerge: true` is upstream's `setOption(currentOption, true)` —
+        // a merge would leave the outgoing series' components (the map's visualMap, the bar's axes)
+        // alive on top of the incoming one.
+        drive: { chart in
+            // Upstream keeps `currentOption` and compares by identity; a Bool says the same thing.
+            var showingMap = true
+            chart.every(2) {
+                showingMap.toggle()
+                chart.setOption(showingMap ? officialMapBarMorphMapOption
+                                           : officialMapBarMorphBarOption,
+                                notMerge: true)
+            }
+        },
         option: {
             // Upstream `echarts.registerMap('USA', usaJson, { Alaska: {...}, Hawaii: {...}, 'Puerto Rico': {...} })`.
             ECharts.registerMap("USA", officialMapBarMorphGeoJSON, officialMapBarMorphSpecialAreas)
-            return [
-                "visualMap": [
-                    "left": "right",
-                    "min": 500000.0,
-                    "max": 38000000.0,
-                    "inRange": [
-                        "color": ["#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8", "#ffffbf",
-                                  "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"]
-                    ] as [String: Any],
-                    "text": ["High", "Low"],
-                    "calculable": true
-                ] as [String: Any],
-                "series": [
-                    [
-                        "id": "population",
-                        "type": "map",
-                        "roam": true,
-                        "map": "USA",
-                        "animationDurationUpdate": 1000.0,
-                        "universalTransition": true,
-                        "data": officialMapBarMorphData as [Any]
-                    ] as [String: Any]
-                ]
-            ]
+            return officialMapBarMorphMapOption
         }())
 }
+
+// The two halves of the morph, as Swift options. `option:` starts on the map (upstream's
+// `myChart.setOption(mapOption)`); `drive:` flips between them.
+private let officialMapBarMorphMapOption: [String: Any] = [
+    "visualMap": [
+        "left": "right",
+        "min": 500000.0,
+        "max": 38000000.0,
+        "inRange": [
+            "color": ["#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8", "#ffffbf",
+                      "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"]
+        ] as [String: Any],
+        "text": ["High", "Low"],
+        "calculable": true
+    ] as [String: Any],
+    "series": [
+        [
+            "id": "population",
+            "type": "map",
+            "roam": true,
+            "map": "USA",
+            "animationDurationUpdate": 1000.0,
+            "universalTransition": true,
+            "data": officialMapBarMorphData as [Any]
+        ] as [String: Any]
+    ]
+]
+
+private let officialMapBarMorphBarOption: [String: Any] = [
+    "xAxis": ["type": "value"] as [String: Any],
+    "yAxis": [
+        "type": "category",
+        "axisLabel": ["rotate": 30.0] as [String: Any],
+        "data": officialMapBarMorphData.map { $0["name"] as! String }
+    ] as [String: Any],
+    "animationDurationUpdate": 1000.0,
+    "series": [
+        [
+            "type": "bar",
+            "id": "population",
+            "data": officialMapBarMorphData.map { $0["value"] as! Double },
+            "universalTransition": true
+        ] as [String: Any]
+    ]
+]

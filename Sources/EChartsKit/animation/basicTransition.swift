@@ -101,6 +101,31 @@ func initProps(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
     animateOrSetProps(.enter, el, props, model, dataIndex, false, cb, during)
 }
 
+// upstream `AnimateOrSetPropsOption` — the OBJECT form of `initProps`/`updateProps`'s 4th parameter
+//   (`dataIndex?: number | AnimateOrSetPropsOption`). The scalar form is the overload above; this
+//   struct carries the fields the object form adds. Only `isFrom` is actually needed by a ported call
+//   site today (universalTransition's `fadeInElement`), but the whole (modeled) bag is kept so the
+//   signature stays diffable. `removeOpt` is NOT modeled — see the header PORT-NOTE (the leave-path
+//   override is out of scope and unported).
+struct AnimateOrSetPropsOption {
+    var dataIndex: Int?
+    var cb: (() -> Void)?
+    var during: ((Double) -> Void)?
+    var isFrom: Bool?
+    init(dataIndex: Int? = nil, cb: (() -> Void)? = nil,
+         during: ((Double) -> Void)? = nil, isFrom: Bool? = nil) {
+        self.dataIndex = dataIndex
+        self.cb = cb
+        self.during = during
+        self.isFrom = isFrom
+    }
+}
+
+/// upstream `initProps(el, props, animatableModel, opt: AnimateOrSetPropsOption)` — the object form.
+func initProps(_ el: Element, _ props: [String: Any], _ model: Model?, _ opt: AnimateOrSetPropsOption) {
+    animateOrSetProps(.enter, el, props, model, opt.dataIndex, opt.isFrom ?? false, opt.cb, opt.during)
+}
+
 /// Update graphic element properties with or without animation according to the configuration in
 /// series. Caution: this stops any previous animation — do not call it twice on the same element
 /// before the animation starts, unless intentional.
@@ -157,20 +182,29 @@ func removeElementWithFadeOut(_ el: Element, _ model: Model? = nil, _ dataIndex:
     }
 }
 
-// ---- Saved old style for style transition in universalTransition (later sub-project). ----
-// PORT-NOTE (deferred): requires the universalTransition sub-project (not ported). Upstream stores `Displayable['style']` (the concrete style bag, whatever
-//   subtype it is) via a `makeInner`-style per-element WeakMap. Our `Displayable.style` is typed
-//   `CommonStyleProps!`, not `PathStyleProps` — the two are not interchangeable, and `model.makeInner`
-//   requires an `AnyObject` value type, which a style struct is not. Since nothing in this task's
-//   interface/tests exercises save/get, this is left an honest no-op stub (matching the produced
-//   `PathStyleProps?` signature promised to later tasks) rather than silently miscoercing types.
-//   A real implementation needs its own `WeakMap<Displayable, PathStyleProps>` once a universalTransition
-//   task actually needs the saved style.
+// ---- Saved old style for style transition in universalTransition. ----
+// upstream:
+//   const getOldStyle = makeInner<Displayable['style'], Displayable>();
+//   export function saveOldStyle(el: Displayable) { getOldStyle(el).oldStyle = el.style; }
+//   export function getOldStyle(el: Displayable) { return getOldStyle(el).oldStyle; }
+//   (upstream names the inner store and the getter the same; renamed `oldStyleInner` here.)
+//
+// PORT-NOTE: `model.makeInner` keys by object identity and requires a CLASS record, so the saved style
+//   (a `PathStyleProps` VALUE struct) is boxed in `OldStyleRecord`. Upstream stores `el.style` — whatever
+//   the concrete Displayable's style subtype is. Here only `Path`'s `pathStyle` is captured (a `ZRText`/
+//   `ZRImage` style is a different Swift type and is not a morph endpoint), so `saveOldStyle` on a
+//   non-Path Displayable records nothing and `getOldStyle` returns nil for it — the sole consumer
+//   (universalTransition's `animateElementStyles`) only tweens `Path` styles.
+final class OldStyleRecord {
+    var oldStyle: PathStyleProps?
+    init() {}
+}
+private let oldStyleInner: (Displayable) -> OldStyleRecord = model.makeInner { OldStyleRecord() }
+
 func saveOldStyle(_ el: Displayable) {
-    _ = el
+    oldStyleInner(el).oldStyle = (el as? Path)?.pathStyle
 }
 
 func getOldStyle(_ el: Displayable) -> PathStyleProps? {
-    _ = el
-    return nil
+    return oldStyleInner(el).oldStyle
 }

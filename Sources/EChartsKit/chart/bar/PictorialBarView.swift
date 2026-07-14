@@ -758,8 +758,12 @@ private func pbCreateOrUpdateBarRect(
         s.fill = .string("transparent")
         s.lineWidth = 0
         barRect.useStyle(s)
-        // (barRect as ECElement).disableMorphing = true;  — PORT-NOTE (deferred): morph/animation not wired
-        //   (TreemapView defers this flag identically), so setting it would be a no-op.
+        // (barRect as ECElement).disableMorphing = true;
+        //   PORT-NOTE: `ECElement` is an augmentation interface that Swift cannot add stored props for;
+        //   the flag lives in the `makeInner` side store (animation/morphTransitionHelper.swift), which
+        //   `getPathList` reads — so this invisible layout rect is excluded from universalTransition
+        //   morph endpoints, exactly as upstream.
+        getMorphInner(barRect).disableMorphing = true
         bar.__pictorialBarRect = barRect
         _ = bar.add(barRect)
     }

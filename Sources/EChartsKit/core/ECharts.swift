@@ -991,6 +991,15 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(MarkLineModel.self)                   // registerComponentModel(MarkLineModel)
         ComponentModel.registerClass(MarkAreaModel.self)                   // registerComponentModel(MarkAreaModel)
 
+        // -- src/animation/universalTransition.ts `installUniversalTransition(registers)` (upstream
+        //   echarts.all.ts / features.ts `use(installUniversalTransition)`) -- registerUpdateLifecycle(
+        //   'series:beforeupdate') + registerUpdateLifecycle('series:transition'). The two listeners are
+        //   what turn a `universalTransition: true` series pair (same `id`/`seriesKey`) into a real
+        //   cross-series MORPH: 'series:transition' diffs the previous update's saved SeriesData against
+        //   the new one and hands each matched old/new element pair to zrender's morphPath/combineMorph/
+        //   separateMorph. `renderSeries` emits both triggers (see its lifecycle.trigger calls).
+        installUniversalTransition(ECharts._registers)
+
         // -- component/transform/install.ts -- registers.registerTransform(filterTransform) +
         //   registers.registerTransform(sortTransform). Built-in data transforms live in the Phase-27
         //   registry (data/helper/transform.swift); `transformInstall` registers both against it so a
@@ -1279,13 +1288,21 @@ public final class ECharts: EChartsType {
         _scheduler.restorePipelines(nil, _model!)
         _scheduler.prepareStageTasks()
 
-        update()
+        // upstream echarts.ts:779 —
+        //   const updateParams = { seriesTransition: transitionOpt, optionChanged: true } as UpdateLifecycleParams;
+        //   ... updateMethods.update.call(this, null, updateParams);
+        // `optionChanged: true` is exactly what gates universalTransition's 'series:transition' handler
+        // (a dispatchAction-driven update leaves it unset → no cross-series morph). `seriesTransition`
+        // comes from `setOption`'s `transition` opt, which the port's setOption signature does not carry
+        // (PORT-NOTE: `SetOptionOpts.transition` unported — the option-driven finder form; the seriesKey/
+        // id-driven form, which is what every ported demo uses, is fully wired).
+        update(UpdateLifecycleParams(optionChanged: true))
     }
 
     // ------------------------------------------------------------------------
     // §UPDATE — faithful stage ORDER of `updateMethods.update` (echarts.ts:1880), minimal bodies.
     // ------------------------------------------------------------------------
-    private func update() {
+    private func update(_ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
         guard let ecModel = _model else { return }          // upstream: if (!ecModel) return;
         let api = _api!
 
@@ -1321,8 +1338,8 @@ public final class ECharts: EChartsType {
         // (3) coordSysMgr.create — build the Grid coordinate system(s), lay them out on the container
         //     rect, and inject `coordinateSystem` into each series (Grid.create → injectCoordSysByOption).
         _coordSysMgr.create(ecModel, api)
-        // lifecycle.trigger('coordsys:aftercreate', ...) — PORT-NOTE: lifecycle not ported (no listeners
-        //     needed for a bar chart).
+        // upstream echarts.ts:1907 — lifecycle.trigger('coordsys:aftercreate', ecModel, api);
+        lifecycle.trigger("coordsys:aftercreate", ecModel, api)
 
         // (4) performDataProcessorTasks — run every data-processor stage task through the Scheduler
         //   (upstream echarts.ts:1909 `scheduler.performDataProcessorTasks(ecModel, payload)`). The
@@ -1390,8 +1407,11 @@ public final class ECharts: EChartsType {
         // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-NOTE (platform): the driver exposes a
         //     bare Group; background is a host concern, handled by the native host, not this layer.
 
-        // (7) LAYOUT + RENDER — `render(this, ecModel, api, ...)`.
-        render(ecModel, api)
+        // (7) LAYOUT + RENDER — `render(this, ecModel, api, payload, updateParams)`.
+        render(ecModel, api, updateParams)
+
+        // upstream echarts.ts:1937 — lifecycle.trigger('afterupdate', ecModel, api);
+        lifecycle.trigger("afterupdate", ecModel, api)
     }
 
     // ------------------------------------------------------------------------
@@ -1563,7 +1583,8 @@ public final class ECharts: EChartsType {
     // LAYOUT runs just before series render (upstream layout tasks are part of the visual-task pipe;
     // here the bar cross-series layout is invoked explicitly right before `renderSeries`).
     // ------------------------------------------------------------------------
-    private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI,
+                        _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
         // allocateZlevels(ecModel) — PORT-NOTE skip (single grid + one series; default z ordering).
 
         // View REUSE (L5): the driver no longer wipes root + the view registries each render.
@@ -1783,7 +1804,7 @@ public final class ECharts: EChartsType {
         //   `outOfBrush` color (dim). This is the Phase-44 KEY deliverable (rect select + dim unselected).
         brushVisual(ecModel, api, nil)
 
-        renderSeries(ecModel, api)
+        renderSeries(ecModel, api, updateParams)
 
         // LABEL LAYOUT — upstream registers `installLabelLayout`, which runs the
         //   `series:layoutlabels` lifecycle stage AFTER `renderSeries` (once every series view has
@@ -2065,29 +2086,68 @@ public final class ECharts: EChartsType {
 
     // renderSeries (echarts.ts:2472) — minimal: bypass the Scheduler `renderTask.perform` and call
     // `chartView.render(...)` directly (documented deviation; no progressive/incremental rendering).
-    private func renderSeries(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    // The four `lifecycle.trigger(...)`s and their `updateParams` ARE faithful (echarts.ts:2483-2538) —
+    // they are what drives `universalTransition` (animation/universalTransition.swift), which listens on
+    // 'series:beforeupdate' + 'series:transition'.
+    private func renderSeries(_ ecModel: GlobalModel, _ api: ExtensionAPI,
+                              _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
         let payload = Payload(type: "")
+
+        // updateParams = extend(updateParams || {}, { updatedSeries: ecModel.getSeries() });
+        var updateParams = updateParams
+        updateParams.updatedSeries = ecModel.getSeries()
+
+        // TODO progressive?
+        lifecycle.trigger("series:beforeupdate", ecModel, api, updateParams)
+
         ecModel.eachSeries { seriesModel, _ in
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
+            // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
+            //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
+            chartView.__alive = true
             // upstream renderSeries clearStates (echarts.ts:2499) — reset a reused view's elements to
             //   normal before re-render so emphasis/select from before a merge-mode setOption is gone.
             self.clearRenderedStates(chartView.eachRendered)
             chartView.render(seriesModel, ecModel, api, payload)
-            // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
-            //   the coordinate components (default 2) so the data draws over the grid/axis/splitLine.
-            self.updateZ(seriesModel, chartView.group, 2)
-            // upstream renderSeries `updateStates(seriesModel, view)` (echarts.ts:2532) — save each
-            //   emphasis-capable element's normal fill so a hover LIFTS it (see updateRenderedStates).
-            //   THIS is what makes hover-emphasis visible for a datum with no explicit emphasis.itemStyle.
-            self.updateRenderedStates(chartView.eachRendered)
             // upstream renderSeries `updateSeriesElementSelection(seriesModel)` (echarts.ts:2515) —
             //   re-apply the select state from the model's selectedMap after render, so a selected
             //   pie sector / bar stays selected across a merge-mode setOption re-render.
             states.updateSeriesElementSelection(seriesModel)
-            // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
-            //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
-            chartView.__alive = true
         }
+
+        // upstream echarts.ts:2520 — lifecycle.trigger('series:layoutlabels', ...).
+        //   PORT-NOTE: nothing listens on it here. The port hand-calls the label-layout stage
+        //   (`LabelManager.runLabelLayoutStage`) at the end of `render()` instead of registering
+        //   `installLabelLayout` as a listener, so the label layout currently runs AFTER 'series:transition'
+        //   rather than before it. Harmless for the morph (labels are `ZRText` textContents, never
+        //   `getPathList` morph endpoints), but the trigger is emitted at the faithful position so a real
+        //   `installLabelLayout` listener can land here later without moving anything.
+        lifecycle.trigger("series:layoutlabels", ecModel, api, updateParams)
+
+        // transition after label is layouted.
+        lifecycle.trigger("series:transition", ecModel, api, updateParams)
+
+        ecModel.eachSeries { seriesModel, _ in
+            guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
+            // Update Z after labels updated. Before applying states.
+            // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
+            //   the coordinate components (default 2) so the data draws over the grid/axis/splitLine.
+            self.updateZ(seriesModel, chartView.group, 2)
+
+            // NOTE: Update states after label is updated.
+            // label should be in normal status when layouting.
+            // upstream renderSeries `updateStates(seriesModel, view)` (echarts.ts:2532) — save each
+            //   emphasis-capable element's normal fill so a hover LIFTS it (see updateRenderedStates).
+            //   THIS is what makes hover-emphasis visible for a datum with no explicit emphasis.itemStyle.
+            //   It runs AFTER 'series:transition' on purpose: applyMorphAnimation animates with
+            //   `setToFinal: true`, so the morph target's style is already final and the saved
+            //   normal fill is the correct one.
+            self.updateRenderedStates(chartView.eachRendered)
+        }
+
+        // updateHoverLayerStatus(ecIns, ecModel) — PORT-NOTE (deferred): hover layer not ported.
+
+        lifecycle.trigger("series:afterupdate", ecModel, api, updateParams)
     }
 
     // ========================================================================

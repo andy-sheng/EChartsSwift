@@ -212,6 +212,18 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     public func setOption(_ option: [String: Any]) {
         ec.setOption(option)
+        _afterSetOption()
+    }
+
+    /// `notMerge` — upstream `setOption(option, notMerge)`: REPLACE the option instead of merging into
+    /// it. Examples that swap one chart for another over time (map-bar-morph flips a `map` series and a
+    /// `bar` series every 2s) pass true; merging would keep the outgoing series' components alive.
+    public func setOption(_ option: [String: Any], notMerge: Bool) {
+        ec.setOption(option, notMerge: notMerge)
+        _afterSetOption()
+    }
+
+    private func _afterSetOption() {
         _syncRoot()
         // L3 Roam: (re)wire the graph RoamController against the freshly-built model (upstream GraphView.render
         //   calls updateRoamControllerSimply every render).
