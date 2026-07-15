@@ -59,3 +59,37 @@ The replacement, once the tree is green:
    difference, rank. Finds every demo that merely *looks* wrong.
 2. **Time-aware diff** — sample both panes at t = 0.2 / 0.5 / 1.0s. This is the oracle the port never
    had; `line-polar`'s missing enter animation is invisible to a still frame.
+
+---
+
+## Parity sweep results (2026-07-15)
+
+Full native-vs-echarts.js pixel diff over 244 native official demos. 171/244 are within 4% — the port
+body is sound. Divergence clusters, and each cluster is one framework hole:
+
+**FIXED — top-level backgroundColor painted black (commit 0d3c0c8).** The single biggest cause. A
+dozen demos at 25-93% collapsed to <4%: sankey-itemstyle 93.47→0.32, heatmap-map 27.66→3.13,
+effectScatter-map 26.78→1.26, geo-lines 26.47→0.76, scatter-map 25.53→0.35. The geo/map rendering was
+correct all along, hidden under a black fill.
+
+**Still open, by cluster (each likely one root cause):**
+- `pie-pattern` (89.79, WHITE bg so NOT the bg bug): the whole pie is grey-black. Slices should carry
+  colour + a `decal` texture ("pie with textures"). Either pie itemStyle colour isn't applied or
+  decal/pattern fill is unported. Root-cause with a render once the concurrent LineView/axisPointer
+  agents free up the tree.
+- matrix cluster: matrix-stock 25.29, matrix-covariance 21.43, matrix-mini-bar-geo 18.01,
+  matrix-grid-layout 16.71, matrix-sparkline 16.27 (no longer crashes — a recent framework fix revived
+  it). Not yet root-caused.
+- parallel cluster: parallel-nutrients 26.37, parallel-aqi 18.42.
+- treemap cluster: treemap-show-parent 25.55, treemap-visual 17.22.
+- CRASH: bar-large, scatter-nebula (were also crashing in the earlier sweep).
+
+Method note: `--compare` writes native + echarts.js PNGs; scratchpad/imgdiff scores mean per-channel
+difference 0-100. The scores.tsv is the ranked worklist.
+
+## Build hygiene (learned the hard way)
+Two `helper.swift` in the same SwiftPM target break the ENTIRE module build ("multiple producers ...
+helper.swift.o") — object-file names are flattened per target. When porting an upstream file whose
+basename already exists (helper.ts, install.ts, index.ts), give the Swift file a disambiguated name
+(lineHelper.swift, installMarkArea.swift). This bites hardest with concurrent agents: one agent's
+name collision blocks every other agent's build too.
