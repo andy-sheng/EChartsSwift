@@ -358,6 +358,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_treemap_show_parent,                    // treemap
         EChartsDemoRegistry.official_treemap_simple,                         // treemap
         EChartsDemoRegistry.official_treemap_visual,                         // treemap
+        EChartsDemoRegistry.official_treemap_obama,                          // treemap
         EChartsDemoRegistry.official_sunburst_simple,                        // sunburst
         EChartsDemoRegistry.official_sunburst_borderradius,                  // sunburst
         EChartsDemoRegistry.official_sunburst_label_rotate,                  // sunburst
@@ -387,6 +388,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_gauge_temperature,                      // gauge
         EChartsDemoRegistry.official_gauge_barometer,                        // gauge
         EChartsDemoRegistry.official_gauge_clock,                            // gauge
+        EChartsDemoRegistry.official_gauge_car,                              // gauge
         EChartsDemoRegistry.official_pictorialbar_bar_transition,            // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_body_fill,                 // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_dotted,                    // pictorialBar
@@ -416,6 +418,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_matrix_grid_layout,                     // matrix
         EChartsDemoRegistry.official_matrix_periodic_table,                  // matrix   (native N/A)
         EChartsDemoRegistry.official_matrix_mini_bar_data_collection,        // matrix   (native N/A)
+        EChartsDemoRegistry.official_matrix_mbti,                            // matrix   (native N/A)
         EChartsDemoRegistry.official_chord_simple,                           // chord
         EChartsDemoRegistry.official_chord_minangle,                         // chord
         EChartsDemoRegistry.official_chord_linestyle_color,                  // chord
@@ -437,6 +440,9 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_geo_svg_custom_effect,                  // custom   (native N/A)
         EChartsDemoRegistry.official_pie_parliament_transition,              // custom
         EChartsDemoRegistry.official_circle_packing_with_d3,                 // custom
+        EChartsDemoRegistry.official_cycle_plot,                             // custom   (native N/A)
+        EChartsDemoRegistry.official_wind_barb,                              // custom   (native N/A)
+        EChartsDemoRegistry.official_custom_spiral_race,                     // custom   (native N/A)
         EChartsDemoRegistry.official_dataset_link,                           // dataset
         EChartsDemoRegistry.official_data_transform_sort_bar,                // dataset
         EChartsDemoRegistry.official_dataset_encode0,                        // dataset
