@@ -26,10 +26,12 @@ final class ZZMarkerTests: XCTestCase {
         return view
     }
 
-    // Collect the markLine Polylines from the live display list (series bars are Rects, not Polylines).
-    private func polylines(_ view: EChartsView) -> [Polyline] {
+    // Collect the markLine bodies from the live display list. A markLine line is a ZRenderKit `Line`
+    //   (with a `percent`-growable shape, like upstream's ECLinePath) named "line"; series bars are
+    //   Rects and axis lines are Lines but unnamed, so filter by the markLine body name.
+    private func markLineBodies(_ view: EChartsView) -> [Line] {
         _ = view.zr.storage.getDisplayList(true)
-        return view.zr.storage.getDisplayList(false).compactMap { $0 as? Polyline }
+        return view.zr.storage.getDisplayList(false).compactMap { $0 as? Line }.filter { $0.name == "line" }
     }
 
     // All rendered label texts. markLine labels are ZRText group children; markPoint labels are attached
@@ -66,19 +68,19 @@ final class ZZMarkerTests: XCTestCase {
         XCTAssertNotNil(view.ec.getModel()?.getComponent("markLine"),
                         "a series markLine must auto-enable the master markLine component")
 
-        let lines = polylines(view)
-        XCTAssertGreaterThanOrEqual(lines.count, 1, "a {yAxis:8} markLine must render a reference Polyline")
+        let lines = markLineBodies(view)
+        XCTAssertGreaterThanOrEqual(lines.count, 1, "a {yAxis:8} markLine must render a reference Line")
 
         // The line is horizontal: both endpoints share ~the same y (the pixel for value 8), and it spans
         // a meaningful x width across the grid.
-        guard let shape = lines.first?.shape as? PolylineShape, let pts = shape.points, pts.count >= 2 else {
-            XCTFail("markLine Polyline must carry a 2-point shape"); return
+        guard let shape = lines.first?.shape as? LineShape else {
+            XCTFail("markLine Line must carry a LineShape"); return
         }
-        let y0 = pts[0][1], y1 = pts[pts.count - 1][1]
+        let y0 = shape.y1, y1 = shape.y2
         XCTAssertEqual(y0, y1, accuracy: 1.0, "a {yAxis:v} markLine must be horizontal (equal endpoint y)")
         // value 8 of [0,20] over a 240px plot from top=20 → y ≈ 20 + (1 - 8/20)*240 = 20 + 144 = 164.
         XCTAssertEqual(y0, 164.0, accuracy: 12.0, "the line sits at the pixel for value 8 on the y-axis")
-        let xSpan = abs(pts[pts.count - 1][0] - pts[0][0])
+        let xSpan = abs(shape.x2 - shape.x1)
         XCTAssertGreaterThan(xSpan, 100.0, "the markLine spans across the grid width")
     }
 
@@ -86,12 +88,12 @@ final class ZZMarkerTests: XCTestCase {
     func testAverageMarkLineRenders() {
         // data [5,9,7,12,6] → average = 7.8. Line pixel y ≈ 20 + (1 - 7.8/20)*240 ≈ 166.4.
         let view = makeChart(["data": [["type": "average"] as [String: Any]]])
-        let lines = polylines(view)
+        let lines = markLineBodies(view)
         XCTAssertGreaterThanOrEqual(lines.count, 1, "a type:'average' markLine must render a reference line")
-        guard let shape = lines.first?.shape as? PolylineShape, let pts = shape.points, pts.count >= 2 else {
-            XCTFail("average markLine must carry a 2-point shape"); return
+        guard let shape = lines.first?.shape as? LineShape else {
+            XCTFail("average markLine must carry a LineShape"); return
         }
-        let y0 = pts[0][1], y1 = pts[pts.count - 1][1]
+        let y0 = shape.y1, y1 = shape.y2
         XCTAssertEqual(y0, y1, accuracy: 1.0, "an average markLine is horizontal")
         XCTAssertEqual(y0, 166.4, accuracy: 12.0, "the line sits at the pixel for the average value 7.8")
     }
@@ -100,7 +102,7 @@ final class ZZMarkerTests: XCTestCase {
     func testNoMarkLineNoComponent() {
         let view = makeChart([String: Any]())   // empty markLine → no data → submodel skipped
         // With no data the master component may still exist (preprocessor injects it), but it renders nothing.
-        XCTAssertEqual(polylines(view).count, 0, "an empty markLine must not draw any reference line")
+        XCTAssertEqual(markLineBodies(view).count, 0, "an empty markLine must not draw any reference line")
     }
 
     // ---- an average markLine carries its default value LABEL at the line end ----

@@ -399,6 +399,33 @@ public let DEFAULT_TEXT_ANIMATION_PROPS: [String: Any] = [
 //   — declaration-merging of the animation + states surface. Provided by Element/Displayable stubs.
 
 // upstream: class ZRText extends Displayable<TextProps> implements GroupLike
+// Exposes a ZRText's `textStyle` (its REAL style — upstream `ZRText.style`) to the animation machinery
+//   for `{style: {...}}` tweens. Displayable's default `StyleAnimationAccessor` targets the COMMON
+//   `style` (CommonStyleProps), which a ZRText does not render from (its TSpan children read `textStyle`
+//   in `_updateSubTexts`), so `text.animateFrom({style:{opacity:0}})` — the label fade-in that
+//   `_initSymbolLabelAnimation` uses — would tween a field nothing paints. Route it to `textStyle`.
+final class TextStyleAnimationAccessor: AnimationTarget {
+    unowned let text: ZRText
+    init(_ text: ZRText) { self.text = text }
+    func animationGet(_ key: String) -> Any? {
+        // Only the tweened text-style props are exposed (opacity is what the label enter animation uses).
+        switch key {
+        case "opacity": return text.textStyle?.opacity ?? 1
+        default: return nil
+        }
+    }
+    func animationSet(_ key: String, _ value: Any?) {
+        guard var s = text.textStyle else { return }
+        switch key {
+        case "opacity": if let v = value as? Double { s.opacity = v }
+        default: return
+        }
+        text.textStyle = s
+        // Re-propagates to the TSpan children on the next `update()` (styleChanged → _updateSubTexts).
+        text.dirtyStyle()
+    }
+}
+
 public final class ZRText: Displayable, GroupLike {
 
     // upstream: type = 'text' — set in init (per-instance).
@@ -406,6 +433,27 @@ public final class ZRText: Displayable, GroupLike {
     // upstream: style: TextStyleProps. Swift cannot re-type the inherited `Displayable.style`
     //   (CommonStyleProps), so the rich style lives here (upstream `this.style` → `self.textStyle`).
     public var textStyle: TextStyleProps!
+
+    // upstream `ZRText.style` IS the text style, so a `{style: {...}}` animation must tween `textStyle`,
+    //   not the inherited common `style`. Route `animationGet/Set("style")` to a textStyle-backed accessor.
+    private lazy var _textStyleAnimationAccessor = TextStyleAnimationAccessor(self)
+
+    public override func animationGet(_ key: String) -> Any? {
+        if key == "style" { return _textStyleAnimationAccessor }
+        return super.animationGet(key)
+    }
+
+    public override func animationSet(_ key: String, _ value: Any?) {
+        if key == "style" {
+            // Whole-style assign (the non-animated branch): accept the typed textStyle.
+            if let s = value as? TextStyleProps {
+                self.textStyle = s
+                self.dirtyStyle()
+            }
+            return
+        }
+        super.animationSet(key, value)
+    }
 
     /// How to handling label overlap. hidden:
     public var overlap: String?     // 'hidden' | 'show' | 'blur'

@@ -26,21 +26,20 @@ final class MarkerHoverTests: XCTestCase {
                                      as [String: Any]] as [String: Any]]])
         _ = v.zr.storage.getDisplayList(true)
 
-        var lineEl: Polyline?
+        var lineEl: Line?
         _ = v.ec.getRoot().traverse { el in
-            if lineEl == nil, el.name == "line", let p = el as? Polyline { lineEl = p }
+            if lineEl == nil, el.name == "line", let p = el as? Line { lineEl = p }
             return false
         }
-        guard let line = lineEl, let shape = line.shape as? PolylineShape,
-              let pts = shape.points, pts.count >= 2 else {
-            XCTFail("markLine must render a polyline"); return
+        guard let line = lineEl, let shape = line.shape as? LineShape else {
+            XCTFail("markLine must render a Line"); return
         }
 
         let normalStroke = strokeString(line)
-        XCTAssertNotNil(normalStroke, "markLine polyline has a stroke")
+        XCTAssertNotNil(normalStroke, "markLine line has a stroke")
 
         // Hover the segment midpoint (global coords — LineDraw group is untransformed).
-        let mid = line.transformCoordToGlobal((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2)
+        let mid = line.transformCoordToGlobal((shape.x1 + shape.x2) / 2, (shape.y1 + shape.y2) / 2)
         v._injectPointerForTest(type: "mousemove", zrX: mid[0], zrY: mid[1])
 
         XCTAssertTrue(line.currentStates.contains("emphasis"),

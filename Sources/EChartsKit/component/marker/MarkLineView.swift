@@ -597,6 +597,11 @@ final class LineDraw: MarkerDraw {
 
     // updateData(lineData)
     func updateData(_ lineData: SeriesData) {
+        // Only the FIRST build enters (grows the line 0→1); a re-render (e.g. dataZoom on line-aqi)
+        //   must not replay the reveal. The static stand-in rebuilds the group each call, so gate the
+        //   enter on there being no retained data yet (upstream's diff enters only NEW `Line`s).
+        let isFirstRender = (self._lineData == nil)
+        let seriesModel = lineData.hostModel
         self.group.removeAll()
         for idx in 0..<lineData.count() {
             // itemLayout = [fromPoint, toPoint]
@@ -616,9 +621,13 @@ final class LineDraw: MarkerDraw {
 
             let style = lineData.getItemVisual(idx, "style") as? [String: Any]
 
-            var shape = PolylineShape()
-            shape.points = [VectorArray(p0[0], p0[1]), VectorArray(p1[0], p1[1])]
-            let line = Polyline()
+            // upstream Line.ts uses `ECLinePath` (a zrender Line with a `percent` shape field) so the
+            //   body can GROW from x1,y1 to x2,y2 (percent 0→1). Use ZRenderKit `Line` for the same.
+            var shape = LineShape()
+            shape.x1 = p0[0]; shape.y1 = p0[1]
+            shape.x2 = p1[0]; shape.y2 = p1[1]
+            shape.percent = 1
+            let line = Line()
             line.setShape(shape)
             line.name = "line"
 
@@ -655,12 +664,15 @@ final class LineDraw: MarkerDraw {
             if dlen > 0 { d = [d[0] / dlen, d[1] / dlen] }
             let baseAtan = atan2(d[1], d[0])
             var endSymbols: [Path] = []
+            var symFrom: Path?
+            var symTo: Path?
             if let sym = makeEndSymbol(lineData, idx, "from", strokeColor, style?["opacity"] as? Double) {
                 sym.x = p0[0]; sym.y = p0[1]
                 // percent 0: `1 * PI/2 − atan2(tangent)`
                 sym.rotation = Double.pi / 2 - baseAtan
                 _ = lineGroup.add(sym)
                 endSymbols.append(sym)
+                symFrom = sym
             }
             if let sym = makeEndSymbol(lineData, idx, "to", strokeColor, style?["opacity"] as? Double) {
                 sym.x = p1[0]; sym.y = p1[1]
@@ -668,6 +680,7 @@ final class LineDraw: MarkerDraw {
                 sym.rotation = -Double.pi / 2 - baseAtan
                 _ = lineGroup.add(sym)
                 endSymbols.append(sym)
+                symTo = sym
             }
 
             // upstream (Line.ts:274-292): share the line's per-state stroke/opacity with the end
@@ -704,6 +717,32 @@ final class LineDraw: MarkerDraw {
                 label.useStyle(ts)
                 label.z2 = 10
                 _ = lineGroup.add(label)
+            }
+
+            // Enter animation (Line.ts:171 `line.shape.percent = 0` + initProps to 1). The body GROWS
+            //   from x1,y1 toward x2,y2; the `during` mirrors Line.ts `_updateCommonStl` — the `to` end
+            //   symbol rides `line.pointAt(percent)` and both end symbols scale in with `percent`. Only on
+            //   the first build, so a dataZoom re-render does not replay it.
+            if isFirstRender {
+                var startShape = line.shape as! LineShape
+                startShape.percent = 0
+                line.shape = startShape
+                symFrom?.scaleX = 0; symFrom?.scaleY = 0
+                symTo?.scaleX = 0; symTo?.scaleY = 0
+                let during: (Double) -> Void = { [weak line, weak symFrom, weak symTo] percent in
+                    symFrom?.scaleX = percent; symFrom?.scaleY = percent; symFrom?.markRedraw()
+                    if let line = line, let symTo = symTo {
+                        let pt = line.pointAt(percent)
+                        symTo.x = pt[0]; symTo.y = pt[1]
+                        symTo.scaleX = percent; symTo.scaleY = percent
+                        symTo.markRedraw()
+                    }
+                }
+                initProps(line, ["shape": ["percent": 1.0] as [String: Any]], seriesModel, idx, nil, during)
+                // Animation disabled (static frame) → initProps snapped `percent` to 1; finalize symbols.
+                if ((line.shape as? LineShape)?.percent ?? 1) >= 1 {
+                    during(1)
+                }
             }
 
             // upstream (Line.ts:336): the whole line group is the highDown dispatcher — hovering the

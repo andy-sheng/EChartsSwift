@@ -1003,6 +1003,19 @@ func barStyleFromDict(_ style: Any?) -> PathStyleProps {
     if let v = d["lineWidth"] as? Double { s.lineWidth = v }
     if let v = d["lineCap"] as? String { s.lineCap = v }
     if let v = d["lineJoin"] as? String { s.lineJoin = v }
+    // lineDash: `getLineStyle` maps the option `type` (solid/dashed/dotted) → the style key `lineDash`
+    //   (a string preset OR a number[]); without this the dashed/dotted lineStyle was dropped and every
+    //   line/border drew solid (e.g. official-line-style's dashed 4px line rendered solid).
+    switch d["lineDash"] {
+    case let str as String:
+        if str == "dashed" { s.lineDash = .dashed }
+        else if str == "dotted" { s.lineDash = .dotted }
+        else if str == "solid" { s.lineDash = .solid }
+    case let arr as [Double]: s.lineDash = .values(arr)
+    case let arri as [Int]: s.lineDash = .values(arri.map(Double.init))
+    default: break
+    }
+    if let v = d["lineDashOffset"] as? Double { s.lineDashOffset = v }
     if let v = d["miterLimit"] as? Double { s.miterLimit = v }
     if let v = d["shadowBlur"] as? Double { s.shadowBlur = v }
     if let v = d["shadowColor"] as? String { s.shadowColor = v }
