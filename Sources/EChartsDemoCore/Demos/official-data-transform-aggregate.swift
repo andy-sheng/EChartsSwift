@@ -90,7 +90,7 @@ extension EChartsDemoRegistry {
         name: "official-data-transform-aggregate", category: "boxplot",
         summary: "简单的数据聚合 — Data Transform Simple Aggregate",
         width: 720, height: 560,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- vendored echarts-simple-transform UMD (upstream/echarts/test/lib/ecSimpleTransform.js);
