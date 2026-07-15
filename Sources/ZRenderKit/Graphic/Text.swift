@@ -426,6 +426,88 @@ final class TextStyleAnimationAccessor: AnimationTarget {
     }
 }
 
+// Merge a raw `[String: Any]` option bag into a `TextStyleProps` — the port's stand-in for upstream's
+//   dynamic `extend(this.style, obj)` when a ZRText's style is set from an untyped option bag (graphic
+//   `type:'text'` elements, `el.attr(["style": {...}])`). Only keys present in the dict are written; raw
+//   values are String / Double / Int / [Double], coerced into the typed struct fields.
+private func mergeTextStyleFromDict(_ s: inout TextStyleProps, _ d: [String: Any]) {
+    func dbl(_ v: Any?) -> Double? {
+        if let x = v as? Double { return x }
+        if let x = v as? Int { return Double(x) }
+        if let x = v as? NSNumber { return x.doubleValue }
+        return nil
+    }
+    func dblArray(_ v: Any?) -> [Double]? {
+        if let a = v as? [Double] { return a }
+        if let a = v as? [Any] { let ds = a.compactMap { dbl($0) }; return ds.count == a.count ? ds : nil }
+        return nil
+    }
+    for (k, v) in d {
+        switch k {
+        case "text": s.text = v as? String
+        case "fill": s.fill = v as? String
+        case "stroke": s.stroke = v as? String
+        case "strokeNoScale": s.strokeNoScale = v as? Bool
+        case "font": s.font = v as? String
+        case "textFont": s.textFont = v as? String
+        case "fontFamily": s.fontFamily = v as? String
+        case "fontStyle": if let x = v as? String { s.fontStyle = FontStyle(rawValue: x) }
+        case "fontWeight":
+            if let x = v as? String {
+                switch x {
+                case "normal": s.fontWeight = .normal
+                case "bold": s.fontWeight = .bold
+                case "bolder": s.fontWeight = .bolder
+                case "lighter": s.fontWeight = .lighter
+                default: if let n = Double(x) { s.fontWeight = .number(n) }
+                }
+            }
+            else if let n = dbl(v) { s.fontWeight = .number(n) }
+        case "fontSize":
+            if let n = dbl(v) { s.fontSize = .number(n) }
+            else if let x = v as? String { s.fontSize = .string(x) }
+        case "align": if let x = v as? String { s.align = TextAlign(rawValue: x) }
+        case "verticalAlign": if let x = v as? String { s.verticalAlign = TextVerticalAlign(rawValue: x) }
+        case "opacity": s.opacity = dbl(v)
+        case "fillOpacity": s.fillOpacity = dbl(v)
+        case "strokeOpacity": s.strokeOpacity = dbl(v)
+        case "lineWidth": s.lineWidth = dbl(v)
+        case "lineHeight": s.lineHeight = dbl(v)
+        case "width": s.width = dbl(v)
+        case "height": s.height = dbl(v)
+        case "overflow": s.overflow = v as? String
+        case "lineOverflow": s.lineOverflow = v as? String
+        case "ellipsis": s.ellipsis = v as? String
+        case "placeholder": s.placeholder = v as? String
+        case "truncateMinChar": s.truncateMinChar = dbl(v)
+        case "backgroundColor": if let x = v as? String { s.backgroundColor = .string(x) }
+        case "padding":
+            if let n = dbl(v) { s.padding = .number(n) }
+            else if let a = dblArray(v) { s.padding = .array(a) }
+        case "margin":
+            if let n = dbl(v) { s.margin = .number(n) }
+            else if let a = dblArray(v) { s.margin = .array(a) }
+        case "borderColor": s.borderColor = v as? String
+        case "borderWidth": s.borderWidth = dbl(v)
+        case "borderRadius":
+            if let n = dbl(v) { s.borderRadius = .number(n) }
+            else if let a = dblArray(v) { s.borderRadius = .array(a) }
+        case "shadowColor": s.shadowColor = v as? String
+        case "shadowBlur": s.shadowBlur = dbl(v)
+        case "shadowOffsetX": s.shadowOffsetX = dbl(v)
+        case "shadowOffsetY": s.shadowOffsetY = dbl(v)
+        case "textShadowColor": s.textShadowColor = v as? String
+        case "textShadowBlur": s.textShadowBlur = dbl(v)
+        case "textShadowOffsetX": s.textShadowOffsetX = dbl(v)
+        case "textShadowOffsetY": s.textShadowOffsetY = dbl(v)
+        case "x": s.x = dbl(v)
+        case "y": s.y = dbl(v)
+        case "tag": s.tag = v as? String
+        default: break
+        }
+    }
+}
+
 public final class ZRText: Displayable, GroupLike {
 
     // upstream: type = 'text' — set in init (per-instance).
@@ -453,6 +535,31 @@ public final class ZRText: Displayable, GroupLike {
             return
         }
         super.animationSet(key, value)
+    }
+
+    // upstream: ZRText inherits Displayable's `attrKV`, whose `style` branch is `extend(this.style, value)`
+    //   — a plain per-key copy from the option object onto `this.style` (which for a ZRText IS the text
+    //   style). In this port a text element's style arrives as a raw `[String: Any]` option bag via
+    //   `attr(...)` (e.g. graphic component's `applyUpdateTransitionStatic`). Displayable.attrKV would cast
+    //   that dict to a `CommonStyleProps` (cast fails → empty) and call the WRONG `useStyle(CommonStyleProps)`
+    //   overload, silently dropping `text`/`font`/`fill`/... So override here to MERGE the dict into
+    //   `textStyle` (mirrors Path.attrKV's partial-dict `style` branch), or accept a full typed style.
+    internal override func attrKV(_ key: String, _ value: Any?) {
+        if key == "style", let partial = value as? [String: Any] {
+            if self.textStyle == nil {
+                self.useStyle(TextStyleProps())
+            }
+            var s = self.textStyle!
+            mergeTextStyleFromDict(&s, partial)
+            self.textStyle = s
+            self.dirtyStyle()
+        }
+        else if key == "style", let typed = value as? TextStyleProps {
+            self.useStyle(typed)
+        }
+        else {
+            super.attrKV(key, value)
+        }
     }
 
     /// How to handling label overlap. hidden:

@@ -1118,6 +1118,12 @@ public final class ECharts: EChartsType {
         //   user pre-registering. The "echarts:" namespace makes them callable via the bare "filter"/"sort".
         transformInstall(ECharts._registers)
 
+        // -- component/grid/installLegacyGridContainLabel.ts `use(LegacyGridContainLabel)` -- registers the
+        //   pre-outerBounds `grid.containLabel` layout (registerLayOutGridByContainLabelImpl). Upstream
+        //   gates it behind an explicit `use(...)`; this port installs it by default so a `containLabel:true`
+        //   grid reserves its axis-label band natively, matching the reference echarts.js pane.
+        installLegacyGridContainLabel(ECharts._registers)
+
         // -- core/echarts.ts `Default actions` (echarts.ts:3373-3411) -- highlight/downplay/select/
         //   unselect/toggleSelect. Upstream registers these at module load; the driver has no
         //   module-load side effects, so it happens here (see core/actionRegister.swift).

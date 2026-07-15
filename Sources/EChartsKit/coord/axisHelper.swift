@@ -299,6 +299,86 @@ public enum axisHelper {
         return helper.isOrdinalScale(scale) ? scale.getLabel(tick) : tick.value
     }
 
+    // JS truthiness for the dynamic `axisLabel.show` option value (nil/false/0/""/NaN are falsy).
+    private static func unionRectTruthy(_ v: Any?) -> Bool {
+        guard let v = v else { return false }
+        if v is NSNull { return false }
+        if let b = v as? Bool { return b }
+        if let d = v as? Double { return d != 0 && !d.isNaN }
+        if let i = v as? Int { return i != 0 }
+        if let s = v as? String { return !s.isEmpty }
+        return true
+    }
+
+    // upstream: function rotateTextRect(textRect: RectLike, rotate: number)
+    //   Axis-aligned bounding box of `textRect` after rotating it by `rotate` degrees.
+    private static func rotateTextRect(_ textRect: BoundingRect, _ rotate: Double) -> BoundingRect {
+        let rotateRadians = rotate * Double.pi / 180
+        let beforeWidth = textRect.width
+        let beforeHeight = textRect.height
+        let afterWidth = beforeWidth * abs(cos(rotateRadians)) + beforeHeight * abs(sin(rotateRadians))
+        let afterHeight = beforeWidth * abs(sin(rotateRadians)) + beforeHeight * abs(cos(rotateRadians))
+        return BoundingRect(textRect.x, textRect.y, afterWidth, afterHeight)
+    }
+
+    /**
+     * @return Be null/undefined if no labels.
+     */
+    // upstream: export function estimateLabelUnionRect(axis: Axis)
+    //   Used by the legacy `grid.containLabel` layout (installLegacyGridContainLabel) to reserve room for
+    //   the axis labels. Returns the union of every (rotation-aware) label bounding rect, or nil if labels
+    //   are hidden / the scale is blank.
+    public static func estimateLabelUnionRect(_ axis: Axis) -> BoundingRect? {
+        let axisModel = axis.model!
+        let scale = axis.scale
+
+        // upstream: if (!axisModel.get(['axisLabel', 'show']) || scale.isBlank()) { return; }
+        if !unionRectTruthy(axisModel.get(["axisLabel", "show"])) || scale.isBlank() {
+            return nil
+        }
+
+        var realNumberScaleTicks: [ScaleTick]? = nil
+        let tickCount: Int
+        let categoryScaleExtent = scale.getExtent()
+
+        // upstream: if (scale instanceof OrdinalScale) { tickCount = scale.count(); }
+        if let ordinalScale = scale as? OrdinalScale {
+            tickCount = Int(ordinalScale.count())
+        }
+        else {
+            realNumberScaleTicks = scale.getTicks()
+            tickCount = realNumberScaleTicks!.count
+        }
+
+        let axisLabelModel = axis.getLabelModel()
+        let labelFormatter = makeLabelFormatter(axis)
+
+        var rect: BoundingRect? = nil
+        var step = 1
+        // Simple optimization for large amount of labels
+        if tickCount > 40 {
+            step = Int(ceil(Double(tickCount) / 40))
+        }
+        var i = 0
+        while i < tickCount {
+            let tick = realNumberScaleTicks != nil
+                ? realNumberScaleTicks![i]
+                : ScaleTick(value: categoryScaleExtent[0] + Double(i))
+            let label = labelFormatter(tick, Double(i))
+            let unrotatedSingleRect = axisLabelModel.getTextRect(label)
+            let singleRect = rotateTextRect(unrotatedSingleRect, (axisLabelModel.get("rotate") as? Double) ?? 0)
+            if let r = rect {
+                r.union(singleRect)  // BoundingRect is a final class — mutates in place (upstream `rect.union`)
+            }
+            else {
+                rect = singleRect
+            }
+            i += step
+        }
+
+        return rect
+    }
+
     /**
      * @param model axisLabelModel or axisTickModel
      */

@@ -8,14 +8,16 @@
 //
 // DEVIATIONS from the official source:
 //   - webOptionJS is the example VERBATIM (all data inline upstream; no $.get, no assets, no timers).
-//   - NATIVE PANE OFF (nativeSupported: false). Nothing here is *missing* from the port: `graphic` is
-//     ported (component/graphic/{GraphicModel,GraphicView}.swift + graphicOptionPreprocessor, all
-//     registered in ECharts.swift), `bounding:'raw'` is honored by util/layout.swift `positionElement`,
-//     and `overflow:'break'` by ZRenderKit's Text. What is missing is VERIFICATION: the two paths this
-//     example leans on — a rotated group with `bounding:'raw'` anchored by right/bottom, and a text
-//     element wrapping at `width:220` — have not been diffed end-to-end against the reference pane, so
-//     the demo ships web-only rather than showing an unvetted native render. The `option` below is a
-//     faithful, complete port and is expected to light up unchanged once those two are confirmed.
+//   - NATIVE PANE ON (nativeSupported: true). Verified pixel-faithful against the reference pane: the
+//     `containLabel:true` grid reserves the y-axis "N km" label band, the 45°-rotated `bounding:'raw'`
+//     banner ("ECHARTS LINE CHART") anchors by right/bottom, and the shadowed callout text wraps at
+//     `width:220` via `overflow:'break'`. Lighting this up required two framework fixes (both aligned to
+//     upstream, not worked around): (1) `grid.containLabel` — ported `LegacyGridContainLabel`
+//     (installLegacyGridContainLabel.swift + axisHelper.estimateLabelUnionRect), registered by default so
+//     the grid shrinks to contain axis labels as echarts.js does; without it the y labels overflowed off
+//     the left edge (only " km" showed). (2) graphic `type:'text'` style — a text element's raw
+//     `[String:Any]` style bag arriving via `attr(...)` was dropped by Displayable's CommonStyleProps
+//     handler; ZRText now overrides `attrKV` to merge it into `textStyle` (mirrors Path.attrKV).
 //   - No option key is dropped: every formatter here is a STRING template ('{value} °C',
 //     'Temperature : <br/>{b}km : {c}°C'), not a JS closure, so both panes carry the same values.
 import Foundation
@@ -25,7 +27,7 @@ extension EChartsDemoRegistry {
         name: "official-line-graphic", category: "graphic",
         summary: "自定义图形组件 — Custom Graphic Component",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 option = {
