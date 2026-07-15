@@ -1703,9 +1703,18 @@ public final class ECharts: EChartsType {
             shape.y = 0
             shape.width = _width
             shape.height = _height
+            // The style MUST be a typed `PathStyleProps`. `Path`'s prop init does
+            // `(value as? PathStyleProps) ?? PathStyleProps()` — a `[String: Any]` casts to nil there,
+            // silently yielding an EMPTY style, which then falls back to zrender's DEFAULT_PATH_STYLE
+            // whose fill is `#000`. So the background rect was painted BLACK no matter what the option
+            // said: `backgroundColor: '#fff'` came out black (sankey-itemstyle), and the maps'
+            // `'#404a59'` came out black too. It was the single biggest source of native-vs-echarts.js
+            // divergence in the official-examples sweep.
+            var bgStyle = PathStyleProps()
+            bgStyle.fill = .string(bg)
             let bgRect = Rect([
                 "shape": shape as PathShape,
-                "style": ["fill": bg] as [String: Any],
+                "style": bgStyle,
                 "silent": true,
                 "z2": -Double.greatestFiniteMagnitude
             ])
