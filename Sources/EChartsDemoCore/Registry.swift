@@ -407,6 +407,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_calendar_simple,                        // calendar
         EChartsDemoRegistry.official_calendar_horizontal,                    // calendar
         EChartsDemoRegistry.official_calendar_lunar,                         // calendar
+        EChartsDemoRegistry.official_calendar_effectscatter,                 // calendar
         EChartsDemoRegistry.official_matrix_sparkline,                       // matrix
         EChartsDemoRegistry.official_matrix_mini_bar_geo,                    // matrix
         EChartsDemoRegistry.official_matrix_stock,                           // matrix

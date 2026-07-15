@@ -101,8 +101,15 @@ open class EffectScatterView: ChartView {
                 return coord.dataToPoint([radiusVal, angleVal])
             }
         }
+        else if let cal = seriesModel.coordinateSystem as? Calendar {
+            // Calendar effectScatter (mirrors ScatterView): the 'time' dim locates the day cell, and
+            //   `dataToPoint(date)` returns its center (NaN for dates outside this calendar's range, so
+            //   a `calendarIndex`-routed series only ripples the days in its own panel).
+            let timeIdx = data.mapDimension("time").map { data.getDimensionIndex($0) } ?? 0
+            pointAt = { i in cal.dataToPoint(store.get(timeIdx, i)) }
+        }
         else {
-            // PORT-NOTE (deferred): requires geo/singleAxis/calendar/matrix coord systems (not ported).
+            // PORT-NOTE (deferred): requires geo/singleAxis/matrix coord systems (not ported).
             return
         }
 

@@ -115,8 +115,16 @@ open class ScatterView: ChartView {
                 return geo.dataToPoint([lng, lat], false) ?? [Double.nan, Double.nan]
             }
         }
+        else if let cal = seriesModel.coordinateSystem as? Calendar {
+            // Calendar scatter (pointsLayout generic path): the coord dims are ["time", "value"]; the
+            //   'time' dim (the date) locates the day cell. `dataToPoint(date)` returns the cell center;
+            //   with the default clamp it returns NaN for dates outside this calendar's `range`, so a
+            //   `calendarIndex`-routed series only draws the days that fall in its own panel.
+            let timeIdx = data.mapDimension("time").map { data.getDimensionIndex($0) } ?? 0
+            pointAt = { i in cal.dataToPoint(store.get(timeIdx, i)) }
+        }
         else {
-            // PORT-NOTE (deferred): singleAxis/calendar/matrix scatter (those coord systems not ported).
+            // PORT-NOTE (deferred): singleAxis/matrix scatter (those coord systems not ported).
             return
         }
 
