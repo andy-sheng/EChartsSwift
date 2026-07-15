@@ -888,6 +888,39 @@ private func isCoordInRect(_ coord: Double, _ rect: RectLike, _ dimIdx: Int) -> 
     return rectGetXY(rect, dimIdx) <= coord && coord <= rectGetXY(rect, dimIdx) + rectGetWH(rect, dimIdx)
 }
 
+// upstream: `class Matrix implements CoordinateSystem, CoordinateSystemMaster`. The port declared ONLY
+//   `CoordinateSystemMaster` above, so `matrix as? CoordinateSystem` failed — which broke
+//   `simpleCoordSysInjectionProvider` (`coordinateSystem as? CoordinateSystem`) so a grid placed with
+//   `coordinateSystem:'matrix'` never received its `boxCoordinateSystem`, and every cell grid resolved to
+//   the full viewport (all sparklines stacked — official-matrix-sparkline). Adopt `CoordinateSystem` here:
+//   `type`/`dimensions`/`containPoint` are already members; only the two coord-typed methods need bridging
+//   to Matrix's own (whose `opt` is `MatrixDataToLayoutOpt`, not the protocol's `Any?`). The rest of the
+//   protocol has extension defaults (coord/CoordinateSystem.swift), matching upstream's optional methods.
+extension Matrix: CoordinateSystem {
+    // `model` and `getAxes()` are defaulted by BOTH the CoordinateSystemMaster and CoordinateSystem
+    //   extensions, so they are ambiguous once Matrix conforms to both — pin them explicitly.
+    public var model: ComponentModel? { get { self._model } set {} }
+    public func getAxes() -> [Axis]? { nil }   // a matrix has no cartesian axes (matches the default)
+    // Bridge the coord-typed protocol methods to Matrix's own (whose `opt` is `MatrixDataToLayoutOpt`,
+    //   the protocol's is `Any?`). Call the single-arg form so the default `opt` selects Matrix's own
+    //   overload unambiguously (the box-layout caller passes `opt == nil`; a non-nil opt is a matrix
+    //   clamp option, not used on this path).
+    public func dataToLayout(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> CoordinateSystemDataLayout? {
+        let d: Any? = data
+        // SINGLE-arg call — `opt` defaults `nil`, which uniquely selects Matrix's own overload
+        //   `dataToLayout(_:Any?, _:MatrixDataToLayoutOpt?=nil)`. A 2-arg call with an `Any?` first
+        //   argument is ambiguous with THIS protocol method (→ infinite recursion). The box-layout
+        //   caller passes `opt == nil` (upstream deliberately does not clamp here), so nothing is lost.
+        return self.dataToLayout(d)
+    }
+    public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> [Double] {
+        // Matrix.dataToPoint is the centre of dataToLayout's rect; compute it via the (bridged)
+        //   `dataToLayout` above to avoid a same-name self-call on `dataToPoint`.
+        guard let rect = self.dataToLayout(data, opt)?.rect else { return [Double.nan, Double.nan] }
+        return [rect.x + rect.width / 2, rect.y + rect.height / 2]
+    }
+}
+
 // export default Matrix;  -> `public final class Matrix` above.
 
 

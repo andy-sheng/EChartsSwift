@@ -192,24 +192,47 @@ public enum layout {
         _ api: ExtensionAPI,
         _ opt: Any? = nil
     ) -> BoxLayoutReferenceResult {
-        _ = model
         _ = opt
-        // PORT-NOTE (deferred): the `model.boxCoordinateSystem` branch (getCoordForCoordSysUsageKindBox +
-        //   dataToLayout / dataToPoint) is Phase 6b. getCoordForCoordSysUsageKindBox is ported, but the
-        //   `point`-kind result requires `BoxLayoutReferenceResult.refContainer` to become Optional (it is
-        //   non-Optional here, and callers read it non-optionally), so the faithful port needs that struct
-        //   change first. Only the viewport reference is produced here — the default (`layoutRefType ===
-        //   rect`, no box coord sys) path upstream.
-        let refContainer = BoundingRect(0, 0, api.getWidth(), api.getHeight())
+        var refContainer: BoundingRect? = nil
+        var layoutRefType = BOX_LAYOUT_REFERENCE_TYPE_RECT
+        var boxCoordFrom: Any? = nil
+
+        // upstream: const boxCoordSys = model.boxCoordinateSystem; if (boxCoordSys) { ... }
+        //   Places a box (e.g. a `grid` with `coordinateSystem:'matrix'`) into a coord-sys-derived rect —
+        //   the matrix CELL — instead of the full viewport, so the cell sparklines don't stack.
+        if let bcs = model.boxCoordinateSystem, !(bcs is NSNull) {
+            // const {coord, from} = getCoordForCoordSysUsageKindBox(model);
+            let coordFrom = getCoordForCoordSysUsageKindBox(model)
+            // Do not clamp `dataToLayout` (support overflow / NaN, consistent with `series.data`).
+            // if (boxCoordSys.dataToLayout) { layoutRefType = rect; refContainer = result.contentRect || result.rect; }
+            //   `dataToLayout` is defaulted-nil on `CoordinateSystem`; only box coord systems (Matrix)
+            //   override it, so a non-box coord sys falls through to the viewport (upstream's optional-method
+            //   check). `coord` is `CoordinateSystemDataCoord` (= Any); pass through non-nil.
+            if let boxCS = bcs as? CoordinateSystem,
+               let result = boxCS.dataToLayout(coordFrom.coord ?? NSNull(), nil) {
+                layoutRefType = BOX_LAYOUT_REFERENCE_TYPE_RECT
+                boxCoordFrom = coordFrom.from
+                if let r = result.contentRect ?? result.rect {
+                    refContainer = BoundingRect(r.x, r.y, r.width, r.height)
+                }
+            }
+            // PORT-NOTE (deferred): the `opt.enableLayoutOnlyByCenter && boxCoordSys.dataToPoint` →
+            //   POINT-kind branch needs `BoxLayoutReferenceResult.refContainer` to become Optional (its
+            //   consumers read it non-optionally). Matrix uses `dataToLayout` (rect kind), which is what
+            //   the current box-coord consumer — Grid.resize placing a grid in a matrix cell — needs.
+        }
+
+        // if (layoutRefType === rect) { if (!refContainer) refContainer = {0,0,W,H}; refPoint = center; }
+        let container = refContainer ?? BoundingRect(0, 0, api.getWidth(), api.getHeight())
         let refPoint = [
-            refContainer.x + refContainer.width / 2,
-            refContainer.y + refContainer.height / 2
+            container.x + container.width / 2,
+            container.y + container.height / 2
         ]
         return BoxLayoutReferenceResult(
-            type: BOX_LAYOUT_REFERENCE_TYPE_RECT,
-            refContainer: refContainer,
+            type: layoutRefType,
+            refContainer: container,
             refPoint: refPoint,
-            boxCoordFrom: nil
+            boxCoordFrom: boxCoordFrom
         )
     }
 

@@ -21,14 +21,12 @@
 //     Same values, same order (row-major over y then x, break row skipped). Not a semantic change.
 // No option key is a JS closure, so nothing is dropped from the Swift port.
 //
-// NATIVE PANE IS PARTIAL — one real framework gap, not a port shortcut. Placing a `grid` INSIDE a
-// matrix cell needs the BOX COORDINATE SYSTEM branch of `layout.createBoxLayoutReference`
-// (`model.boxCoordinateSystem` -> `matrix.dataToLayout(coord)`), which is still deferred in
-// EChartsKit (see the PORT-NOTE at Sources/EChartsKit/util/layout.swift:197 — it always returns the
-// viewport rect). `Grid.resize` calls exactly that, so today every cell grid resolves to the FULL
-// VIEWPORT instead of its matrix cell, and the 25 sparklines stack on top of each other over the
-// matrix backdrop. The option is complete and correct; the demo lights up when that branch lands —
-// which is precisely the kind of gap this gallery exists to surface, so it stays `nativeSupported`.
+// Each cell grid is placed into its matrix cell by the BOX COORDINATE SYSTEM branch of
+// `layout.createBoxLayoutReference` (`model.boxCoordinateSystem` -> `CoordinateSystem.dataToLayout(coord)`
+// -> the cell rect). That branch — and Matrix's `CoordinateSystem` conformance that lets
+// `simpleCoordSysInjectionProvider` inject the matrix into each grid's `boxCoordinateSystem` — are now
+// ported, so the 30 cell sparklines land in their own cells instead of stacking over the full viewport.
+// This gallery surfaced that gap.
 
 import Foundation
 
