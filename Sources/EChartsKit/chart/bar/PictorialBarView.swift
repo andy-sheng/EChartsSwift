@@ -136,7 +136,9 @@ final class PictorialBarElement: Group {
     var __pictorialBundle: Group!
     var __pictorialShapeStr: String = ""
     var __pictorialSymbolMeta: PBSymbolMeta!
-    var __pictorialMainPath: Path?
+    // upstream `PictorialSymbol` (a SymbolClz). Typed `Displayable` here because an `image://` symbol is a
+    //   ZRImage (not a Path) — see pbCreatePath. Only Element/Displayable-level ops are used on it.
+    var __pictorialMainPath: Displayable?
     var __pictorialBarRect: Rect?
     var __pictorialClipPath: Rect?
 }
@@ -598,7 +600,8 @@ private func pbOptString(_ v: Any?) -> String? {
 }
 
 // upstream: function createPath(symbolMeta): PictorialSymbol
-private func pbCreatePath(_ symbolMeta: PBSymbolMeta) -> Path {
+//   Returns a Displayable: a SymbolPath/SVGPath for shape symbols, or a ZRImage for an `image://` symbol.
+private func pbCreatePath(_ symbolMeta: PBSymbolMeta) -> Displayable {
     let symbolPatternSize = symbolMeta.symbolPatternSize
     // Consider texture img, make a big size.
     let pathEc = symbol.createSymbol(
@@ -608,15 +611,17 @@ private func pbCreatePath(_ symbolMeta: PBSymbolMeta) -> Path {
         symbolPatternSize,
         symbolPatternSize
     )
-    guard let path = pathEc as? Path else {
-        // createSymbol always returns a Path-backed ECSymbol in the port (image:// deferred).
+    guard let el = pathEc as? Displayable else {
         return SymbolPath()
     }
-    _ = path.attr("culling", true)
-    // path.type !== 'image' → setStyle strokeNoScale. useStyle in updateCommon replaces the style, so the
-    //   strokeNoScale is (re)applied there (matches SymbolElement precedent); set here too for faithfulness.
-    path.pathStyle.strokeNoScale = true
-    return path
+    _ = el.attr("culling", true)
+    // upstream: `path.type !== 'image' && path.setStyle('strokeNoScale', true)`. useStyle in updateCommon
+    //   replaces the style, so strokeNoScale is (re)applied there; set here too for faithfulness. An image
+    //   symbol (ZRImage) has no stroke, so this is skipped for it.
+    if let path = el as? Path {
+        path.pathStyle.strokeNoScale = true
+    }
+    return el
 }
 
 // upstream: function createOrUpdateRepeatSymbols(bar, opt, symbolMeta, isUpdate?)
@@ -651,9 +656,9 @@ private func pbCreateOrUpdateRepeatSymbols(
     }
 
     var index = 0
-    // Iterate existing symbol paths in the bundle.
+    // Iterate existing symbol paths in the bundle. A symbol is a Displayable (Path shape or ZRImage).
     for el in bundle.children() {
-        guard let path = el as? Path else { continue }
+        guard let path = el as? Displayable else { continue }
         if index < repeatTimes {
             pbUpdateAttr(path, nil, makeTarget(index), symbolMeta, isUpdate, nil)
         }
@@ -954,10 +959,13 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
     let styleDict = symbolMeta.style as? [String: Any]
 
     for el in bar.__pictorialBundle.children() {
-        guard let path = el as? Path else { continue }
-        // ZRImage branch DEFERRED (createSymbol does not emit images yet). Non-image path:
-        path.useStyle(barStyleFromDict(symbolMeta.style))
-        path.pathStyle.strokeNoScale = true
+        guard let path = el as? Displayable else { continue }
+        // upstream applies `useStyle(symbolMeta.style)` + `strokeNoScale` to every symbol; an image symbol
+        //   (ZRImage) has no fill/stroke/decal — those are no-ops on it, so the style application is Path-only.
+        if let shapePath = path as? Path {
+            shapePath.useStyle(barStyleFromDict(symbolMeta.style))
+            shapePath.pathStyle.strokeNoScale = true
+        }
 
         let emphasisState = path.ensureState("emphasis")
         emphasisState.style = emphasisStyle

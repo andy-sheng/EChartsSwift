@@ -457,6 +457,20 @@ extension ZRenderKit.SVGPath: ECSymbol {
     }
 }
 
+// An `image://` symbol is built as a ZRenderKit `ZRImage` (util/symbol.createSymbol → ToolPath.makeImage).
+//   `createSymbol` returns an `ECSymbol`, so `ZRImage` conforms here. `__isEmptyBrush` is stored on the
+//   ZRenderKit class. `setColor` is a NO-OP for an image (upstream `symbolPathSetColor` early-returns when
+//   `this.type === 'image'` — an image's pixels are not recoloured); `getColor` returns transparent.
+extension ZRenderKit.ZRImage: ECSymbol {
+    public func setColor(_ color: ZRenderKit.ZRColor, _ innerColor: ZRenderKit.ZRColor? = nil) {
+        // upstream: `if (this.type === 'image') { return; }`
+    }
+
+    public func getColor() -> ZRenderKit.ZRColor {
+        return .string("transparent")
+    }
+}
+
 // upstream: free-function exports (createSymbol / normalizeSymbolSize / normalizeSymbolOffset /
 //   symbolBuildProxies). Per CONVENTIONS §2 a free-function module maps to a caseless `enum`
 //   namespace named after the file (`symbol`). The shape subclasses above are exported class-likes,
@@ -617,12 +631,13 @@ public enum symbol {
         let symbolPath: ECSymbol
 
         if symbolType.hasPrefix("image://") {
-            // PORT-NOTE (deferred): `graphic.makeImage(symbolType.slice(8), new BoundingRect(x,y,w,h),
-            //   keepAspect ? 'center' : 'cover')` — requires the ZRenderKit `Image` element + `graphic.makeImage`,
-            //   neither of which is ported yet. Fall back to a SymbolClz so the call site still receives an
-            //   ECSymbol (renders via the rect fallback in buildPath).
-            _ = keepAspect
-            symbolPath = makeFallbackSymbol(symbolType, x, y, w, h)
+            // upstream: `graphic.makeImage(symbolType.slice(8), new BoundingRect(x,y,w,h),
+            //   keepAspect ? 'center' : 'cover')`. `makeImage` + `ZRImage` (ECSymbol conformer above) are
+            //   ported; the returned ZRImage renders via the painter's drawZRImage.
+            let src = String(symbolType.dropFirst("image://".count))
+            symbolPath = ZRenderKit.makeImage(
+                src, BoundingRect(x, y, w, h), (keepAspect ?? false) ? "center" : "cover"
+            )
         }
         else if symbolType.hasPrefix("path://") {
             // upstream: `graphic.makePath(symbolType.slice(7), {}, new BoundingRect(x,y,w,h),

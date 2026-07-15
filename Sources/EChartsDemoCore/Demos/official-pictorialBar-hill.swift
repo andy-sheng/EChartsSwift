@@ -22,19 +22,15 @@
 //   - Everything else — including the stray top-level `markLine: { z: -1 }` in the official source
 //     (a no-op outside a series) — is carried over as-is.
 //
-// NATIVE PANE: nativeSupported: false — but NOT because the series is missing. `pictorialBar` IS fully
-// ported and registered: Sources/EChartsKit/chart/bar/{PictorialBarSeries,PictorialBarView,
-// pictorialBarInstall}.swift, wired in ECharts.swift (`ComponentModel.registerClass(
-// PictorialBarSeriesModel.self)`, the `"pictorialBar": { PictorialBarView() }` view factory, and both
-// the cross-series + progressive layout handlers). The blocker is one level down, in the SYMBOL layer:
-// `symbol.createSymbol`'s `image://` branch is an explicit deferred seam (Sources/EChartsKit/util/
-// symbol.swift, "PORT-NOTE (deferred): graphic.makeImage ... requires the ZRenderKit Image element"),
-// so it falls through to `makeFallbackSymbol` — a SymbolPath whose unrecognized symbolType draws as a
-// plain RECT. Every picture symbol in this example (the repeated paper slips and BOTH mountain photos)
-// would therefore render as a flat rectangle. Since those images ARE the example, a native pane of
-// rects would be a misleading diff, so it stays off; the back series (`symbol: 'circle'`), the
-// markLine, the labels and the axes would all render fine. Flip this to true the moment
-// createSymbol's image:// branch lands — the `option` below is already the complete port.
+// NATIVE PANE: nativeSupported: true. The `image://` picture symbols now render natively — the repeated
+// paper slips (symbolRepeat) and BOTH mountain photos (symbolPosition:'end', clipped to bar height via
+// symbolClip) draw as the actual images, pixel-faithful to the reference pane. This required porting the
+// image-symbol seam: `symbol.createSymbol`'s image:// branch → `ToolPath.makeImage` (a ZRImage sized to
+// the symbol rect), `ZRImage` conforming to `ECSymbol`, and `PictorialBarView`'s symbol pipeline widened
+// from `Path` to `Displayable` so an image element flows through create/repeat/clip/updateCommon.
+// Known minor deviations still surfaced by the pane (both SEPARATE from image symbols, hence ON to
+// surface them, matching the sibling forest's precedent): the second series' `symbol:'circle'` ground
+// ellipses and the y=8844 markLine are not drawn natively on this particular config.
 import Foundation
 import EChartsKit
 
@@ -97,7 +93,7 @@ extension EChartsDemoRegistry {
         name: "official-pictorialBar-hill", category: "pictorialBar",
         summary: "圣诞愿望清单和山峰高度 — Wish List and Mountain Height",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 var paperDataURI = '\#(paperDataURI)';

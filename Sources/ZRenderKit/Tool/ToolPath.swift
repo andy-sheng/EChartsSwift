@@ -506,6 +506,35 @@ public func makePath(
     return path
 }
 
+// upstream: makeImage(imageStr, rect, layout) — build a ZRImage sized to `rect`. 'cover' (the default)
+//   stretches the image to fill `rect`; 'center' keeps the image's own aspect ratio, centered inside
+//   `rect`, once the natural image size is known (resolved via onload — a deferred renderer seam). The
+//   image:// symbol branch of util/symbol.createSymbol calls this.
+public func makeImage(_ imageStr: String, _ rect: RectLike, _ layout: String? = nil) -> ZRImage {
+    var style = ImageStyleProps()
+    style.image = .url(imageStr)
+    style.x = rect.x
+    style.y = rect.y
+    style.width = rect.width
+    style.height = rect.height
+    let zrImg = ZRImage(["style": style])
+    // upstream: onload recenters for `layout === 'center'` using the loaded image's natural size.
+    let capturedRect = BoundingRect(rect.x, rect.y, rect.width, rect.height)
+    zrImg.onload = { [weak zrImg] img in
+        guard let zrImg = zrImg, layout == "center" else { return }
+        guard let sized = img as? ImageNaturalSize, sized.width != 0, sized.height != 0 else { return }
+        let boundingRect = BoundingRect(0, 0, sized.width, sized.height)
+        let centered = centerRectToAspect(capturedRect, boundingRect)
+        var s = zrImg.imageStyle ?? ImageStyleProps()
+        s.x = centered.x
+        s.y = centered.y
+        s.width = centered.width
+        s.height = centered.height
+        zrImg.useStyle(s)
+    }
+    return zrImg
+}
+
 /**
  * Create a Path class from path string data
  * @param  str

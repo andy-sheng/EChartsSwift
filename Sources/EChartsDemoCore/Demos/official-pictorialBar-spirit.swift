@@ -25,18 +25,15 @@
 //     as upstream, both panes) instead of being repeated twice in this file.
 //   - No data fetch, no ROOT_PATH: the sprite is inline upstream too, so nothing is downloaded.
 //
-// NATIVE PANE: nativeSupported: false — and NOT because the series is missing. `pictorialBar` IS fully
-// ported and registered (Sources/EChartsKit/chart/bar/{PictorialBarSeries,PictorialBarView,
-// pictorialBarInstall}.swift, wired in ECharts.swift), `symbolRepeat`/`symbolClip`/`symbolBoundingData`
-// included. The blocker is one level down, in the SYMBOL layer, exactly as for the sibling
-// official-pictorialBar-hill: `symbol.createSymbol`'s `image://` branch is an explicit deferred seam
-// (Sources/EChartsKit/util/symbol.swift — "PORT-NOTE (deferred): graphic.makeImage ... requires the
-// ZRenderKit Image element"), so it falls through to `makeFallbackSymbol`, a SymbolPath whose
-// unrecognized symbolType draws as a plain RECT. The `spirit` sprite is this example's ONLY symbol and
-// BOTH series repeat it, so a native pane would be nothing but rows of grey rectangles — a misleading
-// diff against a web pane full of sprites, on a demo whose whole point is the sprite. It stays off
-// until createSymbol's image:// branch lands; the `option` (and the `drive` timeline) below are already
-// the complete port, so flipping this one flag to true is the entire follow-up.
+// NATIVE PANE: nativeSupported: false — but the `image://` sprite now RENDERS (createSymbol's image://
+// branch + makeImage + ZRImage-as-ECSymbol are ported), so the native pane draws the actual elf sprites,
+// not the old grey rects. What still diverges from the reference is one level up in the pictorialBar
+// LAYOUT, not the symbol: this example overlays a faded FULL-ROW background series (symbolBoundingData =
+// maxData) with a solid foreground clipped to the value (`symbolClip: true`), and labels the rows with a
+// PERCENTAGE formatter. Natively the foreground repeats across the whole axis (the symbolClip-to-value +
+// faded-background pairing is not honored) and the label shows the raw value, so 2013 reads as "full"
+// when it is 44.5%. That misrepresents the data, so the pane stays off until symbolClip-with-background
+// lands. (Sibling official-pictorialBar-hill, whose single-image-per-bar clip DOES work, is now ON.)
 import Foundation
 
 // `const spirit = 'image://data:image/png;base64,...'` — the sprite, verbatim from the official source.
@@ -54,7 +51,7 @@ extension EChartsDemoRegistry {
         name: "official-pictorialBar-spirit", category: "pictorialBar",
         summary: "精灵 — Spirits",
         width: 640, height: 420,
-        nativeSupported: false,   // image:// symbol → deferred createSymbol branch; see NATIVE PANE above
+        nativeSupported: false,   // sprite now renders; symbolClip-with-faded-background + % labels remain
         collection: .official,
         webOptionJS: #"""
 const spirit =

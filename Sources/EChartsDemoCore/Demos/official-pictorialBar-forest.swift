@@ -29,17 +29,12 @@
 //     stringifies internally. The native pane passes the same year as a String; the drawn text is
 //     identical.
 //
-// NATIVE PANE: nativeSupported: true — but read this before diffing the panes. `pictorialBar` and
-// `symbolRepeat` are fully ported (Sources/EChartsKit/chart/bar/PictorialBarView.swift), and the whole
-// option below carries into Swift with nothing omitted. The gap is one level down, in the SYMBOL layer:
-// `symbol.createSymbol`'s `image://` branch is an explicit deferred seam (Sources/EChartsKit/util/
-// symbol.swift — "PORT-NOTE (deferred): graphic.makeImage ... requires the ZRenderKit Image element"),
-// so it falls through to `makeFallbackSymbol`, a SymbolPath whose unrecognized symbolType draws as a
-// plain RECT. The native pane therefore lays the forest out CORRECTLY — same rows, same bar lengths,
-// same repeat count, same year ticking over — but draws each tree as a red rectangle. That is exactly
-// the gap this gallery exists to surface, so the pane stays ON rather than being hidden behind an
-// "N/A"; it goes away the moment createSymbol's image:// branch lands. (The sibling
-// official-pictorialBar-hill, whose images are photographs, keeps its pane off for the same seam.)
+// NATIVE PANE: nativeSupported: true, and pixel-faithful. `pictorialBar` + `symbolRepeat` are ported
+// (Sources/EChartsKit/chart/bar/PictorialBarView.swift), and the `image://` tree symbol now renders as
+// the actual image (previously it fell through to a red-rect fallback): `symbol.createSymbol`'s image://
+// branch → `ToolPath.makeImage` (a ZRImage sized to the symbol rect) + `ZRImage` conforming to `ECSymbol`,
+// with PictorialBarView's symbol pipeline widened from `Path` to `Displayable` so the image flows through
+// create/repeat/updateCommon. The forest lays out identically to the reference and draws real trees.
 import Foundation
 
 // Verbatim from the official source: the tree, as an inline base64 PNG. Declared once here and

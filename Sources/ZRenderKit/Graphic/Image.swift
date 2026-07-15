@@ -169,6 +169,11 @@ public final class ZRImage: Displayable {
     // PORT-NOTE (deferred): fired by the painter once a `string` source finishes loading. Renderer seam.
     public var onload: ((ImageLike) -> Void)?
 
+    // upstream: `(symbolPath as ECSymbol).__isEmptyBrush` — set by util/symbol.createSymbol on an
+    //   `image://` symbol (always false for an image). EChartsKit's `ECSymbol` conformance (symbol.swift)
+    //   needs it stored on the class (extensions can't add stored properties); mirrors SVGPath/SymbolPath.
+    public var __isEmptyBrush: Bool = false
+
     public override init(_ props: ElementProps? = nil) {
         super.init(props)
         // upstream: ZRImage.prototype.type = 'image'
