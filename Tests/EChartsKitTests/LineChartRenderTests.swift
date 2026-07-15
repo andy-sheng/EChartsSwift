@@ -22,17 +22,21 @@ final class LineChartRenderTests: XCTestCase {
             "series": [["type": "line", "data": [10.0, 20.0, 15.0, 40.0]] as [String: Any]]
         ])
 
-        // Collect the line Polyline(s).
-        var lines: [Polyline] = []
+        // Collect the line ECPolyline(s). Faithful port draws the line as `poly.ts` ECPolyline over a
+        //   FLAT `[x0,y0,x1,y1,…]` point buffer (upstream `data.getLayout('points')`).
+        var lines: [ECPolyline] = []
         _ = ec.getRoot().traverse { el in
-            if let p = el as? Polyline, p.name == "line" { lines.append(p) }
+            if let p = el as? ECPolyline, p.name == "line" { lines.append(p) }
             return false
         }
-        XCTAssertEqual(lines.count, 1, "a single line series should emit one Polyline")
-        guard let line = lines.first, let shape = line.shape as? PolylineShape,
-              let pts = shape.points else {
-            XCTFail("polyline has no points"); return
+        XCTAssertEqual(lines.count, 1, "a single line series should emit one ECPolyline")
+        guard let line = lines.first, let shape = line.shape as? ECPolylineShape else {
+            XCTFail("polyline has no shape"); return
         }
+        let flat = shape.points
+        XCTAssertEqual(flat.count, 8, "flat buffer = one (x,y) pair per datum")
+        // Rebuild (x,y) pairs from the flat buffer.
+        let pts: [(x: Double, y: Double)] = stride(from: 0, to: flat.count, by: 2).map { (flat[$0], flat[$0 + 1]) }
         XCTAssertEqual(pts.count, 4, "one point per datum")
 
         // Grid rect from the injected coordinate system.

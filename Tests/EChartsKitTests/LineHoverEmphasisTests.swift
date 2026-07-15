@@ -20,11 +20,11 @@ final class LineHoverEmphasisTests: XCTestCase {
                     as [String: Any]]]
     }
 
-    private func findPoly(_ v: EChartsView) -> (line: Polyline?, area: ThemeRiverBand?) {
-        var line: Polyline?; var area: ThemeRiverBand?
+    private func findPoly(_ v: EChartsView) -> (line: ECPolyline?, area: ECPolygon?) {
+        var line: ECPolyline?; var area: ECPolygon?
         _ = v.ec.getRoot().traverse { el in
-            if el.name == "line", let p = el as? Polyline { line = p }
-            if el.name == "area", let a = el as? ThemeRiverBand { area = a }
+            if el.name == "line", let p = el as? ECPolyline { line = p }
+            if el.name == "area", let a = el as? ECPolygon { area = a }
             return false
         }
         return (line, area)
@@ -67,13 +67,14 @@ final class LineHoverEmphasisTests: XCTestCase {
         v.setOption(option)
         _ = v.zr.storage.getDisplayList(true)
         guard let polyline = findPoly(v).line,
-              let shape = polyline.shape as? PolylineShape,
-              let points = shape.points, points.count >= 2 else {
+              let shape = polyline.shape as? ECPolylineShape,
+              shape.points.count >= 4 else {
             XCTFail("polyline with points must render"); return
         }
-        // Pointer on the segment midpoint between the first two vertices.
-        let p0 = points[0], p1 = points[1]
-        v._injectPointerForTest(type: "mousemove", zrX: (p0.x + p1.x) / 2, zrY: (p0.y + p1.y) / 2)
+        // Pointer on the segment midpoint between the first two vertices (flat [x0,y0,x1,y1,…] buffer).
+        let flat = shape.points
+        let p0x = flat[0], p0y = flat[1], p1x = flat[2], p1y = flat[3]
+        v._injectPointerForTest(type: "mousemove", zrX: (p0x + p1x) / 2, zrY: (p0y + p1y) / 2)
         XCTAssertTrue(polyline.currentStates.contains("emphasis"),
                       "hovering the line itself must enter emphasis (states=\(polyline.currentStates))")
         XCTAssertEqual(polyline.pathStyle?.lineWidth, 6, "emphasis.lineStyle.width must render")

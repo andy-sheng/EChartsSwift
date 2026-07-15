@@ -167,5 +167,18 @@ private func pointsLayoutCoordSys(_ coordSys: Any?) -> PointsLayoutCoordSys? {
             }
         )
     }
+    // Upstream `Polar` implements the `CoordinateSystem` interface, so `pointsLayout` projects polar
+    //   point-series (line-on-polar) too. In this port `Polar` conforms only to `CoordinateSystemMaster`
+    //   (its `dataToPoint([ScaleDataValue], clamp?)` shape differs from the protocol witness), so it is
+    //   unified here — mirroring the `Geo` shim above. WITHOUT this, a polar line's `data.getLayout('points')`
+    //   is nil and LineView draws nothing / never runs its polar clip enter animation.
+    if let polar = coordSys as? Polar {
+        return PointsLayoutCoordSys(
+            dimensions: polar.dimensions,
+            dataToPoint: { data, _ in
+                return polar.dataToPoint((data as? [ScaleDataValue]) ?? [], nil)
+            }
+        )
+    }
     return nil
 }

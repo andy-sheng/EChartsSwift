@@ -1023,14 +1023,41 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
         installTooltipActions(ECharts._registers)                      // registerAction('showTip'/'hideTip', noop)
 
-        // -- component/axisPointer/install.ts (Phase 35) -- registerComponentModel(AxisPointerModel) +
+        // -- component/axisPointer/install.ts (Phase 35 + handle) -- registerComponentModel(AxisPointerModel) +
         //   registerPreprocessor (ensure a global axisPointer option always exists — done in setOption) +
         //   registerProcessor(PRIORITY.PROCESSOR.STATISTIC, { overallReset: coordSysAxesInfo = collect(...) })
         //   + registerAction('updateAxisPointer', axisTrigger). The axisPointer VIEW (the drawn crosshair)
-        //   is DEFERRED (Phase 36) — no view factory is registered, so the component renders nothing; only
-        //   the DATA core (collect → coordSysAxesInfo, consumed by axisTrigger for the tooltip trigger:"axis"
-        //   path) is wired. The `collect` run itself lives in `update()` (statistic stage), see below.
+        //   is driven by `EChartsView` (Phase 36), not a per-axis AxisView factory; only the DATA core
+        //   (collect → coordSysAxesInfo, consumed by axisTrigger) is wired at model registration. The
+        //   `collect` run itself lives in `update()` (statistic stage), see below.
         ComponentModel.registerClass(AxisPointerModel.self)                 // registerComponentModel(AxisPointerModel)
+
+        // registers.registerAction({ type:'updateAxisPointer', event:'updateAxisPointer',
+        //   update:':updateAxisPointer' }, axisTrigger);
+        //   The draggable axisPointer HANDLE dispatches this action (BaseAxisPointer._doDispatchAxisPointer)
+        //   while dragged; the `axisTrigger` handler recomputes the hovered/dragged axis value(s) and
+        //   writes them onto each axisPointer model (updateModelActually), then fires showTip/hideTip.
+        // PORT-NOTE (update method): upstream's `update:':updateAxisPointer'` broadcasts to every
+        //   `AxisView.updateAxisPointer` to re-draw the crosshair+handle at the new value. In THIS port
+        //   there is NO live per-axis `AxisView` (ECharts is zr-less; `EChartsView` owns the pointer
+        //   managers — see EChartsView._updateAxisPointers), so that empty-mainType broadcast has no
+        //   target and was elided (see updateDirectly). We therefore register `update:'none'` — the
+        //   `axisTrigger` action handler still runs (model mutation + tooltip), and `EChartsView`
+        //   re-renders the crosshairs by listening on the emitted `updateAxisPointer` event.
+        var updateAxisPointerAction = ActionInfo(type: "updateAxisPointer")
+        updateAxisPointerAction.event = "updateAxisPointer"
+        updateAxisPointerAction.update = "none"
+        registerAction(updateAxisPointerAction) { payload, ecModel, api in
+            // upstream default export `axisTrigger(payload, ecModel, api)` — returns the outputPayload
+            //   (ModelFinderObject + axesInfo) that becomes the event content for `echarts.connect`.
+            let out = axisTrigger(payload, ecModel, api)
+            var ev: ECEventData = [:]
+            if let si = out.seriesIndex { ev["seriesIndex"] = si }
+            if let di = out.dataIndex { ev["dataIndex"] = di }
+            if let dii = out.dataIndexInside { ev["dataIndexInside"] = dii }
+            ev["axesInfo"] = out.axesInfo
+            return ev
+        }
 
         // -- component/brush/install.ts (Phase 44, RECT core) -- registerComponentModel(BrushModel) +
         //   registerVisual(PRIORITY.VISUAL.BRUSH, { seriesTypes: '', reset: ...brushVisual }) +
@@ -1903,11 +1930,13 @@ public final class ECharts: EChartsType {
         //   the pixel point with `data.setItemLayout(i, point)`. ScatterView/EffectScatterView inline the
         //   same math for drawing, but `SeriesModel#brushSelector` reads `data.getItemLayout(dataIndex)` —
         //   so WITHOUT this stage a brush over a scatter selects nothing at all.
-        //   PORT-NOTE: upstream also registers `layoutPoints('line', true)` (chart/line/install.ts), whose
-        //   `forceStoreInTypedArray` branch writes the flat `data.setLayout('points')` buffer instead of
-        //   per-item layouts. LineView inlines its own point projection and owns that layout key, so the
-        //   line registration is intentionally not wired here (line has no `brushSelector` upstream either
-        //   — it is not brushable — so nothing depends on it).
+        //   Upstream also registers `layoutPoints('line', true)` (chart/line/install.ts), whose
+        //   `forceStoreInTypedArray` branch writes the flat `data.setLayout('points')` buffer. LineView's
+        //   faithful render path (getVisualGradient / _initSymbolLabelAnimation / lineAnimationDiff /
+        //   _doUpdateAnimation / endLabel / clip) all read `data.getLayout('points')`, so the line stage
+        //   IS wired here now (write-only `setLayout('points')`; line is not brushable, so no selector
+        //   depends on it). The polar branch is handled by `pointsLayoutCoordSys` (see layout/points.swift).
+        runSeriesStageHandler(pointsLayout("line", true), ecModel, api)
         runSeriesStageHandler(pointsLayout("scatter"), ecModel, api)
         runSeriesStageHandler(pointsLayout("effectScatter"), ecModel, api)
 

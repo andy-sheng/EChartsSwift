@@ -58,6 +58,11 @@ open class Symbol: Group {
     /// liftZ origin (upstream `_z2`): the symbol path's z2 before liftZ was added.
     private var _z2: Double?
 
+    /// upstream: `interface SymbolExtended extends SymbolClz { __temp: boolean }` — LineView tags
+    ///   symbols it creates ad-hoc for series highlight (LineView.highlight #11360) so `render`/`remove`
+    ///   can strip them. Defaults false (a normal SymbolDraw symbol is not temporary).
+    public var __temp: Bool = false
+
     public init(_ data: SeriesData, _ idx: Int,
                 _ seriesScope: SymbolDrawSeriesScope? = nil, _ opts: SymbolOpts? = nil) {
         super.init()

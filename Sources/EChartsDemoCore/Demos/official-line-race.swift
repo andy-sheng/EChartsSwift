@@ -21,6 +21,7 @@
 //  - Native pane: `series[].endLabel.formatter` is a JS closure and is omitted (see PORT-NOTE below);
 //    everything else — the dataset filter transforms, `encode`, `labelLayout`, `emphasis` — is ported.
 import Foundation
+import EChartsKit
 
 // The life-expectancy table: a header row ['Income','Life Expectancy','Population','Country','Year']
 // followed by 1539 data rows. Read ONCE from the repo asset (the same #filePath-relative read the
@@ -65,17 +66,43 @@ private let lineRaceDataset: [[String: Any]] = {
     return out
 }()
 
+// upstream: (params) => params.value[3] + ': ' + params.value[0]
+//   `params.value` is the raw source row [Income, LifeExpectancy, Population, Country, Year]; dim 3 is
+//   the country name, dim 0 the income. JS `x + ''` prints an integral number without a trailing ".0".
+private func lineRaceEndLabelFormatter(_ params: CallbackDataParams) -> String {
+    guard let row = params.value as? [Any], row.count > 3 else { return "" }
+    return lineRaceValueStr(row[3]) + ": " + lineRaceValueStr(row[0])
+}
+
+private func lineRaceValueStr(_ v: Any?) -> String {
+    switch v {
+    case let s as String: return s
+    case let n as NSNumber:
+        let d = n.doubleValue
+        return (d == d.rounded() && Swift.abs(d) < 1e15) ? String(Int(d)) : "\(d)"
+    case let d as Double:
+        return (d == d.rounded() && Swift.abs(d) < 1e15) ? String(Int(d)) : "\(d)"
+    case let i as Int: return String(i)
+    case nil: return ""
+    default: return String(describing: v!)
+    }
+}
+
 private let lineRaceSeries: [[String: Any]] = lineRaceCountries.map { country in
     [
         "type": "line",
         "datasetId": "dataset_" + country,
         "showSymbol": false,
         "name": country,
-        // PORT-NOTE: endLabel.formatter omitted — the JS closure returned
-        //            `params.value[3] + ': ' + params.value[0]`, i.e. "<Country>: <Income>" (dims 3 and 0
-        //            of the raw row) at each line's right end. `show: true` is kept, so the native pane
-        //            draws its default end label instead of the country+income pair.
-        "endLabel": ["show": true] as [String: Any],
+        // upstream: endLabel.formatter = (params) => params.value[3] + ': ' + params.value[0]
+        //   — "<Country>: <Income>" (dims 3 and 0 of the raw source row) at each line's right end.
+        //   Ported as a native `(CallbackDataParams) -> String` closure (the label subsystem accepts a
+        //   callback formatter via DataFormatMixin.getFormattedLabel), so the native pane draws the same
+        //   country+income pair the web pane does — not the encode-derived default.
+        "endLabel": [
+            "show": true,
+            "formatter": (lineRaceEndLabelFormatter as (CallbackDataParams) -> String)
+        ] as [String: Any],
         "labelLayout": ["moveOverlap": "shiftY"] as [String: Any],
         "emphasis": ["focus": "series"] as [String: Any],
         "encode": [

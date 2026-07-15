@@ -65,6 +65,16 @@ open class LineSeriesModel: SeriesModel {
             // upstream LineSeries.ts:210 — 'auto' hides the point symbols when the line is dense (see
             //   LineView's getIsIgnoreFunc / canShowAllSymbolForCategory density check).
             "showAllSymbol": "auto",
+            // upstream LineSeries.ts:174 — the endLabel default. `valueAnimation: true` is LOAD-BEARING:
+            //   it makes `_endLabelOnDuring` re-fetch/interpolate the raw value at the animated clip edge
+            //   each frame, so the end label's NUMBER climbs as the reveal sweeps (e.g. official-line-race,
+            //   where the income counts up to its final figure). Without this default it reads false and
+            //   the label shows the final value frozen from t=0.
+            "endLabel": ["show": false, "valueAnimation": true, "distance": 8.0] as [String: Any],
+            // upstream LineSeries.ts:180 — the default line width/type. LOAD-BEARING now that LineView
+            //   reads the stroke width from `lineStyleModel.getLineStyle()` (faithful port) instead of
+            //   hard-coding 2: without this the polyline falls back to DEFAULT_PATH_STYLE.lineWidth (1).
+            "lineStyle": ["width": 2.0, "type": "solid"] as [String: Any],
             // upstream LineSeries.ts:218 — LOAD-BEARING for the draw-on reveal CURVE. The line series
             //   OVERRIDES the global default `animationEasing: 'cubicInOut'` (globalDefault.swift:131)
             //   with 'linear'. Without this override here, `getAnimationConfig` → `getShallow` walks up

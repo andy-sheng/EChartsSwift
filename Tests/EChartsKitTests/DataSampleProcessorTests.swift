@@ -77,12 +77,13 @@ final class DataSampleProcessorTests: XCTestCase {
         return count
     }
 
-    /// Number of points on the rendered line Polyline (the actual drawn envelope).
+    /// Number of points on the rendered line ECPolyline (the actual drawn envelope). The faithful port
+    ///   stores points as a FLAT `[x0,y0,x1,y1,…]` buffer, so the datum count is `points.count / 2`.
     private func polylinePointCount(_ ec: ECharts) -> Int {
         var n = 0
         _ = ec.getRoot().traverse { el in
-            if let p = el as? Polyline, p.name == "line", let s = p.shape as? PolylineShape {
-                n = s.points?.count ?? 0
+            if let p = el as? ECPolyline, p.name == "line", let s = p.shape as? ECPolylineShape {
+                n = s.points.count / 2
             }
             return false
         }

@@ -23,10 +23,10 @@ import ZRenderKit
 
 // upstream imports (resolved to the ported modules):
 // import * as zrUtil from 'zrender/src/core/util';                 -> util.* (clone/curry — see notes)
-// import * as graphic from '../../util/graphic';                   -> ZRenderKit Group / Line / Rect / ZRText
+// import * as graphic from '../../util/graphic';                   -> ZRenderKit Group / Line / Rect / ZRText + EChartsKit `createIcon`
 // import * as axisPointerModelHelper from './modelHelper';         -> modelHelper.swift (getAxisInfo)
-// import * as eventTool from 'zrender/src/core/event';             -> handle drag seam (PORT-NOTE)
-// import * as throttleUtil from '../../util/throttle';             -> handle throttle seam (PORT-NOTE, deferred: draggable handle out of scope)
+// import * as eventTool from 'zrender/src/core/event';             -> ZRenderKit `eventTool.stop` (handle onmousemove)
+// import * as throttleUtil from '../../util/throttle';             -> util/throttle.swift (createOrUpdate / clear)
 // import {makeInner} from '../../util/model';                      -> see PORT-NOTE (inner store) below
 // import { AxisPointer } from './AxisPointer';                     -> AxisPointer.swift (same module)
 // import { AxisBaseModel } from '../../coord/AxisBaseModel';       -> coord/AxisBaseModel.swift
@@ -123,10 +123,12 @@ open class BaseAxisPointer: AxisPointer {
     // upstream: private _lastGraphicKey: string;
     private var _lastGraphicKey: String?
 
-    // upstream: private _handle: Icon;  — the draggable handle (PORT-NOTE, deferred: handle/drag surface out of scope for the headless crosshair).
-    // private var _handle: ... (deferred)
+    // upstream: private _handle: Icon;  (Icon = ReturnType<typeof graphic.createIcon> = SVGPath | ZRImage)
+    //   The draggable handle element. `nil` until `_renderHandle` builds it (handle.show + status show).
+    //   Exposed read-only as `handleEl` so a headless test can assert it was created / read its position.
+    private var _handle: Displayable?
 
-    // upstream: private _dragging = false;  — handle drag (PORT-NOTE, deferred).
+    // upstream: private _dragging = false;
     private var _dragging = false
 
     // upstream: private _lastValue: AxisValue;
@@ -134,6 +136,17 @@ open class BaseAxisPointer: AxisPointer {
 
     // upstream: private _lastStatus: CommonAxisPointerOption['status'];
     private var _lastStatus: Any?
+
+    // upstream: private _payloadInfo: ReturnType<BaseAxisPointer['updateHandleTransform']>;
+    //   The last `updateHandleTransform` result (new handle pos + cursorPoint + tooltipOption), persisted
+    //   for the throttled `_doDispatchAxisPointer` to read.
+    private var _payloadInfo: AxisPointerUpdatedHandleTransform?
+
+    // upstream stamps a throttled wrapper over `this._doDispatchAxisPointer` via
+    //   `throttleUtil.createOrUpdate(this, '_doDispatchAxisPointer', ...)`. Swift can't swap a method on
+    //   a live instance, so the wrapper lives in this slot (see util/throttle.swift createOrUpdate
+    //   PORT-NOTE). `nil` means "call `_doDispatchAxisPointer` directly".
+    private var _doDispatchThrottled: ThrottledFunction?
 
     /// If have transition animation.
     // upstream: private _moveAnimation: boolean;
@@ -162,6 +175,15 @@ open class BaseAxisPointer: AxisPointer {
     public var hostAdd: ((Group) -> Void)?
     /// Invoked from `clear` before the group is dropped — upstream analog `zr.remove(group)`.
     public var hostRemove: ((Group) -> Void)?
+    /// Invoked when the draggable `_handle` is first created — upstream analog `zr.add(handle)` (the
+    ///   handle is hosted DIRECTLY on the zr, NOT inside the crosshair group, so it needs its own seam).
+    public var hostAddHandle: ((Element) -> Void)?
+    /// Invoked before the `_handle` is dropped (`_renderHandle` hide-branch / `clear`) — `zr.remove(handle)`.
+    public var hostRemoveHandle: ((Element) -> Void)?
+
+    /// HOST-SEAM read accessor (deviation): the draggable handle element, exposed so the integrator /
+    ///   a headless test can hit-test or inspect it. `nil` until `_renderHandle` builds it.
+    public var handleEl: Displayable? { self._handle }
 
     public init() {}
 
@@ -193,18 +215,18 @@ open class BaseAxisPointer: AxisPointer {
         self._lastValue = value
         self._lastStatus = status
 
-        let handle: AnyObject? = nil  // upstream `const handle = this._handle` — handle is PORT-NOTE.
+        // upstream: `const handle = this._handle;`
+        let handle = self._handle
 
         // upstream: `if (!status || status === 'hide')`. `!status` ⟷ `_isFalsy` (null/''/false/0).
         if _isFalsy(status) || (status as? String) == "hide" {
             // Do not clear here, for animation better.
             self.group?.hide()
-            // handle && handle.hide();  (PORT-NOTE)
-            _ = handle
+            handle?.hide()
             return
         }
         self.group?.show()
-        // handle && handle.show();  (PORT-NOTE)
+        handle?.show()
 
         // Otherwise status is 'show'
         var elOption = AxisPointerElementOptions()
@@ -237,7 +259,8 @@ open class BaseAxisPointer: AxisPointer {
 
         updateMandatoryProps(self.group, axisPointerModel, true)
 
-        // upstream: this._renderHandle(value);  — draggable handle (PORT-NOTE, deferred: handle/drag surface out of scope).
+        // upstream: this._renderHandle(value);
+        self._renderHandle(value)
     }
 
     /// @implement
@@ -378,10 +401,234 @@ open class BaseAxisPointer: AxisPointer {
         updateLabelShowHide(labelEl, axisPointerModel)
     }
 
-    // upstream: _renderHandle / _moveHandleToValue / _onHandleDragMove / _doDispatchAxisPointer /
-    //   _onHandleDragEnd — the draggable handle + `updateAxisPointer` drag dispatch.
-    //   PORT-NOTE (deferred): the whole handle/drag surface (handle icon, throttle, drift, dragend,
-    //   `getHandleTransform` / `updateHandleTransform`) is out of scope for the headless crosshair.
+    // -----------------------------------------------------------------------------------------------
+    // Handle-support hooks (upstream `interface BaseAxisPointer`): "Should be implemented by sub-class
+    //   if support `handle`." A base pointer with no handle support returns nil / false; the concrete
+    //   `CartesianAxisPointer` overrides these (see CartesianAxisPointer.swift).
+    // -----------------------------------------------------------------------------------------------
+
+    /// upstream check `!this.updateHandleTransform` (in `_renderHandle`) — whether this pointer subclass
+    ///   implements the handle transform. Base = false; overridden to true by handle-supporting subclasses.
+    open var hasHandleSupport: Bool { false }
+
+    /// upstream: `getHandleTransform(value, axisModel, axisPointerModel): Transform`
+    ///   Should be implemented by sub-class if support `handle`. Base returns nil.
+    open func getHandleTransform(
+        _ value: Any?,
+        _ axisModel: AxisBaseModel,
+        _ axisPointerModel: Model
+    ) -> AxisPointerHandleTransform? {
+        return nil
+    }
+
+    /// upstream: `updateHandleTransform(transform, delta, axisModel, axisPointerModel): Transform & {...}`
+    ///   Should be implemented by sub-class if support `handle`. Base returns nil.
+    open func updateHandleTransform(
+        _ transform: AxisPointerHandleTransform,
+        _ delta: [Double],
+        _ axisModel: AxisBaseModel,
+        _ axisPointerModel: Model
+    ) -> AxisPointerUpdatedHandleTransform? {
+        return nil
+    }
+
+    /// @private
+    // upstream: _renderHandle(value: AxisValue)
+    private func _renderHandle(_ value: Any?) {
+        // upstream: if (this._dragging || !this.updateHandleTransform) { return; }
+        if self._dragging || !self.hasHandleSupport {
+            return
+        }
+
+        let axisPointerModel = self._axisPointerModel!
+        // upstream: const zr = this._api.getZr();  — HOST SEAM: reached via hostAddHandle/hostRemoveHandle.
+        var handle = self._handle
+        let handleModel = axisPointerModel.getModel("handle")
+
+        let status = axisPointerModel.get("status")
+        // upstream: if (!handleModel.get('show') || !status || status === 'hide')
+        if !_isTruthy(handleModel.get("show")) || _isFalsy(status) || (status as? String) == "hide" {
+            // handle && zr.remove(handle); this._handle = null;
+            if let h = handle { self.hostRemoveHandle?(h) }
+            self._handle = nil
+            return
+        }
+
+        var isInit = false
+        if self._handle == nil {
+            isInit = true
+            // upstream: handle = this._handle = graphic.createIcon(handleModel.get('icon'), { ... });
+            let icon = handleModel.get("icon") as? String
+            let created = createIcon(icon, [
+                "cursor": "move",
+                "draggable": true
+            ])
+            // createIcon returns nil only for an empty icon string; the handle default icon is a non-empty
+            //   path, so `created` is present. Guard defensively (upstream `handle` would be undefined).
+            guard let h = created else { return }
+            self._handle = h
+            handle = h
+
+            // upstream passes the event handlers inside the createIcon opt; here they are wired onto the
+            //   element after construction (event seam — see createIcon PORT-NOTE):
+            //     onmousemove(e) { eventTool.stop(e.event); }  — prevent screen slide on mobile.
+            _ = h.on("mousemove", { _, args in
+                if let e = args.first as? ElementEvent, let raw = e.event as? ZRRawEvent {
+                    eventTool.stop(raw)
+                }
+                return nil
+            }, self)
+            //     onmousedown: bind(this._onHandleDragMove, this, 0, 0)
+            _ = h.on("mousedown", { [weak self] _, _ in
+                self?._onHandleDragMove(0, 0)
+                return nil
+            }, self)
+            //     drift: bind(this._onHandleDragMove, this)  — the reassignable `drift` (driftHandler seam).
+            h.driftHandler = { [weak self] dx, dy, _ in
+                self?._onHandleDragMove(dx, dy)
+            }
+            //     ondragend: bind(this._onHandleDragEnd, this)
+            _ = h.on("dragend", { [weak self] _, _ in
+                self?._onHandleDragEnd()
+                return nil
+            }, self)
+
+            // zr.add(handle);  — HOST SEAM.
+            self.hostAddHandle?(h)
+        }
+
+        guard let handle = handle else { return }
+
+        // updateMandatoryProps(handle, axisPointerModel, false);
+        updateMandatoryProps(handle, axisPointerModel, false)
+
+        // update style
+        //   (handle as graphic.Path).setStyle(handleModel.getItemStyle(null, [ ... ]));
+        let itemStyle = handleModel.getItemStyle(nil, [
+            "color", "borderColor", "borderWidth", "opacity",
+            "shadowColor", "shadowBlur", "shadowOffsetX", "shadowOffsetY"
+        ])
+        if let path = handle as? Path {
+            _ = path.useStyle(handlePathStyleFromDict(itemStyle))
+        }
+
+        // update position
+        // let handleSize = handleModel.get('size'); if (!isArray) handleSize = [handleSize, handleSize];
+        var handleSize: [Double]
+        if let arr = handleModel.get("size") as? [Double] {
+            handleSize = arr
+        }
+        else if let arr = handleModel.get("size") as? [Any] {
+            handleSize = arr.map { _optDouble($0) ?? 0 }
+        }
+        else {
+            let s = _optDouble(handleModel.get("size")) ?? 0
+            handleSize = [s, s]
+        }
+        // handle.scaleX = handleSize[0] / 2; handle.scaleY = handleSize[1] / 2;
+        handle.scaleX = (handleSize.count > 0 ? handleSize[0] : 0) / 2
+        handle.scaleY = (handleSize.count > 1 ? handleSize[1] : 0) / 2
+
+        // throttleUtil.createOrUpdate(this, '_doDispatchAxisPointer', handleModel.get('throttle') || 0, 'fixRate');
+        self._doDispatchThrottled = throttleUtil.createOrUpdate(
+            existing: self._doDispatchThrottled,
+            origin: { [weak self] in self?._doDispatchAxisPointer() },
+            rate: _optDouble(handleModel.get("throttle")) ?? 0,
+            throttleType: .fixRate
+        )
+
+        // this._moveHandleToValue(value, isInit);
+        self._moveHandleToValue(value, isInit)
+    }
+
+    // upstream: private _moveHandleToValue(value, isInit?)
+    private func _moveHandleToValue(_ value: Any?, _ isInit: Bool = false) {
+        guard let handle = self._handle,
+              let trans = self.getHandleTransform(value, self._axisModel!, self._axisPointerModel!) else {
+            return
+        }
+        // upstream: updateProps(this._axisPointerModel, !isInit && this._moveAnimation, this._handle,
+        //   getHandleTransProps(this.getHandleTransform(value, ...)));
+        //   The port's `updateProps(el, props)` sets directly (no animated slide — see its PORT-NOTE);
+        //   `!isInit && this._moveAnimation` is therefore inert here.
+        _ = isInit
+        updateProps(handle, getHandleTransProps(trans))
+    }
+
+    // upstream: private _onHandleDragMove(dx, dy)
+    private func _onHandleDragMove(_ dx: Double, _ dy: Double) {
+        guard let handle = self._handle else {
+            return
+        }
+
+        self._dragging = true
+
+        // Persistent for throttle.
+        // const trans = this.updateHandleTransform(getHandleTransProps(handle), [dx, dy], axisModel, axisPointerModel);
+        guard let trans = self.updateHandleTransform(
+            handleTransFromEl(handle),
+            [dx, dy],
+            self._axisModel!,
+            self._axisPointerModel!
+        ) else {
+            return
+        }
+        self._payloadInfo = trans
+
+        // handle.stopAnimation(); (handle as graphic.Path).attr(getHandleTransProps(trans)); inner(handle).lastProp = null;
+        _ = handle.stopAnimation()
+        _ = handle.attr(getHandleTransProps(trans))
+
+        // this._doDispatchAxisPointer();  — throttled (see _doDispatchThrottled).
+        if let throttled = self._doDispatchThrottled {
+            throttled()
+        }
+        else {
+            self._doDispatchAxisPointer()
+        }
+    }
+
+    /// Throttled method.
+    // upstream: _doDispatchAxisPointer()
+    private func _doDispatchAxisPointer() {
+        guard self._handle != nil else {
+            return
+        }
+
+        guard let payloadInfo = self._payloadInfo, let axisModel = self._axisModel else {
+            return
+        }
+        let axis = axisModel.axis as! Axis
+        // this._api.dispatchAction({ type: 'updateAxisPointer', x, y, tooltipOption, axesInfo: [{ axisDim, axisIndex }] });
+        var payload = Payload(type: "updateAxisPointer")
+        payload.other["x"] = payloadInfo.cursorPoint.count > 0 ? payloadInfo.cursorPoint[0] : 0
+        payload.other["y"] = payloadInfo.cursorPoint.count > 1 ? payloadInfo.cursorPoint[1] : 0
+        if let tooltipOption = payloadInfo.tooltipOption {
+            payload.other["tooltipOption"] = tooltipOption
+        }
+        payload.other["axesInfo"] = [[
+            "axisDim": axis.dim,
+            "axisIndex": axisModel.componentIndex
+        ] as [String: Any]]
+        self._api?.dispatchAction(payload)
+    }
+
+    // upstream: private _onHandleDragEnd()
+    private func _onHandleDragEnd() {
+        self._dragging = false
+        guard self._handle != nil else {
+            return
+        }
+
+        let value = self._axisPointerModel!.get("value")
+        // Consider snap or category axis, handle may be not consistent with axisPointer. So move handle
+        // to align the exact value position when drag ended.
+        self._moveHandleToValue(value)
+
+        // For the effect: tooltip will be shown when finger holding on handle button, and will be hidden
+        // after finger left handle button.
+        self._api?.dispatchAction(Payload(type: "hideTip"))
+    }
 
     /// @private
     // upstream: clear(api)
@@ -389,17 +636,21 @@ open class BaseAxisPointer: AxisPointer {
         self._lastValue = nil
         self._lastStatus = nil
 
-        // upstream removes the group (and handle) from the zr. HOST SEAM — hand the group back to the
-        //   integrator's zr for removal, then drop our references.
+        // upstream removes the group (and handle) from the zr. HOST SEAM — hand the group / handle back
+        //   to the integrator's zr for removal, then drop our references.
         if let group = self.group {
             self._lastGraphicKey = nil
             self.hostRemove?(group)
+            if let handle = self._handle { self.hostRemoveHandle?(handle) }
             self.group = nil
+            self._handle = nil
             self._pointerEl = nil
             self._labelEl = nil
+            self._payloadInfo = nil
         }
 
-        // upstream: throttleUtil.clear(this, '_doDispatchAxisPointer');  (handle throttle — PORT-NOTE)
+        // throttleUtil.clear(this, '_doDispatchAxisPointer');
+        self._doDispatchThrottled = throttleUtil.clear(self._doDispatchThrottled)
     }
 
     /// @protected — Implemented by sub-class if necessary.
@@ -461,6 +712,50 @@ private func updateProps(_ el: Element, _ props: [String: Any]) {
     _ = el.attr(props)
 }
 
+// upstream: function getHandleTransProps(trans: Transform): Transform {
+//     return { x: trans.x || 0, y: trans.y || 0, rotation: trans.rotation || 0 };
+// }
+//   Returns a `[String: Any]` props bag for `el.attr` / `updateProps` (the two struct kinds — the base
+//   Transform and the updated Transform — both carry x/y/rotation). `trans.x || 0` guarded undefined in
+//   JS; the Swift structs are non-optional Double, so no guard is needed.
+private func getHandleTransProps(_ trans: AxisPointerHandleTransform) -> [String: Any] {
+    return ["x": trans.x, "y": trans.y, "rotation": trans.rotation]
+}
+private func getHandleTransProps(_ trans: AxisPointerUpdatedHandleTransform) -> [String: Any] {
+    return ["x": trans.x, "y": trans.y, "rotation": trans.rotation]
+}
+
+// upstream reads the handle ELEMENT as a `Transform` via `getHandleTransProps(handle)` (Element has
+//   x/y/rotation) to seed `updateHandleTransform`. This helper packages the element's current
+//   position/rotation into the typed `AxisPointerHandleTransform` that `updateHandleTransform` expects.
+private func handleTransFromEl(_ el: Element) -> AxisPointerHandleTransform {
+    return AxisPointerHandleTransform(x: el.x, y: el.y, rotation: el.rotation)
+}
+
+// Bridge the handle `getItemStyle(null, ['color', 'borderColor', ...])` dynamic bag ([String: Any],
+//   keyed by STYLE names via ITEM_STYLE_KEY_MAP) onto the typed `PathStyleProps` the handle Path
+//   consumes. Mirrors the sibling `pathStyleFrom*Dict` bridges (AxisBuilder / calendar).
+private func handlePathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
+    var s = PathStyleProps()
+    if let v = _handleColorString(dict["fill"]) { s.fill = .string(v) }
+    if let v = _handleColorString(dict["stroke"]) { s.stroke = .string(v) }
+    if let v = _optDouble(dict["lineWidth"]) { s.lineWidth = v }
+    if let v = _optDouble(dict["opacity"]) { s.opacity = v }
+    if let v = _optDouble(dict["shadowBlur"]) { s.shadowBlur = v }
+    if let v = dict["shadowColor"] as? String { s.shadowColor = v }
+    if let v = _optDouble(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
+    if let v = _optDouble(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
+    return s
+}
+
+// A style paint value from the itemStyle bag is a raw `String` (option `color: '#7581BD'`); accept the
+//   EChartsKit `ZRColor` solid form defensively (gradient/pattern objects are out of the handle scope).
+private func _handleColorString(_ v: Any?) -> String? {
+    if let str = v as? String { return str }
+    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
+    return nil
+}
+
 // upstream: function updateLabelShowHide(labelEl, axisPointerModel) {
 //     labelEl[axisPointerModel.get(['label', 'show']) ? 'show' : 'hide']();
 // }
@@ -478,12 +773,22 @@ private func updateLabelShowHide(_ labelEl: Element, _ axisPointerModel: Model) 
 //     group && group.traverse(function (el) { if (el.type !== 'group') {
 //         z != null && (el.z = z); zlevel != null && (el.zlevel = zlevel); el.silent = silent; } });
 // }
-private func updateMandatoryProps(_ group: Group?, _ axisPointerModel: Model, _ silent: Bool) {
+//   PORT-NOTE: upstream types `group: Element` and relies on dynamic dispatch — `Group.traverse`
+//   visits children, while the base `Element.traverse` is EMPTY (a no-op). This is called with BOTH the
+//   crosshair `Group` AND the draggable `handle` (a non-group Displayable). Swift's `Element.traverse`
+//   and `Group.traverse` are not an override pair (different return types), so we branch explicitly:
+//   a Group traverses its children; any other Element is the empty-traverse no-op — EXACTLY upstream's
+//   behaviour (the handle therefore keeps its `createIcon` `silent:false`, staying draggable).
+private func updateMandatoryProps(_ group: Element?, _ axisPointerModel: Model, _ silent: Bool) {
     // Int-vs-Double option-read trap: `z` defaults to `50.0` but a user option may box it as Int.
     let z = _optDouble(axisPointerModel.get("z"))
     let zlevel = _optDouble(axisPointerModel.get("zlevel"))
 
-    _ = group?.traverse({ el in
+    guard let group = group as? Group else {
+        // Non-group Element → base `Element.traverse` is an empty no-op upstream.
+        return
+    }
+    _ = group.traverse({ el in
         if el.type != "group", let disp = el as? Displayable {
             if let z = z { disp.z = z }
             if let zlevel = zlevel { disp.zlevel = zlevel }

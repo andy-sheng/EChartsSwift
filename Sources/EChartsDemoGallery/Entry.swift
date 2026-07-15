@@ -56,7 +56,31 @@ func renderNativeGroup(_ demo: EChartsDemo) -> Group {
     ec.setOption(opt)
     let root = ec.getRoot()
     advanceAnimationsForStaticFrame(root)
+    // axisPointer draggable HANDLE (+ its crosshair): normally zr-hosted by EChartsView (like the
+    //   tooltip), so it lives ABOVE ec.getRoot() and this bare-root static harness would not show it.
+    //   For a faithful side-by-side, draw the parked handle(s) into `root`. STRICTLY gated on
+    //   `useHandle` (handle.show) so the ~287 non-handle demos are completely unaffected.
+    renderAxisPointerHandlesIntoRoot(ec, root)
     return root
+}
+
+/// Draw the parked axisPointer crosshair + draggable handle for each `handle.show` axis into `root`,
+/// mirroring EChartsView._renderInitialAxisPointerHandles (which the interactive view runs). Static
+/// (no animation). Only `useHandle` axes are touched.
+@MainActor
+func renderAxisPointerHandlesIntoRoot(_ ec: ECharts, _ root: Group) {
+    guard let ecModel = ec.getModel(),
+          let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel,
+          let result = apModel.coordSysAxesInfo as? CollectionResult else { return }
+    let api = ec.api
+    for (_, axisInfo) in result.axesInfo where axisInfo.useHandle {
+        guard axisInfo.axis is Axis2D, let axisModel = axisInfo.axis.model else { continue }
+        fixValue(axisModel)
+        let pointer = CartesianAxisPointer()
+        pointer.hostAdd = { g in _ = root.add(g) }
+        pointer.hostAddHandle = { el in _ = root.add(el) }
+        pointer.render(axisModel, axisInfo.axisPointerModel, api, false)
+    }
 }
 
 @MainActor

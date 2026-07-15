@@ -433,7 +433,16 @@ public typealias RawSourceItemGetter = (
 // omits it). Callers that pass `out` must read the returned value — Swift arrays are value
 // types, so in-place buffer reuse is not preserved.
 private let getItemSimply: RawSourceItemGetter = { rawData, _, _, idx, _ in
-    return (rawData as? [Any?])?[Int(idx)] as Any
+    // PORT-NOTE: upstream is `return rawData[idx]`, which yields `undefined` for an
+    //   out-of-range (or negative) index — JS never traps. Swift's array subscript DOES trap,
+    //   and callers legitimately pass stale indices: e.g. a graph node's `dataIndex` can outlive
+    //   a filtered/shrunk DataStore (`getRawIndex` may even return -1), so a legend toggle that
+    //   re-renders chord/graph reaches here with `idx` past `count`. Bounds-check and return
+    //   `NSNull()` (this map's established "no item" sentinel, cf. the ARRAY_ROWS getters) so it
+    //   flows into `Model(nil-ish)` harmlessly — the faithful analogue of JS `undefined`.
+    guard let arr = rawData as? [Any?] else { return NSNull() }
+    let i = Int(idx)
+    return (i >= 0 && i < arr.count) ? (arr[i] as Any) : NSNull()
 }
 
 private let rawSourceItemGetterMap: [String: RawSourceItemGetter] = [

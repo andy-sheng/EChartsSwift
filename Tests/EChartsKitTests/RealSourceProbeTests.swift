@@ -47,7 +47,7 @@ final class RealDataPipelineTests: XCTestCase {
         XCTAssertEqual(count, 6, "real getInitialData should build 6 rows from series.data")
         var polys = 0
         _ = ec.getRoot().traverse { el in
-            if let p = el as? Polyline, p.name == "line" { polys += 1 }
+            if let p = el as? ECPolyline, p.name == "line" { polys += 1 }
             return false
         }
         XCTAssertEqual(polys, 1, "the real data pipeline should render the line without a data double")

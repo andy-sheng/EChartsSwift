@@ -1,7 +1,8 @@
 // Ported from echarts/src/util/graphic.ts — keep in sync with upstream
-// (Partial: only `expandOrShrinkRect` / `expandRectOnOneDimension` are landed here so far.
-//  PORT-NOTE (deferred): the rest of util/graphic.ts — createIcon/setTooltipConfig/getTransformedTouches
-//  etc. — is not ported here yet.)
+// (Partial: `expandOrShrinkRect` / `expandRectOnOneDimension`, the transform helpers, the shape-class
+//  registry, and `createIcon` are landed here so far.
+//  PORT-NOTE (deferred): the rest of util/graphic.ts — setTooltipConfig/getTransformedTouches etc. — is
+//  not ported here yet.)
 
 import Foundation
 import ZRenderKit
@@ -315,4 +316,75 @@ public func registerShape(_ name: String, _ factory: @escaping (ElementProps?) -
 //      `undefined` (its callers assert on it in DEV).
 public func getShapeClass(_ name: String) -> ((ElementProps?) -> Path)? {
     return _customShapeMap[name]
+}
+
+// ============================================================================
+// createIcon (upstream util/graphic.ts:484) — build a draggable icon element from an icon string.
+//   Used by the axisPointer draggable HANDLE (BaseAxisPointer._renderHandle), the dataZoom slider
+//   handles, the toolbox feature buttons, etc. Supports 'image://…' (→ ZRImage) or a 'path://…' /
+//   raw SVG path string (→ SVGPath via `makePath`).
+// ============================================================================
+
+// upstream:
+//   export function createIcon(
+//       iconStr: string,                       // 'image://' or 'path://' or direct svg path.
+//       opt?: Omit<DisplayableProps, 'style'>,
+//       rect?: ZRRectLike
+//   ): SVGPath | ZRImage {
+//       const innerOpts: DisplayableProps = extend({rectHover: true}, opt);
+//       const style: ZRStyleProps = innerOpts.style = {strokeNoScale: true};
+//       rect = rect || {x: -1, y: -1, width: 2, height: 2};
+//       if (iconStr) {
+//           return iconStr.indexOf('image://') === 0
+//               ? ( (style as ImageStyleProps).image = iconStr.slice(8),
+//                   defaults(style, rect),
+//                   new ZRImage(innerOpts) )
+//               : ( makePath(iconStr.replace('path://', ''), innerOpts, rect, 'center') );
+//       }
+//   }
+//
+//   PORT-NOTE (event handlers): upstream's `opt` may also carry the native handler props
+//   (`onmousemove`/`onmousedown`/`drift`/`ondragend`) — those live at the event seam (CONVENTIONS §9)
+//   and are NOT modeled on `DisplayableProps` here. Callers (BaseAxisPointer) wire them onto the
+//   returned element AFTER construction (via `el.on(...)` + `el.driftHandler`). The `opt` bag passed
+//   here therefore carries only the plain displayable props (`cursor`, `draggable`, …).
+public func createIcon(
+    _ iconStr: String?,
+    _ opt: [String: Any]? = nil,
+    _ rect: RectLike? = nil
+) -> Displayable? {
+    // const innerOpts = extend({rectHover: true}, opt);
+    var innerOpts: [String: Any] = ["rectHover": true]
+    if let opt = opt {
+        _ = util.extend(&innerOpts, opt)
+    }
+    // rect = rect || {x: -1, y: -1, width: 2, height: 2};
+    let r: RectLike = rect ?? BoundingRect(-1, -1, 2, 2)
+
+    guard let iconStr = iconStr, !iconStr.isEmpty else {
+        // upstream: `if (iconStr) { ... }` with no else — returns `undefined` when the icon is empty.
+        return nil
+    }
+
+    if iconStr.hasPrefix("image://") {
+        // (style as ImageStyleProps).image = iconStr.slice(8); defaults(style, rect); new ZRImage(innerOpts)
+        var imageStyle = ImageStyleProps()
+        imageStyle.image = .url(String(iconStr.dropFirst("image://".count)))
+        // defaults(style, rect) — fill the missing x/y/width/height from `rect`.
+        imageStyle.x = r.x
+        imageStyle.y = r.y
+        imageStyle.width = r.width
+        imageStyle.height = r.height
+        innerOpts["style"] = imageStyle
+        return ZRImage(innerOpts)
+    }
+    else {
+        // makePath(iconStr.replace('path://', ''), innerOpts, rect, 'center')
+        // const style = innerOpts.style = {strokeNoScale: true};
+        var style = PathStyleProps()
+        style.strokeNoScale = true
+        innerOpts["style"] = style
+        let pathData = iconStr.replacingOccurrences(of: "path://", with: "")
+        return makePath(pathData, innerOpts, r, "center")
+    }
 }

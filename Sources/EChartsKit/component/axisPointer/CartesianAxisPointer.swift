@@ -111,18 +111,22 @@ public final class CartesianAxisPointer: BaseAxisPointer {
         )
     }
 
+    // BaseAxisPointer declares handle support as opt-in for subclasses that implement the handle
+    //   transform. CartesianAxisPointer implements it (below), so `_renderHandle` builds the handle.
+    public override var hasHandleSupport: Bool { true }
+
     /**
      * @override
      */
-    // Handle drag geometry (the draggable axisPointer handle). BaseAxisPointer's handle surface is a
-    //   PORT-NOTE (deferred: handle/drag surface out of scope for the headless crosshair — see
-    //   BaseAxisPointer._renderHandle note), so these are plain methods (not `override`s) — pure geometry
-    //   kept faithful.
-    public func getHandleTransform(
+    // OVERRIDE-SIGNATURE: must match BaseAxisPointer.getHandleTransform exactly (axisModel: AxisBaseModel,
+    //   value: Any?, returns Optional). Narrow to the concrete `CartesianAxisModel` INSIDE (the same
+    //   protocol-witness/narrowing trap as makeElOption).
+    public override func getHandleTransform(
         _ value: Any?,
-        _ axisModel: CartesianAxisModel,
+        _ axisModel: AxisBaseModel,
         _ axisPointerModel: Model
-    ) -> AxisPointerHandleTransform {
+    ) -> AxisPointerHandleTransform? {
+        guard let axisModel = axisModel as? CartesianAxisModel else { return nil }
         let axis = axisModel.axis as! Axis2D
         var layoutInfo = AxisTransformedPositionLayoutInfo(
             cartesianAxisHelper.layout(
@@ -141,12 +145,13 @@ public final class CartesianAxisPointer: BaseAxisPointer {
     /**
      * @override
      */
-    public func updateHandleTransform(
+    public override func updateHandleTransform(
         _ transform: AxisPointerHandleTransform,
         _ delta: [Double],
-        _ axisModel: CartesianAxisModel,
+        _ axisModel: AxisBaseModel,
         _ axisPointerModel: Model
-    ) -> AxisPointerUpdatedHandleTransform {
+    ) -> AxisPointerUpdatedHandleTransform? {
+        guard let axisModel = axisModel as? CartesianAxisModel else { return nil }
         let axis = axisModel.axis as! Axis2D
         let grid = axis.grid!
         let axisExtent = axis.getGlobalExtent(true)

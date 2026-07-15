@@ -244,6 +244,35 @@ public final class EChartsView {
         _setupSankeyRoam()
         // lines flying-trail effect: per-zlevel motion-blur (upstream LinesView.render `zr.configLayer`).
         _setupLinesEffectLayers()
+        // axisPointer handle: render the parked draggable handle(s) at load (no hover needed) — upstream
+        //   AxisView.render (run every render) calls fixValue + the pointer render for handle axes.
+        _renderInitialAxisPointerHandles()
+    }
+
+    // ------------------------------------------------------------------------
+    // _renderInitialAxisPointerHandles — draw the axisPointer draggable HANDLE at load, without waiting
+    //   for a hover. An axisPointer with `handle.show:true` is ALWAYS displayed at its `value`
+    //   (modelHelper.fixValue forces status='show' + inits the value for a handle axis). Upstream this
+    //   happens because `AxisView.render` runs every render and calls `fixValue` + the per-axis pointer
+    //   render; in this port `EChartsView` owns the pointer managers, so mirror that here. Gated on the
+    //   presence of a handle axis so non-handle charts are entirely unaffected.
+    // ------------------------------------------------------------------------
+    private func _renderInitialAxisPointerHandles() {
+        guard let ecModel = ec.getModel(),
+              let apModel = ecModel.getComponent("axisPointer") as? AxisPointerModel,
+              let result = apModel.coordSysAxesInfo as? CollectionResult else { return }
+
+        var anyHandle = false
+        for (_, axisInfo) in result.axesInfo where axisInfo.useHandle {
+            anyHandle = true
+            // fixValue forces status='show' + initializes value for the (always-shown) handle axis.
+            if let axisModel = axisInfo.axis.model {
+                fixValue(axisModel)
+            }
+        }
+        guard anyHandle else { return }
+
+        _updateAxisPointers(ecModel)
     }
 
     // ------------------------------------------------------------------------
@@ -613,6 +642,29 @@ public final class EChartsView {
             //   visual crosshair(s) from those models, PARALLEL to the axis tooltip.
             self._updateAxisPointers(ecModel)
         })
+
+        // Handle drag: `BaseAxisPointer._doDispatchAxisPointer` dispatches `updateAxisPointer`, whose
+        //   `axisTrigger` handler mutates the axisPointer models. Upstream re-draws the crosshair+handle
+        //   through the `:updateAxisPointer` view broadcast; here (no live AxisView — see ECharts install
+        //   PORT-NOTE) EChartsView owns the pointer managers, so re-render them off the emitted event.
+        //   [weak self]; the chart bus (MessageCenter) is owned by `ec`, not by a self→ec→self cycle.
+        ec.on("updateAxisPointer") { [weak self] _ in
+            guard let self = self, let ecModel = self.ec.getModel() else { return }
+            self._updateAxisPointers(ecModel)
+        }
+
+        // Upstream `ecInstance.dispatchAction` re-renders and repaints the DRIVER's own zr. Here the driver
+        //   (`ec`) is zr-less and the DISPLAY zr is a separate copy of `ec.getRoot()` (a stable Group,
+        //   mutated in place by each re-render). An INTERNAL `api.dispatchAction` — a legend toggle, a
+        //   tooltip show/hide, a brush — updates the model + getRoot but has no way to repaint the display
+        //   (only the demo-driven `EChartsHostView.dispatch` path calls `syncAfterAction` explicitly, and
+        //   the animation loop only repaints while an animator is live). ECharts emits `'updated'` at the
+        //   end of every non-silent `dispatchAction` (echarts.ts `triggerUpdatedEvent`); mirror upstream's
+        //   always-repaint by re-pulling the scene here. Fixes e.g. a legend-hide whose axis rescale
+        //   repositioned the remaining series' points but never got repainted (official-multiple-x-axis).
+        ec.on("updated") { [weak self] _ in
+            self?._syncRoot()
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -1151,6 +1203,11 @@ public final class EChartsView {
                 //   [weak self] + no self capture in ctx (Phase-33 retain-cycle rule).
                 p.hostAdd = { [weak self] g in self?.zr.add(g) }
                 p.hostRemove = { [weak self] g in self?.zr.remove(g) }
+                // The draggable HANDLE is hosted directly on the zr (NOT inside the crosshair group), so it
+                //   has its own add/remove seam. It is INTERACTIVE (silent:false from createIcon) so the
+                //   real Handler/Draggable stack can drag it.
+                p.hostAddHandle = { [weak self] el in self?.zr.add(el) }
+                p.hostRemoveHandle = { [weak self] el in self?.zr.remove(el) }
                 _axisPointers[key] = p
                 pointer = p
             }
