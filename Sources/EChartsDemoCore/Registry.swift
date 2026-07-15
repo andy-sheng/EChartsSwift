@@ -332,8 +332,9 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_radar2,                                 // radar
         EChartsDemoRegistry.official_radar_multiple,                         // radar
         EChartsDemoRegistry.official_data_transform_aggregate,               // boxplot   (native N/A)
-        EChartsDemoRegistry.official_boxplot_light_velocity,                 // boxplot   (native N/A)
-        EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot   (native N/A)
+        EChartsDemoRegistry.official_boxplot_light_velocity,                 // boxplot
+        EChartsDemoRegistry.official_boxplot_light_velocity2,                // boxplot
+        EChartsDemoRegistry.official_boxplot_multi,                          // boxplot
         EChartsDemoRegistry.official_heatmap_cartesian,                      // heatmap
         EChartsDemoRegistry.official_heatmap_large,                          // heatmap
         EChartsDemoRegistry.official_heatmap_large_piecewise,                // heatmap

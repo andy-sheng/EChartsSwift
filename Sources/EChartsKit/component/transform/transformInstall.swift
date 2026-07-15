@@ -56,4 +56,7 @@ public func transformInstall(_ registers: EChartsExtensionInstallRegisters) {
     // NOT upstream: echarts-stat's `ecStat:regression` (ported in ecStatRegressionTransform.swift) so the
     //   scatter-*-regression official examples build natively. Harmless if a page never uses it.
     try! registerExternalTransform(ecStatRegressionTransform)
+    // upstream registers this in chart/boxplot/install.ts; the port centralizes external-transform
+    //   registration here. Enables `transform: { type: 'boxplot' }` (boxplot-* examples).
+    try! registerExternalTransform(boxplotTransform)
 }

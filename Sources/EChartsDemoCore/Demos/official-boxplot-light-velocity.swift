@@ -42,7 +42,7 @@ extension EChartsDemoRegistry {
         name: "official-boxplot-light-velocity", category: "boxplot",
         summary: "基础盒须图 — Boxplot Light Velocity",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 option = {

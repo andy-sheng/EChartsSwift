@@ -39,7 +39,7 @@ extension EChartsDemoRegistry {
         name: "official-boxplot-multi", category: "boxplot",
         summary: "多系列盒须图 — Multiple Categories",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // Generate data.
