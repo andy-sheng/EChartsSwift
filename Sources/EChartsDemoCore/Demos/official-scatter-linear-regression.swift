@@ -254,7 +254,7 @@ extension EChartsDemoRegistry {
         name: "official-scatter-linear-regression", category: "scatter",
         summary: "线性回归（使用统计插件） — Linear Regression",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- vendored ecStat UMD (upstream/echarts/test/lib/ecStat.min.js); assigns window.ecStat ---

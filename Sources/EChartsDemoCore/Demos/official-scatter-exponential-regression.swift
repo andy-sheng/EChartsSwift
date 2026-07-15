@@ -125,7 +125,7 @@ extension EChartsDemoRegistry {
         name: "official-scatter-exponential-regression", category: "scatter",
         summary: "指数回归（使用统计插件） — Exponential Regression",
         width: 640, height: 420,
-        nativeSupported: false,   // see header: 'ecStat:regression' has no Swift transform
+        nativeSupported: true,
         collection: .official,
         webOptionJS: ecStatMinJS + "\n" + scatterExpRegressionOptionJS,
         option: [

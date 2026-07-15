@@ -67,7 +67,7 @@ extension EChartsDemoRegistry {
         name: "official-scatter-polynomial-regression", category: "scatter",
         summary: "多项式回归（使用统计插件） — Polynomial Regression",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- echarts-stat (ecStat) UMD, inlined: the gallery page has no network and no CDN. Everything below

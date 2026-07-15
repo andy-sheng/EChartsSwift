@@ -102,7 +102,7 @@ extension EChartsDemoRegistry {
         name: "official-scatter-logarithmic-regression", category: "scatter",
         summary: "对数回归（使用统计插件） — Logarithmic Regression",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- vendored ecStat UMD (upstream/echarts/test/lib/ecStat.min.js); assigns window.ecStat ---

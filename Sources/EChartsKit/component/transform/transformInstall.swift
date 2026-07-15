@@ -53,4 +53,7 @@ public func transformInstall(_ registers: EChartsExtensionInstallRegisters) {
     try! registerExternalTransform(filterTransform)
     // registers.registerTransform(sortTransform);
     try! registerExternalTransform(sortTransform)
+    // NOT upstream: echarts-stat's `ecStat:regression` (ported in ecStatRegressionTransform.swift) so the
+    //   scatter-*-regression official examples build natively. Harmless if a page never uses it.
+    try! registerExternalTransform(ecStatRegressionTransform)
 }
