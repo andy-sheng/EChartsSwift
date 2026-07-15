@@ -22,14 +22,20 @@
 //   - Click-to-toggle grouping is pure `myChart.on('click', ...)` interaction: kept verbatim in the web
 //     pane (both the detail and group series are built there); the native pane is not driven (per the
 //     harness's rule that pure-click examples need no `drive`), so it stays on the initial detail view.
-//   - NATIVE PANE DRAWS THE BACKDROP ONLY — the same gap official-matrix-correlation-heatmap carries:
-//     EChartsKit registers the matrix coord + MatrixView, so the native pane draws the table backdrop
-//     (the two-level X/Y group headers, dividers, background) and the hidden visualMap, but NOT the 256
-//     heatmap cells — `HeatmapView.render` has no matrix branch (cartesian2d / calendar / geo only;
-//     matrix falls into the deferred `else`, see HeatmapView.swift PORT-NOTE ~L195). In practice the
-//     native pane renders effectively BLANK (only the title/subtitle draw — not even the backdrop), so
-//     `nativeSupported: false` is set: a clean N/A is more honest than an empty chart that reads as
-//     broken. The option is complete and correct; flip back to `true` when the matrix heatmap branch lands.
+//   - NATIVE PANE: nativeSupported: false — but the original blocker (no matrix branch in HeatmapView) is
+//     GONE: HeatmapView._renderOnMatrix now lays out all 256 cells on the matrix coord, so the native pane
+//     draws the 16x16 grid. It still diverges from the reference on FOUR counts, hence stays off:
+//       (1) Cell COLOUR — each datum bakes an itemStyle.color (green/purple/blue/orange by group), but the
+//           cells render GREYSCALE: the continuous visualMap (dimension 2 → inRange.opacity only) leaves a
+//           default grey value ramp in the visual pipeline that overrides the baked colour. The visualMap
+//           should modulate only opacity here.
+//       (2) Two-level GROUP HEADERS (NF/NT/SJ/SP + the per-type IN/FJ… stacks on both axes) are not drawn.
+//       (3) Per-cell DECAL circle patterns are not drawn.
+//       (4) Per-cell PERCENTAGE labels come from the detail-`scatter` series' `label.formatter` — a JS
+//           closure (`round(value[2]*100)+'%'`), which is necessarily OMITTED from the static native option.
+//           These labels sit in every one of the 256 cells, so this one alone keeps the native pane from
+//           ever matching the reference, independent of (1)–(3).
+//     Because (4) is unreachable without a live formatter, the pane stays off even once (1)–(3) land.
 extension EChartsDemoRegistry {
     static let official_matrix_mbti = EChartsDemo(
         name: "official-matrix-mbti", category: "matrix",
