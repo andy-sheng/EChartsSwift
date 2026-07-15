@@ -191,10 +191,71 @@ open class HeatmapView: ChartView {
                 self._renderOnGeo(geo, seriesModel, vm, api)
             }
         }
-        else {
-            // PORT-NOTE (deferred): matrix `_renderOnGridLike` branch is not wired for heatmap.
+        else if let matrix = seriesModel.coordinateSystem as? Matrix {
             _ = self.group.removeAll()
             self._resetCellState()
+            self._renderOnMatrix(seriesModel, matrix)
+        }
+        else {
+            // PORT-NOTE (deferred): coord systems other than cartesian2d/calendar/geo/matrix not wired.
+            _ = self.group.removeAll()
+            self._resetCellState()
+        }
+    }
+
+    // Matrix heatmap: one visualMap-colored cell Rect per datum, filling the matrix cell returned by
+    //   `matrix.dataToLayout([xLocator, yLocator]).rect`. The grid-like analog of `_renderOnCalendar`
+    //   (the matrix cell rect replaces the calendar day cell). Matrix dims are ['x','y','value'].
+    private func _renderOnMatrix(_ seriesModel: SeriesModel, _ matrix: Matrix) {
+        let group = self.group
+        let data = seriesModel.getData()
+        let dataDimX = data.mapDimension("x")!
+        let dataDimY = data.mapDimension("y")!
+        var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
+
+        // Hover wiring params (shared grid-like state block, as in _renderOnCalendar).
+        var stateModel: Model = seriesModel
+        var emphasisModel = seriesModel.getModel(["emphasis"])
+        var focus: InnerFocus? = emphasisModel.get("focus")
+        var blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        var emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+
+        for idx in 0..<data.count() {
+            let xVal = data.get(dataDimX, idx)
+            let yVal = data.get(dataDimY, idx)
+            let layout = matrix.dataToLayout([xVal as Any, yVal as Any])
+            guard let cell = layout.rect,
+                  cell.x.isFinite, cell.y.isFinite, cell.width.isFinite, cell.height.isFinite,
+                  cell.width != 0, cell.height != 0 else { continue }
+
+            if data.hasItemOption {
+                let itemModel = data.getItemModel(idx)
+                stateModel = itemModel
+                emphasisModel = itemModel.getModel(["emphasis"])
+                focus = emphasisModel.get("focus")
+                blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+                emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+                borderRadius = itemModel.get(["itemStyle", "borderRadius"])
+            }
+
+            var shape = RectShape()
+            shape.x = cell.x
+            shape.y = cell.y
+            shape.width = cell.width
+            shape.height = cell.height
+            if let r = heatmapRectRadius(borderRadius) { shape.r = r }
+
+            let rect = Rect(["shape": shape as PathShape])
+            var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
+            let finalOpacity = cellStyle.opacity ?? 1
+            cellStyle.opacity = 0
+            rect.useStyle(cellStyle)
+            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
+            rect.name = "item"
+            states.setStatesStylesFromModel(rect, stateModel)
+            states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
+            _ = group.add(rect)
+            data.setItemGraphicEl(idx, rect)
         }
     }
 
