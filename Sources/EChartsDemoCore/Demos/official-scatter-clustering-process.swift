@@ -14,24 +14,53 @@
 //     webOptionJS splices the repo's vendored `upstream/echarts/test/lib/ecStat.min.js` (a UMD that
 //     assigns the `ecStat` global when no module system is present — exactly how the upstream test page
 //     upstream/echarts/test/custom-transition-ecStat.html loads it) in ABOVE the example. Everything
-//     below that blob is the example VERBATIM. The clustering therefore really runs, in real JS, in the
-//     reference pane.
+//     below that blob is the example VERBATIM (plus one harness-only line, see RNG below). The clustering
+//     therefore really runs, in real JS, in the reference pane.
+//   - RNG: ecStat's centroid init (`clustering.js`'s `createRandCent`, called from `hierarchicalKMeans`'s
+//     bisecting `kMeans` step) calls `Math.random()`, unseeded upstream — so even the OFFICIAL reference
+//     page's own clustering is nondeterministic run to run. webOptionJS pins it to a small seeded LCG
+//     (`state = state*1664525 + 1013904223 (mod 2^32)`, seed 1 — this repo's established convention, see
+//     e.g. official-matrix-covariance.swift's `rnd()`), spliced in right after the ecStat blob. The
+//     Swift-native pane below drives the IDENTICAL algorithm (EcStatHierarchicalKMeansStepper,
+//     ecStatClusteringTransform.swift) over the IDENTICAL LCG (EcStatLCG(seed: 1)) — verified bit-for-bit
+//     against a from-source (github.com/ecomfe/echarts-stat) run of this exact algorithm on this exact
+//     60-point dataset. So both panes' clustering (steps 1-5) is expected to match exactly, not just "the
+//     same shape" — though the STILL FRAME this gallery snapshots (see below) never actually reaches a
+//     clustered step, so this only matters if the interactive gallery's timeline is scrubbed by hand.
 //   - STATIC FRAME = TIMELINE STEP 0. The gallery snapshots one frame and upstream sets
 //     `timeline.autoPlay: false`, so both this pane and the official editor show, on load, the FIRST
 //     frame: the raw 60 points, every one still in cluster 0 (`colorAll[0]` = grey #bbb) and no boundary
 //     ellipse yet. The clusters appear only as the playhead advances. Nothing was removed to get there —
-//     all 6 frames are built and handed to echarts, we just never move the playhead.
+//     all 6 frames are built and handed to echarts (natively too, now — see NATIVE PANE below), we just
+//     never move the playhead.
 //   - animation off: WebPage.swift's blanket `option.animation = false` is IGNORED by echarts when the
 //     option carries a `baseOption` (only baseOption/options/timeline/media are read off the root), so
 //     the harness's intent is restored inside `baseOption` — one line at the bottom of webOptionJS,
 //     mirrored by `"animation": false` in the Swift option.
-//   - NATIVE PANE OFF (nativeSupported: false). Two things the Swift option cannot carry: (1) the chart
-//     IS its two `renderItem` closures — both series are `custom` and neither draws anything without
-//     them (see the PORT-NOTEs); (2) the per-step data is produced by ecStat's `hierarchicalKMeans`
-//     generator, a JS library with no Swift port, so only the step-0 frame (which is just the input data,
-//     un-clustered) can be expressed at all. The `option` below is that frame, structurally faithful:
-//     the same timeline / baseOption / options bundle, minus what JS alone can express.
+//   - NATIVE PANE ON (nativeSupported: true). Both former blockers are now closed:
+//     (1) `renderItemPoint` / `renderBoundary` are ported to Swift `CustomSeriesRenderItem` closures
+//         below (statement for statement, including the upstream `isNewCluster = clusterIdx ===
+//         api.value(3)` comparison verbatim — see the closure's own PORT-NOTE for why that's not a typo
+//         fix), registered under the `"renderItem"` key on each frame's series (the same convention
+//         official-custom-hexbin.swift and others use).
+//     (2) ecStat's `hierarchicalKMeans` bisecting k-means is ported to Swift
+//         (EcStatHierarchicalKMeansStepper, ecStatClusteringTransform.swift — also backs the general
+//         `ecStat:clustering` dataset-transform registration) and driven step-by-step exactly like the
+//         JS's `for (...; !(stepResult = step.next()).isEnd; ...)` loop, building all 6 timeline frames.
+//     PORT-NOTE (framework gap, out of scope here): CustomView's shape registry
+//     (makeShapeElement/applyShape) doesn't have an `"ellipse"` case yet, so `renderBoundary`'s ellipse
+//     renders as an empty path if invoked. This never affects the STILL FRAME this gallery diffs (step 0
+//     has zero boundary-series rows, so renderBoundary is never called there) — it would only show up if
+//     someone scrubs the interactive gallery's timeline to steps 1-5.
+//     PORT-NOTE 2 (framework gap, out of scope here): the verified target is the SCATTER FIELD — at step 0
+//     both panes draw the identical 60 grey circles at identical positions (the renderItemPoint closure +
+//     frame data ported here). The vertical Timeline CHROME still differs: SliderTimelineView lays a
+//     vertical (`orient: 'vertical'`) timeline on the LEFT rather than honouring `right: 50`, and its
+//     `formatter: 'step {value}'` renders as bare "step" (the `{value}` substitution isn't wired for the
+//     vertical axis) instead of "step 0".."step 5". Both are pre-existing SliderTimelineView gaps shared by
+//     the other native timeline demos, independent of the clustering/renderItem work landed here.
 import Foundation
+import EChartsKit
 
 // The 60 raw 2-D points (verbatim `originalData`). At timeline step 0 this IS the frame's series data:
 // no cluster-index dim (2) and no centroid dims (3, 4) yet — ecStat appends those from step 1 on.
@@ -111,18 +140,195 @@ private let ecStatMinJS: String = {
     return js
 }()
 
+// NOT upstream (harness only): pins `Math.random()` to the SAME LCG the Swift-native pane uses (see the
+// file header's RNG note), spliced in right after the ecStat blob and before the example's own code reads
+// it. `Math.imul` does the JS-side 32-bit wraparound multiply; `>>> 0` keeps the state an unsigned 32-bit
+// int, matching Swift's `UInt32` `&*`/`&+` in EcStatLCG (ecStatClusteringTransform.swift) bit for bit.
+private let scatterClusteringProcessRngJS = #"""
+var __rndState = 1;
+Math.random = function () {
+  __rndState = (Math.imul(__rndState, 1664525) + 1013904223) >>> 0;
+  return __rndState / 4294967296;
+};
+"""#
+
+// MARK: - native clustering (ports ecStat's hierarchicalKMeans generator, drained into 6 frames)
+
+private let scatterClusteringProcessColorAll: [String] = [
+    "#bbb", "#37A2DA", "#e06343", "#37a354", "#b55dba", "#b5bd48", "#8378EA", "#96BFFF"
+]
+
+// Coerce a ParsedValue (Double | Int | NSNumber | nil) to Double — the recurring Int-vs-Double read trap.
+private func scatterClusteringProcessNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// One `hierarchicalKMeans` step's data + centroids, or (step 0) the raw un-clustered input.
+private let scatterClusteringProcessFrames: [(data: [[Any]], centroids: [[Double]]?)] = {
+    var frames: [(data: [[Any]], centroids: [[Double]]?)] = []
+    // Step 0: `makeStepOption(option, originalData)` — the raw data, no cluster/centroid dims yet.
+    frames.append((data: clusteringProcessData.map { $0 as [Any] }, centroids: nil))
+
+    // Steps 1...(clusterCount-1): drain `hierarchicalKMeans(originalData, { clusterCount: 6,
+    // outputType: 'single', outputClusterIndexDimension: 2, outputCentroidDimensions: [3, 4],
+    // stepByStep: true })`'s `.next()` exactly like the JS `for (...; !(stepResult = step.next()).isEnd;
+    // ...)` loop — one hierarchical split per call, discarding the final isEnd-only result.
+    let stepper = EcStatHierarchicalKMeansStepper(
+        data: clusteringProcessData.map { $0 as [Any] },
+        clusterCount: 6,
+        outputClusterIndexDimension: 2,
+        outputCentroidDimensions: [3, 4],
+        dimensions: nil,
+        rng: EcStatLCG(seed: 1)   // matches scatterClusteringProcessRngJS's seed — see file header RNG note.
+    )
+    var result = stepper.next()
+    while !result.isEnd {
+        frames.append((data: result.data, centroids: result.centroids))
+        result = stepper.next()
+    }
+    return frames
+}()
+
+// upstream `renderItemPoint(params, api)` — one circle per datum, coloured by its cluster index (dim 2;
+// missing/NaN before clustering runs -> 0, colorAll[0] = grey), with a shadow glow on the cluster born
+// THIS step (`isNewCluster`).
+// PORT-NOTE: `isNewCluster = clusterIdx === api.value(3)` is copied VERBATIM from the official example.
+// Dim 3 is CENTER_DIM_IDX[0] — this datum's own assigned-centroid X COORDINATE, not the new-cluster
+// INDEX — so the comparison (a small int cluster index against a float centroid X) is essentially always
+// false in real runs. Ported as written, quirk included, not "fixed": this pane must match what the web
+// pane's identical JS actually does, bug or not.
+private let scatterClusteringProcessRenderItemPoint: CustomSeriesRenderItem = { _, api in
+    let x0 = scatterClusteringProcessNum(api.value(0.0, nil))
+    let y0 = scatterClusteringProcessNum(api.value(1.0, nil))
+    let coord = api.coord([x0, y0], nil)
+
+    // upstream: `var clusterIdx = api.value(2); if (clusterIdx == null || isNaN(clusterIdx)) clusterIdx = 0;`
+    let clusterIdxRaw = scatterClusteringProcessNum(api.value(2.0, nil))
+    let clusterIdx = clusterIdxRaw.isNaN ? 0 : Int(clusterIdxRaw)
+
+    // upstream: `var isNewCluster = clusterIdx === api.value(3);` (strict equality; see PORT-NOTE above).
+    let v3 = scatterClusteringProcessNum(api.value(3.0, nil))
+    let isNewCluster = !v3.isNaN && Double(clusterIdx) == v3
+
+    let contentColor = scatterClusteringProcessColorAll[clusterIdx % scatterClusteringProcessColorAll.count]
+
+    return [
+        "type": "circle",
+        "x": coord.count > 0 ? coord[0] : 0.0,
+        "y": coord.count > 1 ? coord[1] : 0.0,
+        "shape": ["cx": 0.0, "cy": 0.0, "r": 10.0] as [String: Any],
+        "extra": ["transition": [String]()] as [String: Any],
+        "style": [
+            "fill": contentColor,
+            "stroke": "#333",
+            "lineWidth": 1.0,
+            "shadowColor": contentColor,
+            "shadowBlur": isNewCluster ? 12.0 : 0.0,
+            "transition": ["shadowBlur", "fill"]
+        ] as [String: Any]
+    ] as [String: Any]
+}
+
+// upstream `renderProgress: ++targetRenderProgress` — a module-scope counter incremented once per
+// ACTUAL renderBoundary call (during rendering, not option-build time). A plain file-scope `var` mirrors
+// the JS closure-captured mutable global (never invoked at step 0 — see the file header PORT-NOTE).
+private var scatterClusteringProcessRenderProgress = 0.0
+
+// upstream `renderBoundary(params, api)` — a dashed ellipse centred on the new centroid, sized in DATA
+// units via `api.size` + a fixed 15px pad, grown from 0 by an `extra.renderProgress` transition.
+private let scatterClusteringProcessRenderBoundary: CustomSeriesRenderItem = { _, api in
+    let xVal = scatterClusteringProcessNum(api.value(0.0, nil))
+    let yVal = scatterClusteringProcessNum(api.value(1.0, nil))
+    let maxDist = scatterClusteringProcessNum(api.value(2.0, nil))
+    let center = api.coord([xVal, yVal], nil)
+    let size = (api.size([maxDist, maxDist], nil) as? [Double]) ?? []
+
+    let cx = (center.count > 0 && !center[0].isNaN) ? center[0] : 0.0
+    let cy = (center.count > 1 && !center[1].isNaN) ? center[1] : 0.0
+    let rx = (size.count > 0 && !size[0].isNaN) ? size[0] + 15.0 : 15.0
+    let ry = (size.count > 1 && !size[1].isNaN) ? size[1] + 15.0 : 15.0
+
+    scatterClusteringProcessRenderProgress += 1
+
+    return [
+        // PORT-NOTE: "ellipse" isn't a registered CustomView shape type (framework gap, out of this
+        // task's scope) — renders as an empty path if this closure is ever invoked. See file header.
+        "type": "ellipse",
+        "shape": ["cx": cx, "cy": cy, "rx": rx, "ry": ry] as [String: Any],
+        "extra": [
+            "renderProgress": scatterClusteringProcessRenderProgress,
+            "enterFrom": ["renderProgress": 0.0] as [String: Any],
+            "transition": "renderProgress"
+        ] as [String: Any],
+        "style": [
+            "fill": NSNull(),   // upstream `fill: null` — explicit no-fill, not an omitted key (see the
+                                 // hexbin demo's NBACourt for why that distinction matters here).
+            "stroke": "rgba(0,0,0,0.2)",
+            "lineDash": [4.0, 4.0],
+            "lineWidth": 4.0
+        ] as [String: Any]
+    ] as [String: Any]
+}
+
+// upstream `makeStepOption(option, data, centroids)` — builds one timeline frame's two `custom` series.
+private func scatterClusteringProcessMakeFrame(_ data: [[Any]], _ centroids: [[Double]]?) -> [String: Any] {
+    let newCluIdx = centroids != nil ? centroids!.count - 1 : -1
+    var maxDist = 0.0
+    if centroids != nil, newCluIdx >= 0 {
+        for line in data {
+            let ci = line.count > 2 ? scatterClusteringProcessNum(line[2]) : Double.nan
+            guard !ci.isNaN, Int(ci) == newCluIdx else { continue }
+            let x = line.count > 0 ? scatterClusteringProcessNum(line[0]) : Double.nan
+            let y = line.count > 1 ? scatterClusteringProcessNum(line[1]) : Double.nan
+            let cx = line.count > 3 ? scatterClusteringProcessNum(line[3]) : Double.nan
+            let cy = line.count > 4 ? scatterClusteringProcessNum(line[4]) : Double.nan
+            let dist0 = (x - cx) * (x - cx)
+            let dist1 = (y - cy) * (y - cy)
+            maxDist = Swift.max(maxDist, dist0 + dist1)
+        }
+    }
+    let boundaryData: [[Any]] = (centroids != nil && newCluIdx >= 0)
+        ? [[centroids![newCluIdx][0], centroids![newCluIdx][1], maxDist.squareRoot()]]
+        : []
+
+    return [
+        "series": [
+            [
+                "type": "custom",
+                "encode": ["tooltip": [0.0, 1.0]] as [String: Any],
+                "renderItem": scatterClusteringProcessRenderItemPoint,
+                "data": data
+            ] as [String: Any],
+            [
+                "type": "custom",
+                "renderItem": scatterClusteringProcessRenderBoundary,
+                "animationDuration": 3000.0,
+                "silent": true,
+                "data": boundaryData
+            ] as [String: Any]
+        ]
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_scatter_clustering_process = EChartsDemo(
         name: "official-scatter-clustering-process", category: "scatter",
         summary: "聚合过程可视化 — Clustering Process",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- vendored echarts-stat (upstream/echarts/test/lib/ecStat.min.js), inlined: the official example
 // --- side-loads it from a CDN and this page has no network. Defines the `ecStat` global. ---
 \#(ecStatMinJS)
-// --- end ecStat; the official example follows, verbatim ---
+// --- end ecStat ---
+
+// --- harness only (NOT upstream): pins Math.random() so this pane's clustering is reproducible — see
+// --- the file header's RNG note. The official example follows, verbatim, from here. ---
+\#(scatterClusteringProcessRngJS)
 
 var originalData = [
   [3.275154, 2.957587],
@@ -391,11 +597,9 @@ option.baseOption.animation = false;
                 "checkpointStyle": [
                     "animationDuration": 1500.0
                 ] as [String: Any],
-                // PORT-NOTE: timeline.data is ['0' ... '5'] upstream (one label per hierarchicalKMeans
-                // step). Steps 1…5 exist only as ecStat generator output — a JS library with no Swift
-                // port — so the Swift option carries the one frame it can express, step 0, and the
-                // timeline is trimmed to match (echarts pairs data[i] with options[i]).
-                "data": ["0"]
+                // upstream: timeline.data is ['0' ... '5'], one label per hierarchicalKMeans step (raw
+                // data + 5 splits up to clusterCount 6) — `scatterClusteringProcessFrames.count` frames.
+                "data": (0..<scatterClusteringProcessFrames.count).map { String($0) }
             ] as [String: Any],
             "baseOption": [
                 "animationDurationUpdate": 1500.0,
@@ -404,6 +608,16 @@ option.baseOption.animation = false;
                 // baseOption, so the static frame is pinned here instead.
                 "animation": false,
                 "tooltip": [:] as [String: Any],
+                // upstream doesn't declare a `grid` (echarts synthesizes a default one from xAxis/yAxis
+                // alone). PORT-NOTE: the port's default-grid auto-completion doesn't reach a series whose
+                // axes/grid only exist inside `baseOption` (a `timeline`+`baseOption`+`options` option
+                // tree) — `Grid.create` -> `injectCoordSysByOption` resolves an `AxisModel` whose `.axis`
+                // was never assigned, a `nil`-unwrap crash (unrelated to the clustering/renderItem work
+                // here; official-mix-timeline-finance.swift and official-scatter-life-expectancy-
+                // timeline.swift, the only other native `baseOption` demos, route around the same gap by
+                // both declaring `grid` explicitly). An empty grid is the SAME default box echarts would
+                // otherwise synthesize, so this is a no-op visually — just spelled out to sidestep the gap.
+                "grid": [:] as [String: Any],
                 "xAxis": [
                     "type": "value"
                 ] as [String: Any],
@@ -416,36 +630,8 @@ option.baseOption.animation = false;
                     ] as [String: Any]
                 ]
             ] as [String: Any],
-            // The timeline frames. Only step 0 (`makeStepOption(option, originalData)`, no centroids →
-            // empty boundary series) survives the port; see the timeline.data PORT-NOTE above.
-            "options": [
-                [
-                    "series": [
-                        [
-                            "type": "custom",
-                            "encode": [
-                                "tooltip": [0.0, 1.0]
-                            ] as [String: Any],
-                            // PORT-NOTE: renderItem omitted — JS closure `renderItemPoint`, the chart
-                            // itself: circle at api.coord([value(0), value(1)]), r 10, filled with
-                            // colorAll[value(2) /* cluster index, 0 when absent */], stroke #333, and a
-                            // shadowBlur 12 glow (transitioned) on the cluster created this step
-                            // (value(2) === value(3)). Without it the series draws nothing.
-                            "data": clusteringProcessData
-                        ] as [String: Any],
-                        [
-                            "type": "custom",
-                            // PORT-NOTE: renderItem omitted — JS closure `renderBoundary`: a dashed
-                            // ellipse centred on the new centroid (api.coord) whose radii come from
-                            // api.size([maxDist, maxDist]) + 15px, grown from 0 by an `extra
-                            // .renderProgress` transition. Data is EMPTY at step 0 (no cluster has been
-                            // born yet), so this series is a no-op in the frame we render either way.
-                            "animationDuration": 3000.0,
-                            "silent": true,
-                            "data": [] as [Any]
-                        ] as [String: Any]
-                    ]
-                ] as [String: Any]
-            ]
+            // The timeline frames — `makeStepOption(option, originalData)` for step 0, then one call per
+            // drained `hierarchicalKMeans` step (see scatterClusteringProcessFrames / …MakeFrame above).
+            "options": scatterClusteringProcessFrames.map { scatterClusteringProcessMakeFrame($0.data, $0.centroids) }
         ])
 }

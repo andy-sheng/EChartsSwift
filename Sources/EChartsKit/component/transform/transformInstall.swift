@@ -67,4 +67,8 @@ public func transformInstall(_ registers: EChartsExtensionInstallRegisters) {
     // upstream registers this in chart/boxplot/install.ts; the port centralizes external-transform
     //   registration here. Enables `transform: { type: 'boxplot' }` (boxplot-* examples).
     try! registerExternalTransform(boxplotTransform)
+    // NOT upstream: echarts-stat's `ecStat:clustering` (hierarchical bisecting k-means, ported in
+    //   ecStatClusteringTransform.swift) so a `dataset[].transform: { type: 'ecStat:clustering' }` page
+    //   builds natively. Harmless if a page never uses it.
+    try! registerExternalTransform(ecStatClusteringTransform)
 }
