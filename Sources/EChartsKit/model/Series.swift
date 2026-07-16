@@ -530,18 +530,27 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         //   pattern as `getRect`), so a `as? CoordinateSystem` cast would spuriously return nil. Narrow
         //   to the concrete `Cartesian2D` — the same pattern `BarView`/`barGrid` use. (Polar is out of
         //   the current bar scope → nil.)
-        // NOTE: narrow to the concrete `Cartesian2D` (polar is out of the current bar scope → nil).
-        guard let coordSys = self.coordinateSystem as? Cartesian2D else { return nil }
-        // The base axis MUST be bound to an explicit `Axis2D` local, NOT returned inline. `Cartesian2D`
-        //   has a concrete `getBaseAxis(): Axis2D`, and its superprotocol `CoordinateSystem` declares
-        //   `getBaseAxis(): Axis?` WITH A nil-returning default (CoordinateSystem.swift:316). In an
-        //   untyped `Any?`-return position, Swift overload resolution prefers the protocol's `-> Axis?`
-        //   member (its optional result matches the `Any?` context) over the concrete `-> Axis2D`, so a
-        //   direct `return coordSys.getBaseAxis()` binds the DEFAULT and yields nil (verified: bars then
-        //   get NaN x/width because the axis-statistics `isBaseAxis` check fails → §35b). The typed local
-        //   pins resolution to the concrete method.
-        let baseAxis: Axis2D = coordSys.getBaseAxis()
-        return baseAxis
+        // NOTE: narrow to the concrete coord sys (Cartesian2D or Polar). Both expose a concrete
+        //   `getBaseAxis()`; other coord systems remain out of scope → nil.
+        if let coordSys = self.coordinateSystem as? Cartesian2D {
+            // The base axis MUST be bound to an explicit `Axis2D` local, NOT returned inline. `Cartesian2D`
+            //   has a concrete `getBaseAxis(): Axis2D`, and its superprotocol `CoordinateSystem` declares
+            //   `getBaseAxis(): Axis?` WITH A nil-returning default (CoordinateSystem.swift:316). In an
+            //   untyped `Any?`-return position, Swift overload resolution prefers the protocol's `-> Axis?`
+            //   member (its optional result matches the `Any?` context) over the concrete `-> Axis2D`, so a
+            //   direct `return coordSys.getBaseAxis()` binds the DEFAULT and yields nil (verified: bars then
+            //   get NaN x/width because the axis-statistics `isBaseAxis` check fails → §35b). The typed local
+            //   pins resolution to the concrete method.
+            let baseAxis: Axis2D = coordSys.getBaseAxis()
+            return baseAxis
+        }
+        // Polar has a concrete `getBaseAxis(): Axis` (not the protocol default), so no typed-local pin is
+        //   needed. Required so `associateSeriesWithAxis` records polar bars under their base axis (the
+        //   axis-statistics `isBaseAxis` identity check) → `barLayoutPolar` can then lay them out.
+        if let coordSys = self.coordinateSystem as? Polar {
+            return coordSys.getBaseAxis()
+        }
+        return nil
     }
 
     /**
