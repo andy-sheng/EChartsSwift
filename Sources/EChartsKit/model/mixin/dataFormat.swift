@@ -151,7 +151,18 @@ extension DataFormatMixin {
         let status = status ?? .normal
         let data = self.getData(dataType)
 
-        var params = self.getDataParams(dataIndex, dataType)
+        // upstream: `this.getDataParams(dataIndex, dataType)` — a virtual call that reaches the series'
+        //   override (pie/funnel add `percent`, sankey/chord fill node name/value). In Swift the
+        //   protocol-extension `self.getDataParams` is statically dispatched and would MISS those
+        //   overrides, so route through the `SeriesModel` class method (an overridable witness) when
+        //   `self` is a series; other `DataFormatMixin` conformers fall back to the extension default.
+        var params: CallbackDataParams
+        if let seriesSelf = self as? SeriesModel {
+            params = seriesSelf.getDataParams(dataIndex, dataType)
+        }
+        else {
+            params = self.getDataParams(dataIndex, dataType)
+        }
 
         if let extendParams = extendParams {
             params.value = extendParams.interpolatedValue
@@ -256,6 +267,12 @@ private func callbackDataParamsToTplParam(_ params: CallbackDataParams) -> [Stri
     tplParam["seriesName"] = params.seriesName
     tplParam["name"] = params.name
     tplParam["value"] = params.value
+    // Pie/funnel push 'percent' onto `$vars` (the `{d}` alias); carry the computed value so `formatTpl`
+    //   can substitute it. Upstream reads it off the dynamic params object; the typed struct exposes it
+    //   as `percent`, mapped back under its `$vars` key here.
+    if let percent = params.percent {
+        tplParam["percent"] = percent
+    }
     return tplParam
 }
 

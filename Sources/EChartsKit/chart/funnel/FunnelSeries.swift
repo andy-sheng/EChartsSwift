@@ -122,7 +122,7 @@ open class FunnelSeriesModel: SeriesModel {
     //   CustomSeries overload idiom: `super.getDataParams` is the `DataFormatMixin` protocol-extension
     //   method (not a class member), so it is reached through a protocol-typed self, both to disambiguate
     //   from this override and to avoid a self-recursion in overload resolution.
-    open func getDataParams(
+    open override func getDataParams(
         _ dataIndex: Double,
         _ dataType: SeriesDataType? = nil
     ) -> CallbackDataParams {

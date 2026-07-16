@@ -208,7 +208,7 @@ open class ChordSeriesModel: SeriesModel {
     // getDataParams(dataIndex, dataType) — node branch fills name/value from the graph layout.
     //   The base (DataFormatMixin) 2-arg getDataParams is reached via `(self as DataFormatMixin)`
     //   to avoid re-dispatching into this concrete override (mirrors FunnelSeries/CustomSeries).
-    open func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
+    open override func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
         // const params = super.getDataParams(dataIndex, dataType);
         var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
         // if (dataType === 'node') {

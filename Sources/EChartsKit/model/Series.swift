@@ -410,6 +410,23 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         }
     }
 
+    // upstream `getDataParams` is a `DataFormatMixin` method that subclasses (pie/funnel/sankey/chord)
+    //   OVERRIDE — in JS it dispatches virtually, so `getFormattedLabel`/tooltip see the subclass's
+    //   percent/node-value additions. In Swift, `DataFormatMixin.getDataParams` is a protocol-EXTENSION
+    //   member (statically dispatched); a subclass method with the same name would only SHADOW it, never
+    //   be reached through a `DataFormatMixin`-typed `self`. Declaring it here as an `open` CLASS method
+    //   restores virtual dispatch: subclasses `override` this, and callers that need the polymorphic
+    //   result reach the override via a `SeriesModel`-typed value (see `getFormattedLabel`). The base
+    //   implementation forwards to the shared `DataFormatMixin` logic (reached via a protocol-typed self,
+    //   which — since `getDataParams` is not a protocol requirement — resolves to the extension default,
+    //   not back into this method).
+    open func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        return (self as DataFormatMixin).getDataParams(dataIndex, dataType)
+    }
+
     // Some series (line/scatter) draw a bespoke legend icon (a line + symbol marker, a bare symbol, …)
     //   rather than the default 'roundRect' swatch. LegendView calls this when no explicit legend `icon`
     //   is configured; the base returns nil so the default icon is used.
