@@ -660,6 +660,13 @@ public final class ECharts: EChartsType {
                                                   //   captures the axis-statistics processor (see registrar).
                                                   //   NOTE: registers BOTH 'bar' and 'pictorialBar' axis
                                                   //   handlers, so pictorialBar needs no separate call.
+        // upstream chart/bar/install.ts also `registerBarPolarAxisHandlers(registers, 'bar')`. This
+        //   registers the polar-bar axis-statistics client (key "bar|&polar") so `associateSeriesWithAxis`
+        //   (called by polarCreator) records each polar bar's BASE axis under that key — which the polar
+        //   bar layout (`barLayoutPolar`, run in the layout stage below) reads back via `eachAxisOnKey`
+        //   to compute each sector's r0/r/startAngle/endAngle (+ bar width/offset sharing + stacking).
+        //   Without it, polar bars have no item layout and BarView emits zero Sectors (empty polar plot).
+        registerBarPolarAxisHandlers(_registers, SERIES_TYPE_BAR)
 
         // -- chart/bar/installPictorialBar.ts -- registerSeriesModel(PictorialBarSeries) +
         //   registerChartView(PictorialBarView) (view keyed by subType 'pictorialBar' below) +
@@ -1785,6 +1792,14 @@ public final class ECharts: EChartsType {
         //   `runSeriesStageHandler` used for the visual stages (the `next`-iterator fix above makes its
         //   `progress` executor actually iterate the data). `BarView.getLayoutCartesian2D` consumes it.
         runSeriesStageHandler(ECharts._barProgressiveLayoutHandler, ecModel, api)
+
+        // LAYOUT — polar bar sector layout (upstream `registerLayout(barLayoutPolarStageHandler)`). An
+        //   OVERALL stage: for each polar axis carrying bar series it computes bar width/offset sharing +
+        //   stacking, then each datum's Sector geometry (cx/cy/r0/r/startAngle/endAngle/clockwise) via the
+        //   polar `dataToCoord`, storing it with `data.setItemLayout`. `BarView.getLayoutPolar` reads it
+        //   back. Runs unconditionally (a no-op when no polar bar series exist — `eachAxisOnKey` yields
+        //   nothing). Mirrors the two-arg overall handlers above (pie/funnel).
+        barLayoutPolar(ecModel)
 
         // LAYOUT — pictorialBar cross-series + per-item layout (upstream chart/bar/installPictorialBar.ts).
         //   Same two stages as bar (bandWidth/offset/size, then each item's rect x/y/width/height), gated on
