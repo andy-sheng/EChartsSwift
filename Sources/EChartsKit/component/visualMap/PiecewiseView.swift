@@ -120,11 +120,11 @@ public final class PiecewiseVisualMapView: VisualMapView {
 
             // TODO Category
             // const representValue = visualMapModel.getRepresentValue(piece) as number;
-            //   `getRepresentValue` returns `Any?`; upstream casts `as number`. Coerce to Double.
-            //   PORT-NOTE (deferred): category ('categories') pieces whose represent value is non-numeric
-            //   collapse to 0 here (out of the numeric static-render scope; matches upstream's own
-            //   `// TODO Category` marker above).
-            let representValue = visualMapAsDouble(visualMapModel.getRepresentValue(piece)) ?? 0
+            //   `getRepresentValue` returns `Any?`; upstream casts `as number` but for a `categories`
+            //   visualMap it is the raw category (a STRING), which `getControllerVisual` maps through the
+            //   category mapping. Pass it through un-coerced (the old `?? 0` collapsed every category
+            //   swatch to the same colour).
+            let representValue: Any? = visualMapModel.getRepresentValue(piece)
 
             let itemSymbolPath = self._createItemSymbol(
                 itemGroup, representValue, [0, 0, itemSize[0], itemSize[1]], silent
@@ -305,7 +305,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
     @discardableResult
     private func _createItemSymbol(
         _ group: Group,
-        _ representValue: Double,
+        _ representValue: Any?,     // number for numeric pieces, category string for a `categories` map
         _ shapeParam: [Double],
         _ silent: Bool = false
     ) -> Path {

@@ -548,17 +548,26 @@ final class VisualMapping {
      * @param findClosestWhenOutside Default to be false
      * @return index
      */
+    // PORT-NOTE: upstream types `value: number`, but the parameter is loosely used — for a `categories`
+    //   visualMap the caller passes the raw CATEGORY VALUE, which can be a string (e.g. a food-group
+    //   name). The equality clause below (`pieceValue === value || (isString(pieceValue) && pieceValue ===
+    //   value + '')`) relies on that. Narrowing `value` to `Double` (as the old port did) coerced string
+    //   categories to NaN, so a piecewise-categories visualMap never matched any piece → every datum fell
+    //   to outOfRange. Kept as `Any?` here to preserve the string path; the interval / findClosest math
+    //   below reads it through `numValue = asDouble(value)` (NaN for non-numeric, which correctly matches
+    //   no numeric interval).
     static func findPieceIndex(
-        _ value: Double,
+        _ value: Any?,
         _ pieceList: [VisualMappingPiece],
         _ findClosestWhenOutside: Bool = false
     ) -> Double? {
         var possibleI: Double? = nil
         var abs = Double.infinity
+        let numValue = asDouble(value)
 
         // upstream `updatePossible` is a hoisted function declaration; defined up front here.
         func updatePossible(_ val: Double, _ index: Int) {
-            let newAbs = Swift.abs(val - value)
+            let newAbs = Swift.abs(val - numValue)
             if newAbs < abs {
                 abs = newAbs
                 possibleI = Double(index)
@@ -569,13 +578,13 @@ final class VisualMapping {
         for i in 0..<pieceList.count {
             let pieceValue = pieceList[i].value
             if pieceValue != nil {
-                if valueEquals(pieceValue, value)
+                if jsStrictEquals(pieceValue, value)
                     // FIXME
                     // It is supposed to compare value according to value type of dimension,
                     // but currently value type can exactly be string or number.
                     // Compromise for numeric-like string (like '12'), especially
                     // in the case that visualMap.categories is ['22', '33'].
-                    || (util.isString(pieceValue) && (pieceValue as? String) == jsNumStr(value)) {
+                    || (util.isString(pieceValue) && (pieceValue as? String) == jsLooseStr(value)) {
                     return Double(i)
                 }
                 if findClosestWhenOutside { updatePossible(asDouble(pieceValue), i) }
@@ -591,17 +600,17 @@ final class VisualMapping {
                 let c0 = close?[0] ?? 0
                 let c1 = close?[1] ?? 0
                 if interval[0] == -Double.infinity {
-                    if littleThan(c1, value, interval[1]) {
+                    if littleThan(c1, numValue, interval[1]) {
                         return Double(i)
                     }
                 }
                 else if interval[1] == Double.infinity {
-                    if littleThan(c0, interval[0], value) {
+                    if littleThan(c0, interval[0], numValue) {
                         return Double(i)
                     }
                 }
-                else if littleThan(c0, interval[0], value)
-                    && littleThan(c1, value, interval[1]) {
+                else if littleThan(c0, interval[0], numValue)
+                    && littleThan(c1, numValue, interval[1]) {
                     return Double(i)
                 }
                 if findClosestWhenOutside { updatePossible(interval[0], i) }
@@ -610,9 +619,9 @@ final class VisualMapping {
         }
 
         if findClosestWhenOutside {
-            return value == Double.infinity
+            return numValue == Double.infinity
                 ? Double(pieceList.count - 1)
-                : (value == -Double.infinity
+                : (numValue == -Double.infinity
                     ? 0
                     : possibleI)
         }
@@ -935,11 +944,32 @@ private func elementAt(_ v: Any?, _ i: Int) -> Any? {
     return nil
 }
 
-/// upstream `pieceValue === value` where value is a number (string pieceValue never strictly equals).
-private func valueEquals(_ pieceValue: Any?, _ value: Double) -> Bool {
-    if let d = pieceValue as? Double { return d == value }
-    if let i = pieceValue as? Int { return Double(i) == value }
+/// upstream JS strict equality `a === b` for the number|string values a piece / data value can hold.
+///   Same-type only: number===number or string===string (mixed types are never `===` in JS).
+private func jsStrictEquals(_ a: Any?, _ b: Any?) -> Bool {
+    // string === string
+    if let sa = a as? String { return (b as? String) == sa }
+    if b is String { return false }
+    // number === number (Int/Double/NSNumber all read as a Double here)
+    let na = numericOrNil(a)
+    let nb = numericOrNil(b)
+    if let na = na, let nb = nb { return na == nb }
     return false
+}
+
+/// A numeric coercion that returns nil (not NaN) for non-numeric values, so `jsStrictEquals` can tell a
+///   number apart from a string/other. (`asDouble` returns NaN for strings, which would break `===`.)
+private func numericOrNil(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(v is Bool) { return n.doubleValue }
+    return nil
+}
+
+/// upstream `value + ''` (JS string coercion): string -> itself, number -> its JS numeric string form.
+private func jsLooseStr(_ v: Any?) -> String {
+    if let s = v as? String { return s }
+    return jsNumStr(asDouble(v))
 }
 
 /// Coerce an `Any?` (array of Int/Double/NSNumber) to `[Double]?` for the `[String: Any]` option bag.

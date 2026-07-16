@@ -1492,6 +1492,16 @@ public final class ECharts: EChartsType {
         //   See docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md (C2 prerequisite).
         performVisualStage(ecModel, api)
 
+        // VISUAL (coordless series own color) — a few coordless series (sunburst) color their data in an
+        //   OVERALL visual stage that upstream registers at PRIORITY.VISUAL.CHART (3000), i.e. BEFORE the
+        //   visualMap component encoding (PRIORITY.VISUAL.COMPONENT, 4000). These color-only stages need no
+        //   pixel layout (only the tree structure / palette), so they run here in the visual stage rather
+        //   than bundled with their pixel layout inside render(). Running them BEFORE performVisualMapStage
+        //   is REQUIRED for visualMap to win: sunburstVisual `extend`s a fresh palette fill onto the stored
+        //   item-visual style, which would otherwise clobber the visualMap-mapped color. See render() (the
+        //   matching sunburst LAYOUT stage still runs there — it does need the canvas geometry).
+        performCoordlessSeriesVisualStage(ecModel, api)
+
         // VISUAL (component) — visualMap value->visual encoding. Registered upstream at
         //   PRIORITY.VISUAL.COMPONENT (registerVisual(visualMapEncodingHandlers)), i.e. AFTER each series'
         //   own visual stage above, so the per-datum encoded color OVERWRITES the palette color. Handler #1
@@ -1556,6 +1566,7 @@ public final class ECharts: EChartsType {
         guard let ecModel = _model else { return }
         let api = _api!
         performVisualStage(ecModel, api)
+        performCoordlessSeriesVisualStage(ecModel, api)
         performVisualMapStage(ecModel, api)
         _ariaLabel = aria.ariaLabel(ecModel, api)
         aria.setDecal(ecModel, api)
@@ -1609,6 +1620,25 @@ public final class ECharts: EChartsType {
     /// Run an OVERALL_STAGE_TASK handler (has `overallReset`).
     private func runOverallStageHandler(_ handler: StageHandler, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         handler.overallReset?(ecModel, api, nil)
+    }
+
+    // ------------------------------------------------------------------------
+    // VISUAL (coordless series own color) — the color-only OVERALL visual stages that upstream registers
+    // at PRIORITY.VISUAL.CHART (3000), so they run BEFORE the visualMap component encoding (COMPONENT,
+    // 4000). Unlike the layout-coupled series visuals (treemap/graph/sankey, which READ their pixel layout
+    // and therefore stay inside render()), these depend only on the series' own data structure (the tree)
+    // and the palette, so they run in the visual stage. Ordering them before performVisualMapStage lets the
+    // visualMap-mapped color win: sunburstVisual `extend`s a fresh palette fill onto the item-visual style,
+    // which would otherwise overwrite the visualMap color if it ran afterwards.
+    // ------------------------------------------------------------------------
+    private func performCoordlessSeriesVisualStage(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        // sunburstVisualStageHandler (upstream registerVisual(sunburstVisualStageHandler) — CHART priority).
+        //   Colors each tree node from the palette (or its own itemStyle). The matching sunburst LAYOUT stage
+        //   still runs in render() (it needs the canvas center/radius geometry). Gated on presence to avoid
+        //   walking series data on charts with no sunburst.
+        if !ecModel.getSeriesByType(SERIES_TYPE_SUNBURST).isEmpty {
+            sunburstVisualStageHandler.overallReset?(ecModel, api, nil)
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -1814,8 +1844,11 @@ public final class ECharts: EChartsType {
         //   `sunburstVisualStageHandler` (an OVERALL stage that colors each node). Sunburst is coordless
         //   (hierarchical, box-like usage like pie); SunburstView reads the per-node layout back. Both are
         //   OVERALL stage handlers — invoke their `overallReset` directly (like the pie layout stage).
+        //   sunburstVisualStageHandler (the color stage) is NOT run here: it must precede the visualMap
+        //   component encoding (or its palette fill would clobber the visualMap-mapped color), so it runs in
+        //   performCoordlessSeriesVisualStage — BEFORE performVisualMapStage — instead. Only the geometry
+        //   LAYOUT stage (which needs the canvas center/radius) stays in render().
         sunburstLayoutStageHandler.overallReset?(ecModel, api, nil)
-        sunburstVisualStageHandler.overallReset?(ecModel, api, nil)
 
         // LAYOUT + VISUAL — treemap. Upstream registers `treemapLayout` (a SERIES_STAGE_TASK whose `reset`
         //   computes each node's rect + area/isInView/invisible) and `treemapVisual` (a SERIES_STAGE_TASK

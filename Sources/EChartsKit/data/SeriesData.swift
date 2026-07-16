@@ -247,6 +247,16 @@ public final class SeriesData: DataStackSeriesData {
     //   injections fire in the same order upstream's wrap chain does (original → transfer → cloneShallow).
     private var _wrappedMethodInjections: [String: [(SeriesData) -> Void]] = [:]
 
+    // upstream `wrapMethod('getItemModel', injectFn)` (used by Tree.createTree's `beforeLink` to hang the
+    //   per-depth level model off each node's item model as its `parentModel`). Unlike the `cloneShallow`
+    //   injections above, this method RETURNS a value (the `Model`) that the injection may replace, and it
+    //   takes the datum index as a second argument — so it needs a differently-typed store. Upstream's
+    //   wrap chains `res = originalMethod(...); return injectFn(res, ...args)`; the port reproduces that in
+    //   `getItemModel` by threading the model through each injection. Transferred on `cloneShallow` (via
+    //   `transferProperties`) so a tree/sunburst series whose data is cloned in the pipeline keeps the
+    //   level-model parenting — otherwise `levels[].itemStyle` silently stops reaching the sectors.
+    private var _getItemModelInjections: [(_ res: Model, _ idx: Int) -> Model] = []
+
     // Methods that create a new list based on this list should be listed here.
     // Notice that those method should `RETURN` the new list.
     public let TRANSFERABLE_METHODS = ["cloneShallow", "downSample", "minmaxDownSample", "lttbDownSample", "map"]
@@ -1043,7 +1053,15 @@ public final class SeriesData: DataStackSeriesData {
         //   `Any` PORT-NOTE alias, so the TS assertion cast is a no-op here — pass through directly
         //   (a conditional `as?` between two `Any` aliases always succeeds → warning).
         let dataItem: ModelOption = self.getRawDataItem(idx)
-        return Model(dataItem, hostModel, hostModel?.ecModel)
+        var model = Model(dataItem, hostModel, hostModel?.ecModel)
+        // upstream `wrapMethod('getItemModel', injectFn)` chain: run each registered injection, threading
+        //   the (possibly replaced) model. Tree.createTree's `beforeLink` uses this to set the per-depth
+        //   level model as the item model's parentModel, so `node.getModel('itemStyle')` inherits
+        //   `levels[].itemStyle` (e.g. sunburst per-ring colors).
+        for inject in self._getItemModelInjections {
+            model = inject(model, idx)
+        }
+        return model
     }
 
     /**
@@ -1292,8 +1310,21 @@ public final class SeriesData: DataStackSeriesData {
         //   `__wrappedMethods` bookkeeping is still recorded for `transferProperties` fidelity.
         self.__wrappedMethods = self.__wrappedMethods ?? []
         self.__wrappedMethods!.append(methodName)
-        self._wrappedMethodInjections[methodName, default: []].append { res in
-            _ = injectFunction(res)
+        // `getItemModel` is a VALUE-returning wrapped method (takes `idx`, returns a `Model` the injection
+        //   may replace); it goes into the dedicated `_getItemModelInjections` store so `getItemModel`
+        //   can thread the result. All other wrapped methods (only `cloneShallow` today) run for side
+        //   effects on the new SeriesData and are stored as before.
+        if methodName == "getItemModel" {
+            self._getItemModelInjections.append { res, idx in
+                // Upstream feeds `[res].concat(arguments)` → (model, idx). The ported `beforeLink`
+                //   closure reads `args[0] as Model` and `args[1] as Double`, returning the (mutated) model.
+                (injectFunction(res, Double(idx)) as? Model) ?? res
+            }
+        }
+        else {
+            self._wrappedMethodInjections[methodName, default: []].append { res in
+                _ = injectFunction(res)
+            }
         }
     }
 
@@ -1399,6 +1430,12 @@ public final class SeriesData: DataStackSeriesData {
         target._nameRepeatCount = source._nameRepeatCount
 
         target.__wrappedMethods = source.__wrappedMethods
+        // Upstream copies each wrapped method FUNCTION by name (methods are instance props in JS). The port
+        //   keeps the injections in side stores; carry the value-returning `getItemModel` injections onto
+        //   the clone so a cloned tree/sunburst data keeps its per-node level-model parenting. (The
+        //   `cloneShallow` injections in `_wrappedMethodInjections` are re-established by linkSeriesData's
+        //   own cloneShallow injection, so they are not copied here — matching the prior behavior.)
+        target._getItemModelInjections = source._getItemModelInjections
 
         // CLONE_PROPERTIES
         target._approximateExtent = util.clone(source._approximateExtent)

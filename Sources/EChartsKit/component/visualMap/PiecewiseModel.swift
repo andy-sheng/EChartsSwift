@@ -370,11 +370,13 @@ open class PiecewiseModel: VisualMapModel {
      */
     // getValueState(value: number): VisualState
     open override func getValueState(_ valueAny: Any?) -> String {
-        // (base signature is `value: any`; upstream PiecewiseModel treats it as `number`.)
-        let value = asDouble(valueAny)
+        // (base signature is `value: any`; upstream PiecewiseModel types it as `number` but for a
+        //  `categories` visualMap the value is the raw category — often a STRING — so the raw value is
+        //  passed through to findPieceIndex, whose category branch does the string equality. Coercing to
+        //  Double here (as before) turned string categories into NaN → always 'outOfRange'.)
         // const index = VisualMapping.findPieceIndex(value, this._pieceList);
         // (findPieceIndex takes `[VisualMappingPiece]`; the model holds the dict form — convert.)
-        let index = VisualMapping.findPieceIndex(value, self.toMappingPieces(self._pieceList))
+        let index = VisualMapping.findPieceIndex(valueAny, self.toMappingPieces(self._pieceList))
 
         // return index != null
         //     ? (this.option.selected[this.getSelectedMapKey(this._pieceList[index])] ? 'inRange' : 'outOfRange')
@@ -412,7 +414,7 @@ open class PiecewiseModel: VisualMapModel {
             // POTENTIAL-BUG: base `getDataDimensionIndex` returns `DimensionIndex?`; upstream treats it as
             //   always-present, so force-unwrap here (latent SIGTRAP if the target dimension is absent).
             data.each(self.getDataDimensionIndex(data)!) { args in
-                let value = asDouble(args[0])
+                let value = args[0]   // raw value (string for a `categories` visualMap) — see getValueState
                 let dataIndex = asDouble(args[1])
                 // Should always base on model pieceList, because it is order sensitive.
                 // const pIdx = VisualMapping.findPieceIndex(value, pieceList);
