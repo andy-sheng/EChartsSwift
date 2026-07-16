@@ -28,19 +28,21 @@
 //   - Nothing else: the option is static (no timers, no myChart driving) and contains no closures — not one
 //     formatter — so the native `option` below is a 1:1 transcription, dataset transforms included.
 //
-// nativeSupported: FALSE — and the gap is the TRANSFORM TYPE, not a closure. EChartsKit has the full
+// nativeSupported: TRUE — the former gap was the TRANSFORM TYPE, not a closure. EChartsKit has the full
 // dataset-transform pipeline (data/helper/transform.swift: `applyDataTransform` + the public
-// `registerExternalTransform`; sourceManager.swift resolving `datasetIndex` / `fromTransformResult`), but the
-// only types ever registered are the two BUILT-INS, `filter` and `sort` (component/transform/transformInstall.swift).
-// `ecStat:histogram` is a JS function object handed to `echarts.registerTransform` by a plugin that lives
-// outside the echarts source tree, so it has no Swift port and nothing registers that type: the lookup in
-// `applySingleDataTransform` misses and it throws `Can not find transform on type "ecStat:histogram".` while
-// building dataset[1] — i.e. the bins, i.e. the point of the example. The fix is a thin `ExternalDataTransform`
-// (Sturges-width binning producing ecStat's 5 result dimensions) plus one `registerExternalTransform` call;
-// the option below needs no change and this demo lights up for free the moment that lands. (Registering such a
-// transform from THIS file was rejected on purpose, exactly as official-scatter-polynomial-regression records:
-// `externalTransformMap` is global and keyed by type string, so per-demo registration would have the sibling
-// ecStat demos racing to overwrite each other.)
+// `registerExternalTransform`; sourceManager.swift resolving `datasetIndex` / `fromTransformResult`), but
+// for a long time the only types ever registered were the two BUILT-INS, `filter` and `sort`
+// (component/transform/transformInstall.swift). `ecStat:histogram` is a JS function object handed to
+// `echarts.registerTransform` by a plugin that lives outside the echarts source tree, so nothing registered
+// that type: the lookup in `applySingleDataTransform` missed and it threw
+// `Can not find transform on type "ecStat:histogram".` while building dataset[1] — i.e. the bins, i.e. the
+// point of the example. FIXED by `ecStatHistogramTransform.swift` — a faithful port of echarts-stat's
+// `histogram()` (squareRoot/scott/freedmanDiaconis/sturges bin-count choosers, the d3-tickStep-style "nice"
+// step, and the bisect-based bin assignment; see that file's header for the full derivation) registered
+// under its own `ecStat:histogram` type in `transformInstall.swift`. (Registering it from THIS file was
+// rejected on purpose, exactly as official-scatter-polynomial-regression records: `externalTransformMap` is
+// global and keyed by type string, so per-demo registration would have the sibling ecStat demos racing to
+// overwrite each other.) The option below needed no change.
 import Foundation
 
 // The ecStat UMD (echarts-stat), spliced into the reference page — see DEVIATIONS. A read failure degrades to
@@ -91,7 +93,7 @@ extension EChartsDemoRegistry {
         name: "official-bar-histogram", category: "custom",
         summary: "直方图（自定义系列） — Histogram with Custom Series",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // --- echarts-stat (ecStat) UMD, inlined: the gallery page has no network and no CDN. Everything below the
@@ -239,10 +241,9 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: the two `ecStat:histogram` transforms are DECLARED here exactly as upstream, but
-            // their implementation (`ecStat.transform.histogram`, a JS function registered through
-            // echarts.registerTransform) has no EChartsKit counterpart — see the header. This is the one and
-            // only reason nativeSupported is false; nothing else in this option is unportable.
+            // PORT-NOTE: the two `ecStat:histogram` transforms are DECLARED here exactly as upstream; their
+            // implementation now lives in `ecStatHistogramTransform.swift` (registered as `ecStat:histogram`
+            // in transformInstall.swift) — see the header.
             "dataset": [
                 // [0] the raw samples, consumed by the scatter series.
                 ["source": barHistogramSource] as [String: Any],

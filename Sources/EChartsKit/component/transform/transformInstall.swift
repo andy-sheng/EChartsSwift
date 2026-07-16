@@ -56,6 +56,9 @@ public func transformInstall(_ registers: EChartsExtensionInstallRegisters) {
     // NOT upstream: echarts-stat's `ecStat:regression` (ported in ecStatRegressionTransform.swift) so the
     //   scatter-*-regression official examples build natively. Harmless if a page never uses it.
     try! registerExternalTransform(ecStatRegressionTransform)
+    // NOT upstream: echarts-stat's `ecStat:histogram` (ported in ecStatHistogramTransform.swift) so the
+    //   bar-histogram official example builds natively. Harmless if a page never uses it.
+    try! registerExternalTransform(ecStatHistogramTransform)
     // NOT upstream: echarts-simple-transform's `ecSimpleTransform:aggregate` (ported in
     //   ecSimpleTransformAggregate.swift) so the data-transform-aggregate official example builds
     //   natively. Upstream that plugin is registered per-page via `echarts.registerTransform(...)`; the

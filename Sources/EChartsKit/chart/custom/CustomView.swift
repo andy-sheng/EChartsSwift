@@ -1144,8 +1144,11 @@ private func doCreateOrUpdateEl(
     )
 
     // upstream: doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit);
-    // PORT-NOTE (deferred): the per-element `clipPath` spec (createEl for the clip element + its
-    //   update/animation + the isPath assert) is deferred with the transition machinery.
+    // PORT-NOTE (STATIC subset, now wired — genuine gap found porting official-custom-gauge): the per-element
+    //   `clipPath` spec's ANIMATION stays deferred with the rest of the transition machinery, but the static
+    //   create/update below IS ported — without it, a renderItem spec that clips an element to a sector/
+    //   polygon/etc (e.g. the gauge's coloured-arc and needle images) rendered fully UNCLIPPED.
+    doCreateOrUpdateClipPath(elUnwrapped, dataIndex, elOption, seriesModel, isInit)
 
     updateElNormal(
         api, elUnwrapped, dataIndex, elOption, attachedTxInfoTmp, seriesModel, isInit
@@ -1198,6 +1201,40 @@ private func doesElNeedRecreate(_ el: Element, _ elOption: [String: Any], _ seri
             && elOptionStyle?["image"] != nil
             && !sameImage(elOptionStyle?["image"], elInner.customImagePath))
     )
+}
+
+// upstream: function doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit): void
+//   STATIC subset (animation deferred). Reuses `createEl` / `updateElNormal` / `doesElNeedRecreate` and
+//   `Element.getClipPath`/`setClipPath`/`removeClipPath` (already used by bar/candlestick/geo/line clip).
+private func doCreateOrUpdateClipPath(
+    _ el: Element,
+    _ dataIndex: Int,
+    _ elOption: [String: Any],
+    _ seriesModel: CustomSeriesModel,
+    _ isInit: Bool
+) {
+    // Based on the "merge" principle: no clipPath → do nothing; `clipPath: false` → remove any existing.
+    let clipPathOptRaw = elOption["clipPath"]
+    if let isFalse = clipPathOptRaw as? Bool, isFalse == false {
+        if el.getClipPath() != nil { el.removeClipPath() }
+        return
+    }
+    guard let clipPathOpt = clipPathOptRaw as? [String: Any] else { return }
+
+    var clipPath = el.getClipPath()
+    if let cp = clipPath, doesElNeedRecreate(cp, clipPathOpt, seriesModel) {
+        clipPath = nil
+    }
+    if clipPath == nil {
+        let created = createEl(clipPathOpt)
+        guard let createdPath = created as? Path else {
+            log.error("Only any type of `path` can be used in `clipPath`, rather than \(created.type).")
+            return
+        }
+        clipPath = createdPath
+        el.setClipPath(createdPath)
+    }
+    updateElNormal(nil, clipPath!, dataIndex, clipPathOpt, nil, seriesModel, isInit)
 }
 
 // Bridge a raw `textConfig` option bag (`elOption.textConfig`) into the typed `ElementTextConfig`
