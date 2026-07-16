@@ -61,6 +61,25 @@ public final class CGRenderer: Renderer {
         ctx.fillPath(using: style.fillRule)
     }
 
+    /// Large-symbol boost fill (zrender LargeSymbolDraw.afterBrush): fill the packed
+    /// `[x, y, w, h, ...]` per-datum squares in ONE `CGContext.fill([CGRect])` under the current CTM
+    /// and fill color, instead of `fillPath`-ing one giant N-sub-path CGPath (which Core Graphics
+    /// scan-converts super-linearly). Global element alpha is already on the context (drawPath's
+    /// `r.opacity`), matching how `fillPath` relies on it. No stroke — the upstream boost is fill-only.
+    public func fillBoostRects(_ packed: [Double], _ style: PaintStyle) {
+        guard let fill = style.fill, packed.count >= 4 else { return }
+        ctx.setFillColor(fill)
+        // Per-datum `ctx.fill(rect)` in a tight loop — exactly zrender's `ctx.fillRect(...)` per point
+        // (LargeSymbolDraw.ts:162), each an O(1) primitive fill. NOT `CGContext.fill([CGRect])`: the
+        // array overload merges the rects into one scan-conversion and is itself super-linear (measured
+        // ~37× slower for 4× the rects), i.e. the same pathology the boost exists to avoid.
+        var i = 0
+        while i + 3 < packed.count {
+            ctx.fill(CGRect(x: packed[i], y: packed[i + 1], width: packed[i + 2], height: packed[i + 3]))
+            i += 4
+        }
+    }
+
     public func strokePath(_ style: PaintStyle) {
         // Gradient / pattern stroke: replace the path with its stroked outline, then fill that
         // outline with the gradient/pattern (Core Graphics has no "stroke with gradient").

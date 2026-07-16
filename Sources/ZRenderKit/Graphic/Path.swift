@@ -647,6 +647,18 @@ open class Path: Displayable {
     //   CanvasRenderingContext2D branch is handled by the native backend). Base is a no-op.
     open func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {}
 
+    /// Large-symbol "boost" hook — the port of zrender `LargeSymbolDraw.afterBrush`'s canvas
+    /// `ctx.fillRect(...)` fast path (LargeSymbolDraw.ts:138). When a large-mode symbol path is
+    /// small enough to boost (`size[0] < BOOST_SIZE_THRESHOLD`), building one giant PathProxy with
+    /// N circle sub-paths and filling it in a single `CGContext.fillPath` is super-linear in the
+    /// sub-path count (Core Graphics scan-converts the whole path at once), so a 10⁶-point cloud
+    /// never finishes. Upstream sidesteps this by drawing each datum as its own `fillRect` — N cheap
+    /// primitive fills instead of one pathological path fill. Here that boost is renderer-agnostic:
+    /// a boostable path returns its per-point axis-aligned squares as packed `[x, y, w, h, ...]`
+    /// (element-LOCAL coords, NaN/soft-clip already applied) and the native painter issues one
+    /// batched `CGContext.fill([CGRect])`. Returns nil for every non-boostable path (normal draw).
+    open func largeSymbolBoostRects() -> [Double]? { return nil }
+
     public func pathUpdated() {
         self.__dirty = Double(Int(self.__dirty) & ~Int(SHAPE_CHANGED_BIT))
     }

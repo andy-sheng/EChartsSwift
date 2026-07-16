@@ -143,6 +143,36 @@ public final class LargeSymbolPath: Path {
         //   (`incremental == 0` in the driver), so `_off` stays 0 and the full range re-draws.
     }
 
+    // upstream: `const canBoost = ctx && size[0] < BOOST_SIZE_THRESHOLD` (LargeSymbolDraw.ts:39,102) →
+    //   `buildPath` returns early (emits nothing) and `afterBrush` draws every datum with
+    //   `ctx.fillRect(x - size[0]/2, y - size[1]/2, size[0], size[1])`. This is the boost the base
+    //   class's `largeSymbolBoostRects()` doc describes: for tiny symbols (< 4px) a per-point fillRect
+    //   is faithful (a 3px square vs disc is indistinguishable) AND turns the pathological single
+    //   N-sub-path fill into N cheap primitive fills. Returns packed [x, y, w, h, ...] in element-local
+    //   coords, NaN + soft-clip filtered exactly as `afterBrush`'s loop. nil ⇒ not boostable (size ≥ 4,
+    //   or no shape) ⇒ the painter takes the normal `buildPath` geometry.
+    private static let boostSizeThreshold = 4.0
+    public override func largeSymbolBoostRects() -> [Double]? {
+        guard let shape = self.shape as? LargeSymbolPathShape else { return nil }
+        let size = shape.size
+        guard size.count >= 2, size[0] < LargeSymbolPath.boostSizeThreshold else { return nil }
+        let points = shape.points
+        let w = size[0], h = size[1]
+        let hw = w / 2, hh = h / 2
+        let softClipShape = self.softClipShape
+        var out = [Double]()
+        out.reserveCapacity(points.count * 2)   // 4 numbers per point, points holds 2 per point
+        var i = 0
+        while i + 1 < points.count {
+            let x = points[i]; i += 1
+            let y = points[i]; i += 1
+            if x.isNaN || y.isNaN { continue }
+            if let clip = softClipShape, !clip.contain(x, y) { continue }
+            out.append(x - hw); out.append(y - hh); out.append(w); out.append(h)
+        }
+        return out
+    }
+
     // upstream: setColor (borrowed from symbolProxy). Runs with `this` == the LargeSymbolPath, so it
     //   paints THIS path's style (empty → stroke + inner fill; 'line' → stroke; else → fill).
     public func setColor(_ color: ZRenderKit.ZRColor, _ innerColor: ZRenderKit.ZRColor? = nil) {

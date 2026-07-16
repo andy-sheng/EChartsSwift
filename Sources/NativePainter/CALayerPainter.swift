@@ -173,6 +173,17 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     //     bracketing this element; 'lighter' is the additive blend the incremental demos depend on.
     r.setBlendMode(style.blend)
 
+    // 5a. Large-symbol boost (zrender LargeSymbolDraw.afterBrush): a tiny-symbol large path fills
+    //     each datum as its own rect instead of one giant N-sub-path CGPath — see the base Path's
+    //     `largeSymbolBoostRects()` doc. Filling one 10⁶-circle path via `CGContext.fillPath` is
+    //     super-linear (a 5× point count measured ~32× slower); the batched `fill([CGRect])` is O(N).
+    //     The rects are element-local, so the world transform applied above (step 2) carries them into
+    //     surface space exactly as the normal geometry. Fill only (upstream boost issues no stroke).
+    if let boost = p.largeSymbolBoostRects() {
+        r.fillBoostRects(boost, paint)
+        return
+    }
+
     // 5. Geometry: replay the Path's PathProxy into the renderer's CGPath rebuilder.
     // strokePercent: zrender rebuilds the path to its leading fraction (canvas/graphic.ts:225,
     // `path.rebuildPath(ctx, strokePart ? strokePercent : 1)`); fill and stroke both follow the
