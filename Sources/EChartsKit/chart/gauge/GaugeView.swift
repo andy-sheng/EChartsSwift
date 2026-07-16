@@ -26,16 +26,21 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     → `Sector` / `Arc` / `Line` / `Circle` / `Text`(==ZRText) / `Group` are the ZRenderKit scene-graph
 //       shapes (used directly — the sanctioned DRAWING deviation; cf. PieView / AngleAxisView).
-//       PORT-NOTE: `graphic.initProps` / `graphic.updateProps` are ported (animation/basicTransition.swift), but
-//       the diff-based enter/update/remove + rotation/endAngle draw-on tweens are not wired here (CONVENTIONS §5: STATIC render).
+//       PORT-NOTE: `graphic.initProps` / `graphic.updateProps` are ported (animation/basicTransition.swift) and
+//       ARE now wired: `_renderPointer` diffs `_data` and enter-animates (initProps) the pointer rotation /
+//       progress endAngle on first appearance, then TWEENS (updateProps) them from their current value to the
+//       new value on refresh — the pointer/progress reset-on-update fix. The static parts (axisLine/ticks/
+//       splitLines/labels) are retained + reused across renders (see `_staticGroup`) rather than rebuilt.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //     → PORT-NOTE: util/states.swift is ported; emphasis/blur/focus states just aren't wired here yet.
 //   import {createTextStyle, setLabelValueAnimation, animateLabelValue} from '../../label/labelStyle';
 //     → createTextStyle / setLabelValueAnimation / animateLabelValue are PORTED
 //       (label/labelStyle.swift:417 / :819 / :858). DRAWING DEVIATION: the gauge title/detail text is still
 //       built with the minimal local `gaugeTextStyle` (font/fill/align only) below, same as FunnelView/Breadcrumb.
-//       The detail number roll-up (setLabelValueAnimation/animateLabelValue) is deferred with the rest of this
-//       view's STATIC render (no initProps/updateProps enter/update tweens — see §5 above).
+//       The title/detail Text elements ARE now reused across renders (diffed against `_data`), so they no
+//       longer churn on refresh. The detail number roll-up itself (setLabelValueAnimation/animateLabelValue —
+//       the incremental count-up tween) is still DEFERRED: the reused detail element is updated straight to
+//       the new value each render (no reset), but the count-up interpolation is not driven.
 //   import ChartView from '../../view/Chart';                         → ChartView (view/Chart.swift).
 //   import {parsePercent, round, linearMap, DEFAULT_PRECISION_FOR_ROUNDING_ERROR} from '../../util/number';
 //     → `number.parsePercent` / `number.round` / `number.linearMap` / `number.DEFAULT_PRECISION_FOR_ROUNDING_ERROR`.
@@ -125,6 +130,20 @@ open class GaugeView: ChartView {
     // upstream: private _detailEls: graphic.Text[];
     private var _detailEls: [ZRText] = []
 
+    // PORT-NOTE (reuse machinery — NOT in upstream 1:1): upstream rebuilds the static parts
+    //   (axisLine sectors + ticks/splitLines/labels) from scratch on every render after a
+    //   `this.group.removeAll()`. That is fine for echarts.js (those parts carry no animation), but
+    //   here it (a) destroyed the pointer/progress element identities on every `setOption` refresh so
+    //   they replayed the enter animation from `startAngle` instead of TWEENING (the reset-on-update
+    //   bug), and (b) churned every element identity so nothing could be diffed/tweened. This port
+    //   therefore REUSES elements across renders: the static geometry lives in a retained sub-group
+    //   rebuilt only when its configuration signature changes; the pointer/progress/title/detail are
+    //   retained and `updateProps`-tweened (see _renderPointer / _renderTitleAndDetail below).
+    private var _staticGroup: Group?
+    private var _staticSig: String?
+    private var _anchorEl: Path?
+    private var _contentGroup: Group?
+
     // upstream: render(seriesModel: GaugeSeriesModel, ecModel: GlobalModel, api: ExtensionAPI)
     open override func render(
         _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
@@ -132,7 +151,10 @@ open class GaugeView: ChartView {
         // upstream typed `seriesModel: GaugeSeriesModel`; the base override is typed `SeriesModel`.
         let seriesModel = seriesModelBase as! GaugeSeriesModel
 
-        _ = self.group.removeAll()
+        // PORT DEVIATION (reuse): upstream calls `this.group.removeAll()` here and rebuilds every element.
+        //   We do NOT wipe the group — the sub-renders below reuse the retained pointer/progress/title/
+        //   detail (so they tween instead of replaying the enter animation) and the retained static
+        //   sub-group. See the `_staticGroup` field note above.
 
         // const colorList = seriesModel.get(['axisLine', 'lineStyle', 'color']);
         let colorList = gaugeColorList(seriesModel.get(["axisLine", "lineStyle", "color"]))
@@ -180,46 +202,6 @@ open class GaugeView: ChartView {
         endAngle = angles[1]
         let angleRangeSpan = endAngle - startAngle
 
-        var prevEndAngle = startAngle
-
-        // const sectors: (Sausage | graphic.Sector)[] = [];
-        var sectors: [Path] = []
-        // for (let i = 0; showAxis && i < colorList.length; i++)
-        var i = 0
-        while showAxis && i < colorList.count {
-            // Clamp
-            let percent = Swift.min(Swift.max(colorList[i].0, 0), 1)
-            endAngle = startAngle + angleRangeSpan * percent
-            var sectorShape = SectorShape()
-            sectorShape.startAngle = prevEndAngle
-            sectorShape.endAngle = endAngle
-            sectorShape.cx = posInfo.cx
-            sectorShape.cy = posInfo.cy
-            sectorShape.clockwise = clockwise
-            sectorShape.r0 = posInfo.r - axisLineWidth
-            sectorShape.r = posInfo.r
-            let sector = Sector([
-                "shape": sectorShape as PathShape,
-                "silent": true
-            ])
-
-            // sector.setStyle({ fill: colorList[i][1] });
-            // sector.setStyle(lineStyleModel.getLineStyle(['color', 'width']));  (color/width excluded — arc
-            //   is simulated by a sector so the stroke props are useless). The fill (set first) survives.
-            var style = pathStyleFromDict(lineStyleModel.getLineStyle(["color", "width"]))
-            style.fill = .string(colorList[i].1)
-            sector.useStyle(style)
-
-            sectors.append(sector)
-
-            prevEndAngle = endAngle
-            i += 1
-        }
-
-        // sectors.reverse(); each(sectors, sector => group.add(sector));
-        sectors.reverse()
-        util.each(sectors, { sector, _ in _ = group.add(sector) })
-
         // const getColor = function (percent) { ... }
         let getColor: (Double) -> String = { percent in
             // Less than 0
@@ -238,16 +220,81 @@ open class GaugeView: ChartView {
             return colorList[i - 1].1
         }
 
-        self._renderTicks(
-            seriesModel, ecModel, api, getColor, posInfo,
-            startAngle, endAngle, clockwise, axisLineWidth
-        )
+        // ---- Static parts (axisLine sectors + ticks/splitLines/labels): built once into a retained
+        //   sub-group and REUSED across renders. Rebuilt only when the static configuration changes
+        //   (first render, resize, or a non-data `setOption`). The value-only refreshes that drive the
+        //   gauge demos leave this untouched, so these element identities persist. ----
+        let sig = self.staticSignature(seriesModel, api)
+        let staticChanged = (self._staticGroup == nil) || (sig != self._staticSig)
+        if staticChanged {
+            let staticGroup: Group
+            if let existing = self._staticGroup {
+                // Reuse the same sub-group object (keep it as the group's first child) — only its
+                //   children are rebuilt.
+                _ = existing.removeAll()
+                staticGroup = existing
+            } else {
+                staticGroup = Group()
+                self._staticGroup = staticGroup
+                // First render: the static sub-group is the FIRST child of the view group, so its
+                //   descendants keep their (z, z2, insertion) paint order ahead of the dynamic
+                //   title/detail/anchor/pointer/progress added by the sub-renders below.
+                _ = group.add(staticGroup)
+            }
+
+            var prevEndAngle = startAngle
+
+            // const sectors: (Sausage | graphic.Sector)[] = [];
+            var sectors: [Path] = []
+            // for (let i = 0; showAxis && i < colorList.length; i++)
+            var i = 0
+            while showAxis && i < colorList.count {
+                // Clamp
+                let percent = Swift.min(Swift.max(colorList[i].0, 0), 1)
+                let sectorEnd = startAngle + angleRangeSpan * percent
+                var sectorShape = SectorShape()
+                sectorShape.startAngle = prevEndAngle
+                sectorShape.endAngle = sectorEnd
+                sectorShape.cx = posInfo.cx
+                sectorShape.cy = posInfo.cy
+                sectorShape.clockwise = clockwise
+                sectorShape.r0 = posInfo.r - axisLineWidth
+                sectorShape.r = posInfo.r
+                let sector = Sector([
+                    "shape": sectorShape as PathShape,
+                    "silent": true
+                ])
+
+                // sector.setStyle({ fill: colorList[i][1] });
+                // sector.setStyle(lineStyleModel.getLineStyle(['color', 'width']));  (color/width excluded — arc
+                //   is simulated by a sector so the stroke props are useless). The fill (set first) survives.
+                var style = pathStyleFromDict(lineStyleModel.getLineStyle(["color", "width"]))
+                style.fill = .string(colorList[i].1)
+                sector.useStyle(style)
+
+                sectors.append(sector)
+
+                prevEndAngle = sectorEnd
+                i += 1
+            }
+
+            // sectors.reverse(); each(sectors, sector => group.add(sector));
+            sectors.reverse()
+            util.each(sectors, { sector, _ in _ = staticGroup.add(sector) })
+
+            self._renderTicks(
+                staticGroup, seriesModel, ecModel, api, getColor, posInfo,
+                startAngle, endAngle, clockwise, axisLineWidth
+            )
+
+            self._staticSig = sig
+        }
 
         self._renderTitleAndDetail(
             seriesModel, ecModel, api, getColor, posInfo
         )
 
-        self._renderAnchor(seriesModel, posInfo)
+        self._renderAnchor(seriesModel, posInfo, staticChanged)
 
         self._renderPointer(
             seriesModel, ecModel, api, getColor, posInfo,
@@ -255,8 +302,64 @@ open class GaugeView: ChartView {
         )
     }
 
+    // PORT-NOTE (reuse machinery — NOT in upstream): a cheap change-detector for the STATIC parts. The
+    //   gauge demos refresh with a MERGE `setOption` that supplies only `series[].data`; the static
+    //   geometry (axisLine/ticks/splitLines/labels) reads everything EXCEPT the data values, so a
+    //   signature over the series option minus `data` (plus the canvas size, which feeds posInfo) is
+    //   stable across those refreshes and changes exactly when the static geometry would.
+    private func staticSignature(_ seriesModel: GaugeSeriesModel, _ api: ExtensionAPI) -> String {
+        var out = "\(api.getWidth())x\(api.getHeight())|"
+        if var opt = seriesModel.option as? [String: Any] {
+            // The static geometry depends on neither the data VALUES nor the ANIMATION settings, so
+            //   strip both: the gauge demos refresh by merging `series[].data` (always) and sometimes an
+            //   `animation` toggle (the clock suppresses the wrap-around tween). Keeping either in the
+            //   signature would force a needless static rebuild on those refreshes.
+            for k in Self.staticSigIgnoredKeys { opt[k] = nil }
+            out += Self.stableDescribe(opt)
+        }
+        return out
+    }
+
+    private static let staticSigIgnoredKeys: [String] = [
+        "data",
+        "animation", "animationThreshold",
+        "animationDuration", "animationEasing", "animationDelay",
+        "animationDurationUpdate", "animationEasingUpdate", "animationDelayUpdate",
+        "animationType", "animationTypeUpdate"
+    ]
+
+    /// Deterministic string for a JSON-like option value (dictionaries emitted with sorted keys) so the
+    ///   same configuration always yields the same signature. Closures / opaque values fall back to a
+    ///   type marker (they never appear in the gauge demos' options).
+    private static func stableDescribe(_ v: Any?) -> String {
+        switch v {
+        case nil, is NSNull:
+            return "null"
+        case let d as [String: Any]:
+            let body = d.keys.sorted().map { "\($0):\(stableDescribe(d[$0]!))" }.joined(separator: ",")
+            return "{\(body)}"
+        case let a as [Any]:
+            return "[\(a.map { stableDescribe($0) }.joined(separator: ","))]"
+        case let b as Bool:
+            return b ? "true" : "false"
+        case let n as NSNumber:
+            return n.stringValue
+        case let s as String:
+            return "\"\(s)\""
+        case let i as Int:
+            return String(i)
+        case let dd as Double:
+            return String(dd)
+        default:
+            return "<\(String(describing: Swift.type(of: v!)))>"
+        }
+    }
+
     // upstream: _renderTicks(seriesModel, ecModel, api, getColor, posInfo, startAngle, endAngle, clockwise, axisLineWidth)
+    //   PORT-NOTE (reuse): takes the target `group` explicitly — the ticks/splitLines/labels are built
+    //   into the retained static sub-group, not directly into `self.group` (see _renderMain).
     private func _renderTicks(
+        _ group: Group,
         _ seriesModel: GaugeSeriesModel,
         _ ecModel: GlobalModel,
         _ api: ExtensionAPI,
@@ -267,7 +370,6 @@ open class GaugeView: ChartView {
         _ clockwise: Bool,
         _ axisLineWidth: Double
     ) {
-        let group = self.group
         let cx = posInfo.cx
         let cy = posInfo.cy
         let r = posInfo.r
@@ -440,10 +542,9 @@ open class GaugeView: ChartView {
         _ axisLineWidth: Double
     ) {
         let group = self.group
-        // const oldData = this._data; const oldProgressData = this._progressEls;  — used only by the
-        //   deferred diff/animation path.
-        _ = self._data
-        _ = self._progressEls
+        // const oldData = this._data; const oldProgressData = this._progressEls;
+        let oldData = self._data
+        let oldProgressData = self._progressEls
 
         let showPointer = jsTruthy(seriesModel.get(["pointer", "show"]))
         let progressModel = seriesModel.getModel("progress")
@@ -525,45 +626,71 @@ open class GaugeView: ChartView {
             return progress
         }
 
-        // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream diffs `oldData` → add/update the pointer + progress with
-        //   `graphic.initProps`/`updateProps` rotation/endAngle tweens. The full add/update diff is
-        //   deferred (CONVENTIONS §5). The pointer's entrance sweep (rotation from startAngle to the
-        //   value angle) IS wired via the shared `initProps`; the progress sector is still built
-        //   directly at its FINAL endAngle (the tween end-state), then styled in a second pass
-        //   (mirroring the upstream `data.each`).
-        // ------------------------------------------------------------------------------------------
+        // upstream: data.diff(oldData).add(...).update(...).execute();
+        //   ADD (first appearance): create the pointer collapsed at startAngle + `initProps` its rotation
+        //     to the value angle (the enter sweep); create the progress arc at endAngle == startAngle +
+        //     `initProps` its shape.endAngle to the value angle.
+        //   UPDATE (refresh): REUSE the retained pointer/progress element (PORT DEVIATION — upstream
+        //     recreates a fresh element pre-seeded at the previous rotation/endAngle, but here the group
+        //     is not wiped, so reusing the SAME object both avoids a duplicate AND preserves its
+        //     identity). `updateProps` then TWEENS from its CURRENT (mid-animation) rotation/endAngle to
+        //     the new value angle — this is the fix for the reset-on-update bug.
         if showProgress || showPointer {
-            for idx in 0..<data.count() {
-                let val = asDouble(data.get(valueDim!, idx))
-                if showPointer {
-                    // upstream: createPointer(idx, startAngle) then initProps rotation to the value angle.
-                    //   Create the pointer collapsed at startAngle, then sweep its rotation to the
-                    //   final value angle via the shared enter transition (instant when animation off).
-                    let finalAngle = val.isNaN ? angleExtent[0] : number.linearMap(val, valueExtent, angleExtent, true)
-                    let pointer = createPointer(idx, startAngle)
-                    initProps(pointer, ["rotation": -(finalAngle + Double.pi / 2)], seriesModel)
-                    _ = group.add(pointer)
-                    data.setItemGraphicEl(idx, pointer)
+            data.diff(oldData)
+                .add { idx in
+                    let val = asDouble(data.get(valueDim!, idx))
+                    if showPointer {
+                        let finalAngle = val.isNaN ? angleExtent[0] : number.linearMap(val, valueExtent, angleExtent, true)
+                        let pointer = createPointer(idx, startAngle)
+                        initProps(pointer, ["rotation": -(finalAngle + Double.pi / 2)], seriesModel)
+                        _ = group.add(pointer)
+                        data.setItemGraphicEl(idx, pointer)
+                    }
+                    if showProgress {
+                        let isClip = jsTruthy(progressModel.get("clip"))
+                        let valueEndAngle = number.linearMap(val, valueExtent, angleExtent, isClip)
+                        let progress = createProgress(idx, startAngle)
+                        initProps(progress, ["shape": ["endAngle": valueEndAngle]], seriesModel)
+                        _ = group.add(progress)
+                        innerStore.setCommonECData(seriesModel.seriesIndex, data.dataType ?? .main, Double(idx), progress)
+                        progressList[idx] = progress
+                    }
                 }
-
-                if showProgress {
-                    let isClip = jsTruthy(progressModel.get("clip"))
-                    // upstream: const progress = createProgress(idx, startAngle);
-                    //   graphic.initProps(progress, { shape: { endAngle: linearMap(val, valueExtent, angleExtent, isClip) } }, seriesModel);
-                    //   Create the progress arc collapsed at startAngle (endAngle == startAngle), then sweep
-                    //   shape.endAngle to the value angle via the shared enter transition (instant when
-                    //   animation off). Sector ANGLE-EXPANSION pattern (cf. PieView / SunburstPiece).
-                    let valueEndAngle = number.linearMap(val, valueExtent, angleExtent, isClip)
-                    let progress = createProgress(idx, startAngle)
-                    initProps(progress, ["shape": ["endAngle": valueEndAngle]], seriesModel)
-                    _ = group.add(progress)
-                    // upstream: setCommonECData(seriesModel.seriesIndex, data.dataType, idx, progress)
-                    //   — inner-store ECData tooltip indexing.
-                    innerStore.setCommonECData(seriesModel.seriesIndex, data.dataType ?? .main, Double(idx), progress)
-                    progressList[idx] = progress
+                .update { newIdx, oldIdx in
+                    let val = asDouble(data.get(valueDim!, newIdx))
+                    if showPointer {
+                        // Reuse the retained pointer (already a child of `group`); if for any reason it is
+                        //   missing, fall back to a fresh one collapsed at startAngle.
+                        let pointer = (oldData?.getItemGraphicEl(oldIdx) as? Path) ?? {
+                            let p = createPointer(newIdx, startAngle)
+                            _ = group.add(p)
+                            return p
+                        }()
+                        let finalAngle = val.isNaN ? angleExtent[0] : number.linearMap(val, valueExtent, angleExtent, true)
+                        updateProps(pointer, ["rotation": -(finalAngle + Double.pi / 2)], seriesModel)
+                        data.setItemGraphicEl(newIdx, pointer)
+                    }
+                    if showProgress {
+                        let previousProgress = (oldIdx < oldProgressData.count) ? oldProgressData[oldIdx] : nil
+                        let progress = (previousProgress as? Sector) ?? {
+                            let p = createProgress(newIdx, startAngle)
+                            _ = group.add(p)
+                            return p
+                        }()
+                        let isClip = jsTruthy(progressModel.get("clip"))
+                        let valueEndAngle = number.linearMap(val, valueExtent, angleExtent, isClip)
+                        updateProps(progress, ["shape": ["endAngle": valueEndAngle]], seriesModel)
+                        innerStore.setCommonECData(seriesModel.seriesIndex, data.dataType ?? .main, Double(newIdx), progress)
+                        progressList[newIdx] = progress
+                    }
                 }
-            }
+                .remove { oldIdx in
+                    // Data shrank: drop the now-orphaned pointer/progress (upstream relies on removeAll;
+                    //   here we must remove them explicitly since the group is not wiped).
+                    if showPointer, let p = oldData?.getItemGraphicEl(oldIdx) { _ = group.remove(p) }
+                    if showProgress, oldIdx < oldProgressData.count, let p = oldProgressData[oldIdx] { _ = group.remove(p) }
+                }
+                .execute()
 
             // upstream: data.each(function (idx) { ... styling + emphasis/states ... })
             for idx in 0..<data.count() {
@@ -627,10 +754,23 @@ open class GaugeView: ChartView {
     }
 
     // upstream: _renderAnchor(seriesModel, posInfo)
+    //   PORT-NOTE (reuse): the anchor is static (its geometry depends only on the configuration, not on
+    //   the data value), so it is retained and rebuilt only when the static signature changed this
+    //   render. `staticChanged` is threaded in from _renderMain.
     private func _renderAnchor(
         _ seriesModel: GaugeSeriesModel,
-        _ posInfo: PosInfo
+        _ posInfo: PosInfo,
+        _ staticChanged: Bool
     ) {
+        // Nothing to do on a value-only refresh — the retained anchor is reused untouched.
+        if !staticChanged {
+            return
+        }
+        // Drop any previous anchor before (re)building.
+        if let old = self._anchorEl {
+            _ = self.group.remove(old)
+            self._anchorEl = nil
+        }
         let anchorModel = seriesModel.getModel("anchor")
         let showAnchor = jsTruthy(anchorModel.get("show"))
         if showAnchor {
@@ -650,6 +790,7 @@ open class GaugeView: ChartView {
             anchor.z2 = jsTruthy(anchorModel.get("showAbove")) ? 1 : 0
             anchor.useStyle(barStyleFromDict(anchorModel.getModel("itemStyle").getItemStyle()))
             _ = self.group.add(anchor)
+            self._anchorEl = anchor
         }
     }
 
@@ -666,25 +807,51 @@ open class GaugeView: ChartView {
         let minVal = gaugeNum(seriesModel.get("min")) ?? 0
         let maxVal = gaugeNum(seriesModel.get("max")) ?? 0
 
-        let contentGroup = Group()
+        // PORT-NOTE (reuse): upstream builds a fresh contentGroup each render (added to the just-wiped
+        //   view group). Here the view group is NOT wiped, so the contentGroup is retained (identity
+        //   persists) and only its per-datum item-groups are rebuilt.
+        let contentGroup: Group
+        if let cg = self._contentGroup {
+            _ = cg.removeAll()
+            contentGroup = cg
+        } else {
+            contentGroup = Group()
+            self._contentGroup = contentGroup
+            _ = self.group.add(contentGroup)
+        }
 
-        var newTitleEls: [ZRText] = []
-        var newDetailEls: [ZRText] = []
+        let oldData = self._data
+        let oldTitleEls = self._titleEls
+        let oldDetailEls = self._detailEls
+        var newTitleEls = [ZRText?](repeating: nil, count: data.count())
+        var newDetailEls = [ZRText?](repeating: nil, count: data.count())
         // const hasAnimation = seriesModel.isAnimationEnabled();
         //   setLabelValueAnimation/animateLabelValue (the detail number roll-up) ARE ported
-        //   (label/labelStyle.swift:819 / :858); wiring the roll-up is deferred here with the rest of this
-        //   view's STATIC render (no initProps/updateProps enter/update tweens — see file header §5).
+        //   (label/labelStyle.swift:819 / :858); wiring the roll-up is deferred here — the reused detail
+        //   element is updated to the new value each render (no reset), but the incremental count-up
+        //   tween is not driven. That is the SECONDARY part of the fix (the pointer/progress reset was
+        //   the primary bug).
         _ = seriesModel.isAnimationEnabled()
 
         let showPointerAbove = jsTruthy(seriesModel.get(["pointer", "showAbove"]))
 
-        // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream diffs `this._data` → reuse the previous title/detail Text
-        //   elements on update. Here fresh Text elements are created per datum each render.
-        // ------------------------------------------------------------------------------------------
-        for _ in 0..<data.count() {
-            newTitleEls.append(ZRText(["silent": true]))
-            newDetailEls.append(ZRText(["silent": true]))
+        // upstream: data.diff(this._data).add(reuse-new).update(reuse-old).execute() — decides only the
+        //   ELEMENT IDENTITY per datum (create fresh vs. reuse the previous title/detail Text); the
+        //   styling below runs for every datum regardless.
+        data.diff(oldData)
+            .add { idx in
+                newTitleEls[idx] = ZRText(["silent": true])
+                newDetailEls[idx] = ZRText(["silent": true])
+            }
+            .update { newIdx, oldIdx in
+                newTitleEls[newIdx] = (oldIdx < oldTitleEls.count) ? oldTitleEls[oldIdx] : ZRText(["silent": true])
+                newDetailEls[newIdx] = (oldIdx < oldDetailEls.count) ? oldDetailEls[oldIdx] : ZRText(["silent": true])
+            }
+            .execute()
+        // Any index not touched by the diff (defensive) gets a fresh element.
+        for idx in 0..<data.count() {
+            if newTitleEls[idx] == nil { newTitleEls[idx] = ZRText(["silent": true]) }
+            if newDetailEls[idx] == nil { newDetailEls[idx] = ZRText(["silent": true]) }
         }
 
         // data.each(function (idx) { ... })
@@ -701,7 +868,7 @@ open class GaugeView: ChartView {
                 let titleOffsetCenter = (itemTitleModel.get("offsetCenter") as? [Any]) ?? []
                 let titleX = posInfo.cx + number.parsePercent(titleOffsetCenter.count > 0 ? titleOffsetCenter[0] : nil, posInfo.r)
                 let titleY = posInfo.cy + number.parsePercent(titleOffsetCenter.count > 1 ? titleOffsetCenter[1] : nil, posInfo.r)
-                let labelEl = newTitleEls[idx]
+                let labelEl = newTitleEls[idx]!
                 labelEl.z2 = showPointerAbove ? 0 : 2
                 var ts = gaugeTextStyle(itemTitleModel,
                     text: data.getName(idx),
@@ -725,7 +892,7 @@ open class GaugeView: ChartView {
                 let detailColor: String? = jsTruthy(seriesModel.get(["progress", "show"]))
                     ? gaugeVisualFill(data.getItemVisual(idx, "style"))
                     : autoColor
-                let labelEl = newDetailEls[idx]
+                let labelEl = newDetailEls[idx]!
                 let formatter = itemDetailModel.get("formatter")
                 labelEl.z2 = showPointerAbove ? 0 : 2
                 var ts = gaugeTextStyle(itemDetailModel,
@@ -746,10 +913,10 @@ open class GaugeView: ChartView {
 
             _ = contentGroup.add(itemGroup)
         }
-        _ = self.group.add(contentGroup)
+        // contentGroup is retained (added to the view group once, on first render).
 
-        self._titleEls = newTitleEls
-        self._detailEls = newDetailEls
+        self._titleEls = newTitleEls.map { $0! }
+        self._detailEls = newDetailEls.map { $0! }
     }
 
 }
