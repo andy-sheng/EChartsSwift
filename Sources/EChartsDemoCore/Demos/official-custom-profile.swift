@@ -13,23 +13,21 @@
 //     random duration <= 10000ms, random <= 2000ms gap) off a fixed `startTime = 1700000000000`, and
 //     inlined it verbatim into BOTH panes. The generator loop and the now-unused `types` table are
 //     therefore dropped from webOptionJS; everything else (renderItem, option) is verbatim.
-//   - NATIVE PANE OFF (nativeSupported: false) — but NOT because a custom series is unportable. EChartsKit
-//     DOES port the custom series (Sources/EChartsKit/chart/custom) and CAN carry a Swift `renderItem`:
-//     CustomView resolves `customSeries.getRenderItem() ?? getCustomSeries(subType)`, so the closure may
-//     ride directly on the series option under the "renderItem" key (safe for THIS demo — WebPage.swift
-//     only JSON-serializes `option` when `webOptionJS` is nil, and we set it), or be registered globally
-//     via `registerCustomSeries` (what Demos/custom-basic.swift does — though that one already owns the
-//     global "custom" key, so the per-series key is the right door here). The flag is false only because
-//     the chart needs more than the closure and none of it could be verified (this port was audited under
-//     a no-build constraint): `api.style()` is an explicitly DEFERRED best-effort stub in CustomView (it
-//     returns just the raw item-visual bag, so the per-item colors / itemStyle.opacity are unproven), the
-//     rects want `echarts.graphic.clipRectByRect` which is NOT ported to Swift at all (it would have to be
-//     inlined here), and the chart leans on a category yAxis + `weakFilter` dataZoom driving a custom
-//     series. Lighting the native pane up is a real, tracked follow-up — not an impossibility. Until it is
-//     actually run, the flag stays honest and only the echarts.js reference pane renders.
+//   - NATIVE PANE ON (nativeSupported: true). EChartsKit ports the custom series (Sources/EChartsKit/chart/
+//     custom) and CAN carry a Swift `renderItem`: CustomView resolves `customSeries.getRenderItem() ??
+//     getCustomSeries(subType)`, so the closure rides directly on the series option under the "renderItem"
+//     key (safe for THIS demo — WebPage.swift only JSON-serializes `option` when `webOptionJS` is nil, and
+//     we set it). `customProfileRenderItem` below is the JS `renderItem` ported statement for statement,
+//     including `echarts.graphic.clipRectByRect` — NOT ported to EChartsKit itself, so it is inlined here
+//     as `profileClipRectByRect` (verbatim from echarts/src/util/graphic.ts) since this renderItem is its
+//     only caller in this demo. `api.style()` remains the best-effort stub documented in CustomView (raw
+//     item-visual bag), so the per-item `itemStyle.opacity` may not be exactly proven, but the rest of the
+//     chart — rect placement/clipping against the category yAxis + `weakFilter` dataZoom-driven coordSys —
+//     is real.
 //   - The upstream data's `itemStyle: { normal: { color } }` is the ECharts-3 nesting that real echarts
 //     still flattens via backwardCompat; the Swift option writes the flattened `itemStyle: { color }`.
 import Foundation
+import EChartsKit
 
 // The 30 pre-generated records (see DEVIATIONS): value = [categoryIndex, start, end, duration(ms)].
 private let profileData: [[String: Any]] = [
@@ -102,12 +100,95 @@ private let profileStartTime: Double = 1700000000000.0
 
 private let profileCategories: [String] = ["categoryA", "categoryB", "categoryC"]
 
+// MARK: - the upstream renderItem, ported
+
+// Coerce a ParsedValue (Any: Double | Int | NSNumber) to Double — the recurring Int-vs-Double read trap.
+private func profileNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return 0
+}
+
+/// `echarts.graphic.clipRectByRect` (echarts/src/util/graphic.ts), ported verbatim — NOT in EChartsKit
+/// (see file header), so it is inlined here since this renderItem is its only caller in this demo.
+//
+// export function clipRectByRect(targetRect: ZRRectLike, rect: ZRRectLike): ZRRectLike | undefined {
+//     const x = mathMax(targetRect.x, rect.x);
+//     const x2 = mathMin(targetRect.x + targetRect.width, rect.x + rect.width);
+//     const y = mathMax(targetRect.y, rect.y);
+//     const y2 = mathMin(targetRect.y + targetRect.height, rect.y + rect.height);
+//
+//     // If the total rect is cliped, nothing, including the border,
+//     // should be painted. So return undefined.
+//     if (x2 >= x && y2 >= y) {
+//         return { x: x, y: y, width: x2 - x, height: y2 - y };
+//     }
+// }
+private func profileClipRectByRect(_ targetRect: [String: Any], _ rect: [String: Any]) -> [String: Any]? {
+    let tx = profileNum(targetRect["x"]), ty = profileNum(targetRect["y"])
+    let tw = profileNum(targetRect["width"]), th = profileNum(targetRect["height"])
+    let rx = profileNum(rect["x"]), ry = profileNum(rect["y"])
+    let rw = profileNum(rect["width"]), rh = profileNum(rect["height"])
+    let x = max(tx, rx)
+    let x2 = min(tx + tw, rx + rw)
+    let y = max(ty, ry)
+    let y2 = min(ty + th, ry + rh)
+    // If the total rect is cliped, nothing, including the border, should be painted. So return nil.
+    if x2 >= x && y2 >= y {
+        return ["x": x, "y": y, "width": x2 - x, "height": y2 - y]
+    }
+    return nil
+}
+
+/// The official `renderItem`, statement for statement. Typed EXACTLY `CustomSeriesRenderItem` so
+/// CustomView's `get("renderItem") as? CustomSeriesRenderItem` cast holds (see header).
+private let customProfileRenderItem: CustomSeriesRenderItem = { params, api in
+    // var categoryIndex = api.value(0);
+    let categoryIndex = profileNum(api.value(0.0, nil))
+    // var start = api.coord([api.value(1), categoryIndex]);
+    let start = api.coord([profileNum(api.value(1.0, nil)), categoryIndex], nil)
+    // var end = api.coord([api.value(2), categoryIndex]);
+    let end = api.coord([profileNum(api.value(2.0, nil)), categoryIndex], nil)
+    guard start.count >= 2, end.count >= 2 else { return nil }
+    // var height = api.size([0, 1])[1] * 0.6;
+    let sizeArr = api.size([0.0, 1.0], nil) as? [Double]
+    let height = (sizeArr?.count ?? 0) >= 2 ? sizeArr![1] * 0.6 : 0
+
+    // var rectShape = echarts.graphic.clipRectByRect({ x, y, width, height }, { x, y, width, height });
+    let targetRect: [String: Any] = [
+        "x": start[0],
+        "y": start[1] - height / 2,
+        "width": end[0] - start[0],
+        "height": height
+    ]
+    // params.coordSys.x/y/width/height — cartesian2dPrepareCustom puts all four on the extra bag.
+    let coordRect: [String: Any] = [
+        "x": params.coordSys.extra["x"] as? Double ?? 0,
+        "y": params.coordSys.extra["y"] as? Double ?? 0,
+        "width": params.coordSys.extra["width"] as? Double ?? 0,
+        "height": params.coordSys.extra["height"] as? Double ?? 0
+    ]
+    guard let rectShape = profileClipRectByRect(targetRect, coordRect) else {
+        // return rectShape && { ... } — a falsy (undefined) rectShape returns nothing to draw.
+        return nil
+    }
+
+    // return { type: 'rect', transition: ['shape'], shape: rectShape, style: api.style() };
+    return [
+        "type": "rect",
+        "transition": ["shape"],
+        "shape": rectShape,
+        "style": api.style(nil, nil)
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_profile = EChartsDemo(
         name: "official-custom-profile", category: "custom",
         summary: "性能分析图 — Profile",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 var startTime = 1700000000000;
@@ -271,15 +352,8 @@ option = {
             "series": [
                 [
                     "type": "custom",
-                    // PORT-NOTE: series.renderItem omitted — the JS closure that IS this chart: it maps
-                    // each datum to grid pixels (api.coord of [start, categoryIndex] and [end, ...]),
-                    // takes 60% of a category band's height (api.size([0,1])[1] * 0.6), clips that rect to
-                    // the coordSys via echarts.graphic.clipRectByRect, and returns a `rect` element with
-                    // `transition: ['shape']` and `style: api.style()`.
-                    // EChartsKit CAN express this (a `CustomSeriesRenderItem` closure under this "renderItem"
-                    // key, or registerCustomSeries) — see the NATIVE PANE OFF note in the header for why the
-                    // native pane is nonetheless left dark. This is a deliberate, unverified gap, not a
-                    // framework limit.
+                    // The per-series closure — see file header (`customProfileRenderItem`, above).
+                    "renderItem": customProfileRenderItem,
                     "itemStyle": [
                         "opacity": 0.8
                     ] as [String: Any],

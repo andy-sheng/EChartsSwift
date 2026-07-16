@@ -6,33 +6,62 @@
 // tooltip and labels their names; the top label shows the profit.
 //
 // DEVIATIONS:
-//   - nativeSupported: FALSE. The chart IS the renderItem closure — without it a `custom` series draws
-//     nothing at all, and the Swift [String: Any] option here carries no closure. Two corrections to the
-//     obvious guesses about why, both verified in the framework:
-//       * It is NOT that EChartsKit cannot carry a Swift renderItem. CustomView resolves
-//         `customSeries.getRenderItem() ?? getCustomSeries(subType)` (CustomView.swift:739), so a closure
-//         may ride PER-SERIES on the option bag under the "renderItem" key — that door does not touch the
-//         global registry and would not clobber anything. (Safe for this demo specifically: WebPage.swift
-//         only JSON-serializes `option` when `webOptionJS` is nil, and we set it.)
-//       * But the GLOBAL door is a live hazard, so it is deliberately not used: Demos/custom-basic.swift
-//         does `registerCustomSeries("custom", ...)`, and that registry is keyed by series subType. Were
-//         this demo flipped on without its own per-series closure, the `?? getCustomSeries("custom")`
-//         fallback would silently resolve to custom-basic's renderItem and draw the WRONG chart.
-//     The flag is false because the one thing this chart needs most is unproven and could not be run (this
-//     port was audited under a no-build constraint): the bars take their entire 6-colour palette from
-//     `api.style()`, which is an explicitly DEFERRED best-effort stub in CustomView (style() at
-//     CustomView.swift:917 returns just the raw item-visual bag — no itemStyle/label/ec4 compat), so the
-//     per-datum colours are exactly what would not be trustworthy. Lighting the native pane up is a real,
-//     tracked follow-up — not an impossibility. Until it is actually run, the flag stays honest.
+//   - nativeSupported: TRUE. `renderItem` is ported statement-for-statement as customProfitRenderItem
+//     (below) and set PER-SERIES on the option bag under the "renderItem" key. CustomView resolves
+//     `customSeries.getRenderItem() ?? getCustomSeries(subType)` (CustomView.swift:739), so this rides the
+//     per-series door — it does not touch the global registry (Demos/custom-basic.swift registers a
+//     DIFFERENT bar renderItem under the "custom" subType there; the per-series closure here takes
+//     precedence over that fallback, so the two demos can't cross-contaminate). Safe for this demo
+//     specifically: WebPage.swift only JSON-serializes `option` when `webOptionJS` is nil, and we set it.
 //   - webOptionJS: the official source is TypeScript; the TS-only syntax (`api.size!(...)`, `as number`,
 //     `as number[]`, trailing `export {};`) is stripped so the reference pane runs it as classic JS.
 //     Everything else — colours, data, the .map() that attaches itemStyle, renderItem — is verbatim.
+import Foundation
+import EChartsKit
+
+// Coerce a ParsedValue (Any: Double | Int | NSNumber) to Double — the recurring Int-vs-Double read trap.
+private func customProfitNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return 0
+}
+
+// The official `renderItem`, statement for statement.
+//   var yValue = api.value(2);
+//   var start = api.coord([api.value(0), yValue]);
+//   var size = api.size([api.value(1) - api.value(0), yValue]);
+//   var style = api.style();
+//   return { type: 'rect', shape: { x: start[0], y: start[1], width: size[0], height: size[1] }, style };
+private let customProfitRenderItem: CustomSeriesRenderItem = { params, api in
+    let yValue = customProfitNum(api.value(2.0, nil))
+    let start = api.coord([customProfitNum(api.value(0.0, nil)), yValue], nil)
+    let size = api.size(
+        [customProfitNum(api.value(1.0, nil)) - customProfitNum(api.value(0.0, nil)), yValue],
+        nil
+    ) as? [Double] ?? []
+    let style = api.style(nil, nil)
+
+    guard start.count >= 2, size.count >= 2 else { return nil }
+
+    return [
+        "type": "rect",
+        "shape": [
+            "x": start[0],
+            "y": start[1],
+            "width": size[0],
+            "height": size[1]
+        ] as [String: Any],
+        "style": style
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_profit = EChartsDemo(
         name: "official-custom-profit", category: "custom",
         summary: "利润分布直方图 — Profit",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const colorList = [
@@ -119,10 +148,7 @@ option = {
             "series": [
                 [
                     "type": "custom",
-                    // PORT-NOTE: renderItem omitted — the JS closure read api.value(2) (profit), projected
-                    // api.coord([api.value(0), profit]) to the bar's top-left pixel and api.size([to - from,
-                    // profit]) to its pixel width/height, then returned a `rect` element with that shape and
-                    // api.style() (the per-datum itemStyle colour). It IS the chart; see nativeSupported: false.
+                    "renderItem": customProfitRenderItem,
                     "label": [
                         "show": true,
                         "position": "top"
