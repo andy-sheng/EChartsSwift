@@ -17,6 +17,43 @@
 //     function. Without it the `custom` series has nothing to draw, so nativeSupported is false. The
 //     Swift option below still mirrors every other key (see the PORT-NOTEs for the two JS closures).
 import Foundation
+import EChartsKit
+
+// Numeric coercion for the renderItem api values (ParsedValue is `Any`; api.value may box Int or Double).
+private func customOHLCNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// The official `renderItem`, ported statement-for-statement. Typed EXACTLY CustomSeriesRenderItem so
+//   CustomView's `get("renderItem") as? CustomSeriesRenderItem` cast holds. Draws each datum as a group
+//   of three lines: the low→high stick, a left tick at the open, a right tick at the close.
+private let customOHLCRenderItem: CustomSeriesRenderItem = { _, api in
+    let xValue = customOHLCNum(api.value(0.0, nil))
+    let openPoint = api.coord([xValue, customOHLCNum(api.value(1.0, nil))], nil)
+    let closePoint = api.coord([xValue, customOHLCNum(api.value(2.0, nil))], nil)
+    let lowPoint = api.coord([xValue, customOHLCNum(api.value(3.0, nil))], nil)
+    let highPoint = api.coord([xValue, customOHLCNum(api.value(4.0, nil))], nil)
+    guard openPoint.count >= 2, closePoint.count >= 2, lowPoint.count >= 2, highPoint.count >= 2 else { return nil }
+    let halfWidth = ((api.size([1.0, 0.0], nil) as? [Double])?.first ?? 0) * 0.35
+    let style = api.style(["stroke": api.visual("color", nil) as Any], nil)
+    return [
+        "type": "group",
+        "children": [
+            ["type": "line",
+             "shape": ["x1": lowPoint[0], "y1": lowPoint[1], "x2": highPoint[0], "y2": highPoint[1]] as [String: Any],
+             "style": style] as [String: Any],
+            ["type": "line",
+             "shape": ["x1": openPoint[0], "y1": openPoint[1], "x2": openPoint[0] - halfWidth, "y2": openPoint[1]] as [String: Any],
+             "style": style] as [String: Any],
+            ["type": "line",
+             "shape": ["x1": closePoint[0], "y1": closePoint[1], "x2": closePoint[0] + halfWidth, "y2": closePoint[1]] as [String: Any],
+             "style": style] as [String: Any]
+        ]
+    ] as [String: Any]
+}
 
 // The upstream asset: rows of [date, open, close, lowest, highest, volume]. Read ONCE from the repo;
 // a read/parse failure degrades to empty data (the pane renders an empty grid rather than crashing).
@@ -54,7 +91,7 @@ extension EChartsDemoRegistry {
         name: "official-custom-ohlc", category: "candlestick",
         summary: "OHLC 图（使用自定义系列） — OHLC Chart",
         width: 640, height: 420,
-        nativeSupported: false,   // renderItem IS the chart — see header
+        nativeSupported: true,   // renderItem ported to Swift (customOHLCRenderItem) — see header
         collection: .official,
         webOptionJS: #"""
 var rawData = \#(customOHLCRawJSON);
@@ -291,11 +328,11 @@ option = {
             "series": [
                 [
                     "name": "Dow-Jones index",
-                    // PORT-NOTE: renderItem omitted — JS closure drawing each datum as a group of three
-                    // lines: the low→high stick, a left tick at the open, a right tick at the close, each
-                    // half-tick 0.35 * api.size([1,0])[0] wide and stroked with the series' visual color.
-                    // Without it the `custom` series draws nothing; hence nativeSupported: false.
+                    // renderItem ported to Swift (customOHLCRenderItem, top of file): each datum is a group
+                    // of three lines — the low→high stick, a left tick at the open, a right tick at the
+                    // close, each half-tick 0.35 * api.size([1,0])[0] wide, stroked with the visual color.
                     "type": "custom",
+                    "renderItem": customOHLCRenderItem,
                     "dimensions": ["-", "open", "close", "lowest", "highest"],
                     "encode": [
                         "x": 0.0,
