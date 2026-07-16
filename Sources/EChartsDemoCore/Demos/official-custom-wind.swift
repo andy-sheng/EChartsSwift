@@ -101,12 +101,37 @@ private let windColorRamp: [String] = [
     "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"
 ]
 
+// Numeric coercion for the renderItem api values (ParsedValue is Any; api.value may box Int or Double).
+private func customWindNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// upstream `renderItem`: per wind sample project two geo points (a short segment along the flow vector,
+//   clamped to the lon/lat bounds) and draw a `line` between them, stroked with the visualMap colour.
+private let customWindRenderItem: CustomSeriesRenderItem = { _, api in
+    let x = customWindNum(api.value(0.0, nil))
+    let y = customWindNum(api.value(1.0, nil))
+    let dx = customWindNum(api.value(2.0, nil))
+    let dy = customWindNum(api.value(3.0, nil))
+    let start = api.coord([max(x - dx / 5, -180), max(y - dy / 5, -90)], nil)
+    let end = api.coord([min(x + dx / 5, 180), min(y + dy / 5, 90)], nil)
+    guard start.count >= 2, end.count >= 2 else { return nil }
+    return [
+        "type": "line",
+        "shape": ["x1": start[0], "y1": start[1], "x2": end[0], "y2": end[1]] as [String: Any],
+        "style": ["lineWidth": 0.5, "stroke": api.visual("color", nil) as Any] as [String: Any]
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_wind = EChartsDemo(
         name: "official-custom-wind", category: "custom",
         summary: "使用自定义系列绘制风场 — Use custom series to draw wind vectors",
         width: 720, height: 460,
-        nativeSupported: false,   // renderItem IS the chart — see the header.
+        nativeSupported: true,
         mapRegistrations: ["world": windWorldGeoJSON],
         collection: .official,
         webOptionJS: #"""
@@ -264,12 +289,9 @@ myChart.setOption(
                         "coordinateSystem": "geo",
                         "data": windFieldData,
                         "encode": ["x": 0.0, "y": 0.0] as [String: Any],
-                        // PORT-NOTE: series.renderItem omitted — the JS closure IS this chart. Per datum it read
-                        // (x, y, dx, dy) = api.value(0..3), projected TWO geo points with api.coord() —
-                        // [max(x - dx/5, -180), max(y - dy/5, -90)] and [min(x + dx/5, 180), min(y + dy/5, 90)] —
-                        // and returned a `line` shape between them stroked with api.visual('color') (the
-                        // visualMap's dimension-4 colour) at lineWidth 0.5. Without it the native pane draws no
-                        // wind segments at all, which is why nativeSupported is false.
+                        // renderItem ported to Swift (customWindRenderItem, top of file): per sample, a `line`
+                        // between two geo-projected points along the flow vector, stroked the visualMap colour.
+                        "renderItem": customWindRenderItem,
                         "progressive": 2000.0
                     ] as [String: Any]
                 ]
