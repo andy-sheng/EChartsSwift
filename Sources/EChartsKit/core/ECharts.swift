@@ -1723,8 +1723,20 @@ public final class ECharts: EChartsType {
         //   wipes `root`, the prior bg rect must be removed/reused each render so it never accumulates.
         //   Transparent/absent → no rect (the host clear shows through, preserving the default white).
         if let old = _bgRect { _ = root.remove(old); _bgRect = nil }
-        if let bg = ecModel.get("backgroundColor", true) as? String,
-           !bg.isEmpty, bg != "transparent", bg != "rgba(0,0,0,0)" {
+        let bgRaw = ecModel.get("backgroundColor", true)
+        // Absent / transparent SOLID color → no rect (the host clear shows through, preserving the default
+        //   white). A gradient/pattern object is never "transparent" here, so it always draws.
+        let bgSkippable: Bool
+        if let s = bgRaw as? String {
+            bgSkippable = s.isEmpty || s == "transparent" || s == "rgba(0,0,0,0)"
+        } else {
+            bgSkippable = bgRaw == nil
+        }
+        // Bridge via `zrPaintFromStyleValue` (not `as? String`) so a gradient `backgroundColor` — e.g.
+        //   `new echarts.graphic.RadialGradient(...)` / the `{type:'radial'|'linear', ...}` object form
+        //   (official bubble-gradient) — paints the canvas gradient instead of being dropped to white.
+        //   Solid strings still bridge to `.string`.
+        if !bgSkippable, let bgPaint = zrPaintFromStyleValue(bgRaw) {
             var shape = RectShape()
             shape.x = 0
             shape.y = 0
@@ -1738,7 +1750,7 @@ public final class ECharts: EChartsType {
             // `'#404a59'` came out black too. It was the single biggest source of native-vs-echarts.js
             // divergence in the official-examples sweep.
             var bgStyle = PathStyleProps()
-            bgStyle.fill = .string(bg)
+            bgStyle.fill = bgPaint
             let bgRect = Rect([
                 "shape": shape as PathShape,
                 "style": bgStyle,

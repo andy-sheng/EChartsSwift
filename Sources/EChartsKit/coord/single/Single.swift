@@ -166,6 +166,15 @@ public final class Single: CoordinateSystemMaster {
     public func update(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let axis = self._axis!
         scaleRawExtentInfoCreate(axis, AXIS_EXTENT_INFO_BUILD_FROM_COORD_SYS_UPDATE)
+        // BUGFIX (category single axis), mirrors coord/cartesian/Grid.update: an ordinal scale whose
+        //   extent froze blank ([inf,-inf]) at scale-init (before its ordinalMeta collected its
+        //   `data` categories) must be re-derived to [0, n-1] here — otherwise `dataToCoord` returns NaN
+        //   and BOTH the axis tick labels AND any scatter placed on the single axis vanish. Same
+        //   port-specific ordinal-meta timing workaround the Grid path already applies.
+        if let ordinal = axis.scale as? OrdinalScale {
+            ordinal.setSortInfo(axis.model.get("categorySortInfo") as? OrdinalSortInfo)
+            ordinal.recomputeExtentFromOrdinalMetaIfBlank()
+        }
         scaleCalcNice(ScaleCalcNiceAxisLike(scale: axis.scale, model: axis.model))
     }
 

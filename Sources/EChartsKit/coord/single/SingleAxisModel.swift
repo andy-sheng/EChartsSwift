@@ -81,7 +81,7 @@ public typealias SingleAxisOption = AxisBaseOption
 //   is replaced by that base-class conformance. `AxisModelExtendedInCreator` (getCategories /
 //   getOrdinalMeta / updateAxisBreaks) is NOT implemented here — like CartesianAxisModel it is provided
 //   by the subclass `axisModelCreator` generates from this class (see integration notes / install).
-public final class SingleAxisModel: AxisBaseModel {
+public final class SingleAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     // static type = COMPONENT_TYPE_SINGLE_AXIS;
     // type = SingleAxisModel.type;  (the instance `type` mirrors the static via ComponentModel's `type`.)
@@ -165,6 +165,50 @@ public final class SingleAxisModel: AxisBaseModel {
             "jitterOverlap": true,
             "jitterMargin": 2.0,
         ] as [String: Any]
+    }
+
+    // PORT-NOTE (single-axis category support): upstream `SingleAxisModel` gets its `getOrdinalMeta` /
+    //   `getCategories` from `axisModelCommonMixin`-adjacent machinery; the port instead supplies them here
+    //   the SAME way the generated cartesian `AxisModel` (coord/axisModelCreator.swift) does — build an
+    //   `OrdinalMeta` from the axis `data` on `optionUpdated`, then expose it. Without this a `category`
+    //   single axis (e.g. the punch-card scatter-single-axis example) has an EMPTY ordinal scale
+    //   (extent `[inf,-inf]`), so `dataToCoord` returns NaN and neither the tick labels nor any scatter
+    //   placed on the axis render. Mirrors AxisModel.optionUpdated / getCategories / getOrdinalMeta / updateAxisBreaks.
+
+    // private __ordinalMeta: OrdinalMeta;
+    private var __ordinalMeta: OrdinalMeta!
+
+    // upstream (generated AxisModel): optionUpdated() { if (this.option.type === 'category') this.__ordinalMeta = OrdinalMeta.createByAxisModel(this); }
+    public override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
+        let thisOption = self.option as? [String: Any]
+        if (thisOption?["type"] as? String) == "category" {
+            self.__ordinalMeta = OrdinalMeta.createByAxisModel(self)
+        }
+    }
+
+    // upstream (generated AxisModel): getCategories(rawData?)
+    public override func getCategories(_ rawData: Bool? = nil) -> [OrdinalRawValue]? {
+        let option = self.option as? [String: Any]
+        if (option?["type"] as? String) == "category" {
+            if rawData == true {
+                return option?["data"] as? [OrdinalRawValue]
+            }
+            return self.__ordinalMeta?.categories
+        }
+        return nil
+    }
+
+    // upstream (generated AxisModel): getOrdinalMeta()
+    public func getOrdinalMeta() -> OrdinalMeta {
+        return self.__ordinalMeta
+    }
+
+    // upstream (generated AxisModel): updateAxisBreaks(payload)
+    public func updateAxisBreaks(_ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult {
+        let axisBreakHelper = getAxisBreakHelper()
+        return axisBreakHelper != nil
+            ? axisBreakHelper!.updateModelAxisBreak(self, payload)
+            : AxisBreakUpdateResult(breaks: [])
     }
 }
 
