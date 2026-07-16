@@ -239,6 +239,17 @@ private func mountMethods(_ provider: DefaultDataProvider, _ data: OptionSourceD
            let bridged = provider._data as? [Any?] {
             provider._data = bridged
         }
+        // Same trap for ARRAY_ROWS (a `dataset.source` table): both its getters index `rawData as?
+        //   [[Any]]` per call, and when `_data`'s dynamic type is `Array<Any>` (each row a `[Any]`
+        //   boxed as `Any`) that outer cast DEEP-validates every row on EVERY call — O(rows) per
+        //   getItem, O(rows²) over initData (measured ~14s for candlestick-large's 20k×7 dataset).
+        //   Pre-bridge the table to a true `[[Any]]` ONCE so the per-call cast is a same-type O(1)
+        //   check. (KEYED_COLUMNS is excluded — its getter casts to a `[String: [...]]` dict, not a row
+        //   table.) appendData for array-rows reassigns `_data` wholesale, so this stays consistent.
+        if sourceFormat == SOURCE_FORMAT_ARRAY_ROWS,
+           let bridged = provider._data as? [[Any]] {
+            provider._data = bridged
+        }
         // PORT-NOTE: upstream binds the `data` reference; we read `provider._data` live so that
         // `appendData` (which reassigns `_data`, since Swift arrays are value types) is visible.
         provider._getItem = { [unowned provider] idx, out in
