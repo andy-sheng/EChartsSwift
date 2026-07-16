@@ -18,6 +18,7 @@
 //     wind barbs the example is named for. The `option` below is still a faithful port (renderItems and
 //     the tooltip/series formatters omitted with PORT-NOTEs) for when the framework can carry them.
 import Foundation
+import EChartsKit
 
 // Raw JSON spliced into the web pane verbatim (the fetch's `rawData`); falls back to an empty payload.
 private let windBarbRawJSON: String = {
@@ -67,12 +68,85 @@ private let windBarbWeatherData: [[Any]] = {
     }
 }()
 
+// upstream: directionMap[name] = Math.PI/8 * index over the 16 compass names; arrowSize/weatherIconSize.
+private let windBarbDirectionMap: [String: Double] = {
+    let names = ["W", "WSW", "SW", "SSW", "S", "SSE", "SE", "ESE", "E", "ENE", "NE", "NNE", "N", "NNW", "NW", "WNW"]
+    var m: [String: Double] = [:]
+    for (index, name) in names.enumerated() { m[name] = Double.pi / 8 * Double(index) }
+    return m
+}()
+private let windBarbArrowSize = 18.0
+private let windBarbWeatherIconSize = 45.0
+
+private func windBarbNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+private func windBarbStr(_ v: Any?) -> String { if let s = v as? String { return s }; return "\(v ?? "")" }
+// JS number stringification (whole → no trailing .0), for the "min - max°" label.
+private func windBarbTemp(_ v: Any?) -> String {
+    let n = windBarbNum(v)
+    if n.isNaN { return "" }
+    return n == n.rounded() ? String(Int(n)) : String(n)
+}
+
+// upstream renderArrow: a rotated wind-barb arrow `path` at each [time, windSpeed] point, rotation from
+//   directionMap[R] (dims: time=0, windSpeed=1, R=2).
+private let windBarbArrowRenderItem: CustomSeriesRenderItem = { _, api in
+    let point = api.coord([windBarbNum(api.value(0.0, nil)), windBarbNum(api.value(1.0, nil))], nil)
+    guard point.count >= 2 else { return nil }
+    let rotation = windBarbDirectionMap[windBarbStr(api.value(2.0, nil))] ?? 0
+    return [
+        "type": "path",
+        "shape": [
+            "pathData": "M31 16l-15-15v9h-26v12h26v9z",
+            "x": -windBarbArrowSize / 2, "y": -windBarbArrowSize / 2,
+            "width": windBarbArrowSize, "height": windBarbArrowSize
+        ] as [String: Any],
+        "rotation": rotation,
+        "position": point,
+        "style": api.style(["stroke": "#555", "lineWidth": 1.0], nil)
+    ] as [String: Any]
+}
+
+// upstream renderWeather: a group of {weather-icon image + "min - max°" text} per forecast day, centred on
+//   the day's noon (dims: time=0, weatherIcon=2, minTemp=3, maxTemp=4).
+private let windBarbWeatherRenderItem: CustomSeriesRenderItem = { _, api in
+    let point = api.coord([windBarbNum(api.value(0.0, nil)) + (3600 * 24 * 1000) / 2, 0.0], nil)
+    guard point.count >= 2 else { return nil }
+    return [
+        "type": "group",
+        "children": [
+            [
+                "type": "image",
+                "style": [
+                    "image": api.value(2.0, nil) as Any,
+                    "x": -windBarbWeatherIconSize / 2, "y": -windBarbWeatherIconSize / 2,
+                    "width": windBarbWeatherIconSize, "height": windBarbWeatherIconSize
+                ] as [String: Any],
+                "position": [point[0], 110.0]
+            ] as [String: Any],
+            [
+                "type": "text",
+                "style": [
+                    "text": "\(windBarbTemp(api.value(3.0, nil))) - \(windBarbTemp(api.value(4.0, nil)))°",
+                    "textFont": api.font(["fontSize": 14.0]),
+                    "align": "center", "verticalAlign": "bottom"
+                ] as [String: Any],
+                "position": [point[0], 80.0]
+            ] as [String: Any]
+        ]
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_wind_barb = EChartsDemo(
         name: "official-wind-barb", category: "custom",
         summary: "风向图 — Wind Barb",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const rawData = \#(windBarbRawJSON);
@@ -468,9 +542,9 @@ myChart.setOption(option);
                 ] as [String: Any],
                 [
                     "type": "custom",
-                    // PORT-NOTE: series[1].renderItem (renderArrow) omitted — JS closure drew a rotated
-                    //            arrow path (the wind barb) at each [time, windSpeed] point,
-                    //            rotation = directionMap[R]. This IS the chart; no Swift equivalent.
+                    // renderItem ported (windBarbArrowRenderItem): a rotated wind-barb arrow path per point,
+                    //   rotation = directionMap[R].
+                    "renderItem": windBarbArrowRenderItem,
                     "encode": ["x": 0.0, "y": 1.0] as [String: Any],
                     "data": windBarbData as [Any],
                     "z": 10.0
@@ -485,9 +559,9 @@ myChart.setOption(option);
                 ] as [String: Any],
                 [
                     "type": "custom",
-                    // PORT-NOTE: series[3].renderItem (renderWeather) omitted — JS closure drew a group of
-                    //            {weather-icon image + "min - max°" text} per forecast day; its
-                    //            tooltip.formatter (per-day min/max) is omitted with it.
+                    // renderItem ported (windBarbWeatherRenderItem): a group of {weather-icon image +
+                    //   "min - max°" text} per forecast day. (tooltip.formatter still omitted — JS closure.)
+                    "renderItem": windBarbWeatherRenderItem,
                     "data": windBarbWeatherData as [Any],
                     "tooltip": ["trigger": "item"] as [String: Any],
                     "yAxisIndex": 2.0,
