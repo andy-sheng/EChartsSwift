@@ -793,18 +793,41 @@ open class TreemapView: ChartView {
                 // (textEl as ECElement).disableLabelLayout = true -> DEFERRED (no ECElement.disableLabelLayout field).
             }
 
-            // upstream `textEl.beforeUpdate = function () { ... width/height from rect - padding ... }`
-            //   (per-frame truncation sizing) -> DEFERRED: `Element.beforeUpdate` is a non-settable
-            //   method in the port (no closure hook). The static truncation fields below still apply.
+            // const textStyle = textEl.style;
+            // const textPadding = normalizeCssArray(textStyle.padding || 0);
+            var textStyle = textEl.textStyle ?? TextStyleProps()
+            let textPadding = treemapNormalizeCssArray4(textStyle.padding)
+
+            // upstream `textEl.beforeUpdate = function () { const width/height = (upperLabelRect ?
+            //   upperLabelRect : rectEl.shape).{width,height} - textPadding[..]; textEl.setStyle({width,
+            //   height}); }` — a per-frame hook (`Element.beforeUpdate` is a non-settable method in the
+            //   port, so no closure hook). The rect shape / upperLabelRect are already at their final
+            //   size by the time prepareText runs (renderContent/renderBackground set the shape first),
+            //   so the width/height are computed ONCE here. Without them `overflow`/`lineOverflow:
+            //   'truncate'` has no box to truncate against and the label is dropped entirely.
+            let boxWidth = upperLabelRect?.width ?? ((rectEl.shape as? RectShape)?.width ?? 0)
+            let boxHeight = upperLabelRect?.height ?? ((rectEl.shape as? RectShape)?.height ?? 0)
+            let labelWidth = Swift.max(boxWidth - textPadding[1] - textPadding[3], 0)
+            let labelHeight = Swift.max(boxHeight - textPadding[0] - textPadding[2], 0)
+            textStyle.width = labelWidth
+            textStyle.height = labelHeight
 
             // textStyle.truncateMinChar = 2; textStyle.lineOverflow = 'truncate';
-            var textStyle = textEl.textStyle ?? TextStyleProps()
             textStyle.truncateMinChar = 2
             textStyle.lineOverflow = "truncate"
-            textEl.useStyle(textStyle)
 
-            // addDrillDownIcon(...) -> DEFERRED (isLeafRoot drill-icon prefix; also touches the
-            //   emphasis-state label text — a states concern outside this label retrofit).
+            // addDrillDownIcon(textStyle, upperLabelRect, thisLayout): a leaf-root node (a node at
+            //   `leafDepth` that still has hidden children — i.e. it is drillable) gets its label
+            //   prefixed with the series `drillDownIcon` (default '▶'). Ported for the NORMAL,
+            //   non-upperLabel label; the emphasis-state variant remains DEFERRED (states).
+            if upperLabelRect == nil,
+               (thisLayout["isLeafRoot"] as? Bool) ?? false,
+               let icon = seriesModel.get("drillDownIcon", true) as? String, !icon.isEmpty,
+               let curText = textStyle.text, !curText.isEmpty {
+                textStyle.text = icon + "  " + curText
+            }
+
+            textEl.useStyle(textStyle)
         }
     }
 }
@@ -858,6 +881,25 @@ private func applyRectRadius(_ rect: Rect, _ r: Any?) {
 private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {
     // `RectLike` is a protocol (AnyObject); `BoundingRect` is the concrete conformer.
     return BoundingRect(x, y, width, height)
+}
+
+// upstream `zrUtil.normalizeCssArray(textStyle.padding || 0)` → [top, right, bottom, left]. Mirrors the
+//   CSS-shorthand expansion (1→all, 2→[v,h], 3→[t,h,b]). `nil` padding (the `|| 0` fallback) → zeros.
+private func treemapNormalizeCssArray4(_ p: NumberOrNumberArray?) -> [Double] {
+    switch p {
+    case .none:
+        return [0, 0, 0, 0]
+    case .some(.number(let v)):
+        return [v, v, v, v]
+    case .some(.array(let a)):
+        switch a.count {
+        case 0: return [0, 0, 0, 0]
+        case 1: return [a[0], a[0], a[0], a[0]]
+        case 2: return [a[0], a[1], a[0], a[1]]
+        case 3: return [a[0], a[1], a[2], a[1]]
+        default: return [a[0], a[1], a[2], a[3]]
+        }
+    }
 }
 
 // Phase 49 (hover-emphasis): resolve a treemap node `emphasis.focus` string to its lineage index set

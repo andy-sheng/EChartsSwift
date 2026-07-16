@@ -228,6 +228,15 @@ public final class Storage {
 
         let textEl = el.getTextContent()
         if let textEl = textEl {
+            // zrender parity: the attached text inherits its host's z-ordering (zlevel/z/z2) so the
+            // display-list sort keeps the label immediately after (painted OVER) its host. Without this
+            // the label keeps its default z2 == 0 and is drawn under any host whose z2 > 0 (e.g. the
+            // treemap tiles use depth-based z2), hiding the label behind its own tile.
+            if let host = el as? Displayable {
+                textEl.zlevel = host.zlevel
+                textEl.z = host.z
+                textEl.z2 = host.z2
+            }
             self._updateAndAddDisplayable(textEl, thisClipPaths, includeIgnore)
         }
     }
