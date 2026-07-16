@@ -408,9 +408,25 @@ final class TextStyleAnimationAccessor: AnimationTarget {
     unowned let text: ZRText
     init(_ text: ZRText) { self.text = text }
     func animationGet(_ key: String) -> Any? {
-        // Only the tweened text-style props are exposed (opacity is what the label enter animation uses).
+        // Tweened text-style props: opacity (label enter animation) + the stroke/dash/fill/shadow subset
+        //   that keyframe animations drive (e.g. graphic-stroke-animation sweeps lineDash/lineDashOffset
+        //   and tweens fill).
+        guard let s = text.textStyle else { return nil }
         switch key {
-        case "opacity": return text.textStyle?.opacity ?? 1
+        case "opacity": return s.opacity ?? 1
+        case "fillOpacity": return s.fillOpacity
+        case "strokeOpacity": return s.strokeOpacity
+        case "lineWidth": return s.lineWidth
+        case "lineDashOffset": return s.lineDashOffset
+        case "lineDash":
+            if case .some(.values(let arr)) = s.lineDash { return arr }
+            return nil
+        case "fill": return s.fill
+        case "stroke": return s.stroke
+        case "shadowBlur": return s.shadowBlur
+        case "shadowOffsetX": return s.shadowOffsetX
+        case "shadowOffsetY": return s.shadowOffsetY
+        case "shadowColor": return s.shadowColor
         default: return nil
         }
     }
@@ -418,12 +434,35 @@ final class TextStyleAnimationAccessor: AnimationTarget {
         guard var s = text.textStyle else { return }
         switch key {
         case "opacity": if let v = value as? Double { s.opacity = v }
+        case "fillOpacity": if let v = value as? Double { s.fillOpacity = v }
+        case "strokeOpacity": if let v = value as? Double { s.strokeOpacity = v }
+        case "lineWidth": if let v = value as? Double { s.lineWidth = v }
+        case "lineDashOffset": if let v = value as? Double { s.lineDashOffset = v }
+        case "lineDash": if let arr = value as? [Double] { s.lineDash = .values(arr) }
+        case "fill": if let c = textAnimValueToColorString(value) { s.fill = c }
+        case "stroke": if let c = textAnimValueToColorString(value) { s.stroke = c }
+        case "shadowBlur": if let v = value as? Double { s.shadowBlur = v }
+        case "shadowOffsetX": if let v = value as? Double { s.shadowOffsetX = v }
+        case "shadowOffsetY": if let v = value as? Double { s.shadowOffsetY = v }
+        case "shadowColor": if let v = value as? String { s.shadowColor = v }
         default: return
         }
         text.textStyle = s
         // Re-propagates to the TSpan children on the next `update()` (styleChanged → _updateSubTexts).
         text.dirtyStyle()
     }
+}
+
+// The Animator interpolates colours as rgba strings (color.parse → interpolate → rgba2String). A ZRText's
+//   fill/stroke are plain colour STRINGS (unlike Path's ZRColor), so accept the string form directly (and,
+//   defensively, an interpolated [r,g,b,a] array).
+private func textAnimValueToColorString(_ v: Any?) -> String? {
+    if let s = v as? String { return s }
+    if let arr = v as? [Double], arr.count >= 3 {
+        let a = arr.count > 3 ? arr[3] : 1
+        return "rgba(\(Int(floor(arr[0]))),\(Int(floor(arr[1]))),\(Int(floor(arr[2]))),\(a))"
+    }
+    return nil
 }
 
 // Merge a raw `[String: Any]` option bag into a `TextStyleProps` — the port's stand-in for upstream's

@@ -511,7 +511,8 @@ private func updateElNormal(
     _ seriesModel: CustomSeriesModel,
     _ isInit: Bool
 ) {
-    // upstream: stopPreviousKeyframeAnimationAndRestore(el);  — DEFERRED (keyframe animation).
+    // upstream: stopPreviousKeyframeAnimationAndRestore(el);
+    stopPreviousKeyframeAnimationAndRestore(el)
 
     // upstream: const txCfgOpt = attachedTxInfo && attachedTxInfo.normal.cfg; if (txCfgOpt) el.setTextConfig(txCfgOpt);
     let txCfgOpt = attachedTxInfo?.normal.cfg
@@ -543,8 +544,9 @@ private func updateElNormal(
     //   transform directly (mirrors GraphicComponentView).
     applyUpdateTransitionStatic(el, elOption)
 
-    // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, seriesModel);  — DEFERRED.
-    _ = (api, dataIndex, isInit, seriesModel)
+    // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, seriesModel);
+    applyKeyframeAnimation(el, elOption["keyframeAnimation"], seriesModel)
+    _ = (api, dataIndex, isInit)
 }
 
 // STATIC substitute for `applyUpdateTransition` — apply the element's final shape/style/transform.

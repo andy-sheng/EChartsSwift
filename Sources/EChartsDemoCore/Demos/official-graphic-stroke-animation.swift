@@ -10,23 +10,23 @@
 //     data fetch, no assets, no closures, no `myChart` timeline (the animation lives INSIDE the option's
 //     `keyframeAnimation`, which echarts itself drives), so no `drive` hook is needed — a `drive` closure
 //     here would be inventing a timeline the example does not have.
-//   - NATIVE PANE OFF (nativeSupported: false), and the gap is precisely `keyframeAnimation`. `graphic`
-//     itself IS ported (component/graphic/{GraphicModel,GraphicView}.swift), and ZRenderKit's Text +
-//     NativePainter honor stroke/lineDash/lineDashOffset — but GraphicView deliberately does NOT apply
-//     keyframes (PORT-NOTE at component/graphic/GraphicView.swift:277 — "requires keyframe animation:
-//     applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel)"). This example is NOTHING BUT
-//     that animation: with the keyframes dropped, the native pane renders the base style only — fill
-//     'transparent' over a stroke dashed [0, 200] (zero-length dashes, 200px gaps) — i.e. a BLANK canvas,
-//     which reads as a broken render rather than as an honest gap. So the pane says "N/A" instead of
-//     pretending. The `option` below carries the keyframes verbatim and is expected to light up unchanged
-//     the moment applyKeyframeAnimation lands.
+//   - NATIVE PANE ON (nativeSupported: true). `keyframeAnimation` is now ported: EChartsKit/animation/
+//     customGraphicKeyframeAnimation.swift (`applyKeyframeAnimation` + `stopPreviousKeyframeAnimationAndRestore`,
+//     wired in GraphicView and CustomView), and ZRText's style animation accessor was widened from
+//     opacity-only to also drive lineDash / lineDashOffset / fill / stroke (the props these keyframes sweep).
+//     So the glyph outlines draw themselves as the dash sweeps [0,200] → [200,0], dwell, then the fill
+//     tweens transparent → black — echarts drives it from the option's `keyframeAnimation` with no `drive`
+//     hook. CAVEAT: the loop never rests, so a single-frame gallery SNAPSHOT catches an arbitrary phase
+//     (e.g. outlined-but-unfilled) and cannot be diffed pixel-for-pixel against the web pane's own
+//     arbitrary frame (at t=0 both are blank — transparent fill over zero-length dashes). Verify the
+//     animation live in the gallery, not by comparing the two static PNGs.
 extension EChartsDemoRegistry {
     static let official_graphic_stroke_animation = EChartsDemo(
         name: "official-graphic-stroke-animation", category: "graphic",
         summary: "关键帧描边动画 — Stroke Animation",
         width: 640, height: 420,
-        nativeSupported: false,   // see header: GraphicView defers applyKeyframeAnimation, and the
-                                  // keyframes ARE this example
+        nativeSupported: true,   // keyframeAnimation is now ported (applyKeyframeAnimation, wired in
+                                 // GraphicView); the glyph sweeps its lineDash/fill live. See header.
         collection: .official,
         webOptionJS: #"""
 option = {

@@ -151,6 +151,9 @@ public struct PathStyleProps {
         case "strokeOpacity": return strokeOpacity
         case "lineWidth": return lineWidth
         case "lineDashOffset": return lineDashOffset
+        case "lineDash":
+            if case .some(.values(let arr)) = lineDash { return arr }
+            return nil
         case "strokePercent": return strokePercent
         case "miterLimit": return miterLimit
         case "shadowBlur": return shadowBlur
@@ -170,6 +173,7 @@ public struct PathStyleProps {
         case "strokeOpacity": if let v = value as? Double { strokeOpacity = v }
         case "lineWidth": if let v = value as? Double { lineWidth = v }
         case "lineDashOffset": if let v = value as? Double { lineDashOffset = v }
+        case "lineDash": if let arr = value as? [Double] { lineDash = .values(arr) }
         case "strokePercent": if let v = value as? Double { strokePercent = v }
         case "miterLimit": if let v = value as? Double { miterLimit = v }
         case "shadowBlur": if let v = value as? Double { shadowBlur = v }

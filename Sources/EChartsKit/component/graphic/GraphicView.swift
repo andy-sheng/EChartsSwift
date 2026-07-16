@@ -199,7 +199,7 @@ open class GraphicComponentView: ComponentView {
                 else {
                     if let el = el { inner(el).isNew = false }
                     // Stop and restore before update any other attributes.
-                    // PORT-NOTE (deferred): requires keyframe animation — stopPreviousKeyframeAnimationAndRestore(el).
+                    if let el = el { stopPreviousKeyframeAnimationAndRestore(el) }
                 }
                 if let el = el {
                     applyUpdateTransitionStatic(el, elOptionCleaned)
@@ -274,7 +274,8 @@ open class GraphicComponentView: ComponentView {
                 // PORT-NOTE (deferred): requires graphicUtil.setTooltipConfig — setTooltipConfig({ el,
                 //   componentModel: graphicModel, itemName: el.name, itemTooltipOption: elOption.tooltip }).
 
-                // PORT-NOTE (deferred): requires keyframe animation — applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel).
+                // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel).
+                applyKeyframeAnimation(el, elOption["keyframeAnimation"], graphicModel)
             }
         }
     }
