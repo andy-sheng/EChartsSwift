@@ -1604,6 +1604,16 @@ public final class ECharts: EChartsType {
         runSeriesStageHandler(seriesStyleTask, ecModel, api)
         runSeriesStageHandler(dataStyleTask, ecModel, api)
         runOverallStageHandler(dataColorPaletteTask, ecModel, api)
+
+        // VISUAL — graph node/edge colours. Upstream registers `categoryVisual` + `edgeVisual` as normal
+        //   VISUAL stage handlers (chart/graph/install.ts), so they run in the visual phase BEFORE any
+        //   component/chart view is drawn. They MUST run here — not in the per-series-type block inside
+        //   `render()` — because the legend component (renderComponents) resolves each graph CATEGORY's
+        //   swatch colour from `categoriesData`'s `style` visual, which `categoryVisual` writes. When these
+        //   ran late (after renderComponents), every graph legend swatch fell back to the default black.
+        //   Order matters: edgeVisual reads each node's fill, so category must precede edge.
+        graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
+        graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
     }
 
     /// Run an OVERALL_STAGE_TASK handler (has `overallReset`).
@@ -1853,8 +1863,10 @@ public final class ECharts: EChartsType {
         //   the series `layout` option; for a static frame it settles the simulation synchronously (the
         //   live per-frame tick is a PORT-NOTE (deferred): unported — see forceLayout.swift). Runs alongside the other two.
         graphForceLayoutStageHandler.overallReset?(ecModel, api, nil)
-        graphCategoryVisualStageHandler.overallReset?(ecModel, api, nil)
-        graphEdgeVisualStageHandler.overallReset?(ecModel, api, nil)
+        // graphCategoryVisualStageHandler / graphEdgeVisualStageHandler are now run in `performVisualStage`
+        //   (the visual phase, before renderComponents) so the legend can read the category swatch colours.
+        //   See the note there. They are intentionally NOT re-run here (a second pass would re-walk the
+        //   palette; keeping a single authoritative pass in the visual phase matches upstream).
 
         // LAYOUT + VISUAL — sankey. Upstream registers `sankeyLayoutStageHandler` (an OVERALL box-layout
         //   stage that computes each node's {x,y,dx,dy} column/height + each edge's {sy,ty,dy} ribbon

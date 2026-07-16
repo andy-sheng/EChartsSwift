@@ -131,7 +131,15 @@ public final class GraphViewCoordSys: CoordinateSystem {
         return (sx, sy, tx, ty)
     }
 
-    public func getBoundingRect() -> BoundingRect? { return rect.clone() }
+    // upstream coord/View.ts: `getBoundingRect()` returns "a rect in DATA space" (the node bounding box
+    //   `dataToPoint` maps onto the pixel view rect), NOT the pixel view rect. The circular/force layout
+    //   stages compute cx/cy/r from `coordSys.getBoundingRect()` and lay nodes out in that space; GraphView
+    //   then maps them to pixels with `dataToPoint` (fitPoint). Returning the PIXEL rect here made
+    //   circularLayout place nodes in pixel space, which `dataToPoint` then transformed a SECOND time —
+    //   collapsing the `layout:'circular'` graph into a small offset blob. Return the data box, per upstream.
+    //   (When the nodes carry no x/y — e.g. a bare force layout — the box equals the view rect, so this is a
+    //   no-op there.) `getViewRect` keeps returning the pixel rect (upstream's VIEW_COORD_SYS_TRANS_RAW view rect).
+    public func getBoundingRect() -> BoundingRect? { return BoundingRect(boxX, boxY, boxW, boxH) }
     public func getViewRect() -> BoundingRect? { return rect.clone() }
 
     // The View transform (raw + roam): map the node bounding box (data space) onto the pixel view rect,

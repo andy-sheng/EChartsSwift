@@ -245,6 +245,14 @@ open class GraphView: ChartView {
 
             edge.name = "edge"
             edge.useStyle(edgeStyle)
+            // upstream Line._updateCommonStl: `line.useStyle(lineStyle); line.style.fill = null;
+            //   line.style.strokeNoScale = true;` — the fill is nulled DIRECTLY on the applied style
+            //   (ECLinePath.getDefaultStyle also returns `fill: null`). `graphEdgeStyle` sets `fill = nil`,
+            //   but `useStyle`→`createStyle`→`extendPathStyle` SKIPS nil, so DEFAULT_PATH_STYLE.fill
+            //   ('#000') survives — filling every curved (BezierCurve) edge as a solid black lens (a
+            //   straight Line has zero area so its stray fill is invisible). Re-null it here, like upstream.
+            edge.pathStyle.fill = nil
+            edge.pathStyle.strokeNoScale = true
             // Phase 45: edge emphasis (upstream chart/helper/Line.ts:336). The edge is a highDown dispatcher
             //   carrying its emphasis-state lineStyle, so a hover restyles it. `focus` is resolved to the
             //   adjacency set in the post-loop below (raw value stored here; overwritten there).
@@ -257,6 +265,18 @@ open class GraphView: ChartView {
             // fromSymbol / toSymbol arrow markers (ECLinePath.setLinePoints + Symbol) — PORT-NOTE (deferred): requires chart/helper/LinePath (ECLinePath).
             _ = group.add(edge)
             edgeData.setItemGraphicEl(i, edge)
+
+            // Edge label — upstream chart/helper/Line.ts `_updateCommonStl` (setLabelStyle with the
+            //   edge's label states models + defaultText = edge name) followed by `beforeUpdate`'s
+            //   along-the-edge placement (midpoint + tangent rotation). Rebuilt inline here because the
+            //   port draws each edge as a bare Line/BezierCurve rather than the upstream `Line` Group
+            //   (which carries the label as its textContent and repositions it every frame in
+            //   beforeUpdate). The static render computes the final label transform directly.
+            graphAddEdgeLabel(
+                group: group, edgeData: edgeData, idx: i,
+                edgeItemModel: edgeItemModel, seriesModel: seriesModel,
+                p1: p1, p2: p2, cp: cp, edgeStroke: edgeStyle.stroke
+            )
         }
 
         // Phase 45: `emphasis.focus:'adjacency'` — after all node/edge elements exist, overwrite each
@@ -386,4 +406,105 @@ private func graphToNumber(_ v: Any?) -> Double {
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     return Double.nan
+}
+
+// ---- Edge label (upstream chart/helper/Line.ts) -----------------------------------------------------
+//
+// Reproduces upstream's edge-label behaviour for the STATIC render:
+//   1. `_updateCommonStl`: build the edge's label states models and call `setLabelStyle` with
+//      defaultText = the edge name (`edgeData.getName(idx)`, e.g. "0 > 1") and inheritColor = the edge
+//      stroke colour — exactly the `setLabelStyle(this, labelStatesModels, { defaultText, inheritColor,
+//      ... })` call. The edge label config lives under `edgeLabel` (not `label`): upstream swaps the
+//      parent lookup via `resolveParentPath` ('label' → 'edgeLabel'). That JS-prototype method swap is a
+//      stub in this port (see GraphSeries PORT-NOTE), so it is reproduced here by passing the series
+//      `edgeLabel` model as the explicit parent to `edgeItemModel.getModel('label', edgeLabelParent)`.
+//   2. `beforeUpdate`: place the label along the edge. For the default `position: 'middle'` the label
+//      sits at the curve midpoint, rotated to the edge tangent (which at the midpoint of both a straight
+//      line and a quadratic curve is simply `normalize(p2 - p1)`), lifted `distance` px above the line
+//      (verticalAlign 'bottom', align 'center'). start/end/inside* positions collapse to the middle
+//      placement (none of the ported graph demos use them; noted as a deviation).
+private func graphAddEdgeLabel(
+    group: Group,
+    edgeData: SeriesData,
+    idx: Int,
+    edgeItemModel: Model,
+    seriesModel: GraphSeriesModel,
+    p1: GraphPoint,
+    p2: GraphPoint,
+    cp: GraphPoint?,
+    edgeStroke: ZRenderKit.ZRColor?
+) {
+    // Build the edge label states models. Own option = the link's `label`; parent = the series
+    //   `edgeLabel` model (the 'label' → 'edgeLabel' parent redirect, done explicitly here).
+    var labelStatesModels: LabelStatesModels = [:]
+    labelStatesModels[.normal] = edgeItemModel.getModel("label", seriesModel.getModel("edgeLabel"))
+    for stateName in states.SPECIAL_STATES {
+        guard let st = DisplayState(rawValue: stateName) else { continue }
+        labelStatesModels[st] = edgeItemModel.getModel(
+            [stateName, "label"], seriesModel.getModel([stateName, "edgeLabel"])
+        )
+    }
+
+    guard let normalModel = labelStatesModels[.normal] else { return }
+
+    // The edge stroke colour is the label's inheritColor (upstream `visualColor`).
+    var inheritColor: ColorString? = nil
+    if case let .string(s)? = edgeStroke { inheritColor = s }
+
+    var labelOpt = SetLabelStyleOpt()
+    // No labelFetcher: the edge's default label IS its name; a node-indexed fetcher would format the
+    //   NODE at this index with the wrong dataType. defaultText = edge name matches upstream's
+    //   `defaultText: rawVal == null ? lineData.getName(idx) : …` (graph edges carry no value dim).
+    labelOpt.defaultText = edgeData.getName(idx)
+    labelOpt.labelDataIndex = Double(idx)
+    labelOpt.inheritColor = inheritColor
+
+    let label = ZRText()
+    labelStyle.setLabelStyle(label, labelStatesModels, labelOpt)
+
+    // setLabelStyle sets `ignore = true` when no state has `show: true` (i.e. no visible label).
+    if label.ignore { return }
+
+    // beforeUpdate placement. midpoint + tangent from the already-fitted endpoints / control point.
+    let mid: GraphPoint
+    if let cp = cp {
+        // quadraticAt(t=0.5): 0.25·p1 + 0.5·cp + 0.25·p2
+        mid = GraphPoint(x: 0.25 * p1.x + 0.5 * cp.x + 0.25 * p2.x,
+                         y: 0.25 * p1.y + 0.5 * cp.y + 0.25 * p2.y)
+    }
+    else {
+        mid = GraphPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+    }
+    // tangent at the midpoint == normalize(p2 - p1) for both a line and a quadratic curve.
+    let dx = p2.x - p1.x
+    let dy0 = p2.y - p1.y
+
+    // distance → [distanceX, distanceY]; only distanceY (dy) is used for 'middle'.
+    var distanceY = 5.0
+    if let arr = normalModel.get("distance") as? [Any], arr.count >= 2 {
+        distanceY = graphToNumber(arr[1])
+    }
+    else if let d = normalModel.get("distance") as? Double {
+        distanceY = d
+    }
+
+    // rotation = -atan2(tangent.y, tangent.x); flip by π when the edge points right→left so the text
+    //   never renders upside down (upstream `if (toPos[0] < fromPos[0]) rotation = Math.PI + rotation`).
+    var rotation = -atan2(dy0, dx)
+    if p2.x < p1.x { rotation = Double.pi + rotation }
+
+    // 'middle': dy = -distanceY, verticalAlign 'bottom', align 'center'; origin at (0, -dy).
+    let dy = -distanceY
+    label.x = mid.x
+    label.y = mid.y + dy
+    label.rotation = rotation
+    label.originX = 0
+    label.originY = -dy
+
+    // Use the user-specified align/verticalAlign first, else the computed 'center'/'bottom'.
+    if label.textStyle.align == nil { label.textStyle.align = .center }
+    if label.textStyle.verticalAlign == nil { label.textStyle.verticalAlign = .bottom }
+    label.dirty()
+
+    _ = group.add(label)
 }
