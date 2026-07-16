@@ -1048,26 +1048,67 @@ func zrPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
             let rg = (g as? ZRenderKit.RadialGradient)
                 ?? ZRenderKit.RadialGradient(g.x, g.y, g.r, g.colorStops, g.global)
             return .radialGradient(rg)
-        case .pattern:
+        case .pattern(let p):
+            // Image pattern (`{image, repeat}`): the only ported PatternObject arm (SVG patterns are
+            //   the deferred svg-backend seam). Bridge it to a ZRenderKit `Pattern` the painter tiles.
+            if let ip = p as? ImagePatternObject {
+                return .pattern(zrPatternFromImagePattern(ip))
+            }
             return nil
         }
     }
 
-    if let dict = v as? [String: Any], let type = dict["type"] as? String {
-        let stops = gradientColorStopsFromAny(dict["colorStops"])
-        let global = dict["global"] as? Bool
-        if type == "linear" {
-            return .linearGradient(ZRenderKit.LinearGradient(
-                styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["x2"]), styleNum(dict["y2"]),
-                stops, global))
-        } else if type == "radial" {
-            return .radialGradient(ZRenderKit.RadialGradient(
-                styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["r"]),
-                stops, global))
+    if let dict = v as? [String: Any] {
+        // Image-pattern option object: `{image: <dataURI|url>, repeat, x, y, rotation, scaleX, scaleY}`
+        //   (zrender's ImagePatternObject, the object form of `color: {image, repeat}`). The painter
+        //   already tiles a `ZRColor.pattern` (CGRenderer.fillPatternClipped/tilePattern) and decodes a
+        //   `data:`/URL image string (loadCGImage); the only missing link was this option→ZRColor bridge.
+        if let pat = zrPatternFromDict(dict) {
+            return .pattern(pat)
+        }
+        if let type = dict["type"] as? String {
+            let stops = gradientColorStopsFromAny(dict["colorStops"])
+            let global = dict["global"] as? Bool
+            if type == "linear" {
+                return .linearGradient(ZRenderKit.LinearGradient(
+                    styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["x2"]), styleNum(dict["y2"]),
+                    stops, global))
+            } else if type == "radial" {
+                return .radialGradient(ZRenderKit.RadialGradient(
+                    styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["r"]),
+                    stops, global))
+            }
         }
     }
 
     return nil
+}
+
+// Build a ZRenderKit `Pattern` from an image-pattern option dict `{image, repeat, x, y, rotation,
+//   scaleX, scaleY}`. Returns nil unless a usable image string is present (the `image` arm — a
+//   `data:` URI or URL/path; the DOM/`ImageLike` and SVG arms are the deferred backend seam).
+private func zrPatternFromDict(_ dict: [String: Any]) -> ZRenderKit.Pattern? {
+    guard let image = dict["image"] as? String, !image.isEmpty else { return nil }
+    let repeatMode = (dict["repeat"] as? String).flatMap { ImagePatternRepeat(rawValue: $0) } ?? .repeat
+    let pat = ZRenderKit.Pattern(image, repeatMode)
+    if let x = styleNum(dict["x"]) { pat.x = x }
+    if let y = styleNum(dict["y"]) { pat.y = y }
+    if let r = styleNum(dict["rotation"]) { pat.rotation = r }
+    if let sx = styleNum(dict["scaleX"]) { pat.scaleX = sx }
+    if let sy = styleNum(dict["scaleY"]) { pat.scaleY = sy }
+    return pat
+}
+
+// Bridge an EChartsKit `ImagePatternObject` (the typed arm of `ZRColor.pattern`) to a ZRenderKit
+//   `Pattern`. Same fields as `zrPatternFromDict`, carried from the protocol accessors.
+private func zrPatternFromImagePattern(_ ip: ImagePatternObject) -> ZRenderKit.Pattern {
+    let pat = ZRenderKit.Pattern(ip.image, ip.`repeat` ?? .repeat)
+    if let x = ip.x { pat.x = x }
+    if let y = ip.y { pat.y = y }
+    if let r = ip.rotation { pat.rotation = r }
+    if let sx = ip.scaleX { pat.scaleX = sx }
+    if let sy = ip.scaleY { pat.scaleY = sy }
+    return pat
 }
 
 // Parse `colorStops: [{offset, color}, ...]` (the option-dict gradient form) into ZRenderKit stops.
