@@ -1759,6 +1759,21 @@ public final class ECharts: EChartsType {
         prepareView(isComponent: false, ecModel: ecModel, api: api)
         sweepDeadViews(ecModel, api)
 
+        // updateStreamModes (echarts.ts:680 — run after performDataProcessorTasks, before the layout
+        //   stage and renderSeries): compute each series' `pipelineContext` (large / progressiveRender)
+        //   off the now-populated data. MUST precede the bar layout below — barGrid's `isInLargeMode`
+        //   reads `pipelineContext.large` to decide whether to pack `largePoints` (which
+        //   BarView._renderLarge / LargeBarPath then draw), and every series' render reads
+        //   `pipelineContext.large` for its large-draw branch. The port had DEFERRED this pass, so
+        //   pipelineContext.large stayed at its default `false` and no `large: true` series ever took its
+        //   large path. Views are resolved (prepareView above), data is ready (update() ran the data +
+        //   processor tasks) — both invariants updateStreamModes needs.
+        ecModel.eachSeries { seriesModel, _ in
+            if let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] {
+                self._scheduler.updateStreamModes(seriesModel, chartView)
+            }
+        }
+
         renderComponents(ecModel, api)
 
         // LAYOUT — bar cross-series layout (sets bandWidth/offset/size on each series' data layout).

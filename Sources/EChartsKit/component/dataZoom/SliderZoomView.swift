@@ -542,15 +542,28 @@ open class SliderZoomView: ComponentView {
         var thisCoord = 0.0
         var areaPoints: [VectorArray] = [VectorArray(size[0], 0), VectorArray(0, 0)]
         var linePoints: [VectorArray] = []
+        // The area polygon is a FILL; Core Graphics `fillPath` on a monotone polygon with one vertex
+        //   per datum is super-linear in the vertex count (a 500k-point shadow measured ~36s just for
+        //   this one fill), while the line's stroke over the same points stays cheap. The slider track
+        //   is only `size[0]` px wide, so emit the area's top edge as a per-pixel-column MAX envelope
+        //   (≈2 vertices/px) — pixel-identical for a dense shadow, and the fill becomes instant. The
+        //   line keeps every point (full-resolution, faithful, and already fast).
+        let cols = Swift.max(2, Swift.min(n, Int(size[0].rounded()) * 2))
+        var colMax = [Double](repeating: -Double.greatestFiniteMagnitude, count: cols)
         for i in 0..<n {
             let raw = data.get(otherDim, i)
             let value = shadowNumber(raw)
             let otherCoord = value.isNaN
                 ? 0
                 : number.linearMap(value, otherDataExtent, otherShadowExtent, true)
-            areaPoints.append(VectorArray(thisCoord, otherCoord))
             linePoints.append(VectorArray(thisCoord, otherCoord))
+            let c = Swift.min(cols - 1, i * cols / n)
+            if otherCoord > colMax[c] { colMax[c] = otherCoord }
             thisCoord += step
+        }
+        for c in 0..<cols where colMax[c] > -Double.greatestFiniteMagnitude {
+            let colX = Double(c) / Double(cols - 1) * size[0]
+            areaPoints.append(VectorArray(colX, colMax[c]))
         }
 
         let dataBackgroundModel = dataZoomModel.getModel("dataBackground")

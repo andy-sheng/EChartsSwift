@@ -488,8 +488,10 @@ open class BarView: ChartView {
     private func _renderLarge(_ seriesModel: BarSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
         self._clear()
         // upstream: createLarge(seriesModel, this.group);
-        // PORT-NOTE (deferred): large/progressive draw (LargePath, data.getLayout('largePoints'), throttle)
-        //   requires util/throttle + LargePath (not ported). Only the clip is updated.
+        //   One LargeBarPath over the barGrid `largePoints` layout, drawn per-bar via the fill boost
+        //   (LargeBarPath.swift) — the mouse-event throttle (largePathUpdateDataIndex) is the only piece
+        //   still deferred (tooltip hit-testing over the large path), not the draw.
+        barCreateLarge(seriesModel, self.group)
         self._updateLargeClip(seriesModel)
     }
 
