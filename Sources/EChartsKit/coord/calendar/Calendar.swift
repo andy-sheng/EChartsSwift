@@ -145,6 +145,24 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
         return self.dataToPoint(data as OptionDataValueDate?, nil as Bool?)
     }
 
+    // CoordinateSystem.dataToLayout witness — same bridge as `dataToPoint` above: the protocol's generic
+    //   `(CoordinateSystemDataCoord, Any?)` signature does not match the concrete date-typed
+    //   `dataToLayout(_:clamp:)`. Upstream `Calendar` exposes `dataToLayout` (truthy), so
+    //   `createBoxLayoutReference` takes the RECT branch and places a box (e.g. a pie's center) on the
+    //   calendar CELL. Without this witness the protocol default (nil) is used, the box falls back to the
+    //   viewport, and a string `center` like '2017-02-01' is `parseFloat`'d to 2017 → cx/cy off-canvas
+    //   (the calendar-pie's per-cell pies never render).
+    public func dataToLayout(_ data: CoordinateSystemDataCoord, _ opt: Any?) -> CoordinateSystemDataLayout? {
+        // Pin the result type to the NON-optional `CoordinateSystemDataLayout` so overload resolution
+        //   selects the concrete `dataToLayout(_:OptionDataValueDate?, _:Bool?)` (which returns a
+        //   non-optional) rather than re-selecting THIS generic optional-returning witness — otherwise the
+        //   enclosing `-> CoordinateSystemDataLayout?` return context steers the call back here → infinite
+        //   recursion (SIGSEGV). (The `dataToPoint` bridge above has no such trap: both overloads return
+        //   `[Double]`, so argument specificity alone picks the concrete one.)
+        let result: CoordinateSystemDataLayout = self.dataToLayout(data as OptionDataValueDate?, nil as Bool?)
+        return result
+    }
+
     // Concrete implementations for the members BOTH CoordinateSystemMaster and CoordinateSystem declare
     //   with a protocol-extension default — needed to disambiguate the two defaults now that Calendar
     //   conforms to both (Calendar has no axes; it exposes its CalendarModel as `model`).

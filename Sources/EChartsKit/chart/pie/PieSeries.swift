@@ -133,11 +133,10 @@ open class PieSeriesModel: SeriesModel {
      * @overwrite
      */
     // upstream: getDataParams(dataIndex: number): PieCallbackDataParams { ... percent seats ... }
-    //   Declared as a 1-arg overload (matching the upstream `getDataParams(dataIndex)` signature) rather
-    //   than an `override` — the base impl is the `DataFormatMixin` protocol-extension member (2-arg with
-    //   a defaulted `dataType`), reached through a protocol-typed `self` to avoid self-recursion in
-    //   overload resolution (same idiom as CustomSeriesModel.getDataParams).
-    open func getDataParams(_ dataIndex: Double) -> CallbackDataParams {
+    //   Overrides `SeriesModel.getDataParams` (the overridable witness for `DataFormatMixin.getDataParams`),
+    //   so `getFormattedLabel`/tooltip see the `{d}` percent. `super.getDataParams` reaches the shared base
+    //   (SeriesModel forwards to the `DataFormatMixin` extension) — no self-recursion.
+    open override func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
         // const data = this.getData();
         let data = self.getData()
         // const dataInner = innerData(data);
@@ -163,7 +162,7 @@ open class PieSeriesModel: SeriesModel {
             seats = computed
         }
         // const params = super.getDataParams(dataIndex);
-        var params = (self as DataFormatMixin).getDataParams(dataIndex)
+        var params = super.getDataParams(dataIndex, dataType)
         // params.percent = seats[dataIndex] || 0;
         let idx = Int(dataIndex)
         let seatsArr = seats ?? []

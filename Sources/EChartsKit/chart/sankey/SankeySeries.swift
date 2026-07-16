@@ -265,7 +265,7 @@ open class SankeySeriesModel: SeriesModel {
     // Override Series.getDataParams() — node branch fills value from the graph layout.
     //   Base (DataFormatMixin) 2-arg getDataParams reached via `(self as DataFormatMixin)` to avoid
     //   re-dispatching into this concrete override.
-    open func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
+    open override func getDataParams(_ dataIndex: Double, _ dataType: SeriesDataType? = nil) -> CallbackDataParams {
         // const params = super.getDataParams(dataIndex, dataType);
         var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
         // if (params.value == null && dataType === 'node') {
