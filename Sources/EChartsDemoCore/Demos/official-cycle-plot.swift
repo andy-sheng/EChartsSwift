@@ -63,12 +63,55 @@ private let cyclePlotAverageByMonth: [[Double]] = {
 /// Upstream: `encode.y = rawData.map((entry, index) => index + 1)` → [1, 2, ..., 11].
 private let cyclePlotTrendEncodeY: [Double] = (1...cyclePlotRawData.count).map(Double.init)
 
+// Numeric coercion for the renderItem api values (ParsedValue is Any; api.value may box Int or Double).
+private func cyclePlotNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// upstream `renderTrendItem`: fan the month's 11 year-values across the category band and thread a polyline
+//   through them (each point's x nudged by unitBandWidth*(index - 11/2)).
+private let cyclePlotTrendRenderItem: CustomSeriesRenderItem = { _, api in
+    let categoryIndex = cyclePlotNum(api.value(0.0, nil))
+    let sizeW = (api.size([0.0, 0.0], nil) as? [Double])?.first ?? 0
+    let count = cyclePlotRawData.count
+    let unitBandWidth = (sizeW * 0.85) / Double(count - 1)
+    var points: [[Double]] = []
+    for index in 0..<count {
+        let value = cyclePlotNum(api.value(Double(index + 1), nil))
+        var point = api.coord([categoryIndex, value], nil)
+        if point.count >= 1 { point[0] += unitBandWidth * (Double(index) - Double(count) / 2) }
+        points.append(point)
+    }
+    return [
+        "type": "polyline",
+        "transition": ["shape"],
+        "shape": ["points": points] as [String: Any],
+        "style": api.style(["fill": "none", "stroke": api.visual("color", nil) as Any, "lineWidth": 2.0], nil)
+    ] as [String: Any]
+}
+
+// upstream `renderAverageItem`: a horizontal line at the month's average, spanning 85% of the band.
+private let cyclePlotAverageRenderItem: CustomSeriesRenderItem = { _, api in
+    let bandWidth = ((api.size([0.0, 0.0], nil) as? [Double])?.first ?? 0) * 0.85
+    let point = api.coord([cyclePlotNum(api.value(0.0, nil)), cyclePlotNum(api.value(1.0, nil))], nil)
+    guard point.count >= 2 else { return nil }
+    return [
+        "type": "line",
+        "transition": ["shape"],
+        "shape": ["x1": point[0] - bandWidth / 2, "x2": point[0] + bandWidth / 2, "y1": point[1], "y2": point[1]] as [String: Any],
+        "style": api.style(["fill": "none", "stroke": api.visual("color", nil) as Any, "lineWidth": 2.0], nil)
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_cycle_plot = EChartsDemo(
         name: "official-cycle-plot", category: "custom",
         summary: "周期图 — Cycle Plot",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // prettier-ignore
@@ -244,10 +287,9 @@ option = {
                 [
                     "type": "custom",
                     "name": "Average",
-                    // PORT-NOTE: renderItem omitted — `renderAverageItem` returned a horizontal `line`
-                    // at the month's average y (api.coord([value(0), value(1)])), spanning bandWidth =
-                    // api.size([0,0])[0] * 0.85 centred on the category, stroked api.visual('color') at
-                    // lineWidth 2. Without it this custom series draws nothing (nativeSupported: false).
+                    // renderItem ported to Swift (cyclePlotAverageRenderItem): a horizontal line at the
+                    // month's average, spanning 85% of the band, stroked with the visual color at lineWidth 2.
+                    "renderItem": cyclePlotAverageRenderItem,
                     "encode": [
                         "x": 0.0,
                         "y": 1.0
@@ -257,10 +299,9 @@ option = {
                 [
                     "type": "custom",
                     "name": "Trend by year (2002 - 2012)",
-                    // PORT-NOTE: renderItem omitted — `renderTrendItem` fanned the month's 11 year-values
-                    // across the band (each point's x nudged by unitBandWidth*(index - 11/2), where
-                    // unitBandWidth = api.size([0,0])[0]*0.85 / 10) and returned a `polyline` through them,
-                    // stroked api.visual('color') at lineWidth 2. Omitting it leaves nothing to draw.
+                    // renderItem ported to Swift (cyclePlotTrendRenderItem): fans the month's 11 year-values
+                    // across the band and threads a polyline through them, stroked visual color at lineWidth 2.
+                    "renderItem": cyclePlotTrendRenderItem,
                     "encode": [
                         "x": 0.0,
                         "y": cyclePlotTrendEncodeY
