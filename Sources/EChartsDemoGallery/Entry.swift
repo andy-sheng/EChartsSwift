@@ -734,6 +734,34 @@ final class WebSnapper: NSObject, WKNavigationDelegate {
     }
 }
 
+/// Live-timeline analog of WebSnapper: snapshots the echarts.js pane at a series of wall-clock offsets
+/// (from page load) WITHOUT neutering animation/setInterval — the web oracle for --anim-native's frames.
+final class WebMultiSnapper: NSObject, WKNavigationDelegate {
+    let demo: EChartsDemo; let dir: URL; let offsets: [Int]
+    init(demo: EChartsDemo, dir: URL, offsets: [Int]) { self.demo = demo; self.dir = dir; self.offsets = offsets }
+    func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
+        for (i, t) in offsets.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(t) / 1000.0) {
+                let cfg = WKSnapshotConfiguration(); cfg.rect = wv.bounds
+                wv.takeSnapshot(with: cfg) { image, _ in
+                    if let image = image, let tiff = image.tiffRepresentation,
+                       let rep = NSBitmapImageRep(data: tiff),
+                       let png = rep.representation(using: .png, properties: [:]) {
+                        let out = self.dir.appendingPathComponent(String(format: "%@.t%04d.web.png", self.demo.name, t))
+                        try? png.write(to: out); print("wrote \(out.lastPathComponent)")
+                    } else {
+                        print("t\(t) web snapshot FAILED")
+                    }
+                    if i == self.offsets.count - 1 { exit(0) }
+                }
+            }
+        }
+    }
+    func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
+        FileHandle.standardError.write(Data("web load failed: \(e)\n".utf8)); exit(1)
+    }
+}
+
 @MainActor
 func loadWebAndSnapshot(_ demo: EChartsDemo, out: URL) -> Never {
     let app = NSApplication.shared
@@ -857,6 +885,71 @@ func runCLI() -> Bool {
             print("native N/A for \(demo.name)")
         }
         loadWebAndSnapshot(demo, out: dir.appendingPathComponent(demo.name + ".web.png"))
+
+    case "--anim-native":
+        // --anim-native <demo> <outdir> [offsetsMsCSV]
+        //   The time-aware analog of --render: drive the demo WITH animation on (+ its `drive`
+        //   timeline) and snapshot the live scene at wall-clock offsets, so an enter animation or an
+        //   update transition — invisible to the single static frame — is captured as a frame series.
+        //   Reuses EChartsHostView (EChartsView + CALayerPainter + AnimationLoop + drive timers).
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --anim-native <name> <outdir> [offsetsMsCSV]\n".utf8)); exit(2)
+        }
+        let dir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let offsets: [Int] = (args.count >= 4 ? args[3].split(separator: ",").compactMap { Int($0) } : [])
+            .isEmpty ? [0, 80, 200, 400, 700, 1100, 1600, 2100, 2400, 2800, 3200, 3600]
+                     : args[3].split(separator: ",").compactMap { Int($0) }
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let host = EChartsHostView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        host.setOption(demo.option)          // animation ON (do NOT force it off)
+        demo.drive?(host)                    // replay the example's setInterval/setOption timeline
+        let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+        let sorted = offsets.sorted()
+        for (i, t) in sorted.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(t) / 1000.0) {
+                let img = renderToImage(group: host.echartsView.ec.getRoot(),
+                                        size: CGSize(width: demo.width, height: demo.height),
+                                        dpr: 2, backgroundColor: white)
+                if let img = img,
+                   let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) {
+                    let out = dir.appendingPathComponent(String(format: "%@.t%04d.native.png", demo.name, t))
+                    try? png.write(to: out)
+                    print("wrote \(out.lastPathComponent)")
+                } else {
+                    print("t\(t) native render FAILED")
+                }
+                if i == sorted.count - 1 { exit(0) }
+            }
+        }
+        app.run()
+        return true   // unreachable: exit(0) fires from the last snapshot closure
+
+    case "--anim-web":
+        // --anim-web <demo> <outdir> [offsetsMsCSV] : the echarts.js oracle for --anim-native — the
+        //   live-timeline page (animation ON, setInterval running) sampled at the same wall-clock offsets.
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]) else {
+            FileHandle.standardError.write(Data("usage: --anim-web <name> <outdir> [offsetsMsCSV]\n".utf8)); exit(2)
+        }
+        let dir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let woffsets: [Int] = (args.count >= 4 ? args[3].split(separator: ",").compactMap { Int($0) } : [])
+            .isEmpty ? [0, 80, 200, 400, 700, 1100, 1600, 2100, 2400, 2800, 3200, 3600]
+                     : args[3].split(separator: ",").compactMap { Int($0) }
+        let wapp = NSApplication.shared
+        wapp.setActivationPolicy(.accessory)
+        let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        let win = NSWindow(contentRect: wv.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        win.contentView = wv; win.orderFrontRegardless()
+        let msnap = WebMultiSnapper(demo: demo, dir: dir, offsets: woffsets.sorted())
+        wv.navigationDelegate = msnap
+        guard let page = echartsHTMLPage(demo, snapshot: false) else {   // LIVE timeline, animation on
+            FileHandle.standardError.write(Data("could not build html\n".utf8)); exit(1)
+        }
+        wv.loadHTMLString(page, baseURL: nil)
+        wapp.run()
+        return true
 
     default:
         return false
