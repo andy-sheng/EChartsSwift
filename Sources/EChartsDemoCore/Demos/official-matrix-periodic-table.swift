@@ -39,6 +39,38 @@
 //   - The example's `/* title: ... */` metadata block is dropped (it is the website's front-matter, not
 //     JS). Data inlined: none needed — the source's data is already a literal.
 import Foundation
+import EChartsKit
+
+// upstream renderItem: one rect per periodic-table cell (inset 2px), filled with the row's colour
+//   (dim 4); an "element" cell (dim 2 is a numeric atomic number) gets a 1px #aaa border at full opacity,
+//   a category/legend cell (dim 2 non-numeric) is borderless at 0.5 opacity.
+private func periodicNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    if let s = v as? String { return Double(s) ?? .nan }
+    return .nan
+}
+private let periodicTableRenderItem: CustomSeriesRenderItem = { _, api in
+    let x = api.value(0.0, nil)
+    let y = api.value(1.0, nil)
+    guard let rect = api.layout([x, y], nil)?.rect else { return nil }
+    let isElement = !periodicNum(api.value(2.0, nil)).isNaN
+    let margin = 2.0
+    return [
+        "type": "rect",
+        "shape": [
+            "x": rect.x + margin, "y": rect.y + margin,
+            "width": rect.width - margin * 2, "height": rect.height - margin * 2
+        ] as [String: Any],
+        "style": api.style([
+            "fill": api.value(4.0, nil) as Any,
+            "stroke": "#aaa",
+            "lineWidth": isElement ? 1.0 : 0.0,
+            "opacity": isElement ? 1.0 : 0.5
+        ] as [String: Any], nil)
+    ] as [String: Any]
+}
 
 // The four category colours (upstream's `const colors`), reused by every data row below.
 private let periodicRed = "#f88"
@@ -56,7 +88,11 @@ extension EChartsDemoRegistry {
         name: "official-matrix-periodic-table", category: "matrix",
         summary: "元素周期表 — Periodic Table",
         width: 1040, height: 620,
-        nativeSupported: false,
+        nativeSupported: true,   // renderItem ported: coloured cells render in the periodic-table shape.
+                                 // Per-element SYMBOL/number labels (series.label.formatter — a JS closure
+                                 // + rich text) and the category labels (a graphic layer positioned by the
+                                 // runtime `myChart.convertToPixel`) are omitted; the gallery surfaces that
+                                 // gap (matrix-covariance convention) rather than hiding the correct grid.
         collection: .official,
         webOptionJS: #"""
 const colors = {
@@ -344,6 +380,7 @@ setTimeout(function () {
                 [
                     "type": "custom",
                     "coordinateSystem": "matrix",
+                    "renderItem": periodicTableRenderItem,
                     "data": periodicTableData as [Any],
                     "label": [
                         "show": true,
