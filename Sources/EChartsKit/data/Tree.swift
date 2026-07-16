@@ -273,6 +273,25 @@ public final class TreeNode {
         }
         let hostTree = self.hostTree
         let itemModel = hostTree.data.getItemModel(self.dataIndex)
+        // Faithful port of the TreemapSeries `beforeLink` `wrapMethod('getItemModel')` injection
+        // (upstream reassigns `model.parentModel = levelModels[node.depth] || designatedVisualModel`).
+        // The port's `SeriesData.getItemModel` does not invoke wrapMethod injections, so the per-depth
+        // level-model parenting is applied here instead: the freshly-created item model is reparented
+        // onto its depth's level model so `levels[n]` config (color / colorMappingBy / itemStyle
+        // borderWidth·gapWidth·borderColor(Saturation) / upperLabel) is inherited through the chain.
+        // Only TreemapSeriesModel populates `hostTree.levelModels`; tree/sunburst leave it nil (they use
+        // their own `_levelModels`), so their node models are untouched by this branch.
+        if let levelModels = hostTree.levelModels {
+            let idx = Int(self.depth)
+            if idx >= 0 && idx < levelModels.count {
+                itemModel.parentModel = levelModels[idx]
+            }
+            else if let designated = hostTree.designatedVisualModel {
+                // Depth beyond the configured levels: fall back to the designated-visual model
+                // (whose own parent is the series), mirroring `levelModels[depth] || designatedVisualModel`.
+                itemModel.parentModel = designated
+            }
+        }
         if let path = path {
             return itemModel.getModel(path)
         }
@@ -385,6 +404,10 @@ public final class Tree: LinkableStruct {
     public var hostModel: Model
 
     public var levelModels: [Model]?
+
+    // PORT-NOTE: the fallback parent for nodes deeper than the configured `levelModels` (upstream
+    //   `levelModels[depth] || designatedVisualModel`). Only TreemapSeriesModel sets it; nil otherwise.
+    public var designatedVisualModel: Model?
 
     private var _nodes: [TreeNode] = []
 

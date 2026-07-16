@@ -184,6 +184,17 @@ open class TreemapSeriesModel: SeriesModel {
         let tree = Tree.createTree(root, self, beforeLink)
         treeRef = tree
 
+        // PORT-NOTE (level-model wiring): upstream reparents each node's item model onto its depth's
+        //   level model inside the `beforeLink` `wrapMethod('getItemModel')` injection. The port's
+        //   getItemModel does not run wrapMethod injections, so the level models (and the designated-
+        //   visual fallback) are published on the tree here and applied in `TreeNode.getModel()`.
+        //   Without this the `levels[]` config (per-depth color / colorMappingBy / itemStyle
+        //   borderWidth·gapWidth·borderColor / upperLabel) never reaches the nodes — treemapVisual then
+        //   falls back to the global palette and treemapLayout to the series-default border/gap, which
+        //   is the treemap parity bug this restores.
+        tree.levelModels = levelModels
+        tree.designatedVisualModel = designatedVisualModel
+
         // return tree.data;
         return tree.data
     }
