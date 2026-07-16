@@ -421,8 +421,13 @@ open class VisualMapModel: ComponentModel {
      */
     // getDataDimension(data: SeriesData) { ... }   -> commented out upstream; omitted here.
 
-    // getDimension(seriesIndex: number): number
-    open func getDimension(_ seriesIndex: Double) -> Double? {
+    // getDimension(seriesIndex: number): DimensionLoose
+    //   upstream returns the RAW `this.option.dimension` (a `DimensionLoose` — a dimension NAME string OR a
+    //   store index number); the `: number` annotation upstream is inaccurate. It must NOT be coerced to a
+    //   number — a `dimension: 'depth'` (name) survives here and is resolved to a store index by
+    //   `data.getDimensionIndex(_:)` below. (The old `vmToDoubleOpt` coercion turned `'depth'` into nil,
+    //   dropping the mapping onto the fallback last-dimension → wrong colors.)
+    open func getDimension(_ seriesIndex: Double) -> DimensionLoose? {
         let thisOption = self.option as? [String: Any] ?? [:]
         let seriesTargets = thisOption["seriesTargets"] as? [[String: Any]]
         if let seriesTargets = seriesTargets {
@@ -437,10 +442,10 @@ open class VisualMapModel: ComponentModel {
                 return hasIndex || hasId
             }
             if let target = target {
-                return vmToDoubleOpt(target["dimension"])
+                return vmRawDimension(target["dimension"])
             }
         }
-        return vmToDoubleOpt(thisOption["dimension"])
+        return vmRawDimension(thisOption["dimension"])
     }
 
     // getDataDimensionIndex(data: SeriesData): DimensionIndex
@@ -449,6 +454,8 @@ open class VisualMapModel: ComponentModel {
         let seriesIndex = (data.hostModel as? SeriesModel)?.seriesIndex ?? 0
         let optDim = self.getDimension(seriesIndex)
 
+        // if (optDim != null) return data.getDimensionIndex(optDim);
+        //   getDimensionIndex accepts a DimensionLoose — resolves a NAME string OR an index number.
         if let optDim = optDim {
             return data.getDimensionIndex(optDim)
         }
@@ -809,6 +816,15 @@ private func vmToDoubleOpt(_ v: Any?) -> Double? {
     case let s as String: return Double(s)
     default: return nil
     }
+}
+
+// The RAW `option.dimension` (a `DimensionLoose`: a dimension NAME string OR a store index number),
+//   preserved as-is for `data.getDimensionIndex(_:)` to resolve. Only `null`/`undefined` (nil / NSNull /
+//   absent) collapses to nil — a name string like `'depth'` must pass through unchanged (upstream returns
+//   `this.option.dimension` verbatim; coercing it to a number would drop a named dimension).
+private func vmRawDimension(_ v: Any?) -> DimensionLoose? {
+    guard let v = v, !(v is NSNull) else { return nil }
+    return v
 }
 
 // parseFloat(value) — JS `parseFloat(null)` / `parseFloat(undefined)` === NaN.
