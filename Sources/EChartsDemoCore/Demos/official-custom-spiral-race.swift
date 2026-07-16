@@ -5,20 +5,24 @@
 // per-arc `during` closures re-tween the spiral geometry every frame. A rich-text label on each arc
 // counts the completed rounds and the fractional percent.
 //
-// nativeSupported:false — the chart IS the renderItem closure (it builds the spiral polygon points via
-// makeShapePoints/convertToPolarPoint from api.coord/api.value, attaches a rich-text label, and re-tweens
-// both through `during`). No Swift [String:Any] option can carry a renderItem, so the native pane is N/A;
-// the reference pane runs the example verbatim.
+// renderItem ported to Swift (spiralRaceRenderItem, below) statement-for-statement — nativeSupported:true.
 //
 // DEVIATIONS:
-//   - series[0].renderItem dropped (JS closure — it is the whole chart). PORT-NOTE at the series.
+//   - `during` dropped on both the polygon and the label. CustomView rebuilds the whole element tree
+//     from scratch on every renderItem call (transitions/`during` are DEFERRED — see the PORT-NOTE on
+//     CustomSeriesRenderItemAPI's `during` doc in CustomSeries.swift), so the per-frame retween body has
+//     no effect natively: each call to renderItem already computes geometry for the CURRENT data, which
+//     is what `during` was tweening TOWARD. The `drive` timeline below still re-invokes setOption on the
+//     schedule upstream uses, so the native pane still steps through the same 9 datasources — just
+//     without the 60fps interpolation between steps (a snap instead of a tween).
+//   - `extra`/`transition` keys dropped on both elements for the same reason (customGraphicTransition is
+//     not ported — nothing reads them).
 //   - angleAxis.axisLabel.formatter / radiusAxis.axisLabel.formatter dropped (JS closures returning the
 //     zodiac tick names / 'A'/'B'/'C'). PORT-NOTEs left where they were.
 //   - The 9 datasources are hoisted to a file-scope `spiralDatasourceList`; the initial radiusAxis.max
 //     is computed by `spiralMaxRadius` (upstream getMaxRadius). The web pane inlines them verbatim.
 //   - `drive` reproduces upstream next()/setTimeout on the native chart (advance after 1s, then every 7s
-//     through the datasources). It has no visible effect while native is N/A but keeps the timeline
-//     faithful; the web pane runs the real setTimeout chain.
+//     through the datasources), the same as upstream's own setOption timeline.
 import Foundation
 import EChartsKit
 
@@ -45,12 +49,171 @@ private func spiralMaxRadius(_ idx: Int) -> Double {
     return (radius * 1.2).rounded(.up)
 }
 
+// MARK: - the upstream renderItem, ported
+
+// Numeric coercion for the renderItem api values (ParsedValue is `Any`; api.value may box Int or Double).
+private func spiralRaceNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// angleAxis.startAngle is 90 by default.
+private let spiralStartRadian = Double.pi / 2
+private let spiralRadianStep = Double.pi / 45
+private let spiralBarWidthValue = 0.4
+private let spiralValOnRadiusStep = 4.0
+
+private struct SpiralColor { let fill: String; let text: String }
+private let spiralColors: [SpiralColor] = [
+    SpiralColor(fill: "#5470c6", text: "#2747a5"),
+    SpiralColor(fill: "#91cc75", text: "#447f27"),
+    SpiralColor(fill: "#fac858", text: "#a0761c")
+]
+
+// getSpiralRadius(startRadius, endRadian, radiusStep)
+private func spiralGetRadius(_ startRadius: Double, _ endRadian: Double, _ radiusStep: Double) -> Double {
+    return startRadius + radiusStep * ((spiralStartRadian - endRadian) / (Double.pi * 2))
+}
+
+// getRadiusStepByWidth(widthRadius)
+private func spiralRadiusStepByWidth(_ widthRadius: Double) -> Double {
+    return (widthRadius / spiralBarWidthValue) * spiralValOnRadiusStep
+}
+
+// convertToPolarPoint(renderItemParams, radius, radian)
+private func spiralPolarPoint(_ params: CustomSeriesRenderItemParams, _ radius: Double, _ radian: Double) -> [Double] {
+    let cx = spiralRaceNum(params.coordSys.extra["cx"])
+    let cy = spiralRaceNum(params.coordSys.extra["cy"])
+    return [cos(radian) * radius + cx, -sin(radian) * radius + cy]
+}
+
+// makeShapePoints(params, widthRadius, startRadius, endRadian)
+private func spiralShapePoints(
+    _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double
+) -> [[Double]] {
+    var points: [[Double]] = []
+    let radiusStep = spiralRadiusStepByWidth(widthRadius)
+    // angleAxis.clockwise is true by default. So when rotating clockwise, radian decreases.
+    var iRadian = spiralStartRadian
+    let end = endRadian - spiralRadianStep
+    while iRadian > end {
+        if iRadian < endRadian { iRadian = endRadian }
+        let iRadius = spiralGetRadius(startRadius - widthRadius, iRadian, radiusStep)
+        points.append(spiralPolarPoint(params, iRadius, iRadian))
+        iRadian -= spiralRadianStep
+    }
+    iRadian = endRadian
+    while iRadian < spiralStartRadian + spiralRadianStep {
+        if iRadian > spiralStartRadian { iRadian = spiralStartRadian }
+        let iRadius = spiralGetRadius(startRadius + widthRadius, iRadian, radiusStep)
+        points.append(spiralPolarPoint(params, iRadius, iRadian))
+        iRadian += spiralRadianStep
+    }
+    return points
+}
+
+// makeLabelPosition(params, widthRadius, startRadius, endRadian)
+private func spiralLabelPosition(
+    _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double
+) -> [Double] {
+    let radiusStep = spiralRadiusStepByWidth(widthRadius)
+    let iRadius = spiralGetRadius(startRadius, endRadian, radiusStep)
+    return spiralPolarPoint(params, iRadius, endRadian - 10 / iRadius)
+}
+
+// makeText(endRadian) — the round/percent rich-text label ('Round {round|N}\n{percent|NN.N%}').
+private func spiralLabelText(_ endRadian: Double) -> String {
+    let radian = spiralStartRadian - endRadian
+    let pi2 = Double.pi * 2
+    let round = Int((radian / pi2).rounded(.down))
+    let percentValue = (radian / pi2).truncatingRemainder(dividingBy: 1) * 100
+    let percent = String(format: "%.1f", percentValue) + "%"
+    return "Round {round|\(round)}\n{percent|\(percent)}"
+}
+
+// addPolygon(params, children, widthRadius, startRadius, endRadian, color) — `during` dropped, see header.
+private func spiralPolygonElement(
+    _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double,
+    _ color: SpiralColor
+) -> [String: Any] {
+    return [
+        "type": "polygon",
+        "shape": [
+            "points": spiralShapePoints(params, widthRadius, startRadius, endRadian)
+        ] as [String: Any],
+        "style": [
+            "fill": color.fill
+        ] as [String: Any]
+    ] as [String: Any]
+}
+
+// addLabel(params, children, widthRadius, startRadius, endRadian, color) — `during` dropped, see header.
+private func spiralLabelElement(
+    _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double,
+    _ color: SpiralColor
+) -> [String: Any] {
+    let point = spiralLabelPosition(params, widthRadius, startRadius, endRadian)
+    return [
+        "type": "text",
+        "x": point[0],
+        "y": point[1],
+        "style": [
+            "text": spiralLabelText(endRadian),
+            "fill": color.text,
+            "stroke": "#fff",
+            "lineWidth": 3.0,
+            "fontSize": 16.0,
+            "align": "center",
+            "verticalAlign": "middle",
+            "rich": [
+                "round": ["fontSize": 24.0] as [String: Any],
+                "percent": ["fontSize": 18.0] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any],
+        "z2": 50.0
+    ] as [String: Any]
+}
+
+// addShapes(params, api, children, valOnStartRadius, valOnEndRadian, color)
+private func spiralAddShapes(
+    _ params: CustomSeriesRenderItemParams, _ api: CustomSeriesRenderItemAPI, _ children: inout [[String: Any]],
+    _ valOnStartRadius: Double, _ valOnEndRadian: Double, _ color: SpiralColor
+) {
+    let coords = api.coord([valOnStartRadius, valOnEndRadian] as [Double], nil)
+    guard coords.count >= 4 else { return }
+    let startRadius = coords[2]
+    let endRadian = coords[3]
+    let widthCoords = api.coord([spiralBarWidthValue, 0] as [Double], nil)
+    guard widthCoords.count >= 4 else { return }
+    let widthRadius = widthCoords[2]
+    children.append(spiralPolygonElement(params, widthRadius, startRadius, endRadian, color))
+    children.append(spiralLabelElement(params, widthRadius, startRadius, endRadian, color))
+}
+
+// The official `renderItem`, ported statement for statement. Typed EXACTLY `CustomSeriesRenderItem` so
+// CustomView's `get("renderItem") as? CustomSeriesRenderItem` cast holds.
+private let spiralRaceRenderItem: CustomSeriesRenderItem = { params, api in
+    var children: [[String: Any]] = []
+    let dataIdx = Int(params.dataIndex)
+    guard dataIdx >= 0, dataIdx < spiralColors.count else { return ["type": "group", "children": children] as [String: Any] }
+    let color = spiralColors[dataIdx]
+    let valOnStartRadius = spiralRaceNum(api.value(0.0, nil))
+    let valOnEndRadian = spiralRaceNum(api.value(1.0, nil))
+    spiralAddShapes(params, api, &children, valOnStartRadius, valOnEndRadian, color)
+    return [
+        "type": "group",
+        "children": children
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_spiral_race = EChartsDemo(
         name: "official-custom-spiral-race", category: "custom",
         summary: "自定义螺旋线竞速 — Custom Spiral Race",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 var _animationDuration = 5000;
@@ -396,11 +559,12 @@ setTimeout(next, 1000);
             "series": [
                 [
                     "type": "custom",
-                    "coordinateSystem": "polar"
-                    // PORT-NOTE: series[0].renderItem omitted — the renderItem closure IS the chart. It
-                    // reads api.coord/api.value, builds a spiral polygon per datum (makeShapePoints +
-                    // convertToPolarPoint), attaches a rich-text round/percent label, and re-tweens both
-                    // via `during`. No Swift option can express it — hence nativeSupported:false.
+                    "coordinateSystem": "polar",
+                    // renderItem ported to Swift (spiralRaceRenderItem, top of file): each datum draws a
+                    // spiral polygon (makeShapePoints/convertToPolarPoint over api.coord/api.value) plus a
+                    // rich-text round/percent label. `during` per-frame retweening is not applicable — see
+                    // header DEVIATIONS (CustomView rebuilds the tree from scratch on every renderItem call).
+                    "renderItem": spiralRaceRenderItem
                 ] as [String: Any]
             ]
         ])

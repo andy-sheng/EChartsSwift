@@ -25,12 +25,34 @@
 //     — the values `myChart.getWidth()` yields on a 720px chart. Everything else in the JS is verbatim.
 //   - No other change: the source is a single static `option` literal with no data fetch and no timers, so
 //     it needs no `drive`.
+import Foundation
+import EChartsKit
+
+// upstream renderItem: one rect per confusion-matrix cell, filled green on the diagonal (x === y) / red
+//   off it, sized to the cell rect from `api.layout([x, y]).rect` (the matrix coord's cell box).
+private func matrixConfusionStr(_ v: Any?) -> String {
+    if let s = v as? String { return s }
+    if let n = v as? NSNumber { return n.stringValue }
+    return String(describing: v)
+}
+private let matrixConfusionRenderItem: CustomSeriesRenderItem = { _, api in
+    let x = api.value(0.0, nil)
+    let y = api.value(1.0, nil)
+    guard let rect = api.layout([x, y], nil)?.rect else { return nil }
+    let isDiagonal = matrixConfusionStr(x) == matrixConfusionStr(y)
+    return [
+        "type": "rect",
+        "shape": ["x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height] as [String: Any],
+        "style": api.style(["fill": isDiagonal ? "#8f8" : "#f88"], nil)
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_matrix_confusion = EChartsDemo(
         name: "official-matrix-confusion", category: "matrix",
         summary: "混淆矩阵 — Confusion Matrix",
         width: 720, height: 460,
-        nativeSupported: false,   // renderItem IS the chart — see header
+        nativeSupported: true,   // renderItem ported (matrixConfusionRenderItem) — see header
         collection: .official,
         webOptionJS: #"""
 const label = {
@@ -154,6 +176,7 @@ option = {
             "series": [
                 "type": "custom",
                 "coordinateSystem": "matrix",
+                "renderItem": matrixConfusionRenderItem,
                 "data": matrixConfusionData,
                 "label": [
                     "show": true,

@@ -861,7 +861,19 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
         let item: [Double]? = dataItem == nil ? nil : toDoubleArray(dataItem)
         return sizeClosure(toDoubleArray(dataSize), item)
     }
-    // layout — protocol-extension default (nil). Not implemented (no coord sys exposes it yet).
+    // upstream: layout(data, opt?) { return coordSys.dataToLayout ? coordSys.dataToLayout(data, opt) : ...; }
+    //   Only `calendar`/`matrix` implement `dataToLayout` upstream (cartesian2d/geo/polar/single don't), and
+    //   each prepareCustom's "layout" closure has its own Swift signature — no single hard-cast type would
+    //   match both (same reason `coord` above falls back for those coord systems). Call `dataToLayout`
+    //   through the generic `CoordinateSystem` protocol, passing `data` through RAW (unlike `coord`'s
+    //   `toDoubleArray`): matrix's `dataToLayout` resolves category-string locators (e.g. 'Positive') via
+    //   its own ordinalMeta, so coercing to `[Double]` first would lose that information.
+    func layout(_ data: Any?, _ opt: Any?) -> CoordinateSystemDataLayout? {
+        if let cs = coordSys as? CoordinateSystem {
+            return cs.dataToLayout(data as Any, opt)
+        }
+        return nil
+    }
 
     // ---- ExtensionAPI-forwarded ----
 
