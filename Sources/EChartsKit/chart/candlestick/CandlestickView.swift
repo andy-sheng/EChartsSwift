@@ -527,8 +527,10 @@ private func createLarge(
 
 // Overload matching the `_renderLarge` call site (no progressiveEls / incremental).
 private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) {
-    // PORT-NOTE (deferred): large draw (see the block comment above).
-    _ = (seriesModel, group)
+    // Ported: three LargeBoxPaths (sign 1 / -1 / 0) over the `largePoints` layout, each drawn per-candle
+    //   via the fill boost (CandlestickLargeBox.swift). The `progressiveEls`/`incremental` overload
+    //   above stays deferred (incremental pipeline); the non-incremental large draw is live here.
+    candlestickCreateLarge(seriesModel, group)
 }
 
 // export default CandlestickView;  -> `open class CandlestickView` above.
