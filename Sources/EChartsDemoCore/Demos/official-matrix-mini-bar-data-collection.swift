@@ -20,12 +20,70 @@
 //     `as number` and the `api.layout!` non-null assertion — which a classic script cannot parse) and have
 //     no native counterpart for the reason above.
 //   - Data inlined: none needed — the official source's `dataset.source` is already a literal.
+import Foundation
+import EChartsKit
+
+private func miniBarNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    if let s = v as? String { return Double(s) ?? .nan }
+    return .nan
+}
+// JS `val + ''` number stringification for the label (whole → no trailing .0).
+private func miniBarLabelStr(_ v: Any?) -> String {
+    if let s = v as? String { return s }
+    let n = miniBarNum(v)
+    if n.isNaN { return "\(v ?? "")" }
+    return n == n.rounded() ? String(Int(n)) : String(n)
+}
+// upstream: linearMap(val, domain, range) — the example's own helper (not zrender's).
+private func miniBarLinearMap(_ val: Double, _ domain: [Double], _ range: [Double]) -> Double {
+    let d0 = domain[0], d1 = domain[1], r0 = range[0], r1 = range[1]
+    let subDomain = d1 - d0, subRange = r1 - r0
+    if subDomain == 0 { return subRange == 0 ? r0 : (r0 + r1) / 2 }
+    if val == d0 { return r0 }
+    if val == d1 { return r1 }
+    return (val - d0) / subDomain * subRange + r0
+}
+// upstream: makeRenderItem(xDim, yDim, valDim, dataExtent) — one group of {value-width mini bar + label}
+//   per matrix cell, sized to `api.layout([xval, yval]).rect`.
+private func makeMiniBarRenderItem(_ xDim: Double, _ yDim: Double, _ valDim: Double, _ dataExtent: [Double]) -> CustomSeriesRenderItem {
+    return { _, api in
+        let xval = api.value(xDim, nil)
+        let yval = api.value(yDim, nil)
+        let labelVal = api.value(valDim, nil)
+        guard let rect = api.layout([xval, yval], nil)?.rect else { return nil }
+        let height = rect.height * 0.2
+        let barY = rect.y + (rect.height - height) / 4 * 3
+        let barX = rect.x + rect.width * 0.15
+        let widthMax = rect.width * 0.5
+        let width = miniBarLinearMap(miniBarNum(labelVal), dataExtent, [0, widthMax])
+        return [
+            "type": "group",
+            "children": [
+                [
+                    "type": "rect",
+                    "shape": ["x": barX, "y": barY, "width": width, "height": height] as [String: Any],
+                    "style": api.style(["fill": "#0ca8df"], nil)
+                ] as [String: Any],
+                [
+                    "type": "text",
+                    "x": barX,
+                    "y": rect.y + rect.height / 4 * 1.5,
+                    "style": ["text": miniBarLabelStr(labelVal), "fill": "#333", "align": "left", "verticalAlign": "middle"] as [String: Any]
+                ] as [String: Any]
+            ]
+        ] as [String: Any]
+    }
+}
+
 extension EChartsDemoRegistry {
     static let official_matrix_mini_bar_data_collection = EChartsDemo(
         name: "official-matrix-mini-bar-data-collection", category: "matrix",
         summary: "矩阵坐标系表头数据自动收集（以微型条形图为例） — Matrix Header Data Collection (Mini Bar)",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 /**
@@ -143,23 +201,22 @@ option = {
                 [
                     "type": "custom",
                     "coordinateSystem": "matrix",
-                    "encode": ["x": 1.0, "y": 0.0] as [String: Any]
-                    // PORT-NOTE: renderItem omitted — makeRenderItem(1, 0, 2, [0, 10000]): reads the cell
-                    // rect via api.layout([xval, yval]).rect, then draws a group of a '#0ca8df' rect whose
-                    // width is linearMap(value(2), [0, 10000], [0, rect.width * 0.5]) plus a '#333' text of
-                    // that value.
+                    "encode": ["x": 1.0, "y": 0.0] as [String: Any],
+                    // renderItem ported: makeMiniBarRenderItem(1, 0, 2, [0, 10000]) — a value-width mini bar
+                    // + label in each matrix cell (matrix categories auto-collected from the dataset).
+                    "renderItem": makeMiniBarRenderItem(1.0, 0.0, 2.0, [0, 10000])
                 ] as [String: Any],
                 [
                     "type": "custom",
                     "coordinateSystem": "matrix",
-                    "encode": ["x": 3.0, "y": 0.0] as [String: Any]
-                    // PORT-NOTE: renderItem omitted — same closure, over dims (x: 3, y: 0, value: 4).
+                    "encode": ["x": 3.0, "y": 0.0] as [String: Any],
+                    "renderItem": makeMiniBarRenderItem(3.0, 0.0, 4.0, [0, 10000])
                 ] as [String: Any],
                 [
                     "type": "custom",
                     "coordinateSystem": "matrix",
-                    "encode": ["x": 5.0, "y": 0.0] as [String: Any]
-                    // PORT-NOTE: renderItem omitted — same closure, over dims (x: 5, y: 0, value: 6).
+                    "encode": ["x": 5.0, "y": 0.0] as [String: Any],
+                    "renderItem": makeMiniBarRenderItem(5.0, 0.0, 6.0, [0, 10000])
                 ] as [String: Any]
             ]
         ])

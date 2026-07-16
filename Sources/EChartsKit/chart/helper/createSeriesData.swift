@@ -101,7 +101,7 @@ private func getCoordSysDimDefs(
                 //   it here shares one object between the axis and the series dimension (upstream does the
                 //   equivalent via the axis-model ordinalMeta the dimension picks up).
                 if axisType == "category" {
-                    dimInfo.ordinalMeta = (axisModel as? AxisModelExtendedInCreator)?.getOrdinalMeta()
+                    dimInfo.ordinalMeta = fetcherAxisOrdinalMeta(axisModel)
                 }
             }
             return dimInfo
@@ -132,6 +132,16 @@ private func getCoordSysDimDefs(
     return coordSysDimDefs!
 }
 
+// A FetcherAxisModel (referHelper `axisMap`/`categoryAxisMap` value, typed `Model`) may be a generated axis
+//   model (getOrdinalMeta via `AxisModelExtendedInCreator`) or a `MatrixDimensionModel` (its own
+//   getOrdinalMeta). Reach whichever provides it — this is the port's stand-in for upstream's structural
+//   `FetcherAxisModel = Model & Pick<…,'getOrdinalMeta'>`.
+private func fetcherAxisOrdinalMeta(_ model: Model) -> OrdinalMeta? {
+    if let ext = model as? AxisModelExtendedInCreator { return ext.getOrdinalMeta() }
+    if let mdm = model as? MatrixDimensionModel { return mdm.getOrdinalMeta() }
+    return nil
+}
+
 private func injectOrdinalMeta(
     _ dimInfoList: [SeriesDimensionDefine],
     _ createInvertedIndices: Bool?,
@@ -148,13 +158,11 @@ private func injectOrdinalMeta(
                     firstCategoryDimIndex = Double(dimIndex)
                 }
                 // upstream: `dimInfo.ordinalMeta = categoryAxisModel.getOrdinalMeta();`
-                // PORT-NOTE: `categoryAxisMap` holds `AxisBaseModel` (referHelper collapses the
-                //   upstream `FetcherAxisModel` = `Model & Pick<AxisModelExtendedInCreator,'getOrdinalMeta'>`
-                //   down to `AxisBaseModel`). `getOrdinalMeta()` lives on `AxisModelExtendedInCreator`
-                //   (implemented by the generated axis model), so cast to reach it. Category axis
-                //   instances conform.
-                if let ext = categoryAxisModel as? AxisModelExtendedInCreator {
-                    dimInfo.ordinalMeta = ext.getOrdinalMeta()
+                // `categoryAxisMap` holds a `FetcherAxisModel` (= `Model`); `getOrdinalMeta()` lives on
+                //   `AxisModelExtendedInCreator` (generated axis models) OR on `MatrixDimensionModel`, so
+                //   reach it via whichever provides it (see `fetcherAxisOrdinalMeta`).
+                if let om = fetcherAxisOrdinalMeta(categoryAxisModel) {
+                    dimInfo.ordinalMeta = om
                 }
                 if createInvertedIndices == true {
                     dimInfo.createInvertedIndices = true

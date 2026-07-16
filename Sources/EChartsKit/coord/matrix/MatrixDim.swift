@@ -382,7 +382,9 @@ public final class MatrixDim {
                     id: Point(),   // Set it in `_setCellId`.
                     span: setDimXYValue(Point(), self.dimIdx, 1, 1),
                     // `value` may be any type (from dataset / series.data); convert to string for display.
-                    option: ["value": "\(value)"],
+                    //   Unwrap a BOXED Swift Optional first (an `Any` wrapping `String?` from a collected
+                    //   dataset cell), else `"\(value)"` prints `Optional("amount")` (cf. ordinalUnwrapAny).
+                    option: ["value": "\(ordinalUnwrapAny(value))"],
                     xy: Double.nan,
                     wh: Double.nan,
                     dim: self,

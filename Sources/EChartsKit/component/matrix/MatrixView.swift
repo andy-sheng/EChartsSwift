@@ -612,6 +612,10 @@ private func jsTruthy(_ v: Any?) -> Bool {
 /// Reproduce JS `value + ''` stringification for a cell's `value` (a String in normal matrix option, but
 /// tolerating numbers from series-collected ordinals). Mirrors the `textValue + ''` upstream.
 private func stringify(_ v: Any) -> String {
+    // A series-auto-collected matrix category can be a BOXED Swift Optional (`Any` wrapping `String?`),
+    //   so a plain `v as? String` misses and the value stringifies as `Optional("amount")`. Unwrap first
+    //   (same fix as Ordinal.getLabel's `ordinalUnwrapAny`).
+    let v = ordinalUnwrapAny(v)
     if let s = v as? String { return s }
     if let d = v as? Double {
         // JS number→string: integral doubles print without a trailing ".0".

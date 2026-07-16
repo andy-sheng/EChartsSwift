@@ -103,9 +103,9 @@ public final class SeriesModelCoordSysInfo {
 
     public var coordSysDims: [String] = []
 
-    public var axisMap: HashMap<AxisBaseModel> = createHashMap()
+    public var axisMap: HashMap<FetcherAxisModel> = createHashMap()
 
-    public var categoryAxisMap: HashMap<AxisBaseModel> = createHashMap()
+    public var categoryAxisMap: HashMap<FetcherAxisModel> = createHashMap()
 
     public var firstCategoryDimIndex: Double?   // upstream `number`, may be null/undefined
 
@@ -117,7 +117,12 @@ public final class SeriesModelCoordSysInfo {
 // upstream: type SupportedCoordSys = 'cartesian2d' | 'polar' | 'singleAxis' | 'geo' | 'parallel' | 'matrix';
 public typealias SupportedCoordSys = String                                // PORT-NOTE: string union narrowed to String
 // upstream: type FetcherAxisModel = Model<Pick<AxisBaseOptionCommon,'type'>> & Pick<AxisModelExtendedInCreator,'getOrdinalMeta'>;
-public typealias FetcherAxisModel = AxisBaseModel                          // PORT-NOTE: structural Pick type collapsed to AxisBaseModel
+// PORT-NOTE: the structural `Model & {getOrdinalMeta}` is collapsed to the common base `Model` — both the
+//   generated axis models (AxisBaseModel, via AxisModelExtendedInCreator) AND `MatrixDimensionModel` are
+//   `Model`s and expose `getOrdinalMeta`; the consumer (createSeriesData) reaches it via a cast to whichever
+//   provides it. Was `AxisBaseModel`, which excluded the matrix dim models — so a custom series on a matrix
+//   coord collected no categories (empty grid). Now the matrix fetcher can populate axisMap too.
+public typealias FetcherAxisModel = Model
 // upstream: type Fetcher = (seriesModel, result, axisMap, categoryAxisMap) => void;
 public typealias Fetcher = (
     _ seriesModel: SeriesModel,
@@ -271,18 +276,16 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
         //   const yModel = matrixModel.getDimensionModel('y');
         //   axisMap.set('x', xModel); axisMap.set('y', yModel);
         //   categoryAxisMap.set('x', xModel); categoryAxisMap.set('y', yModel);
-        // PORT-NOTE (deferred): `getDimensionModel` returns `MatrixDimensionModel` (a `Model` with
-        //   `.get('type')`/`getOrdinalMeta()`), but this port collapsed the structural upstream
-        //   `FetcherAxisModel` to the concrete `AxisBaseModel` (see the typealias above), and
-        //   MatrixDimensionModel is NOT an AxisBaseModel — so it cannot be inserted into the
-        //   `HashMap<AxisBaseModel>` axisMap here. No series is registered on the `matrix` coordinate
-        //   system in the port (matrix is a custom-series/nonSeriesBox coord — Phase 6b), so this
-        //   fetcher is never invoked; the axisMap population is left deferred, to be wired once
-        //   FetcherAxisModel is widened to the structural (type + getOrdinalMeta) protocol.
-        _ = matrixModel?.getDimensionModel("x")
-        _ = matrixModel?.getDimensionModel("y")
-        _ = axisMap
-        _ = categoryAxisMap
+        // Now wired (FetcherAxisModel is `Model`): a MatrixDimensionModel is a `Model` and exposes
+        //   `getOrdinalMeta()`, so a custom series on a matrix coord collects its two dims' categories.
+        if let matrixModel = matrixModel {
+            let xModel = matrixModel.getDimensionModel("x")
+            let yModel = matrixModel.getDimensionModel("y")
+            axisMap.set("x", xModel)
+            axisMap.set("y", yModel)
+            categoryAxisMap.set("x", xModel)
+            categoryAxisMap.set("y", yModel)
+        }
     },
 ]
 
