@@ -282,7 +282,16 @@ public final class Scheduler {
     // upstream: updateStreamModes(seriesModel: SeriesModel<SeriesOption & SeriesLargeOptionMixin>, view)
     //   The generic `Opt` is dropped (CONVENTIONS §2).
     public func updateStreamModes(_ seriesModel: SeriesModel, _ view: ChartView) {
-        let pipeline = self._pipelineMap.get(seriesModel.uid)!
+        // PORT-NOTE: upstream never reaches updateStreamModes without a pipeline — `_pipe` creates one
+        //   for every series during `prepareStageTasks`, run on EVERY update. This port instead drives
+        //   updateStreamModes from a separate pass keyed on chartView existence (ECharts.update), and
+        //   `restorePipelines` is NOT re-run after a toolbox magic-type swap (line↔bar) mints a new
+        //   series uid — so `_pipelineMap.get(uid)` is nil for the swapped series and the old force-unwrap
+        //   crashed (testMagicTypeSwapsLineToBar). A series with no restored pipeline has no
+        //   progressive/large context to compute, so the faithful behavior is to leave it in normal mode.
+        //   The deeper fix (re-run restorePipelines after a series-list mutation, matching upstream's
+        //   `_prepare`) is a Scheduler-lifecycle change tracked separately.
+        guard let pipeline = self._pipelineMap.get(seriesModel.uid) else { return }
 
         // `progressiveRender` means that can render progressively in each
         // animation frame. Note that some types of series do not provide
