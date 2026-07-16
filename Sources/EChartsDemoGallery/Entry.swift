@@ -734,6 +734,12 @@ final class WebSnapper: NSObject, WKNavigationDelegate {
     }
 }
 
+/// Reference holder for --anim-invariant's per-offset element-identity snapshots (the asyncAfter
+/// closures share and append to it across the run loop).
+final class AnimInvariantSnaps {
+    var samples: [(Int, Set<ObjectIdentifier>)] = []
+}
+
 /// Live-timeline analog of WebSnapper: snapshots the echarts.js pane at a series of wall-clock offsets
 /// (from page load) WITHOUT neutering animation/setInterval — the web oracle for --anim-native's frames.
 final class WebMultiSnapper: NSObject, WKNavigationDelegate {
@@ -949,6 +955,51 @@ func runCLI() -> Bool {
         }
         wv.loadHTMLString(page, baseURL: nil)
         wapp.run()
+        return true
+
+    case "--anim-invariant":
+        // --anim-invariant <demo> [offsetsMsCSV] : the reliable animation-bug detector (approach B).
+        //   Global pixel-diff (--anim-native vs --anim-web) is dominated by startup-timing skew and
+        //   random-data value differences, NOT animation correctness — a real gauge "reset on refresh"
+        //   scores ~1 while a correctly-synced morph scores ~27. Instead, sample the SET of scene element
+        //   object-identities at each offset and report the overlap between consecutive samples. A view
+        //   that TWEENS an update reuses its elements (identity persists → high overlap); a view that
+        //   `group.removeAll()`s + rebuilds on every update (the reset bug — new elements replay the enter
+        //   animation from the initial state) shows a near-ZERO overlap across the update. Element size and
+        //   frame timing are irrelevant — this is a structural signal.
+        guard args.count >= 2, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --anim-invariant <name> [offsetsMsCSV]\n".utf8)); exit(2)
+        }
+        let ioffsets: [Int] = (args.count >= 3 ? args[2].split(separator: ",").compactMap { Int($0) } : [])
+            .isEmpty ? [800, 1300, 1900, 2400, 3000, 3500] : args[2].split(separator: ",").compactMap { Int($0) }
+        let iapp = NSApplication.shared
+        iapp.setActivationPolicy(.accessory)
+        let ihost = EChartsHostView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        ihost.setOption(demo.option)
+        demo.drive?(ihost)
+        let snaps = AnimInvariantSnaps()
+        let isorted = ioffsets.sorted()
+        for (i, t) in isorted.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(t) / 1000.0) {
+                var ids = Set<ObjectIdentifier>()
+                _ = ihost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
+                snaps.samples.append((t, ids))
+                if i == isorted.count - 1 {
+                    var minOverlap = 1.0
+                    for k in 1..<snaps.samples.count {
+                        let a = snaps.samples[k - 1].1, b = snaps.samples[k].1
+                        let inter = a.intersection(b).count
+                        let ratio = a.isEmpty ? 1.0 : Double(inter) / Double(a.count)
+                        minOverlap = min(minOverlap, ratio)
+                        print(String(format: "  t%d->t%d  overlap=%.2f  (%d/%d kept, %d total@t%d)",
+                                     snaps.samples[k-1].0, snaps.samples[k].0, ratio, inter, a.count, b.count, snaps.samples[k].0))
+                    }
+                    print(String(format: "MIN_OVERLAP\t%.2f\t%@", minOverlap, demo.name))
+                    exit(0)
+                }
+            }
+        }
+        iapp.run()
         return true
 
     default:
