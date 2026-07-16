@@ -736,8 +736,14 @@ private func makePartialColorVisualHandler(
         applyVisual: { mapping, value, getter, setter in
             // Only used in HSL
             let colorChannel = mapping.mapValueToVisual(value)
-            // Must not be array value
-            setter("color", applyValue(getter("color"), asDouble(colorChannel)))
+            // Must not be array value.
+            //   PORT BRIDGE: the seed `color` visual may be a plain `String` (upstream form) OR a
+            //   `ZRColor.color(String)` enum — the palette assigns colors wrapped in `ZRColor`
+            //   (getColorFromPalette). The HSL math (`applyValue` → `color.modifyHSL`) works on the raw
+            //   color string, so unwrap the enum first; otherwise the `as? String` guard inside applyValue
+            //   fails and every mapped color collapses to nil (→ black). Mirrors `symbolColorString`.
+            let baseColor = visualMapColorString(getter("color"))
+            setter("color", applyValue(baseColor, asDouble(colorChannel)))
         },
         _normalizedToVisual: createNormalizedToNumericVisual([0, 1])
     )
@@ -928,6 +934,16 @@ private func asAnyOptArray(_ v: Any?) -> [Any?] {
 /// `this.option.visual as [number, number]` — coerce the (paired) numeric visual array.
 private func visualAsDoublePair(_ option: VisualMappingInnerOption) -> [Double] {
     return asAnyOptArray(option.visual).map { asDouble($0) }
+}
+
+/// Bridge a `color` visual to a plain color string. Upstream color visuals are always strings; the
+///   port wraps palette colors as `ZRColor.color(String)` (getColorFromPalette), so the partial-color
+///   HSL handlers must unwrap that enum before running `color.modifyHSL`. Mirrors the
+///   `symbolColorString` bridge in chart/helper/SymbolElement.swift.
+private func visualMapColorString(_ v: Any?) -> String? {
+    if let s = v as? String { return s }
+    if let zr = v as? ZRColor, case let .color(str) = zr { return str }
+    return nil
 }
 
 /// JS sparse-array assignment `arr[idx] = v` (grows with nil holes; idx assumed >= 0).
