@@ -879,8 +879,11 @@ func layOutAxisTickLabel(
 
     updateAxisLabelChangableProps(cfg, axisModel, labelLayoutList, transformGroup)
 
-    // PORT-NOTE (deferred): `adjustBreakLabels` (axis break label nudging) needs the optional
-    //   axisBreakHelper break renderer (getAxisBreakHelper() is nil in this port).
+    // upstream: adjustBreakLabels(axisModel, cfg.rotation, labelLayoutList). A break contributes TWO
+    //   boundary tick labels (the `vmin` at the break's start and the `vmax` at its end) that map to
+    //   nearly the same pixel; both are forced highest-priority so `hideOverlap` keeps both. Without this
+    //   de-overlap pass they render stacked → garbled. Runs BEFORE fixMinMaxLabelShow / hideOverlap.
+    adjustBreakLabels(axisModel, cfg.rotation, labelLayoutList)
 
     let optionHideOverlap = cfg.optionHideOverlap
 
@@ -901,6 +904,133 @@ func layOutAxisTickLabel(
     // PORT-NOTE (deferred): `resetOverlapRecordToShared` (cross-axis overlap record) is part of the
     //   out-of-scope name/label overlap resolution.
     _ = shared
+}
+
+// upstream: function adjustBreakLabels(axisModel, axisRotation, labelLayoutList)  (AxisBuilder.ts)
+//   Pair up each break's two boundary labels (`retrieveAxisBreakPairs`, matching a `vmin` tick to its
+//   `vmax` tick by break option), then, unless `breakLabelLayout.moveOverlap` is turned off, spread each
+//   overlapping pair apart via `adjustBreakLabelPair`.
+func adjustBreakLabels(
+    _ axisModel: AxisBaseModel,
+    _ axisRotation: Double,
+    _ labelLayoutList: [LabelLayoutData]?
+) {
+    guard let labelLayoutList = labelLayoutList else { return }
+    guard let scaleBreakHelper = getScaleBreakHelper() else { return }
+
+    // getVisualAxisBreak: `layoutInfo && getLabelInner(layoutInfo.label).labelInfo.tick.break`.
+    let breakLabelIndexPairs = scaleBreakHelper.retrieveAxisBreakPairs(
+        labelLayoutList,
+        { (layoutInfo: LabelLayoutData) -> VisualAxisBreak? in
+            return getLabelInner(layoutInfo.label).labelInfo?.tick.break
+        },
+        true
+    )
+
+    // axisModel.get(['breakLabelLayout', 'moveOverlap'], true) — default `true`; move on `true`|'auto'.
+    let moveOverlapRaw = axisModel.get(["breakLabelLayout", "moveOverlap"])
+    let moveOverlap: Bool
+    if let b = moveOverlapRaw as? Bool { moveOverlap = b }
+    else if let s = moveOverlapRaw as? String { moveOverlap = (s == "auto") }
+    else if moveOverlapRaw == nil || moveOverlapRaw is NSNull { moveOverlap = true }   // default
+    else { moveOverlap = false }
+
+    if moveOverlap {
+        let axisInverse = (axisModel.axis as? Axis)?.inverse ?? false
+        for idxPairAny in breakLabelIndexPairs {
+            guard idxPairAny.count == 2,
+                  let i0 = idxPairAny[0] as? Int, let i1 = idxPairAny[1] as? Int,
+                  i0 >= 0, i0 < labelLayoutList.count, i1 >= 0, i1 < labelLayoutList.count else { continue }
+            adjustBreakLabelPair(axisInverse, axisRotation, [
+                labelLayoutHelper.ensureLabelLayoutWithGeometry(labelLayoutList[i0]),
+                labelLayoutHelper.ensureLabelLayoutWithGeometry(labelLayoutList[i1])
+            ])
+        }
+    }
+}
+
+// upstream: function adjustBreakLabelPair(axisInverse, axisRotation, layoutPair)  (axisBreakHelperImpl.ts)
+//   `layoutPair` is `[break_min_label, break_max_label]`. If they overlap (OBB test with the minimum
+//   translation vector `mtv` along the axis), distribute `mtv` between them by a ratio `k` chosen to keep
+//   the text gap centered on the break, then translate each label. PORT-NOTE: upstream reaches this via
+//   `getAxisBreakHelper()!.adjustBreakLabelPair`; that registry accessor is a nil stub in this port
+//   (component-side axisBreakHelper is otherwise unported), so it is called directly.
+private func adjustBreakLabelPair(
+    _ axisInverse: Bool,
+    _ axisRotation: Double,
+    _ layoutPair: [LabelLayoutData?]
+) {
+    // if (find(layoutPair, item => !item)) return;
+    guard let pair0 = layoutPair[0], let pair1 = layoutPair[1] else { return }
+
+    let mtv = Point()
+    // The axisRotation indicates mtv direction of OBB intersecting.
+    let direction = -(axisInverse ? axisRotation + Double.pi : axisRotation)
+    if !labelLayoutHelper.labelIntersect(
+        pair0, pair1, mtv,
+        BoundingRectIntersectOpt(direction: direction, bidirectional: false, touchThreshold: 0)
+    ) {
+        return
+    }
+
+    // Rotate axis back to (1, 0) direction, to be a standard axis.
+    let axisStTrans = matrix.rotate(matrix.create(), -axisRotation)
+
+    // map(layoutPair, layout => layout.transform ? mul(create(), axisStTrans, layout.transform) : axisStTrans)
+    func stTrans(_ layout: LabelLayoutData) -> MatrixArray {
+        if let t = layout.transform { return matrix.mul(axisStTrans, t) }
+        return axisStTrans
+    }
+    let labelPairStTrans = [stTrans(pair0), stTrans(pair1)]
+
+    // WH = ['width', 'height']; localRect[WH[whIdx]] → width (0) / height (1).
+    func localRectWH(_ rect: BoundingRect, _ whIdx: Int) -> Double {
+        return whIdx == 0 ? rect.width : rect.height
+    }
+    func isParallelToAxis(_ whIdx: Int) -> Bool {
+        // Assert label[0] and label[1] has the same rotation, so only use [0].
+        let localRect = pair0.localRect ?? BoundingRect(0, 0, 0, 0)
+        let wh = localRectWH(localRect, whIdx)
+        let labelVec0 = Point(wh * labelPairStTrans[0][0], wh * labelPairStTrans[0][1])
+        return abs(labelVec0.y) < 1e-5
+    }
+
+    // If overlapping, move pair[0]/pair[1] apart. `k` distributes mtv so the gap sits centered on the break.
+    var k = 0.5
+
+    if isParallelToAxis(0) || isParallelToAxis(1) {
+        // rectSt = map(layoutPair, (layout, idx) => layout.localRect.clone().applyTransform(labelPairStTrans[idx]))
+        let rectSt: [BoundingRect] = [pair0, pair1].enumerated().map { idx, layout in
+            let rect = (layout.localRect ?? BoundingRect(0, 0, 0, 0)).clone()
+            rect.applyTransform(labelPairStTrans[idx])
+            return rect
+        }
+
+        // brkCenterSt = ((pair0.label + pair1.label) * 0.5).transform(axisStTrans)
+        let brkCenterSt = Point(
+            (pair0.label.x + pair1.label.x) * 0.5,
+            (pair0.label.y + pair1.label.y) * 0.5
+        )
+        brkCenterSt.transform(axisStTrans)
+
+        let mtvSt = mtv.clone()
+        mtvSt.transform(axisStTrans)
+
+        let insidePtSum = rectSt[0].x + rectSt[1].x
+            + (mtvSt.x >= 0 ? rectSt[0].width : rectSt[1].width)
+        let qval = (insidePtSum + mtvSt.x) / 2 - brkCenterSt.x
+        let uvalMin = Swift.min(qval, qval - mtvSt.x)
+        let uvalMax = Swift.max(qval, qval - mtvSt.x)
+        let uval = uvalMax < 0 ? uvalMax : (uvalMin > 0 ? uvalMin : 0)
+        k = (qval - uval) / mtvSt.x
+    }
+
+    let delta0 = Point()
+    let delta1 = Point()
+    Point.scale(delta0, mtv, -k)
+    Point.scale(delta1, mtv, 1 - k)
+    labelLayoutHelper.labelLayoutApplyTranslation(pair0, delta0)
+    labelLayoutHelper.labelLayoutApplyTranslation(pair1, delta1)
 }
 
 func endTextLayout(

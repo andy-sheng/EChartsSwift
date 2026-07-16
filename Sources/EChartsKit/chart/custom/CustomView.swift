@@ -716,6 +716,19 @@ private func updateZ(
         elDisplayable.z2 = optZ2   // `optZ2 || 0` — a present numeric is kept as-is.
     }
 
+    // PORT bridge: the display list is z-sorted (zlevel → z → z2) and an attached `textContent` is a
+    //   SEPARATE display-list entry. A custom `renderItem` text child is created bare (z2 defaults to 0),
+    //   so on a series whose z2 varies per datum (e.g. circle-packing's `z2: depth*2`) the labels sort
+    //   BELOW the deeper shapes and get painted over — invisible. zrender keeps an attached text adjacent
+    //   to its host because `ZRText.update` copies the host's z/z2/zlevel down to its TSpans; mirror that
+    //   at the host→text seam by giving the text the host's z-props (the stable-sort offset tiebreak then
+    //   keeps it right AFTER the host). Deferred per-state z is unaffected.
+    if let textEl = el.getTextContent() {
+        textEl.z = elDisplayable.z
+        textEl.zlevel = elDisplayable.zlevel
+        textEl.z2 = elDisplayable.z2
+    }
+
     // upstream: for (STATES) updateZForEachState(...)  — per-state z2 is a states concern (DEFERRED).
 }
 
@@ -1181,6 +1194,15 @@ private func doCreateOrUpdateAttachedTx(
     // upstream: processTxInfo(normal) then processTxInfo(EMPHASIS); legacy ec4 conversion — DEFERRED.
     // PORT-NOTE (deferred): legacy ec4-style detection + per-state (emphasis/blur/select) text config are
     //   deferred. Only `elOption.textContent` (normal) is honored as a basic text child.
+
+    // upstream processTxInfo (normal): `let txCfg = stateOpt.textConfig; ...; info.cfg = txCfg;`.
+    //   The host element's `textConfig` (e.g. `{position:'inside'}`) drives where the attached text is
+    //   placed — `updateElNormal` reads `attachedTxInfo.normal.cfg` and calls `el.setTextConfig(cfg)`.
+    //   Without this the attached label sits at the host's local origin instead of inside the shape.
+    if let txCfgDict = elOption["textConfig"] as? [String: Any] {
+        attachedTxInfo.normal.cfg = customBridgeTextConfig(txCfgDict)
+    }
+
     var txConOptNormal = elOption["textContent"]
 
     // upstream: if (txConOptNormal != null || ...emphasis/blur/select...) { textContent handling }
@@ -1212,11 +1234,41 @@ private func doCreateOrUpdateAttachedTx(
             }
         }
     }
-    _ = attachedTxInfo
 }
 
-// upstream: function processTxInfo(...) — DEFERRED (legacy detection + per-state text config).
-//   Retained as a documented no-op for provenance; the basic-text path is inlined above.
+// upstream: function processTxInfo(...) — the per-state legacy detection is DEFERRED; the normal-state
+//   `info.cfg = stateOpt.textConfig` assignment is inlined in doCreateOrUpdateAttachedTx (above).
+
+// Bridge a renderItem `textConfig` bag (`[String: Any]`) → `ElementTextConfig`. Upstream passes the raw
+//   object to `el.setTextConfig`; here it is mapped field-by-field onto the struct ZRenderKit consumes.
+private func customBridgeTextConfig(_ dict: [String: Any]) -> ElementTextConfig {
+    var cfg = ElementTextConfig()
+    // position: BuiltinTextPosition string | (number|string)[] — passed through as `Any?`.
+    if let pos = dict["position"], !(pos is NSNull) { cfg.position = pos }
+    if let rotation = customNumOpt(dict["rotation"]) { cfg.rotation = rotation }
+    if let distance = customNumOpt(dict["distance"]) { cfg.distance = distance }
+    if let local = dict["local"] as? Bool { cfg.local = local }
+    if let inside = dict["inside"] as? Bool { cfg.inside = inside }
+    if let origin = dict["origin"], !(origin is NSNull) { cfg.origin = origin }
+    if let offset = dict["offset"] as? [Any] {
+        cfg.offset = offset.compactMap { customNumOpt($0) }
+    }
+    if let insideFill = dict["insideFill"] as? String { cfg.insideFill = insideFill }
+    if let insideStroke = dict["insideStroke"] as? String { cfg.insideStroke = insideStroke }
+    if let outsideFill = dict["outsideFill"] as? String { cfg.outsideFill = outsideFill }
+    if let outsideStroke = dict["outsideStroke"] as? String { cfg.outsideStroke = outsideStroke }
+    return cfg
+}
+
+// A dynamic numeric option (Int / Double / NSNumber) → Double?, nil for missing / NSNull / non-numeric.
+private func customNumOpt(_ v: Any?) -> Double? {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    default: return nil
+    }
+}
 
 // upstream: function retrieveStateOption(elOption, state): CustomElementOptionOnState
 private func retrieveStateOption(_ elOption: [String: Any]?, _ state: String) -> Any? {

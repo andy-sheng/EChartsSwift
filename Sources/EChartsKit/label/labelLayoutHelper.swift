@@ -301,6 +301,31 @@ public enum labelLayoutHelper {
         return g.dirty == nil || (g.dirty! & bits) != 0
     }
 
+    /// upstream: export function labelLayoutApplyTranslation(labelLayout, offset)
+    /// Move a label layout (and its ZRText element, transform, global rect, and OBB) by `offset`. Used by
+    /// the axis-break label de-overlap pass to nudge a break's two boundary labels apart.
+    public static func labelLayoutApplyTranslation(_ labelLayout: LabelLayoutData?, _ offset: PointLike) {
+        guard let labelLayout = labelLayout else { return }
+
+        labelLayout.label.x += offset.x
+        labelLayout.label.y += offset.y
+        labelLayout.label.markRedraw()
+
+        if var transform = labelLayout.transform {
+            transform[4] += offset.x
+            transform[5] += offset.y
+            labelLayout.transform = transform
+        }
+
+        // `rect` is the (non-optional) global rect.
+        labelLayout.rect.x += offset.x
+        labelLayout.rect.y += offset.y
+
+        if let obb = labelLayout.obb {
+            obb.fromBoundingRect(labelLayout.localRect ?? BoundingRect(0, 0, 0, 0), labelLayout.transform)
+        }
+    }
+
     /// upstream: export function ensureLabelLayoutWithGeometry(labelLayout)
     /// Recompute the label's geometry if the dirty bit is set; returns the same object.
     @discardableResult

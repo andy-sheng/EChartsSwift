@@ -242,10 +242,13 @@ public final class SeriesData: DataStackSeriesData {
     // PORT NOTE: upstream `wrapMethod` rebinds `this[methodName]` so registered injections fire when the
     //   method runs. Swift can not replace a method by string name, so instead `wrapMethod` stores the
     //   injection closures here, keyed by method name, and the ported methods that support wrapping invoke
-    //   them explicitly (currently only `cloneShallow`, which the tree/graph link relies on — see
-    //   linkSeriesData `transferInjection`/`cloneShallowInjection`). Registration order is preserved so the
-    //   injections fire in the same order upstream's wrap chain does (original → transfer → cloneShallow).
-    private var _wrappedMethodInjections: [String: [(SeriesData) -> Void]] = [:]
+    //   them explicitly (`cloneShallow`, which the tree/graph link relies on — see linkSeriesData
+    //   `transferInjection`/`cloneShallowInjection`; and `getItemModel`, which the sankey/tree/graph/
+    //   treemap/sunburst level & category models reparent through). Each injection receives upstream's
+    //   `[res].concat(arguments)` — for cloneShallow `[newList]`, for getItemModel `[model, idx]` — and
+    //   RETURNS the (possibly-mutated) result. Registration order is preserved so the injections fire in the
+    //   same order upstream's wrap chain does (original → transfer → cloneShallow).
+    private var _wrappedMethodInjections: [String: [([Any]) -> Any?]] = [:]
 
     // Methods that create a new list based on this list should be listed here.
     // Notice that those method should `RETURN` the new list.
@@ -1043,7 +1046,18 @@ public final class SeriesData: DataStackSeriesData {
         //   `Any` PORT-NOTE alias, so the TS assertion cast is a no-op here — pass through directly
         //   (a conditional `as?` between two `Any` aliases always succeeds → warning).
         let dataItem: ModelOption = self.getRawDataItem(idx)
-        return Model(dataItem, hostModel, hostModel?.ecModel)
+        var model = Model(dataItem, hostModel, hostModel?.ecModel)
+
+        // upstream: `wrapMethod('getItemModel', fn)` rebinds this method so registered injections run AFTER
+        //   the original and can reparent the returned Model — this is how sankey/tree/treemap/sunburst
+        //   attach a per-depth `levels[]` model, and how graph attaches a per-category model, so a datum
+        //   inherits that level/category `itemStyle`/`lineStyle`/`label`. Fire the injections in registration
+        //   order, threading the Model through as upstream's `[res].concat(arguments)` (res == model,
+        //   arg1 == idx as a Double per the injection bodies). Empty (the common case) → no-op.
+        for injection in self._wrappedMethodInjections["getItemModel"] ?? [] {
+            if let m = injection([model, Double(idx)]) as? Model { model = m }
+        }
+        return model
     }
 
     /**
@@ -1272,7 +1286,7 @@ public final class SeriesData: DataStackSeriesData {
         //   fresh clone (`clone.tree = struct`, `struct.data = clone`), so a tree/treemap/sunburst series'
         //   `getData().tree` survives the `dataTaskReset` cloneShallow.
         for injection in self._wrappedMethodInjections["cloneShallow"] ?? [] {
-            injection(list!)
+            _ = injection([list!])
         }
 
         return list!
@@ -1283,18 +1297,17 @@ public final class SeriesData: DataStackSeriesData {
      */
     public func wrapMethod(
         _ methodName: String,   // FunctionPropertyNames<SeriesData>
-        _ injectFunction: @escaping (_ args: Any...) -> Any?
+        _ injectFunction: @escaping (_ args: [Any]) -> Any?
     ) {
         // PORT NOTE: upstream dynamically rebinds `this[methodName]` to run the original method then the
         //   injection. Swift cannot replace a method by string name, so the injection is STORED here (keyed
-        //   by method name) and the ported wrappable methods invoke it explicitly. The injection is fed the
-        //   original method's result (a new `SeriesData`), matching upstream's `[res].concat(arguments)`.
-        //   `__wrappedMethods` bookkeeping is still recorded for `transferProperties` fidelity.
+        //   by method name) and the ported wrappable methods invoke it explicitly. The injection is fed
+        //   `[res].concat(arguments)` (the original method's result followed by its call args) and its return
+        //   value replaces the result — matching upstream's wrap semantics. `__wrappedMethods` bookkeeping is
+        //   still recorded for `transferProperties` fidelity.
         self.__wrappedMethods = self.__wrappedMethods ?? []
         self.__wrappedMethods!.append(methodName)
-        self._wrappedMethodInjections[methodName, default: []].append { res in
-            _ = injectFunction(res)
-        }
+        self._wrappedMethodInjections[methodName, default: []].append(injectFunction)
     }
 
     // ----------------------------------------------------------
@@ -1399,6 +1412,19 @@ public final class SeriesData: DataStackSeriesData {
         target._nameRepeatCount = source._nameRepeatCount
 
         target.__wrappedMethods = source.__wrappedMethods
+
+        // Upstream copies each `__wrappedMethods` entry BY NAME, which re-copies the rebound method
+        //   (with its injection chain) onto the clone, so a wrapped `getItemModel` keeps firing after a
+        //   cloneShallow. Here the injection closures are stored separately, so carry the `getItemModel`
+        //   ones onto the clone explicitly — `dataTaskReset` cloneShallows the node/edge data and re-points
+        //   `graph.data`/`edgeData` at the clone, and GraphNode/Edge.getModel resolves against it; without
+        //   this, the sankey/tree/graph level & category reparenting is lost on every render. (Only
+        //   `getItemModel` is carried: its injections capture the series model + read live layout, so they
+        //   are clone-safe. The cloneShallow/transfer/change injections are deliberately NOT copied — they
+        //   are fired from the SOURCE with source-specific captures by the link machinery above.)
+        if let getItemModelInjections = source._wrappedMethodInjections["getItemModel"] {
+            target._wrappedMethodInjections["getItemModel"] = getItemModelInjections
+        }
 
         // CLONE_PROPERTIES
         target._approximateExtent = util.clone(source._approximateExtent)

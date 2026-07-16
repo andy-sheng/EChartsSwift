@@ -125,17 +125,20 @@ open class SankeySeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-NOTE (deferred): requires a real SeriesData.wrapMethod that rebinds `getItemModel` by name.
-        //   The current wrapMethod stores an injection but `getItemModel` does not invoke it (and the
-        //   injection signature is fed only a SeriesData result, not the Model+idx), so the level-model
-        //   parenting does not take effect through this path yet. Preserved faithfully for the diffable
-        //   surface and for when wrapMethod becomes real. (`model.parentModel` is the series model because
-        //   the item Model's parent is the series — `getGraph()` mirrors upstream's read.)
+        //   SeriesData.getItemModel now fires these injections with `[model, idx]` and threads the returned
+        //   Model, so reparenting a node's item model onto its per-depth `levelModels[depth]` entry takes
+        //   effect (a node inherits its level's `itemStyle`). `idx` arrives as a Double (arg 1).
         nodeData.wrapMethod("getItemModel") { [weak self] args in
             guard let self = self, let model = args.first as? Model else { return args.first as Any? }
-            // upstream reads `idx` from the wrapped args; the stub feeds only the result Model, so the
-            //   `idx`-keyed layout lookup is inert here (see wrapMethod PORT-NOTE). Kept for provenance.
-            _ = self
+            let idx = Int((args.count > 1 ? (args[1] as? Double) : nil) ?? 0)
+            // const layout = seriesModel.getData().getItemLayout(idx);
+            if let layout = self.getData().getItemLayout(idx) as? [String: Any],
+               let nodeDepth = sankeyNum(layout["depth"]) {
+                // const levelModel = seriesModel.levelModels[nodeDepth];
+                if let levelModel = self.levelModels[Int(nodeDepth)] {
+                    model.parentModel = levelModel
+                }
+            }
             return model
         }
 
@@ -150,10 +153,21 @@ open class SankeySeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-NOTE (deferred): same wrapMethod stub deferral as the node closure above (requires a real
-        //   wrapMethod that rebinds `getItemModel`).
-        edgeData.wrapMethod("getItemModel") { args in
-            return args.first as Any?
+        //   An edge inherits the level of its SOURCE node (`edge.node1`), so `edge.getModel().get('lineStyle')`
+        //   returns that level's `lineStyle` (e.g. `{color:'source', opacity:0.6}`) — read by sankeyVisual.
+        edgeData.wrapMethod("getItemModel") { [weak self] args in
+            guard let self = self, let model = args.first as? Model else { return args.first as Any? }
+            let idx = Int((args.count > 1 ? (args[1] as? Double) : nil) ?? 0)
+            // const edge = seriesModel.getGraph().getEdgeByIndex(idx);
+            let edge = self.getGraph().getEdgeByIndex(idx)
+            // const layout = edge.node1.getLayout();
+            if let layout = edge?.node1.getLayout() as? [String: Any],
+               let depth = sankeyNum(layout["depth"]) {
+                if let levelModel = self.levelModels[Int(depth)] {
+                    model.parentModel = levelModel
+                }
+            }
+            return model
         }
     }
 
