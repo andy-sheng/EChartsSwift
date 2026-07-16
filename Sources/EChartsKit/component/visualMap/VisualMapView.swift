@@ -142,8 +142,13 @@ open class VisualMapView: ComponentView {
      */
     // upstream: protected getControllerVisual(targetValue, visualCluster, opts?) → `internal`.
     //   The `opts` object literal is spread into two default params (`forceState`, `convertOpacityToAlpha`).
+    // PORT-NOTE: upstream types `targetValue: number`, but for a `categories` visualMap the represent
+    //   value is the raw category (often a STRING). `getValueState` / `applyVisual` both accept the loose
+    //   value, so `targetValue` is kept as `Any?` here (continuous callers still pass a Double, which is a
+    //   valid `Any?`). Narrowing to Double coerced string categories to 0 → every piecewise-categories
+    //   legend swatch resolved to the same (outOfRange) color instead of its group color.
     internal func getControllerVisual(
-        _ targetValue: Double,
+        _ targetValue: Any?,
         _ visualCluster: String,
         forceState: VisualState? = nil,
         convertOpacityToAlpha: Bool = false
