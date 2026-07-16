@@ -9,28 +9,30 @@
 // drag-and-drop mode where a flight can be moved to another apron / time slot.
 //
 // DEVIATIONS from the official source:
-//  - NATIVE PANE OFF (nativeSupported: false): this example's CHART IS ITS `renderItem` CLOSURES. Every visible
-//    mark comes from JS — `renderGanttItem` calls api.value()/api.coord()/api.size()/api.style() and
-//    echarts.graphic.clipRectByRect() to build a 3-child group per flight, and `renderAxisLabelItem` builds the
-//    path+text tag per apron. NOT, however, because a Swift `[String: Any]` option cannot carry a closure — it
-//    CAN: CustomView resolves `customSeries.getRenderItem()`, so a `CustomSeriesRenderItem` may ride on the
-//    series option under the "renderItem" key (official-custom-cartesian-polygon.swift does exactly that; and it
-//    is safe here because WebPage.swift only JSON-serializes `option` when `webOptionJS` is nil, and we set it).
-//    The flag is false because the chart needs FOUR things AROUND the closure that EChartsKit does not have
-//    today, none of which could be verified (this port was audited under a no-build constraint):
-//      (a) `echarts.graphic.clipRectByRect` is NOT ported to Swift at all, and all three flight rects are clipped
-//          with it (it would have to be inlined in this file);
-//      (b) `api.style()` is an explicitly DEFERRED best-effort stub in CustomView (it returns only the raw
-//          item-visual bag), so the bars' fill/opacity are unproven;
-//      (c) the ec4 legacy style compat is DEFERRED (CustomView's `processTxInfo` / the unported styleCompat):
-//          the flight number is `style: { text: ..., textFill: '#fff' }` ON A RECT, and the apron tag's two texts
-//          use `textVerticalAlign`/`textAlign`/`textFill` — the ported style bridge does not honor those in full;
-//      (d) `renderAxisLabelItem` places its group with the LEGACY transform prop `position: [10, y]`, and
-//          `updateElNormal` copies only x/y/rotation/scaleX/scaleY/originX/originY — every apron tag would pile
-//          up at the origin.
-//    The rest of the option (toolbox, title, dataZoom, grid, xAxis, yAxis, both series' dimensions/encode/data)
-//    IS ported below, so the gap is exactly the two renderItems and the drag layer — nothing else. Lighting the
-//    native pane up is a real, tracked follow-up, not an impossibility.
+//  - NATIVE PANE ON (nativeSupported: true): both `renderItem` closures ARE ported (renderGanttItem /
+//    renderAxisLabelItem, below) statement for statement, riding on the series option under the "renderItem"
+//    key exactly as official-custom-bar-trend.swift's does (CustomView resolves `customSeries.getRenderItem()`;
+//    safe here because WebPage.swift only JSON-serializes `option` when `webOptionJS` is nil, and we set it).
+//    Four framework gaps had to be worked around, none requiring a framework change:
+//      (a) `echarts.graphic.clipRectByRect` is NOT ported to Swift at all — INLINED as `ganttClipRect` below
+//          (x=max, x2=min, y=max, y2=min; nil unless x2>=x && y2>=y), byte-for-byte the upstream algorithm.
+//      (b) `api.style()` is a DEFERRED best-effort stub (raw item-visual `style` bag + userProps merged, no
+//          label/styleCompat) — for the plain bars this is exactly what upstream's `api.style()` normally
+//          returns here too (there's no itemStyle/label on this series), so behavior matches.
+//      (c) the ec4 legacy "text"/`textFill`/`textAlign`/`textVerticalAlign` embedded-in-shape-style compat is
+//          DEFERRED (CustomView's `processTxInfo` is not ported), so `api.style({ text, textFill })` on the
+//          flight-number RECT would not draw a label. Translated to an explicit `type: "text"` sibling child,
+//          centered on the (clipped) label rect — the same centered-white-label upstream's ec4 compat produces.
+//          The apron tag's two texts likewise use the ported style bridge's modern key names (`align` /
+//          `verticalAlign`; `bridgeTextStyle` already understands `textFill` as an ec4-compat synonym of `fill`).
+//      (d) `renderAxisLabelItem` places its group with the LEGACY transform prop `position: [10, y]`; the ported
+//          static transform-apply (`applyUpdateTransitionStatic`) only reads the modern "x"/"y" keys (upstream's
+//          own `LEGACY_TRANSFORM_PROPS_MAP` in customGraphicTransition.ts remaps `position` -> `[x, y]`), so the
+//          group is returned with "x"/"y" directly instead — the same semantics, spelled the way the static
+//          substitute understands.
+//    STILL NOT reproduced natively (nothing to do with the renderItems): the drag-and-drop layer (below) and
+//    `toolbox.feature.myDrag.onclick` — both are pure pointer-driven interaction, not part of a single rendered
+//    frame; see the DRAG LAYER deviation below.
 //  - DATA INLINED: upstream does `$.get(ROOT_PATH + '/data/asset/data/airport-schedule.json', function (rawData)
 //    { ... })` and builds the option inside the callback. The page has no network, so the asset is vendored at
 //    assets/data/airport-schedule.json (mirrored from echarts-examples' public/data/asset/data/airport-schedule.json)
@@ -46,11 +48,11 @@
 //    directions — are not on `ECharts` (only the coord systems have them, e.g. coord/cartesian/Grid.swift), and
 //    `EChartsDemoChart` exposes no `getZr()`, so the zr-level ghost Rect and its mousemove/mouseup/globalout
 //    handlers have nothing to attach to. There is no `drive` closure because the behaviour is pure pointer
-//    interaction, not a timeline — and with nativeSupported: false a `drive` would be inert anyway (the gallery
-//    builds no native chart for it).
+//    interaction, not a timeline.
 //  - `toolbox.feature.myDrag.onclick` omitted from the native option — see the PORT-NOTE (it is the JS handler that
 //    toggles `_draggable` and disables the two `inside` dataZooms).
 import Foundation
+import EChartsKit
 
 private let airportScheduleURL = Upstream.repoRoot.appendingPathComponent("assets/data/airport-schedule.json")
 
@@ -96,12 +98,221 @@ private let ganttDragToolboxIcon = "path://M990.55 380.08 q11.69 0 19.88 8.19 q7
 // The x dataZoom slider's handle icon — verbatim from the example.
 private let ganttSliderHandleIcon = "path://M10.7,11.9H9.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4h1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7V23h6.6V24.4z M13.3,19.6H6.7v-1.4h6.6V19.6z"
 
+// MARK: - the two upstream renderItems, ported
+
+// JS: var HEIGHT_RATIO = 0.6; var DIM_CATEGORY_INDEX = 0; var DIM_TIME_ARRIVAL = 1; var DIM_TIME_DEPARTURE = 2;
+private let ganttHeightRatio = 0.6
+private let ganttDimCategoryIndex = 0.0
+private let ganttDimTimeArrival = 1.0
+private let ganttDimTimeDeparture = 2.0
+
+// Coerce a ParsedValue (Any: Double | Int | NSNumber | Bool) to Double — the recurring Int/Bool-vs-Double
+//   read trap. Bool -> 1/0 mirrors `number.numberCoerce` (which itself mirrors JS `Number(true) === 1`).
+private func gtNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let b = v as? Bool { return b ? 1 : 0 }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+// JS `x + ''` string coercion — the flight-number / apron-name/type dims arrive as plain strings (ordinal
+//   dims pass the raw value through unparsed); fall back to a numeric description for the rare non-string case.
+private func gtStr(_ v: Any?) -> String {
+    if let s = v as? String { return s }
+    if let v = v { return "\(v)" }
+    return ""
+}
+
+// upstream: function clipRectByRect(params, rect) { return echarts.graphic.clipRectByRect(rect, {x:
+//   params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height}); }
+//   `echarts.graphic.clipRectByRect` itself (util/graphic.ts) is not ported to Swift — inlined verbatim here.
+private func ganttClipRectByRect(
+    _ x: Double, _ y: Double, _ width: Double, _ height: Double,
+    _ coordX: Double, _ coordY: Double, _ coordWidth: Double, _ coordHeight: Double
+) -> [String: Any]? {
+    let cx = max(x, coordX)
+    let cx2 = min(x + width, coordX + coordWidth)
+    let cy = max(y, coordY)
+    let cy2 = min(y + height, coordY + coordHeight)
+    // If the total rect is clipped, nothing, including the border, should be painted. So return nil.
+    if cx2 >= cx && cy2 >= cy {
+        return ["x": cx, "y": cy, "width": cx2 - cx, "height": cy2 - cy]
+    }
+    return nil
+}
+
+// upstream: function renderGanttItem(params, api) { ... } — one clipped bar per flight, statement for
+//   statement. Typed EXACTLY `CustomSeriesRenderItem` so CustomView's `get("renderItem") as?
+//   CustomSeriesRenderItem` cast holds (see header).
+//
+// DEVIATION (header gap (c)): the third rect's `api.style({ fill: 'transparent', stroke: 'transparent',
+//   text: text, textFill: '#fff' })` relies on the ec4 legacy "text on shape" compat (CustomView's
+//   `processTxInfo`), which is DEFERRED — a rect never grows an attached label from its style bag in this
+//   port. The rect is still returned (transparent, so invisible either way), and an explicit `type: "text"`
+//   sibling — centered on the same clipped rect, matching upstream's default centered/inside label
+//   placement — carries the flight number instead.
+private let renderGanttItem: CustomSeriesRenderItem = { params, api in
+    let categoryIndex = gtNum(api.value(ganttDimCategoryIndex, nil))
+    let timeArrival = api.coord([gtNum(api.value(ganttDimTimeArrival, nil)), categoryIndex], nil)
+    let timeDeparture = api.coord([gtNum(api.value(ganttDimTimeDeparture, nil)), categoryIndex], nil)
+    guard timeArrival.count >= 2, timeDeparture.count >= 2 else { return nil }
+
+    // var coordSys = params.coordSys; _cartesianXBounds/_cartesianYBounds — drag-layer bookkeeping, web-pane
+    //   only (see header DRAG LAYER deviation); the cartesian rect itself is still needed for clipping below.
+    let coordX = (params.coordSys.extra["x"] as? Double) ?? 0
+    let coordY = (params.coordSys.extra["y"] as? Double) ?? 0
+    let coordWidth = (params.coordSys.extra["width"] as? Double) ?? 0
+    let coordHeight = (params.coordSys.extra["height"] as? Double) ?? 0
+
+    let barLength = timeDeparture[0] - timeArrival[0]
+    // Get the height corresponds to length 1 on y axis.
+    let sizeArr = (api.size([0.0, 1.0], nil) as? [Double]) ?? [0, 0]
+    let barHeight = (sizeArr.count > 1 ? sizeArr[1] : 0) * ganttHeightRatio
+    let x = timeArrival[0]
+    let y = timeArrival[1] - barHeight
+
+    let flightNumber = gtStr(api.value(3.0, nil))
+    let flightNumberWidth = format.getTextRect(flightNumber).width
+    let text = (barLength > flightNumberWidth + 40 && x + barLength >= 180) ? flightNumber : ""
+
+    let rectNormal = ganttClipRectByRect(x, y, barLength, barHeight, coordX, coordY, coordWidth, coordHeight)
+    let rectVIP = ganttClipRectByRect(x, y, barLength / 2, barHeight, coordX, coordY, coordWidth, coordHeight)
+    let rectText = ganttClipRectByRect(x, y, barLength, barHeight, coordX, coordY, coordWidth, coordHeight)
+
+    let vipFlag = gtNum(api.value(4.0, nil)) != 0   // JS: !!api.value(4)
+
+    var normalChild: [String: Any] = [
+        "type": "rect",
+        "ignore": rectNormal == nil,          // JS: ignore: !rectNormal
+        "style": api.style(nil, nil)          // JS: api.style()
+    ]
+    if let rectNormal = rectNormal { normalChild["shape"] = rectNormal }
+
+    var vipChild: [String: Any] = [
+        "type": "rect",
+        // JS: ignore: !rectVIP && !api.value(4) — faithfully kept as-is (only ignored when BOTH the clip
+        //   emptied out AND the flight is not VIP; a non-VIP flight with a non-empty clip still shows through).
+        "ignore": (rectVIP == nil) && !vipFlag,
+        "style": api.style(["fill": "#ddb30b"], nil)
+    ]
+    if let rectVIP = rectVIP { vipChild["shape"] = rectVIP }
+
+    var rectTextChild: [String: Any] = [
+        "type": "rect",
+        "ignore": rectText == nil,            // JS: ignore: !rectText
+        "style": api.style([
+            "fill": "transparent",
+            "stroke": "transparent",
+            "text": text,
+            "textFill": "#fff"
+        ] as [String: Any], nil)
+    ]
+    if let rectText = rectText { rectTextChild["shape"] = rectText }
+
+    // See the DEVIATION note above: the explicit text sibling standing in for the ec4 text-on-rect compat.
+    var labelChild: [String: Any] = [
+        "type": "text",
+        "ignore": rectText == nil || text.isEmpty,
+        "style": ["fill": "#fff", "align": "center", "verticalAlign": "middle"] as [String: Any]
+    ]
+    if let rectText = rectText {
+        let rx = (rectText["x"] as? Double) ?? 0
+        let ry = (rectText["y"] as? Double) ?? 0
+        let rw = (rectText["width"] as? Double) ?? 0
+        let rh = (rectText["height"] as? Double) ?? 0
+        labelChild["style"] = [
+            "text": text,
+            "fill": "#fff",
+            "align": "center",
+            "verticalAlign": "middle",
+            "x": rx + rw / 2,
+            "y": ry + rh / 2
+        ] as [String: Any]
+    }
+
+    return [
+        "type": "group",
+        "children": [normalChild, vipChild, rectTextChild, labelChild]
+    ] as [String: Any]
+}
+
+// upstream: function renderAxisLabelItem(params, api) { ... } — the fake y-axis apron tag, statement for
+//   statement. Typed EXACTLY `CustomSeriesRenderItem`.
+//
+// DEVIATION (header gap (d)): upstream returns the group at the LEGACY `position: [10, y]`; the ported
+//   static transform-apply only reads the modern "x"/"y" transform keys (upstream's own
+//   `LEGACY_TRANSFORM_PROPS_MAP` remaps `position` -> `[x, y]` inside the DEFERRED `applyUpdateTransition`),
+//   so "x"/"y" are written directly instead — the identical semantics.
+// DEVIATION (header gap (c)): the two texts' ec4 `textAlign`/`textVerticalAlign` keys are translated to the
+//   ported style bridge's modern `align`/`verticalAlign` keys; `textFill` itself IS already honored by
+//   `bridgeTextStyle` as an ec4-compat synonym of `fill` and is kept as-is.
+private let renderAxisLabelItem: CustomSeriesRenderItem = { params, api in
+    let apronIndex = gtNum(api.value(0.0, nil))
+    let yCoord = api.coord([0.0, apronIndex], nil)
+    guard yCoord.count >= 2 else { return nil }
+    let y = yCoord[1]
+
+    let coordY = (params.coordSys.extra["y"] as? Double) ?? 0
+    if y < coordY + 5 {
+        return nil   // JS: if (y < params.coordSys.y + 5) { return; }
+    }
+
+    // dim 1 = apron Name (e.g. 'AB94'), dim 2 = apron Type (e.g. 'W') — column layout is
+    //   `[index].concat(item)` where item = [Name, Type, Near Bridge]; api.value reads by column INDEX, so
+    //   the mismatched `dimensions: ['Name', 'Type', 'Near Bridge']` labels (which describe columns 0..2,
+    //   NOT the actual index-prepended columns 0..3) don't affect which raw values dims 1/2 read.
+    let apronName = gtStr(api.value(1.0, nil))
+    let apronType = gtStr(api.value(2.0, nil))
+
+    let pathChild: [String: Any] = [
+        "type": "path",
+        "shape": [
+            "d": "M0,0 L0,-20 L30,-20 C42,-20 38,-1 50,-1 L70,-1 L70,0 Z",
+            "x": 0.0,
+            "y": -20.0,
+            "width": 90.0,
+            "height": 20.0,
+            "layout": "cover"
+        ] as [String: Any],
+        "style": ["fill": "#368c6c"] as [String: Any]
+    ]
+    let nameTextChild: [String: Any] = [
+        "type": "text",
+        "style": [
+            "x": 24.0,
+            "y": -3.0,
+            "text": apronName,
+            "verticalAlign": "bottom",     // ec4: textVerticalAlign
+            "align": "center",             // ec4: textAlign
+            "fill": "#fff"                 // ec4: textFill (already honored as-is too)
+        ] as [String: Any]
+    ]
+    let typeTextChild: [String: Any] = [
+        "type": "text",
+        "style": [
+            "x": 75.0,
+            "y": -2.0,
+            "verticalAlign": "bottom",
+            "align": "center",
+            "text": apronType,
+            "fill": "#000"
+        ] as [String: Any]
+    ]
+
+    return [
+        "type": "group",
+        "x": 10.0,   // JS: position: [10, y] — see the DEVIATION note above.
+        "y": y,
+        "children": [pathChild, nameTextChild, typeTextChild]
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_gantt_flight = EChartsDemo(
         name: "official-custom-gantt-flight", category: "custom",
         summary: "机场航班甘特图 — Gantt Chart of Airport Flights",
         width: 720, height: 460,
-        nativeSupported: false,   // both renderItems ARE the chart — see the header.
+        nativeSupported: true,   // both renderItems ARE ported (renderGanttItem / renderAxisLabelItem) — see the header.
         collection: .official,
         webOptionJS: #"""
 var HEIGHT_RATIO = 0.6;
@@ -793,16 +1004,9 @@ function initDrag() {
                 [
                     "id": "flightData",
                     "type": "custom",
-                    // PORT-NOTE: series[0].renderItem (`renderGanttItem`) omitted — the JS closure IS this chart.
-                    // Per flight it read the apron index (dim 0) and projected both times with api.coord(), sized the
-                    // bar with api.size([0, 1])[1] * 0.6, clipped three rects to params.coordSys via
-                    // echarts.graphic.clipRectByRect(), and returned a `group` of: the full-length bar (api.style()),
-                    // a half-length gold (#ddb30b) overlay shown only when the VIP flag (dim 4) is set, and a
-                    // transparent rect carrying the flight number (dim 3) as white centred text — dropped when the bar
-                    // is narrower than the label + 40px. It also cached the cartesian bounds for the drag layer.
-                    // It is OMITTED rather than ported because of gaps (a)/(b)/(c) in the header — clipRectByRect
-                    // is not ported, api.style() is a deferred stub, and the ec4 `text`/`textFill`-on-a-rect label
-                    // is not honored — NOT because the option cannot hold a Swift `CustomSeriesRenderItem`.
+                    // renderGanttItem, ported statement for statement (see MARK above) — riding on the option
+                    // under "renderItem" exactly like official-custom-bar-trend.swift's does.
+                    "renderItem": renderGanttItem,
                     "dimensions": ganttFlightDimensions,
                     "encode": [
                         "x": [1.0, 2.0],        // DIM_TIME_ARRIVAL, DIM_TIME_DEPARTURE
@@ -813,14 +1017,12 @@ function initDrag() {
                 ] as [String: Any],
                 [
                     "type": "custom",
-                    // PORT-NOTE: series[1].renderItem (`renderAxisLabelItem`) omitted — this series IS the (fake)
-                    // y-axis labels. Per apron it took the pixel y of api.coord([0, api.value(0)]), skipped rows
-                    // scrolled above the grid (y < coordSys.y + 5), and returned a `group` at [10, y] holding the
-                    // green (#368c6c) tag path 'M0,0 L0,-20 L30,-20 C42,-20 38,-1 50,-1 L70,-1 L70,0 Z' plus two
-                    // texts: the apron Type (dim 1, white, inside the tag) and the Near-Bridge flag (dim 2, black,
-                    // to its right). Omitted for header gaps (c)/(d): its group rides on the LEGACY transform prop
-                    // `position: [10, y]` (updateElNormal copies only x/y/rotation/scale/origin, so every tag would
-                    // land on the origin) and its texts use the ec4 `textVerticalAlign`/`textAlign`/`textFill` keys.
+                    // renderAxisLabelItem, ported statement for statement (see MARK above). Per apron it takes
+                    // the pixel y of api.coord([0, api.value(0)]), skips rows scrolled above the grid (y <
+                    // coordSys.y + 5), and returns a group at (10, y) holding the green (#368c6c) tag path
+                    // 'M0,0 L0,-20 L30,-20 C42,-20 38,-1 50,-1 L70,-1 L70,0 Z' plus two texts: the apron Name
+                    // (dim 1, white, inside the tag) and the apron Type (dim 2, black, to its right).
+                    "renderItem": renderAxisLabelItem,
                     "dimensions": ganttApronDimensions,
                     "encode": [
                         "x": -1.0,              // Then this series will not controlled by x.

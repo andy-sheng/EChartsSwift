@@ -559,6 +559,12 @@ private func applyUpdateTransitionStatic(_ el: Element, _ elOption: [String: Any
     if let styleOpt = elOption["style"] as? [String: Any] {
         applyStyle(el, styleOpt)
     }
+    // Legacy transform aliases (upstream LEGACY_TRANSFORM_PROPS_MAP, customGraphicTransition — DEFERRED):
+    //   `position:[x,y]` / `scale:[sx,sy]` / `origin:[ox,oy]` arrays. Applied BEFORE the scalar loop so an
+    //   explicit x/y/scaleX/... still wins. (renderItem specs like wind-barb/calendar-icon use `position`.)
+    if let (px, py) = customVec2(elOption["position"]) { _ = el.attr("x", px); _ = el.attr("y", py) }
+    if let (sx, sy) = customVec2(elOption["scale"]) { _ = el.attr("scaleX", sx); _ = el.attr("scaleY", sy) }
+    if let (ox, oy) = customVec2(elOption["origin"]) { _ = el.attr("originX", ox); _ = el.attr("originY", oy) }
     // Transform props (x / y / rotation / scaleX / scaleY / originX / originY).
     for key in ["x", "y", "rotation", "scaleX", "scaleY", "originX", "originY"] {
         if let v = customToDouble(elOption[key]) {
@@ -866,7 +872,11 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
         // hard-casts to (single/calendar/matrix), that cast yields nil — call `dataToPoint` generically
         // (api.coord is coord-system-agnostic upstream) so custom still projects instead of returning [].
         if let cs = coordSys as? CoordinateSystem {
-            return cs.dataToPoint(toDoubleArray(data), opt)
+            // Pass `data` RAW (not toDoubleArray): calendar's dataToPoint needs the raw date string
+            //   (e.g. "2017-03-01"), which toDoubleArray drops to [] → [NaN, NaN]. Every real
+            //   prepareCustom.coord closure forwards data verbatim upstream; matches that. (Numeric
+            //   coords — polar/geo/single — are unaffected: a [Double] passes through unchanged.)
+            return cs.dataToPoint(data as Any, opt)
         }
         return []
     }
@@ -1385,6 +1395,15 @@ private func customToDouble(_ v: Any?) -> Double? {
     return nil
 }
 
+// A `[x, y]` legacy transform-alias array (`position`/`scale`/`origin`) → the two Doubles.
+private func customVec2(_ v: Any?) -> (Double, Double)? {
+    if let arr = v as? [Double], arr.count >= 2 { return (arr[0], arr[1]) }
+    if let arr = v as? [Any], arr.count >= 2 {
+        return (customToDouble(arr[0]) ?? 0, customToDouble(arr[1]) ?? 0)
+    }
+    return nil
+}
+
 // `[[x,y], ...]` (Double|Int) → `[VectorArray]` for polygon/polyline points.
 private func bridgePoints(_ v: Any?) -> [VectorArray]? {
     guard let arr = v as? [Any] else { return nil }
@@ -1452,6 +1471,7 @@ private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     out.lineWidth = customToDouble(s["lineWidth"])
     out.font = s["font"] as? String
     out.fontFamily = s["fontFamily"] as? String
+    out.textFont = s["textFont"] as? String   // a real TextStyleProps field api.font(...) writes through
     if let fs = customToDouble(s["fontSize"]) { out.fontSize = .number(fs) }
     else if let fs = s["fontSize"] as? String { out.fontSize = .string(fs) }
     if let align = s["align"] as? String { out.align = TextAlign(rawValue: align) }
