@@ -152,7 +152,15 @@ extension SliderZoomView {
         // Avoid dispatch dataZoom repeatly but range not changed,
         // which cause bad visual effect when progressive enabled.
         if changed && realtime {
-            self._dispatchZoomAction(true)
+            // Throttled realtime dispatch (upstream wraps `_dispatchZoomAction` in throttle.createOrUpdate;
+            //   see the slot in SliderZoomView.render). Coalesces a fast drag's per-mousemove re-renders to
+            //   one per `throttle` ms so the main thread isn't saturated. Falls back to a direct dispatch if
+            //   the wrapper wasn't installed (throttle rate nil).
+            if let throttled = self._dispatchZoomActionThrottled {
+                throttled()
+            } else {
+                self._dispatchZoomAction(true)
+            }
         }
     }
 

@@ -91,6 +91,15 @@ open class SliderZoomView: ComponentView {
     // Exposed so TASK 2's drag (and headless tests) can reach the handle/filler/panel elements.
     public internal(set) var _displayables = SliderZoomDisplayables()
 
+    // upstream throttles the realtime drag dispatch via `throttle.createOrUpdate(this,
+    //   '_dispatchZoomAction', model.get('throttle'), 'fixRate')`. Swift can't swap a method on a live
+    //   instance, so the throttled wrapper of `_dispatchZoomAction(true)` lives in this slot (mirrors
+    //   BaseAxisPointer._doDispatchThrottled). Wired in `render`, called from `_onDragMove` (the drag
+    //   fires a mousemove per frame; unthrottled that re-runs the WHOLE update()/re-render per event and
+    //   saturates the main thread). `internal` (not `private`) because `_onDragMove` lives in the
+    //   SliderZoomViewDrag extension (separate file).
+    var _dispatchZoomActionThrottled: ThrottledFunction?
+
     var _orient: String = HORIZONTAL
 
     var _range: [Double] = [0, 100]
@@ -136,7 +145,14 @@ open class SliderZoomView: ComponentView {
         self.api = api
 
         // throttle.createOrUpdate(this, '_dispatchZoomAction', dataZoomModel.get('throttle'), 'fixRate');
-        //   DEFERRED (TASK 2 — dispatch throttling).
+        //   The realtime (drag) dispatch is throttled here — `_onDragMove` calls this wrapper so a fast
+        //   drag coalesces to one re-render per `throttle` ms (default 100) instead of one per mousemove.
+        self._dispatchZoomActionThrottled = throttleUtil.createOrUpdate(
+            existing: self._dispatchZoomActionThrottled,
+            origin: { [weak self] in self?._dispatchZoomAction(true) },
+            rate: dzNum(dataZoomModel.get("throttle")) ?? 100,
+            throttleType: .fixRate
+        )
 
         self._orient = dataZoomModel.getOrient()
 
