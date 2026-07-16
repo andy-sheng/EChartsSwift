@@ -1736,8 +1736,21 @@ public final class ECharts: EChartsType {
         //   wipes `root`, the prior bg rect must be removed/reused each render so it never accumulates.
         //   Transparent/absent → no rect (the host clear shows through, preserving the default white).
         if let old = _bgRect { _ = root.remove(old); _bgRect = nil }
-        if let bg = ecModel.get("backgroundColor", true) as? String,
-           !bg.isEmpty, bg != "transparent", bg != "rgba(0,0,0,0)" {
+        // upstream `backgroundColor` is a full `ZRColor`: a string, OR a gradient/pattern OBJECT
+        //   (`{image, repeat}` / `{type:'linear'|'radial', …}`). The string arm is bridged to
+        //   `.string`; the object arm goes through `zrPaintFromStyleValue` (the same option→ZRColor
+        //   bridge the series fills use — now pattern-aware), so a textured page background (pie-pattern's
+        //   repeated PNG tile) or a gradient background is honored instead of falling through to white.
+        let bgRaw = ecModel.get("backgroundColor", true)
+        var bgFill: ZRenderKit.ZRColor? = nil
+        if let bg = bgRaw as? String {
+            if !bg.isEmpty, bg != "transparent", bg != "rgba(0,0,0,0)" {
+                bgFill = .string(bg)
+            }
+        } else if bgRaw != nil {
+            bgFill = zrPaintFromStyleValue(bgRaw)
+        }
+        if let bgFill = bgFill {
             var shape = RectShape()
             shape.x = 0
             shape.y = 0
@@ -1751,7 +1764,7 @@ public final class ECharts: EChartsType {
             // `'#404a59'` came out black too. It was the single biggest source of native-vs-echarts.js
             // divergence in the official-examples sweep.
             var bgStyle = PathStyleProps()
-            bgStyle.fill = .string(bg)
+            bgStyle.fill = bgFill
             let bgRect = Rect([
                 "shape": shape as PathShape,
                 "style": bgStyle,
