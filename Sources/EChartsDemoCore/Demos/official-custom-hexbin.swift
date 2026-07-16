@@ -17,17 +17,17 @@
 //   - registerMap MOVED OUT. Upstream calls `echarts.registerMap('nbaCourt', nbaCourt.borderGeoJSON)`
 //     inside the callback; here it is declared in `mapRegistrations` so WebPage.swift injects it into
 //     the page before the option script and the native pane registers the same map.
-//   - NATIVE PANE UNSUPPORTED (nativeSupported: false). BOTH series are `custom`, and their `renderItem`
-//     closures ARE the chart: one builds the 6-gon (+ its darker max-radius backdrop) per bin, the other
-//     maps every court polyline through `api.coord`. A Swift [String: Any] cannot carry a JS function, so
-//     dropping them leaves nothing to draw. Everything else IS ported (geo, visualMap, title, tooltip,
-//     encode/dimensions, and the hexbin data — `hexBinStatistics` is ported to Swift below) so the option
-//     lights up the moment renderItem gains a native form.
+//   - BOTH `renderItem` closures ARE ported natively (`hexbinRenderItemHexBin` / `hexbinRenderItemNBACourt`,
+//     below), statement for statement, and registered on their series under the `"renderItem"` key —
+//     `CustomView` resolves the callback as `customSeries.getRenderItem() ?? getCustomSeries(subType)`, and
+//     a `[String: Any]` CAN carry a Swift closure (only `webOptionJS`'s JSON path could not), so both
+//     panes draw the full chart: the hex-binned shot chart AND the court outline.
 //   - `((made / len) * 100).toFixed(2)` yields a STRING in JS; the native data carries the same value as a
 //     2-decimal Double (dimension 3 is a visualMap input, i.e. numeric).
 //   - The upstream `maxBinLen` loop is buggy (`Math.max(maxBinLen, bins.length)` — it never reads
-//     `bins[i].points.length`, so maxBinLen is just the BIN COUNT). Kept verbatim in the web pane; it only
-//     feeds renderItem's `extentMax`, which the native option has no use for.
+//     `bins[i].points.length`, so maxBinLen is just the BIN COUNT). Kept verbatim in the web pane; the
+//     native `renderItem` reproduces the same buggy value as `hexbinMaxBinLen = hexbinSeriesData.count`
+//     (one data row == one bin) rather than re-deriving it from a second loop.
 //   - The `legend: { data: ['bar', 'error'] }` entry is vestigial upstream (no series is named `bar` or
 //     `error`); kept verbatim in both panes.
 import Foundation
@@ -61,10 +61,34 @@ private let hexbinCourtGeoJSON: [String: Any] =
     (hexbinCourtJSON["borderGeoJSON"] as? [String: Any])
         ?? ["type": "FeatureCollection", "features": [] as [Any]]
 
+/// `nbaCourt.geometry` — the entries `renderItemNBACourt` iterates (upstream: `nbaCourt.geometry.map(...)`).
+private struct HexbinCourtGeometryItem {
+    var type: String
+    var points: [[Double]]
+}
+
+private let hexbinCourtGeometry: [HexbinCourtGeometryItem] = {
+    guard let geometry = hexbinCourtJSON["geometry"] as? [[String: Any]] else { return [] }
+    return geometry.compactMap { item -> HexbinCourtGeometryItem? in
+        guard let type = item["type"] as? String,
+              let rawPoints = item["points"] as? [[Any]] else { return nil }
+        let points: [[Double]] = rawPoints.map { pt in pt.map { hexbinNum($0) } }
+        return HexbinCourtGeometryItem(type: type, points: points)
+    }
+}()
+
 // MARK: - hexBinStatistics (port of the example's d3-hexbin-derived binning)
 
 private let hexbinRadiusInGeo: Double = 1
 private let hexbinBackgroundColor = "#333"
+
+// Coerce a ParsedValue (Any: Double | Int | NSNumber) to Double — the recurring Int-vs-Double read trap.
+private func hexbinNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
 
 private struct HexbinBin {
     var x: Double = 0
@@ -144,12 +168,94 @@ private let hexbinSeriesData: [[Double]] = {
     }
 }()
 
+/// `hexBinResult.maxBinLen` — upstream's loop is buggy (`Math.max(maxBinLen, bins.length)`, never reads
+/// `bins[i].points.length`), so it just ends up as the bin COUNT (see DEVIATIONS header note). One entry
+/// of `hexbinSeriesData` == one bin, so the count is the same number here.
+private let hexbinMaxBinLen: Double = Double(hexbinSeriesData.count)
+
+// MARK: - renderItem (ported statement-for-statement from webOptionJS's renderItemHexBin/renderItemNBACourt)
+
+/// `renderItemHexBin` — one bin -> a `group` of two hexagons: the data hexagon (radius encodes shots
+/// attempted via a log/sqrt linearMap, filled by the visualMap-driven `api.visual('color')`) and a
+/// z2:-19 full-radius backdrop hexagon.
+private let hexbinRenderItemHexBin: CustomSeriesRenderItem = { _, api in
+    let center = api.coord([hexbinNum(api.value(0.0, nil)), hexbinNum(api.value(1.0, nil))], nil)
+    var points: [[Double]] = []
+    var pointsBG: [[Double]] = []
+
+    let maxViewRadius = (api.size([hexbinRadiusInGeo, 0.0], nil) as? [Double])?.first ?? 0
+    let minViewRadius = Swift.min(maxViewRadius, 4)
+    let extentMax = log(sqrt(hexbinMaxBinLen))
+    let viewRadius = number.linearMap(
+        log(sqrt(hexbinNum(api.value(2.0, nil)))),
+        [0, extentMax],
+        [minViewRadius, maxViewRadius]
+    )
+
+    var angle = Double.pi / 6
+    for _ in 0..<6 {
+        points.append([
+            center[0] + viewRadius * cos(angle),
+            center[1] + viewRadius * sin(angle)
+        ])
+        pointsBG.append([
+            center[0] + maxViewRadius * cos(angle),
+            center[1] + maxViewRadius * sin(angle)
+        ])
+        angle += Double.pi / 3
+    }
+
+    // JS: fill: api.visual('color') — a missing visual is `undefined` there (an absent key); Swift
+    // cannot store that, so the key is simply not written when nil.
+    var hexStyle: [String: Any] = ["stroke": "#ccc", "lineWidth": 1.0]
+    if let color = api.visual("color", nil) { hexStyle["fill"] = color }
+
+    return [
+        "type": "group",
+        "children": [
+            [
+                "type": "polygon",
+                "shape": ["points": points] as [String: Any],
+                "style": hexStyle
+            ] as [String: Any],
+            [
+                "type": "polygon",
+                "shape": ["points": pointsBG] as [String: Any],
+                // JS: stroke: null, fill: 'rgba(0,0,0,0.5)', lineWidth: 0 — `stroke: null` omitted (a nil
+                // "stroke" key coerces to no stroke exactly like the JS null does — polygon's own default
+                // stroke is already nil, so there is no fill-less-shape default to fight, unlike below).
+                "style": ["fill": "rgba(0,0,0,0.5)", "lineWidth": 0.0] as [String: Any],
+                "z2": -19.0
+            ] as [String: Any]
+        ]
+    ] as [String: Any]
+}
+
+/// `renderItemNBACourt` — one `polyline` per `nbaCourt.geometry` entry, its points projected through
+/// `api.coord`.
+private let hexbinRenderItemNBACourt: CustomSeriesRenderItem = { _, api in
+    let children: [[String: Any]] = hexbinCourtGeometry.map { item in
+        let points = item.points.map { api.coord($0, nil) }
+        return [
+            "type": item.type,
+            // JS: stroke: '#aaa', fill: null, lineWidth: 1.5 — `fill: null` explicit (NOT the same as
+            // omitting the key: Polyline's own no-fill default only wins over the generic filled-shape
+            // default when the caller leaves "fill" unresolved — see the framework-gap fix in
+            // CustomView.applyStyle — so NSNull() here documents the upstream literal 1:1, and would
+            // still resolve correctly even without it).
+            "style": ["stroke": "#aaa", "fill": NSNull(), "lineWidth": 1.5] as [String: Any],
+            "shape": ["points": points] as [String: Any]
+        ] as [String: Any]
+    }
+    return ["type": "group", "children": children] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_custom_hexbin = EChartsDemo(
         name: "official-custom-hexbin", category: "custom",
         summary: "六边形分箱图（自定义系列） — Hexagonal Binning",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         mapRegistrations: ["nbaCourt": hexbinCourtGeoJSON],
         collection: .official,
         webOptionJS: #"""
@@ -457,11 +563,7 @@ myChart.setOption(option);
                         "type": "custom",
                         "coordinateSystem": "geo",
                         "geoIndex": 0.0,
-                        // PORT-NOTE: renderItem omitted — `renderItemHexBin` built, per bin, a `group` of two
-                        // polygons: the data hexagon (6 vertices at `viewRadius` around `api.coord([x, y])`,
-                        // radius = linearMap(log(sqrt(shots)), [0, log(sqrt(maxBinLen))], [min(maxR, 4), maxR])
-                        // where maxR = api.size([1, 0])[0], filled with api.visual('color'), stroked '#ccc'),
-                        // plus a z2:-19 backdrop hexagon at the full maxR filled 'rgba(0,0,0,0.5)'.
+                        "renderItem": hexbinRenderItemHexBin,
                         "dimensions": [
                             NSNull(),
                             NSNull(),
@@ -477,10 +579,7 @@ myChart.setOption(option);
                         "coordinateSystem": "geo",
                         "type": "custom",
                         "geoIndex": 0.0,
-                        // PORT-NOTE: renderItem omitted — `renderItemNBACourt` returned a `group` of one
-                        // 'polyline' per entry of nba-court.json's `geometry` (9 of them: paint, arcs, 3pt
-                        // line, ...), each one's `points` mapped through `api.coord` into geo pixel space,
-                        // stroked '#aaa' at lineWidth 1.5 with no fill.
+                        "renderItem": hexbinRenderItemNBACourt,
                         "silent": true,
                         "data": [0.0]
                     ] as [String: Any]

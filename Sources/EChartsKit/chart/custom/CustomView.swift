@@ -651,7 +651,21 @@ private func applyStyle(_ el: Element, _ s: [String: Any]) {
         image.useStyle(bridgeImageStyle(s))
     }
     else if let path = el as? Path {
-        path.useStyle(bridgePathStyle(s))
+        let bridged = bridgePathStyle(s)
+        path.useStyle(bridged)
+        // FRAMEWORK GAP (fill-less stroke shapes: polyline/line/bezierCurve/arc/rose/trochoid): upstream
+        //   `useStyle` merges onto a PROTOTYPE (`Object.create(DEFAULT_PATH_STYLE)`), so a shape class's
+        //   own `getDefaultStyle()` (these declare `fill: null`) keeps shadowing the generic `fill:'#000'`
+        //   proto value as long as the caller's style bag never restates "fill". `PathStyleProps.fill` is a
+        //   Swift `ZRColor?` that cannot distinguish "shadowed by prototype (intentional nil)" from "absent",
+        //   so `Path.useStyle`/`createStyle` can only re-merge onto the GENERIC `DEFAULT_PATH_STYLE.fill`
+        //   ('#000') — a custom `renderItem` returning e.g. `{type:'polyline', style:{stroke:'#aaa'}}` (no
+        //   `fill` — official-custom-hexbin's court lines) would paint solid BLACK instead of unfilled.
+        //   Re-assert the shape's OWN default when the bridged style resolved no real fill (mirrors the
+        //   one-time correction Path._init() already does).
+        if bridged.fill == nil, let ownDefault = path.getDefaultStyle() {
+            path.pathStyle.fill = ownDefault.fill
+        }
     }
 }
 
@@ -1176,6 +1190,26 @@ private func doesElNeedRecreate(_ el: Element, _ elOption: [String: Any], _ seri
     )
 }
 
+// Bridge a raw `textConfig` option bag (`elOption.textConfig`) into the typed `ElementTextConfig`
+//   struct — the normal-state slice of upstream's `processTxInfo` (`txCfg = stateOpt.textConfig`).
+//   Mirrors `GraphicView.swift`'s `bridgeElementTextConfig` (kept file-local: no shared export exists).
+private func bridgeCustomElementTextConfig(_ bag: [String: Any]?) -> ElementTextConfig? {
+    guard let bag = bag else { return nil }
+    var cfg = ElementTextConfig()
+    cfg.position = bag["position"]
+    cfg.rotation = customToDouble(bag["rotation"])
+    cfg.offset = bag["offset"] as? [Double]
+    cfg.origin = bag["origin"]
+    cfg.distance = customToDouble(bag["distance"])
+    cfg.local = bag["local"] as? Bool
+    cfg.insideFill = bag["insideFill"] as? String
+    cfg.insideStroke = bag["insideStroke"] as? String
+    cfg.outsideFill = bag["outsideFill"] as? String
+    cfg.outsideStroke = bag["outsideStroke"] as? String
+    cfg.inside = bag["inside"] as? Bool
+    return cfg
+}
+
 // upstream: function doCreateOrUpdateAttachedTx(el, dataIndex, elOption, seriesModel, isInit, attachedTxInfo)
 //   BASIC subset — a `textContent` element spec becomes a plain text child. The legacy detection +
 //   per-state text config + rich label are DEFERRED.
@@ -1195,6 +1229,16 @@ private func doCreateOrUpdateAttachedTx(
     // upstream: processTxInfo(normal) then processTxInfo(EMPHASIS); legacy ec4 conversion — DEFERRED.
     // PORT-NOTE (deferred): legacy ec4-style detection + per-state (emphasis/blur/select) text config are
     //   deferred. Only `elOption.textContent` (normal) is honored as a basic text child.
+    //
+    // The NORMAL-state half of `processTxInfo(elOption, null, attachedTxInfo)` IS wired here: for the
+    //   normal state `stateOpt` is `elOption` itself, so `txCfg = stateOpt.textConfig` — i.e. a plain
+    //   `elOption.textConfig` (e.g. `{position: 'insideLeft'}`) must reach `attachedTxInfo.normal.cfg`,
+    //   which `updateElNormal` (above, on the HOST el) reads to call `el.setTextConfig(txCfgOpt)`. Without
+    //   this, `setTextConfig` is never called and `Element.updateInnerText` has no `textConfig.position`
+    //   to lay the attached text out from, so every attached text renders at its default (0,0) — caught
+    //   porting official-flame-graph (535 frame-name labels all stacked at the canvas origin).
+    attachedTxInfo.normal.cfg = bridgeCustomElementTextConfig(elOption["textConfig"] as? [String: Any])
+
     var txConOptNormal = elOption["textContent"]
 
     // upstream: if (txConOptNormal != null || ...emphasis/blur/select...) { textContent handling }
@@ -1417,6 +1461,13 @@ private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     out.height = customToDouble(s["height"])
     out.x = customToDouble(s["x"])
     out.y = customToDouble(s["y"])
+    // `overflow`/`ellipsis`/`truncateMinChar` — `parseText.parsePlainText` (ZRenderKit/Graphic/Text.swift)
+    //   already reads all three off `TextStyleProps`; only the bridge from the raw style bag was missing
+    //   (caught porting official-flame-graph: a `width` + `overflow:'truncate'` textContent style with no
+    //   bridge left every frame-name label full-width and overlapping its neighbors).
+    out.overflow = s["overflow"] as? String
+    out.ellipsis = s["ellipsis"] as? String
+    out.truncateMinChar = customToDouble(s["truncateMinChar"])
     // PORT-NOTE (deferred): fontStyle/fontWeight/rich/backgroundColor/padding text-style bridging is
     //   deferred (basic-text subset only).
     return out

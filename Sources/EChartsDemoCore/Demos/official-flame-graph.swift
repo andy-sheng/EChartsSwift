@@ -19,13 +19,12 @@
 //     annotations, `as const`, `as keyof typeof`, `as CustomSeriesRenderItemReturn` and the trailing
 //     `export {}` are removed. Nothing else in the JS changed — renderItem and the tooltip formatter
 //     run verbatim.
-//   - NATIVE PANE UNSUPPORTED (nativeSupported: false): this example's CORE is `renderItem`, a JS
-//     closure that draws every rect (plus its truncating textContent) from api.coord/api.size/
-//     api.visual. A Swift `[String: Any]` option cannot carry it, so a native render would produce an
-//     empty custom series. The rest of the option — including the flattened data, which is pure
-//     computation and IS ported to Swift below — is kept so the native pane lights up the moment a
-//     Swift renderItem hook exists.
+//   - `renderItem` IS ported natively (flameGraphRenderItem, below) statement for statement: per frame
+//     it computes [level, start, end] via api.value/api.coord, the row height via api.size([0,1])[1],
+//     and returns a rounded `rect` (2px corner, 2px itemGap) filled with api.visual('color'), with an
+//     insideLeft textContent of the frame name (Verdana, truncated to the rect width - 4).
 import Foundation
+import EChartsKit
 
 // ---------------------------------------------------------------------------
 // The asset: assets/data/stack-trace.json (the upstream /data/asset/data/stack-trace.json), read once
@@ -108,12 +107,77 @@ private func flameGraphRecursionJSON(_ root: [String: Any]) -> [[String: Any]] {
 private let flameGraphData: [[String: Any]] = flameGraphRecursionJSON(flameGraphStackTrace)
 private let flameGraphMaxLevel: Double = Double(flameGraphHeightOfJSON(flameGraphStackTrace))
 
+// Coerce a ParsedValue (Any: Double | Int | NSNumber) to Double — the recurring Int-vs-Double read trap.
+private func fgNum(_ v: Any?) -> Double {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
+    return .nan
+}
+
+// Upstream `renderItem`, statement for statement. Typed EXACTLY `CustomSeriesRenderItem` so
+// CustomView's `get("renderItem") as? CustomSeriesRenderItem` cast holds.
+//
+// One datum (one stack frame) → one rounded `rect` spanning api.coord([value(1), level]) →
+// api.coord([value(2), level]) at the row height api.size([0, 1])[1] (minus a 2px itemGap), filled
+// with api.visual('color'), plus an insideLeft textContent of value(3) (the frame name).
+private let flameGraphRenderItem: CustomSeriesRenderItem = { _, api in
+    let level = fgNum(api.value(0.0, nil))
+    let start = api.coord([fgNum(api.value(1.0, nil)), level], nil)
+    let end = api.coord([fgNum(api.value(2.0, nil)), level], nil)
+    guard start.count >= 2, end.count >= 2 else { return nil }
+    // `((api.size && api.size([0, 1])) || [0, 20])[1]` — api.size is always present here (cartesian2d
+    // custom series), so this is just api.size([0, 1])[1] with a [0, 20] fallback on a malformed result.
+    let sizeArr = (api.size([0.0, 1.0], nil) as? [Double]) ?? [0.0, 20.0]
+    let height = sizeArr.count > 1 ? sizeArr[1] : 20.0
+    let width = end[0] - start[0]
+
+    // JS `fill: api.visual('color')` — a missing visual is `undefined` in JS (key present, value
+    // dropped by JSON-less object literal semantics, i.e. no fill applied); Swift cannot store that
+    // sentinel, so a nil visual writes no "fill" key at all (mirrors the `undefined` no-op).
+    var rectStyle: [String: Any] = [:]
+    if let color = api.visual("color", nil) { rectStyle["fill"] = color }
+
+    return [
+        "type": "rect",
+        "transition": ["shape"],
+        "shape": [
+            "x": start[0],
+            "y": start[1] - height / 2,
+            "width": width,
+            "height": height - 2 /* itemGap */,
+            "r": 2.0
+        ] as [String: Any],
+        "style": rectStyle,
+        "emphasis": [
+            "style": ["stroke": "#000"] as [String: Any]
+        ] as [String: Any],
+        "textConfig": [
+            "position": "insideLeft"
+        ] as [String: Any],
+        "textContent": [
+            "style": [
+                "text": api.value(3.0, nil),
+                "fontFamily": "Verdana",
+                "fill": "#000",
+                "width": width - 4,
+                "overflow": "truncate",
+                "ellipsis": "..",
+                "truncateMinChar": 1.0
+            ] as [String: Any],
+            "emphasis": [
+                "style": ["stroke": "#000", "lineWidth": 0.5] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any]
+    ] as [String: Any]
+}
+
 extension EChartsDemoRegistry {
     static let official_flame_graph = EChartsDemo(
         name: "official-flame-graph", category: "custom",
         summary: "火焰图 — Flame graph",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const ColorTypes = {
@@ -361,11 +425,7 @@ option = {
             "series": [
                 [
                     "type": "custom",
-                    // PORT-NOTE: renderItem omitted — THE chart. Per datum it draws a rounded `rect`
-                    // spanning api.coord([value(1), level]) → api.coord([value(2), level]) at the row
-                    // height api.size([0, 1])[1] (minus a 2px itemGap), filled with api.visual('color'),
-                    // black stroke on emphasis, plus an insideLeft textContent of value(3) (the frame
-                    // name) in Verdana, truncated with '..' to the rect width - 4.
+                    "renderItem": flameGraphRenderItem,
                     "encode": [
                         "x": [0.0, 1.0, 2.0],
                         "y": 0.0
