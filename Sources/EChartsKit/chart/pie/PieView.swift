@@ -48,29 +48,30 @@ import ZRenderKit
 //       -> chart/helper/sectorHelper.swift (ported); PieView still defaults cornerRadius to `0` (getSectorCornerRadius
 //          not wired here), so the plain SectorShape from the item layout suffices for a static render.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> `saveOldStyle` IS ported
-//       (animation/basicTransition.swift). PORT-NOTE: not wired here — the static render rebuilds the
-//       group from scratch (no old-data diff), so there is no old style to save.
+//       (animation/basicTransition.swift) and NOW wired: the `.update` (firstCreate:false) branch of
+//       `updatePieSectorData` calls it before `updateProps`-tweening the reused sector's shape.
 //   import { getSeriesLayoutData } from './pieLayout';             -> `getSeriesLayoutData` (sibling pieLayout.swift).
 
 // ================================================================================================
 // upstream: class PiePiece extends graphic.Sector { constructor(...); updateData(...); _updateLabel(...) }
 //
-// PORT-NOTE (a STATIC render faithfully omits these; the underlying subsystems are now ported):
-//   - `PiePiece` (a Sector carrying a Text child + labelLine Polyline) collapses, for the static render,
-//     to a plain ZRenderKit `Sector` built directly in `PieView.render` (see below).
-//   - Label / labelLine: `_updateLabel`, `setLabelStyle`, `getLabelStatesModels`, `setTextConfig`, the
-//     leader-line `setTextGuideLine` (Polyline), and the module-level `labelLayout(seriesModel)` call are
-//     now PORTED and wired (see `_updateLabel` + `pieLabelLayout` below). Only the state-driven
-//     `setLabelLineStyle`/`getLabelLineStatesModels` labelGuideHelper helpers remain DEFERRED.
-//   - States / emphasis: `setStatesStylesFromModel`, `ensureState('emphasis'|'select'|'blur')`,
-//     `toggleHoverEmphasis`, and the `selectedOffset` dx/dy select-state offset are omitted by the
-//     static render (util/states is ported).
-//   - Animation: `graphic.initProps`/`updateProps` (expansion/scale draw-on), `saveOldStyle`,
-//     `removeElementWithFadeOut`, and the SSR `scaleX/scaleY` branch are omitted by the static render
-//     (animation/basicTransition is ported).
-//   - `getSectorCornerRadius(itemModel.getModel('itemStyle'), layout, true)` corner-radius merge is
-//     omitted (chart/helper/sectorHelper is ported but not wired here); cornerRadius defaults to `0`.
-// Faithful upstream `PiePiece.updateData` body preserved above in the .ts oracle for the eventual port.
+// PORT-NOTE: `PiePiece` is modeled as a plain ZRenderKit `Sector` (the sanctioned DRAWING deviation —
+//   no Sector subclass) built + mutated by `createPiePiece` / `updatePieSectorData` / `_updateLabel`,
+//   which are the port of the PiePiece constructor + `updateData` + `_updateLabel`. `render` runs the
+//   upstream `data.diff(oldData).add/update/remove(...).execute()` (NOT a `group.removeAll()` rebuild),
+//   so each sector's element identity is RETAINED across a merge-mode `setOption` refresh and its shape
+//   is `updateProps`-TWEENED to the new layout — the reset-on-update fix (cf. GaugeView, commit 8bf756e).
+//   Now wired: `graphic.initProps` (the expansion enter on `.add`), `graphic.updateProps` (the shape
+//   tween on `.update`), `saveOldStyle`, `removeElementWithFadeOut` (the `.remove` fade-out), the
+//   label / leader-line subsystem (`setLabelStyle` / `getLabelStatesModels` / `setTextGuideLine` +
+//   `pieLabelLayout`), and states / emphasis (`setStatesStylesFromModel`, `toggleHoverEmphasis`,
+//   `ensureState('emphasis')` radius grow).
+// STILL DEFERRED (unchanged): the state-driven `setLabelLineStyle`/`getLabelLineStatesModels`
+//   labelGuideHelper helpers; the `select`-state `selectedOffset` dx/dy translate (exploded slice) and
+//   the blur focus fan-out; the SSR `scaleX/scaleY` enter branch and the `animationType === 'scale'`
+//   r-grow enter (the expansion sweep is the port's chosen enter form); and the
+//   `getSectorCornerRadius(...)` corner-radius merges (chart/helper/sectorHelper is ported but not wired
+//   here — cornerRadius defaults to `0`).
 // ================================================================================================
 
 // upstream: class PieView extends ChartView
@@ -122,20 +123,29 @@ open class PieView: ChartView {
                 startAngle = (shape["startAngle"] as? Double) ?? Double.nan
             }
         }
-        _ = startAngle  // consumed by the deferred expansion animation only.
+        _ = startAngle  // consumed by the enter-expansion animation on the `.add` path only.
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream diffs `oldData` → `PiePiece` add/update/remove and calls
-        //   `labelLayout(seriesModel)`. The SymbolDraw-style diff + PiePiece + label/emphasis/animation
-        //   are deferred (see the PiePiece PORT-NOTE block above), so the group is rebuilt from scratch each
-        //   render. Clearing the group also drops any previous empty-circle sector, so the explicit
-        //   `group.remove(this._emptyCircleSector)` below is subsumed by `removeAll()`.
+        // upstream: data.diff(oldData).add/update/remove(...).execute();
+        //
+        // RESET-ON-UPDATE FIX (was: STATIC render deviation). The port previously did `group.removeAll()`
+        //   here and rebuilt one Sector per datum every render, so every merge-mode `setOption` refresh
+        //   destroyed all sectors and replayed the ENTER animation (the expansion sweep) from scratch
+        //   instead of TWEENING each sector to the new layout — the same disease as the GaugeView reset
+        //   bug (commit 8bf756e). The group is now NO LONGER wiped; `data.diff(oldData)` routes each
+        //   datum through `.add` (first appearance — the existing expansion enter) / `.update` (reuse the
+        //   retained sector and `updateProps`-tween its shape+style to the new layout) / `.remove` (fade
+        //   the orphan out). Labels + leader lines ride along, attached to each reused sector.
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
 
         // remove empty-circle if it exists
         // upstream: if (this._emptyCircleSector) { group.remove(this._emptyCircleSector); }
-        self._emptyCircleSector = nil
+        //   The group is no longer blanket-cleared, so the previous empty-circle sector (if any) must be
+        //   removed explicitly — exactly as upstream does (its render likewise never wipes the group).
+        if let emptyCircle = self._emptyCircleSector {
+            _ = group.remove(emptyCircle)
+            self._emptyCircleSector = nil
+        }
 
         // when all data are filtered, show lightgray empty circle
         if data.count() == 0 && ((seriesModel.get("showEmptyCircle") as? Bool) ?? false) {
@@ -150,78 +160,40 @@ open class PieView: ChartView {
             _ = group.add(sector)
         }
 
-        // upstream: data.diff(oldData).add/update/remove(...).execute();
-        //   STATIC replacement — one Sector per datum, straight from the item layout stored by pieLayout.
-        for idx in 0..<data.count() {
-            // const layout = data.getItemLayout(idx) as graphic.Sector['shape'];
-            guard let layout = data.getItemLayout(idx) as? [String: Any] else {
-                continue
+        // upstream: data.diff(oldData).add(...).update(...).remove(...).execute();
+        data.diff(oldData)
+            .add { idx in
+                // upstream: `const piePiece = new PiePiece(data, idx, startAngle); ...; group.add(piePiece)`.
+                let piePiece = self.createPiePiece(data, idx, startAngle, seriesModel)
+                data.setItemGraphicEl(idx, piePiece)
+                _ = group.add(piePiece)
             }
-            // const sectorShape = extend(getSectorCornerRadius(...), layout);
-            //   cornerRadius/innerCornerRadius default to `0` (getSectorCornerRadius deferred), so the
-            //   plain layout → SectorShape mapping is faithful.
-            let sectorShape = sectorShapeFromItemLayout(layout)
-
-            // Ignore NaN data. Upstream sets the NaN shape on the sector to avoid drawing; the static
-            //   render simply skips creating a sector for it (no element is added for NaN data).
-            if sectorShape.startAngle.isNaN {
-                continue
+            .update { newIdx, oldIdx in
+                // upstream: `const piePiece = oldData.getItemGraphicEl(oldIdx) as PiePiece;
+                //   piePiece.updateData(data, newIdx, startAngle); piePiece.off('click');
+                //   group.add(piePiece); data.setItemGraphicEl(newIdx, piePiece);`
+                //   REUSE the retained sector — this is the fix. `updateData(..., firstCreate:false)`
+                //   tweens instead of re-entering.
+                guard let piePiece = oldData?.getItemGraphicEl(oldIdx) as? Sector else {
+                    // Defensive: no retained element to reuse (should not happen) — create fresh.
+                    let created = self.createPiePiece(data, newIdx, startAngle, seriesModel)
+                    data.setItemGraphicEl(newIdx, created)
+                    _ = group.add(created)
+                    return
+                }
+                self.updatePieSectorData(piePiece, data, newIdx, startAngle, false, seriesModel)
+                // upstream `piePiece.off('click')` — no per-piece click handler is bound in the port,
+                //   so there is nothing to detach (provenance note).
+                _ = group.add(piePiece)
+                data.setItemGraphicEl(newIdx, piePiece)
             }
-
-            // Entrance (upstream PiePiece expansion): create the sector collapsed (endAngle ==
-            //   startAngle), then sweep endAngle open to the final layout angle via initProps below.
-            //   We use the independent-sweep form (each sector opens from its own startAngle), which
-            //   needs no cross-piece startAngle threading (unlike upstream's shared running startAngle).
-            let finalEndAngle = sectorShape.endAngle
-            var collapsedShape = sectorShape
-            collapsedShape.endAngle = sectorShape.startAngle
-            let sector = Sector(["shape": collapsedShape as PathShape])
-            // upstream `PiePiece` sets `this.z2 = 2;` in its constructor.
-            sector.z2 = 2
-            // sector.useStyle(data.getItemVisual(idx, 'style'));
-            //   The item visual 'style' bag is bridged to a typed `PathStyleProps` (palette fill etc.)
-            //   via `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
-            sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
-            // Name the piece 'item' (matches BarView's per-datum element name; upstream `PiePiece`
-            //   leaves it unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
-            sector.name = "item"
-
-            // upstream (PiePiece.updateData, PieView.ts): the sector is marked a highDown dispatcher
-            //   carrying its emphasis-state itemStyle so a hover restyles it. Mirror BarView.updateStyle.
-            //   PORT-NOTE (deferred): the select-state `selectedOffset` dx/dy offset and blur focus
-            //   fan-out (upstream computes them in PiePiece) are not applied.
-            let itemModel = data.getItemModel(idx)
-            let emphasisModel = itemModel.getModel(["emphasis"])
-            let focus: InnerFocus? = emphasisModel.get("focus")
-            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-            states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
-            states.setStatesStylesFromModel(sector, itemModel)
-
-            // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize`
-            //   when `emphasis.scale` is on — the hover "enlarge" effect. The getSectorCornerRadius
-            //   merge stays deferred with the normal-state corner radius (defaults 0).
-            //   PORT-NOTE (deferred): the `select` state's {x: dx, y: dy} selectedOffset translate (the
-            //   exploded slice, PieView.ts:146-150) + the select/blur corner-radius shapes are still deferred.
-            let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
-            let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
-            sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
-
-            // Sweep the collapsed sector open to its final angle (shared basicTransition helper).
-            //   Shape props MUST be a dict of animatable fields (a full SectorShape struct is opaque
-            //   to the animator — the struct->dict rule). Instant (final angle, no animator) when the
-            //   series' animation is disabled.
-            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
-
-            data.setItemGraphicEl(idx, sector)
-            _ = group.add(sector)
-
-            // Label (upstream PiePiece._updateLabel): retrofit onto the shared label core —
-            //   `labelStyle.setLabelStyle` attaches the label as the sector's textContent and the
-            //   painter renders it. The leader-line (labelLine) + labelLayout collision-avoidance are
-            //   DEFERRED (L1c) — text only for now.
-            _updateLabel(seriesModel, data, idx)
-        }
+            .remove { oldIdx in
+                // upstream: `graphic.removeElementWithFadeOut(oldData.getItemGraphicEl(idx), seriesModel, idx)`.
+                if let piePiece = oldData?.getItemGraphicEl(oldIdx) {
+                    removeElementWithFadeOut(piePiece, seriesModel, oldIdx)
+                }
+            }
+            .execute()
 
         // labelLayout(seriesModel);
         //   L1c: chart/pie/labelLayout.swift places outer labels + leader lines and resolves
@@ -231,9 +203,113 @@ open class PieView: ChartView {
 
         // Always use initial animation.
         // upstream: if (seriesModel.get('animationTypeUpdate') !== 'expansion') { this._data = data; }
+        //   Under 'expansion' `_data` is deliberately NOT retained, so the next render sees oldData == nil
+        //   and every piece routes through `.add` (replaying the expansion enter) rather than tweening —
+        //   the upstream behavior for that update mode.
         if (seriesModel.get("animationTypeUpdate") as? String) != "expansion" {
             self._data = data
         }
+    }
+
+    // upstream: `new PiePiece(data, idx, startAngle)` — the PiePiece constructor sets `z2 = 2`, attaches
+    //   an (empty) Text child, then calls `updateData(data, idx, startAngle, firstCreate: true)`. Modeled
+    //   here as a plain ZRenderKit `Sector` (the sanctioned DRAWING deviation — no PiePiece subclass),
+    //   built by `updatePieSectorData` with firstCreate == true.
+    private func createPiePiece(
+        _ data: SeriesData, _ idx: Int, _ startAngle: Double, _ seriesModel: PieSeriesModel
+    ) -> Sector {
+        let sector = Sector()
+        // upstream `PiePiece` constructor: `this.z2 = 2;`
+        sector.z2 = 2
+        // Name the piece 'item' (matches BarView's per-datum element name; upstream `PiePiece` leaves it
+        //   unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
+        sector.name = "item"
+        updatePieSectorData(sector, data, idx, startAngle, true, seriesModel)
+        return sector
+    }
+
+    // upstream: PiePiece.updateData(data, idx, startAngle?, firstCreate?) (PieView.ts:56-171).
+    //   firstCreate == true  → first appearance: seed the collapsed shape + `initProps` the enter sweep.
+    //   firstCreate == false → refresh: `saveOldStyle` + `updateProps`-TWEEN the whole shape from the
+    //     sector's CURRENT (previous-layout) angles/radii to the new layout. Reusing the SAME sector
+    //     object (the diff `.update` path) both preserves its identity and drives the tween — the
+    //     reset-on-update fix. Style/states/label are (re)applied for every datum, either way.
+    //   PORT-NOTE (deferred, unchanged): the `select`-state selectedOffset dx/dy (exploded slice) +
+    //     blur focus fan-out + getSectorCornerRadius corner-radius merges are still omitted (cornerRadius
+    //     defaults to 0); the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter
+    //     are likewise not wired (the expansion enter below is the port's chosen form).
+    private func updatePieSectorData(
+        _ sector: Sector, _ data: SeriesData, _ idx: Int,
+        _ startAngle: Double, _ firstCreate: Bool, _ seriesModel: PieSeriesModel
+    ) {
+        // `startAngle` is consumed only by upstream's shared-running expansion form; the independent
+        //   collapsed-sweep used by the firstCreate branch below opens each sector from its OWN
+        //   startAngle, so it needs no cross-piece threading. Kept in the signature for provenance.
+        _ = startAngle
+
+        // const layout = data.getItemLayout(idx) as graphic.Sector['shape'];
+        guard let layout = data.getItemLayout(idx) as? [String: Any] else {
+            return
+        }
+        // const sectorShape = extend(getSectorCornerRadius(...), layout);
+        //   cornerRadius/innerCornerRadius default to `0` (getSectorCornerRadius deferred), so the
+        //   plain layout → SectorShape mapping is faithful.
+        let sectorShape = sectorShapeFromItemLayout(layout)
+
+        // Ignore NaN data. upstream: `sector.setShape(sectorShape); return;` — set the (NaN) shape so the
+        //   sector draws nothing, and skip styling/label.
+        if sectorShape.startAngle.isNaN {
+            _ = sector.setShape(sectorShape)
+            return
+        }
+
+        if firstCreate {
+            // Entrance (upstream PiePiece expansion) — KEEP the existing independent collapsed-sweep so
+            //   the first-frame behavior is unchanged: seed the sector collapsed (endAngle == startAngle)
+            //   and sweep endAngle open to the final layout angle via initProps. Shape props MUST be a
+            //   dict of animatable fields (a full SectorShape struct is opaque to the animator — the
+            //   struct->dict rule). Instant (final angle, no animator) when the series' animation is off.
+            let finalEndAngle = sectorShape.endAngle
+            var collapsedShape = sectorShape
+            collapsedShape.endAngle = sectorShape.startAngle
+            _ = sector.setShape(collapsedShape)
+            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
+        } else {
+            // upstream: `saveOldStyle(sector); graphic.updateProps(sector, { shape: sectorShape }, ...)`.
+            //   TWEEN the whole shape from the reused sector's current angles/radii to the new layout.
+            //   The animatable numeric fields are passed as a dict (struct->dict rule); `clockwise`/
+            //   `cornerRadius` are not animated (they do not change across a pie refresh).
+            saveOldStyle(sector)
+            updateProps(sector, ["shape": [
+                "cx": sectorShape.cx, "cy": sectorShape.cy,
+                "r0": sectorShape.r0, "r": sectorShape.r,
+                "startAngle": sectorShape.startAngle, "endAngle": sectorShape.endAngle
+            ] as [String: Any]], seriesModel, idx)
+        }
+
+        // sector.useStyle(data.getItemVisual(idx, 'style'));
+        //   The item visual 'style' bag is bridged to a typed `PathStyleProps` (palette fill etc.) via
+        //   `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
+        sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
+
+        // upstream (PiePiece.updateData): the sector is a highDown dispatcher carrying its emphasis-state
+        //   itemStyle so a hover restyles it. Mirror BarView.updateStyle.
+        let itemModel = data.getItemModel(idx)
+        let emphasisModel = itemModel.getModel(["emphasis"])
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
+        states.setStatesStylesFromModel(sector, itemModel)
+
+        // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize` when
+        //   `emphasis.scale` is on — the hover "enlarge" effect.
+        let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
+        let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
+        sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
+
+        // Label + leader line (upstream PiePiece._updateLabel).
+        _updateLabel(sector, seriesModel, data, idx)
     }
 
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {}
@@ -271,7 +347,7 @@ open class PieView: ChartView {
     //   `labelLayout`. Since `labelLayout` is DEFERRED, that reset would leave the label unpositioned;
     //   we instead KEEP the textConfig `position` (e.g. pie default `'outer'`) that `createTextConfig`
     //   derived from the label model, so the painter places the label relative to the sector.
-    private func _updateLabel(_ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int) {
+    private func _updateLabel(_ sector: Sector, _ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int) {
         let itemModel = data.getItemModel(idx)
 
         // const style = data.getItemVisual(idx, 'style');
@@ -282,7 +358,8 @@ open class PieView: ChartView {
 
         // setLabelStyle(sector, getLabelStatesModels(itemModel), { labelFetcher, labelDataIndex,
         //   inheritColor, defaultOpacity, defaultText: getFormattedLabel(idx,'normal') || getName(idx) })
-        let sector = data.getItemGraphicEl(idx)!
+        //   `sector` is the (reused-or-fresh) PiePiece; `setLabelStyle` REUSES the sector's existing
+        //   textContent when present (so a refreshed sector keeps its label element identity).
         let models = labelStyle.getLabelStatesModels(itemModel)
         let opt = SetLabelStyleOpt(
             inheritColor: visualColor,
@@ -305,16 +382,27 @@ open class PieView: ChartView {
         //   helper is still DEFERRED, so the line style is inlined here (mirrors FunnelView): a
         //   stroke-only Polyline attached as the sector's textGuideLine. Its POINTS are filled later
         //   by `pieLabelLayout` (which also flips `ignore` for inside / hidden labels).
+        //   REUSE the existing guide line on a refresh (upstream: `let polyline = getTextGuideLine();
+        //   if (!polyline) { polyline = new Polyline(); setTextGuideLine(polyline); }`) so the reused
+        //   sector keeps its leader-line element identity.
         let labelLineModel = itemModel.getModel("labelLine")
         if (labelLineModel.get("show") as? Bool) != false {
-            let line = Polyline()
+            let line: Polyline
+            if let existing = sector.getTextGuideLine() {
+                line = existing
+            } else {
+                line = Polyline()
+                sector.setTextGuideLine(line)
+            }
             var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
             if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
             line.useStyle(lstyle)
             // A stroke-only leader line must not keep the black default fill.
             line.pathStyle.fill = nil
             line.z2 = 10
-            sector.setTextGuideLine(line)
+        } else if sector.getTextGuideLine() != nil {
+            // `labelLine.show: false` on a refresh: drop the previously-attached leader line.
+            sector.removeTextGuideLine()
         }
     }
 }
