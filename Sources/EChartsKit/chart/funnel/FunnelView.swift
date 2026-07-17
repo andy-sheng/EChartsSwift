@@ -45,7 +45,8 @@ import ZRenderKit
 //       -> label/labelStyle IS ported (label/labelStyle.swift); both are wired in funnelUpdateLabel
 //          below, replacing the former inline plain-text reproduction.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> saveOldStyle IS ported
-//       (animation/basicTransition.swift); its diff-update use remains deferred in funnel's STATIC render.
+//       (animation/basicTransition.swift) and IS wired: the diff-update path calls it before restyling a
+//       reused piece (so a merge-mode color change can tween through the style transition).
 
 // const opacityAccessPath = ['itemStyle', 'opacity'] as const;
 private let opacityAccessPath = ["itemStyle", "opacity"]
@@ -66,9 +67,10 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
 //     ARE now wired (see render() + funnelUpdateLabel below); the plain `defaultText = data.getName(idx)`
 //     remains the fallback label text.
-//   - Animation: piece fade-in (opacity 0 → opacity) via `initProps` IS wired (see the polygon
-//     creation below); `updateProps`-driven diff-update transitions and `saveOldStyle` remain
-//     deferred with basicTransition (the STATIC render rebuilds the group from scratch each render).
+//   - Animation: piece fade-in (opacity 0 → opacity) via `initProps` IS wired (see the firstCreate
+//     branch of `funnelPieceUpdateData`); the `updateProps`-driven diff-UPDATE transitions (shape.points
+//     + opacity tween) and `saveOldStyle` ARE now wired too — `render` diffs `_data` and reuses the
+//     retained Polygon on update (the reset-on-update fix), rather than rebuilding the group each render.
 // ================================================================================================
 
 // upstream: class FunnelView extends ChartView
@@ -97,82 +99,143 @@ open class FunnelView: ChartView {
         // upstream typed `seriesModel: FunnelSeriesModel`; the base override is typed `SeriesModel`.
         let seriesModel = seriesModelBase as! FunnelSeriesModel
         let data = seriesModel.getData()
-        // let oldData = this._data;  — used only by the deferred diff/animation path.
-        _ = self._data
+        // const oldData = this._data;
+        let oldData = self._data
 
         let group = self.group
 
         // ------------------------------------------------------------------------------------------
-        // STATIC render deviation: upstream diffs `oldData` → `FunnelPiece` add/update/remove. The
-        //   SymbolDraw-style diff + FunnelPiece + emphasis/animation are deferred (see the FunnelPiece
-        //   PORT provenance block above), so the group is rebuilt from scratch each render. Per-piece geometry,
-        //   visual fill, and the PLAIN label text ARE drawn (mirroring `FunnelPiece.updateData` +
-        //   `_updateLabel`).
+        // upstream: data.diff(oldData).add(...).update(...).remove(...).execute();
+        //   The FunnelPiece lifecycle is diffed against the previous render so a merge-mode setOption
+        //   (upstream's refresh idiom) TWEENS each piece — `updateProps({shape:{points}, style:{opacity}})`
+        //   slides the polygon and the label to their new positions — instead of rebuilding the group and
+        //   replaying the enter (opacity 0 → opacity) animation. Retaining `_data` + reusing the retained
+        //   Polygon element (via `oldData.getItemGraphicEl`) is what fixes the reset-on-update bug (cf. the
+        //   GaugeView reset fix). `FunnelPiece` (a Polygon carrying a text child + a labelLine guide line)
+        //   is collapsed into a plain Polygon built by `funnelPieceUpdateData` below.
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
-
-        for idx in 0..<data.count() {
-            // upstream `FunnelPiece.updateData`:
-            //   const layout = data.getItemLayout(idx);
-            guard let layout = data.getItemLayout(idx) as? [String: Any],
-                  let points = layout["points"] as? [[Double]] else {
-                continue
+        data.diff(oldData)
+            // .add(idx => { const funnelPiece = new FunnelPiece(data, idx); ... group.add(funnelPiece); })
+            .add { newIdx in
+                if let piece = self.funnelPieceUpdateData(nil, data, seriesModel, newIdx, firstCreate: true) {
+                    data.setItemGraphicEl(newIdx, piece)
+                    _ = group.add(piece)
+                }
             }
+            // .update((newIdx, oldIdx) => { const piece = oldData.getItemGraphicEl(oldIdx);
+            //     piece.updateData(data, newIdx); group.add(piece); data.setItemGraphicEl(newIdx, piece); })
+            .update { newIdx, oldIdx in
+                let existing = oldData?.getItemGraphicEl(oldIdx) as? Polygon
+                if let piece = self.funnelPieceUpdateData(existing, data, seriesModel, newIdx, firstCreate: false) {
+                    _ = group.add(piece)
+                    data.setItemGraphicEl(newIdx, piece)
+                }
+            }
+            // .remove(idx => { const piece = oldData.getItemGraphicEl(idx);
+            //     graphic.removeElementWithFadeOut(piece, seriesModel, idx); })
+            .remove { oldIdx in
+                if let piece = oldData?.getItemGraphicEl(oldIdx) {
+                    removeElementWithFadeOut(piece, seriesModel, oldIdx)
+                }
+            }
+            .execute()
 
-            let itemModel = data.getItemModel(idx)
-            // let opacity = itemModel.get(opacityAccessPath); opacity = opacity == null ? 1 : opacity;
-            let opacityOpt = itemModel.get(opacityAccessPath)
-            let opacity: Double = (opacityOpt == nil || opacityOpt is NSNull)
-                ? 1
-                : ((opacityOpt as? Double) ?? ((opacityOpt as? Int).map { Double($0) } ?? 1))
+        self._data = data
+    }
 
-            // polygon.setShape({ points: layout.points });
+    // upstream: FunnelPiece.constructor(data, idx) + FunnelPiece.updateData(data, idx, firstCreate?)
+    //   ZRenderKit's `Polygon` is `final`, so the upstream FunnelPiece (a Polygon carrying a Text child +
+    //   a labelLine Polyline guide line) is reproduced here as a free function that BUILDS (firstCreate)
+    //   or REUSES (`polygonIn`) a plain Polygon. Returns nil when the datum has no layout.
+    @discardableResult
+    private func funnelPieceUpdateData(
+        _ polygonIn: Polygon?, _ data: SeriesData, _ seriesModel: FunnelSeriesModel, _ idx: Int,
+        firstCreate: Bool
+    ) -> Polygon? {
+        // const layout = data.getItemLayout(idx);
+        guard let layout = data.getItemLayout(idx) as? [String: Any],
+              let points = layout["points"] as? [[Double]] else {
+            return nil
+        }
+
+        let itemModel = data.getItemModel(idx)
+        let emphasisModel = itemModel.getModel(["emphasis"])
+        // let opacity = itemModel.get(opacityAccessPath); opacity = opacity == null ? 1 : opacity;
+        let opacityOpt = itemModel.get(opacityAccessPath)
+        let opacity: Double = (opacityOpt == nil || opacityOpt is NSNull)
+            ? 1
+            : ((opacityOpt as? Double) ?? ((opacityOpt as? Int).map { Double($0) } ?? 1))
+
+        let ptsVec: [VectorArray] = points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
+        let finalPoints: [[Double]] = points.map { [$0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0] }
+
+        let polygon: Polygon
+        if firstCreate {
+            // upstream FunnelPiece ctor: new Polygon; setTextContent(new Text); setTextGuideLine(new Polyline).
             var polygonShape = PolygonShape()
-            polygonShape.points = points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
-            let polygon = Polygon(["shape": polygonShape as PathShape])
-
-            // polygon.useStyle(data.getItemVisual(idx, 'style'));  +  polygon.style.lineJoin = 'round';
-            //   The item visual 'style' bag is bridged to a typed `PathStyleProps` (palette fill etc.)
-            //   via `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
-            var style = barStyleFromDict(data.getItemVisual(idx, "style"))
-            style.lineJoin = "round"
-            // upstream FunnelPiece firstCreate: `polygon.style.opacity = 0` then
-            //   `initProps(polygon, {style: {opacity}}, seriesModel, idx)` — pieces fade in from
-            //   invisible to their final opacity. Set the CONSTRUCTION-time opacity to 0, then animate
-            //   (or, with animation off, instantly `attr`) toward the final `opacity` via `initProps`
-            //   (animation/basicTransition.swift). The animation-off path relies on `Path.attrKV`'s
-            //   partial-"style"-dict merge (see the Int-vs-Double-guarded branch there) to actually land
-            //   the final opacity — without it the piece would stay invisible.
-            style.opacity = 0
-            polygon.useStyle(style)
-            initProps(polygon, ["style": ["opacity": opacity] as [String: Any]], seriesModel, idx)
-
+            polygonShape.points = ptsVec
+            polygon = Polygon(["shape": polygonShape as PathShape])
+            polygon.setTextContent(ZRText())
+            polygon.setTextGuideLine(Polyline())
             // Name the piece 'item' (matches PieView/BarView per-datum element name; upstream leaves it
             //   unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
             polygon.name = "item"
-
-            // upstream (FunnelPiece.updateData):
-            //   const emphasisModel = itemModel.getModel('emphasis');
-            //   setStatesStylesFromModel(polygon, itemModel);
-            //   toggleHoverEmphasis(polygon, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
-            //       emphasisModel.get('disabled'));
-            //   Marks each piece a highDown dispatcher carrying its emphasis-state itemStyle so a hover
-            //   (enterEmphasisWhenMouseOver) restyles it.
-            let emphasisModel = itemModel.getModel(["emphasis"])
-            states.setStatesStylesFromModel(polygon, itemModel)
-            let focus: InnerFocus? = emphasisModel.get("focus")
-            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-            states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
-
-            data.setItemGraphicEl(idx, polygon)
-            _ = group.add(polygon)
-
-            // this._updateLabel(data, idx);  — draws the label (via the shared label core) attached to the polygon.
-            funnelUpdateLabel(polygon, seriesModel, data, idx, layout, group)
+        }
+        else {
+            // upstream: `if (!firstCreate) { saveOldStyle(polygon); }` — snapshot the pre-update style so a
+            //   merge-mode color change can tween through the style transition.
+            polygon = polygonIn!
+            saveOldStyle(polygon)
         }
 
-        self._data = data
+        // polygon.useStyle(data.getItemVisual(idx, 'style'));  +  polygon.style.lineJoin = 'round';
+        //   The item visual 'style' bag is bridged to a typed `PathStyleProps` (palette fill etc.)
+        //   via `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
+        var style = barStyleFromDict(data.getItemVisual(idx, "style"))
+        style.lineJoin = "round"
+
+        if firstCreate {
+            // upstream: polygon.setShape({ points }); polygon.style.opacity = 0;
+            //   initProps(polygon, { style: { opacity } }, seriesModel, idx);
+            //   Pieces fade in from invisible to their final opacity. Set the CONSTRUCTION-time opacity to 0,
+            //   then animate (or, with animation off, instantly `attr`) toward the final `opacity` via
+            //   `initProps`. The animation-off path relies on `Path.attrKV`'s partial-"style"-dict merge to
+            //   actually land the final opacity — without it the piece would stay invisible.
+            style.opacity = 0
+            polygon.useStyle(style)
+            initProps(polygon, ["style": ["opacity": opacity] as [String: Any]], seriesModel, idx)
+        }
+        else {
+            // upstream: polygon.useStyle(...); graphic.updateProps(polygon,
+            //     { style: { opacity }, shape: { points } }, seriesModel, idx);
+            //   REUSE the retained polygon and TWEEN its opacity + shape.points to the new value (the
+            //   reset-on-update fix). Target points as `[[Double]]` — the shape the Animator's 2D-array
+            //   interpolation consumes; a `[VectorArray]` target is not recognised and SNAPS instead.
+            polygon.useStyle(style)
+            updateProps(polygon, [
+                "style": ["opacity": opacity] as [String: Any],
+                "shape": ["points": finalPoints] as [String: Any]
+            ], seriesModel, idx)
+        }
+
+        // upstream (FunnelPiece.updateData):
+        //   setStatesStylesFromModel(polygon, itemModel);
+        //   this._updateLabel(data, idx);
+        //   toggleHoverEmphasis(this, emphasisModel.get('focus'), emphasisModel.get('blurScope'),
+        //       emphasisModel.get('disabled'));
+        //   Marks each piece a highDown dispatcher carrying its emphasis-state itemStyle so a hover
+        //   (enterEmphasisWhenMouseOver) restyles it.
+        states.setStatesStylesFromModel(polygon, itemModel)
+
+        // this._updateLabel(data, idx);  — draws the label (via the shared label core) attached to the polygon.
+        funnelUpdateLabel(polygon, seriesModel, data, idx, layout, firstCreate)
+
+        let focus: InnerFocus? = emphasisModel.get("focus")
+        let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
+        let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
+        states.toggleHoverEmphasis(polygon, focus, blurScope, isDisabled)
+
+        return polygon
     }
 
     // upstream: remove() { this.group.removeAll(); this._data = null; }
@@ -204,9 +267,15 @@ open class FunnelView: ChartView {
 //   still drawn inline at the end.
 private func funnelUpdateLabel(
     _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
-    _ layout: [String: Any], _ group: Group
+    _ layout: [String: Any], _ firstCreate: Bool
 ) {
     let itemModel = data.getItemModel(idx)
+    // const labelLine = this.getTextGuideLine();  const labelText = polygon.getTextContent();
+    //   (both were created + attached in funnelPieceUpdateData's firstCreate branch.)
+    let labelLine = polygon.getTextGuideLine()
+    let labelText = polygon.getTextContent() ?? ZRText()
+    if polygon.getTextContent() == nil { polygon.setTextContent(labelText) }
+
     // const labelLayout = layout.label;
     let labelLayout = (layout["label"] as? [String: Any]) ?? [:]
     // const style = data.getItemVisual(idx, 'style'); const visualColor = style.fill as ColorString;
@@ -219,10 +288,6 @@ private func funnelUpdateLabel(
         if let o = d["opacity"] as? Int { return Double(o) }
         return nil
     }()
-
-    // const labelText = polygon.getTextContent();  — created + attached here (upstream: in the ctor).
-    let labelText = ZRText()
-    polygon.setTextContent(labelText)
 
     // setLabelStyle(labelText, getLabelStatesModels(itemModel), { ... }, { normal: { align, verticalAlign } }).
     var opt = SetLabelStyleOpt()
@@ -258,11 +323,45 @@ private func funnelUpdateLabel(
     textConfig.outsideFill = overrideColor
     polygon.setTextConfig(textConfig)
 
+    // labelLine (leader) — funnelLayout already computed `linePoints`. Upstream attaches it as the
+    //   polygon's textGuideLine (Storage renders it right after the polygon); the label-guide states/anchor
+    //   machinery is deferred, so its shape + stroke are set directly here. The guide line is IGNORED for
+    //   inside labels / labelLine.show === false / missing linePoints (so no stroke is painted).
+    if let labelLine = labelLine {
+        let labelLineModel = itemModel.getModel("labelLine")
+        let isInside = (labelLayout["inside"] as? Bool) ?? false
+        if !isInside,
+           (labelLineModel.get("show") as? Bool) != false,
+           let linePoints = labelLayout["linePoints"] as? [[Double]], linePoints.count >= 2 {
+            labelLine.ignore = false
+            var lineShape = PolylineShape()
+            lineShape.points = linePoints.map { VectorArray($0[0], $0[1]) }
+            _ = labelLine.setShape(lineShape)
+            var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
+            if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
+            labelLine.useStyle(lstyle)
+            labelLine.pathStyle.fill = nil   // class-1 guard: a stroke-only polyline must not keep the black default
+            labelLine.z2 = 10
+        }
+        else {
+            labelLine.ignore = true
+        }
+    }
+
     // "Make sure update style on labelText after setLabelStyle. Because setLabelStyle will replace a
-    //   new style on it." graphic.updateProps(labelText, { style: { x, y } }) — animation deferred →
-    //   set the final x/y directly on the (freshly replaced) style.
-    labelText.textStyle.x = labelLayout["x"] as? Double
-    labelText.textStyle.y = labelLayout["y"] as? Double
+    //   new style on it." graphic.updateProps(labelText, { style: { x, y } }, seriesModel, idx) —
+    //   on a REUSE (update) the label TWEENS to its new x/y; on firstCreate the position is set directly
+    //   (the enter tween for the label position is deferred, matching the prior static render).
+    if firstCreate {
+        labelText.textStyle.x = labelLayout["x"] as? Double
+        labelText.textStyle.y = labelLayout["y"] as? Double
+    }
+    else {
+        var target: [String: Any] = [:]
+        if let x = labelLayout["x"] as? Double { target["x"] = x }
+        if let y = labelLayout["y"] as? Double { target["y"] = y }
+        updateProps(labelText, ["style": target], seriesModel, idx)
+    }
 
     // labelText.attr({ rotation: labelLayout.rotation, originX: labelLayout.x, originY: labelLayout.y, z2: 10 });
     //   `labelLayout.rotation` is never set by funnelLayout (undefined) → left at the default 0.
@@ -272,25 +371,6 @@ private func funnelUpdateLabel(
     if let ox = labelLayout["x"] as? Double { labelText.originX = ox }
     if let oy = labelLayout["y"] as? Double { labelText.originY = oy }
     labelText.z2 = 10
-
-    // labelLine (leader) — funnelLayout already computed `linePoints`; draw them as a Polyline stroked
-    //   in the item color (the label-guide states/anchor machinery is deferred). Only for outside labels.
-    let labelLineModel = itemModel.getModel("labelLine")
-    let isInside = (labelLayout["inside"] as? Bool) ?? false
-    if !isInside,
-       (labelLineModel.get("show") as? Bool) != false,
-       let linePoints = labelLayout["linePoints"] as? [[Double]], linePoints.count >= 2 {
-        var lineShape = PolylineShape()
-        lineShape.points = linePoints.map { VectorArray($0[0], $0[1]) }
-        let line = Polyline()
-        line.setShape(lineShape)
-        var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
-        if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
-        line.useStyle(lstyle)
-        line.pathStyle.fill = nil   // class-1 guard: a stroke-only polyline must not keep the black default
-        line.z2 = 10
-        _ = group.add(line)
-    }
 }
 
 // upstream `const visualColor = style.fill as ColorString`. Extracts the solid-color fill string from

@@ -187,6 +187,20 @@ open class TreeView: ChartView {
     // upstream: private _data: SeriesData<TreeSeriesModel>;
     private var _data: SeriesData?
 
+    // PORT: upstream routes the node symbols through `SymbolClz` instances managed directly by
+    //   `data.diff(oldData)`. The port delegates that to the shared `SymbolDraw` (chart/helper/SymbolDraw) —
+    //   like GraphView/ScatterView — which owns its OWN internal `_data` diff. It must therefore be RETAINED
+    //   across renders (a fresh SymbolDraw per render would see `oldData == nil` every time and treat every
+    //   node as an `.add`, replaying the enter scale-in — the reset-on-update bug). Reused like ScatterView.
+    private var _symbolDraw: SymbolDraw?
+
+    // PORT: the tree EDGES (links) are drawn inline (LineDraw not ported). Upstream caches each edge on its
+    //   node symbol (`TreeSymbol.__edge`) and `updateProps` it on refresh; the port has no `__edge` field, so
+    //   the edges are retained here in a registry keyed by the node's dataIndex — reused + `updateProps`-tweened
+    //   on refresh, and removed when their node leaves / collapses (so no stale edge survives the no-removeAll
+    //   render). Keeps edge element identity stable across renders (the reset fix for the links).
+    private var _edges: [Int: Path] = [:]
+
     // PORT-NOTE (deferred): private _min/_max/_firstRender — only used by _updateViewCoordSys/roam (deferred).
 
     // upstream: init(ecModel, api) { this._controller = new RoamController(api.getZr());
@@ -250,12 +264,13 @@ open class TreeView: ChartView {
         //   node label, emphasis hover-scale, symbolRotate/offset, entrance scale-in) — the same helper
         //   scatter/line/graph use — and keeps the tree EDGES (links) drawn inline (LineDraw not ported).
         //
-        // STATIC render deviation: a FRESH SymbolDraw is built each render (its `_data` starts nil → the
-        //   diff is all-`.add`), so every node hits the ctor branch (which carries `useNameLabel: true`),
-        //   and the group is rebuilt from scratch. The keyed reuse + expand/collapse click + node/link
-        //   scale + radial label rotation are DEFERRED (see the deferred PORT-NOTEs below).
+        // The SymbolDraw + the edge registry are RETAINED across renders (see the `_symbolDraw` / `_edges`
+        //   fields): SymbolDraw's own `data.diff(oldData)` then routes a merge-mode refresh through its
+        //   UPDATE path (reuse the node Symbol + `updateProps` its x/y) instead of rebuilding every node and
+        //   replaying the entrance scale-in. This is the reset-on-update fix (cf. ScatterView's retained
+        //   `_symbolDraw` and the GaugeView reset fix). The group is NOT wiped each render.
+        //   PORT-NOTE (deferred): node/link roam-scale + radial label rotation remain DEFERRED.
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
 
         // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
         //   symbolKeepAspect data + item visuals SymbolDraw reads (TreeSeries.hasSymbolVisual = true).
@@ -272,7 +287,14 @@ open class TreeView: ChartView {
             o.useNameLabel = true
             return Symbol(data, idx, scope, o)
         }
-        let symbolDraw = SymbolDraw(treeSymbolCtor)
+        // Retain ONE SymbolDraw across renders; add its group to `_mainGroup` exactly once. On the first
+        //   render its internal `_data` is nil → all-`.add` (entrance); on refresh it diffs → `.update`
+        //   (reuse + tween) / `.remove` (collapse). This is the crux of the reset fix.
+        let symbolDraw = self._symbolDraw ?? SymbolDraw(treeSymbolCtor)
+        if self._symbolDraw == nil {
+            self._symbolDraw = symbolDraw
+            _ = group.add(symbolDraw.group)
+        }
         var opt = SymbolDrawUpdateOpt()
         // The node layout is a `{ x, y, rawX, rawY }` bag (treeLayout → setItemLayout); feed SymbolDraw
         //   the group-local `[x, y]` pixel point (nil skips the node — SymbolDraw's symbolNeedsDraw gate).
@@ -283,14 +305,30 @@ open class TreeView: ChartView {
             return [x, y]
         }
         symbolDraw.updateData(data, opt)
-        _ = group.add(symbolDraw.group)
 
         // Per-node decoration the shared Symbol does not cover: the tree's outward label side, the parent/
-        //   child EDGE (drawn inline), the topology `emphasis.focus` index set, and the edge blur-forward.
+        //   child EDGE (drawn inline + retained in `_edges`), the topology `emphasis.focus` index set, and
+        //   the edge blur-forward. Track which node indices still own an edge this render so stale edges
+        //   (nodes that left or collapsed) can be removed from the un-wiped group afterward.
+        var liveEdges = Set<Int>()
         for newIdx in 0..<data.count() {
             if symbolNeedsDraw(data, newIdx) {
-                decorateNode(data, newIdx, group, seriesModel)
+                let edge = decorateNode(data, newIdx, group, seriesModel, self._edges[newIdx])
+                if let edge = edge {
+                    self._edges[newIdx] = edge
+                    liveEdges.insert(newIdx)
+                }
+                else if let stale = self._edges[newIdx] {
+                    // The node exists but no longer draws an edge (e.g. a now-collapsed polyline source).
+                    _ = group.remove(stale)
+                    self._edges[newIdx] = nil
+                }
             }
+        }
+        // Remove edges whose node vanished / collapsed out this render (no live edge for that index).
+        for (k, edge) in self._edges where !liveEdges.contains(k) {
+            _ = group.remove(edge)
+            self._edges[k] = nil
         }
 
         // this._updateNodeAndLinkScale(seriesModel);
@@ -312,8 +350,10 @@ open class TreeView: ChartView {
         if (seriesModel.get("expandAndCollapse", true) as? Bool) == true {
             let seriesId = seriesModel.id
             data.eachItemGraphicEl { el, dataIndex in
-                // upstream `el.off('click')` — the group is rebuilt each static render (no stale handler to
-                //   clear), so bind directly.
+                // upstream `el.off('click').on('click', ...)` — node Symbols are now REUSED across renders,
+                //   so clear any handler bound on a previous render before re-binding (otherwise the click
+                //   would dispatch `treeExpandAndCollapse` once per accumulated render).
+                _ = el.off("click")
                 _ = el.on("click", { _, _ in
                     var p = Payload(type: "treeExpandAndCollapse")
                     p.other["seriesId"] = seriesId
@@ -356,6 +396,10 @@ open class TreeView: ChartView {
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self._mainGroup.removeAll()
         self._data = nil
+        // The retained node-symbol draw + edge registry were just detached by removeAll — drop them so the
+        //   next render rebuilds from a clean slate (re-adds a fresh SymbolDraw group).
+        self._symbolDraw = nil
+        self._edges = [:]
     }
 }
 
@@ -377,14 +421,16 @@ func symbolNeedsDraw(_ data: SeriesData, _ dataIndex: Int) -> Bool {
 //   the outward LABEL SIDE, the parent/child EDGE (drawn inline), the topology `emphasis.focus` index set
 //   and the edge blur-forward hook. `data.getItemGraphicEl(dataIndex)` is the node's `Symbol` (a Group);
 //   its child symbol Path (name "item") is the label/emphasis carrier.
+@discardableResult
 private func decorateNode(
     _ data: SeriesData,
     _ dataIndex: Int,
     _ group: Group,
-    _ seriesModel: TreeSeriesModel
-) {
+    _ seriesModel: TreeSeriesModel,
+    _ existingEdge: Path?
+) -> Path? {
     // const node = data.tree.getNodeByDataIndex(dataIndex);
-    guard let node = data.tree?.getNodeByDataIndex(dataIndex) else { return }
+    guard let node = data.tree?.getNodeByDataIndex(dataIndex) else { return nil }
 
     // The Symbol (Group) SymbolDraw created for this node + its symbol Path child.
     let symbolEl = data.getItemGraphicEl(dataIndex) as? Symbol
@@ -399,7 +445,7 @@ private func decorateNode(
     //   (sourceOldLayout — the animation snapshot — is DEFERRED; the static render uses sourceLayout.)
     let sourceLayout = treeNodeLayout(source.getLayout())
     // const targetLayout = node.getLayout();
-    guard let targetLayout = treeNodeLayout(node.getLayout()) else { return }
+    guard let targetLayout = treeNodeLayout(node.getLayout()) else { return nil }
 
     // const itemModel = node.getModel();  (used below for focus + by drawEdge for lineStyle)
     let itemModel = data.getItemModel(dataIndex)
@@ -436,7 +482,9 @@ private func decorateNode(
     }
 
     // drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout, sourceLayout, targetLayout, group);
-    let edgeEl = drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group)
+    //   Pass the node's retained edge (if any) so a refresh REUSES + `updateProps`-tweens it (upstream's
+    //   `symbolEl.__edge` cache); a nil return means this node draws no edge this render.
+    let edgeEl = drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group, existingEdge)
 
     // Phase 48: `symbolEl.__edge` blur propagation (upstream TreeView.ts:464-477). Tree edges are anonymous
     //   children (not in edge-data), so they are blurred by the blurSeries group-traverse but never
@@ -456,12 +504,17 @@ private func decorateNode(
             }
         }
     }
+
+    // Return the (reused or newly-created) edge so the caller can retain it in `_edges` for the next render.
+    return edgeEl
 }
 
 // upstream: function drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout,
 //     sourceLayout, targetLayout, group)
-//   STATIC form: no `symbolEl.__edge` cache / animation. `sourceOldLayout` (the pre-animation snapshot,
-//   used only to init the edge before `updateProps`) is dropped; the edge is built at its final shape.
+//   `symbolEl.__edge` is reproduced by the caller's `_edges` registry: an `existingEdge` (the node's edge
+//   from the previous render) is REUSED and `updateProps`-tweened to the new shape (upstream's
+//   `graphic.updateProps(edge, { shape })`) instead of building a fresh one; on first appearance the edge is
+//   built directly at its final shape (the sourceOldLayout collapse-and-grow enter tween stays deferred).
 @discardableResult
 private func drawEdge(
     _ seriesModel: TreeSeriesModel,
@@ -469,7 +522,8 @@ private func drawEdge(
     _ virtualRoot: TreeNode,
     _ sourceLayout: TreeNodeLayout?,
     _ targetLayout: TreeNodeLayout,
-    _ group: Group
+    _ group: Group,
+    _ existingEdge: Path?
 ) -> Path? {
     let itemModel = node.getModel()
     // const edgeShape = seriesModel.get('edgeShape');
@@ -490,11 +544,20 @@ private func drawEdge(
     // polyline edge from node -> children
     if edgeShape == "curve" {
         if let parentNode = node.parentNode, parentNode !== virtualRoot, let sourceLayout = sourceLayout {
-            // edge = new graphic.BezierCurve({ shape: getEdgeShape(layout, orient, curvature, sourceLayout, targetLayout) });
-            //   (the source-old-layout init + updateProps to the final shape collapse to one static build.)
-            var props: ElementProps = [:]
-            props["shape"] = getEdgeShape(layout, orient, curvature, sourceLayout, targetLayout) as PathShape
-            edge = BezierCurve(props)
+            // upstream: `if (!edge) { edge = new BezierCurve({ shape: getEdgeShape(...sourceOld...) }); }
+            //            graphic.updateProps(edge, { shape: getEdgeShape(...source...target...) }, seriesModel);`
+            //   REUSE the node's retained BezierCurve if present (tween its shape to the new curve — the
+            //   BezierCurveShape supports keyed animation), else build a fresh one at the final shape.
+            let target = getEdgeShape(layout, orient, curvature, sourceLayout, targetLayout)
+            if let existing = existingEdge as? BezierCurve {
+                updateProps(existing, ["shape": bezierShapeDict(target)], seriesModel)
+                edge = existing
+            }
+            else {
+                var props: ElementProps = [:]
+                props["shape"] = target as PathShape
+                edge = BezierCurve(props)
+            }
         }
     }
     else if edgeShape == "polyline" {
@@ -515,9 +578,19 @@ private func drawEdge(
                 shape.childPoints = childPoints
                 shape.orient = orient
                 shape.forkPosition = edgeForkPosition
-                var props: ElementProps = [:]
-                props["shape"] = shape as PathShape
-                edge = TreePath(props)
+                // REUSE the node's retained TreePath if present (its TreeEdgeShape keyed animation is inert —
+                //   see the TreeEdgeShape note — so the new fork geometry is assigned directly; the element
+                //   IDENTITY is what matters for the reset fix), else build a fresh TreePath.
+                if let existing = existingEdge as? TreePath {
+                    _ = existing.setShape(shape)
+                    existing.dirtyShape()
+                    edge = existing
+                }
+                else {
+                    var props: ElementProps = [:]
+                    props["shape"] = shape as PathShape
+                    edge = TreePath(props)
+                }
             }
         }
         else {
@@ -530,6 +603,11 @@ private func drawEdge(
 
     // show all edge when edgeShape is 'curve', filter node `isExpand` is false when edgeShape is 'polyline'
     if let edge = edge, !(edgeShape == "polyline" && !node.isExpand) {
+        // If the edge shape changed type between renders (curve <-> polyline), the retained edge was NOT
+        //   reused (a fresh one was built); drop the stale element so it doesn't linger in the un-wiped group.
+        if let existingEdge = existingEdge, existingEdge !== edge {
+            _ = group.remove(existingEdge)
+        }
         // edge.useStyle(zrUtil.defaults({ strokeNoScale: true, fill: null }, lineStyle));
         edge.useStyle(treeEdgeStyle(lineStyle))
         // `useStyle` runs createStyle, which lays the style over DEFAULT_PATH_STYLE (fill '#000') and
@@ -637,6 +715,20 @@ func getEdgeShape(
 // export default TreeView;  -> `open class TreeView` above.
 
 // ---- STATIC-port helpers (not upstream functions) --------------------------------------------------
+
+// `graphic.updateProps(edge, { shape: getEdgeShape(...) })` passes an object literal as the shape target;
+//   the port's Animator interpolates a `["shape": [scalarKey: Double]]` bag (each key routed through
+//   BezierCurveShape.animationSet). Flatten a computed BezierCurveShape into that scalar bag so a reused
+//   curve edge TWEENS its control points to the new geometry.
+private func bezierShapeDict(_ s: BezierCurveShape) -> [String: Any] {
+    var d: [String: Any] = [
+        "x1": s.x1, "y1": s.y1, "x2": s.x2, "y2": s.y2,
+        "cpx1": s.cpx1, "cpy1": s.cpy1
+    ]
+    if let cpx2 = s.cpx2 { d["cpx2"] = cpx2 }
+    if let cpy2 = s.cpy2 { d["cpy2"] = cpy2 }
+    return d
+}
 
 // Reads the `{ x, y, rawX, rawY }` layout bag stored by treeLayout (setItemLayout) into a
 //   TreeNodeLayout. Returns nil when there is no layout (upstream `getLayout() == null`).
