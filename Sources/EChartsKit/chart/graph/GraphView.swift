@@ -88,6 +88,24 @@ open class GraphView: ChartView {
     // upstream: private _mainGroup: graphic.Group;
     private let _mainGroup = Group()
 
+    // Element LIFECYCLE (fix reset-on-update): upstream keeps ONE SymbolDraw (nodes) + ONE LineDraw
+    //   (edges) whose sub-groups live under `_mainGroup` for the view's whole life, and each render
+    //   DIFFS the data into them (enter/update/leave), so a merge-mode setOption REUSES + tweens the
+    //   node symbols and edge shapes instead of `group.removeAll()`-rebuilding them. The port persists
+    //   the SymbolDraw (its own enter/update/leave diff) and an `_edgeGroup` holding the inline edge
+    //   Line/BezierCurve elements, keyed by data index in `_edgeEls` and MORPHED (updateProps) in place.
+    //   PORT-NOTE: the edges are NOT routed through the shared `chart/helper/LineDraw` class — the graph
+    //   bakes the (deferred) view-coord transform into each endpoint per-render via `fitPoint`, and edge
+    //   labels come from the `edgeLabel` parent-redirect, neither of which the faithful ECLine models;
+    //   so the edge geometry/label code is kept inline and only its lifecycle (reuse vs rebuild) changes.
+    private let _symbolDraw = SymbolDraw()
+    private let _edgeGroup = Group()
+    private var _edgeEls: [Int: Path] = [:]
+    // The per-edge label (wave-1 `graphAddEdgeLabel`) is a free-standing element added to `_mainGroup`.
+    //   Now that `_mainGroup` is no longer wiped each render, track it by edge index so it can be
+    //   removed-and-rebuilt on update (and dropped on leave) instead of accumulating every render.
+    private var _edgeLabelEls: [Int: ZRText] = [:]
+
     // upstream: init(ecModel, api) {
     //     const symbolDraw = new SymbolDraw();  const lineDraw = new LineDraw();
     //     const group = this.group;  const mainGroup = new graphic.Group();
@@ -97,7 +115,11 @@ open class GraphView: ChartView {
     //     this._firstRender = true;
     // }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): RoamController + the SymbolDraw/LineDraw sub-groups + _firstRender deferred.
+        // PORT-NOTE (deferred): RoamController + _firstRender deferred. The SymbolDraw (node) group and
+        //   the edge group are added to `_mainGroup` ONCE here (upstream `mainGroup.add(symbolDraw.group);
+        //   mainGroup.add(lineDraw.group)`) and PERSIST across renders — the render diffs into them.
+        _ = self._mainGroup.add(self._symbolDraw.group)
+        _ = self._mainGroup.add(self._edgeGroup)
         _ = self.group.add(self._mainGroup)
     }
 
@@ -133,13 +155,12 @@ open class GraphView: ChartView {
         // ------------------------------------------------------------------------------------------
         // STATIC render deviation: upstream delegates to `symbolDraw.updateData(data)` (per-node symbol
         //   enter/update/leave diff, reusing SymbolClz instances) and `lineDraw.updateData(edgeData)`
-        //   (per-edge Line diff). Both diffs + SymbolClz/ECLinePath reuse + draggable/emphasis-focus
-        //   handlers + node/link scale + circular label rotation + thumbnail + forceLayout iteration are
-        //   DEFERRED (see PORT-NOTEs), so `_mainGroup` is rebuilt from scratch each render: one symbol
-        //   per node, then one Line/BezierCurve per edge. Both loops read the layout positions the layout
-        //   stage already stored on the two SeriesData stores (exactly what SymbolDraw / LineDraw consume).
+        //   (per-edge Line diff). SymbolClz/ECLinePath fromSymbol arrows + draggable + node/link scale +
+        //   circular label rotation + thumbnail + forceLayout iteration are DEFERRED (see PORT-NOTEs).
+        //   The node symbols DIFF through the persistent `_symbolDraw`; the edges are index-keyed reused
+        //   in `_edgeGroup`. Both read the layout positions the layout stage stored on the two SeriesData
+        //   stores. `_mainGroup` is NOT wiped — reuse is what keeps a merge-mode setOption from resetting.
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
 
         // clearTimeout(this._layoutTimeout);  const forceLayout = seriesModel.forceLayout; ...
         //   PORT-NOTE (deferred): forceLayout (iterative physics) + layoutAnimation iteration deferred this phase
@@ -183,15 +204,15 @@ open class GraphView: ChartView {
         //   entrance scale-in. Node layouts are in DATA space → fitPoint maps them to the pixel view.
         //   PORT-NOTE: `focus === 'adjacency'` adjacency focus IS wired — in the post-loop below (search
         //   `emphasis.focus:'adjacency'`) using getAdjacentDataIndices (data/Graph.swift).
-        let symbolDraw = SymbolDraw()
         var nodeOpt = SymbolDrawUpdateOpt()
         nodeOpt.getSymbolPoint = { i in
             guard let raw = graphPointFromLayout(data.getItemLayout(i)) else { return nil }
             let p = fitPoint(raw)
             return (p.x.isFinite && p.y.isFinite) ? [p.x, p.y] : nil
         }
-        symbolDraw.updateData(data, nodeOpt)
-        _ = group.add(symbolDraw.group)
+        // Persistent SymbolDraw — diffs `data` against the previous render, reusing + tweening the node
+        //   symbols instead of rebuilding them (its group was added to `_mainGroup` once in init_).
+        self._symbolDraw.updateData(data, nodeOpt)
 
         // --- Edges: lineDraw.updateData(edgeData) ------------------------------------------------
         //   LineDraw iterates `edgeData`, reading `edgeData.getItemLayout(i)` — the point list the layout
@@ -199,6 +220,10 @@ open class GraphView: ChartView {
         //   with a quadratic control point when `curveness` is non-zero (simpleLayoutEdge). The presence
         //   of the third point selects a BezierCurve over a straight Line — the same branch Line.ts uses.
         let seriesEdgeStyle = edgeData.getVisual("style") as? [String: Any]
+
+        // Edge index-keyed reuse: track which indices produced a live edge this render so stale ones
+        //   (a datum that vanished / no longer draws) can be dropped from `_edgeGroup` afterwards.
+        var seenEdgeIdx = Set<Int>()
 
         for i in 0..<edgeData.count() {
             guard let pts = graphEdgePoints(edgeData.getItemLayout(i)) else { continue }
@@ -217,30 +242,50 @@ open class GraphView: ChartView {
             var edgeStyle = graphEdgeStyle(lineStyle)
             if let cs = zrPaintFromStyleValue(edgeItemStyle?["stroke"]) { edgeStyle.stroke = cs }
 
+            // Geometry: BezierCurve (quadratic, control point present) or straight Line. The SHAPE
+            //   computation is unchanged; only the element LIFECYCLE differs — a same-type edge already
+            //   at index `i` is REUSED and its shape MORPHED (updateProps) rather than rebuilt.
+            let needCurve = (cp != nil)
             let edge: Path
-            if let cp = cp {
-                // BezierCurve — quadratic (single control point cpx1/cpy1; cpx2/cpy2 unset).
-                var shape = BezierCurveShape()
-                shape.x1 = p1.x
-                shape.y1 = p1.y
-                shape.x2 = p2.x
-                shape.y2 = p2.y
-                shape.cpx1 = cp.x
-                shape.cpy1 = cp.y
-                var props: ElementProps = [:]
-                props["shape"] = shape as PathShape
-                edge = BezierCurve(props)
+            if let existing = self._edgeEls[i], (existing is BezierCurve) == needCurve {
+                edge = existing
+                if let cp = cp {
+                    updateProps(edge, ["shape": ["x1": p1.x, "y1": p1.y, "x2": p2.x, "y2": p2.y,
+                                                 "cpx1": cp.x, "cpy1": cp.y]], seriesModel, i)
+                } else {
+                    updateProps(edge, ["shape": ["x1": p1.x, "y1": p1.y, "x2": p2.x, "y2": p2.y]], seriesModel, i)
+                }
             }
             else {
-                // Straight line.
-                var shape = LineShape()
-                shape.x1 = p1.x
-                shape.y1 = p1.y
-                shape.x2 = p2.x
-                shape.y2 = p2.y
-                var props: ElementProps = [:]
-                props["shape"] = shape as PathShape
-                edge = Line(props)
+                if let old = self._edgeEls[i] { _ = self._edgeGroup.remove(old) }
+                let fresh: Path
+                if let cp = cp {
+                    // BezierCurve — quadratic (single control point cpx1/cpy1; cpx2/cpy2 unset).
+                    var shape = BezierCurveShape()
+                    shape.x1 = p1.x
+                    shape.y1 = p1.y
+                    shape.x2 = p2.x
+                    shape.y2 = p2.y
+                    shape.cpx1 = cp.x
+                    shape.cpy1 = cp.y
+                    var props: ElementProps = [:]
+                    props["shape"] = shape as PathShape
+                    fresh = BezierCurve(props)
+                }
+                else {
+                    // Straight line.
+                    var shape = LineShape()
+                    shape.x1 = p1.x
+                    shape.y1 = p1.y
+                    shape.x2 = p2.x
+                    shape.y2 = p2.y
+                    var props: ElementProps = [:]
+                    props["shape"] = shape as PathShape
+                    fresh = Line(props)
+                }
+                _ = self._edgeGroup.add(fresh)
+                self._edgeEls[i] = fresh
+                edge = fresh
             }
 
             edge.name = "edge"
@@ -263,20 +308,30 @@ open class GraphView: ChartView {
             states.toggleHoverEmphasis(edge, edgeFocus, edgeBlurScope, edgeDisabled)
             states.setStatesStylesFromModel(edge, edgeItemModel, "lineStyle")
             // fromSymbol / toSymbol arrow markers (ECLinePath.setLinePoints + Symbol) — PORT-NOTE (deferred): requires chart/helper/LinePath (ECLinePath).
-            _ = group.add(edge)
             edgeData.setItemGraphicEl(i, edge)
 
-            // Edge label — upstream chart/helper/Line.ts `_updateCommonStl` (setLabelStyle with the
-            //   edge's label states models + defaultText = edge name) followed by `beforeUpdate`'s
-            //   along-the-edge placement (midpoint + tangent rotation). Rebuilt inline here because the
-            //   port draws each edge as a bare Line/BezierCurve rather than the upstream `Line` Group
-            //   (which carries the label as its textContent and repositions it every frame in
-            //   beforeUpdate). The static render computes the final label transform directly.
-            graphAddEdgeLabel(
+            // Edge label (wave-1) — upstream chart/helper/Line.ts `_updateCommonStl` (setLabelStyle with
+            //   the edge's label states models + defaultText = edge name) followed by `beforeUpdate`'s
+            //   along-the-edge placement (midpoint + tangent rotation). The port draws each edge as a bare
+            //   Line/BezierCurve, so the label is a free-standing sibling in `_mainGroup`. With the edge
+            //   now REUSED across renders (`_mainGroup` no longer wiped), remove this edge's previous label
+            //   before rebuilding it at the new endpoints, or labels would accumulate every render.
+            if let oldLabel = self._edgeLabelEls[i] { _ = group.remove(oldLabel); self._edgeLabelEls[i] = nil }
+            if let lbl = graphAddEdgeLabel(
                 group: group, edgeData: edgeData, idx: i,
                 edgeItemModel: edgeItemModel, seriesModel: seriesModel,
                 p1: p1, p2: p2, cp: cp, edgeStroke: edgeStyle.stroke
-            )
+            ) {
+                self._edgeLabelEls[i] = lbl
+            }
+            seenEdgeIdx.insert(i)
+        }
+
+        // Drop edges (and their labels) whose datum no longer draws (leave).
+        for (idx, old) in self._edgeEls where !seenEdgeIdx.contains(idx) {
+            _ = self._edgeGroup.remove(old)
+            self._edgeEls[idx] = nil
+            if let lbl = self._edgeLabelEls[idx] { _ = group.remove(lbl); self._edgeLabelEls[idx] = nil }
         }
 
         // Phase 45: `emphasis.focus:'adjacency'` — after all node/edge elements exist, overwrite each
@@ -334,7 +389,12 @@ open class GraphView: ChartView {
     // }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // PORT-NOTE (deferred): _layoutTimeout / _layouting (forceLayout) + RoamController.disable deferred.
-        _ = self._mainGroup.removeAll()
+        //   upstream `this._symbolDraw.remove(); this._lineDraw.remove();` — CLEAR the sub-draws' contents
+        //   but keep their groups attached to `_mainGroup` (init_ runs only once, so a later render must
+        //   still find them wired). Do NOT `_mainGroup.removeAll()` (that would orphan them permanently).
+        self._symbolDraw.remove()
+        _ = self._edgeGroup.removeAll()
+        self._edgeEls.removeAll()
     }
 
     // upstream: _getThumbnailInfo / _updateThumbnailWindow / _renderThumbnail
@@ -433,7 +493,7 @@ private func graphAddEdgeLabel(
     p2: GraphPoint,
     cp: GraphPoint?,
     edgeStroke: ZRenderKit.ZRColor?
-) {
+) -> ZRText? {
     // Build the edge label states models. Own option = the link's `label`; parent = the series
     //   `edgeLabel` model (the 'label' → 'edgeLabel' parent redirect, done explicitly here).
     var labelStatesModels: LabelStatesModels = [:]
@@ -445,7 +505,7 @@ private func graphAddEdgeLabel(
         )
     }
 
-    guard let normalModel = labelStatesModels[.normal] else { return }
+    guard let normalModel = labelStatesModels[.normal] else { return nil }
 
     // The edge stroke colour is the label's inheritColor (upstream `visualColor`).
     var inheritColor: ColorString? = nil
@@ -463,7 +523,7 @@ private func graphAddEdgeLabel(
     labelStyle.setLabelStyle(label, labelStatesModels, labelOpt)
 
     // setLabelStyle sets `ignore = true` when no state has `show: true` (i.e. no visible label).
-    if label.ignore { return }
+    if label.ignore { return nil }
 
     // beforeUpdate placement. midpoint + tangent from the already-fitted endpoints / control point.
     let mid: GraphPoint
@@ -507,4 +567,5 @@ private func graphAddEdgeLabel(
     label.dirty()
 
     _ = group.add(label)
+    return label
 }

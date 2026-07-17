@@ -69,16 +69,20 @@ open class LinesView: ChartView {
     }
 
     // upstream fields: _lastZlevel / _finished / _lineDraw / _hasEffet / _isPolyline / _isLargeDraw.
-    //   PORT-NOTE (deferred): _lineDraw (LineDraw/LargeLineDraw diff) + the large/incremental flags are DEFERRED.
+    //   PORT-NOTE (deferred): the large/incremental flags are DEFERRED.
     private var _data: SeriesData?
 
-    // View REUSE (L5 fidelity): the per-item line elements are PERSISTED (keyed by data index) instead
-    //   of `group.removeAll()`-ing and rebuilding each render — so a merge-mode setOption value change
-    //   (same line count, coords changed) MORPHS each line's shape rather than snapping. `_prevCount` /
-    //   `_prevIsPolyline` gate morph-vs-rebuild: a line add/remove or a polyline-mode flip (or a
-    //   coord-system change) rebuilds fresh; a same-count/same-mode value change morphs via `updateProps`.
-    //   upstream's LineDraw does the full enter/update/leave diff; this is the same reduction as the rest
-    //   of the static lines port — one persisted shape per item, morphed in place.
+    // upstream: `this._lineDraw = new LineDraw()` — the straight/curved (non-polyline) lines are now
+    //   routed through the shared `chart/helper/LineDraw`, which DIFFS `data` (enter/update/leave) and
+    //   reuses + tweens each ECLine across a merge-mode setOption. Its group is added to `self.group`
+    //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
+    //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; and geo/polar lines +
+    //   LargeLineDraw stay DEFERRED (only Cartesian2D is wired).
+    private let _lineDraw = LineDraw()
+    private var _lineDrawAdded = false
+
+    // View REUSE for the POLYLINE mode (ECLine can't model an N-point polyline): the per-item Polyline
+    //   elements are PERSISTED (keyed by data index) and MORPHED, gated by `_prevCount`/`_prevIsPolyline`.
     private var _lineEls: [Int: Path] = [:]
     private var _prevCount = -1
     private var _prevIsPolyline = false
@@ -147,164 +151,142 @@ open class LinesView: ChartView {
         //   at render time (`group.__zr` is nil until EChartsView._syncRoot runs AFTER render), the same
         //   reason roam is wired in EChartsView. See EChartsView._setupLinesEffectLayers.
 
-        // Morph iff we already drew the same number of lines in the same polyline mode (only values
-        //   changed). A line add/remove, a polyline-mode flip, or a first render rebuilds fresh — the
-        //   full add/remove diff (LineDraw) is deferred, matching LineView's morph-vs-rebuild gate.
+        // Reused per-item data-space coord buffer — upstream `linesLayout` reuses one `lineCoords: number[][]`
+        //   across the whole progress loop; `getLineCoords(i, out)` fills it and returns the point count.
+        var lineCoords: [[Double]] = []
+
+        if !isPolyline {
+            // === Straight / curved lines → the shared LineDraw (enter/update/leave DIFF) =============
+            //   Project each item's coords to pixels, store them as its item LAYOUT (`[[x1,y1],[x2,y2]]`,
+            //   +[cpx,cpy] when curveness bends it into a quadratic) and stamp the resolved lineStyle
+            //   (incl. the palette stroke) as its 'style' visual — exactly what ECLine reads back. Then
+            //   `updateData(data)` reuses + tweens each ECLine across a merge-mode setOption.
+            //   A mode flip from polyline drops the persisted Polyline reuse cache first.
+            if !_lineEls.isEmpty {
+                for (_, old) in _lineEls { _ = group.remove(old) }
+                _lineEls.removeAll()
+            }
+
+            // Effect points captured per index for the (optional) flying-trail pass after updateData.
+            var effectByIdx: [(points: [[Double]], stroke: String?)] = []
+            if hasEffect { effectByIdx = Array(repeating: ([], nil), count: count) }
+
+            for i in 0..<count {
+                let itemModel = data.getItemModel(i)
+                // Resolved lineStyle bag (stroke/lineWidth/opacity/lineDash …) → the item 'style' visual.
+                var styleDict = itemModel.getModel("lineStyle").getLineStyle()
+                let itemVisualStyle = (data.getItemVisual(i, "style") as? [String: Any]) ?? seriesLineStyle
+                let strokeColorStr = linesColorString(itemVisualStyle?["stroke"])
+                if let cs = strokeColorStr { styleDict["stroke"] = cs }
+                styleDict["fill"] = nil
+                data.setItemVisual(i, "style", styleDict)
+
+                let len = seriesModel.getLineCoords(i, &lineCoords)
+                if len < 2 { data.setItemLayout(i, nil); continue }
+                let p0 = coord.dataToPoint(lineCoords[0])
+                let p1 = coord.dataToPoint(lineCoords[1])
+                if p0.count < 2 || p1.count < 2
+                    || !p0[0].isFinite || !p0[1].isFinite
+                    || !p1[0].isFinite || !p1[1].isFinite {
+                    data.setItemLayout(i, nil); continue
+                }
+
+                var pts: [[Double]] = [[p0[0], p0[1]], [p1[0], p1[1]]]
+                let curveness = linesToNumber(itemModel.get(["lineStyle", "curveness"]))
+                if curveness != 0 && curveness.isFinite {
+                    // pts[2] = quadratic control point (same formula as GraphView's curved edge).
+                    let cpx = (p0[0] + p1[0]) / 2 - (p0[1] - p1[1]) * curveness
+                    let cpy = (p0[1] + p1[1]) / 2 - (p1[0] - p0[0]) * curveness
+                    pts.append([cpx, cpy])
+                }
+                data.setItemLayout(i, pts)
+                if hasEffect { effectByIdx[i] = (pts, strokeColorStr) }
+            }
+
+            if !_lineDrawAdded {
+                _ = group.add(_lineDraw.group)
+                _lineDrawAdded = true
+            }
+            _lineDraw.updateData(data)
+
+            // Flying-trail effect symbols (chart/lines/EffectLine.swift) — added alongside the LineDraw,
+            //   rebuilt each render (their looping animation morph is a documented deferral).
+            if hasEffect {
+                for i in 0..<count {
+                    let e = effectByIdx[i]
+                    guard e.points.count >= 2 else { continue }
+                    let effectModel = data.getItemModel(i).getModel("effect")
+                    if let sym = EffectLine.add(
+                        to: group, points: e.points, isPolyline: false,
+                        effectModel: effectModel, idx: i, count: count, strokeColor: e.stroke
+                    ) {
+                        _effectSymbols.append(sym)
+                    }
+                }
+            }
+
+            _prevCount = count
+            _prevIsPolyline = false
+            self._data = data
+            return
+        }
+
+        // === Polyline (N-point) — inline persist-and-morph (ECLine models only 2/3-point lines) =======
+        //   Clear any LineDraw content from a mode flip, then morph the persisted Polyline elements.
+        if _lineDrawAdded { _lineDraw.remove() }
+
+        // Morph iff we already drew the same number of polylines (only values changed); else rebuild.
         let canMorph = !_lineEls.isEmpty && _prevCount == count && _prevIsPolyline == isPolyline
         if !canMorph {
             for (_, old) in _lineEls { _ = group.remove(old) }
             _lineEls.removeAll()
         }
 
-        // Reused per-item data-space coord buffer — upstream `linesLayout` reuses one `lineCoords: number[][]`
-        //   across the whole progress loop; `getLineCoords(i, out)` fills it and returns the point count.
-        var lineCoords: [[Double]] = []
-
         for i in 0..<count {
-            // const len = seriesModel.getLineCoords(i, lineCoords);
             let len = seriesModel.getLineCoords(i, &lineCoords)
             if len < 2 { removeLineEl(i); continue }
 
-            // Per-item lineStyle → PathStyleProps (stroke/lineWidth/opacity/…); fill cleared (lines don't
-            //   fill). `itemModel.getModel('lineStyle').getLineStyle()` — same as GraphView's edge style.
             let itemModel = data.getItemModel(i)
             let lineStyle = itemModel.getModel("lineStyle").getLineStyle()
             var style = linesLineStyle(lineStyle)
-            // Override stroke with the resolved visual color: item visual `style.stroke` first, then the
-            //   series visual `style.stroke` (the palette color the visual/style stage stored).
             let itemVisualStyle = (data.getItemVisual(i, "style") as? [String: Any]) ?? seriesLineStyle
             let strokeColorStr = linesColorString(itemVisualStyle?["stroke"])
             if let cs = strokeColorStr { style.stroke = .string(cs) }
 
-            // Pixel point list captured for the (optional) flying-trail effect — mirrors upstream
-            //   `data.getItemLayout(idx)`: [p0, p1] (+ control point at index 2 for a curved line), or
-            //   all polyline points. Filled by whichever geometry branch runs below.
-            var effectPoints: [[Double]] = []
-
-            let el: Path
-            if isPolyline {
-                // --- Polyline (multi-point) ---------------------------------------------------------
-                //   upstream linesLayout (isPolyline branch): pts[j] = coordSys.dataToPoint(lineCoords[j])
-                //   for all j; the Polyline helper builds a PolylineShape from that point list.
-                var points: [VectorArray] = []
-                points.reserveCapacity(len)
-                for j in 0..<len {
-                    let p = coord.dataToPoint(lineCoords[j])
-                    if p.count >= 2 && p[0].isFinite && p[1].isFinite {
-                        points.append(VectorArray(p[0], p[1]))
-                    }
-                }
-                if points.count < 2 { removeLineEl(i); continue }
-                if hasEffect { effectPoints = points.map { [$0[0], $0[1]] } }
-
-                // Reuse the persisted Polyline (same count/mode) → morph its shape.points; else build.
-                if let poly = _lineEls[i] as? Polyline {
-                    poly.useStyle(style)
-                    poly.pathStyle.fill = nil
-                    // Target as [[Double]] — the shape the Animator's 2D-array interpolation consumes
-                    //   (matches PolylineShape.animationGet); a [VectorArray] target snaps instead.
-                    let ptsD = points.map { [$0.x, $0.y] }
-                    updateProps(poly, ["shape": ["points": ptsD]], seriesModel)
-                    el = poly
-                } else {
-                    removeLineEl(i)
-                    var shape = PolylineShape()
-                    shape.points = points
-                    let poly = Polyline()
-                    poly.setShape(shape)
-                    el = poly
-                    finishBuildLine(el, i, style)
+            var points: [VectorArray] = []
+            points.reserveCapacity(len)
+            for j in 0..<len {
+                let p = coord.dataToPoint(lineCoords[j])
+                if p.count >= 2 && p[0].isFinite && p[1].isFinite {
+                    points.append(VectorArray(p[0], p[1]))
                 }
             }
-            else {
-                // --- Line / BezierCurve (two-point, optional curveness) -----------------------------
-                //   upstream linesLayout (non-polyline branch):
-                //     pts[0] = coordSys.dataToPoint(lineCoords[0]);
-                //     pts[1] = coordSys.dataToPoint(lineCoords[1]);
-                //     const curveness = itemModel.get(['lineStyle', 'curveness']);
-                //     if (+curveness) { pts[2] = [ ...quadratic control point... ]; }
-                //   A third (control) point selects a BezierCurve over a straight Line — the same branch
-                //   the `Line` helper uses when it reads getItemLayout back out.
-                let p0 = coord.dataToPoint(lineCoords[0])
-                let p1 = coord.dataToPoint(lineCoords[1])
-                if p0.count < 2 || p1.count < 2
-                    || !p0[0].isFinite || !p0[1].isFinite
-                    || !p1[0].isFinite || !p1[1].isFinite {
-                    removeLineEl(i); continue
-                }
+            if points.count < 2 { removeLineEl(i); continue }
 
-                // const curveness = itemModel.get(['lineStyle', 'curveness']);  /  if (+curveness)
-                let curveness = linesToNumber(itemModel.get(["lineStyle", "curveness"]))
-                if curveness != 0 && curveness.isFinite {
-                    // pts[2] = [
-                    //   (pts[0][0] + pts[1][0]) / 2 - (pts[0][1] - pts[1][1]) * curveness,
-                    //   (pts[0][1] + pts[1][1]) / 2 - (pts[1][0] - pts[0][0]) * curveness
-                    // ]
-                    let cpx = (p0[0] + p1[0]) / 2 - (p0[1] - p1[1]) * curveness
-                    let cpy = (p0[1] + p1[1]) / 2 - (p1[0] - p0[0]) * curveness
-                    // Curved line → the effect symbol follows the quadratic p0 → (cpx,cpy) → p1.
-                    if hasEffect { effectPoints = [[p0[0], p0[1]], [p1[0], p1[1]], [cpx, cpy]] }
-                    if let cv = _lineEls[i] as? BezierCurve {
-                        cv.useStyle(style)
-                        cv.pathStyle.fill = nil
-                        updateProps(cv, ["shape": ["x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1],
-                                                   "cpx1": cpx, "cpy1": cpy]], seriesModel)
-                        el = cv
-                    } else {
-                        removeLineEl(i)
-                        var shape = BezierCurveShape()
-                        shape.x1 = p0[0]
-                        shape.y1 = p0[1]
-                        shape.x2 = p1[0]
-                        shape.y2 = p1[1]
-                        // Quadratic: single control point (cpx1/cpy1; cpx2/cpy2 unset) — same as GraphView.
-                        shape.cpx1 = cpx
-                        shape.cpy1 = cpy
-                        let cv = BezierCurve()
-                        cv.setShape(shape)
-                        el = cv
-                        finishBuildLine(el, i, style)
-                    }
-                }
-                else {
-                    // Straight line → the effect symbol follows p0 → p1 (midpoint control point).
-                    if hasEffect { effectPoints = [[p0[0], p0[1]], [p1[0], p1[1]]] }
-                    if let ln = _lineEls[i] as? Line {
-                        ln.useStyle(style)
-                        ln.pathStyle.fill = nil
-                        updateProps(ln, ["shape": ["x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]]], seriesModel)
-                        el = ln
-                    } else {
-                        removeLineEl(i)
-                        var shape = LineShape()
-                        shape.x1 = p0[0]
-                        shape.y1 = p0[1]
-                        shape.x2 = p1[0]
-                        shape.y2 = p1[1]
-                        let ln = Line()
-                        ln.setShape(shape)
-                        el = ln
-                        finishBuildLine(el, i, style)
-                    }
-                }
+            let el: Path
+            if let poly = _lineEls[i] as? Polyline {
+                poly.useStyle(style)
+                poly.pathStyle.fill = nil
+                let ptsD = points.map { [$0.x, $0.y] }
+                updateProps(poly, ["shape": ["points": ptsD]], seriesModel)
+                el = poly
+            } else {
+                removeLineEl(i)
+                var shape = PolylineShape()
+                shape.points = points
+                let poly = Polyline()
+                poly.setShape(shape)
+                el = poly
+                finishBuildLine(el, i, style)
             }
 
             data.setItemGraphicEl(i, el)
 
-            // upstream: when `effect.show`, the LineDraw uses EffectLine/EffectPolyline — a moving trail
-            //   symbol animated along the line. The static port keeps the line above and ADDS the animated
-            //   symbol here (chart/lines/EffectLine.swift). Per-item effect model (upstream
-            //   `lineData.getItemModel(idx).getModel('effect')`).
-            if hasEffect && effectPoints.count >= 2 {
+            if hasEffect {
                 let effectModel = itemModel.getModel("effect")
                 if let sym = EffectLine.add(
-                    to: group,
-                    points: effectPoints,
-                    isPolyline: isPolyline,
-                    effectModel: effectModel,
-                    idx: i,
-                    count: count,
-                    strokeColor: strokeColorStr
+                    to: group, points: points.map { [$0[0], $0[1]] }, isPolyline: true,
+                    effectModel: effectModel, idx: i, count: count, strokeColor: strokeColorStr
                 ) {
                     _effectSymbols.append(sym)
                 }
@@ -339,6 +321,7 @@ open class LinesView: ChartView {
 
     // Drop ALL persisted line + effect elements (coord-system change / remove / dispose).
     private func resetPersistentElements() {
+        _lineDraw.remove()
         for (_, old) in _lineEls { _ = self.group.remove(old) }
         _lineEls.removeAll()
         for s in _effectSymbols { _ = self.group.remove(s) }
@@ -354,8 +337,10 @@ open class LinesView: ChartView {
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // PORT-NOTE: _clearLayer (canvas motion-blur layer clear) is host-managed (EChartsView configLayer); the trail symbols are dropped by group.removeAll() below.
         _ = self.group.removeAll()
-        // The persisted line/effect elements were just detached by removeAll — clear the bookkeeping so
-        //   a subsequent render rebuilds fresh rather than trying to reuse orphaned elements.
+        // group.removeAll() also detached the LineDraw group — clear its content + the re-add flag so a
+        //   later render re-attaches it. Clear the polyline/effect bookkeeping too.
+        _lineDraw.remove()
+        _lineDrawAdded = false
         _lineEls.removeAll()
         _effectSymbols.removeAll()
         _prevCount = -1
