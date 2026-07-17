@@ -25,8 +25,9 @@ import ZRenderKit
 // SCOPE — STATIC SUBSET per CONVENTIONS §5 + the custom-port brief.
 //
 // This file faithfully ports the STATIC core of CustomView.ts:
-//   - `render` (the per-datum renderItem dispatch), rebuilding the group from scratch each render
-//     (the enter/update/leave DIFF via `data.diff(oldData)` is DEFERRED — see the render note).
+//   - `render` (the per-datum renderItem dispatch) — the enter/update/leave DIFF via `data.diff(oldData)`
+//     is now ported (per-datum graphic els are reused across renders; see the render note). Only the
+//     transition/leave animation body is still substituted (removeElementWithFadeOut for the leave path).
 //   - `createEl` + the per-type graphic-element builders (group/rect/circle/ring/sector/arc/
 //     polygon/polyline/line/bezierCurve/text/image/compoundPath; `path` SVG-data building deferred).
 //   - `updateElNormal` STATIC parts — apply shape + style + transform (x/y/rotation/scale) + z2.
@@ -39,8 +40,10 @@ import ZRenderKit
 //     `applyKeyframeAnimation` / `stopPreviousKeyframeAnimationAndRestore` — replaced by a direct
 //     static apply of the final shape/style/transform (mirrors GraphicComponentView's
 //     `applyUpdateTransitionStatic`).
-//   - the enter/update/leave group DIFF (`data.diff`) — the group is rebuilt from scratch each render
-//     (same deviation as ScatterView/BarView), and `diffGroupChildren` / DataDiffer child-diff.
+//   - the top-level enter/update/leave DIFF (`data.diff(oldData)`) is now PORTED in `render` (per-datum
+//     graphic els are reused across renders — the reset-on-update fix). Still DEFERRED: the GROUP-CHILD
+//     by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren` still rebuilds a
+//     group's children by index each render.
 //   - emphasis/blur/select STATES: `updateElOnState` / `setDefaultStateProxy` / `toggleHoverEmphasis`
 //     are now ported (util/states is present). Still DEFERRED: the per-state application loop that
 //     CALLS `updateElOnState` (the `for (STATES)` walk + `retrieveStateOption`) — see its PORT-NOTE.
@@ -262,18 +265,47 @@ open class CustomChartView: ChartView {
         let renderItem = makeRenderItem(customSeries, data, ecModel, api)
 
         // upstream: if (!oldData) { group.removeAll(); }
-        // DEVIATION (STATIC): upstream then runs a `data.diff(oldData).add/remove/update(...).execute()`
-        //   enter/update/leave DIFF, reusing per-datum graphic els across renders. That DIFF (and the
-        //   leave transition) is DEFERRED; instead the group is rebuilt from scratch every render — the
-        //   same static strategy as ScatterView/BarView. Functionally equivalent for a single static
-        //   frame; loses cross-frame element reuse + transitions.
-        _ = oldData
-        group.removeAll()
-        for newIdx in 0..<data.count() {
-            _ = createOrUpdateItem(
-                api, nil, newIdx, renderItem(newIdx, payload), customSeries, group, data
-            )
+        if oldData == nil {
+            // Previous render is incremental render or first render.
+            // Needs remove the incremental rendered elements.
+            group.removeAll()
         }
+
+        // upstream: data.diff(oldData).add(...).remove(...).update(...).execute();
+        //   The enter/update/leave DIFF — reuses per-datum graphic els across renders (keyed by data id).
+        //   This is the fix for the reset-on-update bug: a merge-mode setOption now ROUTES matched data
+        //   through the `.update` branch, which passes the EXISTING element to `createOrUpdateItem` so the
+        //   same object is reused (its shape/style/transform re-applied) instead of destroyed + recreated.
+        //   Element identity persists across renders (so any in-flight animation is not restarted, and
+        //   downstream tween/morph machinery — where wired — sees the prior element).
+        data.diff(oldData)
+            .add { newIdx in
+                // upstream: createOrUpdateItem(api, null, newIdx, renderItem(newIdx, payload), ...);
+                _ = createOrUpdateItem(
+                    api, nil, newIdx, renderItem(newIdx, payload), customSeries, group, data
+                )
+            }
+            .remove { oldIdx in
+                // upstream: const el = oldData.getItemGraphicEl(oldIdx);
+                //   el && applyLeaveTransition(el, customInnerStore(el).option, customSeries);
+                // PORT-NOTE (deferred substitute): `applyLeaveTransition` (customGraphicTransition — the
+                //   leave-config-aware animated remove) is DEFERRED with the transition machinery; the
+                //   ported `removeElementWithFadeOut` is the leave-path substitute (fade-out then remove;
+                //   an immediate remove if animation is off). `oldData` is non-nil in this branch (the
+                //   diff emits removes only when there is old data).
+                if let el = oldData?.getItemGraphicEl(oldIdx) {
+                    removeElementWithFadeOut(el, customSeries, oldIdx)
+                }
+            }
+            .update { newIdx, oldIdx in
+                // upstream: const oldEl = oldData.getItemGraphicEl(oldIdx);
+                //   createOrUpdateItem(api, oldEl, newIdx, renderItem(newIdx, payload), ...);
+                let oldEl = oldData?.getItemGraphicEl(oldIdx)
+                _ = createOrUpdateItem(
+                    api, oldEl, newIdx, renderItem(newIdx, payload), customSeries, group, data
+                )
+            }
+            .execute()
 
         // upstream:
         //   const clipPath = customSeries.get('clip', true)
