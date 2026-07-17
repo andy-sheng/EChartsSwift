@@ -1002,6 +1002,39 @@ func runCLI() -> Bool {
         iapp.run()
         return true
 
+    case "--update-invariant":
+        // --update-invariant <demo> : the broad-coverage variant of --anim-invariant. --anim-invariant
+        //   needs a `drive` timeline (only 21 demos have one); this instead applies the demo's OWN option
+        //   a second time (merge-mode setOption — upstream's refresh idiom) and measures element-identity
+        //   overlap across that update. A view that reuses+tweens keeps its elements (overlap→1); a view
+        //   ported as a static rebuild (the GaugeView reset bug) churns them (overlap→0). Runs on all
+        //   demos, so the whole reset-bug CLASS is enumerable, not just the drive-demo instances.
+        guard args.count >= 2, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --update-invariant <name>\n".utf8)); exit(2)
+        }
+        let uapp = NSApplication.shared
+        uapp.setActivationPolicy(.accessory)
+        let uhost = EChartsHostView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        uhost.setOption(demo.option)
+        let usnaps = AnimInvariantSnaps()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            var ids = Set<ObjectIdentifier>()
+            _ = uhost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
+            usnaps.samples.append((700, ids))
+            uhost.setOption(demo.option, notMerge: false)   // the second, MERGE-mode apply
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            var ids = Set<ObjectIdentifier>()
+            _ = uhost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
+            usnaps.samples.append((1500, ids))
+            let a = usnaps.samples[0].1, b = usnaps.samples[1].1
+            let ratio = a.isEmpty ? 1.0 : Double(a.intersection(b).count) / Double(a.count)
+            print(String(format: "UPDATE_OVERLAP\t%.2f\t%d\t%d\t%@", ratio, a.count, b.count, demo.name))
+            exit(0)
+        }
+        uapp.run()
+        return true
+
     default:
         return false
     }
