@@ -117,15 +117,18 @@ public final class GeoSVGResource: GeoResource {
     }
 
     private func _buildGraphic(_ svgXML: ZRXMLNode?) -> GeoSVGGraphicRecord {
-        // result = svgXML && parseSVG(svgXML, { ignoreViewBox: true, ignoreRootClip: true }) || {};
-        let result: SVGParserResult
-        if let svgXML = svgXML {
-            result = parseSVG(svgXML, SVGParserOption(ignoreViewBox: true, ignoreRootClip: true))
+        // try {
+        //     result = svgXML && parseSVG(svgXML, { ignoreViewBox: true, ignoreRootClip: true }) || {};
+        //     rootFromParse = result.root;
+        //     assert(rootFromParse != null);
+        // } catch (e) { throw new Error('Invalid svg format\n' + e.message); }
+        // `parseXML` (in init) returns nil for a malformed SVG, so a nil `svgXML` here IS upstream's
+        //   `{}` / parse-failure branch: assert the root is present, matching upstream's thrown error.
+        let parsed: SVGParserResult? = svgXML.map {
+            parseSVG($0, SVGParserOption(ignoreViewBox: true, ignoreRootClip: true))
         }
-        else {
-            result = SVGParserResult(root: Group(), width: nil, height: nil,
-                                     viewBoxRect: nil, viewBoxTransform: nil, named: [])
-        }
+        util.assert(parsed?.root != nil, "Invalid svg format")
+        let result = parsed!
         let rootFromParse = result.root
 
         // Note: we keep the covenant that the root has no transform. So always add an extra root.

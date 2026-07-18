@@ -152,8 +152,8 @@ open class ComponentModel: Model, ClassManageable {
      * Only support 'box' now (left/right/top/bottom/width/height).
      */
     // upstream: static layoutMode: ComponentLayoutMode | ComponentLayoutMode['type']
-    // PORT-NOTE: union `ComponentLayoutMode | string` modeled as `Any?` (consumed by the
-    //   not-yet-ported `layout.fetchLayoutMode`).
+    // PORT-NOTE: union `ComponentLayoutMode | string` modeled as `Any?` (consumed by
+    //   `layout.fetchLayoutMode`).
     open class var layoutMode: Any? { return nil }
 
     /**
@@ -195,10 +195,17 @@ open class ComponentModel: Model, ClassManageable {
 
     open func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = layout.fetchLayoutMode(this);
-        // const inputPositionParams = layoutMode ? layout.getLayoutParams(option) : {};
-        // PORT-NOTE (deferred): requires layout.fetchLayoutMode / layout.getLayoutParams (layout.swift
-        //   ports mergeLayoutParam/getBoxLayoutParams but not these two) — layout-mode param extraction
-        //   and the final `mergeLayoutParam` below are deferred.
+        let layoutMode = layout.fetchLayoutMode(self)
+        // const inputPositionParams = layoutMode ? layout.getLayoutParams(option as BoxLayoutOptionMixin) : {};
+        // PORT-NOTE: `option === self.option` at call, so capture the input position params from that
+        //   bag BEFORE the theme/default merges below (mirrors Series.mergeDefaultAndTheme).
+        let inputPositionParams: [String: Any]
+        if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
+            inputPositionParams = layout.getLayoutParams(src)
+        }
+        else {
+            inputPositionParams = [:]
+        }
 
         // const themeModel = ecModel.getTheme();
         // zrUtil.merge(option, themeModel.get(this.mainType));
@@ -223,8 +230,18 @@ open class ComponentModel: Model, ClassManageable {
         }
 
         // if (layoutMode) {
-        //     layout.mergeLayoutParam(option, inputPositionParams, layoutMode);
+        //     layout.mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
         // }
+        // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
+        //   is read by `mergeLayoutParam`, so it is forwarded via the option bag (cf. Series).
+        if let mode = layoutMode, var target = self.option as? [String: Any] {
+            var opt: [String: Any] = [:]
+            if let ignoreSize = mode.ignoreSize {
+                opt["ignoreSize"] = ignoreSize
+            }
+            layout.mergeLayoutParam(&target, inputPositionParams, opt)
+            self.option = target
+        }
     }
 
     open override func mergeOption(_ option: ModelOption?, _ ecModel: GlobalModel?) {
@@ -235,11 +252,22 @@ open class ComponentModel: Model, ClassManageable {
         }
 
         // const layoutMode = layout.fetchLayoutMode(this);
+        let layoutMode = layout.fetchLayoutMode(self)
         // if (layoutMode) {
-        //     layout.mergeLayoutParam(this.option, option, layoutMode);
+        //     layout.mergeLayoutParam(this.option as BoxLayoutOptionMixin, option as BoxLayoutOptionMixin, layoutMode);
         // }
-        // PORT-NOTE (deferred): requires layout.fetchLayoutMode (layout.swift ports mergeLayoutParam
-        //   but not fetchLayoutMode) — layout-mode merge deferred.
+        // PORT-NOTE: upstream merges the incoming `option` box params INTO this.option; the delta box
+        //   params live in the raw `option`. Only `ignoreSize` from the layout mode is read (cf. Series).
+        if let mode = layoutMode,
+           var target = self.option as? [String: Any],
+           let source = option as? [String: Any] {
+            var opt: [String: Any] = [:]
+            if let ignoreSize = mode.ignoreSize {
+                opt["ignoreSize"] = ignoreSize
+            }
+            layout.mergeLayoutParam(&target, source, opt)
+            self.option = target
+        }
         _ = ecModel
     }
 

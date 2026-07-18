@@ -202,7 +202,11 @@ open class TimelineModel: ComponentModel {
     }
 
     // getData() { return this._data; }
-    open func getData() -> SeriesData {
+    // PORT: relaxed to accept the DataHost `getData(dataType?)` contract that `DataFormatMixin`
+    //   (mixed into `SliderTimelineModel` below) refines — its getRawValue/getDataParams call
+    //   `self.getData(dataType)`. Timeline has a single data table, so `dataType` is ignored (as
+    //   upstream `getData()` takes no arg). Same idiom as `SeriesModel.getData(_:)`.
+    open func getData(_ dataType: SeriesDataType? = nil) -> SeriesData {
         return self._data
     }
 
@@ -255,10 +259,15 @@ open class TimelineModel: ComponentModel {
 }
 
 // upstream: class SliderTimelineModel extends TimelineModel
-//   + `mixin(SliderTimelineModel, DataFormatMixin.prototype)` (adds formatTooltip/getDataParams —
-//   the tooltip CONTENT, DEFERRED here like other components' tooltip wiring).
-// CONVENTIONS §2: `final class` (no further subclass).
-public final class SliderTimelineModel: TimelineModel {
+//   + `mixin(SliderTimelineModel, DataFormatMixin.prototype)` (adds getDataParams/getRawValue/
+//   getFormattedLabel/formatTooltip — the tooltip CONTENT).
+// CONVENTIONS §2: `final class` (no further subclass). The `mixin(...)` is ported as a
+//   `DataFormatMixin` conformance — the protocol-extension default methods graft the four
+//   DataFormatMixin methods onto the model exactly as `zrUtil.mixin` would (same idiom as
+//   `SeriesModel: ... DataFormatMixin`). The host-supplied requirements (ecModel/mainType/
+//   subType/componentIndex/id/name) come from the `ComponentModel` base; the `DataHost`
+//   `getData(dataType?)` witness is inherited from `TimelineModel` above.
+public final class SliderTimelineModel: TimelineModel, DataFormatMixin {
 
     // static type = 'timeline.slider'; type = SliderTimelineModel.type;
     public override class var type: ComponentFullType { return "timeline.slider" }

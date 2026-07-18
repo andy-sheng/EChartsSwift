@@ -155,8 +155,18 @@ open class PolarAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
         return self.__ordinalMeta ?? OrdinalMeta.createByAxisModel(self)
     }
 
+    // upstream (generated AxisModel):
+    //   updateAxisBreaks(payload) {
+    //       const axisBreakHelper = getAxisBreakHelper();
+    //       return axisBreakHelper ? axisBreakHelper.updateModelAxisBreak(this, payload) : {breaks: []};
+    //   }
+    //   Mirrors SingleAxisModel/axisModelCreator; getAxisBreakHelper() returns nil until the axis-break
+    //   feature installer lands, so this stays inert until then but now dispatches faithfully once wired.
     public func updateAxisBreaks(_ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult {
-        return AxisBreakUpdateResult(breaks: [])
+        let axisBreakHelper = getAxisBreakHelper()
+        return axisBreakHelper != nil
+            ? axisBreakHelper!.updateModelAxisBreak(self, payload)
+            : AxisBreakUpdateResult(breaks: [])
     }
 }
 

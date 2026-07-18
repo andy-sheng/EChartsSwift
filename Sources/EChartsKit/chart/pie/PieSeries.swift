@@ -88,13 +88,15 @@ open class PieSeriesModel: SeriesModel {
         )
 
         // this._defaultLabelLine(option);
-        // PORT-NOTE (deferred): `_defaultLabelLine` mutates `option.labelLine.show`/
-        //   `option.emphasis.labelLine.show` from `label.show`/`emphasis.label.show` via
-        //   `modelUtil.defaultEmphasis`. PieView DOES render labelLine (reads `labelLine.show`), but
-        //   `defaultEmphasis` operates on a typed `DisplayStateHostOption`, whereas the model's option
-        //   is the raw `[String: Any]` bag; the option-defaulting call is deferred uniformly across the
-        //   whole series family (Geo/Graph/Funnel/Marker all keep the same call commented). labelLine.show
-        //   still defaults to `true` from `defaultOption`, so this is a no-op with faithful call shape.
+        // PORT-NOTE: upstream `option` in `init` IS `this.option` (same reference), which `super.init`
+        //   has already merged with defaults/theme (label + labelLine subtrees present). The `[String: Any]`
+        //   bag is a value type, so read-modify-write-back through `self.option` (not the raw `option`
+        //   parameter, which is the pre-merge partial). `defaultEmphasis` bridges the bag via
+        //   `DisplayStateHostOption`, mirroring `SeriesModel.defaultEmphasisOnBag`.
+        if var opt = self.option as? [String: Any] {
+            self._defaultLabelLine(&opt)
+            self.option = opt
+        }
     }
 
     /**
@@ -175,14 +177,53 @@ open class PieSeriesModel: SeriesModel {
     }
 
     // upstream: private _defaultLabelLine(option): void { ... }
-    // PORT-NOTE (deferred): the option-defaulting call `_defaultLabelLine` is deferred family-wide
-    //   (see `init` above). Faithful upstream body:
-    //     modelUtil.defaultEmphasis(option, 'labelLine', ['show']);
-    //     const labelLineNormalOpt = option.labelLine;
-    //     const labelLineEmphasisOpt = option.emphasis.labelLine;
-    //     labelLineNormalOpt.show = labelLineNormalOpt.show && option.label.show;
-    //     labelLineEmphasisOpt.show = labelLineEmphasisOpt.show && option.emphasis.label.show;
-    //   (`modelUtil.defaultEmphasis` IS ported as `model.defaultEmphasis`.)
+    //   Mutates the `[String: Any]` option bag in place (read-modify-write-back through the `inout`
+    //   dictionary; the caller writes the result back to `self.option`).
+    private func _defaultLabelLine(_ option: inout [String: Any]) {
+        // Extend labelLine emphasis
+        // modelUtil.defaultEmphasis(option, 'labelLine', ['show']);
+        //   Bridge the bag through DisplayStateHostOption (cf. SeriesModel.defaultEmphasisOnBag), since
+        //   `model.defaultEmphasis` consumes the typed struct.
+        var host: DisplayStateHostOption? = DisplayStateHostOption()
+        host!.other = option
+        host!.emphasis = option["emphasis"] as? [String: Any]
+        model.defaultEmphasis(&host, "labelLine", ["show"])
+        option = host!.other
+        if let emphasis = host!.emphasis {
+            option["emphasis"] = emphasis
+        }
+
+        // const labelLineNormalOpt = option.labelLine;
+        var labelLineNormalOpt = (option["labelLine"] as? [String: Any]) ?? [:]
+        // const labelLineEmphasisOpt = option.emphasis.labelLine;
+        var emphasis = (option["emphasis"] as? [String: Any]) ?? [:]
+        var labelLineEmphasisOpt = (emphasis["labelLine"] as? [String: Any]) ?? [:]
+        let labelOpt = (option["label"] as? [String: Any]) ?? [:]
+        let emphasisLabelOpt = (emphasis["label"] as? [String: Any]) ?? [:]
+
+        // Not show label line if `label.normal.show = false`
+        // labelLineNormalOpt.show = labelLineNormalOpt.show && option.label.show;
+        labelLineNormalOpt["show"] =
+            PieSeriesModel.isTruthy(labelLineNormalOpt["show"]) && PieSeriesModel.isTruthy(labelOpt["show"])
+        // labelLineEmphasisOpt.show = labelLineEmphasisOpt.show && option.emphasis.label.show;
+        labelLineEmphasisOpt["show"] =
+            PieSeriesModel.isTruthy(labelLineEmphasisOpt["show"]) && PieSeriesModel.isTruthy(emphasisLabelOpt["show"])
+
+        // Write the mutated sub-bags back (value-type read-modify-write-back).
+        option["labelLine"] = labelLineNormalOpt
+        emphasis["labelLine"] = labelLineEmphasisOpt
+        option["emphasis"] = emphasis
+    }
+
+    // Faithful JS `&&`/truthiness for an option-bag value (absent/NSNull/false/0/"" are falsy).
+    private static func isTruthy(_ value: Any?) -> Bool {
+        guard let value = value, !(value is NSNull) else { return false }
+        if let b = value as? Bool { return b }
+        if let i = value as? Int { return i != 0 }
+        if let d = value as? Double { return d != 0 }
+        if let s = value as? String { return !s.isEmpty }
+        return true
+    }
 
     // upstream: static defaultOption: Omit<PieSeriesOption, 'type'> = { ... }
     //   LOAD-BEARING: `coordinateSystemUsage: 'box'` is what `registerLayOutOnCoordSysUsage` /
