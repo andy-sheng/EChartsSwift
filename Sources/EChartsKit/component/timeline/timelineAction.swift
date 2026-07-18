@@ -72,9 +72,11 @@ public func installTimelineAction(_ registers: EChartsExtensionInstallRegisters)
             )
 
             // return defaults({ currentIndex: timelineModel.option.currentIndex }, payload);
+            //   The normalized currentIndex wins; every other field of the payload (from, and any
+            //   user-supplied keys carried in the dynamic bag) is filled in from `payload.other`.
             var ev: ECEventData = [:]
             ev["currentIndex"] = timelineModel.getCurrentIndex()
-            if let from = payload.other["from"] { ev["from"] = from }
+            util.defaults(&ev, payload.other)
             return ev
         }
 
