@@ -74,6 +74,23 @@ open class ToolboxFeature {
     ) {}
 }
 
+// upstream: `export interface UserDefinedToolboxFeature { uid; model; ecModel; api; featureName?; onclick() }`.
+//   A user-defined (`my*`) toolbox feature is NOT a subclass of `ToolboxFeature`; it is a plain object that
+//   carries the injected view context (uid/model/ecModel/api) plus an optional `featureName` and a zero-arg
+//   `onclick`. Modeled as a protocol (CONVENTIONS §2 — interface -> protocol) so the toolbox view can adopt it
+//   for `my*` features. No concrete conformer is registered via `registerFeature` (these come from the option).
+public protocol UserDefinedToolboxFeature: AnyObject {
+    var uid: String { get set }
+
+    var model: ToolboxFeatureModel { get set }
+    var ecModel: GlobalModel { get set }
+    var api: ExtensionAPI { get set }
+
+    var featureName: String? { get set }
+
+    func onclick()
+}
+
 // upstream: `type ToolboxFeatureCtor = { new(): ToolboxFeature; defaultOption?; getDefaultOption?; }`.
 //   Swift has no static-on-the-constructor `getDefaultOption`, so a registration bundles a factory
 //   closure with the (optional) `getDefaultOption(ecModel)` — read by `ToolboxModel.optionUpdated`.
