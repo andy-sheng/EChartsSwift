@@ -8,11 +8,38 @@
 /// Upstream `key: string | number`. Swift has no untagged union, so we model the
 /// key as a tagged enum. Literal conformances keep call sites close to upstream
 /// (`lru.put("foo", v)` / `lru.put(1, v)`).
-// PORT-NOTE: JS coerces numeric object keys to strings, so `map[1]` and `map["1"]`
-// collide in the original. `.number(1)` and `.string("1")` are distinct here.
-public enum LRUKey: Hashable {
+// PORT-NOTE: upstream stores entries in a plain JS object (`this._map = {}`), so
+//   numeric keys are coerced to strings and `map[1]` collides with `map["1"]`. We
+//   reproduce that by hashing/comparing every key through its JS-string form, so
+//   `.number(1)` and `.string("1")` are the SAME dictionary key here too.
+public enum LRUKey {
     case string(String)
     case number(Double)
+
+    /// The key as a JS object would coerce it (`String(number)` / the string itself).
+    var jsKey: String {
+        switch self {
+        case .string(let s):
+            return s
+        case .number(let n):
+            // Match JS `String(n)`: integral finite values print without a decimal
+            // point ("1", not "1.0"); everything else falls back to Swift's default.
+            if n.isFinite && n.rounded() == n && abs(n) < 1e21 {
+                return String(Int64(n))
+            }
+            return String(n)
+        }
+    }
+}
+
+extension LRUKey: Hashable {
+    public static func == (lhs: LRUKey, rhs: LRUKey) -> Bool {
+        return lhs.jsKey == rhs.jsKey
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(jsKey)
+    }
 }
 
 extension LRUKey: ExpressibleByStringLiteral {
