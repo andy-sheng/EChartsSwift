@@ -981,11 +981,11 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
 
     func getWidth() -> Double { return extApi.getWidth() }
     func getHeight() -> Double { return extApi.getHeight() }
-    // PORT-NOTE (deferred): `api.getZr` / `api.getDevicePixelRatio` are on ExtensionAPI's dynamic
-    //   `availableMethods` forwarding list but not yet exposed as callable Swift methods (dynamic
-    //   forwarding deferred to Phase 6b) — stubbed.
-    func getZr() -> Any? { return nil }
-    func getDevicePixelRatio() -> Double { return 1.0 }
+    // upstream: getZr: api.getZr, getDevicePixelRatio: api.getDevicePixelRatio — forwarded to
+    //   ExtensionAPI, which now exposes both (`getZr` returns the host `ZRenderType?`, nil in pure
+    //   headless; `getDevicePixelRatio` returns the painter dpr, 1 by default).
+    func getZr() -> Any? { return extApi.getZr() }
+    func getDevicePixelRatio() -> Double { return extApi.getDevicePixelRatio() }
 
     // ---- data accessors ----
 
@@ -1489,29 +1489,63 @@ private func mergeChildren(
     if byName {
         // upstream: diffGroupChildren({...}) — the DataDiffer by-name child diff.
         // PORT-NOTE (deferred): the by-name child DIFF (`diffGroupChildren` via DataDiffer) is deferred
-        //   with the enter/update/leave DIFF; rebuild by index below as a fallback.
+        //   (needs data/DataDiffer + the leave transition, both in other files); fall through to the
+        //   by-index merge below as a best-effort.
     }
 
-    // notMerge && el.removeAll();  — in the static rebuild the group child list starts empty anyway.
-    el.removeAll()
+    // upstream: notMerge && el.removeAll();
+    if notMerge {
+        el.removeAll()
+    }
 
-    // Mapping children of a group simply by index.
+    // Mapping children of a group simply by index, reusing the existing child at each index (upstream
+    //   passes `oldChild = el.childAt(index)` to `doCreateOrUpdateEl`, so per-child identity/animation
+    //   persist across renders instead of being rebuilt from scratch).
     var index = 0
     while index < newLen {
         let newChildAny = newChildren?[index]
-        let newChild = normalizeElOption(newChildAny)
-        // In the rebuild path there is no oldChild to reuse.
-        if let newChild = newChild {
-            _ = doCreateOrUpdateEl(api, nil, dataIndex, newChild, seriesModel, el)
+        var newChild = normalizeElOption(newChildAny)
+        let oldChild = el.childAt(index)
+        if newChild != nil {
+            // The old child at this index is set to be ignored when its new option is null (see the
+            //   `else` branch). So set `ignore` back to false when it is not explicitly specified.
+            if newChild!["ignore"] == nil {
+                newChild!["ignore"] = false
+            }
+            _ = doCreateOrUpdateEl(api, oldChild, dataIndex, newChild!, seriesModel, el)
+        }
+        else {
+            // upstream DEV assert: oldChild must exist. A null new child means "remove" the old child,
+            //   but we cannot really remove it (element order may not be stable when it is added back),
+            //   so mark it ignored instead.
+            oldChild?.ignore = true
         }
         index += 1
     }
+    // upstream: for (let i = el.childCount() - 1; i >= index; i--) removeChildFromGroup(el, childAt(i), ...)
+    var i = el.childCount() - 1
+    while i >= index {
+        if let child = el.childAt(i) {
+            removeChildFromGroup(el, child, seriesModel, dataIndex)
+        }
+        i -= 1
+    }
 }
 
-// upstream: function removeChildFromGroup / diffGroupChildren / getKey / processAddUpdate / processRemove
-//   The by-name child DIFF machinery (DataDiffer + leave transition) is DEFERRED (see mergeChildren).
+// upstream: function removeChildFromGroup(group, child, seriesModel) { child && applyLeaveTransition(...) }
+//   PORT-NOTE (deferred substitute): `applyLeaveTransition` (customGraphicTransition) is deferred with
+//   the transition machinery; use the ported `removeElementWithFadeOut` leave-path substitute (as the
+//   top-level `.remove` diff branch does).
+private func removeChildFromGroup(
+    _ group: Group, _ child: Element, _ seriesModel: CustomSeriesModel, _ dataIndex: Int
+) {
+    removeElementWithFadeOut(child, seriesModel, dataIndex)
+}
+
+// upstream: function diffGroupChildren / getKey / processAddUpdate / processRemove
+//   The by-NAME child DIFF machinery (DataDiffer + leave transition) is DEFERRED (see mergeChildren);
+//   `removeChildFromGroup` (the by-index trailing-child removal) is ported above.
 //   Retained here only as provenance markers.
-//   - removeChildFromGroup(group, child, seriesModel) -> applyLeaveTransition(...)  (DEFERRED)
 //   - diffGroupChildren(context) -> new DataDiffer(...).add/update/remove.execute()   (DEFERRED)
 //   - getKey(item, idx) -> item.name ?? GROUP_DIFF_PREFIX + idx
 private func getKey(_ item: Element?, _ idx: Int) -> String {
