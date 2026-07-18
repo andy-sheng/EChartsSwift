@@ -63,9 +63,8 @@ private let PB_LAYOUT_ATTRS: [PBLayoutAttr] = [
 ]
 
 // upstream: const pathForLineWidth = new graphic.Circle();  (a scratch path used only to compute the
-//   scaled lineWidth). PictorialBar's lineWidth scaling is approximated in prepareLineWidth (see below),
-//   so this scratch is currently unused; kept for the diffable surface.
-// private let pathForLineWidth = Circle()
+//   scaled lineWidth in prepareLineWidth — see below).
+private let pbPathForLineWidth = Circle()
 
 // upstream `type ItemModel` monkeypatches getAnimationDelayParams / isAnimationEnabled onto the item model.
 //   The port does not monkeypatch; `pbIsAnimationEnabled` computes the same boolean inline (see getSymbolMeta).
@@ -472,15 +471,20 @@ private func pbPrepareLineWidth(
     _ itemModel: Model, _ symbolScale: [Double], _ rotation: Double,
     _ opt: PBCreateOpts, _ out: PBSymbolMeta
 ) {
+    // In symbols are drawn with scale, so do not need to care about the case that width or height are
+    //   too small. But symbol use strokeNoScale, where the actual lineWidth should be calculated.
     var valueLineWidth = pbDouble(itemModel.get(PB_BAR_BORDER_WIDTH_QUERY)) ?? 0
 
     if valueLineWidth != 0 {
         // upstream scales the border width through a scratch Circle's `getLineScale()` (accounts for the
-        //   symbol scale/rotation so `strokeNoScale` symbols draw a correct border). `Path.getLineScale`
-        //   is not ported; approximate with the value-dim scale factor only (PORT-NOTE (deferred): requires
-        //   Path.getLineScale, wire it once available). pictorialBar's default itemStyle.borderWidth is 0,
-        //   so this branch is inert for the common demos.
-        _ = rotation
+        //   symbol scale/rotation so `strokeNoScale` symbols draw a correct border).
+        _ = pbPathForLineWidth.attr([
+            "scaleX": symbolScale[0],
+            "scaleY": symbolScale[1],
+            "rotation": rotation
+        ])
+        pbPathForLineWidth.updateTransform()
+        valueLineWidth /= pbPathForLineWidth.getLineScale()
         valueLineWidth *= symbolScale[opt.valueDim.index]
     }
 
