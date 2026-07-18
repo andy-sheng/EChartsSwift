@@ -63,10 +63,8 @@ public let visualMapEncodingHandlers: [StageHandler] = [
                 guard let visualMapModel = componentModel as? VisualMapModel else { return }
                 // const pipelineContext = seriesModel.pipelineContext;
                 // if (!visualMapModel.isTargetSeries(seriesModel) || (pipelineContext && pipelineContext.large)) return;
-                //   PORT-NOTE (deferred): requires pipelineContext.large (progressive/large mode), not
-                //   modeled in the pipeline; the large-mode short-circuit is omitted (a basic render is
-                //   never `large`).
-                if !visualMapModel.isTargetSeries(seriesModel) {
+                let pipelineContext: PipelineContext? = seriesModel.pipelineContext
+                if !visualMapModel.isTargetSeries(seriesModel) || (pipelineContext?.large ?? false) {
                     return
                 }
 
