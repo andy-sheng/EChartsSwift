@@ -207,14 +207,18 @@ public final class SourceManager {
             //   const needsCreateSource = seriesLayoutBy !== upMetaRawOption.seriesLayoutBy
             //       || !!sourceHeader !== !!upMetaRawOption.sourceHeader
             //       || dimensions;
-            // When there is no upstream metaRawOption (upMetaRawOption == nil), the RHS of each
-            // `!==` is JS `undefined`; the LHS `seriesLayoutBy` is `value|null` (never undefined),
-            // so the first term is always true -> a source IS created for the inline-data series.
-            // POTENTIAL-BUG (sourceManager.ts:240): when `upMetaRawOption != nil` (dataset upstream)
-            //   the null-vs-undefined `!==` distinction for `seriesLayoutBy` is collapsed by Swift
-            //   Optionals — a JS `null` and `undefined` both map to `nil`, so `needsCreateSource` may
-            //   diverge from upstream in the dataset-upstream path. Revisit with a dataset SourceManager.
-            let needsCreateSource = (upMetaRawOption == nil || seriesLayoutBy != upMetaRawOption!.seriesLayoutBy)
+            // `seriesLayoutBy` here is `retrieve2(...) || null` — JS `null` when both metaRawOptions
+            // lack it (never `undefined`). The RHS `upMetaRawOption.seriesLayoutBy` is JS `undefined`
+            // when the field is unset (empty `{}` when there is no upSource) and can never be JS `null`
+            // for any source that feeds a series: a root-dataset source stores `undefined`
+            // (`model.get(...)`), a transform-output source stores `'column'`, and series sources are
+            // leaves (never upstream). So the only nil-vs-nil pairing is local-`null` vs up-`undefined`,
+            // which is JS-distinct (`null !== undefined` -> true). Model the first `!==` faithfully as:
+            // NOT (both sides are real values AND equal). `seriesLayoutBy != nil` treats a nil local as
+            // JS `null`; `upMetaRawOption?.seriesLayoutBy` optional-chains a nil up-field / absent
+            // upMetaRawOption to JS `undefined`. This restores the dataset-upstream distinction that a
+            // plain `nil == nil` collapsed (previously undercounted `needsCreateSource`).
+            let needsCreateSource = !(seriesLayoutBy != nil && seriesLayoutBy == upMetaRawOption?.seriesLayoutBy)
                 || (jsTruthy(sourceHeader) != jsTruthy(upMetaRawOption?.sourceHeader ?? nil))
                 || (dimensions != nil)
             resultSourceList = needsCreateSource ? [createSource(
