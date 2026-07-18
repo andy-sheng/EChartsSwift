@@ -225,6 +225,16 @@ public final class LabelManager {
                 _ = label.setStyle("y", 0)
             }
 
+            // upstream: if (layoutOption.labelLinePoints) { const guideLine = hostEl.getTextGuideLine();
+            //   if (guideLine) { guideLine.setShape({ points: layoutOption.labelLinePoints }); ... } }
+            //   Override the label guide line's geometry with the user-supplied points. The upstream
+            //   `needsUpdateLabelLine = false` bookkeeping feeds `processLabelsOverall` (deferred), so
+            //   only the observable `setShape` is applied here. `PolylineShape.animationSet` accepts the
+            //   `[[Double]]` point form directly.
+            if let linePoints = layoutOption.labelLinePoints, let guideLine = hostEl?.getTextGuideLine() {
+                _ = guideLine.setShape("points", linePoints)
+            }
+
             if let rotate = layoutOption.rotate {
                 label.rotation = rotate * degreeToRadian
             }
