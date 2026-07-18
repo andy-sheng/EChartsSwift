@@ -406,6 +406,9 @@ public final class ECharts: EChartsType {
     /// Re-entrancy guard: true while inside the update cycle (`doDispatchAction`). Upstream stores this
     /// under the symbol-ish key `IN_EC_CYCLE_KEY` (`'__flagInMainProcess'`).
     private var _inEcCycle = false
+    /// Instance lifecycle flag (upstream: `private _disposed: boolean`). Set by `dispose()`; guards the
+    /// public API entry points (upstream logs `disposedWarning` and early-returns when set).
+    private var _disposed = false
 
     // ---- the chart event bus (upstream: `class ECharts extends Eventful<ECEventDefinition>`) ----
     /// upstream: `protected _$eventProcessor: never` — really an `ECEventProcessor`, whose `eventInfo`
@@ -3079,6 +3082,180 @@ public final class ECharts: EChartsType {
 
         return result
     }
+
+    // ------------------------------------------------------------------------
+    // getOption — ported from `ECharts.prototype.getOption` (echarts.ts:894-896).
+    //   Returns the current merged option tree (`this._model.getOption()`).
+    // ------------------------------------------------------------------------
+    public func getOption() -> ECUnitOption? {
+        return _model?.getOption()
+    }
+
+    // ------------------------------------------------------------------------
+    // convertToPixel / convertFromPixel — ported from `ECharts.prototype.{convertToPixel,
+    //   convertFromPixel}` (echarts.ts:1139-1183) + the module-internal `doConvertPixelImpl`
+    //   (echarts.ts:2085-2137) assigned to `doConvertPixel`. Walks the coordinate systems and returns
+    //   the first non-nil result of `coordSys[methodName](ecModel, parsedFinder, value, opt)`. Both
+    //   `convertToPixel`/`convertFromPixel` are optional on `CoordinateSystemMaster` (nil-default), so a
+    //   coord system that does not support the direction just returns nil and the walk continues.
+    // ------------------------------------------------------------------------
+    public func convertToPixel(_ finder: ModelFinder, _ value: CoordinateSystemDataCoord) -> Any? {
+        return doConvertPixel("convertToPixel", finder, value, nil)
+    }
+
+    public func convertFromPixel(_ finder: ModelFinder, _ value: [Double]) -> Any? {
+        return doConvertPixel("convertFromPixel", finder, value, nil)
+    }
+
+    // upstream: `doConvertPixelImpl(ecIns, methodName, finder, value, opt)`.
+    private func doConvertPixel(_ methodName: String, _ finder: ModelFinder,
+                                _ value: CoordinateSystemDataCoord, _ opt: Any?) -> Any? {
+        // if (ecIns._disposed) { disposedWarning(ecIns.id); return; }
+        if _disposed { return nil }
+        guard let ecModel = _model else { return nil }
+        let coordSysList = _coordSysMgr.getCoordinateSystems()
+        let parsedFinder = model.parseFinder(ecModel, finder)
+
+        // for (i) { if (coordSys[methodName] && (result = coordSys[methodName](...)) != null) return result; }
+        for coordSys in coordSysList {
+            let result: Any?
+            switch methodName {
+            case "convertToPixel":
+                result = coordSys.convertToPixel(ecModel, parsedFinder, value, opt)
+            case "convertFromPixel":
+                result = coordSys.convertFromPixel(ecModel, parsedFinder, (value as? [Double]) ?? [], opt)
+            default:
+                result = nil
+            }
+            if let result = result { return result }
+        }
+        // (__DEV__ warn: 'No coordinate system that supports ' + methodName + ' found …' — no dev log.)
+        return nil
+    }
+
+    // ------------------------------------------------------------------------
+    // getVisual — ported from `ECharts.prototype.getVisual` (echarts.ts:1247-1273). Resolves the series
+    //   (default main type 'series') from the finder and returns either the item-level visual (when a
+    //   dataIndex/dataIndexInside is given) or the series-level visual.
+    // ------------------------------------------------------------------------
+    public func getVisual(_ finder: ModelFinder, _ visualType: String) -> Any? {
+        guard let ecModel = _model else { return nil }
+        let parsedFinder = model.parseFinder(ecModel, finder, ParseFinderOpt(defaultMainType: "series"))
+        // if (__DEV__) { if (!seriesModel) warn('There is no specified series model'); }
+        guard let seriesModel = parsedFinder["seriesModel"] as? SeriesModel else { return nil }
+        let data = seriesModel.getData()
+
+        // const dataIndexInside = parsedFinder.hasOwnProperty('dataIndexInside') ? …
+        //     : parsedFinder.hasOwnProperty('dataIndex') ? data.indexOfRawIndex(parsedFinder.dataIndex) : null;
+        let dataIndexInside: Int?
+        if let dii = parsedFinder["dataIndexInside"] {
+            dataIndexInside = ECharts._finderInt(dii)
+        }
+        else if let di = parsedFinder["dataIndex"], let raw = ECharts._finderInt(di) {
+            dataIndexInside = data.indexOfRawIndex(raw)
+        }
+        else {
+            dataIndexInside = nil
+        }
+
+        return dataIndexInside != nil
+            ? getItemVisualFromData(data, dataIndexInside!, visualType)
+            : ECharts._getVisualFromData(data, visualType)
+    }
+
+    // Minimal port of `visual/helper.ts#getVisualFromData` (series-level). Mirrors visualEncoding.swift's
+    //   file-private copy; kept here because that one is not visible across files.
+    private static func _getVisualFromData(_ data: SeriesData, _ key: String) -> Any? {
+        switch key {
+        case "color":
+            let style = data.getVisual("style") as? [String: Any]
+            let drawType = (data.getVisual("drawType") as? String) ?? "fill"
+            return style?[drawType]
+        case "opacity":
+            return (data.getVisual("style") as? [String: Any])?["opacity"]
+        case "symbol", "symbolSize", "liftZ":
+            return data.getVisual(key)
+        default:
+            return nil
+        }
+    }
+
+    // Coerce a finder's dataIndex value (may be boxed as Int or Double) to Int. See the Int-vs-Double
+    //   option-read trap: defaultOptions box numbers as Int, but a finder built in code may pass Double.
+    private static func _finderInt(_ v: Any?) -> Int? {
+        if let i = v as? Int { return i }
+        if let d = v as? Double { return Int(d) }
+        return nil
+    }
+
+    // ------------------------------------------------------------------------
+    // Instance lifecycle — ported from `ECharts.prototype.{isDisposed,clear,dispose}`
+    //   (echarts.ts:1389-1444). The driver owns no zr/painter (see file header), so `dispose` disposes
+    //   the views + clears the display list + releases the model/registries, but skips `this._zr.dispose()`
+    //   (the host owns the zr) and the DOM-attribute / module `instances` bookkeeping.
+    // ------------------------------------------------------------------------
+    public func isDisposed() -> Bool { return _disposed }
+
+    // upstream: `this.setOption({ series: [] }, true)`.
+    public func clear() {
+        if _disposed { return }
+        setOption(["series": [Any]()], notMerge: true)
+    }
+
+    public func dispose() {
+        if _disposed { return }
+        _disposed = true
+
+        let api = _api!
+        let ecModel = _model
+        if let ecModel = ecModel {
+            for component in _componentsViews { component.dispose(ecModel, api) }
+            for chart in _chartsViews { chart.dispose(ecModel, api) }
+        }
+        // upstream: `chart._zr.dispose()` — the driver owns no zr (host-owned); clear its display list.
+        _ = root.removeAll()
+        storage.delAllRoots()
+
+        // Release references (upstream sets the fields to null to reduce retained memory).
+        _model = nil
+        _chartsMap = [:]
+        _componentsMap = [:]
+        _chartsViews = []
+        _componentsViews = []
+        _chartViewByModel = [:]
+        _componentViewByModel = [:]
+    }
+
+    // ------------------------------------------------------------------------
+    // resize — ported from `ECharts.prototype.resize` (echarts.ts:1449-1511). The driver takes an
+    //   explicit width/height (there is no DOM to auto-measure — the same adaptation `init` makes), sets
+    //   them, and re-runs the update pipeline so the coordinate systems re-layout at the new size.
+    //   The media-query re-resolve (`ecModel.resetOption('media')`) + zr.resize are documented-deferred
+    //   (see the file header); everything else mirrors upstream (main-process guard + flush + updated event).
+    // ------------------------------------------------------------------------
+    public func resize(width: Double, height: Double, silent: Bool = false) {
+        // upstream: `if (this[IN_EC_CYCLE_KEY]) { error('`resize` should not be called during main process.'); return; }`
+        if _inEcCycle { return }
+        if _disposed { return }
+
+        _width = width
+        _height = height
+
+        guard _model != nil else { return }
+
+        _inEcCycle = true
+        // upstream: `updateMethods.update.call(this, { type: 'resize', animation: { duration: 0, … } });`
+        update()
+        _inEcCycle = false
+
+        flushPendingActions(silent)
+        triggerUpdatedEvent(silent)
+    }
+
+    // makeActionFromEvent (echarts.ts:1559-1563) is DEFERRED: it consumes an `ECActionEvent` object and
+    //   reverts it to a `Payload` via `connectionEventRevertMap`; `Payload` here is a struct (not a dict)
+    //   and the method only feeds the unwired cross-chart `connect` mirroring, so a faithful port needs
+    //   the `connect`/`ECActionEvent` machinery first (deferred with it).
 
     // ------------------------------------------------------------------------
     // Public accessors for the host / tests.
