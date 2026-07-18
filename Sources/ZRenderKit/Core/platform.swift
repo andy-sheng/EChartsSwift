@@ -179,10 +179,71 @@ public final class DefaultPlatformAPI: PlatformAPI {
 
 public var platformApi: PlatformAPI = DefaultPlatformAPI()
 
+// upstream's `Partial<Platform>` — the subset of platform methods a caller wants to override.
+// Each key is an optional closure; a nil closure means "leave that method untouched" (mirrors
+// upstream skipping keys the partial object does not carry).
+public struct PartialPlatformAPI {
+    public var createCanvas: (() -> CanvasLike?)?
+    public var measureText: ((String, String?) -> TextMetrics)?
+    public var loadImage: ((String, @escaping () -> Void, @escaping () -> Void) -> ImageLike?)?
+    public var getTime: (() -> Double)?
+    public init(
+        createCanvas: (() -> CanvasLike?)? = nil,
+        measureText: ((String, String?) -> TextMetrics)? = nil,
+        loadImage: ((String, @escaping () -> Void, @escaping () -> Void) -> ImageLike?)? = nil,
+        getTime: (() -> Double)? = nil
+    ) {
+        self.createCanvas = createCanvas
+        self.measureText = measureText
+        self.loadImage = loadImage
+        self.getTime = getTime
+    }
+}
+
+// Wraps a base PlatformAPI, forwarding to the base for every method the partial override did
+// not supply. This realizes upstream's per-key merge (`platformApi[key] = newPlatformApis[key]`
+// only when the incoming key is truthy) without mutating protocol methods in place.
+private final class MergedPlatformAPI: PlatformAPI {
+    private let base: PlatformAPI
+    private let overrides: PartialPlatformAPI
+    init(base: PlatformAPI, overrides: PartialPlatformAPI) {
+        self.base = base
+        self.overrides = overrides
+    }
+    func createCanvas() -> CanvasLike? {
+        // NB: createCanvas may legitimately return nil, so branch on closure presence rather
+        // than `??`-ing the result (which would fall through to base on a nil override result).
+        if let f = overrides.createCanvas { return f() }
+        return base.createCanvas()
+    }
+    func measureText(_ text: String, _ font: String?) -> TextMetrics {
+        if let f = overrides.measureText { return f(text, font) }
+        return base.measureText(text, font)
+    }
+    func loadImage(
+        _ src: String,
+        _ onload: @escaping () -> Void,
+        _ onerror: @escaping () -> Void
+    ) -> ImageLike? {
+        if let f = overrides.loadImage { return f(src, onload, onerror) }
+        return base.loadImage(src, onload, onerror)
+    }
+    func getTime() -> Double {
+        if let f = overrides.getTime { return f() }
+        return base.getTime()
+    }
+}
+
+// upstream: `setPlatformAPI(newPlatformApis: Partial<Platform>)` — the faithful per-key merge.
+// Only the methods the caller supplied are overridden; every other method keeps the current
+// implementation. Repeated calls stack (latest override wins, falling back through the chain).
+public func setPlatformAPI(_ newPlatformApis: PartialPlatformAPI) {
+    platformApi = MergedPlatformAPI(base: platformApi, overrides: newPlatformApis)
+}
+
+// Full-object replacement overload. A complete PlatformAPI provides every key, so this is the
+// degenerate case of the merge above (all keys truthy → wholesale replace). Kept because Swift
+// protocol objects can't be spread into a `Partial` literal like upstream's object shorthand.
 public func setPlatformAPI(_ newPlatformApis: PlatformAPI) {
-    // PORT-NOTE: upstream takes `Partial<Platform>` and merges per-key (only assigning known,
-    // truthy methods). Swift protocols cannot be partially overridden on an arbitrary type, so
-    // we replace the global wholesale. Callers needing a single-method override should subclass
-    // DefaultPlatformAPI / forward the methods they do not override.
     platformApi = newPlatformApis
 }
