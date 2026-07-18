@@ -245,11 +245,21 @@ open class ChartView {
      */
     open func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this.group, cb);
-        // PORT-NOTE: util/graphic.traverseElements not yet ported; inlined via `Group.traverse`.
-        //   Deviation: upstream `traverseElement` also invokes `cb` on the root element itself, while
-        //   `Group.traverse` visits children only. The `boolean | void` callback return maps to the
-        //   `Bool` "stopped" flag consumed by `Group.traverse`.
-        self.group.traverse(cb)
+        //   which reduces (single, non-array root) to `traverseElement(this.group, cb)`:
+        //     let stopped;
+        //     if (el.isGroup) { stopped = cb(el); }
+        //     if (!stopped) { el.traverse(cb); }
+        // PORT-NOTE: util/graphic.traverseElement is `private`, so the polyfill is inlined here to
+        //   preserve upstream behavior — `cb` is invoked on the root group element itself first (which
+        //   `Group.traverse` alone skips, since it visits children only). The `boolean | void`
+        //   callback return maps to the `Bool` "stopped" flag consumed by `Group.traverse`.
+        var stopped = false
+        if self.group.isGroup {
+            stopped = cb(self.group)
+        }
+        if !stopped {
+            self.group.traverse(cb)
+        }
     }
 
     static func markUpdateMethod(_ payload: Payload, _ methodName: String) {
