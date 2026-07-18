@@ -891,11 +891,16 @@ public enum states {
     public static func setAsHighDownDispatcher(_ el: Element, _ asDispatcher: Bool) {
         let disable = (asDispatcher == false)
         let inner = getHighDownInner(el)
-        // PORT-NOTE (deferred): requires the ECElement augmentation to be consumed (no Element type
-        //   conforms to `ECElement` yet, so `el as? ECElement` is always nil) plus a touch-silent source
-        //   (upstream `el.highDownSilentOnTouch` is set only from touch-mode paths — GeoView/MapView,
-        //   both DEFERRED as touch handling). When both land, copy `(el as ECElement).highDownSilentOnTouch`
-        //   into `inner.__highDownSilentOnTouch` here. No-op for now.
+        // upstream: Make `highDownSilentOnTouch` only work after `setAsHighDownDispatcher` is called
+        //   (avoid it being modified by user unexpectedly). Copy `(el as ECElement).highDownSilentOnTouch`
+        //   into the side-store flag. DORMANT for now — the cast is always nil until an Element type
+        //   conforms to `ECElement`, and the only source (upstream `el.highDownSilentOnTouch`, set from
+        //   the touch-mode Geo/Map paths) is itself deferred (both cross-file) — but this is the faithful
+        //   upstream logic, ready to fire the moment those land.
+        if let ec = el as? ECElement, let silentOnTouch = ec.highDownSilentOnTouch {
+            inner.__highDownSilentOnTouch = silentOnTouch
+        }
+        // Simple optimize, since this method might be called for each element of a group in some cases.
         if !disable || inner.__highDownDispatcher {
             // __highByOuter already defaults to 0.
             inner.__highDownDispatcher = !disable
