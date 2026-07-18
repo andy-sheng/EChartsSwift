@@ -190,8 +190,7 @@ open class GaugeView: ChartView {
 
         let roundCap = jsTruthy(axisLineModel.get("roundCap"))
         // const MainPath = roundCap ? Sausage : graphic.Sector;
-        // PORT-NOTE (deferred): requires `util/shape/sausage`; Sausage NOT ported, `Sector` used for both branches.
-        _ = roundCap
+        //   roundCap → the round-capped `SausagePath` (ported alongside GaugeView); else `Sector`.
 
         let showAxis = jsTruthy(axisLineModel.get("show"))
         let lineStyleModel = axisLineModel.getModel("lineStyle")
@@ -254,18 +253,36 @@ open class GaugeView: ChartView {
                 // Clamp
                 let percent = Swift.min(Swift.max(colorList[i].0, 0), 1)
                 let sectorEnd = startAngle + angleRangeSpan * percent
-                var sectorShape = SectorShape()
-                sectorShape.startAngle = prevEndAngle
-                sectorShape.endAngle = sectorEnd
-                sectorShape.cx = posInfo.cx
-                sectorShape.cy = posInfo.cy
-                sectorShape.clockwise = clockwise
-                sectorShape.r0 = posInfo.r - axisLineWidth
-                sectorShape.r = posInfo.r
-                let sector = Sector([
-                    "shape": sectorShape as PathShape,
-                    "silent": true
-                ])
+                // new MainPath({ shape: {...}, silent: true }) — MainPath is Sausage (roundCap) or Sector.
+                let sector: Path
+                if roundCap {
+                    var sausageShape = SausageShape()
+                    sausageShape.startAngle = prevEndAngle
+                    sausageShape.endAngle = sectorEnd
+                    sausageShape.cx = posInfo.cx
+                    sausageShape.cy = posInfo.cy
+                    sausageShape.clockwise = clockwise
+                    sausageShape.r0 = posInfo.r - axisLineWidth
+                    sausageShape.r = posInfo.r
+                    sector = SausagePath([
+                        "shape": sausageShape as PathShape,
+                        "silent": true
+                    ])
+                }
+                else {
+                    var sectorShape = SectorShape()
+                    sectorShape.startAngle = prevEndAngle
+                    sectorShape.endAngle = sectorEnd
+                    sectorShape.cx = posInfo.cx
+                    sectorShape.cy = posInfo.cy
+                    sectorShape.clockwise = clockwise
+                    sectorShape.r0 = posInfo.r - axisLineWidth
+                    sectorShape.r = posInfo.r
+                    sector = Sector([
+                        "shape": sectorShape as PathShape,
+                        "silent": true
+                    ])
+                }
 
                 // sector.setStyle({ fill: colorList[i][1] });
                 // sector.setStyle(lineStyleModel.getLineStyle(['color', 'width']));  (color/width excluded — arc
@@ -600,25 +617,38 @@ open class GaugeView: ChartView {
         }
 
         // function createProgress(idx, endAngle)
-        func createProgress(_ idx: Int, _ endAngle: Double) -> Sector {
+        func createProgress(_ idx: Int, _ endAngle: Double) -> Path {
             let roundCap = jsTruthy(progressModel.get("roundCap"))
             // const ProgressPath = roundCap ? Sausage : graphic.Sector;
-            // PORT-NOTE (deferred): requires `util/shape/sausage`; Sausage NOT ported, `Sector` used for both branches.
-            _ = roundCap
+            //   roundCap → the round-capped `SausagePath`; else `Sector`.
 
             let isOverlap = jsTruthy(progressModel.get("overlap"))
             let progressWidth = isOverlap ? (gaugeNum(progressModel.get("width")) ?? 0) : axisLineWidth / Double(data.count())
             let r0 = isOverlap ? posInfo.r - progressWidth : posInfo.r - Double(idx + 1) * progressWidth
             let r = isOverlap ? posInfo.r : posInfo.r - Double(idx) * progressWidth
-            var shape = SectorShape()
-            shape.startAngle = startAngle
-            shape.endAngle = endAngle
-            shape.cx = posInfo.cx
-            shape.cy = posInfo.cy
-            shape.clockwise = clockwise
-            shape.r0 = r0
-            shape.r = r
-            let progress = Sector(["shape": shape as PathShape])
+            let progress: Path
+            if roundCap {
+                var shape = SausageShape()
+                shape.startAngle = startAngle
+                shape.endAngle = endAngle
+                shape.cx = posInfo.cx
+                shape.cy = posInfo.cy
+                shape.clockwise = clockwise
+                shape.r0 = r0
+                shape.r = r
+                progress = SausagePath(["shape": shape as PathShape])
+            }
+            else {
+                var shape = SectorShape()
+                shape.startAngle = startAngle
+                shape.endAngle = endAngle
+                shape.cx = posInfo.cx
+                shape.cy = posInfo.cy
+                shape.clockwise = clockwise
+                shape.r0 = r0
+                shape.r = r
+                progress = Sector(["shape": shape as PathShape])
+            }
             if isOverlap {
                 progress.z2 = number.linearMap(asDouble(data.get(valueDim!, idx)), [minVal, maxVal], [100, 0], true)
             }
@@ -671,7 +701,7 @@ open class GaugeView: ChartView {
                     }
                     if showProgress {
                         let previousProgress = (oldIdx < oldProgressData.count) ? oldProgressData[oldIdx] : nil
-                        let progress = (previousProgress as? Sector) ?? {
+                        let progress = previousProgress ?? {
                             let p = createProgress(newIdx, startAngle)
                             _ = group.add(p)
                             return p
