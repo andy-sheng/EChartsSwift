@@ -99,20 +99,19 @@ extension EChartsExtensionInstallRegisters {
     // PORT-NOTE: upstream defaulter type is `SubTypeDefaulter = (ComponentOption) -> ComponentSubType`;
     //   `getAxisType` reads the dynamic option bag, so `[String: Any]` is used here.
     public func registerSubTypeDefaulter(_ componentType: String, _ defaulter: @escaping ([String: Any]) -> ComponentSubType) {
-        // PORT-STUB — THE ONE THAT COST US A YEAR. Upstream resolves a component's sub-type from its
-        // option through this defaulter; for axes that is `getAxisType` ("has `data` -> category").
-        // While this was silently empty, every axis written the way the official examples write them
-        // (`xAxis: { data: [...] }`, no `type`) degraded to a VALUE axis — a plausible chart, so
-        // nothing crashed and no test went red.
+        // upstream: registerSubTypeDefaulter(componentType, defaulter) {
+        //     ComponentModel.registerSubTypeDefaulter(componentType, defaulter);
+        // }
+        // Forwards into the real `ComponentModel` sub-type defaulter registry so a component whose
+        // subType must be inferred from its option (for axes: `getAxisType`, "has `data` -> category")
+        // is resolved through `ComponentModel.determineSubType`.
         //
-        // The axis case is no longer reachable: ECharts.swift's stand-in axis models apply
-        // `getAxisType` themselves (see mergeAxisDefaults). Any OTHER component that registers a
-        // defaulter is still silently unresolved, which is what this hit records.
-        PortStub.hit("axisModelCreator.registerSubTypeDefaulter",
-                     "component sub-type defaulters are not consulted; a component whose subType must "
-                     + "be inferred from its option resolves to its default instead")
-        _ = componentType
-        _ = defaulter
+        // PORT-NOTE: upstream's `SubTypeDefaulter` is `(ComponentOption) -> ComponentSubType`; this
+        //   file models the axis defaulter (`getAxisType`) over the dynamic option bag, so adapt via
+        //   `rawOption` (mirroring the visualMap defaulter, which likewise reads the raw bag).
+        ComponentModel.registerSubTypeDefaulter(componentType) { (option: ComponentOption) -> ComponentSubType in
+            return defaulter(option.rawOption ?? [:])
+        }
     }
 }
 // ============================================================================
