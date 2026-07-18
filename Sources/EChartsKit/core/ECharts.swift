@@ -3252,6 +3252,29 @@ public final class ECharts: EChartsType {
         triggerUpdatedEvent(silent)
     }
 
+    // ------------------------------------------------------------------------
+    // appendData — ported from `ECharts.prototype.appendData` (echarts.ts:1634-1663). The streaming/
+    //   incremental data API: resolves the target series by index and forwards the new data to
+    //   `SeriesModel.appendData`, then marks the scheduler unfinished + wakes the zr so the next frame
+    //   renders the appended points. Does NOT rescale coord extents (see the upstream NOTICE — the
+    //   initial extent must be specified via `xxxAxis.data` / `xxxAxis.min/max`).
+    // ------------------------------------------------------------------------
+    public func appendData(seriesIndex: Int, data: ArrayLike<Any>) {
+        // if (this._disposed) { disposedWarning(this.id); return; }
+        if _disposed { return }
+        // const ecModel = this.getModel(); const seriesModel = ecModel.getSeriesByIndex(seriesIndex);
+        guard let ecModel = _model,
+              let seriesModel = ecModel.getSeriesByIndex(Double(seriesIndex)) else { return }
+        // if (__DEV__) { assert(params.data && seriesModel); } — no dev asserts.
+
+        seriesModel.appendData(SeriesAppendDataParams(data: data))
+
+        // `appendData` does not support updating axis scale extent of coordinate systems (see the
+        //   upstream NOTICE). Mark the scheduler unfinished + wake the zr so the appended data paints.
+        _scheduler?.unfinished = true
+        getZr()?.wakeUp()
+    }
+
     // makeActionFromEvent (echarts.ts:1559-1563) is DEFERRED: it consumes an `ECActionEvent` object and
     //   reverts it to a `Payload` via `connectionEventRevertMap`; `Payload` here is a struct (not a dict)
     //   and the method only feeds the unwired cross-chart `connect` mirroring, so a faithful port needs
