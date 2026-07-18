@@ -83,13 +83,27 @@ private let Z2_BG = Z2_EMPHASIS_LIFT * 2
 private let Z2_CONTENT = Z2_EMPHASIS_LIFT * 3
 
 // const getStateItemStyle = makeStyleMapper([ ['fill','color'], ['stroke','strokeColor'], ... ]);
+// PORT-NOTE: makeStyleMapper IS ported (model/mixin/makeStyleMapper.swift), so the treemap-custom
+//   option→style mapping is now ported EXACTLY (was previously approximated by `Model.getItemStyle()`).
+//   `borderColor`/`borderWidth` are occupied (the container gap), so the rect stroke reads
+//   `strokeColor`/`strokeWidth` instead. Closure params: (model, excludes, includes) — pass nils.
+private let getStateItemStyle = makeStyleMapper([
+    ["fill", "color"],
+    // `borderColor` and `borderWidth` has been occupied,
+    // so use `stroke` to indicate the stroke of the rect.
+    ["stroke", "strokeColor"],
+    ["lineWidth", "strokeWidth"],
+    ["shadowBlur"],
+    ["shadowOffsetX"],
+    ["shadowOffsetY"],
+    ["shadowColor"]
+    // Option decal is in `DecalObject` but style.decal is in `PatternObject`.
+    // So do not transfer decal directly.
+], nil)
 // const getItemStyleNormal = function (model) { const itemStyle = getStateItemStyle(model); itemStyle.stroke = itemStyle.fill = itemStyle.lineWidth = null; return itemStyle; };
-// PORT-NOTE: makeStyleMapper's treemap-custom option→style mapping is approximated. `Model.getItemStyle()`
-//   (the standard itemStyle mixin) is used as the base, then stroke/fill/lineWidth are cleared to mirror
-//   `getItemStyleNormal`. The remaining shadow* props carry through faithfully.
 private func getItemStyleNormal(_ model: Model) -> [String: Any] {
     // Normal style props should include emphasis style props.
-    var itemStyle = model.getItemStyle()
+    var itemStyle = getStateItemStyle(model, nil, nil)
     // Clear styles set by emphasis.
     itemStyle["stroke"] = nil
     itemStyle["fill"] = nil
@@ -472,7 +486,12 @@ open class TreemapView: ChartView {
         // const isParent = thisViewChildren && thisViewChildren.length;
         let isParent = !thisViewChildren.isEmpty
         let itemStyleNormalModel = nodeModel.getModel("itemStyle")
-        // itemStyleEmphasis/Blur/Select models -> DEFERRED (states not ported).
+        // const itemStyleEmphasisModel = nodeModel.getModel(['emphasis', 'itemStyle']);
+        // const itemStyleBlurModel = nodeModel.getModel(['blur', 'itemStyle']);
+        // const itemStyleSelectModel = nodeModel.getModel(['select', 'itemStyle']);
+        let itemStyleEmphasisModel = nodeModel.getModel(["emphasis", "itemStyle"])
+        let itemStyleBlurModel = nodeModel.getModel(["blur", "itemStyle"])
+        let itemStyleSelectModel = nodeModel.getModel(["select", "itemStyle"])
         // const borderRadius = itemStyleNormalModel.get('borderRadius') || 0;
         //   `borderRadius` may be a scalar OR a per-corner `number[]` (e.g. [8,8,0,0]); keep it raw
         //   and let makeRectShape map it to `.number`/`.array`. (`|| 0` = no rounding when falsy.)
@@ -629,7 +648,16 @@ open class TreemapView: ChartView {
                 var normalStyle = getItemStyleNormal(itemStyleNormalModel)
                 // normalStyle.fill = visualBorderColor;
                 normalStyle["fill"] = visualBorderColor
-                // emphasis/blur/select fills -> DEFERRED (states not ported).
+                // const emphasisStyle = getStateItemStyle(itemStyleEmphasisModel);
+                // emphasisStyle.fill = itemStyleEmphasisModel.get('borderColor'); (blur/select likewise)
+                //   The BACKGROUND rect's state fill is the state's `borderColor` (not `color`), since the
+                //   background represents the container border/gap.
+                var emphasisStyle = getStateItemStyle(itemStyleEmphasisModel, nil, nil)
+                emphasisStyle["fill"] = itemStyleEmphasisModel.get("borderColor")
+                var blurStyle = getStateItemStyle(itemStyleBlurModel, nil, nil)
+                blurStyle["fill"] = itemStyleBlurModel.get("borderColor")
+                var selectStyle = getStateItemStyle(itemStyleSelectModel, nil, nil)
+                selectStyle["fill"] = itemStyleSelectModel.get("borderColor")
 
                 if useUpperLabel {
                     // const upperLabelWidth = thisWidth - 2 * borderWidth;
@@ -663,11 +691,16 @@ open class TreemapView: ChartView {
                     initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
                 }
                 // Phase 49 (hover-emphasis): upstream stamps the emphasis/blur/select itemStyle states +
-                //   setDefaultStateProxy on the bg rect (TreemapView.ts:910-914). `setStatesStylesFromModel`
-                //   is the ported equivalent (ensureState(state).style = model.getItemStyle()); the state
-                //   proxy is attached when the node group / bg is toggled a highDown dispatcher in renderNode
-                //   (the dispatcher's child traverse covers this rect).
-                states.setStatesStylesFromModel(bg, nodeModel)
+                //   setDefaultStateProxy on the bg rect (TreemapView.ts:910-914). Ported faithfully via the
+                //   treemap `getStateItemStyle` mapping (with the background's `fill = borderColor` override
+                //   above) rather than `setStatesStylesFromModel` (standard itemStyle mapping), so the state
+                //   colors now match upstream.
+                // bg.ensureState('emphasis').style = emphasisStyle; (blur/select likewise)
+                bg.ensureState("emphasis").style = emphasisStyle
+                bg.ensureState("blur").style = blurStyle
+                bg.ensureState("select").style = selectStyle
+                // setDefaultStateProxy(bg);
+                states.setDefaultStateProxy(bg)
             }
 
             // group.add(bg);
@@ -709,7 +742,11 @@ open class TreemapView: ChartView {
                 // normalStyle.fill = visualColor; normalStyle.decal = nodeStyle.decal;
                 normalStyle["fill"] = visualColor
                 normalStyle["decal"] = nodeStyle["decal"]
-                // emphasis/blur/select styles -> DEFERRED (states not ported).
+                // const emphasisStyle = getStateItemStyle(itemStyleEmphasisModel); (blur/select likewise)
+                //   The CONTENT rect keeps the state's mapped `color`→`fill` (no borderColor override).
+                let emphasisStyle = getStateItemStyle(itemStyleEmphasisModel, nil, nil)
+                let blurStyle = getStateItemStyle(itemStyleBlurModel, nil, nil)
+                let selectStyle = getStateItemStyle(itemStyleSelectModel, nil, nil)
 
                 prepareText(content, visualColor as? String, nodeStyle["opacity"] as? Double, nil)
 
@@ -727,8 +764,13 @@ open class TreemapView: ChartView {
                     initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
                 }
                 // Phase 49 (hover-emphasis): emphasis/blur/select itemStyle states + setDefaultStateProxy on
-                //   the content rect (TreemapView.ts:961-962). See renderBackground for the port equivalence.
-                states.setStatesStylesFromModel(content, nodeModel)
+                //   the content rect (TreemapView.ts:961-962). Ported faithfully via `getStateItemStyle`.
+                // content.ensureState('emphasis').style = emphasisStyle; (blur/select likewise)
+                content.ensureState("emphasis").style = emphasisStyle
+                content.ensureState("blur").style = blurStyle
+                content.ensureState("select").style = selectStyle
+                // setDefaultStateProxy(content);
+                states.setDefaultStateProxy(content)
             }
 
             // group.add(content);

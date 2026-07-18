@@ -337,9 +337,9 @@ open class SunburstPiece: Sector {
         label.ignore = !isNormalShown
 
         // ── Placement (upstream NORMAL-state branch of the DISPLAY_STATES loop). ──
-        //   PORT-NOTE (deferred): per-state placement (emphasis/blur/select can each carry a different position /
-        //   rotate) — the static render applies the NORMAL geometry only (same deviation as the
-        //   former code; setLabelStyle already supplied all four states' text/style above).
+        //   The per-state (emphasis/blur/select) branch of the same loop is ported below (see the
+        //   SPECIAL_STATES placement loop after this normal block); setLabelStyle already supplied all
+        //   four states' text/style above.
         let labelPosition = _labelAttr(normalLabelModel, "position") as? String
         let labelPadding = ((_labelAttr(normalLabelModel, "distance") as? Double) ?? 0)
         var textAlign = _labelAttr(normalLabelModel, "align") as? String
@@ -422,6 +422,114 @@ open class SunburstPiece: Sector {
         textConfig.inside = (labelPosition != "outside")
         textConfig.outsideFill = ((normalLabelModel.get("color") as? String) == "inherit") ? inheritColor : nil
         self.textConfig = textConfig
+
+        // ── Per-state (emphasis/blur/select) placement — the non-normal iterations of upstream's
+        //    DISPLAY_STATES loop. Each state recomputes the SAME position/align/rotate math (with a
+        //    per-state-model-with-normal-fallback read, upstream's nested `getLabelAttr`) and writes
+        //    x/y/rotation onto `label.ensureState(name)` (applied generically by `Element._stateApply`
+        //    on state entry) plus align/verticalAlign merged onto the per-state `textStyle` that
+        //    setLabelStyle installed (applied by `ZRText._applyStateTextStyle`), and outsideFill/inside
+        //    onto the sector's per-state `textConfig`. The label text/style itself is already installed
+        //    per-state by `setLabelStyle` above (the migrated form of upstream's inline `createTextStyle`).
+        //   upstream nested: `getLabelAttr(model, name)` == `model.get(name) ?? normalLabelModel.get(name)`.
+        func getLabelAttr(_ model: Model, _ name: String) -> Any? {
+            if let stateAttr = model.get(name) { return stateAttr }
+            return normalLabelModel.get(name)
+        }
+        for stateName in EChartsKit.states.SPECIAL_STATES {
+            // const labelStateModel = itemModel.getModel([stateName, 'label']);
+            let labelStateModel = itemModel.getModel([stateName, "label"])
+            let sLabelState = label.ensureState(stateName)
+
+            // const isShown = labelStateModel.get('show'); if (isShown != null && !isNormal) state.ignore = !isShown;
+            if let isShown = labelStateModel.get("show") as? Bool {
+                sLabelState.ignore = !isShown
+            }
+
+            // const labelPosition = getLabelAttr(labelStateModel, 'position');
+            let sPosition = getLabelAttr(labelStateModel, "position") as? String
+            // const labelPadding = getLabelAttr(labelStateModel, 'distance') || 0;
+            let sPadding = (getLabelAttr(labelStateModel, "distance") as? Double) ?? 0
+            // let textAlign = getLabelAttr(labelStateModel, 'align');
+            var sAlign = getLabelAttr(labelStateModel, "align") as? String
+            // const rotateType = getLabelAttr(labelStateModel, 'rotate');
+            let sRotateType = getLabelAttr(labelStateModel, "rotate")
+
+            // const midAngleNormal = normalizeRadian(rotateType === 'tangential' ? PI/2 - midAngle : midAngle);
+            let sMidAngleNormal = containUtil.normalizeRadian(
+                (sRotateType as? String) == "tangential" ? (Double.pi / 2 - midAngle) : midAngle
+            )
+            let sNeedsFlip = sMidAngleNormal > flipStartAngle
+                && !number.isRadianAroundZero(sMidAngleNormal - flipStartAngle)
+                && sMidAngleNormal < flipEndAngle
+
+            var sR: Double
+            if sPosition == "outside" {
+                sR = rLayout + sPadding
+                sAlign = sNeedsFlip ? "right" : "left"
+            }
+            else {
+                if sAlign == nil || sAlign == "center" {
+                    if r0Layout == 0 && number.isRadianAroundZero(angle - 2 * Double.pi) {
+                        sR = 0
+                    }
+                    else {
+                        sR = (rLayout + r0Layout) / 2
+                    }
+                    sAlign = "center"
+                }
+                else if sAlign == "left" {
+                    sR = r0Layout + sPadding
+                    sAlign = sNeedsFlip ? "right" : "left"
+                }
+                else if sAlign == "right" {
+                    sR = rLayout - sPadding
+                    sAlign = sNeedsFlip ? "left" : "right"
+                }
+                else {
+                    sR = (rLayout + r0Layout) / 2
+                }
+            }
+
+            // state.style.align / verticalAlign — merge onto the per-state textStyle setLabelStyle installed.
+            var sStyle = sLabelState.textStyle ?? TextStyleProps()
+            if let a = sAlign, let ta = TextAlign(rawValue: a) { sStyle.align = ta }
+            let sVAlign = (getLabelAttr(labelStateModel, "verticalAlign") as? String) ?? "middle"
+            if let va = TextVerticalAlign(rawValue: sVAlign) { sStyle.verticalAlign = va }
+            sLabelState.textStyle = sStyle
+
+            // state.x = r * dx + layout.cx; state.y = r * dy + layout.cy;
+            sLabelState.x = sR * dx + cx
+            sLabelState.y = sR * dy + cy
+
+            var sRotate = 0.0
+            if let s = sRotateType as? String {
+                if s == "radial" {
+                    sRotate = containUtil.normalizeRadian(-midAngle) + (sNeedsFlip ? Double.pi : 0)
+                }
+                else if s == "tangential" {
+                    sRotate = containUtil.normalizeRadian(Double.pi / 2 - midAngle) + (sNeedsFlip ? Double.pi : 0)
+                }
+            }
+            else if let n = sRotateType as? Double {
+                sRotate = n * Double.pi / 180
+            }
+            else if let n = sRotateType as? Int {
+                sRotate = Double(n) * Double.pi / 180
+            }
+            sLabelState.rotation = containUtil.normalizeRadian(sRotate)
+
+            // sectorState.textConfig = { outsideFill: labelStateModel.get('color') === 'inherit' ? labelColor : null,
+            //                            inside: labelPosition !== 'outside' };
+            //   labelColor = sectorState.style.fill (the per-state itemStyle fill installed by
+            //   setStatesStylesFromModel onto sector.ensureState(name).style).
+            let sectorState = sector.ensureState(stateName)
+            var sTextConfig = sectorState.textConfig ?? ElementTextConfig()
+            sTextConfig.inside = (sPosition != "outside")
+            let sLabelColor = _fillColorString(sectorState.style)
+            sTextConfig.outsideFill = ((labelStateModel.get("color") as? String) == "inherit") ? sLabelColor : nil
+            sectorState.textConfig = sTextConfig
+        }
 
         // label.dirtyStyle();
         label.dirtyStyle()

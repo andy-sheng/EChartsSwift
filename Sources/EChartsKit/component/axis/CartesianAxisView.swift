@@ -73,6 +73,12 @@ open class CartesianAxisView: AxisView {
     // upstream: private _axisGroup: graphic.Group;
     private var _axisGroup: Group!
 
+    // upstream: axisSplitHelper `const inner = makeInner<{ splitAreaColors: HashMap<number> }, AxisView>()`
+    //   — the makeInner inner store keyed on the axis view. Ported as a stored property (same observable
+    //   effect): the splitArea builder reads it for color/anid continuity across re-renders and writes it
+    //   back; `remove()` clears it (`rectCoordAxisHandleRemove`). Delete when `axisSplitHelper.swift` lands.
+    fileprivate var _splitAreaColors: [Double: Int]?
+
     /**
      * @override
      */
@@ -134,10 +140,10 @@ open class CartesianAxisView: AxisView {
 
     // upstream: remove() { rectCoordAxisHandleRemove(this); }
     //   The base `AxisView.remove(ecModel, api)` carries the two args (ignored upstream); the signature
-    //   is matched here so it overrides. PORT-NOTE (deferred): requires `rectCoordAxisHandleRemove`
-    //   (axisSplitHelper), not ported — it clears the cached splitArea colors from the inner store.
+    //   is matched here so it overrides. `rectCoordAxisHandleRemove` clears the cached splitArea colors —
+    //   ported inline against the `_splitAreaColors` store (see the store note above).
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): requires rectCoordAxisHandleRemove — axisSplitHelper not ported.
+        rectCoordAxisHandleRemove(self)
     }
 }
 
@@ -315,10 +321,9 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
 
     "splitArea": { axisView, axisGroup, axisModel, gridModel, api in
         // upstream: rectCoordAxisBuildSplitArea(axisView, axisGroup, axisModel, gridModel);
-        // PORT-NOTE (deferred): requires `component/axis/axisSplitHelper.rectCoordAxisBuildSplitArea`, not ported (it caches
-        //   alternating splitArea colors in the inner store and builds `graphic.Rect` bands across the
-        //   grid rect). Deferred per the bar+axis milestone scope (splitLine is the axis grid deliverable).
-        _ = (axisView, axisGroup, axisModel, gridModel, api)
+        //   Ported inline (`rectCoordAxisBuildSplitArea` free function below), since the shared
+        //   `axisSplitHelper` module is not ported as its own file. Mirrors SingleAxisView's port.
+        rectCoordAxisBuildSplitArea(axisView, axisGroup, axisModel, gridModel)
     },
 
     "breakArea": { axisView, axisGroup, axisModel, gridModel, api in
@@ -404,6 +409,168 @@ private func lineStylePropsFromDict(_ style: [String: Any]) -> PathStyleProps {
     if let v = style["lineJoin"] as? String { s.lineJoin = v }
     if let v = style["miterLimit"] as? Double { s.miterLimit = v }
     if let v = style["lineDashOffset"] as? Double { s.lineDashOffset = v }
-    // PORT-NOTE (deferred): `lineDash` (number | number[]) not bridged to LineDash yet (same deferral as BarView.barStyleFromDict).
+    // upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` (getLineStyle maps the
+    //   `type` option to `lineDash`) → the `LineDash` enum, so dashed/dotted split lines render as dashes
+    //   (mirrors SingleAxisView.pathStyleFromDict / AxisBuilder.pathStyleFromLineStyleDict).
+    if let dash = style["lineDash"] {
+        if let arr = dash as? [Double] {
+            s.lineDash = .values(arr)
+        }
+        else if let arr = dash as? [Any] {
+            s.lineDash = .values(arr.compactMap { styleNum($0) })
+        }
+        else if let b = dash as? Bool, b == false {
+            s.lineDash = .`false`
+        }
+        else if let str = dash as? String {
+            switch str {
+            case "solid": s.lineDash = .solid
+            case "dashed": s.lineDash = .dashed
+            case "dotted": s.lineDash = .dotted
+            default: break
+            }
+        }
+    }
     return s
+}
+
+// PORT-NOTE: number coercion for the dynamic style bag (Int|Double|NSNumber) — avoids the Int-drop trap
+//   when a `lineDash` array element is an Int literal. Mirrors SingleAxisView.styleNum.
+private func styleNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.doubleValue }
+    return nil
+}
+
+// ================================================================================================
+// upstream: echarts/src/component/axis/axisSplitHelper.ts — the SHARED splitArea helper (also consumed by
+//   SingleAxisView). Its sibling file is not ported as a standalone module; the CartesianAxisView path is
+//   reproduced here so the alternating splitArea background bands actually render. The `makeInner` inner
+//   store keyed on the axis view is ported as `CartesianAxisView._splitAreaColors` (same observable effect).
+//   Delete when `axisSplitHelper.swift` lands and call the sibling directly. Mirrors SingleAxisView's port.
+// ================================================================================================
+private func rectCoordAxisBuildSplitArea(
+    _ axisView: CartesianAxisView,
+    _ axisGroup: Group,
+    _ axisModel: CartesianAxisModel,
+    _ gridModel: GridModel
+) {
+    // upstream: const axis = axisModel.axis;  (`AxisBaseModel.axis` is `Any` → downcast to `Axis2D`.)
+    let axis = axisModel.axis as! Axis2D
+
+    if axis.scale.isBlank() {
+        return
+    }
+
+    let splitAreaModel = axisModel.getModel("splitArea")
+    let areaStyleModel = splitAreaModel.getModel("areaStyle")
+    // upstream: let areaColors = areaStyleModel.get('color');
+    let areaColorsRaw = areaStyleModel.get("color")
+
+    // upstream: const gridRect = gridModel.coordinateSystem.getRect();
+    //   `GridModel.coordinateSystem` is `CoordinateSystemMaster?`; `getRect()` lives on the concrete `Grid`.
+    let gridRect = (gridModel.coordinateSystem as! Grid).getRect()
+
+    let ticksCoords = axis.getTicksCoords(GetTicksCoordsOpt(
+        tickModel: splitAreaModel,
+        breakTicks: "none",
+        pruneByBreak: "preserve_extent_bound"
+    ))
+
+    // upstream: if (!ticksCoords.length) { return; }
+    if ticksCoords.isEmpty {
+        return
+    }
+
+    // upstream: areaColors = zrUtil.isArray(areaColors) ? areaColors : [areaColors];
+    let areaColors: [Any?] = util.isArray(areaColorsRaw)
+        ? ((areaColorsRaw as? [Any])?.map { $0 as Any? } ?? [areaColorsRaw])
+        : [areaColorsRaw]
+    // upstream: const areaColorsLen = areaColors.length;
+    //   Guard `% areaColorsLen` against an explicit empty `color: []` (Swift `%` by zero traps; cf. SingleAxisView).
+    let areaColorsLen = areaColors.count
+    if areaColorsLen == 0 {
+        return
+    }
+
+    // For Making appropriate splitArea animation, the color and anid should be corresponding to previous one.
+    let lastSplitAreaColors = axisView._splitAreaColors
+    var newSplitAreaColors: [Double: Int] = [:]
+    var colorIndex = 0
+    if let lastSplitAreaColors = lastSplitAreaColors {
+        for i in 0..<ticksCoords.count {
+            // upstream: const cIndex = lastSplitAreaColors.get(ticksCoords[i].tickValue);
+            if let cIndex = lastSplitAreaColors[ticksCoords[i].tickValue] {
+                colorIndex = (cIndex + (areaColorsLen - 1) * i) % areaColorsLen
+                break
+            }
+        }
+    }
+
+    var prev = axis.toGlobalCoord(ticksCoords[0].coord)
+
+    // upstream: const areaStyle = areaStyleModel.getAreaStyle();
+    let areaStyle = areaStyleModel.getAreaStyle()
+
+    for i in 1..<ticksCoords.count {
+        let tickCoord = axis.toGlobalCoord(ticksCoords[i].coord)
+
+        let x: Double
+        let y: Double
+        let width: Double
+        let height: Double
+        if axis.isHorizontal() {
+            x = prev
+            y = gridRect.y
+            width = tickCoord - x
+            height = gridRect.height
+            prev = x + width
+        }
+        else {
+            x = gridRect.x
+            y = prev
+            width = gridRect.width
+            height = tickCoord - y
+            prev = y + height
+        }
+
+        // upstream: const tickValue = ticksCoords[i - 1].tickValue;
+        //   `tickValue != null && newSplitAreaColors.set(...)` — always non-null in this port (`Double`).
+        let tickValue = ticksCoords[i - 1].tickValue
+        newSplitAreaColors[tickValue] = colorIndex
+
+        // upstream: style: zrUtil.defaults({ fill: areaColors[colorIndex] }, areaStyle)
+        //   the explicit per-band `fill` wins; the rest (opacity/shadow) fills from areaStyle.
+        var style = lineStylePropsFromDict(areaStyle)
+        if let c = areaColors[colorIndex] as? String {
+            style.fill = .string(c)
+        }
+
+        var rectShape = RectShape()
+        rectShape.x = x
+        rectShape.y = y
+        rectShape.width = width
+        rectShape.height = height
+
+        let rect = Rect([
+            "shape": rectShape as PathShape,
+            "style": style
+        ])
+        // upstream: anid: tickValue != null ? 'area_' + tickValue : null
+        rect.anid = "area_\(tickValue)"
+        rect.autoBatch = true
+        rect.silent = true
+        _ = axisGroup.add(rect)
+
+        colorIndex = (colorIndex + 1) % areaColorsLen
+    }
+
+    // upstream: inner(axisView).splitAreaColors = newSplitAreaColors;
+    axisView._splitAreaColors = newSplitAreaColors
+}
+
+// upstream: export function rectCoordAxisHandleRemove(axisView) { inner(axisView).splitAreaColors = null; }
+private func rectCoordAxisHandleRemove(_ axisView: CartesianAxisView) {
+    axisView._splitAreaColors = nil
 }

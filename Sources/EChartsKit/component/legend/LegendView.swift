@@ -290,31 +290,24 @@ open class LegendView: ComponentView {
                     lineVisualStyle, style, legendIcon, selectMode, api
                 )
 
-                // upstream: itemGroup.on('click', curry(dispatchSelectAction, name, null, api, excludeSeriesId))
+                // itemGroup.on('click', curry(dispatchSelectAction, name, null, api, excludeSeriesId))
                 //   .on('mouseover', curry(dispatchHighlightAction, seriesModel.name, null, api, excludeSeriesId))
                 //   .on('mouseout', curry(dispatchDownplayAction, seriesModel.name, null, api, excludeSeriesId));
-                //   Click → legendToggleSelect (show/hide via legendFilter); hover → highlight/downplay the
-                //   whole series (legendHoverLink), excluding any series that opted out via excludeSeriesId.
-                let clickName = name ?? ""
+                //   Click → dispatchSelectAction (downplay → legendToggleSelect → highlight); hover →
+                //   highlight/downplay the whole series (legendHoverLink), excluding series that opted out.
+                let clickName = name
+                let hoverName = seriesModel.name
                 let excludeIds = excludeSeriesId
                 _ = itemGroup.on("click", { _, _ in
-                    var p = Payload(type: "legendToggleSelect")
-                    p.other["name"] = clickName
-                    api.dispatchAction(p)
+                    dispatchSelectAction(clickName, nil, api, excludeIds)
                     return nil
                 }, nil)
                 _ = itemGroup.on("mouseover", { _, _ in
-                    var p = Payload(type: "highlight")
-                    p.other["seriesName"] = clickName      // series legend → highlight the whole series
-                    p.excludeSeriesId = excludeIds
-                    api.dispatchAction(p)
+                    dispatchHighlightAction(hoverName, nil, api, excludeIds)
                     return nil
                 }, nil)
                 _ = itemGroup.on("mouseout", { _, _ in
-                    var p = Payload(type: "downplay")
-                    p.other["seriesName"] = clickName
-                    p.excludeSeriesId = excludeIds
-                    api.dispatchAction(p)
+                    dispatchDownplayAction(hoverName, nil, api, excludeIds)
                     return nil
                 }, nil)
 
@@ -322,9 +315,13 @@ open class LegendView: ComponentView {
                 //   getECData(child).seriesIndex/dataIndex/ssrType = ... }) }` — server-side rendering is
                 //   a browser/SSR concern, N/A in the native host.
 
-                // PORT-NOTE (deferred): requires event wiring — `if (triggerEvent) { itemGroup.eachChild(child =>
-                //   this.packEventData(child, legendModel, seriesModel, dataIndex, name)) }` (event registry not wired).
-                _ = triggerEvent
+                // if (triggerEvent) { itemGroup.eachChild(child => this.packEventData(child, legendModel,
+                //   seriesModel, dataIndex, name)); }
+                if legendJsTruthy(triggerEvent) {
+                    _ = itemGroup.eachChild { child, _ in
+                        self.packEventData(child, legendModel, seriesModel, Double(dataIndex), name)
+                    }
+                }
 
                 legendDrawnMap.set(name, true)
             }
@@ -362,31 +359,33 @@ open class LegendView: ComponentView {
                             legendItemModel, legendModel, itemAlign,
                             [:], style, legendIcon, selectMode, api
                         )
-                        // upstream data-legend (pie/funnel): click → legendToggleSelect(dataName);
-                        //   mouseover/mouseout → dispatchHighlightAction(null, name, ...) → highlight the
-                        //   DATA item by name across series (seriesName null).
+                        // itemGroup.on('click', curry(dispatchSelectAction, null, name, api, excludeSeriesId))
+                        //   .on('mouseover', curry(dispatchHighlightAction, null, name, api, excludeSeriesId))
+                        //   .on('mouseout', curry(dispatchDownplayAction, null, name, api, excludeSeriesId));
+                        //   FIXME: consider different series has items with the same name. Should not specify the
+                        //   series name (null), so legend can control more than one pie series by DATA name.
                         let clickDataName = name
                         let excludeIdsData = excludeSeriesId
                         _ = dataItemGroup.on("click", { _, _ in
-                            var p = Payload(type: "legendToggleSelect")
-                            p.other["name"] = clickDataName
-                            api.dispatchAction(p)
+                            dispatchSelectAction(nil, clickDataName, api, excludeIdsData)
                             return nil
                         }, nil)
                         _ = dataItemGroup.on("mouseover", { _, _ in
-                            var p = Payload(type: "highlight")
-                            p.other["name"] = clickDataName
-                            p.excludeSeriesId = excludeIdsData
-                            api.dispatchAction(p)
+                            dispatchHighlightAction(nil, clickDataName, api, excludeIdsData)
                             return nil
                         }, nil)
                         _ = dataItemGroup.on("mouseout", { _, _ in
-                            var p = Payload(type: "downplay")
-                            p.other["name"] = clickDataName
-                            p.excludeSeriesId = excludeIdsData
-                            api.dispatchAction(p)
+                            dispatchDownplayAction(nil, clickDataName, api, excludeIdsData)
                             return nil
                         }, nil)
+
+                        // if (triggerEvent) { itemGroup.eachChild(child => this.packEventData(child,
+                        //   legendModel, seriesModel, dataIndex, name)); }
+                        if legendJsTruthy(triggerEvent) {
+                            _ = dataItemGroup.eachChild { child, _ in
+                                self.packEventData(child, legendModel, seriesModel, Double(dataIndex), name)
+                            }
+                        }
 
                         legendDrawnMap.set(name, true)
                     }
@@ -404,8 +403,24 @@ open class LegendView: ComponentView {
     }
 
     // private packEventData(el, legendModel, seriesModel, dataIndex, name)
-    // PORT-NOTE (deferred): requires event wiring — event-data packing (`getECData(el).eventData = {...}`) is
-    //   interaction/event wiring, out of static-render scope. Reproduce with `innerStore.getECData` when events land.
+    private func packEventData(
+        _ el: Element,
+        _ legendModel: LegendModel,
+        _ seriesModel: SeriesModel,
+        _ dataIndex: Double,
+        _ name: String?
+    ) {
+        // const eventData = { componentType: 'legend', componentIndex, dataIndex, value: name, seriesIndex };
+        //   `ECEventData` is `[String: Any]` in this port; `getECData(el).eventData = eventData`.
+        let eventData: ECEventData = [
+            "componentType": "legend",
+            "componentIndex": legendModel.componentIndex,
+            "dataIndex": dataIndex,
+            "value": name as Any,
+            "seriesIndex": seriesModel.seriesIndex
+        ]
+        innerStore.getECData(el).eventData = eventData
+    }
 
     // private _createSelector(selector, legendModel, api, orient, selectorPosition)
     open func _createSelector(
@@ -507,11 +522,14 @@ open class LegendView: ComponentView {
 
         let textStyleModel = legendItemModel.getModel("textStyle")
 
+        // upstream passes `iconRotate: iconRotate` (the `symbolRotate` option value) to BOTH the custom
+        //   `seriesModel.getLegendIcon` branch and — after recomputation — the default branch. Seeding the
+        //   shared params with `iconRotate` (not 0) fixes the custom-icon branch dropping rotation.
         let iconParams = LegendIconParams(
             itemWidth: itemWidth,
             itemHeight: itemHeight,
             icon: legendIcon,
-            iconRotate: 0.0,
+            iconRotate: iconRotate,
             itemStyle: style.itemStyle,
             lineStyle: style.lineStyle,
             symbolKeepAspect: symbolKeepAspect
@@ -529,11 +547,16 @@ open class LegendView: ComponentView {
         }
         else {
             // Use default legend icon policy for most series.
+            // const rotate = legendIconType === 'inherit' && seriesModel.getData().getVisual('symbol')
+            //   ? (iconRotate === 'inherit' ? getVisual('symbolRotate') : iconRotate) : 0; // No rotation for no icon
             var params = iconParams
             if legendIconType == "inherit" && legendJsTruthy(seriesModel.getData().getVisual("symbol")) {
                 params.iconRotate = legendIsInherit(iconRotate)
                     ? seriesModel.getData().getVisual("symbolRotate")
                     : iconRotate
+            }
+            else {
+                params.iconRotate = 0.0
             }
             _ = itemGroup.add(getDefaultLegendIcon(params) as? Element)
         }
@@ -548,7 +571,11 @@ open class LegendView: ComponentView {
             content = legendReplaceOnce(fmt, "{name}", name)
         }
         // else if (zrUtil.isFunction(formatter)) { content = formatter(name); }
-        // PORT-NOTE (deferred): function `formatter(name)` (dynamic callback) is not modeled in the option bag.
+        //   Function formatters are carried in the option bag as a `(String) -> String` closure
+        //   (same seam as GeoModel / VisualMapModel function formatters).
+        else if util.isFunction(formatter), let fn = formatter as? (String) -> String {
+            content = fn(name)
+        }
 
         // const textColor = isSelected ? textStyleModel.getTextColor() : legendItemModel.get('inactiveColor');
         let textColor = isSelected
@@ -831,10 +858,56 @@ private func getDefaultLegendIcon(_ opt: LegendIconParams) -> ECSymbol {
     return icon
 }
 
-// PORT-NOTE: the action-helper behavior — `dispatchSelectAction` / `dispatchHighlightAction` /
-//   `dispatchDownplayAction` (`api.dispatchAction({type: 'legendToggleSelect'|'highlight'|'downplay'})`)
-//   is wired inline in `_createItem` (the itemGroup `.on("click"|"mouseover"|"mouseout")` closures),
-//   dispatching into the ported action layer (legendAction.swift / legendFilter.swift).
+// function dispatchSelectAction(seriesName, dataName, api, excludeSeriesId)
+private func dispatchSelectAction(
+    _ seriesName: String?,
+    _ dataName: String?,
+    _ api: ExtensionAPI,
+    _ excludeSeriesId: [String]
+) {
+    // downplay before unselect
+    dispatchDownplayAction(seriesName, dataName, api, excludeSeriesId)
+    var p = Payload(type: "legendToggleSelect")
+    // name: seriesName != null ? seriesName : dataName
+    if let toggleName = seriesName ?? dataName {
+        p.other["name"] = toggleName
+    }
+    api.dispatchAction(p)
+    // highlight after select
+    // TODO highlight immediately may cause animation loss.
+    dispatchHighlightAction(seriesName, dataName, api, excludeSeriesId)
+}
+
+// function dispatchHighlightAction(seriesName, dataName, api, excludeSeriesId)
+//   PORT-NOTE: upstream guards with `if (!api.usingTHL())`. `ExtensionAPI.usingTHL` is abstract-only in
+//   this port (no concrete override — it would fatalError), so the guard is omitted and the action is
+//   dispatched directly, matching how legend hover was already wired.
+private func dispatchHighlightAction(
+    _ seriesName: String?,
+    _ dataName: String?,
+    _ api: ExtensionAPI,
+    _ excludeSeriesId: [String]
+) {
+    var p = Payload(type: "highlight")
+    if let seriesName = seriesName { p.other["seriesName"] = seriesName }
+    if let dataName = dataName { p.other["name"] = dataName }
+    p.excludeSeriesId = excludeSeriesId
+    api.dispatchAction(p)
+}
+
+// function dispatchDownplayAction(seriesName, dataName, api, excludeSeriesId)
+private func dispatchDownplayAction(
+    _ seriesName: String?,
+    _ dataName: String?,
+    _ api: ExtensionAPI,
+    _ excludeSeriesId: [String]
+) {
+    var p = Payload(type: "downplay")
+    if let seriesName = seriesName { p.other["seriesName"] = seriesName }
+    if let dataName = dataName { p.other["name"] = dataName }
+    p.excludeSeriesId = excludeSeriesId
+    api.dispatchAction(p)
+}
 
 // export default LegendView;  -> `open class LegendView` above.
 

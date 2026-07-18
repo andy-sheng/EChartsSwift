@@ -139,11 +139,33 @@ open class GraphSeriesModel: SeriesModel {
         super.mergeDefaultAndTheme(option, ecModel)
 
         // defaultEmphasis(option, 'edgeLabel', ['show']);
-        // PORT-NOTE (deferred): modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
-        //   (CONVENTIONS §4); the dynamic option tree here is the `[String: Any]` bag. Bridging the
-        //   dynamic bag to the typed struct is deferred (mirrors the same deferral in
-        //   SeriesModel.fillDataTextStyle). The `edgeLabel` emphasis-`show` default is therefore not
-        //   applied through this path yet.
+        // PORT-NOTE: modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
+        //   (CONVENTIONS §4); the dynamic option tree here is the `[String: Any]` bag. Rather than bridge
+        //   the bag to the typed struct (as super's own top-level `defaultEmphasis(option,'label',...)`
+        //   still defers), the identical logic is inlined verbatim against the bag for this single
+        //   `edgeLabel`/`['show']` call — mutating `self.option` in place (upstream mutates the passed
+        //   `option`, which at call time IS `self.option`, matching super.mergeDefaultAndTheme's write-back).
+        let key = "edgeLabel"
+        let subOpts = ["show"]
+        if var opt = self.option as? [String: Any] {
+            // opt[key] = opt[key] || {};
+            var optKey = (opt[key] as? [String: Any]) ?? [:]
+            // opt.emphasis = opt.emphasis || {};
+            var emphasis = (opt["emphasis"] as? [String: Any]) ?? [:]
+            // opt.emphasis[key] = opt.emphasis[key] || {};
+            var emphasisKey = (emphasis[key] as? [String: Any]) ?? [:]
+            // Default emphasis option from normal
+            for subOptName in subOpts {
+                // !opt.emphasis[key].hasOwnProperty(subOptName) && opt[key].hasOwnProperty(subOptName)
+                if emphasisKey[subOptName] == nil && optKey[subOptName] != nil {
+                    emphasisKey[subOptName] = optKey[subOptName]
+                }
+            }
+            emphasis[key] = emphasisKey
+            opt[key] = optKey
+            opt["emphasis"] = emphasis
+            self.option = opt
+        }
     }
 
     // getInitialData(option: GraphSeriesOption, ecModel: GlobalModel): SeriesData { ... }
@@ -192,15 +214,18 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // POTENTIAL-BUG: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
-        //   name — see data/SeriesData.swift), so the injected closure is NOT actually invoked. The
-        //   category-model parenting therefore does not take effect through this path (correctness gap:
-        //   per-category node styling); it is preserved faithfully for when wrapMethod becomes real.
+        // PORT-NOTE: SeriesData.wrapMethod('getItemModel', …) IS live — the injection is stored in
+        //   SeriesData._getItemModelInjections and threaded through every getItemModel() call (see
+        //   data/SeriesData.swift), and it survives cloneShallow via transferProperties. So this
+        //   per-category parentModel reparenting DOES take effect (category itemStyle/label inheritance).
         nodeData.wrapMethod("getItemModel") { [weak self] args in
             guard let self = self, let model = args.first as? Model else { return args.first as Any? }
             let categoriesModels = self._categoriesModels
             // const categoryIdx = model.getShallow('category');
-            let categoryIdx = Int((model.getShallow("category") as? Double) ?? -1)
+            //   `category` is `number | string`; read it via a coercion that survives Int/Double/NSNumber
+            //   boxing (a raw `as? Double` returns nil for an Int-literal option — the Int-vs-Double
+            //   option-read trap — which would silently drop the reparenting).
+            let categoryIdx = graphCategoryIndex(model.getShallow("category"))
             // const categoryModel = categoriesModels[categoryIdx];
             let categoryModel = (categoryIdx >= 0 && categoryIdx < categoriesModels.count)
                 ? categoriesModels[categoryIdx] : nil
@@ -502,4 +527,17 @@ private func jsTruthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
+}
+
+// Coerce a node's `category` option (typed `number | string` upstream) to an array index for
+// `categoriesModels[categoryIdx]`. Mirrors JS array indexing: a number (Int/Double/NSNumber boxing) or
+// an all-numeric string ('0') indexes the array; any other value yields no match. Returns -1 when the
+// value is absent or non-indexable (so the caller's `>= 0 && < count` guard skips reparenting).
+// File-private per port convention.
+private func graphCategoryIndex(_ v: Any?) -> Int {
+    guard let v = v, !(v is NSNull) else { return -1 }
+    if let i = v as? Int { return i }
+    if let d = v as? Double, d.isFinite { return Int(d) }
+    if let s = v as? String, let i = Int(s) { return i }
+    return -1
 }

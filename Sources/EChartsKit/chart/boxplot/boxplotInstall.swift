@@ -31,15 +31,17 @@ import ZRenderKit
 //   import {boxplotLayoutStageHandler, registerBoxplotAxisHandlers} from './boxplotLayout';
 //       -> sibling boxplotLayout.swift (ported): `boxplotLayoutStageHandler` / `registerBoxplotAxisHandlers`.
 //   import { boxplotTransform } from './boxplotTransform';
-//       -> PORT-NOTE (deferred): requires chart/boxplot/boxplotTransform.ts (dataset transform) — NOT ported.
-//          Register once boxplotTransform.swift lands.
+//       -> sibling boxplotTransform.swift (ported): the `echarts:boxplot` dataset transform.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
 // PORT-NOTE: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
-//   render-layer file (same convention as component/grid/installSimple.swift). The stub
-//   `EChartsExtensionInstallRegisters` does not yet expose registerSeriesModel/registerChartView/
-//   registerLayout/registerTransform, and BoxplotView/boxplotTransform are not ported. `registerBoxplotAxisHandlers`
-//   IS ported and callable. Preserved as commented source for the diffable surface:
+//   render-layer file (same convention as chart/themeRiver/themeRiverInstall.swift and
+//   component/grid/installSimple.swift). The base `EChartsExtensionInstallRegisters` only exposes
+//   registerProcessor/PRIORITY; registerSeriesModel/registerChartView/registerLayout/registerTransform
+//   are owned by the driver's factory registration (core/ECharts.swift). All four boxplot siblings ARE
+//   ported and ready to wire: BoxplotSeriesModel, BoxplotView, boxplotLayoutStageHandler, boxplotTransform;
+//   `registerBoxplotAxisHandlers` is ported and callable against the registrar. Preserved as commented
+//   source for the diffable surface:
 //
 //     export function install(registers) {
 //         registers.registerSeriesModel(BoxplotSeriesModel);
@@ -49,3 +51,10 @@ import ZRenderKit
 //
 //         registerBoxplotAxisHandlers(registers);
 //     }
+//
+// INTEGRATION SURFACE (for the driver):
+//   - registerSeriesModel: `BoxplotSeriesModel`          (chart/boxplot/BoxplotSeries.swift — ported)
+//   - registerChartView:   `BoxplotView`                 (chart/boxplot/BoxplotView.swift — ported)
+//   - registerLayout:      `boxplotLayoutStageHandler`   (chart/boxplot/boxplotLayout.swift — ported)
+//   - registerTransform:   `boxplotTransform`            (chart/boxplot/boxplotTransform.swift — ported)
+//   - registerBoxplotAxisHandlers(registers)             (chart/boxplot/boxplotLayout.swift — ported, callable)

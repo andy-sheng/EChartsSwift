@@ -34,11 +34,11 @@ import ZRenderKit
 // upstream file 1 — echarts/src/component/parallel/ParallelView.ts
 //
 // This component view carries NO axis drawing. It only wires the whole-coordinate-system pointer
-// interaction (axis-expand on click / mousemove, throttled + debounced). Per the task scope, the
-// brush/axis-drag/roam interaction for PARALLEL is DEFERRED (CONVENTIONS §5). The class structure is
-// preserved faithfully so it re-syncs against upstream, but every handler body that reaches into the
-// unported interaction seam is a PORT-NOTE (deferred). The visible N-axis backdrop is produced by the
-// `ParallelAxisView` below (upstream file 2).
+// interaction (axis-expand on click / mousemove, throttled + debounced) — now PORTED in full: the
+// mousedown/mouseup/mousemove handler table is registered on `getZr()`, gated by `checkTrigger`,
+// throttled via `util/throttle.createOrUpdate`, and dispatches the `parallelAxisExpand` action. The
+// per-axis brush/areaSelect drawing (in `ParallelAxisView` below) remains deferred (BrushController
+// seam). The visible N-axis backdrop is produced by the `ParallelAxisView` below (upstream file 2).
 //
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import GlobalModel from '../../model/Global';                        → `GlobalModel`.
@@ -68,7 +68,9 @@ private let CLICK_THRESHOLD: Double = 5 // > 4
 
 // upstream: type ElementEventHandler = (this: ParallelView, e: ElementEvent) => void;
 //   Named `ParallelElementEventHandler` to avoid clashing with any same-module `ElementEventHandler`.
-typealias ParallelElementEventHandler = (_ view: ParallelComponentView, _ e: Any /* ElementEvent */) -> Void
+//   The upstream `this: ParallelView` receiver is passed explicitly as the first param (`view`) — the
+//   registered `bind(handler, this)` binds it to the view instance.
+typealias ParallelElementEventHandler = (_ view: ParallelComponentView, _ e: ElementEvent) -> Void
 
 // upstream: class ParallelView extends ComponentView
 // CONVENTIONS §2/§4: reference type extending the reference `ComponentView` → `final class`.
@@ -94,7 +96,21 @@ public final class ParallelComponentView: ComponentView {
     var _mouseDownPoint: [Double]?
 
     // private _handlers: Partial<Record<ElementEventName, ElementEventHandler>>;
-    private var _handlers: [String: ParallelElementEventHandler]?
+    //   PORT-NOTE: stores the BOUND `EventCallback`s registered on `getZr()` (upstream stores the
+    //   `bind(handler, this)` results), keyed by event name — so `dispose` can `getZr().off(...)` them.
+    private var _handlers: [String: EventCallback]?
+
+    // upstream: the throttled `_throttledDispatchExpand` method. `util/throttle.ts` cannot swap a method
+    //   on a live Swift instance, so the throttled wrapper is held in this slot (the closure-slot
+    //   adaptation of upstream's `obj[fnAttr]` swap — see throttleUtil.createOrUpdate). Built/updated in
+    //   `render` via `createOrUpdate`, cleared in `dispose` via `clear`.
+    fileprivate var _throttledDispatch: ThrottledFunction?
+
+    // The opt bag the throttled dispatch will fire with. Upstream's throttle captures the call `args`
+    //   (`fn.apply(scope, args)`); this port's `ThrottledFunction` is nullary, so the latest opt is
+    //   stashed here and read by the origin closure at exec time (fixRate → latest call wins, matching
+    //   the upstream roaming semantics). `nil` = "cancel the last trigger" (behavior === 'none').
+    private var _pendingExpandOpt: [String: Any]?
 
     // upstream: render(parallelModel: ParallelModel, ecModel, api)
     //   The base `ComponentView.render` signature is (model, ecModel, api, payload); the concrete
@@ -114,19 +130,36 @@ public final class ParallelComponentView: ComponentView {
         //           api.getZr().on(eventName, this._handlers[eventName] = bind(handler, this));
         //       }, this);
         //   }
-        // PORT-NOTE (deferred): PARALLEL axis-expand pointer interaction is DEFERRED (CONVENTIONS §5).
-        //   `ExtensionAPI` does not yet expose a callable `getZr()` (the `availableMethods` dynamic
-        //   forwarding is deferred to Phase 6b — see ExtensionAPI),
-        //   and the `handlers` table below reaches the deferred `getSlidedAxisExpandWindow` /
-        //   `dispatchAction` interaction seam. Preserved structurally; not wired.
+        //   Register the pointer handlers ONCE on the zrender event bus. `bind(handler, this)` → an
+        //   `EventCallback` that (a) unpacks the `ElementEvent` from `args[0]` and (b) calls the handler
+        //   with the view as the explicit `this`. `ctx` is passed `nil` (NOT `self`): the `Eventful`
+        //   stores ctx strongly and zr is strongly reachable, so `self` there would form a retain cycle —
+        //   the closures already capture `[weak self]` (cf. EChartsView's zr.on wiring).
         if self._handlers == nil {
             self._handlers = [:]
-            // for (eventName, handler) in handlers { api.getZr().on(eventName, bind(handler, self)) ... }
+            let zr = api.getZr()
+            for (eventName, handler) in handlers {
+                let cb: EventCallback = { [weak self] _, args in
+                    guard let self = self, let e = args.first as? ElementEvent else { return nil }
+                    handler(self, e)
+                    return nil
+                }
+                self._handlers?[eventName] = cb
+                _ = zr?.on(eventName, cb, nil)
+            }
         }
 
         // upstream: createOrUpdate(this, '_throttledDispatchExpand',
         //     parallelModel.get('axisExpandRate'), 'fixRate');
-        // PORT-NOTE (deferred): requires `util/throttle.createOrUpdate` (interaction seam), NOT ported.
+        //   The closure-slot adaptation returns the throttled wrapper to store back (see throttleUtil).
+        //   `axisExpandRate` read with `numOpt` (Int-vs-Double option trap — the default `17` is boxed
+        //   Int). The origin closure fires `_dispatchExpand` with the latest stashed opt.
+        self._throttledDispatch = throttleUtil.createOrUpdate(
+            existing: self._throttledDispatch,
+            origin: { [weak self] in self?._dispatchExpand(self?._pendingExpandOpt) },
+            rate: numOpt(parallelModel.get("axisExpandRate")),
+            throttleType: .fixRate
+        )
         _ = payload
     }
 
@@ -136,7 +169,18 @@ public final class ParallelComponentView: ComponentView {
         //   clear(this, '_throttledDispatchExpand');
         //   each(this._handlers, function (handler, eventName) { api.getZr().off(eventName, handler); });
         //   this._handlers = null;
-        // PORT-NOTE (deferred): requires `util/throttle.clear` + `getZr().off` (interaction seam), NOT ported.
+        // `clear` cancels any pending throttle timer and restores the origin (→ nil slot here).
+        self._throttledDispatch = throttleUtil.clear(self._throttledDispatch)
+        // NOTE: `Eventful.off(event, handler)` cannot filter a specific closure by identity (Swift
+        //   closures are not comparable — documented divergence in Eventful.off), so this is effectively
+        //   a no-op; the stale handlers remain but are inert (their `[weak self]` returns early once the
+        //   view is gone). Kept structurally faithful to upstream.
+        let zr = api.getZr()
+        if let handlers = self._handlers {
+            for (eventName, handler) in handlers {
+                zr?.off(eventName, handler)
+            }
+        }
         self._handlers = nil
     }
 
@@ -145,8 +189,18 @@ public final class ParallelComponentView: ComponentView {
      * @param {Object} [opt] If null, cancel the last action triggering for debounce.
      */
     // upstream: _throttledDispatchExpand(opt: Omit<ParallelAxisExpandPayload, 'type'>): void
+    //   In upstream this method body IS `this._dispatchExpand(opt)`, but `createOrUpdate` REPLACES the
+    //   method with a throttled wrapper (whose origin is this body). The closure-slot adaptation keeps
+    //   the wrapper in `_throttledDispatch`; here we stash the opt and fire the wrapper (falling back to
+    //   the unthrottled body when no wrapper exists — mirroring `createOrUpdate` returning the originFn).
     func _throttledDispatchExpand(_ opt: [String: Any]?) {
-        self._dispatchExpand(opt)
+        self._pendingExpandOpt = opt
+        if let throttled = self._throttledDispatch {
+            throttled()
+        }
+        else {
+            self._dispatchExpand(opt)
+        }
     }
 
     /**
@@ -155,56 +209,108 @@ public final class ParallelComponentView: ComponentView {
     // upstream: _dispatchExpand(opt: Omit<ParallelAxisExpandPayload, 'type'>)
     func _dispatchExpand(_ opt: [String: Any]?) {
         // upstream: opt && this._api.dispatchAction(extend({ type: 'parallelAxisExpand' }, opt));
-        // PORT-NOTE: `ExtensionAPI.dispatchAction` and the `parallelAxisExpand` action (parallelAxisAction)
-        //   are both ported; only the pointer interaction that calls this from the view is deferred, so
-        //   the dispatch body stays commented. Preserved structurally.
+        //   `extend({ type: 'parallelAxisExpand' }, opt)` → a Payload whose extra keys (`axisExpandWindow`,
+        //   `animation`) ride on the dynamic `.other` bag (the `parallelAxisExpand` action reads
+        //   `axisExpandWindow` off it via `setAxisExpand`). `nil` opt cancels the trigger (no dispatch).
         guard let opt = opt else { return }
-        _ = opt
-        // var action: [String: Any] = ["type": "parallelAxisExpand"]
-        // action = util.extend(&action, opt)
-        // self._api?.dispatchAction(action)
+        var action = Payload(type: "parallelAxisExpand")
+        for (k, v) in opt {
+            action.other[k] = v
+        }
+        self._api?.dispatchAction(action)
     }
 }
 
 // upstream:
 //   const handlers: Partial<Record<ElementEventName, ElementEventHandler>> = { mousedown, mouseup, mousemove };
-// PORT-NOTE (deferred): the pointer-interaction handler table (mousedown/mouseup/mousemove → axis-expand)
-//   is DEFERRED with the interaction seam (CONVENTIONS §5). It reaches `coordinateSystem
-//   .getSlidedAxisExpandWindow(point)` (a deferred Parallel method) and `_dispatchExpand`
-//   (deferred action). The bodies are reproduced verbatim as comments so they re-sync 1:1 when the
-//   interaction seam lands.
-//
-//   mousedown(e): if (checkTrigger(this, 'click')) { this._mouseDownPoint = [e.offsetX, e.offsetY]; }
-//   mouseup(e):
-//     const mouseDownPoint = this._mouseDownPoint;
-//     if (checkTrigger(this, 'click') && mouseDownPoint) {
-//         const point = [e.offsetX, e.offsetY];
-//         const dist = Math.pow(mouseDownPoint[0] - point[0], 2) + Math.pow(mouseDownPoint[1] - point[1], 2);
-//         if (dist > CLICK_THRESHOLD) { return; }
-//         const result = this._model.coordinateSystem.getSlidedAxisExpandWindow([e.offsetX, e.offsetY]);
-//         result.behavior !== 'none' && this._dispatchExpand({ axisExpandWindow: result.axisExpandWindow });
-//     }
-//     this._mouseDownPoint = null;
-//   mousemove(e):
-//     if (this._mouseDownPoint || !checkTrigger(this, 'mousemove')) { return; }
-//     const model = this._model;
-//     const result = model.coordinateSystem.getSlidedAxisExpandWindow([e.offsetX, e.offsetY]);
-//     const behavior = result.behavior;
-//     behavior === 'jump' && this._throttledDispatchExpand.debounceNextCall(model.get('axisExpandDebounce'));
-//     this._throttledDispatchExpand(behavior === 'none'
-//         ? null
-//         : { axisExpandWindow: result.axisExpandWindow,
-//             animation: behavior === 'jump' ? null : { duration: 0 } });
+//   The pointer-interaction handler table (mousedown/mouseup/mousemove → axis-expand). Each handler
+//   receives the view as the explicit `this` (first param) and the `ElementEvent`. Registered on the
+//   zrender event bus in `render` (see there).
+private let handlers: [String: ParallelElementEventHandler] = [
+    // mousedown(e): if (checkTrigger(this, 'click')) { this._mouseDownPoint = [e.offsetX, e.offsetY]; }
+    "mousedown": { view, e in
+        if checkTrigger(view, "click") {
+            view._mouseDownPoint = [e.offsetX, e.offsetY]
+        }
+    },
+    // mouseup(e): a click (within CLICK_THRESHOLD of the mousedown) triggers an axis-expand dispatch.
+    "mouseup": { view, e in
+        let mouseDownPoint = view._mouseDownPoint
+        if checkTrigger(view, "click"), let mouseDownPoint = mouseDownPoint {
+            let point = [e.offsetX, e.offsetY]
+            // const dist = Math.pow(dx, 2) + Math.pow(dy, 2);
+            let dist = pow(mouseDownPoint[0] - point[0], 2) + pow(mouseDownPoint[1] - point[1], 2)
+            // if (dist > CLICK_THRESHOLD) { return; }  — NOTE: returns WITHOUT resetting _mouseDownPoint.
+            if dist > CLICK_THRESHOLD {
+                return
+            }
+            // const result = this._model.coordinateSystem.getSlidedAxisExpandWindow([e.offsetX, e.offsetY]);
+            if let coordSys = view._coordinateSystem() {
+                let result = coordSys.getSlidedAxisExpandWindow([e.offsetX, e.offsetY])
+                // result.behavior !== 'none' && this._dispatchExpand({ axisExpandWindow: ... });
+                if result.behavior != "none" {
+                    view._dispatchExpand(["axisExpandWindow": result.axisExpandWindow])
+                }
+            }
+        }
+        view._mouseDownPoint = nil
+    },
+    // mousemove(e): slide/jump the expand window (throttled; jump debounced). No-op while brushing
+    //   (a mousedown is in progress).
+    "mousemove": { view, e in
+        // Should do nothing when brushing.
+        if view._mouseDownPoint != nil || !checkTrigger(view, "mousemove") {
+            return
+        }
+        guard let coordSys = view._coordinateSystem() else { return }
+        let result = coordSys.getSlidedAxisExpandWindow([e.offsetX, e.offsetY])
+        let behavior = result.behavior
+        // behavior === 'jump' && (this._throttledDispatchExpand ...).debounceNextCall(get('axisExpandDebounce'));
+        if behavior == "jump" {
+            view._throttledDispatch?.debounceNextCall(view._axisExpandDebounce())
+        }
+        // this._throttledDispatchExpand(behavior === 'none' ? null : { axisExpandWindow, animation });
+        if behavior == "none" {
+            // Cancel the last trigger, in case that mouse slide out of the area quickly.
+            view._throttledDispatchExpand(nil)
+        }
+        else {
+            var opt: [String: Any] = ["axisExpandWindow": result.axisExpandWindow]
+            // Jumping uses animation, and sliding suppresses animation ({ duration: 0 }); jump → null (absent).
+            if behavior != "jump" {
+                opt["animation"] = ["duration": 0.0]
+            }
+            view._throttledDispatchExpand(opt)
+        }
+    }
+]
 
 // upstream:
 //   function checkTrigger(view: ParallelView, triggerOn): boolean {
 //       const model = view._model;
 //       return model.get('axisExpandable') && model.get('axisExpandTriggerOn') === triggerOn;
 //   }
-// PORT-NOTE (deferred): DEFERRED with the interaction seam (reads `axisExpandable` / `axisExpandTriggerOn`
-//   off the ParallelModel to gate the pointer handlers above).
+//   Gates the pointer handlers: interaction fires only when `axisExpandable` is truthy AND the configured
+//   `axisExpandTriggerOn` ('click' | 'mousemove') matches the handler's trigger.
+private func checkTrigger(_ view: ParallelComponentView, _ triggerOn: String) -> Bool {
+    guard let model = view._model as? ParallelModel else { return false }
+    return jsTruthy(model.get("axisExpandable"))
+        && (model.get("axisExpandTriggerOn") as? String) == triggerOn
+}
 
 // export default ParallelView;  -> `public final class ParallelView` above.
+
+// PARALLEL-VIEW interaction helpers (narrow the `Any?` _model to the concrete coord/model surface).
+extension ParallelComponentView {
+    // `this._model.coordinateSystem` — the `Parallel` coord system (getSlidedAxisExpandWindow).
+    func _coordinateSystem() -> Parallel? {
+        return (self._model as? ParallelModel)?.coordinateSystem as? Parallel
+    }
+    // `model.get('axisExpandDebounce')` — read with numOpt (Int-vs-Double option trap; default `50`).
+    func _axisExpandDebounce() -> Double {
+        return numOpt((self._model as? ParallelModel)?.get("axisExpandDebounce")) ?? 0
+    }
+}
 
 
 // ================================================================================================

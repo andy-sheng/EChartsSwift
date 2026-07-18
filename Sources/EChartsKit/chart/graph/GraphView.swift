@@ -364,7 +364,20 @@ open class GraphView: ChartView {
         // data.graph.eachNode(... draggable ...);  — PORT-NOTE (deferred): node drag requires states/actions.
         //   (The emphasis-focus part of this upstream loop IS wired — see the adjacency post-loop above.)
         // data.graph.eachEdge(... emphasis focus 'adjacency' ...);  — PORT-NOTE: adjacency focus IS wired above (see the eachEdge post-loop).
-        // rotateNodeLabel(node, circularRotateLabel, cx, cy);  — PORT-NOTE (deferred): node label rotation deferred.
+
+        // upstream GraphView.ts:227-233 — node label rotation. `rotateNodeLabel`
+        //   (circularLayoutHelper.swift) sets each node symbol's text config rotation: in a `circular`
+        //   layout with `circular.rotateLabel` it rotates the label to the radial tangent (position
+        //   left/right per hemisphere); otherwise it applies the node's `label.rotate` (degrees → rad)
+        //   for every layout. Runs after symbolDraw.updateData so the symbol paths exist.
+        let circularRotateLabel = ((seriesModel.get("layout") as? String) == "circular")
+            && ((seriesModel.get(["circular", "rotateLabel"]) as? Bool) ?? false)
+        let cx = graphToNumber(data.getLayout("cx"))
+        let cy = graphToNumber(data.getLayout("cy"))
+        graph.eachNode({ node, _ in
+            rotateNodeLabel(node, circularRotateLabel, cx, cy)
+        })
+
         // this._renderThumbnail(...);  — PORT-NOTE (deferred): thumbnail deferred.
 
         // this._firstRender = false;  — PORT-NOTE (deferred): roam state deferred.

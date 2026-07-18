@@ -339,7 +339,7 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
 
         // Use length of ticksAngles because it may remove the last tick to avoid overlapping
         util.each(labels, { labelItem, idx in
-            let labelModel = commonLabelModel
+            var labelModel = commonLabelModel
             let tickValue = labelItem.labelItem.tick.value
 
             let r = radiusExtent[getRadiusIdx(polar)]
@@ -361,13 +361,20 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
             //           labelModel = new Model(rawCategoryItem.textStyle, commonLabelModel, commonLabelModel.ecModel);
             //       }
             //   }
-            // PORT-NOTE (deferred): requires the raw category-item OBJECT form ({ value, textStyle }).
-            //   `getCategories(true)` here yields `[OrdinalRawValue]` (== [Any]); the object form that
-            //   carries `textStyle` is not modeled by OrdinalRawValue, so the per-label `Model` override
-            //   is deferred and `labelModel` stays `commonLabelModel`. Restore when the raw
-            //   category-object option lands.
-            _ = rawCategoryData
-            _ = tickValue
+            //   `rawCategoryData` is `getCategories(true)` → `[OrdinalRawValue]` (== [Any]); the raw
+            //   category-item OBJECT form `{ value, textStyle }` is preserved as a `[String: Any]` dict,
+            //   so an item carrying `textStyle` yields a per-label `Model` override over commonLabelModel.
+            if let rawCategoryData = rawCategoryData {
+                let tickIndex = Int(tickValue)
+                if tickIndex >= 0, tickIndex < rawCategoryData.count {
+                    let rawCategoryItem = rawCategoryData[tickIndex]
+                    if util.isObject(rawCategoryItem),
+                       let rawCategoryDict = rawCategoryItem as? [String: Any],
+                       let textStyle = rawCategoryDict["textStyle"] {
+                        labelModel = Model(textStyle, commonLabelModel, commonLabelModel.ecModel)
+                    }
+                }
+            }
 
             // upstream: fill: labelModel.getTextColor() || angleAxisModel.get(['axisLine','lineStyle','color'])
             let fill = labelModel.getTextColor()
@@ -582,7 +589,8 @@ private func jsTruthy(_ v: Any?) -> Bool {
 ///   ZRenderKit `Path`'s `style` prop is a typed `PathStyleProps`. This maps the common line/area paint
 ///   keys (stroke + fill) so the axis-line / ticks / split-lines / split-areas are actually drawn.
 ///   Same deviation as CartesianAxisView.lineStylePropsFromDict / RadarComponentView.pathStyleFromDict.
-///   `lineDash` (number | number[]) is not bridged yet (LineDash enum). Delete when the bridge lands.
+///   `fill`/`stroke` bridge the gradient/pattern object arms via `zrPaintFromStyleValue`; `lineDash`
+///   (false | number[] | 'solid'|'dashed'|'dotted') maps to the LineDash enum. Delete when the bridge lands.
 // Coerce a dynamic style-bag number tolerating Int boxing (e.g. lineWidth: 2 as an Int literal);
 // a bare `as? Double` drops the value (the recurring Int-vs-Double option-read trap).
 private func styleNum(_ v: Any?) -> Double? {
@@ -594,11 +602,11 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string);
-    //   only the String form (incl. the sentinel 'none') is mapped here — the gradient/pattern object
-    //   form carried in the dynamic bag is not parsed.
-    if let fill = dict["fill"] as? String { s.fill = .string(fill) }
-    if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
+    // `fill`/`stroke` may be a String (incl. the sentinel 'none'), or a gradient/pattern object
+    //   (the ZRColor non-string arms) carried in the dynamic bag — bridged via the shared
+    //   `zrPaintFromStyleValue` (BarView) so split-area gradients / patterned fills render.
+    if let fill = zrPaintFromStyleValue(dict["fill"]) { s.fill = fill }
+    if let stroke = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = stroke }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
     if let lineJoin = dict["lineJoin"] as? String { s.lineJoin = lineJoin }
@@ -609,6 +617,27 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     if let shadowColor = dict["shadowColor"] as? String { s.shadowColor = shadowColor }
     if let lineDashOffset = styleNum(dict["lineDashOffset"]) { s.lineDashOffset = lineDashOffset }
     if let miterLimit = styleNum(dict["miterLimit"]) { s.miterLimit = miterLimit }
-    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping requires the LineDash enum bridge.
+    // upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` (getLineStyle maps the
+    //   `type` option to `lineDash`) → the `LineDash` enum, so dashed/dotted axis/split lines render as
+    //   dashes (mirrors CartesianAxisView.lineStylePropsFromDict).
+    if let dash = dict["lineDash"] {
+        if let arr = dash as? [Double] {
+            s.lineDash = .values(arr)
+        }
+        else if let arr = dash as? [Any] {
+            s.lineDash = .values(arr.compactMap { styleNum($0) })
+        }
+        else if let b = dash as? Bool, b == false {
+            s.lineDash = .`false`
+        }
+        else if let str = dash as? String {
+            switch str {
+            case "solid": s.lineDash = .solid
+            case "dashed": s.lineDash = .dashed
+            case "dotted": s.lineDash = .dotted
+            default: break
+            }
+        }
+    }
     return s
 }

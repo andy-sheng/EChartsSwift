@@ -147,7 +147,7 @@ open class ScrollableLegendView: LegendView {
         let pageIconSizeArr = scrollLegendPageIconSizeArr(legendModel.get("pageIconSize", true))
 
         // createPageButton('pagePrev', 0);
-        self.createPageButton(controllerGroup, legendModel, "pagePrev", 0, pageIconSizeArr)
+        self.createPageButton(controllerGroup, legendModel, api, "pagePrev", 0, pageIconSizeArr)
 
         // const pageTextStyleModel = legendModel.getModel('pageTextStyle');
         let pageTextStyleModel = legendModel.getModel("pageTextStyle")
@@ -163,17 +163,20 @@ open class ScrollableLegendView: LegendView {
         _ = controllerGroup.add(pageText)
 
         // createPageButton('pageNext', 1);
-        self.createPageButton(controllerGroup, legendModel, "pageNext", 1, pageIconSizeArr)
+        self.createPageButton(controllerGroup, legendModel, api, "pageNext", 1, pageIconSizeArr)
     }
 
     // function createPageButton(name, iconIdx)
     private func createPageButton(
         _ controllerGroup: Group,
         _ legendModel: LegendModel,
+        _ api: ExtensionAPI,
         _ name: String,
         _ iconIdx: Int,
         _ pageIconSizeArr: [Double]
     ) {
+        // const pageDataIndexName = (name + 'DataIndex');
+        let pageDataIndexName = name + "DataIndex"
         // const icon = graphic.createIcon(
         //   legendModel.get('pageIcons', true)[legendModel.getOrient().name][iconIdx],
         //   { onclick: bind(self._pageGo, ...) },
@@ -189,8 +192,15 @@ open class ScrollableLegendView: LegendView {
         )
         // icon.name = name;
         icon.name = name
-        // PORT-NOTE (deferred): onclick — upstream binds `self._pageGo(name + 'DataIndex', legendModel, api)`.
-        //   Page-flip is a click interaction (out of static-render scope). `_pageGo` is ported below.
+        // onclick: zrUtil.bind(self._pageGo, self, pageDataIndexName, legendModel, api)
+        //   The scroll view always renders a ScrollableLegendModel; cast to satisfy `_pageGo`.
+        let scrollModel = legendModel as? ScrollableLegendModel
+        _ = icon.on("click", { [weak self] _, _ in
+            if let scrollModel = scrollModel {
+                self?._pageGo(pageDataIndexName, scrollModel, api)
+            }
+            return nil
+        }, nil)
         _ = controllerGroup.add(icon)
     }
 
@@ -423,8 +433,7 @@ open class ScrollableLegendView: LegendView {
     }
 
     // _pageGo(to, legendModel, api)
-    //   PORT-NOTE (deferred): reached only from the page-arrow onclick (interaction). Ported for fidelity;
-    //   currently has no caller because `createPageButton` does not wire onclick.
+    //   Reached from the page-arrow onclick wired in `createPageButton`; dispatches `legendScroll`.
     func _pageGo(_ to: String, _ legendModel: ScrollableLegendModel, _ api: ExtensionAPI) {
         let info = self._getPageInfo(legendModel)
         let scrollDataIndex: Double? = to == "pagePrevDataIndex" ? info.pagePrevDataIndex : info.pageNextDataIndex
@@ -460,19 +469,28 @@ open class ScrollableLegendView: LegendView {
         let current = pageInfo.pageIndex + 1
         let total = pageInfo.pageCount
 
-        // pageText && pageFormatter && pageText.setStyle('text', ...);
-        if let pageText = controllerGroup.childOfName("pageText") as? ZRText,
-           let fmt = pageFormatter as? String, !fmt.isEmpty {
-            let text = fmt
-                .replacingOccurrences(of: "{current}", with: String(current))
-                .replacingOccurrences(of: "{total}", with: String(total))
-            var s = pageText.textStyle ?? TextStyleProps()
-            s.text = text
-            pageText.textStyle = s
-            pageText.dirtyStyle()
+        // pageText && pageFormatter && pageText.setStyle('text',
+        //   isString(pageFormatter) ? pageFormatter.replace('{current}', ...).replace('{total}', ...)
+        //     : pageFormatter({current, total}));
+        if let pageText = controllerGroup.childOfName("pageText") as? ZRText {
+            var text: String? = nil
+            // `pageFormatter &&` — an empty string is falsy upstream, so skip it.
+            if let fmt = pageFormatter as? String, !fmt.isEmpty {
+                text = fmt
+                    .replacingOccurrences(of: "{current}", with: String(current))
+                    .replacingOccurrences(of: "{total}", with: String(total))
+            }
+            // function-valued `pageFormatter({current, total})` (dynamic callback).
+            else if let fn = pageFormatter as? ([String: Any]) -> String {
+                text = fn(["current": current, "total": total])
+            }
+            if let text = text {
+                var s = pageText.textStyle ?? TextStyleProps()
+                s.text = text
+                pageText.textStyle = s
+                pageText.dirtyStyle()
+            }
         }
-        // PORT-NOTE (deferred): function-valued `pageFormatter({current, total})` (dynamic callback)
-        //   not modeled in the option bag (only the string template path).
     }
 
     /**
@@ -650,12 +668,11 @@ private func scrollLegendAsDouble(_ v: Any?) -> Double? {
     return nil
 }
 
-/// Bridge a dynamic style-bag color value (`String`) to `ZRColor` for a page-icon fill.
+/// Bridge a dynamic style-bag color value to `ZRColor` for a page-icon fill. Delegates to the shared
+///   gradient/pattern-aware paint bridge so `pageIconColor`/`pageIconInactiveColor` may be a solid
+///   string, a linear/radial gradient object, or an image pattern (not only string hex colors).
 private func scrollLegendZRColor(_ v: Any?) -> ZRenderKit.ZRColor? {
-    if let s = v as? String { return .string(s) }
-    // PORT-NOTE (deferred): gradient/pattern color objects not bridged for the page-icon fill
-    //   (out of static-render scope; page icons resolve to string hex colors in practice).
-    return nil
+    return zrPaintFromStyleValue(v)
 }
 
 // export default ScrollableLegendView; -> `open class ScrollableLegendView` above.

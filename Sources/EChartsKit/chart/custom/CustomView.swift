@@ -45,8 +45,8 @@ import ZRenderKit
 //     by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren` still rebuilds a
 //     group's children by index each render.
 //   - emphasis/blur/select STATES: `updateElOnState` / `setDefaultStateProxy` / `toggleHoverEmphasis`
-//     are now ported (util/states is present). Still DEFERRED: the per-state application loop that
-//     CALLS `updateElOnState` (the `for (STATES)` walk + `retrieveStateOption`) — see its PORT-NOTE.
+//     are ported (util/states is present) AND the per-state application loop that CALLS `updateElOnState`
+//     (the `for (STATES)` walk + `retrieveStateOption` + `updateZForEachState` per-state z2) is now WIRED.
 //   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
 //   - the legacy ec4 style compat (`convertFromEC4CompatibleStyle` / `isEC4CompatibleStyle` /
 //     `convertToEC4StyleForCustomSerise`) and the deprecated `api.style` / `api.styleEmphasis`.
@@ -498,10 +498,12 @@ private func createEl(_ elOption: [String: Any]) -> Element {
 
     // Compat ec4: the default z2 lift is 1.
     // upstream: (el as ECElement).z2EmphasisLift = 1; (el as ECElement).z2SelectLift = 1;
-    // PORT-NOTE: `ECElement` (util/types.swift) is ported and the states z2-lift machinery works
-    //   (util/states.swift stores z2EmphasisLift/z2SelectLift on the el's HighDownInner). Element does
-    //   not directly conform to `ECElement`, so this ec4-compat default lift of 1 is not written here;
-    //   the default Z2_EMPHASIS_LIFT applies instead.
+    //   `ECElement` is an option-bag augmentation `Element` does not directly conform to, but the states
+    //   z2-lift machinery reads `z2EmphasisLift`/`z2SelectLift` off the el's HighDownInner side-store
+    //   (util/states.swift, applied at emphasis/select). Write the ec4-compat default lift of 1 there so
+    //   a hovered/selected custom element bumps z2 by 1 (not the generic Z2_EMPHASIS_LIFT/Z2_SELECT_LIFT).
+    states.getHighDownInner(el).z2EmphasisLift = 1
+    states.getHighDownInner(el).z2SelectLift = 1
 
     return el
 }
@@ -783,7 +785,38 @@ private func updateZ(
         textEl.z2 = elDisplayable.z2
     }
 
-    // upstream: for (STATES) updateZForEachState(...)  — per-state z2 is a states concern (DEFERRED).
+    // upstream: for (let i = 0; i < STATES.length; i++) updateZForEachState(elDisplayable, elOption, STATES[i]);
+    for state in STATES {
+        updateZForEachState(elDisplayable, elOption, state)
+    }
+}
+
+// upstream: function updateZForEachState(elDisplayable, elOption, state): void
+//   Per-state z2 override — a renderItem `{emphasis:{z2},…}` bumps the state object's z2 (normal writes
+//   directly; non-normal writes onto `ensureState(state)`, which the state-apply path lifts on activate).
+private func updateZForEachState(
+    _ elDisplayable: Displayable,
+    _ elOption: [String: Any],
+    _ state: String
+) {
+    let isNormal = state == NORMAL
+    // const elStateOpt = isNormal ? elOption : retrieveStateOption(elOption, state);
+    let elStateOpt: [String: Any]? = isNormal
+        ? elOption
+        : (retrieveStateOption(elOption, state) as? [String: Any])
+    // const optZ2 = elStateOpt ? elStateOpt.z2 : null;
+    let optZ2 = elStateOpt.flatMap { customToDouble($0["z2"]) }
+    // if (optZ2 != null) { stateObj = isNormal ? elDisplayable : ensureState(state); stateObj.z2 = optZ2 || 0; }
+    if let optZ2 = optZ2 {
+        if isNormal {
+            elDisplayable.z2 = optZ2
+        }
+        else {
+            // `ElementState` has no typed `z2` accessor; store into its generic prop bag (the state-apply
+            //   path routes "z2" through Displayable.animationSet/attrKV onto el.z2 when the state activates).
+            elDisplayable.ensureState(state).props["z2"] = optZ2
+        }
+    }
 }
 
 // upstream: function makeRenderItem(customSeries, data, ecModel, api)
@@ -948,11 +981,11 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
 
     func getWidth() -> Double { return extApi.getWidth() }
     func getHeight() -> Double { return extApi.getHeight() }
-    // PORT-NOTE (deferred): `api.getZr` / `api.getDevicePixelRatio` are on ExtensionAPI's dynamic
-    //   `availableMethods` forwarding list but not yet exposed as callable Swift methods (dynamic
-    //   forwarding deferred to Phase 6b) — stubbed.
-    func getZr() -> Any? { return nil }
-    func getDevicePixelRatio() -> Double { return 1.0 }
+    // upstream: getZr: api.getZr, getDevicePixelRatio: api.getDevicePixelRatio — forwarded to
+    //   ExtensionAPI, which now exposes both (`getZr` returns the host `ZRenderType?`, nil in pure
+    //   headless; `getDevicePixelRatio` returns the painter dpr, 1 by default).
+    func getZr() -> Any? { return extApi.getZr() }
+    func getDevicePixelRatio() -> Double { return extApi.getDevicePixelRatio() }
 
     // ---- data accessors ----
 
@@ -1206,8 +1239,21 @@ private func doCreateOrUpdateEl(
         customInnerStore(elUnwrapped).info = elOption["info"] as? [String: Any]
     }
 
-    // upstream: for (STATES) { if (!NORMAL) updateElOnState(...) }  — states DEFERRED.
-    _ = updateElOnState  // keep referenced (faithful surface; no-op body).
+    // upstream: for (let i = 0; i < STATES.length; i++) { const stateName = STATES[i];
+    //   if (stateName !== NORMAL) {
+    //     const otherStateOpt = retrieveStateOption(elOption, stateName);
+    //     const otherStyleOpt = retrieveStyleOptionOnState(elOption, otherStateOpt, stateName);
+    //     updateElOnState(stateName, el, otherStateOpt, otherStyleOpt, attachedTxInfoTmp); } }
+    //   Now WIRED (util/states machinery ported): applies the renderItem emphasis/blur/select `style`
+    //   overrides onto the element's per-state objects (+ setDefaultStateProxy for auto color lift on
+    //   hover). The state-apply path (useState → animateTo) picks these up when the state activates.
+    for stateName in STATES {
+        if stateName != NORMAL {
+            let otherStateOpt = retrieveStateOption(elOption, stateName)
+            let otherStyleOpt = retrieveStyleOptionOnState(elOption, otherStateOpt, stateName)
+            updateElOnState(stateName, elUnwrapped, otherStateOpt, otherStyleOpt, attachedTxInfoTmp)
+        }
+    }
 
     updateZ(elUnwrapped, elOption, seriesModel)
 
@@ -1443,29 +1489,63 @@ private func mergeChildren(
     if byName {
         // upstream: diffGroupChildren({...}) — the DataDiffer by-name child diff.
         // PORT-NOTE (deferred): the by-name child DIFF (`diffGroupChildren` via DataDiffer) is deferred
-        //   with the enter/update/leave DIFF; rebuild by index below as a fallback.
+        //   (needs data/DataDiffer + the leave transition, both in other files); fall through to the
+        //   by-index merge below as a best-effort.
     }
 
-    // notMerge && el.removeAll();  — in the static rebuild the group child list starts empty anyway.
-    el.removeAll()
+    // upstream: notMerge && el.removeAll();
+    if notMerge {
+        el.removeAll()
+    }
 
-    // Mapping children of a group simply by index.
+    // Mapping children of a group simply by index, reusing the existing child at each index (upstream
+    //   passes `oldChild = el.childAt(index)` to `doCreateOrUpdateEl`, so per-child identity/animation
+    //   persist across renders instead of being rebuilt from scratch).
     var index = 0
     while index < newLen {
         let newChildAny = newChildren?[index]
-        let newChild = normalizeElOption(newChildAny)
-        // In the rebuild path there is no oldChild to reuse.
-        if let newChild = newChild {
-            _ = doCreateOrUpdateEl(api, nil, dataIndex, newChild, seriesModel, el)
+        var newChild = normalizeElOption(newChildAny)
+        let oldChild = el.childAt(index)
+        if newChild != nil {
+            // The old child at this index is set to be ignored when its new option is null (see the
+            //   `else` branch). So set `ignore` back to false when it is not explicitly specified.
+            if newChild!["ignore"] == nil {
+                newChild!["ignore"] = false
+            }
+            _ = doCreateOrUpdateEl(api, oldChild, dataIndex, newChild!, seriesModel, el)
+        }
+        else {
+            // upstream DEV assert: oldChild must exist. A null new child means "remove" the old child,
+            //   but we cannot really remove it (element order may not be stable when it is added back),
+            //   so mark it ignored instead.
+            oldChild?.ignore = true
         }
         index += 1
     }
+    // upstream: for (let i = el.childCount() - 1; i >= index; i--) removeChildFromGroup(el, childAt(i), ...)
+    var i = el.childCount() - 1
+    while i >= index {
+        if let child = el.childAt(i) {
+            removeChildFromGroup(el, child, seriesModel, dataIndex)
+        }
+        i -= 1
+    }
 }
 
-// upstream: function removeChildFromGroup / diffGroupChildren / getKey / processAddUpdate / processRemove
-//   The by-name child DIFF machinery (DataDiffer + leave transition) is DEFERRED (see mergeChildren).
+// upstream: function removeChildFromGroup(group, child, seriesModel) { child && applyLeaveTransition(...) }
+//   PORT-NOTE (deferred substitute): `applyLeaveTransition` (customGraphicTransition) is deferred with
+//   the transition machinery; use the ported `removeElementWithFadeOut` leave-path substitute (as the
+//   top-level `.remove` diff branch does).
+private func removeChildFromGroup(
+    _ group: Group, _ child: Element, _ seriesModel: CustomSeriesModel, _ dataIndex: Int
+) {
+    removeElementWithFadeOut(child, seriesModel, dataIndex)
+}
+
+// upstream: function diffGroupChildren / getKey / processAddUpdate / processRemove
+//   The by-NAME child DIFF machinery (DataDiffer + leave transition) is DEFERRED (see mergeChildren);
+//   `removeChildFromGroup` (the by-index trailing-child removal) is ported above.
 //   Retained here only as provenance markers.
-//   - removeChildFromGroup(group, child, seriesModel) -> applyLeaveTransition(...)  (DEFERRED)
 //   - diffGroupChildren(context) -> new DataDiffer(...).add/update/remove.execute()   (DEFERRED)
 //   - getKey(item, idx) -> item.name ?? GROUP_DIFF_PREFIX + idx
 private func getKey(_ item: Element?, _ idx: Int) -> String {

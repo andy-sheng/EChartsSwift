@@ -45,8 +45,9 @@ import ZRenderKit
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle.swift (`setLabelStyle`/`getLabelStatesModels`); wired in `_updateLabel`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
-//       -> chart/helper/sectorHelper.swift (ported); PieView still defaults cornerRadius to `0` (getSectorCornerRadius
-//          not wired here), so the plain SectorShape from the item layout suffices for a static render.
+//       -> chart/helper/sectorHelper.swift (ported) and NOW wired in `updatePieSectorData`: the
+//          `itemStyle.borderRadius`/`innerCornerRadius` corner radii are folded onto the sector shape, and
+//          the per-state (emphasis/select/blur) corner-radius merges are carried on each state shape.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> `saveOldStyle` IS ported
 //       (animation/basicTransition.swift) and NOW wired: the `.update` (firstCreate:false) branch of
 //       `updatePieSectorData` calls it before `updateProps`-tweening the reused sector's shape.
@@ -66,12 +67,13 @@ import ZRenderKit
 //   label / leader-line subsystem (`setLabelStyle` / `getLabelStatesModels` / `setTextGuideLine` +
 //   `pieLabelLayout`), and states / emphasis (`setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //   `ensureState('emphasis')` radius grow).
-// STILL DEFERRED (unchanged): the state-driven `setLabelLineStyle`/`getLabelLineStatesModels`
-//   labelGuideHelper helpers; the `select`-state `selectedOffset` dx/dy translate (exploded slice) and
-//   the blur focus fan-out; the SSR `scaleX/scaleY` enter branch and the `animationType === 'scale'`
-//   r-grow enter (the expansion sweep is the port's chosen enter form); and the
-//   `getSectorCornerRadius(...)` corner-radius merges (chart/helper/sectorHelper is ported but not wired
-//   here — cornerRadius defaults to `0`).
+// STILL DEFERRED: the state-driven `setLabelLineStyle`/`getLabelLineStatesModels` labelGuideHelper
+//   helpers (the leader-line style is inlined in `_updateLabel` instead — a cross-file dependency).
+// NOW WIRED (was deferred): the `select`-state `selectedOffset` dx/dy translate (exploded slice) on the
+//   sector + its label + leader line; the focus/blur fan-out (`toggleHoverEmphasis`); the SSR
+//   `scaleX/scaleY` enter branch and the `animationType === 'scale'` r-grow enter (alongside the
+//   expansion sweep); and the `getSectorCornerRadius(...)` corner-radius merges (itemStyle +
+//   emphasis/select/blur states).
 // ================================================================================================
 
 // upstream: class PieView extends ChartView
@@ -234,10 +236,10 @@ open class PieView: ChartView {
     //     sector's CURRENT (previous-layout) angles/radii to the new layout. Reusing the SAME sector
     //     object (the diff `.update` path) both preserves its identity and drives the tween — the
     //     reset-on-update fix. Style/states/label are (re)applied for every datum, either way.
-    //   PORT-NOTE (deferred, unchanged): the `select`-state selectedOffset dx/dy (exploded slice) +
-    //     blur focus fan-out + getSectorCornerRadius corner-radius merges are still omitted (cornerRadius
-    //     defaults to 0); the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter
-    //     are likewise not wired (the expansion enter below is the port's chosen form).
+    //   PORT-NOTE (NOW WIRED, was deferred): the `select`-state selectedOffset dx/dy (exploded slice),
+    //     the focus/blur fan-out, the getSectorCornerRadius corner-radius merges (itemStyle + state
+    //     shapes), the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter are all
+    //     implemented below (alongside the expansion enter).
     private func updatePieSectorData(
         _ sector: Sector, _ data: SeriesData, _ idx: Int,
         _ startAngle: Double, _ firstCreate: Bool, _ seriesModel: PieSeriesModel
@@ -247,14 +249,21 @@ open class PieView: ChartView {
         //   startAngle, so it needs no cross-piece threading. Kept in the signature for provenance.
         _ = startAngle
 
+        // upstream: const itemModel = data.getItemModel(idx); const emphasisModel = itemModel.getModel('emphasis');
+        let itemModel = data.getItemModel(idx)
+        let emphasisModel = itemModel.getModel(["emphasis"])
+
         // const layout = data.getItemLayout(idx) as graphic.Sector['shape'];
         guard let layout = data.getItemLayout(idx) as? [String: Any] else {
             return
         }
-        // const sectorShape = extend(getSectorCornerRadius(...), layout);
-        //   cornerRadius/innerCornerRadius default to `0` (getSectorCornerRadius deferred), so the
-        //   plain layout → SectorShape mapping is faithful.
-        let sectorShape = sectorShapeFromItemLayout(layout)
+        // const sectorShape = extend(getSectorCornerRadius(itemModel.getModel('itemStyle'), layout, true), layout);
+        //   cornerRadius/innerCornerRadius don't exist in the item layout — fold in the `itemStyle.borderRadius`
+        //   corner radii (zeroIfNull == true → defaults to `0`) onto the plain layout → SectorShape mapping.
+        var sectorShape = sectorShapeFromItemLayout(layout)
+        if let cornerRadius = getSectorCornerRadius(itemModel.getModel("itemStyle"), sectorShape, true) {
+            sectorShape.cornerRadius = cornerRadius
+        }
 
         // Ignore NaN data. upstream: `sector.setShape(sectorShape); return;` — set the (NaN) shape so the
         //   sector draws nothing, and skip styling/label.
@@ -264,16 +273,36 @@ open class PieView: ChartView {
         }
 
         if firstCreate {
-            // Entrance (upstream PiePiece expansion) — KEEP the existing independent collapsed-sweep so
-            //   the first-frame behavior is unchanged: seed the sector collapsed (endAngle == startAngle)
-            //   and sweep endAngle open to the final layout angle via initProps. Shape props MUST be a
-            //   dict of animatable fields (a full SectorShape struct is opaque to the animator — the
-            //   struct->dict rule). Instant (final angle, no animator) when the series' animation is off.
-            let finalEndAngle = sectorShape.endAngle
-            var collapsedShape = sectorShape
-            collapsedShape.endAngle = sectorShape.startAngle
-            _ = sector.setShape(collapsedShape)
-            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
+            // upstream: sector.setShape(sectorShape); then branch on ssr / animationType === 'scale' / expansion.
+            let animationType = seriesModel.getShallow("animationType") as? String
+            if seriesModel.ecModel?.ssr == true {
+                // Use scale animation in SSR mode. Because CSS SVG animation doesn't support very
+                //   customized shape animation. `initProps(..., isFrom: true)` animates FROM scale 0 → 1.
+                _ = sector.setShape(sectorShape)
+                initProps(sector, ["scaleX": 0.0, "scaleY": 0.0], seriesModel,
+                          AnimateOrSetPropsOption(dataIndex: idx, isFrom: true))
+                sector.originX = sectorShape.cx
+                sector.originY = sectorShape.cy
+            } else if animationType == "scale" {
+                // sector.shape.r = layout.r0; graphic.initProps(sector, { shape: { r: layout.r } }, ...).
+                //   Seed the outer radius collapsed to r0 and grow it out to r.
+                let finalR = sectorShape.r
+                var startShape = sectorShape
+                startShape.r = sectorShape.r0
+                _ = sector.setShape(startShape)
+                initProps(sector, ["shape": ["r": finalR] as [String: Any]], seriesModel, idx)
+            } else {
+                // Expansion — KEEP the port's independent collapsed-sweep form (upstream's `startAngle == null`
+                //   branch): seed the sector collapsed (endAngle == startAngle) and sweep endAngle open to the
+                //   final layout angle via initProps. Shape props MUST be a dict of animatable fields (a full
+                //   SectorShape struct is opaque to the animator — the struct->dict rule). Instant (final
+                //   angle, no animator) when the series' animation is off.
+                let finalEndAngle = sectorShape.endAngle
+                var collapsedShape = sectorShape
+                collapsedShape.endAngle = sectorShape.startAngle
+                _ = sector.setShape(collapsedShape)
+                initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
+            }
         } else {
             // upstream: `saveOldStyle(sector); graphic.updateProps(sector, { shape: sectorShape }, ...)`.
             //   TWEEN the whole shape from the reused sector's current angles/radii to the new layout.
@@ -292,24 +321,70 @@ open class PieView: ChartView {
         //   `barStyleFromDict` (BarView.swift) — the shared visual-style → PathStyleProps bridge.
         sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
 
-        // upstream (PiePiece.updateData): the sector is a highDown dispatcher carrying its emphasis-state
-        //   itemStyle so a hover restyles it. Mirror BarView.updateStyle.
-        let itemModel = data.getItemModel(idx)
-        let emphasisModel = itemModel.getModel(["emphasis"])
+        // upstream (PiePiece.updateData): setStatesStylesFromModel carries each state's itemStyle so a
+        //   hover/select restyles the sector. Mirror BarView.updateStyle.
+        states.setStatesStylesFromModel(sector, itemModel)
+
+        // upstream: const midAngle = (layout.startAngle + layout.endAngle) / 2; const offset =
+        //   seriesModel.get('selectedOffset'); dx = cos(midAngle) * offset; dy = sin(midAngle) * offset.
+        //   The `select` state (exploded slice) translates the sector + its label + leader line by (dx, dy).
+        let midAngle = (sectorShape.startAngle + sectorShape.endAngle) / 2
+        let offset = symbolAsDouble(seriesModel.get("selectedOffset")) ?? 0
+        let dx = Foundation.cos(midAngle) * offset
+        let dy = Foundation.sin(midAngle) * offset
+
+        // const cursorStyle = itemModel.getShallow('cursor'); cursorStyle && sector.attr('cursor', cursorStyle);
+        if let cursorStyle = itemModel.getShallow("cursor") as? String {
+            _ = sector.attr("cursor", cursorStyle)
+        }
+
+        // Label + leader line (upstream PiePiece._updateLabel). Runs BEFORE the state-shape merges below so
+        //   the leader line / label text elements exist to receive their `select` translate state.
+        _updateLabel(sector, seriesModel, data, idx)
+
+        // upstream (PieView.ts:142-153): the emphasis state grows the outer radius by `scaleSize` when
+        //   `emphasis.scale` is on (the hover "enlarge" effect), and select/blur states carry their own
+        //   corner-radius merges. cornerRadius is stored on the state shape faithfully; note SectorShape's
+        //   keyed animation does not yet tween `cornerRadius` (a shared-Sector limitation), so the per-state
+        //   corner radius is carried but only the outer-radius grow renders through the state machinery.
+        let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
+        let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
+        var emphasisShape: [String: Any] = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
+        if let cornerRadius = getSectorCornerRadius(emphasisModel.getModel("itemStyle"), sectorShape) {
+            emphasisShape["cornerRadius"] = cornerRadius
+        }
+        sector.ensureState("emphasis").shape = emphasisShape
+
+        let selectState = sector.ensureState("select")
+        selectState.x = dx
+        selectState.y = dy
+        if let cornerRadius = getSectorCornerRadius(itemModel.getModel(["select", "itemStyle"]), sectorShape) {
+            selectState.shape = ["cornerRadius": cornerRadius]
+        }
+
+        let blurState = sector.ensureState("blur")
+        if let cornerRadius = getSectorCornerRadius(itemModel.getModel(["blur", "itemStyle"]), sectorShape) {
+            blurState.shape = ["cornerRadius": cornerRadius]
+        }
+
+        // upstream: labelLine && extend(labelLine.ensureState('select'), { x: dx, y: dy });
+        //           extend(labelText.ensureState('select'), { x: dx, y: dy });
+        if let labelLine = sector.getTextGuideLine() {
+            let lineSelect = labelLine.ensureState("select")
+            lineSelect.x = dx
+            lineSelect.y = dy
+        }
+        if let labelText = sector.getTextContent() {
+            let textSelect = labelText.ensureState("select")
+            textSelect.x = dx
+            textSelect.y = dy
+        }
+
+        // upstream: toggleHoverEmphasis(this, emphasisModel.get('focus'), ...('blurScope'), ...('disabled')).
         let focus: InnerFocus? = emphasisModel.get("focus")
         let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
         let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
         states.toggleHoverEmphasis(sector, focus, blurScope, isDisabled)
-        states.setStatesStylesFromModel(sector, itemModel)
-
-        // upstream (PieView.ts:142-145): the emphasis state grows the outer radius by `scaleSize` when
-        //   `emphasis.scale` is on — the hover "enlarge" effect.
-        let scaleOn = (emphasisModel.get("scale") as? Bool) ?? false
-        let scaleSize = symbolAsDouble(emphasisModel.get("scaleSize")) ?? 0   // Int/Double/NSNumber
-        sector.ensureState("emphasis").shape = ["r": sectorShape.r + (scaleOn ? scaleSize : 0)]
-
-        // Label + leader line (upstream PiePiece._updateLabel).
-        _updateLabel(sector, seriesModel, data, idx)
     }
 
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {}
@@ -377,16 +452,25 @@ open class PieView: ChartView {
             labelText.z2 = 10
         }
 
-        // Leader-line (labelLine) — L1c. Upstream calls
-        //   `setLabelLineStyle(sector, getLabelLineStatesModels(itemModel), ...)`; that state-driven
-        //   helper is still DEFERRED, so the line style is inlined here (mirrors FunnelView): a
-        //   stroke-only Polyline attached as the sector's textGuideLine. Its POINTS are filled later
-        //   by `pieLabelLayout` (which also flips `ignore` for inside / hidden labels).
-        //   REUSE the existing guide line on a refresh (upstream: `let polyline = getTextGuideLine();
-        //   if (!polyline) { polyline = new Polyline(); setTextGuideLine(polyline); }`) so the reused
-        //   sector keeps its leader-line element identity.
-        let labelLineModel = itemModel.getModel("labelLine")
-        if (labelLineModel.get("show") as? Bool) != false {
+        // Leader-line (labelLine) — L1c. Upstream gates the leader line on the LABEL POSITION, not on
+        //   `labelLine.show`: a leader line is only drawn for `outside`/`outer` labels; any other
+        //   position (inside/center/...) drops it.
+        //     const labelPosition = itemModel.get(['label', 'position']);
+        //     if (labelPosition !== 'outside' && labelPosition !== 'outer') { sector.removeTextGuideLine(); }
+        //     else { let polyline = getTextGuideLine(); if (!polyline) { ...setTextGuideLine... };
+        //            setLabelLineStyle(this, getLabelLineStatesModels(itemModel), {...}); }
+        //   The state-driven `setLabelLineStyle`/`getLabelLineStatesModels` helpers are still DEFERRED, so
+        //   the line style is inlined here (mirrors FunnelView): a stroke-only Polyline attached as the
+        //   sector's textGuideLine. Its POINTS are filled later by `pieLabelLayout` (which also flips
+        //   `ignore` for hidden labels). REUSE the existing guide line on a refresh so the reused sector
+        //   keeps its leader-line element identity.
+        let labelPosition = itemModel.get(["label", "position"]) as? String
+        if labelPosition != "outside" && labelPosition != "outer" {
+            if sector.getTextGuideLine() != nil {
+                sector.removeTextGuideLine()
+            }
+        } else {
+            let labelLineModel = itemModel.getModel("labelLine")
             let line: Polyline
             if let existing = sector.getTextGuideLine() {
                 line = existing
@@ -400,9 +484,6 @@ open class PieView: ChartView {
             // A stroke-only leader line must not keep the black default fill.
             line.pathStyle.fill = nil
             line.z2 = 10
-        } else if sector.getTextGuideLine() != nil {
-            // `labelLine.show: false` on a refresh: drop the previously-attached leader line.
-            sector.removeTextGuideLine()
         }
     }
 }
