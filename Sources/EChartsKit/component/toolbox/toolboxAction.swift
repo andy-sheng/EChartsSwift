@@ -80,8 +80,11 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
 // upstream: MagicType.onclick — builds the `newOption` that swaps each convertible series to `targetType`
 //   ('line' ↔ 'bar'). Factored out so the toolbox VIEW's icon onclick (deferred) AND a headless caller can
 //   compute the merge option. Returns `{ series: [...perSeriesOverride], xAxis?: [...], yAxis?: [...] }`.
-//   PORT SCOPE: line ↔ bar only ('stack'/'tiled' modifiers deferred). markPoint/markLine carry-over
-//   (getFeatureMarkerOpts) is deferred. The axis `boundaryGap` is flipped to match (bar → true).
+//   PORT SCOPE: line ↔ bar + 'stack'/'tiled' modifiers. Mirrors upstream `seriesOptGenreator`: only the
+//   OPPOSITE type converts (bar → line / line → bar), carrying over the series' data/stack/markPoint/markLine
+//   options. The axis `boundaryGap` is flipped to match (bar → true). Still deferred vs upstream: the
+//   `model.get(['option', type])` per-type option merge (needs the feature model, not passed here) and the
+//   real per-axis-index boundaryGap via getReferringComponents (only xAxis[0] is flipped).
 // A shared stack key the 'stack' magicType assigns so every convertible series stacks together (upstream
 //   `INNER_STACK_KEYWORD`). 'tiled' clears it.
 public let TOOLBOX_MAGIC_STACK_KEYWORD = "__ec_magicType_stack__"
@@ -108,16 +111,25 @@ public func computeMagicTypeOption(_ ecModel: GlobalModel, _ targetType: String)
 
     ecModel.eachSeries { seriesModel, _ in
         let sub = seriesModel.subType
-        // Only line ↔ bar are convertible; a series already of the target type is passed through unchanged
-        //   (upstream still emits an `{id, type}` override so mergeOption keeps it — mirror that).
-        if (targetType == "line" && (sub == "bar" || sub == "line"))
-            || (targetType == "bar" && (sub == "line" || sub == "bar")) {
+        // seriesOptGenreator[type]: only the OPPOSITE type converts (bar → line / line → bar); a series
+        //   already of the target type returns undefined upstream, so NO override is pushed for it.
+        let convertible = (targetType == "line" && sub == "bar")
+            || (targetType == "bar" && sub == "line")
+        if convertible {
             var override: [String: Any] = ["id": seriesModel.id, "type": targetType]
             // Preserve the series name so the merge matches by id AND keeps the legend entry.
             if !seriesModel.name.isEmpty { override["name"] = seriesModel.name }
+            // Carry over the data-related option (upstream seriesOptGenreator merge:
+            //   { id, type, data, stack, markPoint, markLine }).
+            if let data = seriesModel.get("data") { override["data"] = data }
+            if let stack = seriesModel.get("stack") { override["stack"] = stack }
+            if let markPoint = seriesModel.get("markPoint") { override["markPoint"] = markPoint }
+            if let markLine = seriesModel.get("markLine") { override["markLine"] = markLine }
             seriesOverrides.append(override)
-            if sub == "bar" || sub == "line" { touchedCartesian = true }
         }
+        // Modify boundaryGap: upstream runs for EVERY cartesian line/bar series, regardless of whether
+        //   an override was pushed. (Port reduction: only xAxis[0] is flipped — see header.)
+        if sub == "bar" || sub == "line" { touchedCartesian = true }
     }
 
     var newOption: [String: Any] = ["series": seriesOverrides]
