@@ -70,9 +70,50 @@ extension SliderZoomView {
     // ------------------------------------------------------------------------
     public func _wireDrift(_ el: Element, _ handleIndex: SliderMoveHandleIndex) {
         el.draggable = .true
-        el.driftHandler = { [weak self] dx, dy, e in
-            self?._onDragMove(handleIndex, dx, dy, e)
+        // upstream wires the two resize handles (handleIndex 0/1) with `drift: _onDragMove` directly
+        //   (SliderZoomView.ts:615-617), but the pan-drag element — `actualMoveZone`, handleIndex `all`,
+        //   which is the `moveZone` when `brushSelect` else the `filler` — with the moveZone-specific
+        //   `drift: _onActualMoveZoneDrift`, `ondragstart: _onActualMoveZoneDragStart`,
+        //   `ondragend: _onActualMoveZoneDragEnd` (SliderZoomView.ts:712-718). Those add the
+        //   'grabbing'/'grab' cursor swap and the `_showDataInfo(true)` reveal that the plain
+        //   `_onDragMove` path lacks. `.all` is only ever wired for the actualMoveZone.
+        switch handleIndex {
+        case .all:
+            el.driftHandler = { [weak self] dx, dy, e in
+                self?._onActualMoveZoneDrift(dx, dy, e)
+            }
+            _ = el.on("dragstart", { [weak self, weak el] _, _ in
+                self?._onActualMoveZoneDragStart(el as? Displayable); return nil
+            })
+            _ = el.on("dragend", { [weak self, weak el] _, _ in
+                self?._onActualMoveZoneDragEnd(el as? Displayable); return nil
+            })
+        case .at:
+            el.driftHandler = { [weak self] dx, dy, e in
+                self?._onDragMove(handleIndex, dx, dy, e)
+            }
         }
+    }
+
+    // upstream: _onActualMoveZoneDrift(dx, dy, event) — the pan-drag `drift` callback on the moveZone.
+    //   Sets the global 'grabbing' cursor for the drag, then delegates to the shared `_onDragMove('all')`.
+    public func _onActualMoveZoneDrift(_ dx: Double, _ dy: Double, _ event: ElementEvent?) {
+        self.api.getZr()?.setCursorStyle("grabbing")
+        self._onDragMove(.all, dx, dy, event)
+    }
+
+    // upstream: _onActualMoveZoneDragStart(event) — swap the dragged element's cursor to 'grabbing' and
+    //   reveal the handle labels (emphasis) for the duration of the pan.
+    //   `event.target as Displayable` upstream; here `_wireDrift` passes the wired element directly.
+    public func _onActualMoveZoneDragStart(_ target: Displayable?) {
+        target?.cursor = "grabbing"
+        self._showDataInfo(true)
+    }
+
+    // upstream: _onActualMoveZoneDragEnd(event) — restore the 'grab' cursor and finish the drag.
+    public func _onActualMoveZoneDragEnd(_ target: Displayable?) {
+        target?.cursor = "grab"
+        self._onDragEnd()
     }
 
     // upstream: _updateInterval(handleIndex: 0 | 1 | 'all', delta: number): boolean
