@@ -842,8 +842,12 @@ let builders: [String: AxisElementsBuilder] = [
         // Id for animation
         textEl.anid = "name"
 
-        // PORT-NOTE (deferred): axisModel.get('triggerEvent') → innerStore.getECData(textEl).eventData = ...
-        //   (getECData is ported, but the axis event wiring is out of this render-focused scope).
+        if truthy(axisModel.get("triggerEvent")) {
+            var eventData = AxisBuilder.makeAxisEventDataBase(axisModel)
+            eventData["targetType"] = "axisName"
+            eventData["name"] = nameStr
+            innerStore.getECData(textEl).eventData = eventData
+        }
 
         _ = transformGroup.add(textEl)
         textEl.updateTransform()
@@ -1400,9 +1404,7 @@ func buildAxisLabel(
     util.each(labels, { labelItem, index in
         let labelItemTick = labelItem.tick
         let formattedLabel = labelItem.formattedLabel
-        // PORT-NOTE (deferred): `labelItem.rawLabel` feeds the per-label custom formatter callback
-        //   (`axisLabel.formatter` function form), which is not wired; read it back when that lands.
-        _ = labelItem.rawLabel
+        let rawLabel = labelItem.rawLabel
 
         var itemLabelModel = labelModel
         let tickValue = axisHelper.getTickValueOutermost(axis.scale, labelItemTick)
@@ -1479,9 +1481,27 @@ func buildAxisLabel(
         inner.layoutRotation = labelLayout.rotation
 
         // PORT-NOTE (deferred): graphic.setTooltipConfig (tooltip + truncation params) not wired on axis labels.
-        // PORT-NOTE (deferred): triggerEvent → innerStore.getECData(textEl).eventData / addBreakEventHandler
-        //   not wired (axis label event/break-expand handling is out of this render-focused scope).
-        _ = triggerEvent
+
+        // Pack data for mouse event
+        if triggerEvent {
+            var eventData = AxisBuilder.makeAxisEventDataBase(axisModel)
+            eventData["targetType"] = "axisLabel"
+            eventData["value"] = rawLabel
+            eventData["tickIndex"] = index
+            if let labelItemTickBreak = labelItemTick.break {
+                let parsedBreak = labelItemTickBreak.parsedBreak
+                eventData["break"] = [
+                    "start": parsedBreak.vmin,
+                    "end": parsedBreak.vmax
+                ]
+            }
+            if axis.type == "category" {
+                eventData["dataIndex"] = tickValue
+            }
+            innerStore.getECData(textEl).eventData = eventData
+            // PORT-NOTE (deferred): addBreakEventHandler (break-expand click → dispatchAction
+            //   AXIS_BREAK_EXPAND) requires the unported `axisAction` module.
+        }
 
         labelEls.append(textEl)
         _ = labelGroup.add(textEl)
