@@ -280,8 +280,9 @@ open class TreeView: ChartView {
         // upstream `symbolEl = new SymbolClz(data, dataIndex, null, { symbolInnerColor, useNameLabel: true })`:
         //   route the node symbols through SymbolDraw with a ctor that sets `useNameLabel: true` so each
         //   node label's default text is the node NAME (not the value-derived getDefaultLabel).
-        //   PORT-NOTE (deferred): `symbolInnerColor` (the hollow inner fill for collapsed nodes) is a
-        //   SymbolClz init opt not modelled by the shared Symbol yet — DEFERRED.
+        //   `symbolInnerColor` (the hollow inner fill for collapsed nodes) IS modelled by the shared
+        //   Symbol (SymbolOpts.symbolInnerColor → ec.setColor), but SymbolDraw builds its own opts without
+        //   it; it is re-applied per node in decorateNode (see the setColor block there).
         let treeSymbolCtor: SymbolLikeCtor = { data, idx, scope, opts in
             var o = opts ?? SymbolOpts()
             o.useNameLabel = true
@@ -452,21 +453,95 @@ private func decorateNode(
     let emphasisModel = itemModel.getModel(["emphasis"])
     let focus: InnerFocus? = emphasisModel.get("focus")
 
-    // Tree's outward label side. Upstream overrides the label `position` to `normalLabelModel.get('position')
-    //   || (isLeft ? 'left' : 'right')` (TreeView.ts:437); for the orthogonal port the side is chosen per
-    //   orientation — internal nodes label on the inner side, leaves on the outer. The shared Symbol already
-    //   built the label (through the label core's createTextConfig, which stamps `outsideFill`), defaulting
-    //   the normal position to "inside"; override it to the tree's outward side unless the label model pins
-    //   a position. Only touch it when a label was actually created (normal `show != false`).
+    // upstream (updateNode TreeView.ts:337-339): the collapsed-node hollow inner-fill marker.
+    //   `symbolInnerColor` is the inner fill of an empty-brush (hollow) symbol — the node's OWN colour when
+    //   it is a COLLAPSED internal node (isExpand === false && children.length !== 0), else neutral00 (the
+    //   hollow white centre). Upstream passes it to the SymbolClz ctor/updateData opts, which run
+    //   `ec.setColor(visualColor, symbolInnerColor)`. The shared SymbolDraw creates its own opts without the
+    //   inner colour, so re-apply it here (runs on both the add and update passes, so an expand/collapse
+    //   toggle repaints the marker). Mirror Symbol's guard: only when the node has a visual fill.
+    if let symbolPath = symbolPath, let ec = symbolPath as? ECSymbol,
+       let visualColor = treeVisualFill(node.getVisual("style")) {
+        let symbolInnerColor: ZRenderKit.ZRColor = (node.isExpand == false && !node.children.isEmpty)
+            ? .string(visualColor)
+            : .string(tokens_color_neutral00)
+        ec.setColor(.string(visualColor), symbolInnerColor)
+    }
+
+    // Tree's outward label side + (radial) label rotation. For the ORTHOGONAL port the side is chosen per
+    //   orientation — internal nodes label on the inner side, leaves on the outer. For the RADIAL layout,
+    //   upstream (TreeView.ts:389-444) computes a per-node angle `rad`/`isLeft` and rotates the label to
+    //   point radially outward (position left/right + rotation -rad + origin 'center' + verticalAlign
+    //   'middle'). The shared Symbol already built the label (stamping `outsideFill`), so mutate the existing
+    //   textConfig in place (upstream `setTextConfig` field-merges) rather than replacing it wholesale.
     if let symbolPath = symbolPath {
-        let treeOrient = seriesModel.getOrient()
-        let textPosition = treeLabelPosition(treeOrient, isLeaf: node.children.isEmpty)
-        let labelModels = labelStyle.getLabelStatesModels(itemModel)
-        if let normalModel = labelModels[.normal],
-           (normalModel.getShallow("show") as? Bool) != false {
-            let pinned = normalModel.get("position")
-            if symbolPath.textConfig == nil { symbolPath.textConfig = ElementTextConfig() }
-            symbolPath.textConfig?.position = pinned ?? textPosition
+        let treeLayout = (seriesModel.get("layout", false) as? String) ?? "orthogonal"
+        if treeLayout == "radial" {
+            // upstream TreeView.ts:389-444 — radial label rotation.
+            //   const realRoot = virtualRoot.children[0]; const rootLayout = realRoot.getLayout();
+            if let realRoot = virtualRoot.children.first,
+               let rootLayout = treeNodeLayout(realRoot.getLayout()) {
+                let length = realRoot.children.count
+                var rad: Double
+                var isLeft: Bool
+
+                if targetLayout.x == rootLayout.x && node.isExpand == true && length != 0,
+                   let firstL = treeNodeLayout(realRoot.children[0].getLayout()),
+                   let lastL = treeNodeLayout(realRoot.children[length - 1].getLayout()) {
+                    // const center = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+                    let centerX = (firstL.x + lastL.x) / 2
+                    let centerY = (firstL.y + lastL.y) / 2
+                    rad = atan2(centerY - rootLayout.y, centerX - rootLayout.x)
+                    if rad < 0 { rad = Double.pi * 2 + rad }
+                    isLeft = centerX < rootLayout.x
+                    if isLeft { rad = rad - Double.pi }
+                }
+                else {
+                    rad = atan2(targetLayout.y - rootLayout.y, targetLayout.x - rootLayout.x)
+                    if rad < 0 { rad = Double.pi * 2 + rad }
+                    if node.children.isEmpty || (!node.children.isEmpty && node.isExpand == false) {
+                        isLeft = targetLayout.x < rootLayout.x
+                        if isLeft { rad = rad - Double.pi }
+                    }
+                    else {
+                        isLeft = targetLayout.x > rootLayout.x
+                        if !isLeft { rad = rad - Double.pi }
+                    }
+                }
+
+                let textPosition = isLeft ? "left" : "right"
+                let normalLabelModel = itemModel.getModel(["label"])
+                // const rotate = normalLabelModel.get('rotate'); labelRotateRadian = rotate * (PI/180);
+                let rotateRaw = normalLabelModel.get("rotate")
+                if let textContent = symbolPath.getTextContent() {
+                    let pinned = normalLabelModel.get("position")
+                    if symbolPath.textConfig == nil { symbolPath.textConfig = ElementTextConfig() }
+                    symbolPath.textConfig?.position = pinned ?? textPosition
+                    // rotation: rotate == null ? -rad : rotate * (PI/180)
+                    if let rotateRaw = rotateRaw, !(rotateRaw is NSNull) {
+                        symbolPath.textConfig?.rotation = treeToDouble(rotateRaw) * (Double.pi / 180)
+                    }
+                    else {
+                        symbolPath.textConfig?.rotation = -rad
+                    }
+                    symbolPath.textConfig?.origin = "center"
+                    // textContent.setStyle('verticalAlign', 'middle');
+                    textContent.textStyle?.verticalAlign = .middle
+                }
+            }
+        }
+        else {
+            // Orthogonal tree label side (port deviation): internal nodes inner, leaves outer. Only touch it
+            //   when a label was actually created (normal `show != false`); respect a model-pinned position.
+            let treeOrient = seriesModel.getOrient()
+            let textPosition = treeLabelPosition(treeOrient, isLeaf: node.children.isEmpty)
+            let labelModels = labelStyle.getLabelStatesModels(itemModel)
+            if let normalModel = labelModels[.normal],
+               (normalModel.getShallow("show") as? Bool) != false {
+                let pinned = normalModel.get("position")
+                if symbolPath.textConfig == nil { symbolPath.textConfig = ElementTextConfig() }
+                symbolPath.textConfig?.position = pinned ?? textPosition
+            }
         }
     }
 
@@ -617,13 +692,14 @@ private func drawEdge(
 
         // Phase 45: attach the emphasis-state lineStyle (upstream TreeView.ts drawEdge
         //   setStatesStylesFromModel(edge, itemModel, 'lineStyle')). The edge is not itself a highDown
-        //   dispatcher (tree edges are anonymous children, not in edge-data), so this state only takes
-        //   effect via the node symbol's blur-propagation hook — DEFERRED (needs TreeSymbol.__edge + the
-        //   symbol's onHoverStateChange forwarder, TreeView.ts:464-477). Adding the state styles now keeps
-        //   the edge faithful for when that hook lands.
+        //   dispatcher (tree edges are anonymous children, not in edge-data), so this state takes effect
+        //   via the node symbol's blur-propagation hook (see decorateNode's onHoverStateChange forwarder).
         if let itemModel = itemModel {
             states.setStatesStylesFromModel(edge, itemModel, "lineStyle")
         }
+        // upstream: setDefaultStateProxy(edge) (TreeView.ts:555) — installs the default-state transition
+        //   proxy so the edge's emphasis/blur states are applied through the shared highDown machinery.
+        states.setDefaultStateProxy(edge)
 
         _ = group.add(edge)
         return edge
