@@ -236,6 +236,18 @@ public enum util {
     }
 
     /**
+     * 数组或对象遍历 (object form) — mirrors upstream's `else { for (key in arr) … }`
+     * branch, which iterates a `Dictionary<any>` invoking `cb(value, key)`. Key order is
+     * unspecified in Swift (as it is a duck-typed `for...in` upstream on non-array bags).
+     */
+    public static func each<T>(_ obj: [String: T]?, _ cb: (T, String) -> Void) {
+        guard let obj = obj else { return }
+        for (key, value) in obj {
+            cb(value, key)
+        }
+    }
+
+    /**
      * Array mapping.
      * @return Must be an array.
      */
