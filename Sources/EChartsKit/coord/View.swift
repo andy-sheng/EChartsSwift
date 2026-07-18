@@ -675,12 +675,30 @@ public func viewCoordSysApplyRoamPayloadSyncBack(
     return ([cData[0], cData[1]], z)
 }
 
+// upstream: export function calcCompensationScaleToPreserveNodeSize(viewCoordSys, model) {
+//     const nodeScaleRatio = (model.getShallow('nodeScaleRatio', true) || 1);
+//     const viewInner = inner(viewCoordSys);
+//     // Scale node when zoom changes
+//     return ((viewInner.zoom - 1) * nodeScaleRatio + 1)
+//         / (viewInner.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX || 1);
+// }
+//   Standalone transform read (no roam-interaction module needed): graph/tree/sankey use it to keep
+//   node symbol size constant while the view is zoomed. `nodeScaleRatio` is boxed as Int/Double in the
+//   option bag (see Int-vs-Double option-read trap) → coerce via anyToDouble before the JS `|| 1`.
+public func calcCompensationScaleToPreserveNodeSize(
+    _ viewCoordSys: View, _ model: Model
+) -> Double {
+    let nodeScaleRatio = jsNumOr(anyToDouble(model.getShallow("nodeScaleRatio", true)), 1)
+    // Scale node when zoom changes
+    return ((viewCoordSys.zoom - 1) * nodeScaleRatio + 1)
+        / jsNumOr(viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX, 1)
+}
+
 // PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
 //     applyViewCoordSysTransToElement, ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
 //     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl, invertBackToCenterOption,
-//     syncBackToRoamOptionFromRoamTrans (model write-back), syncBackRoamOptionToRoamHostModel,
-//     calcCompensationScaleToPreserveNodeSize.
+//     syncBackToRoamOptionFromRoamTrans (model write-back), syncBackRoamOptionToRoamHostModel.
 
 // ===== Private helpers =====
 
@@ -705,6 +723,17 @@ private func decomposeTransform(_ out: Transformable, _ mt: MatrixArray?) -> Tra
     tmpDTR.decomposeTransform()
     copyTransform(out, tmpDTR)
     return out
+}
+
+// Coerce an option-bag value (ModelOption = Any) to a Double, or nil when non-numeric.
+//   Numbers are boxed as Int or Double in the option bag (see Int-vs-Double option-read trap).
+private func anyToDouble(_ v: Any?) -> Double? {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let f as Float: return Double(f)
+    default: return nil
+    }
 }
 
 // JS `x || fallback` for a numeric optional (undefined/0/NaN are falsy → fallback).
