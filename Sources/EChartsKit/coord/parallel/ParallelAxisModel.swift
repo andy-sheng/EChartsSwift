@@ -280,8 +280,19 @@ public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator 
         return self.__ordinalMeta ?? OrdinalMeta.createByAxisModel(self)
     }
 
+    // upstream (generated AxisModel in axisModelCreator):
+    //   updateAxisBreaks(payload) {
+    //     const axisBreakHelper = getAxisBreakHelper();
+    //     return axisBreakHelper ? axisBreakHelper.updateModelAxisBreak(this, payload) : {breaks: []};
+    //   }
+    //   PORT-NOTE: mirrors SingleAxisModel.updateAxisBreaks. `getAxisBreakHelper()` is a nil stub in this
+    //   port (the optional axis-break helper module is not installed), so the fallback `{breaks: []}` is
+    //   taken today; wiring the structure faithfully makes this auto-correct once that helper lands.
     public func updateAxisBreaks(_ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult {
-        return AxisBreakUpdateResult(breaks: [])
+        let axisBreakHelper = getAxisBreakHelper()
+        return axisBreakHelper != nil
+            ? axisBreakHelper!.updateModelAxisBreak(self, payload)
+            : AxisBreakUpdateResult(breaks: [])
     }
 }
 
