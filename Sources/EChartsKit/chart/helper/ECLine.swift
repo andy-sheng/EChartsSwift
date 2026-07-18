@@ -359,7 +359,8 @@ public final class ECLine: Group {
         // labelFetcher: only a DataFormatMixin host (a real SeriesModel) can format labels. The markLine
         //   host (MarkerModel) is not one — its default text is the stashed value / name instead.
         labelOpt.labelFetcher = seriesModel as? DataFormatMixin
-        labelOpt.inheritColor = visualColor ?? "#000"
+        // upstream: inheritColor: visualColor as ColorString || tokens.color.neutral99
+        labelOpt.inheritColor = visualColor ?? tokens.color.neutral99
         labelOpt.defaultOpacity = lineStyleVisual?["opacity"] as? Double
         labelOpt.defaultText = eclineDefaultText(rawVal, lineData, idx)
 
@@ -432,24 +433,29 @@ public final class ECLine: Group {
         }
 
         let invScale = self._invScale()
+        let lineChild = self.childOfName("line") as? Path
 
         let fromPos = points[0]
         let toPos = points[1]
         var d = [toPos[0] - fromPos[0], toPos[1] - fromPos[1]]
         let dlen = (d[0] * d[0] + d[1] * d[1]).squareRoot()
         if dlen > 0 { d = [d[0] / dlen, d[1] / dlen] }
-        let baseAtan = atan2(d[1], d[0])
 
+        // upstream setSymbolRotation(symbol, percent): tangent = line.tangentAt(percent);
+        //   rotation = (percent === 1 ? -1 : 1) * PI/2 - atan2(tangent[1], tangent[0]). For a straight
+        //   line tangentAt is constant (the chord); for a curve the two ends differ.
         if let symbolFrom = symbolFrom {
             symbolFrom.setPosition(fromPos)
-            symbolFrom.rotation = _fromSpecifiedRotation ?? (Double.pi / 2 - baseAtan)
+            let t = lineChild.map { tangentAtOf($0, 0) } ?? d
+            symbolFrom.rotation = _fromSpecifiedRotation ?? (Double.pi / 2 - atan2(t[1], t[0]))
             symbolFrom.scaleX = invScale
             symbolFrom.scaleY = invScale
             symbolFrom.markRedraw()
         }
         if let symbolTo = symbolTo {
             symbolTo.setPosition(toPos)
-            symbolTo.rotation = _toSpecifiedRotation ?? (-Double.pi / 2 - baseAtan)
+            let t = lineChild.map { tangentAtOf($0, 1) } ?? d
+            symbolTo.rotation = _toSpecifiedRotation ?? (-Double.pi / 2 - atan2(t[1], t[0]))
             symbolTo.scaleX = invScale
             symbolTo.scaleY = invScale
             symbolTo.markRedraw()
@@ -464,17 +470,13 @@ public final class ECLine: Group {
 
         let distanceX = _labelDistance[0] * invScale
         let distanceY = _labelDistance[1] * invScale
-        // Midpoint + tangent. For a straight line the tangent is the chord; for a quadratic the midpoint
-        //   is quadraticAt(0.5) and the tangent is approximated by the chord (matches GraphView's label).
-        let cp: [Double]
-        if pointsAreCurved(points) {
-            let q = points[2]
-            cp = [0.25 * fromPos[0] + 0.5 * q[0] + 0.25 * toPos[0],
-                  0.25 * fromPos[1] + 0.5 * q[1] + 0.25 * toPos[1]]
-        } else {
-            cp = [(fromPos[0] + toPos[0]) / 2, (fromPos[1] + toPos[1]) / 2]
-        }
-        let tangent = d
+        // upstream: halfPercent = percent / 2 (= 0.5 at the final layout); cp = line.pointAt(halfPercent);
+        //   tangent = line.tangentAt(halfPercent). Works for both the straight `Line` and quadratic
+        //   `BezierCurve` children (helpers below dispatch on the child type). Falls back to the chord
+        //   midpoint/direction only if the line child is missing.
+        let cp: [Double] = lineChild.map { pointAtOf($0, 0.5) }
+            ?? [(fromPos[0] + toPos[0]) / 2, (fromPos[1] + toPos[1]) / 2]
+        let tangent = lineChild.map { tangentAtOf($0, 0.5) } ?? d
         let dir = tangent[0] < 0 ? -1.0 : 1.0
         let position = _labelPosition ?? "middle"
 
@@ -600,6 +602,22 @@ private func childPercent(_ el: Path) -> Double {
 private func pointAtOf(_ el: Path, _ t: Double) -> [Double] {
     if let curve = el as? BezierCurve { return curve.pointAt(t) }
     if let line = el as? Line { return line.pointAt(t) }
+    return [0, 0]
+}
+
+// upstream: ECLinePath.tangentAt(t) — for the straight line the (normalized) tangent is the chord
+//   [x2-x1, y2-y1]; for the curve it delegates to BezierCurve.tangentAt (already normalized).
+private func tangentAtOf(_ el: Path, _ t: Double) -> [Double] {
+    if let curve = el as? BezierCurve { return curve.tangentAt(t) }
+    if let line = el as? Line {
+        let shape = line.shape as? LineShape
+        let x1 = shape?.x1 ?? 0, y1 = shape?.y1 ?? 0
+        let x2 = shape?.x2 ?? 0, y2 = shape?.y2 ?? 0
+        var p = [x2 - x1, y2 - y1]
+        let len = (p[0] * p[0] + p[1] * p[1]).squareRoot()
+        if len > 0 { p = [p[0] / len, p[1] / len] }
+        return p
+    }
     return [0, 0]
 }
 
