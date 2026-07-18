@@ -63,19 +63,47 @@ public final class SliderZoomDisplayables {
     public var moveHandleIcon: Path?
     public var moveZone: Rect?
     public var brushRect: Rect?          // brush-select rubber band (upstream Displayables.brushRect).
-    // public var dataShadowSegs: [Group] // DEFERRED (data shadow)
+    // The 3 shadow segment groups (unselected-left / selected / unselected-right); each clipped in _updateView.
+    public var dataShadowSegs: [Group] = []
     public init() {}
 }
 
 // class SliderZoomView extends DataZoomView (extends ComponentView)
 open class SliderZoomView: ComponentView {
 
-    // PORT-STUB: upstream toggles the handle-label emphasis visibility here; the handle labels are not
-    //   ported, so dragging a slider handle never shows the value under the cursor.
+    // upstream: private _showDataInfo(isEmphasis?) — toggle the handle-label visibility (dragging counts as
+    //   emphasis unless emphasisShow is false) and highlight/dim the move handle.
+    // @param isEmphasis true: show, false: hide
     func _showDataInfo(_ isEmphasis: Bool) {
-        PortStub.hit("SliderZoomView._showDataInfo",
-                     "dataZoom slider handle labels are not ported; dragging a handle shows no value")
-        _ = isEmphasis
+        // const handleLabel = this.dataZoomModel.get('handleLabel') || {};
+        let handleLabel = (self.dataZoomModel.get("handleLabel") as? [String: Any]) ?? [:]
+        let normalShow = jsTruthy(handleLabel["show"])
+        let emphasisHandleLabel = self.dataZoomModel.getModel(["emphasis", "handleLabel"])
+        let emphasisShow = jsTruthy(emphasisHandleLabel.get("show"))
+        // Dragging is considered as emphasis, unless emphasisShow is false.
+        let toShow = (isEmphasis || self._dragging) ? emphasisShow : normalShow
+        let displayables = self._displayables
+        displayables.handleLabels[0]?.invisible = !toShow
+        displayables.handleLabels[0]?.markRedraw()
+        displayables.handleLabels[1]?.invisible = !toShow
+        displayables.handleLabels[1]?.markRedraw()
+
+        // Highlight move handle.
+        if let moveHandle = displayables.moveHandle {
+            if toShow {
+                self.api.enterEmphasis(moveHandle, 1)
+            }
+            else {
+                self.api.leaveEmphasis(moveHandle, 1)
+            }
+        }
+    }
+
+    // upstream: private _onOverDataInfoTriggerArea(isOver): void — hover over a handle / moveZone flips the
+    //   data-info trigger flag and shows/hides the handle labels accordingly.
+    private func _onOverDataInfoTriggerArea(_ isOver: Bool) {
+        self._isOverDataInfoTriggerArea = isOver
+        self._showDataInfo(isOver)
     }
 
     // static type = 'dataZoom.slider'; type = SliderZoomView.type;
@@ -127,6 +155,16 @@ open class SliderZoomView: ComponentView {
     // upstream `_location: PointLike` — split into two Doubles (no PointLike bag needed).
     private var _locationX: Double = 0
     private var _locationY: Double = 0
+
+    // upstream `_dataShadowInfo` — the representative series/axis whose values are previewed in the track.
+    struct DataShadowInfo {
+        let thisAxis: Axis
+        let series: SeriesModel
+        let thisDim: String
+        let otherDim: String
+        let otherAxisInverse: Bool
+    }
+    private var _dataShadowInfo: DataShadowInfo?
 
     // upstream init(ecModel, api) only caches `api` + binds `_onBrush`/`_onBrushEnd` (brush handlers,
     //   DEFERRED). ComponentView.init() already builds `group`/`uid`; nothing else needed at TASK 1.
@@ -267,8 +305,8 @@ open class SliderZoomView: ComponentView {
         let inverse = jsTruthy(targetAxisModel?.get("inverse"))
 
         let sliderGroup = self._displayables.sliderGroup!
-        // (this._dataShadowInfo || {}).otherAxisInverse — data shadow DEFERRED → always falsy.
-        let otherAxisInverse = false
+        // (this._dataShadowInfo || {}).otherAxisInverse
+        let otherAxisInverse = self._dataShadowInfo?.otherAxisInverse ?? false
 
         // Transform barGroup (flip so the slider draws with the natural orientation).
         if orient == HORIZONTAL && !inverse {
@@ -410,6 +448,9 @@ open class SliderZoomView: ComponentView {
             //   ondragend: bind(this._onDragEnd, this), ... }) — the resize-drag wiring.
             self._wireDrift(path, .at(handleIndex))
             _ = path.on("dragend", { [weak self] _, _ in self?._onDragEnd(); return nil })
+            // onmouseover/onmouseout: bind(this._onOverDataInfoTriggerArea, this, true/false)
+            _ = path.on("mouseover", { [weak self] _, _ in self?._onOverDataInfoTriggerArea(true); return nil })
+            _ = path.on("mouseout", { [weak self] _, _ in self?._onOverDataInfoTriggerArea(false); return nil })
             path.z2 = 5
 
             let bRect = path.getBoundingRect()!
@@ -488,7 +529,16 @@ open class SliderZoomView: ComponentView {
             moveZoneShape.height = moveHandleHeight + moveZoneExpandSize
             let moveZone = Rect(["shape": moveZoneShape as PathShape])
             moveZone.invisible = true
-            // actualMoveZone.on('mouseover'/'mouseout', enter/leaveEmphasis) — DEFERRED (TASK 2).
+            // actualMoveZone.on('mouseover', () => api.enterEmphasis(moveHandle))
+            //   .on('mouseout', () => api.leaveEmphasis(moveHandle))
+            _ = moveZone.on("mouseover", { [weak self] _, _ in
+                guard let self = self, let mh = self._displayables.moveHandle else { return nil }
+                self.api.enterEmphasis(mh); return nil
+            })
+            _ = moveZone.on("mouseout", { [weak self] _, _ in
+                guard let self = self, let mh = self._displayables.moveHandle else { return nil }
+                self.api.leaveEmphasis(mh); return nil
+            })
             moveZone.draggable = .true
             moveZone.cursor = "grab"
             displayables.moveZone = moveZone
@@ -501,111 +551,184 @@ open class SliderZoomView: ComponentView {
         // upstream: actualMoveZone.attr({ draggable: true, cursor, drift: bind(this._onDragMove, this,
         //   'all'), ondragend: bind(this._onDragEnd, this), ... }) — the pan-drag ('all') wiring on the
         //   moveZone when brushSelect, else on the filler. `draggable`/`cursor` set above.
-        //   PORT-NOTE (deferred): ondragstart→_showDataInfo(true) + onmouseover/out label toggles stay
-        //   deferred (_showDataInfo is a stub; handle-label data-info niceties path not yet ported).
+        //   ondragstart→_showDataInfo(true) is handled inside the drag slice; onmouseover/out toggle the
+        //   handle-label data-info here (upstream: bind(this._onOverDataInfoTriggerArea, this, true/false)).
         if let actualMoveZone: Element = brushSelect ? displayables.moveZone : displayables.filler {
             self._wireDrift(actualMoveZone, .all)
             _ = actualMoveZone.on("dragend", { [weak self] _, _ in self?._onDragEnd(); return nil })
+            _ = actualMoveZone.on("mouseover", { [weak self] _, _ in self?._onOverDataInfoTriggerArea(true); return nil })
+            _ = actualMoveZone.on("mouseout", { [weak self] _, _ in self?._onOverDataInfoTriggerArea(false); return nil })
         }
     }
 
     // upstream: _prepareDataShadowInfo() — pick the first target series (of a shadow-able type) whose
-    //   value dimension will be previewed inside the slider track. Minimal port: no `showDataShadow`
-    //   per-series override handling beyond the false short-circuit; returns (series, otherDim).
-    private func _prepareDataShadowInfo() -> (series: SeriesModel, otherDim: String)? {
+    //   value dimension will be previewed inside the slider track.
+    private func _prepareDataShadowInfo() -> DataShadowInfo? {
         let dataZoomModel = self.dataZoomModel!
         // showDataShadow === false disables the preview entirely.
         if (dataZoomModel.get("showDataShadow") as? Bool) == false { return nil }
         let showDataShadowForced = (dataZoomModel.get("showDataShadow") as? Bool) == true
         let shadowTypes: Set<String> = ["line", "bar", "candlestick", "scatter"]
+        let ecModel = self.ecModel!
 
-        var result: (series: SeriesModel, otherDim: String)? = nil
+        var result: DataShadowInfo? = nil
         dataZoomModel.eachTargetAxis { axisDim, axisIndex in
             if result != nil { return }
             guard let proxy = dataZoomModel.getAxisProxy(axisDim, axisIndex) else { return }
             for seriesModel in proxy.getTargetSeriesModels() {
                 if result != nil { break }
                 if !showDataShadowForced && !shadowTypes.contains(seriesModel.subType) { continue }
-                // getOtherDim: 'x'↔'y' (the value dimension previewed against the zoomed axis).
-                let otherDimName = axisDim == "x" ? "y" : (axisDim == "y" ? "x" : "")
-                guard !otherDimName.isEmpty,
-                      let mapped = seriesModel.getData().mapDimension(otherDimName) else { continue }
-                result = (seriesModel, mapped)
+                // const thisAxis = (ecModel.getComponent(getAxisMainType(axisDim), axisIndex)).axis;
+                guard let axisComp = ecModel.getComponent(getAxisMainType(axisDim), axisIndex) as? AxisBaseModel,
+                      let thisAxis = axisComp.axis as? Axis else { continue }
+                // getOtherDim: 'x'↔'y', 'radius'↔'angle' (the value dimension previewed against the axis).
+                let otherDimName = getOtherDim(axisDim)
+                var otherAxisInverse = false
+                // if (otherDim != null && coordSys.getOtherAxis) otherAxisInverse = ...inverse;
+                if otherDimName != nil,
+                   let coordSys = seriesModel.coordinateSystem as? CoordinateSystem,
+                   let otherAxis = coordSys.getOtherAxis(thisAxis) {
+                    otherAxisInverse = otherAxis.inverse
+                }
+                let data = seriesModel.getData()
+                guard let dimName = otherDimName,
+                      let mappedOther = data.mapDimension(dimName),
+                      let mappedThis = data.mapDimension(axisDim) else { continue }
+                result = DataShadowInfo(
+                    thisAxis: thisAxis,
+                    series: seriesModel,
+                    thisDim: mappedThis,
+                    otherDim: mappedOther,
+                    otherAxisInverse: otherAxisInverse
+                )
             }
         }
         return result
     }
 
-    // upstream: _renderDataShadow(info) — draw a faint area+line preview of the target series' values
-    //   across the slider track. The "selected" (clipped, darker) overlay is DEFERRED.
+    // upstream: _renderDataShadow() — draw a faint area+line preview of the target series' values across
+    //   the slider track, as THREE stacked segment groups (unselected-left / selected / unselected-right);
+    //   the middle group uses `selectedDataBackground` and `_updateView` clips each to its window band.
     private func _renderDataShadow() {
-        guard let info = self._prepareDataShadowInfo() else { return }
-        let dataZoomModel = self.dataZoomModel!
-        let sliderGroup = self._displayables.sliderGroup!
-        let size = self._size
-        let data = info.series.getRawData()
-        let otherDim = info.otherDim
-        let n = data.count()
-        if n < 2 { return }
+        let info = self._prepareDataShadowInfo()
+        self._dataShadowInfo = info
+        self._displayables.dataShadowSegs = []
+        guard let info = info else { return }
 
-        // Pad the value extent by 30% (upstream) so the preview never touches the track edges.
+        let size = self._size
+        let seriesModel = info.series
+        let data = seriesModel.getRawData()
+        // candlestick previews its 'open' dimension via getShadowDim() when that dim exists.
+        var otherDim = info.otherDim
+        if let candlestick = seriesModel as? CandlestickSeriesModel {
+            let candlestickDim = candlestick.getShadowDim()
+            if data.getDimensionIndex(candlestickDim) >= 0 {
+                otherDim = candlestickDim
+            }
+        }
+
+        let thisDataExtent = data.getDataExtent(info.thisDim)
         var otherDataExtent = data.getDataExtent(otherDim)
+        // Nice extent: pad the value extent by 30% so the preview never touches the track edges.
         let otherOffset = (otherDataExtent[1] - otherDataExtent[0]) * 0.3
         otherDataExtent = [otherDataExtent[0] - otherOffset, otherDataExtent[1] + otherOffset]
         let otherShadowExtent = [0.0, size[1]]
+        let thisShadowExtent = [0.0, size[0]]
 
-        let step = size[0] / Double(n - 1)
-        var thisCoord = 0.0
         var areaPoints: [VectorArray] = [VectorArray(size[0], 0), VectorArray(0, 0)]
         var linePoints: [VectorArray] = []
-        // The area polygon is a FILL; Core Graphics `fillPath` on a monotone polygon with one vertex
-        //   per datum is super-linear in the vertex count (a 500k-point shadow measured ~36s just for
-        //   this one fill), while the line's stroke over the same points stays cheap. The slider track
-        //   is only `size[0]` px wide, so emit the area's top edge as a per-pixel-column MAX envelope
-        //   (≈2 vertices/px) — pixel-identical for a dense shadow, and the fill becomes instant. The
-        //   line keeps every point (full-resolution, faithful, and already fast).
-        let cols = Swift.max(2, Swift.min(n, Int(size[0].rounded()) * 2))
-        var colMax = [Double](repeating: -Double.greatestFiniteMagnitude, count: cols)
-        for i in 0..<n {
-            let raw = data.get(otherDim, i)
-            let value = shadowNumber(raw)
-            let otherCoord = value.isNaN
+        let count = data.count()
+        let step = thisShadowExtent[1] / Double(Swift.max(1, count - 1))
+        let thisSpan = thisDataExtent[1] - thisDataExtent[0]
+        let normalizationConstant = thisSpan != 0 ? size[0] / thisSpan : 0
+        let isTimeAxis = info.thisAxis.type == "time"
+        var thisCoord = -step
+
+        // Optimize for large data shadow: subsample so the emitted vertex count stays ~size[0].
+        let stride = Int((Double(count) / size[0]).rounded())
+        var lastIsEmpty = false
+        var hasLast = false
+
+        data.each([info.thisDim, otherDim]) { args in
+            let index = Int((args.last as? Double) ?? 0)
+            if stride > 0 && (index % stride != 0) {
+                if !isTimeAxis {
+                    thisCoord += step
+                }
+                return
+            }
+
+            let thisValue = shadowNumber(args.count > 0 ? args[0] : nil)
+            thisCoord = isTimeAxis
+                ? (thisValue - thisDataExtent[0]) * normalizationConstant
+                : thisCoord + step
+
+            let rawOther = args.count > 1 ? args[1] : nil
+            let otherNum = shadowNumber(rawOther)
+            let isEmpty = rawOther == nil || (rawOther is NSNull)
+                || otherNum.isNaN || (rawOther as? String) == ""
+            // See #4235.
+            let otherCoord = isEmpty
                 ? 0
-                : number.linearMap(value, otherDataExtent, otherShadowExtent, true)
-            linePoints.append(VectorArray(thisCoord, otherCoord))
-            let c = Swift.min(cols - 1, i * cols / n)
-            if otherCoord > colMax[c] { colMax[c] = otherCoord }
-            thisCoord += step
-        }
-        for c in 0..<cols where colMax[c] > -Double.greatestFiniteMagnitude {
-            let colX = Double(c) / Double(cols - 1) * size[0]
-            areaPoints.append(VectorArray(colX, colMax[c]))
+                : number.linearMap(otherNum, otherDataExtent, otherShadowExtent, true)
+
+            // Attempt to draw data shadow precisely when there are empty value.
+            if isEmpty && !lastIsEmpty && index != 0 {
+                if let lastArea = areaPoints.last { areaPoints.append(VectorArray(lastArea[0], 0)) }
+                if let lastLine = linePoints.last { linePoints.append(VectorArray(lastLine[0], 0)) }
+            }
+            else if !isEmpty && lastIsEmpty && hasLast {
+                areaPoints.append(VectorArray(thisCoord, 0))
+                linePoints.append(VectorArray(thisCoord, 0))
+            }
+
+            if !isEmpty {
+                areaPoints.append(VectorArray(thisCoord, otherCoord))
+                linePoints.append(VectorArray(thisCoord, otherCoord))
+            }
+
+            lastIsEmpty = isEmpty
+            hasLast = true
         }
 
-        let dataBackgroundModel = dataZoomModel.getModel("dataBackground")
-        // Area polygon (dataBackground.areaStyle — read color/opacity directly so the fill is never the
-        //   spurious black DEFAULT_PATH_STYLE default).
-        let areaStyleModel = dataBackgroundModel.getModel("areaStyle")
-        var areaShape = PolygonShape()
-        areaShape.points = areaPoints
-        let area = Polygon(["shape": areaShape as PathShape])
-        area.silent = true
-        area.pathStyle.fill = dzColor(areaStyleModel.get("color"))
-        area.pathStyle.opacity = dzNum(areaStyleModel.get("opacity"))
-        area.pathStyle.stroke = nil
-        area.z2 = -20
-        _ = sliderGroup.add(area)
-        // Line polyline (dataBackground.lineStyle).
-        let lineStyleModel = dataBackgroundModel.getModel("lineStyle")
-        var lineShape = PolylineShape()
-        lineShape.points = linePoints
-        let line = Polyline(["shape": lineShape as PathShape])
-        line.silent = true
-        line.pathStyle.stroke = dzColor(lineStyleModel.get("color"))
-        line.pathStyle.lineWidth = dzNum(lineStyleModel.get("width")) ?? 0.5
-        line.pathStyle.fill = nil
-        line.z2 = -19
-        _ = sliderGroup.add(line)
+        let dataZoomModel = self.dataZoomModel!
+        let sliderGroup = self._displayables.sliderGroup!
+
+        // Build one shadow segment group. `isSelectedArea` swaps to the (darker) selectedDataBackground.
+        func createDataShadowGroup(_ isSelectedArea: Bool) -> Group {
+            let model = dataZoomModel.getModel(isSelectedArea ? "selectedDataBackground" : "dataBackground")
+            let group = Group()
+            // Area polygon (areaStyle — read color/opacity directly so the fill is never the spurious
+            //   black DEFAULT_PATH_STYLE default).
+            let areaStyleModel = model.getModel("areaStyle")
+            var areaShape = PolygonShape()
+            areaShape.points = areaPoints
+            let polygon = Polygon(["shape": areaShape as PathShape])
+            polygon.silent = true
+            polygon.pathStyle.fill = dzColor(areaStyleModel.get("color"))
+            polygon.pathStyle.opacity = dzNum(areaStyleModel.get("opacity"))
+            polygon.pathStyle.stroke = nil
+            polygon.z2 = -20
+            // Line polyline (lineStyle).
+            let lineStyleModel = model.getModel("lineStyle")
+            var lineShape = PolylineShape()
+            lineShape.points = linePoints
+            let polyline = Polyline(["shape": lineShape as PathShape])
+            polyline.silent = true
+            polyline.pathStyle.stroke = dzColor(lineStyleModel.get("color"))
+            polyline.pathStyle.lineWidth = dzNum(lineStyleModel.get("width")) ?? 0.5
+            polyline.pathStyle.fill = nil
+            polyline.z2 = -19
+            _ = group.add(polygon)
+            _ = group.add(polyline)
+            return group
+        }
+
+        for i in 0..<3 {
+            let group = createDataShadowGroup(i == 1)
+            _ = sliderGroup.add(group)
+            self._displayables.dataShadowSegs.append(group)
+        }
     }
 
     private func _resetInterval() {
@@ -657,7 +780,24 @@ open class SliderZoomView: ComponentView {
             displayables.moveHandleIcon?.x = handleInterval[0] + (handleInterval[1] - handleInterval[0]) / 2
         }
 
-        // update clip path of shadow — DEFERRED (data shadow).
+        // update clip path of shadow.
+        let dataShadowSegs = displayables.dataShadowSegs
+        let segIntervals = [0.0, handleInterval[0], handleInterval[1], size[0]]
+        for i in 0..<dataShadowSegs.count {
+            let segGroup = dataShadowSegs[i]
+            let clipRect: Rect
+            if let existing = segGroup.getClipPath() as? Rect {
+                clipRect = existing
+            }
+            else {
+                clipRect = Rect()
+                segGroup.setClipPath(clipRect)
+            }
+            _ = clipRect.setShape("x", segIntervals[i])
+            _ = clipRect.setShape("y", 0.0)
+            _ = clipRect.setShape("width", segIntervals[i + 1] - segIntervals[i])
+            _ = clipRect.setShape("height", size[1])
+        }
 
         self._updateDataInfo()
     }
@@ -785,6 +925,12 @@ private func formatLabel(
         return template.replacingOccurrences(of: "{value}", with: valueStr)
     }
     return valueStr
+}
+
+// upstream: function getOtherDim(thisDim) — the value dimension paired with the zoomed axis dimension.
+private func getOtherDim(_ thisDim: String) -> String? {
+    let map: [String: String] = ["x": "y", "y": "x", "radius": "angle", "angle": "radius"]
+    return map[thisDim]
 }
 
 // upstream: function getCursor(orient) { return orient === 'vertical' ? 'ns-resize' : 'ew-resize'; }

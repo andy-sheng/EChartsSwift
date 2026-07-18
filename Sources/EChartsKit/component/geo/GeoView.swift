@@ -35,8 +35,8 @@ import ZRenderKit
 //   import { Payload, ZRElementEvent, ECEventData, RoamPayload } from '../../util/types';
 //     → `Payload` (util/types.swift). `ZRElementEvent`/`ECEventData`/`RoamPayload` are used only by the
 //       DEFERRED click/roam handlers below.
-//   import { getECData } from '../../util/innerStore';            → `innerStore.getECData` (util/innerStore.swift); geo events deferred.
-//   import { findEventDispatcher } from '../../util/event';       → PORT-NOTE (deferred): requires util/event (not ported; events deferred).
+//   import { getECData } from '../../util/innerStore';            → `innerStore.getECData` (util/innerStore.swift); used by the region eventData + click/select wiring.
+//   import { findEventDispatcher } from '../../util/event';       → `findEventDispatcher` (util/event.swift); used by `_handleRegionClick`.
 //   import Element from 'zrender/src/Element';                    → ZRenderKit `Element`.
 //
 // ── Assumed sibling API (coord/geo/Geo.swift, coord/geo/Region.swift, coord/geo/GeoModel.swift) ──
@@ -88,14 +88,25 @@ public final class GeoView: ComponentView {
     private var _model: GeoModel?
 
     // upstream: focusBlurEnabled = true;
-    // Consulted by the emphasis/blur system. The geoSVG path now marks named regions as highDown
-    //   dispatchers (see `_buildSVG`), so hover-to-highlight works for the geo component.
+    // Consulted by the emphasis/blur system. Both build paths mark named regions as highDown dispatchers
+    //   (geoJSON region groups in `_buildGeoJSON`, geoSVG named elements in `_buildSVG`), so
+    //   hover-to-highlight works for the geo component.
     public var focusBlurEnabled = true
 
     // upstream (MapDraw): private _svgDispatcherMap: HashMap<Element[], RegionName>;
     //   A named region may map to MULTIPLE SVG elements (a glyph + a label sharing one name). The map is
     //   the highDown-dispatcher lookup for `findHighDownDispatchers` (hover-link / highlight by name).
     var _svgDispatcherMap: [String: [Element]] = [:]
+
+    // upstream (MapDraw): private _regionsGroupByName: HashMap<RegionsGroup>;
+    //   geoJSON region-name → its region group. Each group is the highDown DISPATCHER for that region
+    //   (see `_resetStateTriggerForRegion`) and the lookup for `findHighDownDispatchers`'s geoJSON branch.
+    var _regionsGroupByName: [String: Group] = [:]
+
+    // The geo view group persists across renders (only its children are cleared), so bind the region-click
+    //   handler ONCE (upstream re-binds each `mapDraw.draw`, but its group persists too — we avoid the
+    //   listener accumulation that would cause here).
+    private var _clickBound = false
 
     // upstream: init(ecModel: GlobalModel, api: ExtensionAPI) { this._api = api; }
     public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -114,6 +125,10 @@ public final class GeoView: ComponentView {
         //   `mapDraw.draw(...)` (which diffs). Here the view group is rebuilt from scratch each render
         //   (matching CalendarView / FunnelView), so clear it first.
         _ = self.group.removeAll()
+        // The dispatcher lookups are rebuilt by `_buildGeoJSON` / `_buildSVG`; clear stale entries (upstream
+        //   `remove()` nulls `_regionsGroupByName`, and each `draw` recreates `_svgDispatcherMap`).
+        self._regionsGroupByName = [:]
+        self._svgDispatcherMap = [:]
 
         // upstream: if (!geoModel.get('show')) { this._mapDraw && this._mapDraw.remove(); this._mapDraw = null; return; }
         if !jsTruthy(geoModel.get("show")) {
@@ -135,13 +150,23 @@ public final class GeoView: ComponentView {
             self._buildSVG(geo, geoModel, api)
         }
 
-        // upstream: mapDraw.group.on('click', this._handleRegionClick, this);  → DEFERRED (events).
+        // upstream: mapDraw.group.on('click', this._handleRegionClick, this);
+        //   Regions are added straight onto `this.group` here (no separate mapDraw group); the click bubbles
+        //   from the hit region up to `this.group`. Bound once (see `_clickBound`).
+        if !self._clickBound {
+            self._clickBound = true
+            _ = self.group.on("click", { [weak self] _, args in
+                self?._handleRegionClick(args.first as? ElementEvent)
+                return nil
+            })
+        }
         // upstream: mapDraw.group.silent = geoModel.get('silent');
         if let silent = geoModel.get("silent"), !(silent is NSNull) {
             self.group.silent = jsTruthy(silent)
         }
         // upstream: this.group.add(mapDraw.group);  — regions are added straight onto `this.group` here.
-        // upstream: this.updateSelectStatus(geoModel, ecModel, api);  → DEFERRED (select states).
+        // upstream: this.updateSelectStatus(geoModel, ecModel, api);
+        self.updateSelectStatus(geoModel, ecModel, api)
     }
 
     // ================================================================================================
@@ -160,9 +185,10 @@ public final class GeoView: ComponentView {
     //     path (inside `dataToPoint`) is used; `projectPolys` is not reproduced.
     //   - series-map DATA: `data`/`isVisualEncodedByVisualMap`/`getItemVisual`/decal — the geo component
     //     backdrop has no series data; `regionModel` comes from `geoModel.getRegionModel`.
-    //   - EMPHASIS/SELECT/BLUR states, event/tooltip/state triggers (`applyOptionStyleForRegion`'s
-    //     `ensureState(...)`, `resetEventTriggerForRegion`, `resetTooltipForRegion`,
-    //     `resetStateTriggerForRegion`) — deferred with states/events. Only the NORMAL itemStyle is drawn.
+    //   - EMPHASIS/SELECT/BLUR states + the event/state triggers are now ported: the NORMAL itemStyle plus
+    //     `setStatesStylesFromModel` (ensureState emphasis/select/blur), `_resetEventTriggerForRegion`
+    //     (custom `eventData` for click/select), and `_resetStateTriggerForRegion` (highDown dispatcher +
+    //     focus/blur). Only `resetTooltipForRegion` (tooltip config via setTooltipConfig) remains deferred.
     // ================================================================================================
     private func _buildGeoJSON(_ geo: Geo, _ geoModel: GeoModel, _ api: ExtensionAPI) {
 
@@ -275,6 +301,25 @@ public final class GeoView: ComponentView {
                 }
 
                 compoundPath.useStyle(pathStyle)
+
+                // upstream applyOptionStyleForRegion (MapDraw.ts:671): stamp the emphasis/select/blur state
+                //   itemStyles + install the default state proxy so the region hover-emphasises. Mirrors
+                //   `_applyOptionStyleForRegionSVG`; the `geoGetFixedItemStyle` getter reproduces the
+                //   map-specific `areaColor` fixup for EACH state (upstream `getFixedItemStyle`).
+                states.setStatesStylesFromModel(compoundPath, regionModel, "itemStyle", geoGetFixedItemStyle)
+                states.setDefaultStateProxy(compoundPath)
+
+                // upstream: if (isLine) { fixLineStyle(compoundPath); each(compoundPath.states, fixLineStyle); }
+                //   The normal style was fixed above; fix each STATE style bag too (stroke = stroke||fill; fill = null).
+                if isLine {
+                    for (_, state) in compoundPath.states {
+                        guard var st = state.style else { continue }
+                        let stroke = st["stroke"]
+                        if stroke == nil || stroke is NSNull { st["stroke"] = st["fill"] }
+                        st["fill"] = NSNull()
+                        state.style = st
+                    }
+                }
             }
 
             // upstream: createCompoundPath(polygonSubpaths); createCompoundPath(polylineSubpaths, true);
@@ -289,6 +334,19 @@ public final class GeoView: ComponentView {
                 self._resetLabelForRegion(geoModel, regionModel, regionName, centerRaw, regionGroup)
             }
         }
+
+        // upstream: regionsGroupByName.each(...) — AFTER all children are added, wire the per-region event
+        //   trigger (custom `eventData` for click/select) and the state trigger (highDown dispatcher +
+        //   focus/blur). `resetTooltipForRegion` is DEFERRED (tooltip config depends on setTooltipConfig).
+        for (regionName, regionGroup) in regionsGroupByName {
+            let regionModel = regionModelByName[regionName]!
+            self._resetEventTriggerForRegion(geoModel, regionGroup, regionName, regionModel)
+            self._resetStateTriggerForRegion(geoModel, regionGroup, regionName, regionModel)
+        }
+
+        // upstream: this._regionsGroupByName = regionsGroupByName (set at build start; read by
+        //   `findHighDownDispatchers`). Persist the freshly built map.
+        self._regionsGroupByName = regionsGroupByName
     }
 
     // ================================================================================================
@@ -370,7 +428,7 @@ public final class GeoView: ComponentView {
 
                 // upstream: STATE_TRIGGER_TAG_MAP (OPTION_STYLE_ENABLED + 'g') → highDown dispatcher.
                 if STATE_TRIGGER_SVG_TAGS.contains(svgNodeTagLower) {
-                    let focus = self._resetStateTriggerForRegionSVG(geoModel, el, regionName, regionModel)
+                    let focus = self._resetStateTriggerForRegion(geoModel, el, regionName, regionModel)
                     if let focusStr = focus as? String, focusStr == "self" {
                         focusSelf = true
                     }
@@ -416,11 +474,30 @@ public final class GeoView: ComponentView {
         states.setDefaultStateProxy(path)
     }
 
-    // upstream: resetStateTriggerForRegion (MapDraw.ts:821) — mark the named element a highDown dispatcher
-    //   carrying the region's emphasis focus/blurScope, then enable the geo-component hover-link features
-    //   (`enableComponentHighDownFeatures`, so highlight-by-name resolves this element). Returns the focus.
+    // upstream: resetEventTriggerForRegion (MapDraw.ts:765) — the GEO-COMPONENT branch (`data == null`):
+    //   package the custom mouse `eventData` onto the region element so `_handleRegionClick` /
+    //   `updateSelectStatus` can resolve the clicked/selected region by name. (The series-map
+    //   `data.setItemGraphicEl` branch belongs to MapView.)
+    private func _resetEventTriggerForRegion(
+        _ geoModel: GeoModel, _ eventTrigger: Element, _ regionName: String, _ regionModel: Model
+    ) {
+        // upstream: getECData(eventTrigger).eventData = { componentType: 'geo', componentIndex, geoIndex, name, region }.
+        var eventData: ECEventData = [:]
+        eventData["componentType"] = "geo"
+        eventData["componentIndex"] = geoModel.componentIndex
+        eventData["geoIndex"] = geoModel.componentIndex
+        eventData["name"] = regionName
+        // upstream: (regionModel && regionModel.option) || {}
+        eventData["region"] = regionModel.option ?? [:]
+        innerStore.getECData(eventTrigger).eventData = eventData
+    }
+
+    // upstream: resetStateTriggerForRegion (MapDraw.ts:821) — mark the element (a geoSVG named element or a
+    //   geoJSON region GROUP) a highDown dispatcher carrying the region's emphasis focus/blurScope, then
+    //   enable the geo-component hover-link features (`enableComponentHighDownFeatures`, so highlight-by-name
+    //   resolves this element). Returns the focus. Shared by both the geoJSON and geoSVG build paths.
     @discardableResult
-    private func _resetStateTriggerForRegionSVG(
+    private func _resetStateTriggerForRegion(
         _ geoModel: GeoModel, _ el: Element, _ regionName: String, _ regionModel: Model
     ) -> InnerFocus? {
         // upstream: el.highDownSilentOnTouch = !!mapOrGeoModel.get('selectedMode');  → not ported (touch).
@@ -480,18 +557,28 @@ public final class GeoView: ComponentView {
         }
     }
 
-    // upstream: findHighDownDispatchers(name, geoModel) — the geoSVG branch returns the dispatcher elements
-    //   registered for a region name (hover-link / highlight-by-name). Exposed for the high-down driver.
-    //   nil-vs-[] contract: `findComponentHighDownDispatchers` treats non-nil (even empty) as "the
-    //   feature is supported here" and then SKIPS the series-style fallback emphasis of the hovered
-    //   element. Only the geoSVG branch is ported (upstream MapDraw's geoJSON branch returns the
-    //   region group from `_regionsGroupByName` — PORT-NOTE, deferred with geo highDown wiring), so a
-    //   geoJSON map (empty `_svgDispatcherMap`) must return nil = unsupported, or it would silently
-    //   swallow all region hover emphasis once geo regions become highDown dispatchers.
+    // upstream: findHighDownDispatchers(name, geoModel) (MapDraw.ts:520) — return the dispatcher elements
+    //   registered for a region name (hover-link / highlight-by-name), dispatching on `geo.resourceType`:
+    //   geoJSON → the region GROUP from `_regionsGroupByName`; geoSVG → the elements from `_svgDispatcherMap`.
+    //   nil-vs-[] contract: `findComponentHighDownDispatchers` treats non-nil (even empty) as "the feature
+    //   is supported here" and then SKIPS the series-style fallback emphasis of the hovered element; an
+    //   un-built map (empty lookup) returns nil = unsupported so region hover emphasis is not swallowed.
     public override func findHighDownDispatchers(_ name: String?) -> [Element]? {
-        if self._svgDispatcherMap.isEmpty { return nil }   // no SVG map built → unsupported
+        // upstream: if (name == null) return [];
         guard let name = name else { return [] }
-        return self._svgDispatcherMap[name] ?? []
+        guard let geo = self._model?.coordinateSystem as? Geo else { return nil }
+        if geo.resourceType == "geoJSON" {
+            // upstream: regionsGroupByName ? (regionGroup ? [regionGroup] : []) : undefined
+            if self._regionsGroupByName.isEmpty { return nil }   // not built as geoJSON → unsupported
+            if let regionGroup = self._regionsGroupByName[name] { return [regionGroup] }
+            return []
+        }
+        else if geo.resourceType == "geoSVG" {
+            // upstream: this._svgDispatcherMap && this._svgDispatcherMap.get(name) || []
+            if self._svgDispatcherMap.isEmpty { return nil }   // no SVG map built → unsupported
+            return self._svgDispatcherMap[name] ?? []
+        }
+        return nil
     }
 
     // upstream: resetLabelForRegion (STATIC subset). For the geo component the label is drawn when the
@@ -544,19 +631,59 @@ public final class GeoView: ComponentView {
     // upstream: __updateOnOwnRoam(payload, model, api) { this._mapDraw && this._mapDraw.__updateOnOwnRoam(model); }
     // PORT-NOTE (deferred — roam): no MapDraw/transformGroup to re-transform. A no-op until roam lands.
 
-    // upstream: private _handleRegionClick(e) { findEventDispatcher(...); this._api.dispatchAction({ type: 'geoToggleSelect', ... }); }
-    // PORT-NOTE (deferred — events/select): region click → `geoToggleSelect` dispatch. Not wired (requires util/event).
+    // upstream: private _handleRegionClick(e) — walk from the hit target to the nearest region element
+    //   carrying `eventData`, then dispatch `geoToggleSelect` for that region name.
+    private func _handleRegionClick(_ e: ElementEvent?) {
+        guard let e = e else { return }
 
-    // upstream: updateSelectStatus(model, ecModel, api) { traverse group, enter/leaveSelect per isSelected }
-    // PORT-NOTE (deferred — select states): select highlight traversal. Not wired.
+        // upstream: findEventDispatcher(e.target, current => (eventData = getECData(current).eventData) != null, true);
+        var eventData: ECEventData?
+        _ = findEventDispatcher(e.target, { current in
+            eventData = innerStore.getECData(current).eventData
+            return eventData != nil
+        }, true)
+
+        // upstream: if (eventData) { this._api.dispatchAction({ type: 'geoToggleSelect', geoId, name }); }
+        //   `geoId` / `name` are payload extras — carried in `Payload.other` (upstream `[other: string]: any`).
+        if let eventData = eventData {
+            var payload = Payload(type: "geoToggleSelect")
+            if let geoId = self._model?.id { payload.other["geoId"] = geoId }
+            payload.other["name"] = eventData["name"]
+            self._api?.dispatchAction(payload)
+        }
+    }
+
+    // upstream: updateSelectStatus(model, ecModel, api) — traverse the region group; for the first element
+    //   carrying `eventData`, enter/leaveSelect per `isSelected(name)` (children need no further traversal).
+    func updateSelectStatus(_ geoModel: GeoModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        _ = self.group.traverse { node in
+            // upstream: const eventData = getECData(node).eventData;
+            let eventData = innerStore.getECData(node).eventData
+            if let eventData = eventData {
+                let name = eventData["name"] as? String
+                if self._model?.isSelected(name) == true {
+                    api.enterSelect(node)
+                }
+                else {
+                    api.leaveSelect(node)
+                }
+                // upstream: return true; — No need to traverse children.
+                return true
+            }
+            return false
+        }
+    }
 
     // upstream: findHighDownDispatchers(name) { return this._mapDraw && this._mapDraw.findHighDownDispatchers(...); }
-    //   → ported as the `ComponentView` override above (geoSVG branch only; geoJSON returns nil).
+    //   → ported as the `ComponentView` override above (geoJSON + geoSVG branches).
 
     // upstream: dispose() { this._mapDraw && this._mapDraw.remove(); }
     public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // STATIC: nothing persistent to tear down (no MapDraw / roam controller).
+        // STATIC: no MapDraw / roam controller to tear down. Clear the region tree + dispatcher lookups
+        //   (upstream `remove()` nulls `_regionsGroupByName`).
         _ = self.group.removeAll()
+        self._regionsGroupByName = [:]
+        self._svgDispatcherMap = [:]
     }
 }
 

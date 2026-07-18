@@ -118,6 +118,9 @@ open class LinesView: ChartView {
             // Coord system missing / changed away from cartesian → drop the persistent line + effect
             //   elements so a later reuse can't stitch onto a stale coord projection.
             self.resetPersistentElements()
+            // upstream applies clip unconditionally; with no cartesian coord there is nothing to draw,
+            //   so just drop any clip path left over from a prior render.
+            self.group.removeClipPath()
             return
         }
 
@@ -228,6 +231,7 @@ open class LinesView: ChartView {
             _prevCount = count
             _prevIsPolyline = false
             self._data = data
+            applyClipPath(seriesModel)
             return
         }
 
@@ -296,6 +300,29 @@ open class LinesView: ChartView {
         _prevCount = count
         _prevIsPolyline = isPolyline
         self._data = data
+        applyClipPath(seriesModel)
+    }
+
+    // upstream:
+    //   const clipPath = seriesModel.get('clip', true) && createClipPath(
+    //       (seriesModel.coordinateSystem as Polar | Cartesian2D), false, seriesModel
+    //   );
+    //   if (clipPath) { this.group.setClipPath(clipPath); } else { this.group.removeClipPath(); }
+    // `createClipPath` (helper/createClipPathFromCoordSys) is ported; it handles cartesian2d + polar and
+    //   returns nil for anything else (→ removeClipPath). Polar is intentionally NOT a `CoordinateSystem`
+    //   conformer (its `dataToPoint(data, clamp?)` doesn't witness the protocol), so the `as? CoordinateSystem`
+    //   cast yields nil for polar-based lines → no clip (they draw nothing here anyway).
+    private func applyClipPath(_ seriesModel: SeriesModel) {
+        let clip = (seriesModel.get("clip", true) as? Bool) ?? true
+        let clipPath: Path? = clip
+            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            : nil
+        if let clipPath = clipPath {
+            self.group.setClipPath(clipPath)
+        }
+        else {
+            self.group.removeClipPath()
+        }
     }
 
     // Finish a freshly-built line element: name it, apply the style, clear the spurious black fill

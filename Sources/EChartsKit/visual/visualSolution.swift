@@ -33,9 +33,16 @@ import ZRenderKit
 
 // type VisualMappingCollection<VisualState> = { [state]?: { [visualType]?: VisualMapping } & { __alphaForOpacity?: VisualMapping } };
 //   Modeled as `[state: [visualType: VisualMapping]]`; the hidden `__alphaForOpacity` slot is stored under
-//   the literal key "__alphaForOpacity" (upstream hides it via a prototype trick so object iteration with
-//   hasOwnProperty skips it — here `prepareVisualTypes` filters it out explicitly instead).
+//   the literal key "__alphaForOpacity" (upstream hides it via a prototype trick — `createMappings` puts it
+//   on the prototype so object iteration with hasOwnProperty skips it). Swift dictionaries have no such
+//   hidden slot, so the key IS iterable here; the consumers below reproduce the hidden-slot semantics by
+//   filtering "__alphaForOpacity" out of the `prepareVisualTypes` result via `alphaForOpacityKey`
+//   (otherwise an opacity visualMap/brush would apply an extra colorAlpha on top of opacity).
 typealias VisualMappingCollection = [String: [String: VisualMapping]]
+
+// The literal key under which the (upstream-prototype-hidden) __alphaForOpacity mapping is stashed.
+// Must never appear in a `prepareVisualTypes` iteration — filtered out wherever the collection is walked.
+private let alphaForOpacityKey = "__alphaForOpacity"
 
 // function hasKeys(obj) { for name in obj: if hasOwnProperty(name) return true; }
 private func hasKeys(_ obj: Any?) -> Bool {
@@ -81,7 +88,9 @@ enum visualSolution {
                     if visualType == "opacity" {
                         var alphaOption = mappingOption
                         alphaOption["type"] = "colorAlpha"
-                        mappings["__alphaForOpacity"] = VisualMapping(VisualMappingOption(alphaOption))
+                        // upstream: mappings.__hidden.__alphaForOpacity = ...; the hidden slot is not
+                        // own-enumerable. Here it's a plain key; consumers must skip it during iteration.
+                        mappings[alphaForOpacityKey] = VisualMapping(VisualMappingOption(alphaOption))
                     }
                 }
             }
@@ -139,7 +148,11 @@ enum visualSolution {
         // const visualTypesMap = {}; each(stateList, (state) => visualTypesMap[state] = prepareVisualTypes(...));
         var visualTypesMap: [String: [String]] = [:]
         util.each(stateList) { state, _ in
+            // upstream's __alphaForOpacity lives on the prototype and is invisible to the hasOwnProperty
+            // iteration inside prepareVisualTypes; reproduce that by dropping it here so it is not applied
+            // as a second (colorAlpha) mapping on top of opacity.
             visualTypesMap[state] = VisualMapping.prepareVisualTypes(visualMappings[state])
+                .filter { $0 != alphaForOpacityKey }
         }
 
         // Closure-captured `dataIndex` mirrors upstream's outer `let dataIndex` shared by getVisual/setVisual.
@@ -200,7 +213,9 @@ enum visualSolution {
         // const visualTypesMap = {}; each(stateList, (state) => visualTypesMap[state] = prepareVisualTypes(visualMappings[state]));
         var visualTypesMap: [String: [String]] = [:]
         util.each(stateList) { state, _ in
+            // Drop the (upstream prototype-hidden) __alphaForOpacity slot — see applyVisual above.
             let visualTypes = VisualMapping.prepareVisualTypes(visualMappings[state])
+                .filter { $0 != alphaForOpacityKey }
             visualTypesMap[state] = visualTypes
         }
 

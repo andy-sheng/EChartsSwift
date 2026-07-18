@@ -139,11 +139,18 @@ open class RadarView: ChartView {
         data.eachItemGraphicEl { el, idx in
             guard let itemGroup = el as? Group,
                   let polyline = itemGroup.childAt(0) as? Polyline,
-                  let polygon = itemGroup.childAt(1) as? Polygon else { return }
+                  let polygon = itemGroup.childAt(1) as? Polygon,
+                  let symbolGroup = itemGroup.childAt(2) as? Group else { return }
             let itemModel = data.getItemModel(idx)
-            let color = (data.getItemVisual(idx, "style") as? [String: Any])?["fill"]
+            // const itemStyle = data.getItemVisual(idx, 'style');  const color = itemStyle.fill;
+            let itemStyle = data.getItemVisual(idx, "style") as? [String: Any]
+            let color = itemStyle?["fill"]
 
             self.applyRadarItemStyles(polyline, polygon, itemModel, color)
+
+            // upstream per-vertex symbol styling half of the loop (RadarView.ts:235-265): full itemStyle +
+            //   palette color + strokeNoScale, per-state itemStyle clone, and the value label.
+            self.styleRadarSymbols(symbolGroup, itemModel, data, idx, itemStyle, color)
 
             // const emphasisModel = itemModel.getModel('emphasis');
             // toggleHoverEmphasis(itemGroup, focus, blurScope, disabled);
@@ -212,8 +219,9 @@ open class RadarView: ChartView {
             if let cs = radarColorString((data.getItemVisual(idx, "style") as? [String: Any])?["fill"]) {
                 fill = .string(cs)
             }
+            let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
             buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
-                              seriesModel, idx, animateIn: true)
+                              seriesModel, idx, symbolRotate, animateIn: true)
         }
 
         return itemGroup
@@ -260,6 +268,7 @@ open class RadarView: ChartView {
         let (sizeW, sizeH) = symbol.normalizeSymbolSize(
             data.getItemVisual(idx, "symbolSize") ?? seriesSymbolSize
         )
+        let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
         let existing = symbolGroup.childrenRef().compactMap { $0 as? Path }
         let canMorphSymbols = symbolType != "none"
             && existing.count == vertexCount
@@ -270,6 +279,7 @@ open class RadarView: ChartView {
                 let path = existing[i]
                 path.originX = pt.x
                 path.originY = pt.y
+                path.rotation = symbolRotate * Double.pi / 180
                 updateProps(path, ["shape": [
                     "x": pt.x - sizeW / 2, "y": pt.y - sizeH / 2,
                     "width": sizeW, "height": sizeH
@@ -279,7 +289,7 @@ open class RadarView: ChartView {
             _ = symbolGroup.removeAll()
             if symbolType != "none" {
                 buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
-                                  seriesModel, idx, animateIn: false)
+                                  seriesModel, idx, symbolRotate, animateIn: false)
             }
         }
     }
@@ -313,6 +323,17 @@ open class RadarView: ChartView {
         let polygonIgnore = areaStyleModel.isEmpty() && (areaStyleModel.parentModel?.isEmpty() ?? true)
         polygon.ignore = polygonIgnore
 
+        // upstream per-state loop (RadarView.ts:209-217), polygon-ignore half: a state whose areaStyle is
+        //   empty stays ignored, but ONLY when the normal state is ignored too ("Won't be ignore if normal
+        //   state is not ignore"). The polyline/polygon per-state STYLE halves (lines 214-217) are already
+        //   applied by setStatesStylesFromModel above; the per-state symbol itemStyle clone (lines 218-221)
+        //   is applied in styleRadarSymbols.
+        for stateName in states.SPECIAL_STATES {
+            let stateModel = itemModel.getModel([stateName, "areaStyle"])
+            let stateIgnore = stateModel.isEmpty() && (stateModel.parentModel?.isEmpty() ?? true)
+            polygon.ensureState(stateName).ignore = stateIgnore && polygonIgnore
+        }
+
         // polygon.useStyle(zrUtil.defaults(
         //     itemModel.getModel('areaStyle').getAreaStyle(),
         //     { fill: color, opacity: 0.7, decal: itemStyle.decal }));
@@ -332,7 +353,7 @@ open class RadarView: ChartView {
     private func buildRadarSymbols(
         _ points: [VectorArray], _ symbolType: String, _ sizeW: Double, _ sizeH: Double,
         _ fill: ZRenderKit.ZRColor?, _ symbolGroup: Group, _ seriesModel: SeriesModel, _ idx: Int,
-        animateIn: Bool
+        _ symbolRotate: Double, animateIn: Bool
     ) {
         let count = points.count - 1   // skip the closing duplicate vertex
         guard count > 0 else { return }
@@ -345,6 +366,9 @@ open class RadarView: ChartView {
                 path.z2 = 100
                 path.originX = pt.x
                 path.originY = pt.y
+                // upstream createSymbol: `rotation: symbolRotate * Math.PI / 180 || 0` — the symbol rotates
+                //   about its own center (here the vertex point, which is the transform origin).
+                path.rotation = symbolRotate * Double.pi / 180
                 if animateIn {
                     // upstream Symbol.ts first-create scale-in entrance, centered on the vertex point.
                     path.scaleX = 0
@@ -353,6 +377,55 @@ open class RadarView: ChartView {
                 }
                 _ = symbolGroup.add(path)
             }
+        }
+    }
+
+    // upstream `eachItemGraphicEl` styling loop, symbol half (RadarView.ts:235-265): for each vertex symbol
+    //   apply the full itemStyle + palette color + strokeNoScale, the per-state itemStyle clone, and the
+    //   value label. The symbols are stored untagged in `symbolGroup` in vertex order, so the enumeration
+    //   index IS upstream's `symbolPath.__dimIdx` (the vertex→dimension index for the label value lookup).
+    //   PORT-NOTE (deferred): the `symbolPath instanceof ZRImage` branch (lines 236-244) is not ported —
+    //   buildRadarSymbols only builds `Path` symbols (image:// symbols are dropped at creation).
+    private func styleRadarSymbols(
+        _ symbolGroup: Group, _ itemModel: Model, _ data: SeriesData, _ idx: Int,
+        _ itemStyle: [String: Any]?, _ color: Any?
+    ) {
+        let colorString = radarColorString(color)
+        let opacity = itemStyle?["opacity"] as? Double
+        for (i, child) in symbolGroup.childrenRef().enumerated() {
+            guard let symbolPath = child as? Path else { continue }
+
+            // symbolPath.useStyle(itemStyle); symbolPath.setColor(color); symbolPath.style.strokeNoScale = true;
+            if let itemStyle = itemStyle {
+                symbolPath.useStyle(barStyleFromDict(itemStyle))
+            }
+            if let cs = colorString, let ec = symbolPath as? ECSymbol {
+                ec.setColor(.string(cs), nil)
+            }
+            symbolPath.pathStyle.strokeNoScale = true
+
+            // upstream lines 218-221: symbolPath.ensureState(stateName).style = zrUtil.clone(itemStateStyle).
+            //   Swift style dicts are value types, so the assignment already copies.
+            for stateName in states.SPECIAL_STATES {
+                let itemStateStyle = itemModel.getModel([stateName, "itemStyle"]).getItemStyle()
+                symbolPath.ensureState(stateName).style = itemStateStyle
+            }
+
+            // let defaultText = data.getStore().get(data.getDimensionIndex(symbolPath.__dimIdx), idx);
+            //   (defaultText == null || isNaN(defaultText)) && (defaultText = '');
+            let dimIndex = data.getDimensionIndex(Double(i))
+            let defaultText = radarDefaultText(data.getStore().get(dimIndex, idx))
+
+            // setLabelStyle(symbolPath, getLabelStatesModels(itemModel), { labelFetcher, labelDataIndex,
+            //   labelDimIndex, defaultText, inheritColor, defaultOpacity });
+            var opt = SetLabelStyleOpt()
+            opt.labelFetcher = data.hostModel as? DataFormatMixin
+            opt.labelDataIndex = Double(idx)
+            opt.labelDimIndex = Double(i)
+            opt.defaultText = defaultText
+            opt.inheritColor = colorString
+            opt.defaultOpacity = opacity
+            labelStyle.setLabelStyle(symbolPath, labelStyle.getLabelStatesModels(itemModel), opt)
         }
     }
 
@@ -402,6 +475,21 @@ private func radarColorString(_ v: Any?) -> String? {
     if let str = v as? String { return str }
     if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
     return nil
+}
+
+// upstream: `(defaultText == null || isNaN(defaultText)) && (defaultText = '')` then `defaultText as string`.
+//   Stringify a store value for the vertex label; a null / NaN value becomes the empty string.
+private func radarDefaultText(_ v: Any?) -> String {
+    if let d = v as? Double {
+        if d.isNaN { return "" }
+        // JS `'' + n`: an integer-valued number drops its trailing `.0`.
+        if d == d.rounded() && abs(d) < 1e15 { return String(Int(d)) }
+        return String(d)
+    }
+    if let i = v as? Int { return String(i) }
+    if let n = v as? NSNumber { return radarDefaultText(n.doubleValue) }
+    if let s = v as? String { return s }
+    return ""
 }
 
 // `store.get(...)`-style numeric coercion for a dynamic layout value.

@@ -42,13 +42,13 @@ import ZRenderKit
 //   import { ECData, getECData } from '../../util/innerStore';       → `innerStore.getECData`.
 //   import { createTextStyle } from '../../label/labelStyle';        → `createTextStyle` (AxisBuilder.swift).
 //   import { findEventDispatcher } from '../../util/event';          → walked inline (hoverLink-from-series).
-//   import BoundingRect from 'zrender/src/core/BoundingRect';        → `BoundingRect` (label-overlap DEFERRED).
+//   import BoundingRect from 'zrender/src/core/BoundingRect';        → `BoundingRect` (handle-label overlap merge).
 
 // Arbitrary value
 private let HOVER_LINK_SIZE = 12.0
 private let HOVER_LINK_OUT = 6.0
-// PORT-NOTE (deferred): HANDLE_LABEL_MERGE_MARGIN feeds the deferred handle-label overlap merge
-//   (_updateHandle) — a visual refinement when the two handles are very close.
+/// Pixels to inflate handle label bounds when testing overlap (merge slightly before touching).
+private let HANDLE_LABEL_MERGE_MARGIN = 2.0
 
 // type ContinuousVisualMapHandleIndex = 0 | 1 | 'all';  → modeled by `SliderMoveHandleIndex`.
 
@@ -607,6 +607,8 @@ public final class ContinuousView: VisualMapView {
         let barGroup = shapes.mainGroup!
         let alignDir = self._applyTransform("left", barGroup)
         let isVertical = self._orient == "vertical"
+        var textPosPair: [Point?] = [nil, nil]
+        var textRectPair: [BoundingRect?] = [nil, nil]
 
         for handleIndex in 0..<2 {
             guard handleThumbs.indices.contains(handleIndex),
@@ -645,11 +647,47 @@ public final class ContinuousView: VisualMapView {
             s.verticalAlign = .middle
             s.align = isVertical ? TextAlign(rawValue: alignDir) : .center
             handleLabels[handleIndex].useStyle(s)
-            elInner(handleLabels[handleIndex]).hdlIdx = .at(handleIndex)
+            elInner(handleLabels[handleIndex]).hdlIdx = .at(handleIndex) // May be updated if previously overlapped.
+
+            textPosPair[handleIndex] = Point(textPoint[0], textPoint[1])
+            if let rect = handleLabels[handleIndex].getBoundingRect()?.clone() {
+                expandOrShrinkRect(rect, HANDLE_LABEL_MERGE_MARGIN, false, true)
+                textRectPair[handleIndex] = rect
+            }
         }
 
-        // PORT-NOTE (deferred): the handle-LABEL overlap merge (BoundingRect.intersect MTV → nudge apart
-        //   + switch both labels to 'all'-drag) — a visual refinement when the two handles are very close.
+        // If the two handle labels overlap, nudge them apart along the bar direction and switch both
+        //   labels to 'all'-drag (the bar is hard to hit when the handles are very close).
+        let mtv = Point()
+        let directionVec = self._applyTransform([0, 1], barGroup)
+        if let rect0 = textRectPair[0], let rect1 = textRectPair[1],
+           let pos0 = textPosPair[0], let pos1 = textPosPair[1] {
+            let labelsOverlap = BoundingRect.intersect(
+                rect0,
+                rect1,
+                mtv,
+                BoundingRectIntersectOpt(
+                    direction: atan2(directionVec[1], directionVec[0]),
+                    bidirectional: false
+                )
+            )
+            if labelsOverlap {
+                pos0.scaleAndAdd(mtv, -0.5)
+                pos1.scaleAndAdd(mtv, 0.5)
+                var s0 = handleLabels[0].textStyle!
+                s0.x = pos0.x
+                s0.y = pos0.y
+                handleLabels[0].useStyle(s0)
+                var s1 = handleLabels[1].textStyle!
+                s1.x = pos1.x
+                s1.y = pos1.y
+                handleLabels[1].useStyle(s1)
+                // When two handles are too close, the bar is difficult to hit, so dragging in
+                // 'all' mode becomes hard to trigger. Therefore, switch labels dragging to 'all' mode.
+                elInner(handleLabels[0]).hdlIdx = .all
+                elInner(handleLabels[1]).hdlIdx = .all
+            }
+        }
     }
 
     // upstream: _showIndicator(cursorValue, textValue, rangeSymbol?, halfHoverLinkSize?)
@@ -674,7 +712,8 @@ public final class ContinuousView: VisualMapView {
         let y = number.linearMap(cursorValue, dataExtent, sizeExtent, true)
         let x = itemSize[0] - symbolSize / 2
 
-        // Update indicator position.
+        let oldIndicatorPos = (x: indicator.x, y: indicator.y)
+        // Update handle label position.
         indicator.y = y
         indicator.x = x
         let textPoint = applyTransformPoint(
@@ -691,16 +730,39 @@ public final class ContinuousView: VisualMapView {
             s.text = (rangeSymbol ?? "") + visualMapModel.formatValueText(textValue)
             s.verticalAlign = isHorizontal ? TextVerticalAlign(rawValue: alignDir) : .middle
             s.align = isHorizontal ? .center : TextAlign(rawValue: alignDir)
-            s.x = textPoint[0]
-            s.y = textPoint[1]
             indicatorLabel.useStyle(s)
         }
 
-        // PORT-NOTE (deferred): animateTo(indicatorNewProps, {duration:100, cubicInOut, additive}) — the
-        //   additive animated indicator move (a live-interaction refinement); the fill/position settled
-        //   state is set directly here.
-        indicator.pathStyle.fill = .string(color)
-        indicator.dirtyStyle()
+        // const indicatorNewProps = { x, y, style: { fill: color } };
+        // const labelNewProps = { style: { x: textPoint[0], y: textPoint[1] } };
+        if (self.ecModel!.isAnimationEnabled() ?? false) && !self._firstShowIndicator {
+            var animationCfg = ElementAnimateConfig()
+            animationCfg.duration = 100
+            animationCfg.easing = .named("cubicInOut")
+            animationCfg.additive = true
+            indicator.x = oldIndicatorPos.x
+            indicator.y = oldIndicatorPos.y
+            indicator.animateTo(
+                ["x": x, "y": y, "style": ["fill": color] as [String: Any]],
+                animationCfg
+            )
+            shapes.indicatorLabel?.animateTo(
+                ["style": ["x": textPoint[0], "y": textPoint[1]] as [String: Any]],
+                animationCfg
+            )
+        }
+        else {
+            indicator.x = x
+            indicator.y = y
+            indicator.pathStyle.fill = .string(color)
+            indicator.dirtyStyle()
+            if let indicatorLabel = shapes.indicatorLabel {
+                var s = indicatorLabel.textStyle!
+                s.x = textPoint[0]
+                s.y = textPoint[1]
+                indicatorLabel.useStyle(s)
+            }
+        }
 
         self._firstShowIndicator = false
 

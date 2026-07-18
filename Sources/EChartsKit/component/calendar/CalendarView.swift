@@ -320,10 +320,13 @@ public final class CalendarView: ComponentView {
         }
 
         // upstream: if (isFunction(formatter)) { return formatter(params); }
-        // PORT-NOTE (deferred): a JS callback formatter can not be invoked from the option bag in this
-        //   static-render port; falls through to `params.nameMap` (the default), matching the
-        //   no-formatter case.
+        //   The formatter closure type is erased in the dynamic option bag; narrowed to the
+        //   params->String shape ([String: Any]) -> String (cf. GeoModel._getFormattedLabel). If a
+        //   closure of that shape was supplied it is invoked; otherwise falls through to `params.nameMap`.
         if util.isFunction(formatter) {
+            if let f = formatter as? ([String: Any]) -> String {
+                return f(params)
+            }
             return (params["nameMap"] as? String) ?? ""
         }
 
@@ -763,19 +766,14 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// Minimal local variant of `labelStyle.createTextStyle(textStyleModel, {text})`, which IS now ported
-///   (label/labelStyle.swift, `labelStyle.createTextStyle`). Only the fields used by the calendar backdrop
-///   labels (text / font / fill) are populated here; the full rich-text / state / ecModel-driven behavior
-///   lives in the ported `labelStyle.createTextStyle`. Mirrors AxisBuilder/FunnelView/Breadcrumb. Can be
-///   replaced by a direct call —
-///   `labelStyle.createTextStyle(textStyleModel, { var t = TextStyleProps(); t.text = text; return t }())` —
-///   once that swap is build-verified (it widens the populated style fields, changing rendered output).
+/// upstream: `createTextStyle(textStyleModel, {text})`. Delegates to the ported
+///   `labelStyle.createTextStyle` (label/labelStyle.swift), which populates the full label style set
+///   (font/fill plus rich-text, textBorder and shadow fields) — matching upstream's rendered output —
+///   rather than the previous minimal text/font/fill-only local variant.
 private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -> TextStyleProps {
-    var style = TextStyleProps()
-    style.text = text
-    style.font = textStyleModel.getFont()
-    style.fill = textStyleModel.getTextColor()
-    return style
+    var specified = TextStyleProps()
+    specified.text = text
+    return labelStyle.createTextStyle(textStyleModel, specified)
 }
 
 /// PORT-NOTE: a local `useStyle`-style bridge (upstream lives in `util/graphic`, which is ported as
@@ -784,11 +782,12 @@ private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -
 ///   are read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap.
 private func calendarPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string);
-    //   only the String form (incl. the sentinel 'none') is mapped here — the gradient/pattern object
-    //   form carried in the dynamic bag is not parsed.
-    if let v = colorString(dict["fill"]) { s.fill = .string(v) }
-    if let v = colorString(dict["stroke"]) { s.stroke = .string(v) }
+    // `fill`/`stroke` may be a solid color (String / EChartsKit `ZRColor.color`) OR a gradient/pattern
+    //   object (`ZRColor.linearGradient/.radialGradient/.pattern`, or the plain option dict form). Bridge
+    //   all of them via the shared, module-internal `zrPaintFromStyleValue` (BarView.swift) so calendar
+    //   itemStyle/lineStyle gradients render like every other view's fill/stroke.
+    if let v = zrPaintFromStyleValue(dict["fill"]) { s.fill = v }
+    if let v = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = v }
     if let v = numOpt(dict["lineWidth"]) { s.lineWidth = v }
     if let v = dict["lineCap"] as? String { s.lineCap = v }
     if let v = dict["lineJoin"] as? String { s.lineJoin = v }
@@ -801,16 +800,20 @@ private func calendarPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps 
     if let v = numOpt(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
     if let v = numOpt(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
     if let v = numOpt(dict["lineDashOffset"]) { s.lineDashOffset = v }
-    // PORT-NOTE (deferred): `lineDash` (number[] | false) mapping requires the LineDash enum bridge.
+    // lineDash: `getLineStyle` maps the option `type` (solid/dashed/dotted) → the style key `lineDash`
+    //   (a string preset OR a number[] | false). Mirror BarView.barStyleFromDict's mapping onto the
+    //   split-line polyline stroke; without it the dashed/dotted splitLine drew solid.
+    switch dict["lineDash"] {
+    case let str as String:
+        if str == "dashed" { s.lineDash = .dashed }
+        else if str == "dotted" { s.lineDash = .dotted }
+        else if str == "solid" { s.lineDash = .solid }
+    case let arr as [Double]: s.lineDash = .values(arr)
+    case let arri as [Int]: s.lineDash = .values(arri.map(Double.init))
+    case let b as Bool where b == false: s.lineDash = .`false`
+    default: break
+    }
     return s
-}
-
-/// Bridge a visual/style paint value (raw `String` or EChartsKit `ZRColor`) to a solid color string.
-///   (gradient/pattern are out of the calendar-backdrop scope.) Mirrors BarView.barStyleFromDict.
-private func colorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    return nil
 }
 
 /// Convert a JS `number[][]` (each inner `[x, y]`) to `[VectorArray]` for a `PolylineShape.points`.

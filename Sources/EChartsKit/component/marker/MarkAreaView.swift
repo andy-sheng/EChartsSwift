@@ -28,9 +28,8 @@ import ZRenderKit
 //   import * as numberUtil from '../../util/number';                -> `number` namespace (util/number.swift).
 //   import * as graphic from '../../util/graphic';
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Polygon` are the
-//        ZRenderKit scene-graph types `Group` / `Polygon` (used directly). `graphic.updateProps` is
-//        reproduced by the local no-animation shim `updateProps` at the bottom (same deviation as
-//        BarView.swift).
+//        ZRenderKit scene-graph types `Group` / `Polygon` (used directly). `graphic.updateProps`
+//        resolves to the real ported `animation/basicTransition.updateProps` (same as BarView.swift).
 //   import { toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
 //     -> states.toggleHoverEmphasis / states.setStatesStylesFromModel (util/states.swift).
 //   import * as markerHelper from './markerHelper';                 -> sibling `markerHelper`.
@@ -238,13 +237,41 @@ private func getSingleMarkerEndPoint(
     }
     else {
         // Chart like bar may have there own marker positioning logic
-        // if (seriesModel.getMarkerPosition) { ... pick the larger x/y as 'x1'/'y1' via clampData,
-        //     then point = seriesModel.getMarkerPosition(pointValue, dims, true); }
-        // PORT-NOTE (deferred): (MarkAreaView.ts:173) `SeriesModel.getMarkerPosition` (the bar/candlestick
-        //   override that snaps markArea corners to category ticks) is deferred — same treatment as the sibling
-        //   MarkLineView.swift (`updateSingleMarkerEndLayout`). The `else` branch (generic coord
-        //   `dataToPoint`) is always taken; corner-picking for bar series is not reproduced yet.
-        do {
+        // if (seriesModel.getMarkerPosition) { ... }
+        //   PORT-NOTE: `getMarkerPosition` is duck-typed on the series in upstream; only
+        //   `BaseBarSeriesModel` declares it in the port (mirrors MarkLineView/MarkPointView).
+        //   Feature-detect via `as? BaseBarSeriesModel`; the bar/candlestick override snaps
+        //   markArea corners to category ticks.
+        if let barSeries = seriesModel as? BaseBarSeriesModel {
+            // Consider the case that user input the right-bottom point first
+            // Pick the larger x and y as 'x1' and 'y1'
+            // const pointValue0 = data.getValues(['x0', 'y0'], idx);
+            let pointValue0 = data.getValues(["x0", "y0"], idx)
+            // const pointValue1 = data.getValues(['x1', 'y1'], idx);
+            let pointValue1 = data.getValues(["x1", "y1"], idx)
+            // const clampPointValue0 = coordSys.clampData(pointValue0);
+            let clampPointValue0 = (coordSys as? Cartesian2D)?.clampData(pointValue0) ?? [Double.nan, Double.nan]
+            // const clampPointValue1 = coordSys.clampData(pointValue1);
+            let clampPointValue1 = (coordSys as? Cartesian2D)?.clampData(pointValue1) ?? [Double.nan, Double.nan]
+            // const pointValue = [];
+            var pointValue: [ScaleDataValue] = [Double.nan, Double.nan]
+            if dims[0] == "x0" {
+                pointValue[0] = (clampPointValue0[0] > clampPointValue1[0]) ? pointValue1[0] : pointValue0[0]
+            }
+            else {
+                pointValue[0] = (clampPointValue0[0] > clampPointValue1[0]) ? pointValue0[0] : pointValue1[0]
+            }
+            if dims[1] == "y0" {
+                pointValue[1] = (clampPointValue0[1] > clampPointValue1[1]) ? pointValue1[1] : pointValue0[1]
+            }
+            else {
+                pointValue[1] = (clampPointValue0[1] > clampPointValue1[1]) ? pointValue0[1] : pointValue1[1]
+            }
+            // Use the getMarkerPosition
+            // point = seriesModel.getMarkerPosition(pointValue, dims, true);
+            point = barSeries.getMarkerPosition(pointValue, dims, true)
+        }
+        else {
             let x = data.get(dims[0], idx)
             let y = data.get(dims[1], idx)
             var pt: [ScaleDataValue] = [(x ?? Double.nan), (y ?? Double.nan)]
@@ -438,9 +465,14 @@ public final class MarkAreaView: MarkerView {
                 if !layout.allClipped {
                     if let polygon = polygon {
                         // graphic.updateProps(polygon, { z2: retrieve2(z2, 0), shape: { points: layout.points } }, maModel, newIdx);
+                        // PORT-NOTE: the real ported `updateProps` (animation/basicTransition) animates
+                        //   the polygon to its new points/z2 when the model has animation enabled, else
+                        //   sets them instantly. `shape` is a partial `[String: Any]` (not the typed
+                        //   PolygonShape) so `animateToShallow` recurses per-field and the `points`
+                        //   array tweens — same seam as BarView's `rectShapeAnimShape`.
                         updateProps(polygon, [
                             "z2": (util.retrieve2(z2 as? Double, 0.0) ?? 0),
-                            "shape": makeMarkAreaPolygonShape(layout.points) as PathShape
+                            "shape": ["points": layout.points] as [String: Any]
                         ], maModel, newIdx)
                     }
                     else {
@@ -601,22 +633,6 @@ private func makeMarkAreaPolygonShape(_ points: [[Double]]) -> PolygonShape {
     var s = PolygonShape()
     s.points = points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
     return s
-}
-
-// PORT-NOTE (deferred): `animation/basicTransition.updateProps` IS ported, but this view deliberately
-//   uses the NO-ANIMATION branch (set the element to its final shape/z2 immediately) — a local shim so
-//   markArea does not animate yet. Route through the real transition once markArea animation lands. Same
-//   deviation as BarView.swift.
-private func updateProps(
-    _ el: Polygon, _ props: [String: Any], _ animatableModel: Any? = nil, _ dataIndex: Int? = nil
-) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-    if let z2 = props["z2"] as? Double {
-        el.z2 = z2
-    }
-    _ = (animatableModel, dataIndex)
 }
 
 // PORT-NOTE (deferred): faithful minimal reproduction of `visual/helper.getVisualFromData`. Only the `'color'`

@@ -35,8 +35,11 @@
 //   - `dispatchHighDownActually` (highlight/downplay fan-out on axis hover) IS ported — the Phase-30
 //     emphasis engine backs it. Its per-instance diff store is keyed on `api` (upstream keys on
 //     `api.getZr()`; this port's ExtensionAPI has no `getZr()` yet — documented deviation).
-//   - `series.getAxisTooltipData` (candlestick/boxplot) + `link.mapper` (linked-axis value mapping) are
-//     DEFERRED (PORT-NOTEs at their sites); the default `indicesOfNearest` snap + pass-through link are used.
+//   - `series.getAxisTooltipData` (candlestick/boxplot/themeRiver custom axis-snap) is ported via the
+//     fileprivate `AxisTooltipDataSeries` protocol (ThemeRiverSeries conforms; candlestick/boxplot are
+//     not ported so they take the default `indicesOfNearest` path). `link.mapper` (linked-axis value
+//     mapping) + `makeMapperParam` are ported: the user callback is stored opaquely (Any?) and invoked
+//     when a Swift closure of the matching shape is supplied, else the source value passes through.
 //
 // import {makeInner, ModelFinderObject} from '../../util/model';   -> `model.*` (util/modelUtil.swift)
 // import * as modelHelper from './modelHelper';                    -> `modelHelper.*` (TASK 1 — see contract)
@@ -249,12 +252,16 @@ public func axisTrigger(
             // If srcValItem exist, source axis is triggered, so link to target axis.
             if srcAxisInfo !== tarAxisInfo, let srcValItem = showValueMap.map[srcKey] {
                 // upstream: let val = srcValItem.value;
-                //           linkGroup.mapper && (val = tarAxisInfo.axis.scale.parse(linkGroup.mapper(...)));
-                // PORT-NOTE (deferred): requires invoking the user-supplied `link.mapper` closure, which is
-                //   stored as `Any?` from the option bag (a JS function-in-options; see modelHelper.mapper)
-                //   with no Swift-callable representation yet. Without a mapper the source value passes
-                //   through unchanged (the common case). `makeMapperParam` is deferred with it.
-                let val: Any? = srcValItem.value
+                //   linkGroup.mapper && (val = tarAxisInfo.axis.scale.parse(linkGroup.mapper(
+                //       val, makeMapperParam(srcAxisInfo), makeMapperParam(tarAxisInfo))));
+                //   The user `link.mapper` is stored opaquely (Any?) from the option bag; when a Swift
+                //   closure of the matching shape is supplied it is invoked and its result re-parsed onto
+                //   the target axis scale, otherwise the source value passes through unchanged.
+                var val: Any? = srcValItem.value
+                if let mapper = linkGroup.mapper as? (Any?, [String: Any], [String: Any]) -> Any? {
+                    let mapped = mapper(val, makeMapperParam(srcAxisInfo), makeMapperParam(tarAxisInfo))
+                    val = tarAxisInfo.axis.scale.parse(mapped ?? NSNull())
+                }
                 linkTriggers[tarAxisInfo.key] = val
             }
         }
@@ -342,19 +349,29 @@ fileprivate func buildPayloadsBySeries(_ value: Double, _ axisInfo: AxisInfo)
         let seriesNestestValue: Any?
 
         // upstream: if (series.getAxisTooltipData) { ... } else { indicesOfNearest ... }
-        //   PORT-NOTE (deferred): `getAxisTooltipData` is not declared on the `SeriesModel` base — the
-        //   candlestick/boxplot implementations are not ported, and the one concrete implementation
-        //   (ThemeRiverSeries) has no shared protocol to dispatch through. Only the default
-        //   `indicesOfNearest` snap path is taken.
-        dataIndices = series.indicesOfNearest(
-            dim,
-            dataDim.first ?? "",
-            value,
-            // Add a threshold to avoid finding the wrong dataIndex when data length is not same.
-            axis.type == "category" ? 0.5 : nil
-        )
-        if dataIndices.isEmpty { continue }
-        seriesNestestValue = data.get(dataDim.first ?? "", Int(dataIndices[0]))
+        //   `getAxisTooltipData` is the candlestick/boxplot/themeRiver custom axis-snap (returns the
+        //   nearest data index + value). Only ThemeRiverSeries implements it in this port; it is
+        //   dispatched through the fileprivate `AxisTooltipDataSeries` protocol (retroactive conformance
+        //   at the bottom of this file). Candlestick/boxplot are not ported → they take the default path.
+        //   Note: unlike the else branch, the getAxisTooltipData branch does NOT early-continue on an
+        //   empty result — it falls through to the isNullableNumberFinite check (faithful to upstream).
+        if let tooltipSeries = series as? AxisTooltipDataSeries {
+            let result = tooltipSeries.getAxisTooltipData(dataDim, value, axis)
+            dataIndices = result.dataIndices.map { Double($0) }
+            seriesNestestValue = result.nestestValue
+        }
+        else {
+            let nearest = series.indicesOfNearest(
+                dim,
+                dataDim.first ?? "",
+                value,
+                // Add a threshold to avoid finding the wrong dataIndex when data length is not same.
+                axis.type == "category" ? 0.5 : nil
+            )
+            if nearest.isEmpty { continue }
+            dataIndices = nearest
+            seriesNestestValue = data.get(dataDim.first ?? "", Int(nearest[0]))
+        }
 
         // upstream: if (!isNullableNumberFinite(seriesNestestValue)) return; (continue to next series)
         let nearestNum = atAsDouble(seriesNestestValue)
@@ -580,6 +597,34 @@ private func makeHighDownItem(_ batchItem: AxisTriggerDataIndex) -> PayloadItem 
     item.other["dataIndex"] = batchItem.dataIndex
     return item
 }
+
+// upstream: makeMapperParam (axisTrigger.ts:521) — the per-axis context object handed to the user
+//   `link.mapper` callback. Mirrors upstream's `axisDim`/`axisIndex`/`axisName`/`axisId` plus the
+//   dim-prefixed aliases (`xAxisIndex`, `xAxisName`, ...).
+fileprivate func makeMapperParam(_ axisInfo: AxisInfo) -> [String: Any] {
+    let axisModel = axisInfo.axis.model!
+    var item: [String: Any] = [:]
+    let dim = axisInfo.axis.dim
+    item["axisDim"] = dim
+    let componentIndex = axisModel.componentIndex
+    item["axisIndex"] = componentIndex
+    item[dim + "AxisIndex"] = componentIndex
+    let name = axisModel.name
+    item["axisName"] = name
+    item[dim + "AxisName"] = name
+    let id = axisModel.id
+    item["axisId"] = id
+    item[dim + "AxisId"] = id
+    return item
+}
+
+// upstream duck-typed `series.getAxisTooltipData` — the custom axis-snap on candlestick/boxplot/themeRiver.
+//   Swift routes it through this fileprivate protocol; ThemeRiverSeries already declares the matching
+//   method (retroactive conformance below). Candlestick/boxplot are not ported.
+fileprivate protocol AxisTooltipDataSeries {
+    func getAxisTooltipData(_ dim: Any?, _ value: Double, _ baseAxis: Any?) -> (dataIndices: [Int], nestestValue: Double?)
+}
+extension ThemeRiverSeriesModel: AxisTooltipDataSeries {}
 
 // upstream: findInputAxisInfo (axisTrigger.ts:507)
 fileprivate func findInputAxisInfo(

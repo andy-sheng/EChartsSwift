@@ -49,9 +49,15 @@ public enum symbolVisual {
         }
 
         var symbolOptions: [String: Any] = [:]
+        var symbolOptionsCb: [String: Any] = [:]
+        var hasCallback = false
         for name in SYMBOL_PROPS_WITH_CB {
-            // isFunction(val) → callback symbol prop, DEFERRED. Literal values are encoded below.
-            if let val = seriesModel.get(name), !(val is NSNull) {
+            let val = seriesModel.get(name)
+            if util.isFunction(val) {
+                hasCallback = true
+                symbolOptionsCb[name] = val
+            }
+            else if let val = val, !(val is NSNull) {
                 symbolOptions[name] = val
             }
         }
@@ -65,11 +71,58 @@ public enum symbolVisual {
             visualDict["symbolKeepAspect"] = ka
         }
         data.setVisual(visualDict)
+
+        // Only visible series has each data be visual encoded
+        if let ecModel = ecModel, ecModel.isSeriesFiltered(seriesModel) {
+            return
+        }
+
+        // upstream: return { dataEach: hasCallback ? dataEach : null };
+        // The port runs the visual stage inline (see the slim-visual-stage-ordering note), so the
+        //   per-item callback evaluation is executed here rather than returned as a StageHandler.
+        if !hasCallback {
+            return
+        }
+
+        let symbolPropsCb = Array(symbolOptionsCb.keys)
+        for idx in 0..<data.count() {
+            let rawValue = seriesModel.getRawValue(Double(idx)) ?? NSNull()
+            let params = seriesModel.getDataParams(Double(idx))
+            for name in symbolPropsCb {
+                if let val = evalSymbolCallback(name, symbolOptionsCb[name]!, rawValue, params) {
+                    data.setItemVisual(idx, name, val)
+                }
+            }
+        }
+    }
+
+    /// Evaluate a function-valued symbol prop against a single data item. Each `SYMBOL_PROPS_WITH_CB`
+    /// entry maps to a distinctly-typed callback (upstream `SymbolCallback` / `SymbolSizeCallback` /
+    /// `SymbolRotateCallback` / `SymbolOffsetCallback`), so cast per prop name.
+    private static func evalSymbolCallback(
+        _ name: String, _ cb: Any, _ rawValue: Any, _ params: CallbackDataParams
+    ) -> Any? {
+        switch name {
+        case "symbol":
+            return (cb as? SymbolCallback<CallbackDataParams>)?(rawValue, params)
+        case "symbolSize":
+            return (cb as? SymbolSizeCallback<CallbackDataParams>)?(rawValue, params)
+        case "symbolRotate":
+            return (cb as? SymbolRotateCallback<CallbackDataParams>)?(rawValue, params)
+        case "symbolOffset":
+            return (cb as? SymbolOffsetCallback<CallbackDataParams>)?(rawValue, params)
+        default:
+            return nil
+        }
     }
 
     /// upstream: dataSymbolTask.reset — set PER-ITEM symbol visuals from each item's option.
-    public static func dataSymbolTask(_ seriesModel: SeriesModel) {
+    public static func dataSymbolTask(_ seriesModel: SeriesModel, _ ecModel: GlobalModel? = nil) {
         if !seriesModel.hasSymbolVisual {
+            return
+        }
+        // Only visible series has each data be visual encoded
+        if let ecModel = ecModel, ecModel.isSeriesFiltered(seriesModel) {
             return
         }
         let data = seriesModel.getData()

@@ -473,11 +473,21 @@ final class MarkLineView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mlData.line.eachItemGraphicEl(function (el) { getECData(el).dataModel = mlModel; ... });
-        // PORT-NOTE (deferred): `getECData` (util/innerStore) IS ported, but `ECData.dataModel` requires
-        //   a `DataModel` and `MarkerModel` does not yet conform (DataFormatMixin conformance blocked —
-        //   see MarkerModel.swift). So `getECData(el).dataModel = mlModel` cannot be assigned; the host-model
-        //   tooltip tagging is deferred (interaction, out of static-render scope). MarkAreaView/MarkPointView
-        //   keep the same line commented for the same reason.
+        // PORT-NOTE: `MarkerModel` now conforms to `DataFormatMixin`/`DataHost` (MarkerModel.swift); the
+        //   only remaining piece for `ECData.dataModel` (typed `DataModel?`) is the `DataModel` conformance
+        //   — added as a retroactive extension at the bottom of this file (MarkLineModel: DataModel). The
+        //   child callback returns `Void` upstream (falsy → never stops descending); mapped to the `Group`
+        //   traverse overload with a `false`-returning closure.
+        lineData.eachItemGraphicEl { el, _ in
+            innerStore.getECData(el).dataModel = mlModel
+
+            if let group = el as? Group {
+                group.traverse { child in
+                    innerStore.getECData(child).dataModel = mlModel
+                    return false
+                }
+            }
+        }
 
         self.markKeep(lineDraw)
 
@@ -577,6 +587,22 @@ private func createList(
 }
 
 // export default MarkLineView;  -> `final class MarkLineView` above.
+
+// PORT-NOTE: `getECData(el).dataModel = mlModel` (renderSeries, host-model tooltip tagging) needs
+//   `mlModel` to be a `DataModel`. `MarkerModel` already conforms to `DataHost` + `DataFormatMixin`
+//   (MarkerModel.swift); `DataModel` additionally requires the 3-arg `getDataParams(_:_:_:)`.
+//   `MarkerModel` provides only the 2-arg form (the `el` argument exists only on the CustomSeries
+//   override in upstream), so add the 3-arg witness delegating to it. Same-module conformance ⇒ no
+//   `@retroactive` needed.
+extension MarkLineModel: DataModel {
+    func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType?,
+        _ el: Element?
+    ) -> CallbackDataParams {
+        return self.getDataParams(dataIndex, dataType)
+    }
+}
 
 // ── local helpers (not in upstream; bridge dynamic option bags <-> MarkerPositionOption) ──────────
 

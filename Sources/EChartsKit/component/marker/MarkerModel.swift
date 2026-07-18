@@ -34,15 +34,25 @@ import ZRenderKit
 // function fillLabel(opt: DisplayStateHostOption) {
 //     defaultEmphasis(opt, 'label', ['show']);
 // }
-// PORT-NOTE (deferred): upstream `defaultEmphasis` mutates the plain option object in place. The ported
-//   `model.defaultEmphasis` takes a typed `DisplayStateHostOption` (struct); the marker data items
-//   are dynamic `[String: Any]` bags. Following the same treatment as `SeriesModel.fillDataTextStyle`
-//   (model/Series.swift), the `[String: Any]` <-> DisplayStateHostOption bridging is deferred — the
-//   structural walk in `_mergeOption` is preserved so no branch is dropped.
-private func fillLabel(_ opt: Any?) {
+// PORT: upstream `defaultEmphasis` mutates the plain option object in place. The ported
+//   `model.defaultEmphasis` takes a typed `DisplayStateHostOption` (value struct); the marker data
+//   items are dynamic `[String: Any]` bags. The dict is bridged into a `DisplayStateHostOption`
+//   (`.other` holds the flat option keys, `.emphasis` the typed emphasis sub-bag), mutated, then bridged
+//   back and returned. `_mergeOption` writes the returned value back into `markerOpt`/`markerOpt.data`
+//   so the mutation propagates to `createMarkerModelFromSeries`, matching upstream's in-place edit.
+//   A non-dict opt (e.g. a bare numeric data value) is returned unchanged — mirrors JS, where
+//   `defaultEmphasis` on a primitive is a no-op.
+private func fillLabel(_ opt: Any?) -> Any? {
     // defaultEmphasis(opt, 'label', ['show']);
-    // PORT-NOTE (deferred): bridge `[String: Any]` <-> DisplayStateHostOption for `model.defaultEmphasis`.
-    _ = opt
+    guard let dict = opt as? [String: Any] else { return opt }
+    var host: DisplayStateHostOption? = DisplayStateHostOption()
+    host!.other = dict
+    host!.emphasis = dict["emphasis"] as? Dictionary<Any>
+    model.defaultEmphasis(&host, "label", ["show"])
+    guard let result = host else { return dict }
+    var out = result.other
+    out["emphasis"] = result.emphasis
+    return out
 }
 
 // export type MarkerStatisticType = 'average' | 'min' | 'max' | 'median';
@@ -139,14 +149,13 @@ private let inner: (SeriesModel) -> MarkerModelInner = model.makeInner { MarkerM
 //   The generic `Opts` is dropped per CONVENTIONS §2 (dynamic option bag). Abstract base for
 //   markPoint/markLine/markArea -> `open class`.
 //
-// PORT-NOTE (deferred): requires reconciling `DataFormatMixin` conformance. Upstream
-//   `zrUtil.mixin(MarkerModel, DataFormatMixin.prototype)` grafts the `DataFormatMixin` method set. As
-//   with `SeriesModel` (see model/Series.swift), the conformance is blocked by an impedance mismatch:
-//   `DataFormatMixin` requires a non-optional `ecModel: GlobalModel` (and `animatedValue`), but
-//   `Model.ecModel` is `GlobalModel?`. Until that is reconciled, `getFormattedLabel`/`getRawValue` from
-//   the mixin are unavailable here; `getDataParams`/`formatTooltip` are provided directly below.
-//   `DataHost` (the `getData` contract) is conformed.
-open class MarkerModel: ComponentModel, DataHost {
+// PORT: upstream `zrUtil.mixin(MarkerModel, DataFormatMixin.prototype)` grafts the `DataFormatMixin`
+//   method set. Mirroring `SeriesModel` (see model/Series.swift), this is conformed via the ported
+//   `DataFormatMixin` protocol + extension. The former `ecModel: GlobalModel` (non-optional) impedance
+//   was already resolved by relaxing the protocol requirement to `GlobalModel?`, so `getFormattedLabel`/
+//   `getRawValue` from the mixin are now available here; `getDataParams`/`formatTooltip` are overridden
+//   below exactly as upstream. `DataHost` (the `getData` contract `DataFormatMixin` refines) is conformed.
+open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
 
     // static type = 'marker';
     open override class var type: ComponentFullType { return "marker" }
@@ -226,7 +235,10 @@ open class MarkerModel: ComponentModel, DataHost {
                 // const markerOpt = seriesModel.get(this.mainType as any, true) as Opts;
                 // `seriesModel` (SeriesModel) adds a `get(Any?, Bool)` overload (PaletteMixin) that is
                 // ambiguous with `Model.get(String, Bool?)`; upcast to `Model` to select the typed one.
-                let markerOpt = (seriesModel as Model).get(self.mainType, true) as? [String: Any]
+                // PORT: `var` (upstream mutates `markerOpt`/its data items in place via `fillLabel`; Swift
+                //   dicts are value types, so the defaulted emphasis-label is written back below before
+                //   `createMarkerModelFromSeries` consumes it).
+                var markerOpt = (seriesModel as Model).get(self.mainType, true) as? [String: Any]
 
                 var markerModel = inner(seriesModel).map[componentType]
                 // if (!markerOpt || !markerOpt.data)
@@ -237,19 +249,22 @@ open class MarkerModel: ComponentModel, DataHost {
                 if markerModel == nil {
                     if isInit ?? false {
                         // Default label emphasis `position` and `show`
-                        fillLabel(markerOpt)
+                        markerOpt = fillLabel(markerOpt) as? [String: Any]
                     }
                     // zrUtil.each(markerOpt.data, function (item) { ... });
-                    util.each((markerOpt?["data"] as? [Any?]) ?? []) { item, _ in
+                    var data = (markerOpt?["data"] as? [Any?]) ?? []
+                    util.each(data) { item, idx in
                         // FIXME Overwrite fillLabel method ?
-                        if let pair = item as? [Any?], util.isArray(item) {
-                            fillLabel(pair.count > 0 ? pair[0] : nil)
-                            fillLabel(pair.count > 1 ? pair[1] : nil)
+                        if var pair = item as? [Any?], util.isArray(item) {
+                            if pair.count > 0 { pair[0] = fillLabel(pair[0]) }
+                            if pair.count > 1 { pair[1] = fillLabel(pair[1]) }
+                            data[idx] = pair
                         }
                         else {
-                            fillLabel(item)
+                            data[idx] = fillLabel(item)
                         }
                     }
+                    markerOpt?["data"] = data
 
                     markerModel = self.createMarkerModelFromSeries(
                         markerOpt, self, ecModel
@@ -279,16 +294,23 @@ open class MarkerModel: ComponentModel, DataHost {
         _ dataType: String? = nil
     ) -> TooltipFormatResult? {
         // const data = this.getData();
-        // const value = this.getRawValue(dataIndex);
+        let data = self.getData()
+        // const value = this.getRawValue(dataIndex);  (`getRawValue` from DataFormatMixin)
+        let value = self.getRawValue(dataIndex)
         // const itemName = data.getName(dataIndex);
-        // return createTooltipMarkup('section', { header: this.name, blocks: [...] });
-        //
-        // PORT-NOTE (deferred): requires `getRawValue` (DataFormatMixin, conformance blocked — see class
-        //   header). `createTooltipMarkup` (component/tooltip/tooltipMarkup) is ported, but the raw value
-        //   feeding it is unavailable until the mixin conformance lands. Tooltip markup deferred
-        //   (interaction/formatting, out of static-render scope). Returns nil until then.
-        _ = (dataIndex, multipleSeries, dataType)
-        return nil
+        let itemName = data.getName(Int(dataIndex))
+
+        return createTooltipMarkup("section", TooltipMarkupSection(
+            header: self.name,
+            blocks: [createTooltipMarkup("nameValue", TooltipMarkupNameValueBlock(
+                name: itemName,
+                value: value,
+                // noName: !itemName,  (JS-falsy: empty string / null)
+                noName: itemName.isEmpty,
+                // noValue: value == null,
+                noValue: value == nil
+            ))]
+        ))
     }
 
     // getData(): SeriesData<this> { return this._data as SeriesData<this>; }
@@ -307,35 +329,11 @@ open class MarkerModel: ComponentModel, DataHost {
         _ dataType: SeriesDataType? = nil
     ) -> CallbackDataParams {
         // const params = DataFormatMixin.prototype.getDataParams.call(this, dataIndex, dataType);
-        // POTENTIAL-BUG: the `DataFormatMixin.getDataParams` base is unavailable (conformance blocked,
-        //   see class header). The base params (color/encode/dimensionNames/…) are therefore NOT computed
-        //   here — a divergence from upstream; only the host-series patch below (upstream's actual override
-        //   contribution) is applied on a params scaffold built from directly-available fields. Restore the
-        //   full base computation once `MarkerModel: DataFormatMixin` is unblocked.
-        let data = self.getData()
-        var params = CallbackDataParams(
-            componentType: self.mainType,
-            componentSubType: self.subType,
-            componentIndex: self.componentIndex,
-            seriesType: nil,
-            seriesIndex: self.seriesIndex,
-            seriesId: nil,
-            seriesName: nil,
-            name: data.getName(Int(dataIndex)),
-            dataIndex: Double(data.getRawIndex(Int(dataIndex))),
-            data: data.getRawDataItem(Int(dataIndex)),
-            dataType: dataType,
-            value: (data.getRawDataItem(Int(dataIndex)) as Any),
-            color: nil,
-            borderColor: nil,
-            dimensionNames: nil,
-            encode: nil,
-            marker: nil,
-            status: nil,
-            dimensionIndex: nil,
-            percent: nil,
-            vars: ["seriesName", "name", "value"]
-        )
+        // `getDataParams` is a `DataFormatMixin` protocol-EXTENSION member (not a requirement); reaching it
+        //   through a `DataFormatMixin`-typed self dispatches statically to the shared base — mirrors the
+        //   `SeriesModel.getDataParams` pattern (model/Series.swift) and matches upstream's explicit
+        //   `DataFormatMixin.prototype.getDataParams.call(this, ...)`.
+        var params = (self as DataFormatMixin).getDataParams(dataIndex, dataType)
         let hostSeries = self.__hostSeries
         if let hostSeries = hostSeries {
             params.seriesId = hostSeries.id
@@ -370,7 +368,9 @@ open class MarkerModel: ComponentModel, DataHost {
 
 // interface MarkerModel<Opts> extends DataFormatMixin {}
 // zrUtil.mixin(MarkerModel, DataFormatMixin.prototype);
-//   -> PORT-NOTE: see class header (conformance blocked by `ecModel` optionality, mirrors SeriesModel).
+//   -> `open class MarkerModel: ..., DataFormatMixin` above conforms to the ported `DataFormatMixin`
+//      protocol + extension (mirrors SeriesModel), grafting `getRawValue`/`getFormattedLabel` and the
+//      base `getDataParams`/`formatTooltip` that the overrides above build on.
 
 // export default MarkerModel;  -> `open class MarkerModel` above.
 

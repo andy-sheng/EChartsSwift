@@ -166,26 +166,34 @@ open class MarkPointView: MarkerView {
         mpData.each { args in
             let idx = Int(args[0] as? Double ?? 0)
             let itemModel = mpData.getItemModel(idx)
-            let symbol = itemModel.getShallow("symbol")
-            let symbolSize = itemModel.getShallow("symbolSize")
-            let symbolRotate = itemModel.getShallow("symbolRotate")
-            let symbolOffset = itemModel.getShallow("symbolOffset")
+            var symbol = itemModel.getShallow("symbol")
+            var symbolSize = itemModel.getShallow("symbolSize")
+            var symbolRotate = itemModel.getShallow("symbolRotate")
+            var symbolOffset = itemModel.getShallow("symbolOffset")
             let symbolKeepAspect = itemModel.getShallow("symbolKeepAspect")
 
             // TODO: refactor needed: single data item should not support callback function
             if util.isFunction(symbol) || util.isFunction(symbolSize)
                 || util.isFunction(symbolRotate) || util.isFunction(symbolOffset) {
-                // PORT-NOTE (deferred, MarkPointView.ts:144-160): callback-in-data-item — invoking an arbitrary
-                //   user function against `mpModel.getRawValue(idx)` + `mpModel.getDataParams(idx)` is out of
-                //   static-render scope (dynamic/interaction). Requires `getRawValue`, which is unavailable
-                //   (DataFormatMixin conformance blocked, see MarkerModel.swift). The four function
-                //   invocations are deferred:
-                //     const rawIdx = mpModel.getRawValue(idx);
-                //     const dataParams = mpModel.getDataParams(idx);
-                //     if (isFunction(symbol)) symbol = symbol(rawIdx, dataParams);
-                //     if (isFunction(symbolSize)) symbolSize = symbolSize(rawIdx, dataParams);
-                //     if (isFunction(symbolRotate)) symbolRotate = symbolRotate(rawIdx, dataParams);
-                //     if (isFunction(symbolOffset)) symbolOffset = symbolOffset(rawIdx, dataParams);
+                // A single data item may carry a `(rawValue, dataParams) -> …` callback for any of
+                //   symbol/symbolSize/symbolRotate/symbolOffset. `getRawValue`/`getDataParams` are supplied
+                //   by MarkerModel (DataFormatMixin conformance). The user callback closure type is modeled
+                //   as `(Any?, CallbackDataParams) -> Any?` (upstream is dynamically typed).
+                let rawIdx = mpModel.getRawValue(Double(idx))
+                let dataParams = mpModel.getDataParams(Double(idx))
+                if let fn = symbol as? (Any?, CallbackDataParams) -> Any? {
+                    symbol = fn(rawIdx, dataParams)
+                }
+                if let fn = symbolSize as? (Any?, CallbackDataParams) -> Any? {
+                    // FIXME 这里不兼容 ECharts 2.x，2.x 貌似参数是整个数据？
+                    symbolSize = fn(rawIdx, dataParams)
+                }
+                if let fn = symbolRotate as? (Any?, CallbackDataParams) -> Any? {
+                    symbolRotate = fn(rawIdx, dataParams)
+                }
+                if let fn = symbolOffset as? (Any?, CallbackDataParams) -> Any? {
+                    symbolOffset = fn(rawIdx, dataParams)
+                }
             }
 
             var style = itemModel.getModel("itemStyle").getItemStyle()

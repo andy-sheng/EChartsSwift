@@ -246,13 +246,15 @@ public final class ChordEdge: Path {
             applyEdgeFill(el, edge, nodeData, lineStyle)
         }
         else {
-            // saveOldStyle(el);  — PORT-NOTE (deferred): animation/basicTransition IS ported, but the
-            //   enter/update ribbon transition is intentionally not wired in this static-render view.
+            // saveOldStyle(el);
+            saveOldStyle(el)
             // applyEdgeFill(el, edge, nodeData, lineStyle);
             applyEdgeFill(el, edge, nodeData, lineStyle)
             // graphic.updateProps(el, { shape: shape }, seriesModel, edgeIdx);
-            // PORT-NOTE (deferred): enter/update transition not wired — apply the target shape directly.
-            _ = el.setShape(shape)
+            //   updateProps tweens the ribbon's shape fields (via ChordPathShape.animationGet/Set) when
+            //   series animation is enabled, else instantly sets the target shape (el.attr — equivalent to
+            //   the previous setShape). Passing the full ChordPathShape value under the "shape" key.
+            updateProps(el, ["shape": shape], seriesModel, edgeIdx)
         }
 
         // Phase 46: edge emphasis + `focus:'adjacency'` (upstream ChordEdge.updateData). The ribbon is a
@@ -271,8 +273,6 @@ public final class ChordEdge: Path {
         // edgeData.setItemGraphicEl(edge.dataIndex, el);
         edgeData.setItemGraphicEl(edge.dataIndex, el)
         innerStore.getECData(el).dataIndex = Double(edge.dataIndex)
-
-        _ = seriesModel   // consumed by the DEFERRED updateProps transition (see above).
     }
 }
 
@@ -308,13 +308,16 @@ private func applyEdgeFill(
             edgeShape.pathStyle.fill = .string(fill)
         }
         // edgeStyle.decal = node1.getVisual('style').decal;
-        // PORT-NOTE (deferred): node decal (Pattern) not bridged (decal is out of the static-render scope).
+        //   The decalVisual stage bridges the node's decal onto its 'style' visual as a `Pattern`; carry
+        //   it onto the ribbon fill (Path.update synthesizes the tiling pattern). Absent → nil (undefined).
+        edgeShape.pathStyle.decal = chordStyleDict(node1.getVisual("style"))["decal"] as? ZRenderKit.Pattern
     case "target":
         // edgeStyle.fill = nodeData.getItemVisual(node2.dataIndex, 'style').fill;
         if let fill = chordColorString(chordStyleDict(nodeData.getItemVisual(node2.dataIndex, "style"))["fill"]) {
             edgeShape.pathStyle.fill = .string(fill)
         }
-        // edgeStyle.decal = node2.getVisual('style').decal;  — PORT-NOTE (deferred): decal (Pattern) not bridged.
+        // edgeStyle.decal = node2.getVisual('style').decal;
+        edgeShape.pathStyle.decal = chordStyleDict(node2.getVisual("style"))["decal"] as? ZRenderKit.Pattern
     case "gradient":
         // const sourceColor = nodeData.getItemVisual(node1.dataIndex, 'style').fill;
         // const targetColor = nodeData.getItemVisual(node2.dataIndex, 'style').fill;
