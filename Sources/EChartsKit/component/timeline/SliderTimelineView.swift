@@ -92,9 +92,8 @@ public final class SliderTimelineView: TimelineView {
     //   current index without threading them through every call.
     public private(set) var api: ExtensionAPI?
     private var _timelineModel: SliderTimelineModel?
-    // upstream: `private _timer: number` (setTimeout id). The auto-advance play LOOP (`_doPlayStop`) is
-    //   DEFERRED (needs the live host's timer/dispatch loop), but `_clearTimer` is wired so the play/stop
-    //   click (`_handlePlayClick`) faithfully cancels any pending advance.
+    // upstream: `private _timer: number` (setTimeout id). Ported as a `DispatchWorkItem` scheduled by
+    //   `_doPlayStop` (the auto-advance play loop) and cancelled by `_clearTimer`.
     private var _timer: DispatchWorkItem?
 
     // init(ecModel, api) { this.api = api; }
@@ -145,11 +144,21 @@ public final class SliderTimelineView: TimelineView {
             self._position(layoutInfo, timelineModel)
         }
 
-        // this._doPlayStop();      — DEFERRED (auto-advance play timer; needs the live host's
-        //   setTimeout/dispatch loop — see `_timer` note above).
+        // this._doPlayStop();
+        self._doPlayStop()
 
         // this._updateTicksStatus();
         self._updateTicksStatus()
+    }
+
+    /**
+     * @override
+     */
+    // dispose() { this._clearTimer(); }
+    //   upstream also overrides `remove()` (calls `_clearTimer` + `group.removeAll()`); the base
+    //   `ComponentView` in this port exposes no overridable `remove`, so that override is omitted.
+    public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        self._clearTimer()
     }
 
     // ────────────────────────────── _layout ──────────────────────────────
@@ -622,6 +631,18 @@ public final class SliderTimelineView: TimelineView {
         pointer.updateTransform()
         self._currentPointer = pointer
 
+        // upstream `callback.onCreate`: make the checkpoint pointer draggable and route drift/dragend to
+        //   the timeline-change handlers. The Draggable mixin calls `pointer.drift(dx, dy, e)` on each
+        //   move (delegated to `driftHandler`) and dispatches a 'dragend' element event at mouseup.
+        pointer.draggable = .true
+        pointer.driftHandler = { [weak self] dx, dy, e in
+            self?._handlePointerDrag(dx, dy, e)
+        }
+        _ = pointer.on("dragend", { [weak self] _, args in
+            self?._handlePointerDragend(args.first as? ElementEvent)
+            return nil
+        })
+
         // Sync the progress line end to the pointer (upstream `pointerMoveTo` sets progressLine.shape.x2).
         if let progressLine = self._progressLine {
             var shape = (progressLine.shape as? LineShape) ?? LineShape()
@@ -641,13 +662,100 @@ public final class SliderTimelineView: TimelineView {
         api.dispatchAction(payload)
     }
 
-    // _handlePointerDrag / _handlePointerDragend / _pointerChangeTimeline / _toAxisCoord /
-    //   _findNearestTick — the checkpoint-pointer DRAG interaction — are DEFERRED (the pointer is not
-    //   made draggable in `_renderCurrentPointer`; needs the live host's drag events).
+    // ────────────────────────────── _handlePointerDrag ──────────────────────────────
+    private func _handlePointerDrag(_ dx: Double, _ dy: Double, _ e: ElementEvent?) {
+        self._clearTimer()
+        guard let e = e else { return }
+        self._pointerChangeTimeline([e.offsetX, e.offsetY])
+    }
+
+    // ────────────────────────────── _handlePointerDragend ──────────────────────────────
+    private func _handlePointerDragend(_ e: ElementEvent?) {
+        guard let e = e else { return }
+        self._pointerChangeTimeline([e.offsetX, e.offsetY], true)
+    }
+
+    // ────────────────────────────── _pointerChangeTimeline ──────────────────────────────
+    private func _pointerChangeTimeline(_ mousePos: [Double], _ trigger: Bool = false) {
+        var toCoord = self._toAxisCoord(mousePos)[0]
+
+        guard let axis = self._axis else { return }
+        // const axisExtent = numberUtil.asc(axis.getExtent().slice());
+        let axisExtent = number.asc(axis.getExtent())
+
+        if toCoord > axisExtent[1] { toCoord = axisExtent[1] }
+        if toCoord < axisExtent[0] { toCoord = axisExtent[0] }
+
+        self._currentPointer?.x = toCoord
+        self._currentPointer?.markRedraw()
+
+        if let progressLine = self._progressLine {
+            var shape = (progressLine.shape as? LineShape) ?? LineShape()
+            shape.x2 = toCoord
+            progressLine.shape = shape
+            progressLine.dirty()
+        }
+
+        let targetDataIndex = self._findNearestTick(toCoord)
+        guard let timelineModel = self._timelineModel else { return }
+
+        // if (trigger || (targetDataIndex !== getCurrentIndex() && get('realtime'))) { _changeTimeline(...) }
+        if trigger || (targetDataIndex != timelineModel.getCurrentIndex() && tlTruthy(timelineModel.get("realtime"))) {
+            self._changeTimeline(targetDataIndex)
+        }
+    }
 
     // ────────────────────────────── _doPlayStop ──────────────────────────────
-    //   DEFERRED (auto-advance play loop). Upstream schedules a `setTimeout` that dispatches the next
-    //   `timelineChange` after `playInterval`; that needs the live host's timer/dispatch loop.
+    //   Auto-advance play loop. Upstream schedules a `setTimeout` that dispatches the next
+    //   `timelineChange` after `playInterval`; ported as a `DispatchWorkItem` on the main queue.
+    private func _doPlayStop() {
+        self._clearTimer()
+
+        guard let model = self._timelineModel, model.getPlayState() else { return }
+
+        // this._timer = setTimeout(() => { this._changeTimeline(getCurrentIndex() + (rewind ? -1 : 1)) },
+        //   this.model.get('playInterval'))
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self, let timelineModel = self._timelineModel else { return }
+            self._changeTimeline(
+                timelineModel.getCurrentIndex() + (tlTruthy(timelineModel.get("rewind", true)) ? -1 : 1)
+            )
+        }
+        self._timer = item
+        // playInterval is in ms; asyncAfter takes seconds.
+        let intervalMs = tlReadDouble(model.get("playInterval")) ?? 2000
+        DispatchQueue.main.asyncAfter(deadline: .now() + intervalMs / 1000.0, execute: item)
+    }
+
+    // ────────────────────────────── _toAxisCoord ──────────────────────────────
+    private func _toAxisCoord(_ vertex: [Double]) -> [Double] {
+        // const trans = this._mainGroup.getLocalTransform();
+        //   return graphic.applyTransform(vertex, trans, true);
+        let trans = self._mainGroup.getLocalTransform()
+        return applyTransform(VectorArray(vertex[0], vertex[1]), trans, true)
+    }
+
+    // ────────────────────────────── _findNearestTick ──────────────────────────────
+    private func _findNearestTick(_ axisCoord: Double) -> Int {
+        guard let model = self._timelineModel, let axis = self._axis else { return 0 }
+        let data = model.getData()
+        var dist = Double.infinity
+        var targetDataIndex = 0
+
+        // data.each(['value'], (value, dataIndex) => { ... }) — the dataIndex is the last arg element.
+        data.each(["value"]) { args in
+            let value = tlReadDouble(args.first ?? nil) ?? 0
+            let dataIndex = Int((args.last as? Double) ?? 0)
+            let coord = axis.dataToCoord(value)
+            let d = Swift.abs(coord - axisCoord)
+            if d < dist {
+                dist = d
+                targetDataIndex = dataIndex
+            }
+        }
+
+        return targetDataIndex
+    }
 
     // ────────────────────────────── _clearTimer ──────────────────────────────
     private func _clearTimer() {
