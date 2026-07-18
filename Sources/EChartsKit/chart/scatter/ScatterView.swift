@@ -71,7 +71,7 @@ open class ScatterView: ChartView {
         //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
         //   The static render below inlines that for the two coord systems wired so far — cartesian2d and
         //   polar. Each branch returns a `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
-        //   PORT-NOTE (deferred): singleAxis/calendar/matrix scatter (those coord systems not ported); geo is handled below.
+        //   The static render wires cartesian2d, polar, geo, calendar, singleAxis and matrix below.
         // upstream/echarts/src/layout/points.ts:50-56: a STACKED scatter series substitutes the stacked
         //   base/value (or radius/angle, or single) dim with `stackResultDimension` before dataToPoint:
         //   `if (isDimensionStacked(data, dims[i])) dims[i] = stackResultDim;`. Ported here via
@@ -143,8 +143,25 @@ open class ScatterView: ChartView {
                 return single.dataToPoint(x)
             }
         }
+        else if let matrix = seriesModel.coordinateSystem as? Matrix {
+            // Matrix scatter — upstream `pointsLayout` generic path. Matrix `dimensions` is
+            //   ['x','y','value'], but pointsLayout caps the mapped coord dims to the first two
+            //   (`.slice(0, 2)`), so only x/y drive position (value drives symbolSize/visual). Each
+            //   datum's x/y locators (category names or numeric locators) address a matrix cell, and
+            //   `dataToPoint([xLocator, yLocator])` returns that cell's center. Mirror HeatmapView's
+            //   matrix branch (raw `data.get` locators — NOT parsed store ordinals — so
+            //   parseCoordRangeOption resolves category names). Matrix scatter never jitters
+            //   (jitterBaseAxis stays nil), so basePointAt passes straight through.
+            let dataDimX = data.mapDimension("x")!
+            let dataDimY = data.mapDimension("y")!
+            basePointAt = { i in
+                let xVal = data.get(dataDimX, i)
+                let yVal = data.get(dataDimY, i)
+                return matrix.dataToPoint([xVal as Any, yVal as Any])
+            }
+        }
         else {
-            // PORT-NOTE (deferred): matrix scatter (that coord system not ported).
+            // PORT-NOTE (deferred): coord systems other than the branches above not wired for scatter.
             return
         }
 
