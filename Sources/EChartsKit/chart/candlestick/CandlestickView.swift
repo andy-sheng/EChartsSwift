@@ -281,8 +281,7 @@ open class CandlestickView: ChartView {
             setBoxCommon(el, data, dataIndex, isSimpleBox)
 
             // el.incremental = getIncrementalId(seriesModel);
-            // PORT-NOTE (deferred): `Element.incremental` / `model.getIncrementalId` (incremental/large-mode
-            //   rendering) deferred; the element is still added to the group so the geometry renders.
+            el.incremental = model.getIncrementalId(seriesModel)
             _ = group.add(el)
 
             self._progressiveEls?.append(el)
