@@ -546,6 +546,52 @@ private func parseCenterOption(_ view: View, _ centerOption: [Any]?) -> [Double]
     return []
 }
 
+// upstream: function invertBackToCenterOption(viewInner, center): RoamOptionMixin['center'] {
+//     const lastCenterOption = viewInner.centerOption;
+//     const dataRect = viewInner.dataRect;
+//     return (!lastCenterOption || viewInner.lgCt)
+//         ? center.slice()
+//         : [
+//             invertToPercentPerCenterDim(0, center, lastCenterOption, dataRect),
+//             invertToPercentPerCenterDim(1, center, lastCenterOption, dataRect),
+//         ];
+// }
+//   An inverse operation to `parseCenterOption` — mainly for a percentage center option. Returns `[Any]`
+//   because a dim may round-trip to a "xx%" String (percent center) or stay a Double.
+private func invertBackToCenterOption(_ view: View, _ center: [Double]) -> [Any] {
+    let lastCenterOption = view.centerOption
+    let dataRect = view.dataRect
+    if lastCenterOption == nil || view.lgCt != nil {
+        // upstream: center.slice()
+        return [center[0], center[1]]
+    }
+    return [
+        invertToPercentPerCenterDim(0, center, lastCenterOption!, dataRect),
+        invertToPercentPerCenterDim(1, center, lastCenterOption!, dataRect)
+    ]
+}
+
+// upstream: function invertToPercentPerCenterDim(dimIdx, center, lastCenterOption, dataRect) {
+//     return (lastCenterOption && dataRect && dataRect[WH[dimIdx]]
+//             && isPositionSizeOptionPercent(lastCenterOption[dimIdx]))
+//         ? ((center[dimIdx] - dataRect[XY[dimIdx]]) / dataRect[WH[dimIdx]] * 100) + '%'
+//         : center[dimIdx];
+// }
+//   WH = ['width','height'], XY = ['x','y'] (util/graphic) -> BoundingRect accessors below.
+private func invertToPercentPerCenterDim(
+    _ dimIdx: Int, _ center: [Double], _ lastCenterOption: [Any], _ dataRect: BoundingRect?
+) -> Any {
+    let wh = dataRect.map { dimIdx == 0 ? $0.width : $0.height }   // dataRect[WH[dimIdx]]
+    let xy = dataRect.map { dimIdx == 0 ? $0.x : $0.y }            // dataRect[XY[dimIdx]]
+    if let wh = wh, let xy = xy, wh != 0,
+       dimIdx < lastCenterOption.count,
+       number.isPositionSizeOptionPercent(lastCenterOption[dimIdx]) {
+        // upstream: ((center - dataRect.xy) / dataRect.wh * 100) + '%'
+        return jsNumberToString((center[dimIdx] - xy) / wh * 100) + "%"
+    }
+    return center[dimIdx]
+}
+
 // upstream: export function useLegacyViewCoordSysCenterBase(ecModel, api): ViewInner['lgCt'] {
 //     return (api && ecModel && ecModel.getShallow('legacyViewCoordSysCenterBase'))
 //         ? {w: api.getWidth(), h: api.getHeight()}
@@ -652,11 +698,12 @@ private func applyRoamPayloadToOverallTrans(
 //   syncBackToRoamOptionFromRoamTrans — but RETURNING (center, zoom) instead of writing the model option
 //   (the port stores roam state in an inner store). The roaming-animation `syncBackEl` branch is DEFERRED,
 //   so the OVERALL trans is read directly (upstream's `else` branch: copyTransform(sb1, trans[OVERALL])).
-//   `center` is returned in DATA space (numeric); the percent-center round-trip `invertBackToCenterOption`
-//   is not reproduced (the port's stored center is always numeric — percent center is DEFERRED).
+//   `center` is returned via `invertBackToCenterOption` — i.e. in DATA space (numeric) unless the last
+//   `centerOption` was a percent string, in which case the matching dim round-trips back to a "xx%" String
+//   (hence the `[Any]` element type). The roaming-animation `syncBackEl` branch stays DEFERRED.
 public func viewCoordSysApplyRoamPayloadSyncBack(
     _ viewCoordSys: View, _ dx: Double?, _ dy: Double?, _ zoom: Double?, _ originX: Double, _ originY: Double
-) -> (center: [Double], zoom: Double) {
+) -> (center: [Any], zoom: Double) {
     // sb1 = current overall trans; sb2 = roamTrans derived from it (for the old zoom).
     let sb1 = copyTransform(transformableCreate(), viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL])
     let sb2 = transformableCreate()
@@ -672,7 +719,10 @@ public func viewCoordSysApplyRoamPayloadSyncBack(
     let cvx = notZoomNearZero ? (viewRectCenter[0] - sb1.x) / z : viewRectCenter[0]
     let cvy = notZoomNearZero ? (viewRectCenter[1] - sb1.y) / z : viewRectCenter[1]
     let cData = vector.applyTransform(VectorArray(cvx, cvy), viewCoordSys.mtRawInv)
-    return ([cData[0], cData[1]], z)
+    // upstream: const centerOption = invertBackToCenterOption(viewInner, tmpCenterITR);
+    //   Preserve a percent centerOption round-trip when the last center was a percent string.
+    let centerOption = invertBackToCenterOption(viewCoordSys, [cData[0], cData[1]])
+    return (centerOption, z)
 }
 
 // upstream: export function calcCompensationScaleToPreserveNodeSize(viewCoordSys, model) {
@@ -697,7 +747,7 @@ public func calcCompensationScaleToPreserveNodeSize(
 // PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
 //     applyViewCoordSysTransToElement, ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
-//     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl, invertBackToCenterOption,
+//     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl,
 //     syncBackToRoamOptionFromRoamTrans (model write-back), syncBackRoamOptionToRoamHostModel.
 
 // ===== Private helpers =====
@@ -734,6 +784,17 @@ private func anyToDouble(_ v: Any?) -> Double? {
     case let f as Float: return Double(f)
     default: return nil
     }
+}
+
+// JS `value + ''` for a number (used by invertToPercentPerCenterDim's `... + '%'`). Integers render
+//   without a decimal point (`50` → "50"); non-integers keep their shortest decimal form.
+//   PORT-NOTE: not a full ECMAScript Number→String (no exponent form).
+private func jsNumberToString(_ v: Double) -> String {
+    if v.isNaN { return "NaN" }
+    if v == v.rounded() && Swift.abs(v) < 1e15 {
+        return String(Int(v))
+    }
+    return String(v)
 }
 
 // JS `x || fallback` for a numeric optional (undefined/0/NaN are falsy → fallback).
