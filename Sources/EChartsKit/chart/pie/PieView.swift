@@ -45,8 +45,9 @@ import ZRenderKit
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle.swift (`setLabelStyle`/`getLabelStatesModels`); wired in `_updateLabel`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
-//       -> chart/helper/sectorHelper.swift (ported); PieView still defaults cornerRadius to `0` (getSectorCornerRadius
-//          not wired here), so the plain SectorShape from the item layout suffices for a static render.
+//       -> chart/helper/sectorHelper.swift (ported) and NOW wired in `updatePieSectorData`: the
+//          `itemStyle.borderRadius`/`innerCornerRadius` corner radii are folded onto the sector shape, and
+//          the per-state (emphasis/select/blur) corner-radius merges are carried on each state shape.
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> `saveOldStyle` IS ported
 //       (animation/basicTransition.swift) and NOW wired: the `.update` (firstCreate:false) branch of
 //       `updatePieSectorData` calls it before `updateProps`-tweening the reused sector's shape.
@@ -66,12 +67,13 @@ import ZRenderKit
 //   label / leader-line subsystem (`setLabelStyle` / `getLabelStatesModels` / `setTextGuideLine` +
 //   `pieLabelLayout`), and states / emphasis (`setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //   `ensureState('emphasis')` radius grow).
-// STILL DEFERRED (unchanged): the state-driven `setLabelLineStyle`/`getLabelLineStatesModels`
-//   labelGuideHelper helpers; the `select`-state `selectedOffset` dx/dy translate (exploded slice) and
-//   the blur focus fan-out; the SSR `scaleX/scaleY` enter branch and the `animationType === 'scale'`
-//   r-grow enter (the expansion sweep is the port's chosen enter form); and the
-//   `getSectorCornerRadius(...)` corner-radius merges (chart/helper/sectorHelper is ported but not wired
-//   here — cornerRadius defaults to `0`).
+// STILL DEFERRED: the state-driven `setLabelLineStyle`/`getLabelLineStatesModels` labelGuideHelper
+//   helpers (the leader-line style is inlined in `_updateLabel` instead — a cross-file dependency).
+// NOW WIRED (was deferred): the `select`-state `selectedOffset` dx/dy translate (exploded slice) on the
+//   sector + its label + leader line; the focus/blur fan-out (`toggleHoverEmphasis`); the SSR
+//   `scaleX/scaleY` enter branch and the `animationType === 'scale'` r-grow enter (alongside the
+//   expansion sweep); and the `getSectorCornerRadius(...)` corner-radius merges (itemStyle +
+//   emphasis/select/blur states).
 // ================================================================================================
 
 // upstream: class PieView extends ChartView
@@ -234,10 +236,10 @@ open class PieView: ChartView {
     //     sector's CURRENT (previous-layout) angles/radii to the new layout. Reusing the SAME sector
     //     object (the diff `.update` path) both preserves its identity and drives the tween — the
     //     reset-on-update fix. Style/states/label are (re)applied for every datum, either way.
-    //   PORT-NOTE (deferred, unchanged): the `select`-state selectedOffset dx/dy (exploded slice) +
-    //     blur focus fan-out + getSectorCornerRadius corner-radius merges are still omitted (cornerRadius
-    //     defaults to 0); the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter
-    //     are likewise not wired (the expansion enter below is the port's chosen form).
+    //   PORT-NOTE (NOW WIRED, was deferred): the `select`-state selectedOffset dx/dy (exploded slice),
+    //     the focus/blur fan-out, the getSectorCornerRadius corner-radius merges (itemStyle + state
+    //     shapes), the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter are all
+    //     implemented below (alongside the expansion enter).
     private func updatePieSectorData(
         _ sector: Sector, _ data: SeriesData, _ idx: Int,
         _ startAngle: Double, _ firstCreate: Bool, _ seriesModel: PieSeriesModel
