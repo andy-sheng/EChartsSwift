@@ -422,10 +422,11 @@ private func styleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-NOTE: `fill`/`stroke` may be a gradient/pattern object (ZRColor non-string); only the String
-    //   form (incl. the sentinel 'none') is mapped here. `NSNull` (upstream null) leaves the paint unset.
-    if let fill = dict["fill"] as? String { s.fill = .string(fill) }
-    if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
+    // `fill`/`stroke` may be a String, a gradient (`{type:'linear'|'radial', colorStops, ...}`) or an
+    //   image pattern (`{image, repeat, ...}`) option object — all preserved via `radiusPaintFromStyleValue`.
+    //   `NSNull` (upstream null) → nil → the paint is left unset.
+    if let fill = radiusPaintFromStyleValue(dict["fill"]) { s.fill = fill }
+    if let stroke = radiusPaintFromStyleValue(dict["stroke"]) { s.stroke = stroke }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
     if let lineJoin = dict["lineJoin"] as? String { s.lineJoin = lineJoin }
@@ -452,4 +453,70 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
         }
     }
     return s
+}
+
+/// Coerce a dynamic style-bag paint value (`fill`/`stroke`) to a ZRenderKit `ZRColor`, preserving the
+///   gradient/pattern forms upstream carries through the `defaults(...)` merge (previously only the String
+///   form was mapped, silently dropping split colors declared as gradients/patterns). Mirrors
+///   BarView.zrPaintFromStyleValue (the file-private per-view paint bridge). Handled forms:
+///     - `String`                                      → solid color
+///     - a `ZRenderKit.ZRColor` / typed `EChartsKit.ZRColor.color` → passthrough
+///     - `{type:'linear'|'radial', colorStops, x, y, ...}` option dict → gradient
+///     - `{image, repeat, x, y, rotation, scaleX, scaleY}` option dict → image pattern
+///   `NSNull` (upstream `fill: null`) and any other value → nil (paint left unset).
+private func radiusPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
+    if let str = v as? String { return .string(str) }
+    if let zr = v as? ZRenderKit.ZRColor { return zr }
+    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return .string(str) }
+
+    if let dict = v as? [String: Any] {
+        // Image-pattern option object: `{image: <dataURI|url>, repeat, x, y, rotation, scaleX, scaleY}`.
+        if let pat = radiusPatternFromDict(dict) {
+            return .pattern(pat)
+        }
+        if let type = dict["type"] as? String {
+            let stops = radiusGradientColorStopsFromAny(dict["colorStops"])
+            let global = dict["global"] as? Bool
+            if type == "linear" {
+                return .linearGradient(ZRenderKit.LinearGradient(
+                    styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["x2"]), styleNum(dict["y2"]),
+                    stops, global))
+            }
+            else if type == "radial" {
+                return .radialGradient(ZRenderKit.RadialGradient(
+                    styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["r"]),
+                    stops, global))
+            }
+        }
+    }
+
+    return nil
+}
+
+/// Build a ZRenderKit `Pattern` from an image-pattern option dict. Returns nil unless a usable image
+///   string is present (the `image` arm — a `data:` URI or URL/path). Mirrors BarView.zrPatternFromDict.
+private func radiusPatternFromDict(_ dict: [String: Any]) -> ZRenderKit.Pattern? {
+    guard let image = dict["image"] as? String, !image.isEmpty else { return nil }
+    let repeatMode = (dict["repeat"] as? String).flatMap { ImagePatternRepeat(rawValue: $0) } ?? .repeat
+    let pat = ZRenderKit.Pattern(image, repeatMode)
+    if let x = styleNum(dict["x"]) { pat.x = x }
+    if let y = styleNum(dict["y"]) { pat.y = y }
+    if let r = styleNum(dict["rotation"]) { pat.rotation = r }
+    if let sx = styleNum(dict["scaleX"]) { pat.scaleX = sx }
+    if let sy = styleNum(dict["scaleY"]) { pat.scaleY = sy }
+    return pat
+}
+
+/// Parse `colorStops: [{offset, color}, ...]` (the option-dict gradient form) into ZRenderKit stops.
+///   Mirrors BarView.gradientColorStopsFromAny.
+private func radiusGradientColorStopsFromAny(_ v: Any?) -> [ZRenderKit.GradientColorStop] {
+    guard let arr = v as? [Any] else { return [] }
+    var out: [ZRenderKit.GradientColorStop] = []
+    for item in arr {
+        guard let d = item as? [String: Any] else { continue }
+        let offset = styleNum(d["offset"]) ?? 0
+        let color = (d["color"] as? String) ?? ""
+        out.append(ZRenderKit.GradientColorStop(offset: offset, color: color))
+    }
+    return out
 }
