@@ -26,8 +26,9 @@ import ZRenderKit
 //       -> PORT-NOTE: `GraphSeries.swift` is ported; `getNodeGlobalScale` is still typed against
 //          the base `SeriesModel` (it only touches `.coordinateSystem`, an `Any?` on SeriesModel).
 //   import { calcCompensationScaleToPreserveNodeSize, isViewCoordSys } from '../../coord/View';
-//       -> PORT-NOTE: `coord/View.swift` is ported (`isViewCoordSys` available);
-//          `calcCompensationScaleToPreserveNodeSize` is not yet ported (see `getNodeGlobalScale`).
+//       -> PORT-NOTE: `coord/View.swift` is ported (`isViewCoordSys` available). Upstream's
+//          `calcCompensationScaleToPreserveNodeSize` is a deferred roam export in coord/View.swift, so
+//          it is inlined locally (this is its only caller); see `getNodeGlobalScale` below.
 //   import { GraphNode } from '../../data/Graph';   -> data/Graph.swift (sibling port)
 
 // Free-function module `graphHelper.ts` -> caseless enum namespace `graphHelper` (CONVENTIONS §2).
@@ -46,12 +47,35 @@ public enum graphHelper {
         //     // PENDING: historially `nodeScaleRatio` has not been applied on
         //     // geo based graph series.
         //     : 1;
-        // PORT-NOTE (deferred): requires `calcCompensationScaleToPreserveNodeSize` (coord/View.swift roam
-        //   module — NOT ported; see the deferred-exports banner in coord/View.swift). `isViewCoordSys` IS
-        //   ported, but the view branch needs the compensation-scale helper, so only the non-view (geo)
-        //   fallback branch (`1`) is available. Wire the View branch when the roam module lands.
-        _ = coordSys
+        // PORT-NOTE: `isViewCoordSys(coordSys)` == `coordSys is View` (a View always has
+        //   `type === VIEW_COORD_SYS_TYPE`). In this port Geo does NOT subclass View, so the
+        //   `as? View` cast matches only the view coord sys — the geo branch falls through to `1`.
+        if let view = coordSys as? View {
+            return calcCompensationScaleToPreserveNodeSize(view, seriesModel)
+        }
         return 1
+    }
+
+    // upstream (coord/View.ts): export function calcCompensationScaleToPreserveNodeSize(viewCoordSys, model) {
+    //     const nodeScaleRatio = (model.getShallow('nodeScaleRatio', true) || 1);
+    //     const viewInner = inner(viewCoordSys);
+    //     // Scale node when zoom changes
+    //     return ((viewInner.zoom - 1) * nodeScaleRatio + 1)
+    //         / (viewInner.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX || 1);
+    // }
+    // PORT-NOTE: upstream places this in `coord/View`, where it is documented as a deferred roam
+    //   export (see the deferred-exports banner in coord/View.swift). It is inlined here — its only
+    //   caller — because the compensation is purely a function of the view coord sys's zoom/overall
+    //   scale plus the series' `nodeScaleRatio`; all inputs are reachable from the target file.
+    //   `inner(viewCoordSys)` state lives directly on the `View` instance in the port (ViewInner
+    //   fields are members of `View`). Dedupe if it later lands in coord/View.swift.
+    private static func calcCompensationScaleToPreserveNodeSize(_ viewCoordSys: View, _ model: SeriesModel) -> Double {
+        // (model.getShallow('nodeScaleRatio', true) || 1)
+        let nodeScaleRatio = jsNumOrOne(model.getShallow("nodeScaleRatio", true))
+        // (viewInner.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX || 1)
+        let overallScaleX = viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX
+        let denom = (overallScaleX != 0 && !overallScaleX.isNaN) ? overallScaleX : 1
+        return ((viewCoordSys.zoom - 1) * nodeScaleRatio + 1) / denom
     }
 
     // export function getSymbolSize(node: GraphNode)
@@ -64,6 +88,13 @@ public enum graphHelper {
         // return +symbolSize;
         return unaryPlusToNumber(symbolSize)
     }
+}
+
+// Mirrors the JS `x || 1` fallback for a numeric option: coerce to a number, and substitute `1` for
+// any JS-falsy result (nil/undefined, 0, NaN, empty string). Used for `nodeScaleRatio || 1`.
+private func jsNumOrOne(_ v: Any?) -> Double {
+    let d = unaryPlusToNumber(v)
+    return (d == 0 || d.isNaN) ? 1 : d
 }
 
 // Mirrors the JS unary-plus number coercion `+symbolSize` (numeric -> itself, numeric string ->
