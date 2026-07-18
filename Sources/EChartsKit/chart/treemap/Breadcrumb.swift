@@ -245,11 +245,12 @@ open class Breadcrumb {
             // z2: Z2_EMPHASIS_LIFT * 1e4  // A very large z2
             el.z2 = Z2_EMPHASIS_LIFT * 1e4
             // onclick: curry(onSelect, itemNode)
-            // PORT-NOTE (deferred): requires ./treemapAction — the `onSelect` callback the click would
-            //   invoke is itself a deferred no-op at the call site (TreemapView._renderBreadcrumb: the
-            //   drill/zoom dispatchAction needs treemapAction, not ported), so wiring the click here
-            //   would accomplish nothing.
-            _ = onSelect
+            //   The `e: ZRElementEvent` arg is dropped (OnSelectCallback is single-arg here); `itemNode`
+            //   is bound as in `curry(onSelect, itemNode)`.
+            _ = el.on("click", { _, _ in
+                onSelect(itemNode)
+                return nil
+            }, nil)
 
             // (el as ECElement).disableLabelAnimation = true;
             // PORT-NOTE (deferred): the ECElement `disableLabelAnimation` flag gates label animation,
