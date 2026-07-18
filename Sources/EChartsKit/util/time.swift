@@ -51,12 +51,14 @@ public struct TimeAxisLabelFormatterExtraParams {                           // P
      * @deprecated Refactored to `time.level`, kept for backward compat.
      */
     public var level: Double
-    // PORT-NOTE: upstream also intersects AxisLabelFormatterExtraParams (the break part). That
-    //   intersection is omitted here: wiring it would require this struct to carry the break
-    //   fields so scale/break's makeAxisLabelFormatterParamBreak can enrich it (see leveledFormat).
-    public init(time: TimeScaleTickTime?, level: Double) {
+    // upstream also intersects AxisLabelFormatterExtraParams, whose only member is the break part
+    //   (`AxisLabelFormatterExtraBreakPart = { break?: {...} }`). Carried here so scale/break's
+    //   makeAxisLabelFormatterParamBreak can enrich it for a user function formatter (see leveledFormat).
+    public var `break`: AxisLabelFormatterExtraBreakPartBreak?
+    public init(time: TimeScaleTickTime?, level: Double, `break`: AxisLabelFormatterExtraBreakPartBreak? = nil) {
         self.time = time
         self.level = level
+        self.break = `break`
     }
 }
 // upstream: TimeAxisLabelLeveledFormatterOption = string[] | string
@@ -397,18 +399,20 @@ public enum time {
             template = (formatter as! String)
         }
         else if util.isFunction(formatter) {
-            let extra = TimeAxisLabelFormatterExtraParams(
+            var extra = TimeAxisLabelFormatterExtraParams(
                 time: tick.time,
                 level: tick.time != nil ? tick.time!.level : 0
             )
-            // PORT-NOTE (deferred): the break-param enrichment below requires
-            //   TimeAxisLabelFormatterExtraParams to intersect AxisLabelFormatterExtraParams so that
-            //   scale/break's makeAxisLabelFormatterParamBreak can mutate it. That intersection is
-            //   omitted (see the struct definition), so the enrichment is skipped here.
-            // const scaleBreakHelper = getScaleBreakHelper();
-            // if (scaleBreakHelper) {
-            //     scaleBreakHelper.makeAxisLabelFormatterParamBreak(extra, tick.break);
-            // }
+            // upstream mutates `extra.break` in place via makeAxisLabelFormatterParamBreak (extra IS an
+            //   AxisLabelFormatterExtraParams through the intersection). Swift models the two as distinct
+            //   structs, so bridge through a base AxisLabelFormatterExtraParams and copy the break back.
+            let scaleBreakHelper = getScaleBreakHelper()
+            if let scaleBreakHelper = scaleBreakHelper {
+                let enriched = scaleBreakHelper.makeAxisLabelFormatterParamBreak(
+                    AxisLabelFormatterExtraParams(), tick.break
+                )
+                extra.break = enriched?.break
+            }
             if let fn = formatter as? AxisLabelTimeFormatter {
                 template = fn(tick.value, idx, extra)
             }
