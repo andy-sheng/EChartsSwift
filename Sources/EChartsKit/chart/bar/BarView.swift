@@ -136,11 +136,10 @@ open class BarView: ChartView {
 
     private var _isFirstFrame: Bool = true // First frame after series added
     // upstream: private _onRendered: EventCallback;
-    // PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event plumbing (getZr is listed in
-    //   ExtensionAPI.availableMethods but the dynamic method binding is deferred to Phase 6b, so
-    //   `api.getZr().on('rendered', cb)` is not callable). Kept as a closure slot; realtimeSort is
-    //   deferred (see `_enableRealtimeSort`).
-    private var _onRendered: (() -> Void)?
+    //   The realtimeSort "rendered" listener. `api.getZr()` is now wired (resolves through the root
+    //   group's `__zr` back-pointer; nil in pure headless), so this holds the ZRender `EventCallback`
+    //   bound in `_enableRealtimeSort` for later removal in `_removeOnRenderedListener`.
+    private var _onRendered: EventCallback?
 
     private var _backgroundGroup: Group?
 
@@ -526,12 +525,13 @@ open class BarView: ChartView {
     }
 
     // ------------------------------------------------------------------------------------------
-    // realtimeSort — PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event/dispatch plumbing.
-    //   The methods below need `api.getZr().on('rendered', …)` + `api.dispatchAction(…)` (getZr is listed in
-    //   ExtensionAPI.availableMethods but its dynamic binding is deferred) and OrdinalScale sort helpers.
-    //   `shouldRealtimeSort` returns
-    //   nil for the default (realtimeSort: false) path, so these are unreachable in the common case.
-    //   Faithful signatures are preserved for a later mechanical port.
+    // realtimeSort — faithful port of the bar-racing sort/reorder pipeline. Uses `api.getZr()` (wired;
+    //   nil in pure headless → the "rendered" listener path is dormant there) and `api.dispatchAction`.
+    //   The reorder is realized cross-file by the `changeAxisOrder` action handler (registered in bar
+    //   install upstream); dispatching an unregistered action is a silent no-op here (see
+    //   ECharts.dispatchAction), so this pipeline is inert until that handler lands — but the BarView
+    //   side is now ported faithfully rather than stubbed. Gated behind `realtimeSort: true` on a
+    //   category baseAxis + cartesian2d (see `shouldRealtimeSort`), so default charts never reach it.
     // ------------------------------------------------------------------------------------------
 
     private func _enableRealtimeSort(
@@ -539,31 +539,144 @@ open class BarView: ChartView {
         _ data: SeriesData,
         _ api: ExtensionAPI
     ) {
-        // PORT-NOTE (deferred): realtimeSort (see the block comment above). Upstream body:
-        //   if (!data.count()) return;
-        //   if (this._isFirstFrame) { this._dispatchInitSort(...); this._isFirstFrame = false; }
-        //   else { register an `orderMapping` + `api.getZr().on('rendered', ...)` listener. }
-        _ = (realtimeSortCfg, data, api)
+        // If no data in the first frame, wait for data to initSort
+        if data.count() == 0 {
+            return
+        }
+
+        let baseAxis = realtimeSortCfg.baseAxis
+
+        if self._isFirstFrame {
+            self._dispatchInitSort(data, realtimeSortCfg, api)
+            self._isFirstFrame = false
+        }
+        else {
+            let orderMapping: OrderMapping = { idx in
+                guard let el = data.getItemGraphicEl(idx) as? Rect,
+                      let shape = el.shape as? RectShape else {
+                    return 0
+                }
+                // The result should be consistent with the initial sort by data value.
+                // Do not support the case that both positive and negative exist.
+                let v = Swift.abs(baseAxis.isHorizontal() ? shape.height : shape.width)
+                // If data is NaN, shape.xxx may be NaN, so use || 0 here in case
+                return v.isNaN ? 0 : v
+            }
+            let handler: EventCallback = { [weak self] _, _ in
+                self?._updateSortWithinSameData(data, orderMapping, baseAxis, api)
+                return nil
+            }
+            self._onRendered = handler
+            _ = api.getZr()?.on("rendered", handler)
+        }
     }
 
     private func _dataSort(
         _ data: SeriesData,
         _ baseAxis: Axis2D,
-        _ orderMapping: OrderMapping
+        _ orderMapping: @escaping OrderMapping
     ) -> OrdinalSortInfo {
-        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
-        _ = (data, baseAxis, orderMapping)
-        return OrdinalSortInfo(ordinalNumbers: [])
+        // type SortValueInfo = { dataIndex, mappedValue, ordinalNumber }
+        struct SortValueInfo {
+            var dataIndex: Int
+            var mappedValue: Double
+            var ordinalNumber: OrdinalNumber
+        }
+        var info: [SortValueInfo] = []
+        let dim = data.mapDimension(baseAxis.dim)
+        data.each(dim != nil ? [dim!] : []) { args in
+            // (ordinalNumber, dataIdx)
+            let ordinalNumber = (args[0] as? Double) ?? Double.nan
+            let dataIdx = Int((args[1] as? Double) ?? 0)
+            // upstream: mappedValue == null ? NaN : mappedValue (OrderMapping already returns Double)
+            let mappedValue = orderMapping(dataIdx)
+            info.append(SortValueInfo(
+                dataIndex: dataIdx, mappedValue: mappedValue, ordinalNumber: ordinalNumber
+            ))
+        }
+
+        // upstream: info.sort((a, b) => b.mappedValue - a.mappedValue) — descending.
+        //   NaN is treated as the min value (upstream comment); a NaN-safe strict weak ordering is used
+        //   here (Swift's `sort(by:)` traps on a non-total order, unlike JS's tolerant comparator).
+        info.sort { a, b in
+            if a.mappedValue.isNaN { return false }
+            if b.mappedValue.isNaN { return true }
+            return a.mappedValue > b.mappedValue
+        }
+
+        return OrdinalSortInfo(ordinalNumbers: info.map { $0.ordinalNumber })
+    }
+
+    private func _isOrderChangedWithinSameData(
+        _ data: SeriesData,
+        _ orderMapping: OrderMapping,
+        _ baseAxis: Axis2D
+    ) -> Bool {
+        let scale = baseAxis.scale as! OrdinalScale
+        let ordinalDataDim = data.mapDimension(baseAxis.dim) ?? ""
+
+        var lastValue = Double.greatestFiniteMagnitude // Number.MAX_VALUE
+        let len = scale.getOrdinalMeta().categories.count
+        var tickNum = 0
+        while tickNum < len {
+            let rawIdx = data.rawIndexOf(ordinalDataDim, scale.getRawOrdinalNumber(Double(tickNum)))
+            let value = rawIdx < 0
+                // If some tick have no bar, the tick will be treated as min.
+                ? Double.leastNonzeroMagnitude // Number.MIN_VALUE (smallest positive)
+                // PENDING: if dataZoom on baseAxis exits, is it a performance issue?
+                : orderMapping(data.indexOfRawIndex(rawIdx))
+            if value > lastValue {
+                return true
+            }
+            lastValue = value
+            tickNum += 1
+        }
+        return false
+    }
+
+    /*
+     * Consider the case when A and B changed order, whose representing
+     * bars are both out of sight, we don't wish to trigger reorder action
+     * as long as the order in the view doesn't change.
+     */
+    private func _isOrderDifferentInView(
+        _ orderInfo: OrdinalSortInfo,
+        _ baseAxis: Axis2D
+    ) -> Bool {
+        let scale = baseAxis.scale as! OrdinalScale
+        let extent = scale.getExtent()
+
+        var tickNum = Int(Swift.max(0, extent[0]))
+        let tickMax = Int(Swift.min(extent[1], Double(scale.getOrdinalMeta().categories.count - 1)))
+        while tickNum <= tickMax {
+            if orderInfo.ordinalNumbers[tickNum] != scale.getRawOrdinalNumber(Double(tickNum)) {
+                return true
+            }
+            tickNum += 1
+        }
+        return false
     }
 
     private func _updateSortWithinSameData(
         _ data: SeriesData,
-        _ orderMapping: OrderMapping,
+        _ orderMapping: @escaping OrderMapping,
         _ baseAxis: Axis2D,
         _ api: ExtensionAPI
     ) {
-        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
-        _ = (data, orderMapping, baseAxis, api)
+        if !self._isOrderChangedWithinSameData(data, orderMapping, baseAxis) {
+            return
+        }
+
+        let sortInfo = self._dataSort(data, baseAxis, orderMapping)
+
+        if self._isOrderDifferentInView(sortInfo, baseAxis) {
+            self._removeOnRenderedListener(api)
+            var payload = Payload(type: "changeAxisOrder")
+            payload.other["componentType"] = baseAxis.dim + "Axis"
+            payload.other["axisId"] = baseAxis.index
+            payload.other["sortInfo"] = sortInfo
+            api.dispatchAction(payload)
+        }
     }
 
     private func _dispatchInitSort(
@@ -571,8 +684,17 @@ open class BarView: ChartView {
         _ realtimeSortCfg: RealtimeSortConfig,
         _ api: ExtensionAPI
     ) {
-        // PORT-NOTE (deferred): realtimeSort (see the block comment above).
-        _ = (data, realtimeSortCfg, api)
+        let baseAxis = realtimeSortCfg.baseAxis
+        let otherDim = data.mapDimension(realtimeSortCfg.otherAxis.dim) ?? ""
+        let sortResult = self._dataSort(data, baseAxis) { dataIdx in
+            barToNumber(data.get(otherDim, dataIdx))
+        }
+        var payload = Payload(type: "changeAxisOrder")
+        payload.other["isInitSort"] = true
+        payload.other["componentType"] = baseAxis.dim + "Axis"
+        payload.other["axisId"] = baseAxis.index
+        payload.other["sortInfo"] = sortResult
+        api.dispatchAction(payload)
     }
 
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -585,9 +707,13 @@ open class BarView: ChartView {
     }
 
     private func _removeOnRenderedListener(_ api: ExtensionAPI) {
-        if self._onRendered != nil {
+        if let onRendered = self._onRendered {
             // upstream: api.getZr().off('rendered', this._onRendered);
-            // PORT-NOTE (deferred): requires ExtensionAPI.getZr forwarding + event plumbing (realtimeSort).
+            // PORT-NOTE: ZRenderKit `Eventful.off(event, handler)` cannot filter a SPECIFIC closure
+            //   (Swift closures have no identity — a documented divergence in Eventful.off), so this is
+            //   best-effort: it clears our stored handler and requests removal (a no-op for the specific
+            //   handler in the current ZRenderKit). `getZr()` may also be nil in pure headless.
+            _ = api.getZr()?.off("rendered", onRendered)
             self._onRendered = nil
         }
     }
@@ -864,8 +990,7 @@ func updateStyle(
     //   renders it automatically. Cartesian-only here (isPolar is always false on this path); the
     //   polar `labelPositionOutside` (endArc/startArc/endAngle/startAngle) and sector text rotation
     //   are deferred with the rest of the polar block.
-    //   DEFERRED (matches label/labelStyle.swift): `setLabelValueAnimation` (number roll-up) is not
-    //   ported — see the labelStyle file header.
+    //   `setLabelValueAnimation` (number roll-up) IS now ported (label/labelStyle.swift) and wired below.
     // `style.fill` is stored by the visual/style stage as EChartsKit `ZRColor` OR a raw `String`
     //   (see `barStyleFromDict`'s `colorString`); bridge both to the `ColorString` inheritColor.
     let styleDict = style as? [String: Any]
@@ -909,6 +1034,22 @@ func updateStyle(
     labelOpt.defaultOpacity = styleDict?["opacity"] as? Double
     labelOpt.defaultOutsidePosition = labelPositionOutside
     labelStyle.setLabelStyle(el, labelStatesModels, labelOpt)
+
+    // upstream: const label = el.getTextContent();
+    //   if (isPolar && label) { … setSectorTextRotation(…) }   // PORT-NOTE (deferred): the polar sector
+    //     text-rotation subsystem (setSectorTextRotation / createSectorCalculateTextPosition) is not
+    //     ported (label/sectorLabel).
+    let label = el.getTextContent()
+    // upstream (BarView.ts:1055): snapshot the value + interpolated-text getter on the attached label so
+    //   the label number ROLLS UP from its previous value to the new one (gated on `label.valueAnimation`,
+    //   default false; the actual per-frame roll is driven by the label animation stage). `setLabelStyle`
+    //   attached the label as `el`'s textContent above, so `getTextContent()` returns it here.
+    labelStyle.setLabelValueAnimation(
+        label,
+        labelStatesModels,
+        seriesModel.getRawValue(Double(dataIndex)),
+        { value in labelHelper.getDefaultInterpolatedLabel(data, value) }
+    )
 
     // upstream (BarView.ts:1062-1064):
     //   const emphasisModel = itemModel.getModel(['emphasis']);
