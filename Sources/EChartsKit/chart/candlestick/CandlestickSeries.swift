@@ -240,17 +240,18 @@ open class CandlestickSeriesModel: SeriesModel {
         // Clone a new data for next setOption({}) usage.
         // Avoid modifying current data will affect further update.
         if let data = data, addOrdinal {
-            // POTENTIAL-BUG (value-semantics): upstream keeps two aliases of each data item — it mutates the
-            //   SOURCE-referenced originals in place (`item.unshift(index)` / `item.value.unshift(index)`)
-            //   so the Source sees the base-category index, while assigning `option.data = newOptionData`
-            //   (clones WITHOUT the index) for setOption idempotency. Swift `[Any]`/`[String:Any]` are
-            //   value types, and the ported `Source` holds a value copy of `option.data` prepared BEFORE
-            //   this method runs — so the in-place mutation can not reach it. To reproduce the observable
-            //   SOURCE state (index-prepended data) we write the INDEX-PREPENDED items back to
-            //   `self.option["data"]` and re-prepare the SourceManager below. CAVEAT: unlike upstream,
-            //   `self.option["data"]` is left with the index prepended; a subsequent `mergeOption` that
-            //   does not replace `data` would double-prepend. Acceptable for first-render correctness;
-            //   revisit when the dual-alias trick can be modeled.
+            // Value-semantics port of upstream's dual-alias trick. Upstream keeps two aliases of each
+            //   data item: it mutates the SOURCE-referenced originals in place (`item.unshift(index)` /
+            //   `item.value.unshift(index)`) so the Source sees the base-category index, while assigning
+            //   `option.data = newOptionData` (clones WITHOUT the index) for setOption idempotency.
+            //   Swift `[Any]`/`[String:Any]` are value types, and the ported `Source` holds a value copy
+            //   of `option.data` captured at `prepareSource()` — so an in-place mutation can not reach it.
+            //   Equivalent modeling: (1) write the INDEX-PREPENDED items into `self.option["data"]` and
+            //   re-prepare the SourceManager, so the freshly cached Source captures the index-prepended
+            //   data as its own value copy; (2) restore `self.option["data"]` to the ORIGINAL non-indexed
+            //   data afterwards, leaving the option bag idempotent. The already-cached Source is unaffected
+            //   by step (2), so a later `mergeOption` re-running getInitialData will not double-prepend —
+            //   matching upstream's `option.data = newOptionData` guarantee.
             var indexedData: [Any] = []
             util.each(data) { item, index in
                 if util.isArray(item) {
@@ -271,7 +272,8 @@ open class CandlestickSeriesModel: SeriesModel {
                     indexedData.append(item)
                 }
             }
-            // Write the index-prepended data to the option bag the Source reads from, then re-prepare.
+            // Write the index-prepended data to the option bag the Source reads from, then re-prepare
+            //   so the freshly cached Source captures a value copy of the indexed data.
             if var opt = self.option as? [String: Any] {
                 opt["data"] = indexedData
                 self.option = opt
@@ -279,6 +281,13 @@ open class CandlestickSeriesModel: SeriesModel {
             let sm = self.getSourceManager()
             sm.dirty()
             sm.prepareSource()
+            // upstream: `option.data = newOptionData` (the un-indexed clones) — restore the option bag to
+            //   the ORIGINAL non-indexed data for setOption idempotency. The Source cached above already
+            //   holds its own value copy of the indexed data, so this restore does not affect it.
+            if var opt = self.option as? [String: Any] {
+                opt["data"] = data
+                self.option = opt
+            }
         }
 
         // const defaultValueDimensions = this.defaultValueDimensions;
