@@ -30,9 +30,10 @@ import ZRenderKit
 // import Group from 'zrender/src/graphic/Group';                    -> ZRenderKit `Group`
 // import { enterBlur, leaveBlur } from '../../util/states';         -> util/states.swift (enterBlur/leaveBlur ported; the blur toggling usage is deferred, see below)
 // import { traverseUpdateZ, retrieveZInfo } from '../../util/graphic';
-//   -> PORT-NOTE (deferred): `retrieveZInfo` IS ported (component/helper/RoamController.swift), but
-//      `traverseUpdateZ` is not yet a reusable util/graphic function — only ECharts.swift has a private
-//      `doUpdateZ`. The marker-group z/zlevel pass (updateZ below) stays deferred until it is extracted.
+//   -> PORT-NOTE: `retrieveZInfo` IS ported (component/helper/RoamController.swift). `traverseUpdateZ` is
+//      not yet a reusable util/graphic function (only ECharts.swift has a private `doUpdateZ`), so it is
+//      reproduced privately at the bottom of this file — a faithful copy of upstream's traverseUpdateZ/
+//      doUpdateZ — and the marker-group z/zlevel pass (updateZ below) now propagates. Dedupe once landed.
 
 // const inner = makeInner<{ keep: boolean }, MarkerDraw>();
 // PORT-NOTE: `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
@@ -155,16 +156,72 @@ private func updateZ(
 
         let markerDraw = markerGroupMap.get(seriesModel.id)
 
+        // if (markerModel && markerDraw && markerDraw.group) — `markerDraw.group` is non-optional here
+        //   (the MarkerDraw protocol requires it), so the guard collapses to markerModel && markerDraw.
         if let markerModel = markerModel, let markerDraw = markerDraw {
             // const { z, zlevel } = retrieveZInfo(markerModel);
             // traverseUpdateZ(markerDraw.group, z, zlevel);
-            // PORT-NOTE (deferred): requires a reusable `traverseUpdateZ` in util/graphic. `retrieveZInfo`
-            //   IS ported (RoamController.swift), but `traverseUpdateZ` exists only as ECharts.swift's
-            //   private `doUpdateZ`; the z/zlevel propagation onto the marker draw group is deferred until
-            //   it is extracted as a shared function.
-            _ = (markerModel, markerDraw)
+            // PORT-NOTE: `retrieveZInfo` is the ported helper from component/helper/RoamController.swift
+            //   (RoamZInfo.z/.zlevel mirror util/graphic.retrieveZInfo). `traverseUpdateZ` is not yet a
+            //   shared util/graphic function, so it is reproduced privately below (a faithful copy of
+            //   upstream util/graphic.ts `traverseUpdateZ`/`doUpdateZ`); dedupe once it lands as a shared fn.
+            let zInfo = retrieveZInfo(markerModel)
+            traverseUpdateZ(markerDraw.group, zInfo.z, zInfo.zlevel)
         }
     }
+}
+
+// upstream util/graphic.ts `traverseUpdateZ(el, z, zlevel)` — seeds the DFS with maxZ2 = -Infinity.
+private func traverseUpdateZ(_ el: Element, _ z: Double, _ zlevel: Double) {
+    _ = doUpdateZ(el, z, zlevel, -Double.infinity)
+}
+
+// upstream util/graphic.ts `doUpdateZ(el, z, zlevel, maxZ2)`. Sets `z`/`zlevel` on every displayable
+//   (preserving `z2`, the intra-view order the painter tie-breaks on) and on each host's attached label /
+//   text guide line, lifting the label `z2` above the subtree glyphs so it paints over what it annotates.
+//   PORT-NOTE: `ignoreModelZ` (an ExtendedElement flag) is not ported → not checked here (same caveat as
+//   ECharts.swift's private `doUpdateZ`).
+@discardableResult
+private func doUpdateZ(_ el: Element, _ z: Double, _ zlevel: Double, _ maxZ2In: Double) -> Double {
+    var maxZ2 = maxZ2In
+
+    // Group may also have textContent.
+    let label = el.getTextContent()
+    let labelLine = el.getTextGuideLine()
+
+    if el.isGroup {
+        // set z & zlevel of children elements of Group
+        if let g = el as? Group {
+            for child in g.children() {
+                maxZ2 = Swift.max(doUpdateZ(child, z, zlevel, maxZ2), maxZ2)
+            }
+        }
+    }
+    else if let d = el as? Displayable {
+        d.z = z
+        d.zlevel = zlevel
+        // upstream `el.z2 || 0` — treat a NaN z2 as 0.
+        maxZ2 = Swift.max(d.z2.isNaN ? 0 : d.z2, maxZ2)
+    }
+
+    // NOTICE: Do not call any method that can set REDRAW_BIT, otherwise progressive rendering is broken.
+
+    // always set z and zlevel if label/labelLine exists
+    if let label = label {   // ZRText is a Displayable — no downcast needed.
+        label.z = z
+        label.zlevel = zlevel
+        // lift z2 of text content
+        if maxZ2.isFinite { label.z2 = maxZ2 + 2 }
+    }
+    if let labelLine = labelLine {
+        labelLine.z = z
+        labelLine.zlevel = zlevel
+        if maxZ2.isFinite {
+            let showAbove = el.textGuideLineConfig?.showAbove ?? false
+            labelLine.z2 = maxZ2 + (showAbove ? 1 : -1)
+        }
+    }
+    return maxZ2
 }
 
 // export default MarkerView;  -> `open class MarkerView` above.
