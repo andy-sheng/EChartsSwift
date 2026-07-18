@@ -521,12 +521,25 @@ final class VisualMapping {
         // upstream comparator:
         //   return (type2 === 'color' && type1 !== 'color' && type1.indexOf('color') === 0) ? 1 : -1;
         // PORT-NOTE: this comparator is NOT a strict weak ordering (it returns -1 for almost every
-        //   pair), so Swift's `sort(by:)` would trap on a precondition failure. The only ordering it
-        //   enforces is "color before other color* types"; reproduce that intent with a stable
-        //   partition (color first, everything else keeps relative order).
-        let colorTypes = types.filter { $0 == "color" }
-        let restTypes = types.filter { $0 != "color" }
-        types = colorTypes + restTypes
+        //   pair), so Swift's `sort(by:)` would trap on a precondition failure. Reproduce upstream's
+        //   `Array.prototype.sort` faithfully by translating it into the insertion sort V8 uses for
+        //   these small (< a handful of entries) arrays: shift the sorted element past `element` only
+        //   while the comparator says it should come after. Unlike a plain "color first" partition,
+        //   this preserves upstream's behavior that `color` is moved ahead ONLY of color* derived
+        //   types (colorSaturation/colorAlpha/…), never ahead of unrelated types like `symbol`.
+        func cmp(_ type1: String, _ type2: String) -> Bool {
+            // upstream comparator > 0  ⇔  type1 sorts AFTER type2
+            return type2 == "color" && type1 != "color" && type1.hasPrefix("color")
+        }
+        for i in 1..<max(types.count, 1) {
+            let element = types[i]
+            var j = i - 1
+            while j >= 0 && cmp(types[j], element) {
+                types[j + 1] = types[j]
+                j -= 1
+            }
+            types[j + 1] = element
+        }
 
         return types
     }
