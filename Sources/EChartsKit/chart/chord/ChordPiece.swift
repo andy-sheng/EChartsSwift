@@ -208,38 +208,34 @@ open class ChordPiece: Sector {
 
         // Set label style
         // const labelStateModels = getLabelStatesModels(itemModel);
+        let labelStateModels = labelStyle.getLabelStatesModels(itemModel)
         // const style = node.getVisual('style');
-        // setLabelStyle(label, labelStateModels, { labelFetcher: {...}, labelDataIndex, defaultText: node.dataIndex + '',
-        //     inheritColor: style.fill, defaultOpacity: style.opacity, defaultOutsidePosition: 'startArc' });
-        // PORT-NOTE (deferred): requires a custom DataFormatMixin-conforming inline labelFetcher.
-        //   setLabelStyle IS ported (label/labelStyle.swift:303), but upstream does not use the plain
-        //   BarView `labelFetcher = seriesModel` form: it passes a CUSTOM inline labelFetcher whose
-        //   getFormattedLabel adds `dataType: 'node'` and a retrieve3(formatter, normal formatter,
-        //   itemModel name) fallback, plus a 'startArc' outside position — that fetcher is not ported. So
-        //   per-state label styles / defaultOpacity / 'startArc' placement remain DEFERRED. Below is a
-        //   MINIMAL faithful
-        //   NORMAL-state label: text = formatter chain then node id/name then dataIndex-as-string, plus the
-        //   geometry (position/align/verticalAlign) that upstream sets after setLabelStyle.
         let style = node.getVisual("style") as? [String: Any] ?? [:]
-
-        var textStyle = TextStyleProps()
-        // Upstream `setLabelStyle` resolves the text through the labelFetcher, which calls
-        //   `seriesModel.getFormattedLabel(node.dataIndex, 'normal', ...)` (the label.formatter chain),
-        //   and falls back to its `defaultText` (`node.dataIndex + ''`) when that yields nothing.
-        //   `getFormattedLabel` is now ported (DataFormatMixin), so honour the formatter and only fall
-        //   back to the node id (== the node name for chord data, e.g. a/b/c/d) — and finally the
-        //   data-index string. Without the id fallback the sectors were labelled 0/1/2/3 instead of names.
-        let formattedLabel = seriesModel.getFormattedLabel(Double(node.dataIndex), .normal)
-        if let formattedLabel = formattedLabel, !formattedLabel.isEmpty {
-            textStyle.text = formattedLabel
-        }
-        else {
-            textStyle.text = node.id.isEmpty ? String(node.dataIndex) : node.id
-        }
-        // inheritColor: style.fill  (bridge the visual fill color to the text fill).
-        if let fill = chordColorString(style["fill"]) {
-            textStyle.fill = fill
-        }
+        // setLabelStyle(label, labelStateModels, { labelFetcher: {...}, labelDataIndex,
+        //     defaultText: node.dataIndex + '', inheritColor: style.fill, defaultOpacity: style.opacity,
+        //     defaultOutsidePosition: 'startArc' });
+        //   PORT-NOTE: upstream passes a CUSTOM inline labelFetcher whose getFormattedLabel forces
+        //   `dataType: 'node'` and a `retrieve3(formatter, normal formatter, itemModel name)` formatter
+        //   fallback. `DataFormatMixin.getFormattedLabel` is a STATICALLY-dispatched protocol-extension
+        //   method, so a custom fetcher subtype's override would be bypassed by `getLabelText`'s
+        //   existential `labelFetcher.getFormattedLabel(...)` call (the protocol-witness trap). Port the
+        //   observable behaviour instead: pass `seriesModel` as the fetcher (its getFormattedLabel
+        //   honours `label.formatter`; the node data is the default data here, so the forced 'node'
+        //   dataType resolves to the same SeriesData) and fold upstream's `itemModel.name`
+        //   formatter-fallback into `defaultText` — when no formatter yields text the node name (id) is
+        //   used, else the data-index string (upstream's `node.dataIndex + ''`). This now wires the full
+        //   setLabelStyle machinery: per-state (emphasis/blur/select) label styles + defaultOpacity +
+        //   inheritColor. (`defaultOutsidePosition: 'startArc'` is passed for fidelity but is inert on a
+        //   ZRText target — setLabelStyle's `isSetOnText` branch skips createTextConfig — and the outside
+        //   position is overridden below by the explicit x/y placement, as upstream also does.)
+        var opt = SetLabelStyleOpt()
+        opt.labelFetcher = seriesModel
+        opt.labelDataIndex = Double(node.dataIndex)
+        opt.defaultText = node.id.isEmpty ? String(node.dataIndex) : node.id
+        opt.inheritColor = chordColorString(style["fill"])
+        opt.defaultOpacity = chordNum(style["opacity"])
+        opt.defaultOutsidePosition = "startArc"
+        labelStyle.setLabelStyle(label, labelStateModels, opt)
 
         // Set label position
         // const labelPosition = normalLabelModel.get('position') || 'outside';
@@ -280,11 +276,15 @@ open class ChordPiece: Sector {
             verticalAlign = dy > 0 ? .top : .bottom
         }
 
-        textStyle.align = align
-        textStyle.verticalAlign = verticalAlign
-
         // label.attr({ x: dx * r + layout.cx, y: dy * r + layout.cy, rotation: 0, style: { align, verticalAlign } });
-        label.useStyle(textStyle)
+        //   `style: { align, verticalAlign }` is a MERGE-set onto the style `setLabelStyle` just built —
+        //   ZRText has no field-merge `setStyle` counterpart (see setLabelText PORT-NOTE), so read the
+        //   current style, mutate just align/verticalAlign, then `useStyle` (full replace); every other
+        //   field carries over unchanged.
+        var mergedStyle = label.textStyle ?? TextStyleProps()
+        mergedStyle.align = align
+        mergedStyle.verticalAlign = verticalAlign
+        label.useStyle(mergedStyle)
         label.x = dx * r + cx
         label.y = dy * r + cy
         label.rotation = 0
