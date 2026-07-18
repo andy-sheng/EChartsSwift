@@ -50,11 +50,19 @@ private func getSortedIndices(_ data: SeriesData, _ sort: Any?) -> [Int] {
     }
 
     // Add custom sortable function & none sortable opetion by "options.sort"
-    if util.isFunction(sort) {
+    if let sortFn = sort as? (Int, Int) -> Int {
         // indices.sort(sort as any);
-        // PORT-NOTE: a user-supplied JS comparator `sort` function is not representable in the
-        //   `[String: Any]` option bag (no callback plumbing); only the string forms
-        //   ('ascending' / 'descending' / 'none') are supported. `isFunction(sort)` is always false today.
+        //   The upstream JS comparator receives two array elements (the indices, which are
+        //   numbers) and returns a number; modeled as a `(Int, Int) -> Int` closure stored in the
+        //   option bag (mirrors sunburstLayout's user-comparator plumbing).
+        //   JS `Array.prototype.sort` is stable (ES2019); Swift `sort(by:)` is NOT. When the
+        //   comparator returns 0 (equal ranking) fall back to the original order so equal entries
+        //   keep their input order. At this point `indices == [0, 1, ..., len-1]`, so each element
+        //   equals its input position and `a < b` is the stable tie-break.
+        indices.sort { a, b in
+            let cmp = sortFn(a, b)
+            return cmp != 0 ? cmp < 0 : a < b
+        }
     }
     else if (sort as? String) != "none" {
         // indices.sort(function (a, b) {

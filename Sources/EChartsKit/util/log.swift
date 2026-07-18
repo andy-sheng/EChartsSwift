@@ -126,6 +126,29 @@ public enum log {
                 }
                 return nil
             }
+            // Mirrors upstream's JSON.stringify replacer: re-apply
+            // makePrintableStringIfPossible to every nested value so that
+            // Infinity/NaN/Date/function/RegExp values buried inside an object or
+            // array are printed with the same fuzzy formatting as top-level ones.
+            // The result of a special value is a plain string, which JSON then
+            // serializes with quotation marks (as upstream does).
+            func sanitizeForJSON(_ val: Any?) -> Any {
+                if let printable = makePrintableStringIfPossible(val) {
+                    return printable
+                }
+                if let dict = val as? [String: Any] {
+                    var out: [String: Any] = [:]
+                    for (key, value) in dict {
+                        out[key] = sanitizeForJSON(value)
+                    }
+                    return out
+                }
+                if let arr = val as? [Any] {
+                    return arr.map { sanitizeForJSON($0) }
+                }
+                return val as Any
+            }
+
             msg = util.map(hintInfo, { arg, _ -> String in
                 if util.isString(arg) {
                     // Print without quotation mark for some statement.
@@ -138,17 +161,28 @@ public enum log {
                     }
                     // typeof JSON !== 'undefined' && JSON.stringify
                     else {
-                        // PORT-NOTE (platform): upstream JSON.stringify takes a replacer that re-applies
-                        //            makePrintableStringIfPossible to nested values; Foundation's
-                        //            JSONSerialization has no such callback, so nested
-                        //            Infinity/NaN/Date/function/RegExp are not specially printed.
-                        //            Also: bare scalars (number/bool) are not valid top-level JSON
-                        //            objects and fall through to "?" (JS would stringify them).
-                        if let arg = arg, JSONSerialization.isValidJSONObject(arg) {
+                        let sanitized = sanitizeForJSON(arg)
+                        // JSONSerialization only accepts a top-level array/dict, so bare
+                        // scalars (number/bool) are wrapped and unwrapped to reuse JSON's
+                        // own formatting (JS would stringify them directly).
+                        if JSONSerialization.isValidJSONObject(sanitized) {
                             do {
-                                let data = try JSONSerialization.data(withJSONObject: arg)
+                                let data = try JSONSerialization.data(withJSONObject: sanitized)
                                 return String(data: data, encoding: .utf8) ?? "?"
                                 // In most cases the info object is small, so do not line break.
+                            }
+                            catch {
+                                return "?"
+                            }
+                        }
+                        else if JSONSerialization.isValidJSONObject([sanitized]) {
+                            do {
+                                let data = try JSONSerialization.data(withJSONObject: [sanitized])
+                                var str = String(data: data, encoding: .utf8) ?? "[?]"
+                                if str.hasPrefix("[") && str.hasSuffix("]") {
+                                    str = String(str.dropFirst().dropLast())
+                                }
+                                return str
                             }
                             catch {
                                 return "?"

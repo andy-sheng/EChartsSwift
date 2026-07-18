@@ -178,10 +178,7 @@ public final class GeoJSONResource: GeoResource {
     // private _parseToRegions(nameProperty): GeoJSONRegion[]
     private func _parseToRegions(_ nameProperty: String) -> [GeoJSONRegion] {
         // const mapName = this._mapName;
-        //   Only consumed by the stubbed-out fixNanhai/fixTextCoord/fixDiaoyuIsland fixers (PORT-NOTE
-        //   below); silence the unused warning until those land.
         let mapName = self._mapName
-        _ = mapName
         // const geoJSON = this._geoJSON;
         let geoJSON = self._geoJSON
         // let rawRegions;
@@ -202,11 +199,9 @@ public final class GeoJSONResource: GeoResource {
         }
 
         // fixNanhai(mapName, rawRegions);
-        // PORT-NOTE (deferred): requires the built-in GEO fixers `fixNanhai` / `fixTextCoord` /
-        //   `fixDiaoyuIsland` (echarts/src/coord/geo/fix/*), NOT yet ported (out of this phase's scope).
-        //   The calls are stubbed out; wire them when `fix/nanhai.swift` etc. land. `fixNanhai` must take
-        //   `inout [GeoJSONRegion]` (it PUSHES synthesized regions; Swift arrays are value types).
-        // fixNanhai(mapName, &rawRegions)
+        // PORT-NOTE: `fixNanhai` takes `inout [GeoJSONRegion]` (it PUSHES a synthesized region; Swift
+        //   arrays are value types, unlike the mutated JS array reference).
+        fixNanhai(mapName, &rawRegions)
 
         // each(rawRegions, function (region) { ... }, this);
         util.each(rawRegions) { region, _ in
@@ -214,9 +209,12 @@ public final class GeoJSONResource: GeoResource {
             let regionName = region.name
 
             // fixTextCoord(mapName, region);
-            // fixTextCoord(mapName, region)   // PORT-NOTE (deferred): fix/textCoord not yet ported (see above).
+            fixTextCoord(mapName, region)
             // fixDiaoyuIsland(mapName, region);
-            // fixDiaoyuIsland(mapName, region)  // PORT-NOTE (deferred): fix/diaoyuIsland not yet ported (see above).
+            // PORT-NOTE (deferred): `fixDiaoyuIsland` PUSHES to `region.geometries`, but the ported
+            //   `GeoJSONRegion.geometries` is declared `let` (Region.swift). Wiring it faithfully needs
+            //   that field made `var` — a cross-file change, deferred to keep this lane self-contained.
+            // fixDiaoyuIsland(mapName, region)
 
             // Some area like Alaska in USA map needs to be tansformed
             // to look better
@@ -287,4 +285,96 @@ private func parseInput(_ source: Any?) -> Any? {
         return source
     }
     return try? JSONSerialization.jsonObject(with: data, options: [])
+}
+
+// ---------------------------------------------------------------------------
+// Ported from echarts/src/coord/geo/fix/nanhai.ts — Fix for 南海诸岛.
+// PORT-NOTE: the upstream fix/*.ts modules are inlined here as file-private helpers (each is a single
+//   small function only consumed by `_parseToRegions`); logic/names/order mirror upstream.
+// ---------------------------------------------------------------------------
+
+// const geoCoord = [126, 25];
+private let nanhaiGeoCoord: [Double] = [126, 25]
+// const nanhaiName = '南海诸岛';
+private let nanhaiName = "南海诸岛"
+
+// const points = [ ... ]; then the module-level transform loop below (applied once, mirroring the
+//   upstream import-time mutation of the `points` literal).
+private let nanhaiPoints: [[[Double]]] = {
+    var points: [[[Double]]] = [
+        [[0, 3.5], [7, 11.2], [15, 11.9], [30, 7], [42, 0.7], [52, 0.7],
+            [56, 7.7], [59, 0.7], [64, 0.7], [64, 0], [5, 0], [0, 3.5]],
+        [[13, 16.1], [19, 14.7], [16, 21.7], [11, 23.1], [13, 16.1]],
+        [[12, 32.2], [14, 38.5], [15, 38.5], [13, 32.2], [12, 32.2]],
+        [[16, 47.6], [12, 53.2], [13, 53.2], [18, 47.6], [16, 47.6]],
+        [[6, 64.4], [8, 70], [9, 70], [8, 64.4], [6, 64.4]],
+        [[23, 82.6], [29, 79.8], [30, 79.8], [25, 82.6], [23, 82.6]],
+        [[37, 70.7], [43, 62.3], [44, 62.3], [39, 70.7], [37, 70.7]],
+        [[48, 51.1], [51, 45.5], [53, 45.5], [50, 51.1], [48, 51.1]],
+        [[51, 35], [51, 28.7], [53, 28.7], [53, 35], [51, 35]],
+        [[52, 22.4], [55, 17.5], [56, 17.5], [53, 22.4], [52, 22.4]],
+        [[58, 12.6], [62, 7], [63, 7], [60, 12.6], [58, 12.6]],
+        [[0, 3.5], [0, 93.1], [64, 93.1], [64, 0], [63, 0], [63, 92.4],
+            [1, 92.4], [1, 3.5], [0, 3.5]]
+    ]
+    for i in 0..<points.count {
+        for k in 0..<points[i].count {
+            points[i][k][0] /= 10.5
+            points[i][k][1] /= -10.5 / 0.75
+
+            points[i][k][0] += nanhaiGeoCoord[0]
+            points[i][k][1] += nanhaiGeoCoord[1]
+        }
+    }
+    return points
+}()
+
+// export default function fixNanhai(mapType, regions)
+private func fixNanhai(_ mapType: String, _ regions: inout [GeoJSONRegion]) {
+    if mapType == "china" {
+        for i in 0..<regions.count {
+            // Already exists.
+            if regions[i].name == nanhaiName {
+                return
+            }
+        }
+
+        regions.append(GeoJSONRegion(
+            nanhaiName,
+            // zrUtil.map(points, exterior => ({ type: 'polygon', exterior }))
+            util.map(nanhaiPoints) { exterior, _ in
+                GeoJSONPolygonGeometry(exterior, nil) as GeoJSONGeometry
+            },
+            nanhaiGeoCoord
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ported from echarts/src/coord/geo/fix/textCoord.ts.
+// ---------------------------------------------------------------------------
+
+// const coordsOffsetMap = { ... } as Dictionary<number[]>;
+private let coordsOffsetMap: [String: [Double]] = [
+    "南海诸岛": [32, 80],
+    // 全国
+    "广东": [0, -10],
+    "香港": [10, 5],
+    "澳门": [-10, 10],
+    // '北京': [-10, 0],
+    "天津": [5, 5]
+]
+
+// export default function fixTextCoords(mapType, region)
+private func fixTextCoord(_ mapType: String, _ region: GeoJSONRegion) {
+    if mapType == "china" {
+        // const coordFix = coordsOffsetMap[region.name];
+        if let coordFix = coordsOffsetMap[region.name] {
+            // const cp = region.getCenter();
+            var cp = region.getCenter()
+            cp[0] += coordFix[0] / 10.5
+            cp[1] += -coordFix[1] / (10.5 / 0.75)
+            region.setCenter(cp)
+        }
+    }
 }

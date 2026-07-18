@@ -344,7 +344,11 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         //  - Cartesian2D: `getAxis(axis.dim)` (grid, x/y).
         //  - Single: themeRiver / streamgraph on the SINGLE coord sys — exactly one axis, so match it
         //    directly (this is what makes trigger:'axis' tooltip work for themeRiver). Mirrors
-        //    findPointFromSeries.swift. PORT-NOTE (deferred): polar/other coord systems still out of scope.
+        //    findPointFromSeries.swift.
+        //  - Polar: `getAxis(axis.dim)` (radius/angle) — `Polar.getAxis(_ dim: DimensionName) -> Axis`
+        //    (non-optional) does not witness the protocol's optional-returning requirement either, so it
+        //    is narrowed here too; this makes trigger:'axis' tooltip populate seriesModels for polar series.
+        //  PORT-NOTE (deferred): other coord systems still out of scope.
         let coordSysModel: ComponentModel?
         let belongsToAxis: (Axis) -> Bool
         if let coordSys = seriesModel.coordinateSystem as? Cartesian2D {
@@ -354,6 +358,10 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         else if let coordSys = seriesModel.coordinateSystem as? Single {
             coordSysModel = coordSys.model
             belongsToAxis = { axis in coordSys.getAxis() === axis }
+        }
+        else if let coordSys = seriesModel.coordinateSystem as? Polar {
+            coordSysModel = coordSys.model
+            belongsToAxis = { axis in coordSys.getAxis(axis.dim) === axis }
         }
         else {
             return   // !coordSys (or a coord system whose tooltip-axis series info is not ported)

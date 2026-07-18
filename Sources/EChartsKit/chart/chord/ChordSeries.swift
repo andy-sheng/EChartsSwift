@@ -47,6 +47,64 @@ import ZRenderKit
 // export const SERIES_TYPE_CHORD = 'chord';
 public let SERIES_TYPE_CHORD = "chord"
 
+// upstream (hoisted inside beforeLink):
+//   function resolveParentPath(this: Model, pathArr: readonly string[]): string[] {
+//       if (pathArr && (pathArr[0] === 'label' || pathArr[1] === 'label')) {
+//           const newPathArr = pathArr.slice();
+//           if (pathArr[0] === 'label') { newPathArr[0] = 'edgeLabel'; }
+//           else if (pathArr[1] === 'label') { newPathArr[1] = 'edgeLabel'; }
+//           return newPathArr;
+//       }
+//       return pathArr as string[];
+//   }
+// Shared by the two edge-label Model wrappers below (an edge's `label` option path resolves against
+//   the series-level `edgeLabel` instead of `label`).
+private func chordResolveEdgeLabelPath(_ path: [String]?) -> [String]? {
+    guard let pathArr = path else { return path }
+    if pathArr.first == "label" || (pathArr.count > 1 && pathArr[1] == "label") {
+        var newPathArr = pathArr
+        if pathArr.first == "label" {
+            newPathArr[0] = "edgeLabel"
+        }
+        else if pathArr.count > 1 && pathArr[1] == "label" {
+            newPathArr[1] = "edgeLabel"
+        }
+        return newPathArr
+    }
+    return pathArr
+}
+
+// upstream `newGetModel` produces each child model carrying `resolveParentPath` but WITHOUT the
+//   `getModel` swap, so grandchildren fall back to the original `getModel` (no further redirect).
+//   Mirrored here as a Model subclass that overrides only `resolveParentPath`.
+private final class ChordEdgeLabelChildModel: Model {
+    override func resolveParentPath(_ path: [String]?) -> [String]? {
+        return chordResolveEdgeLabelPath(path)
+    }
+}
+
+// upstream wraps the edge item model so BOTH `resolveParentPath` redirects label->edgeLabel AND
+//   `getModel` is replaced by `newGetModel` (which stamps `resolveParentPath` onto every produced
+//   child model). Swift cannot reassign an instance method by name, so the swap is a Model subclass:
+//   `resolveParentPath` is overridden, and `getModel` re-wraps each produced child into
+//   `ChordEdgeLabelChildModel` (== `oldGetModel.call(...)` then `model.resolveParentPath = ...`).
+private final class ChordEdgeLabelItemModel: Model {
+    // function resolveParentPath(this: Model, pathArr) { ... redirect label -> edgeLabel ... }
+    override func resolveParentPath(_ path: [String]?) -> [String]? {
+        return chordResolveEdgeLabelPath(path)
+    }
+
+    // function newGetModel(this: Model, path, parentModel?) {
+    //     const model = oldGetModel.call(this, path, parentModel);
+    //     model.resolveParentPath = resolveParentPath;
+    //     return model;
+    // }
+    override func getModel(_ path: [String]? = nil, _ parentModel: Model? = nil) -> Model {
+        let model = super.getModel(path, parentModel)
+        return ChordEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
+    }
+}
+
 // upstream: class ChordSeriesModel extends SeriesModel<ChordSeriesOption>
 open class ChordSeriesModel: SeriesModel {
 
@@ -124,16 +182,21 @@ open class ChordSeriesModel: SeriesModel {
         //     }
         //     return pathArr as string[];
         // }
-        // PORT-NOTE (deferred): requires a settable `Model.resolveParentPath` hook and a functional
-        //   `SeriesData.wrapMethod`. This dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
-        //   (JS prototype-method swap) so an edge's `label` path resolves against `edgeLabel`. Swift
-        //   cannot swap instance methods by assignment, and `SeriesData.wrapMethod` is a bookkeeping-only
-        //   stub (it cannot rebind a method by name — see data/SeriesData.swift), so the `edgeLabel`
-        //   path-redirect is NOT applied. Preserved faithfully for the diffable surface and for when Model
-        //   gains a settable `resolveParentPath` hook. (upstream mirrors GraphSeries.beforeLink's edge path.)
+        // PORT-NOTE: upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
+        //   prototype-method swap). Swift cannot rebind an instance method by name, so the swap is expressed
+        //   as the two Model subclasses at file scope (`ChordEdgeLabelItemModel` / `ChordEdgeLabelChildModel`):
+        //   the injection re-wraps the produced edge item model into `ChordEdgeLabelItemModel`, which redirects
+        //   a `label` path to `edgeLabel` and stamps the redirect onto each child model it produces.
+        //   `oldGetModel` / `newGetModel` are the base `Model.getModel` / `ChordEdgeLabelItemModel.getModel`.
         _ = nodeData
         edgeData.wrapMethod("getItemModel") { args in
-            return args.first as Any?
+            // function (model: Model) {
+            //     model.resolveParentPath = resolveParentPath;
+            //     model.getModel = newGetModel;
+            //     return model;
+            // }
+            guard let model = args.first as? Model else { return args.first as Any? }
+            return ChordEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
         }
     }
 

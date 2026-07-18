@@ -1157,9 +1157,26 @@ open class LineView: ChartView {
         }
 
         let seriesModel = data.hostModel
-        // isFunction(seriesDuration) ? seriesDuration(null) : seriesDuration — callback form not modeled.
-        let seriesDurationVal = lineHelperToNumberOpt(seriesModel?.get("animationDuration")) ?? 0
-        let seriesDelayVal = lineHelperToNumberOpt(seriesModel?.get("animationDelay")) ?? 0
+        // upstream:
+        //   let seriesDuration = seriesModel.get('animationDuration');
+        //   if (isFunction(seriesDuration)) { seriesDuration = seriesDuration(null); }
+        // The option may be a per-index callback (AnimationDurationCallback = (Double) -> Double). The
+        //   series-level resolution passes `null` for the dataIndex, modeled here as Double.nan.
+        let seriesDurationRaw = seriesModel?.get("animationDuration")
+        let seriesDurationVal: Double
+        if let f = seriesDurationRaw as? AnimationDurationCallback {
+            seriesDurationVal = f(Double.nan)   // seriesDuration(null)
+        } else {
+            seriesDurationVal = lineHelperToNumberOpt(seriesDurationRaw) ?? 0
+        }
+        // upstream:
+        //   const seriesDelay = seriesModel.get('animationDelay') || 0;
+        //   const seriesDelayValue = isFunction(seriesDelay) ? seriesDelay(null) : seriesDelay;
+        let seriesDelayRaw = seriesModel?.get("animationDelay")
+        let seriesDelayCallback = seriesDelayRaw as? AnimationDelayCallback
+        let seriesDelayValue: Double = seriesDelayCallback != nil
+            ? seriesDelayCallback!(Double.nan, nil)   // seriesDelay(null)
+            : (lineHelperToNumberOpt(seriesDelayRaw) ?? 0)
 
         data.eachItemGraphicEl { el, idx in
             guard let symbol = el as? Symbol else { return }
@@ -1201,7 +1218,14 @@ open class LineView: ChartView {
                 ratio = 1 - ratio
             }
 
-            let delay = (seriesDurationVal * ratio) + seriesDelayVal
+            // upstream: const delay = isFunction(seriesDelay) ? seriesDelay(idx)
+            //             : (seriesDuration * ratio) + seriesDelayValue;
+            let delay: Double
+            if let cb = seriesDelayCallback {
+                delay = cb(Double(idx), nil)
+            } else {
+                delay = (seriesDurationVal * ratio) + seriesDelayValue
+            }
 
             let symbolPath = symbol.getSymbolPath()
             let text = symbolPath?.getTextContent()

@@ -179,11 +179,24 @@ public final class ZRender {
         //   (Handler then uses `EmptyProxy`), matching the upstream `ssrMode` guard.
         let handlerProxy: HandlerProxyInterface? = ssrMode ? nil : proxy
 
-        // upstream: useCoarsePointer / pointerSize (touch input — enlarge hit area). The `'auto'`
-        //   arm (env.touchEventsSupported) is not modeled; an explicit `opts.pointerSize` is honored.
-        //   PORT-NOTE (deferred): `useCoarsePointer === 'auto'` defaulting requires
-        //   env.touchEventsSupported detection (not modeled); an explicit opts value is honored.
-        let pointerSize: Double? = (opts.useCoarsePointer ?? false) ? (opts.pointerSize ?? 44) : opts.pointerSize
+        // upstream: useCoarsePointer / pointerSize (touch input — enlarge hit area).
+        //   const useCoarsePointer = opts.useCoarsePointer;
+        //   const usePointerSize = (useCoarsePointer == null || useCoarsePointer === 'auto')
+        //       ? env.touchEventsSupported : !!useCoarsePointer;
+        //   const defaultPointerSize = 44;
+        //   let pointerSize;
+        //   if (usePointerSize) { pointerSize = zrUtil.retrieve2(opts.pointerSize, defaultPointerSize); }
+        // `useCoarsePointer` is modeled as `Bool?` — the `'auto'` string arm folds into the `nil`
+        //   branch (it behaves identically to `nil`, so no runtime behavior is lost). When `nil`
+        //   (or 'auto'), defaulting follows `env.touchEventsSupported` (true on the native touch
+        //   path), so the native default enlarges the hit area to `defaultPointerSize` (44).
+        let useCoarsePointer = opts.useCoarsePointer
+        let usePointerSize = (useCoarsePointer == nil) ? env.touchEventsSupported : useCoarsePointer!
+        let defaultPointerSize: Double = 44
+        var pointerSize: Double? = nil
+        if usePointerSize {
+            pointerSize = util.retrieve2(opts.pointerSize, defaultPointerSize)
+        }
 
         // upstream: this.handler = new Handler(storage, painter, handlerProxy, painter.root, pointerSize);
         //   `painter.root` (the DOM viewport root) is the native host view/layer — passed as nil to
