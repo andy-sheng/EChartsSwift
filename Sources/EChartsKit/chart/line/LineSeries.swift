@@ -54,6 +54,9 @@ open class LineSeriesModel: SeriesModel {
             "coordinateSystem": "cartesian2d",
             "legendHoverLink": true,
             "clip": true,
+            // upstream LineSeries.ts:167 — the default line-label placement is 'top' (above the point),
+            //   not the global label default. LOAD-BEARING for label position parity.
+            "label": ["position": "top"] as [String: Any],
             // LOAD-BEARING for LineView's showSymbol pass: upstream defaultOption defaults
             //   `symbol: 'emptyCircle'`, `symbolSize: 6`, `showSymbol: true` (LineSeries.ts:202 — echarts
             //   6.x bumped the default from 4 to 6). Without these the symbol pass reads nil and draws
@@ -75,6 +78,13 @@ open class LineSeriesModel: SeriesModel {
             //   reads the stroke width from `lineStyleModel.getLineStyle()` (faithful port) instead of
             //   hard-coding 2: without this the polyline falls back to DEFAULT_PATH_STYLE.lineWidth (1).
             "lineStyle": ["width": 2.0, "type": "solid"] as [String: Any],
+            // upstream LineSeries.ts:185 — `emphasis.scale: true` makes the data symbols scale up on
+            //   hover by default (SymbolDraw's emphasis pass reads it). Without this default hover leaves
+            //   the point symbols the same size.
+            "emphasis": ["scale": true] as [String: Any],
+            // upstream LineSeries.ts:224 — the morph-transition default: when a line series is universal-
+            //   transitioned, each datum's shape is CLONED (rather than split) to divide into the target.
+            "universalTransition": ["divideShape": "clone"] as [String: Any],
             // upstream LineSeries.ts:218 — LOAD-BEARING for the draw-on reveal CURVE. The line series
             //   OVERRIDES the global default `animationEasing: 'cubicInOut'` (globalDefault.swift:131)
             //   with 'linear'. Without this override here, `getAnimationConfig` → `getShallow` walks up
@@ -122,12 +132,27 @@ open class LineSeriesModel: SeriesModel {
         // The series' data symbol (default 'emptyCircle' → hollow) centered on the line, at 80% height.
         //   Fall back to the series `symbol` option when the series-level visual is unset.
         let visualType = (self.getData().getVisual("symbol") as? String) ?? (self.get("symbol", false) as? String)
+        // upstream: const visualRotate = this.getData().getVisual('symbolRotate');
+        let visualRotate = self.getData().getVisual("symbolRotate")
         let symbolType = (visualType == nil || visualType == "none") ? "circle" : visualType!
         let size = opt.itemHeight * 0.8
         let sym = symbol.createSymbol(
             symbolType, (opt.itemWidth - size) / 2, (opt.itemHeight - size) / 2, size, size, colorZR
         )
         if let symPath = sym as? Path {
+            // upstream: const symbolRotate = opt.iconRotate === 'inherit' ? visualRotate : (opt.iconRotate || 0);
+            //   symbol.rotation = symbolRotate * Math.PI / 180; symbol.setOrigin([itemWidth/2, itemHeight/2]);
+            let symbolRotate: Double = {
+                if (opt.iconRotate as? String) == "inherit" {
+                    return (visualRotate as? Double) ?? 0
+                }
+                if let d = opt.iconRotate as? Double { return d }
+                if let i = opt.iconRotate as? Int { return Double(i) }
+                return 0
+            }()
+            symPath.rotation = symbolRotate * Double.pi / 180
+            symPath.setOrigin([opt.itemWidth / 2, opt.itemHeight / 2])
+
             if symbolType.contains("empty") {
                 symPath.pathStyle.stroke = colorZR
                 symPath.pathStyle.fill = .string("#fff")
