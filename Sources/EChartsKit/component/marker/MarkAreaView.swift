@@ -238,13 +238,41 @@ private func getSingleMarkerEndPoint(
     }
     else {
         // Chart like bar may have there own marker positioning logic
-        // if (seriesModel.getMarkerPosition) { ... pick the larger x/y as 'x1'/'y1' via clampData,
-        //     then point = seriesModel.getMarkerPosition(pointValue, dims, true); }
-        // PORT-NOTE (deferred): (MarkAreaView.ts:173) `SeriesModel.getMarkerPosition` (the bar/candlestick
-        //   override that snaps markArea corners to category ticks) is deferred — same treatment as the sibling
-        //   MarkLineView.swift (`updateSingleMarkerEndLayout`). The `else` branch (generic coord
-        //   `dataToPoint`) is always taken; corner-picking for bar series is not reproduced yet.
-        do {
+        // if (seriesModel.getMarkerPosition) { ... }
+        //   PORT-NOTE: `getMarkerPosition` is duck-typed on the series in upstream; only
+        //   `BaseBarSeriesModel` declares it in the port (mirrors MarkLineView/MarkPointView).
+        //   Feature-detect via `as? BaseBarSeriesModel`; the bar/candlestick override snaps
+        //   markArea corners to category ticks.
+        if let barSeries = seriesModel as? BaseBarSeriesModel {
+            // Consider the case that user input the right-bottom point first
+            // Pick the larger x and y as 'x1' and 'y1'
+            // const pointValue0 = data.getValues(['x0', 'y0'], idx);
+            let pointValue0 = data.getValues(["x0", "y0"], idx)
+            // const pointValue1 = data.getValues(['x1', 'y1'], idx);
+            let pointValue1 = data.getValues(["x1", "y1"], idx)
+            // const clampPointValue0 = coordSys.clampData(pointValue0);
+            let clampPointValue0 = (coordSys as? Cartesian2D)?.clampData(pointValue0) ?? [Double.nan, Double.nan]
+            // const clampPointValue1 = coordSys.clampData(pointValue1);
+            let clampPointValue1 = (coordSys as? Cartesian2D)?.clampData(pointValue1) ?? [Double.nan, Double.nan]
+            // const pointValue = [];
+            var pointValue: [ScaleDataValue] = [Double.nan, Double.nan]
+            if dims[0] == "x0" {
+                pointValue[0] = (clampPointValue0[0] > clampPointValue1[0]) ? pointValue1[0] : pointValue0[0]
+            }
+            else {
+                pointValue[0] = (clampPointValue0[0] > clampPointValue1[0]) ? pointValue0[0] : pointValue1[0]
+            }
+            if dims[1] == "y0" {
+                pointValue[1] = (clampPointValue0[1] > clampPointValue1[1]) ? pointValue1[1] : pointValue0[1]
+            }
+            else {
+                pointValue[1] = (clampPointValue0[1] > clampPointValue1[1]) ? pointValue0[1] : pointValue1[1]
+            }
+            // Use the getMarkerPosition
+            // point = seriesModel.getMarkerPosition(pointValue, dims, true);
+            point = barSeries.getMarkerPosition(pointValue, dims, true)
+        }
+        else {
             let x = data.get(dims[0], idx)
             let y = data.get(dims[1], idx)
             var pt: [ScaleDataValue] = [(x ?? Double.nan), (y ?? Double.nan)]
