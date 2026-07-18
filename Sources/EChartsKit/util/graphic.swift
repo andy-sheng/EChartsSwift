@@ -1,8 +1,9 @@
 // Ported from echarts/src/util/graphic.ts — keep in sync with upstream
 // (Partial: `expandOrShrinkRect` / `expandRectOnOneDimension`, the transform helpers, the shape-class
 //  registry, and `createIcon` are landed here so far.
-//  PORT-NOTE (deferred): the rest of util/graphic.ts — setTooltipConfig/getTransformedTouches etc. — is
-//  not ported here yet.)
+//  Also landed: clipRectByRect, groupTransition, setTooltipConfig, calcZ2Range, extendPath.
+//  PORT-NOTE (deferred): extendShape (needs a `Path.extend` runtime-subclass synthesizer in ZRenderKit)
+//  and a few driver-layer helpers (traverseElements/traverseUpdateZ/decomposeTransform/…) are not ported here yet.)
 
 import Foundation
 import ZRenderKit
@@ -204,6 +205,25 @@ public func clipPointsByRect(_ points: [[Double]], _ rect: RectLike) -> [[Double
 }
 
 /**
+ * Return a new clipped rect. If rect size are negative, return undefined.
+ */
+// upstream: export function clipRectByRect(targetRect: ZRRectLike, rect: ZRRectLike): ZRRectLike | undefined
+public func clipRectByRect(_ targetRect: RectLike, _ rect: RectLike) -> RectLike? {
+    let x = Swift.max(targetRect.x, rect.x)
+    let x2 = Swift.min(targetRect.x + targetRect.width, rect.x + rect.width)
+    let y = Swift.max(targetRect.y, rect.y)
+    let y2 = Swift.min(targetRect.y + targetRect.height, rect.y + rect.height)
+
+    // If the total rect is cliped, nothing, including the border,
+    // should be painted. So return undefined.
+    if x2 >= x && y2 >= y {
+        return BoundingRect(x, y, x2 - x, y2 - y)
+    }
+    // upstream falls off the end -> `undefined`.
+    return nil
+}
+
+/**
  * Return `true` if the given line (line `a`) and the given polygon
  * are intersect.
  * Note that we do not count colinear as intersect here because no
@@ -280,6 +300,220 @@ private func crossProduct2d(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Doub
 // upstream: function nearZero(val)
 private func nearZero(_ val: Double) -> Bool {
     return val <= 1e-6 && val >= -1e-6
+}
+
+// ============================================================================
+// groupTransition (upstream util/graphic.ts:396-447) — apply group transition animation from g1 to g2.
+//   Used by parallel-axis (and legacy `graphic` group) transition: matches elements across the two
+//   groups by their `anid`, snaps each new element to the old element's pose, then animates it to its
+//   own pose. If no `animatableModel`, the animation degrades to an instant set (see `updateProps`).
+// ============================================================================
+
+// upstream: function isNotGroup(el: Element): el is Displayable { return !el.isGroup; }
+private func isNotGroup(_ el: Element) -> Bool {
+    return !el.isGroup
+}
+// upstream: function isPath(el: Displayable): el is Path { return (el as Path).shape != null; }
+private func isPath(_ el: Displayable) -> Bool {
+    return el is Path
+}
+
+// upstream: export function groupTransition(g1: Group, g2: Group, animatableModel: Model<AnimationOptionMixin>)
+public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model?) {
+    guard let g1 = g1, let g2 = g2 else {
+        return
+    }
+
+    func getElMap(_ g: Group) -> [String: Displayable] {
+        var elMap: [String: Displayable] = [:]
+        _ = g.traverse { (el: Element) -> Bool in
+            if isNotGroup(el), let anid = el.anid, let disp = el as? Displayable {
+                elMap[anid] = disp
+            }
+            return false
+        }
+        return elMap
+    }
+    func getAnimatableProps(_ el: Displayable) -> [String: Any] {
+        // const obj: PathProps = { x: el.x, y: el.y, rotation: el.rotation };
+        var obj: [String: Any] = [
+            "x": el.x,
+            "y": el.y,
+            "rotation": el.rotation
+        ]
+        // if (isPath(el)) { obj.shape = clone(el.shape); }
+        if isPath(el), let path = el as? Path, let shape = path.shape {
+            obj["shape"] = util.clone(shape)
+        }
+        return obj
+    }
+    let elMap1 = getElMap(g1)
+
+    _ = g2.traverse { (el: Element) -> Bool in
+        if isNotGroup(el), let anid = el.anid, let newDisp = el as? Displayable {
+            if let oldEl = elMap1[anid] {
+                let newProp = getAnimatableProps(newDisp)
+                // el.attr(getAnimatableProps(oldEl));
+                _ = newDisp.attr(getAnimatableProps(oldEl))
+                // updateProps(el, newProp, animatableModel, getECData(el).dataIndex);
+                updateProps(newDisp, newProp, animatableModel,
+                            innerStore.getECData(newDisp).dataIndex.map { Int($0) })
+            }
+        }
+        return false
+    }
+}
+
+// ============================================================================
+// setTooltipConfig (upstream util/graphic.ts:675-720) — attach a component-level item tooltip config
+//   (title/legend/geo/graphic/timeline) onto an element's ECData, so the tooltip component can resolve
+//   a per-item tooltip for a component that is not a series datum.
+// ============================================================================
+
+// upstream: export function setTooltipConfig(opt: { el, componentModel, itemName, itemTooltipOption?, formatterParamsExtra? }): void
+//   PORT-NOTE: upstream's single options bag is spread to labeled parameters here.
+//   `itemTooltipOption` is `string | CommonTooltipOption<unknown>` -> `Any?`.
+public func setTooltipConfig(
+    el: Element,
+    componentModel: ComponentModel,
+    itemName: String,
+    itemTooltipOption: Any? = nil,
+    formatterParamsExtra: [String: Any]? = nil
+) {
+    // const itemTooltipOptionObj = isString(...) ? { formatter: ... } : itemTooltipOption;
+    var itemTooltipOptionObj = CommonTooltipOption<Any>()
+    var hasTooltipOptionObj = false
+    if let s = itemTooltipOption as? String {
+        itemTooltipOptionObj.formatter = s
+        hasTooltipOptionObj = true
+    }
+    else if let o = itemTooltipOption as? CommonTooltipOption<Any> {
+        itemTooltipOptionObj = o
+        hasTooltipOptionObj = true
+    }
+
+    let mainType = componentModel.mainType
+    let componentIndex = componentModel.componentIndex
+
+    // const formatterParams = { componentType: mainType, name: itemName, $vars: ['name'] };
+    // (formatterParams as any)[mainType + 'Index'] = componentIndex;
+    var formatterParams = ComponentItemTooltipLabelFormatterParams(
+        componentType: mainType,
+        name: itemName,
+        vars: ["name"]
+    )
+    formatterParams.other[mainType + "Index"] = componentIndex
+
+    // if (formatterParamsExtra) { each(keys(...), key => { if (!hasOwn(formatterParams, key)) {...} }); }
+    if let formatterParamsExtra = formatterParamsExtra {
+        util.each(util.keys(formatterParamsExtra)) { key, _ in
+            if !formatterParamsHasOwn(formatterParams, key) {
+                formatterParams.other[key] = formatterParamsExtra[key]
+                formatterParams.vars.append(key)
+            }
+        }
+    }
+
+    let ecData = innerStore.getECData(el)
+    ecData.componentMainType = mainType
+    ecData.componentIndex = componentIndex
+    // ecData.tooltipConfig = { name, option: defaults({ content, encodeHTMLContent, formatterParams }, itemTooltipOptionObj) };
+    //   PORT-NOTE: `defaults` merges the CommonTooltipOption fields (`itemTooltipOptionObj`) beneath the
+    //     own `content`/`encodeHTMLContent`/`formatterParams`; in this model the common tooltip fields
+    //     live on `ComponentItemTooltipOption.common`, so the merge is expressed structurally.
+    ecData.tooltipConfig = ECData.TooltipConfig(
+        name: itemName,
+        option: ComponentItemTooltipOption<Any>(
+            common: hasTooltipOptionObj ? itemTooltipOptionObj : CommonTooltipOption<Any>(),
+            content: itemName,
+            encodeHTMLContent: true,
+            formatterParams: formatterParams
+        )
+    )
+}
+
+// upstream inline `hasOwn(formatterParams, key)` — whether `formatterParams` already carries `key`.
+private func formatterParamsHasOwn(_ fp: ComponentItemTooltipLabelFormatterParams, _ key: String) -> Bool {
+    return key == "componentType" || key == "name" || key == "$vars" || fp.other[key] != nil
+}
+
+// upstream: function traverseElement(el: Element, cb: (el: Element) => boolean | void)
+//   Polyfill for zrender group traverse not visiting its own root.
+private func traverseElement(_ el: Element, _ cb: (_ el: Element) -> Bool) {
+    var stopped = false
+    if el.isGroup {
+        stopped = cb(el)
+    }
+    if !stopped, let g = el as? Group {
+        _ = g.traverse(cb)
+    }
+}
+
+// ============================================================================
+// calcZ2Range (upstream util/graphic.ts:801-840) — compute the [min, max] z2 across an element tree
+//   (including its state overrides, textContent, and textGuideLine). Used to lift labels above glyphs.
+//   Assumes all elements share the same `z`/`zlevel`.
+// ============================================================================
+
+// upstream: export function calcZ2Range(el: Element): { min: number, max: number }
+public func calcZ2Range(_ el: Element) -> (min: Double, max: Double) {
+    var maxV = -Double.infinity
+    var minV = Double.infinity
+
+    func calcZ2(_ z2: Double?) {
+        // Consider z2 may be NullUndefined
+        if let z2 = z2 {
+            if z2 > maxV {
+                maxV = z2
+            }
+            if z2 < minV {
+                minV = z2
+            }
+        }
+    }
+    func visitEl(_ el: Element?) {
+        guard let el = el, !el.isGroup else {
+            return
+        }
+        let currentStates = el.currentStates
+        if currentStates.count > 0 {
+            for idx in 0..<currentStates.count {
+                // el.states[currentStates[idx]] as Displayable — reads a state's z2 override (may be absent).
+                if let state = el.states[currentStates[idx]] {
+                    calcZ2(state.props["z2"] as? Double)
+                }
+            }
+        }
+        calcZ2((el as? Displayable)?.z2)
+    }
+
+    traverseElement(el) { e -> Bool in
+        visitEl(e)
+        visitEl(e.getTextContent())
+        visitEl(e.getTextGuideLine())
+        return false
+    }
+
+    if minV > maxV {
+        minV = 0
+        maxV = 0
+    }
+    return (min: minV, max: maxV)
+}
+
+// ============================================================================
+// extendPath (upstream util/graphic.ts:118-127) — user-facing "extend a Path subclass from an SVG path
+//   string" API. Mirrors upstream `extendPath = pathTool.extendFromString`.
+//   PORT-NOTE: `extendShape` (upstream :114-116, `Path.extend(opts)`) is NOT ported here — it needs a
+//     `Path.extend` runtime-subclass synthesizer in ZRenderKit's Path, which does not exist yet.
+// ============================================================================
+
+// upstream: export function extendPath(pathData: string, opts: SVGPathOption): SVGPathCtor
+//   Returns a factory closure (the ported stand-in for the synthesized `class Sub extends SVGPath`),
+//   matching `ZRenderKit.extendFromString`'s convention.
+@discardableResult
+public func extendPath(_ pathData: String, _ opts: SVGPathOption? = nil) -> (SVGPathOption?) -> SVGPath {
+    return extendFromString(pathData, opts)
 }
 
 // ============================================================================

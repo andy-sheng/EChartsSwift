@@ -43,8 +43,8 @@ import ZRenderKit
 //       reproduction (`_updateSymbolLabel` / `_resetLabelForRegion`), the same deviation as FunnelView/GeoView.
 //   import { setStatesFlag, Z2_EMPHASIS_LIFT } from '../../util/states';
 //     → util/states.swift is ported (`setStatesFlag`, `Z2_EMPHASIS_LIFT`). In this static render
-//       `Z2_EMPHASIS_LIFT` (== 10) is still inlined as a local constant and the `setStatesFlag` region↔symbol
-//       hover link is still deferred.
+//       `Z2_EMPHASIS_LIFT` (== 10) is still inlined as a local constant; the `setStatesFlag` region↔symbol
+//       hover link IS now ported (see `_renderSymbolLabel`, via `getHighDownInner(regionGroup).onHoverStateChange`).
 //
 // ── Assumed sibling API (chart/map/MapSeries.swift — lands in a later phase, like PieSeries/GeoModel) ──
 //   These are the members of the map SERIES model + its module free functions that `MapView` /
@@ -369,10 +369,11 @@ open class MapView: ChartView {
                 //   setDefaultStateProxy. `states.setStatesStylesFromModel` is the ported equivalent (it
                 //   ensureState('emphasis'/'blur'/'select').style = model.getItemStyle()); the state proxy is
                 //   attached when the region group is toggled a highDown dispatcher below (its child traverse
-                //   covers this path). PORT DEVIATION: upstream uses `getFixedItemStyle` for the state styles;
-                //   the shared helper uses the plain `getItemStyle` (the map-specific areaColor fixup is only
-                //   applied to the NORMAL style here). Adequate for the standard itemStyle emphasis case.
-                states.setStatesStylesFromModel(compoundPath, regionModel)
+                //   covers this path). Upstream (MapDraw.applyOptionStyleForRegion:647-649,671-673) stamps
+                //   the emphasis/select/blur state styles with `getFixedItemStyle` (getItemStyle + areaColor→
+                //   fill fixup), so pass `mapGetFixedItemStyle` as the state-style getter (the getter receives
+                //   `regionModel.getModel([stateName, 'itemStyle'])`, matching upstream's per-state model).
+                states.setStatesStylesFromModel(compoundPath, regionModel, "itemStyle", mapGetFixedItemStyle)
 
                 // The region's resolved solid fill (polygon) or stroke (line) — the label's
                 //   `inheritColor` so `label.color: 'inherit'` picks up the region colour.
@@ -496,10 +497,10 @@ open class MapView: ChartView {
                 self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, inheritColor, target)
             }
             for poly in self._regionPolyPaths[regionName] ?? [] {
-                states.setStatesStylesFromModel(poly, regionModel)
+                states.setStatesStylesFromModel(poly, regionModel, "itemStyle", mapGetFixedItemStyle)
             }
             for line in self._regionLinePaths[regionName] ?? [] {
-                states.setStatesStylesFromModel(line, regionModel)
+                states.setStatesStylesFromModel(line, regionModel, "itemStyle", mapGetFixedItemStyle)
             }
 
             // Re-bind the data item graphic el + hover-emphasis dispatcher (dataIdx may have shifted).
@@ -641,8 +642,8 @@ open class MapView: ChartView {
         path.useStyle(s)
 
         // upstream: ensureState('emphasis'/'select'/'blur').style = getFixedItemStyle(...); setDefaultStateProxy.
-        //   (PORT DEVIATION, same as _buildGeoJSON: getItemStyle, not getFixedItemStyle, for the state styles.)
-        states.setStatesStylesFromModel(path, regionModel)
+        //   `mapGetFixedItemStyle` getter applies the areaColor→fill fixup per upstream (MapDraw:647-649).
+        states.setStatesStylesFromModel(path, regionModel, "itemStyle", mapGetFixedItemStyle)
         states.setDefaultStateProxy(path)
 
         // The region's resolved solid fill — the label's `inheritColor`.
@@ -774,8 +775,8 @@ open class MapView: ChartView {
     }
 
     // upstream label branch of `_renderSymbols` (the `if (!offset) {...}` block). STATIC subset: draws the
-    //   region-name label under the symbol. The region↔symbol hover link (`onHoverStateChange`/`setStatesFlag`)
-    //   and the emphasis/select label states are DEFERRED (states subsystem).
+    //   region-name label under the symbol AND wires the region↔symbol hover link
+    //   (`regionGroup.onHoverStateChange` → `setStatesFlag(circle, toState)`).
     private func _renderSymbolLabel(
         _ mapModel: MapSeriesModel,
         _ originalData: SeriesData,
@@ -796,6 +797,10 @@ open class MapView: ChartView {
         let itemModel = originalData.getItemModel(originalDataIndex)
         let labelModel = itemModel.getModel("label")
         _ = point   // label now positioned relative to the `circle` el, not the raw point.
+
+        // upstream: const regionGroup = fullData.getItemGraphicEl(fullIndex);
+        //   The region GROUP built by `_buildGeoJSON`/`_buildSVG` (bound via `data.setItemGraphicEl`).
+        let regionGroup = fullData.getItemGraphicEl(fullIndex)
 
         // upstream: setLabelStyle(circle, getLabelStatesModels(itemModel), {
         //   labelFetcher: { getFormattedLabel(idx, state) { return mapModel.getFormattedLabel(fullIndex, state); } },
@@ -819,6 +824,19 @@ open class MapView: ChartView {
         if (posOpt == nil || posOpt is NSNull), var cfg = circle.textConfig {
             cfg.position = "bottom"
             circle.textConfig = cfg
+        }
+
+        // upstream: (regionGroup as ECElement).onHoverStateChange = function (toState) {
+        //     setStatesFlag(circle, toState);
+        //   };
+        //   When the region GROUP's hover state changes (emphasis/blur/normal/select), forward the flag to
+        //   the legend-symbol circle so the symbol reacts to the region hover (setStatesFlag is flag-only —
+        //   the render pipeline / state proxy applies it, mirroring upstream `util/states.setStatesFlag`).
+        if let regionGroup = regionGroup {
+            states.getHighDownInner(regionGroup).onHoverStateChange = { [weak circle] toState in
+                guard let circle = circle else { return }
+                states.setStatesFlag(circle, toState)
+            }
         }
     }
 

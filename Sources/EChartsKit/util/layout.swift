@@ -21,12 +21,11 @@
 import Foundation
 import ZRenderKit
 
-// PORT-NOTE (deferred): This is a PARTIAL port of util/layout.ts. positionElement / mergeLayoutParam /
-//   getCircleLayout / copyLayoutParams have landed below. The still-unported surface —
-//   applyPreserveAspect / fetchLayoutMode / getLayoutParams (confirmed absent from this file), and the
-//   `boxCoordinateSystem` branch of `createBoxLayoutReference` — lands with the layout/orchestrator phase.
+// PORT-NOTE: Near-complete port of util/layout.ts. positionElement / mergeLayoutParam / getCircleLayout /
+//   copyLayoutParams / getLayoutParams / sizeCalculable / fetchLayoutMode / applyPreserveAspect and both
+//   the rect + point branches of `createBoxLayoutReference` have landed below.
 //   `LayoutRect` is currently the `typealias LayoutRect = BoundingRect` declared in
-//   coord/cartesian/cartesianAxisHelper.swift.
+//   coord/cartesian/cartesianAxisHelper.swift (the `.margin` slot of upstream `LayoutRect` is not modeled).
 //
 // import * as formatUtil from './format';        -> `format.*` (util/format.swift)
 // import { parsePercent } from './number';       -> `number.parsePercent` (util/number.swift)
@@ -172,9 +171,25 @@ public enum layout {
     }
 
     // upstream: export const vbox = zrUtil.curry(boxLayout, 'vertical');
-    //           export const hbox = zrUtil.curry(boxLayout, 'horizontal');
-    // PORT-NOTE: `vbox`/`hbox` (curried `boxLayout`) have no current consumer in the ported surface;
-    //   add the thin `box('vertical', ...)` / `box('horizontal', ...)` forwarders when one lands.
+    //   Swift has no `curry`; a thin forwarder mirrors the curried first arg.
+    public static func vbox(
+        _ group: Group,
+        _ gap: Double,
+        _ width: Double? = nil,
+        _ height: Double? = nil
+    ) {
+        boxLayout("vertical", group, gap, width, height)
+    }
+
+    // upstream: export const hbox = zrUtil.curry(boxLayout, 'horizontal');
+    public static func hbox(
+        _ group: Group,
+        _ gap: Double,
+        _ width: Double? = nil,
+        _ height: Double? = nil
+    ) {
+        boxLayout("horizontal", group, gap, width, height)
+    }
 
     // upstream: `interface NewlineElement extends Element { newline: boolean }` — LegendView tags a
     //   spacer `Group` with `g.newline = true`, which `boxLayout` reads as a hard line break. Element is
@@ -192,9 +207,11 @@ public enum layout {
         _ api: ExtensionAPI,
         _ opt: Any? = nil
     ) -> BoxLayoutReferenceResult {
-        _ = opt
+        // upstream: opt?.enableLayoutOnlyByCenter
+        let enableLayoutOnlyByCenter = layoutJsTruthy((opt as? [String: Any])?["enableLayoutOnlyByCenter"])
         var refContainer: BoundingRect? = nil
-        var layoutRefType = BOX_LAYOUT_REFERENCE_TYPE_RECT
+        var refPointVar: [Double]? = nil
+        var layoutRefType: Double? = nil
         var boxCoordFrom: Any? = nil
 
         // upstream: const boxCoordSys = model.boxCoordinateSystem; if (boxCoordSys) { ... }
@@ -203,12 +220,13 @@ public enum layout {
         if let bcs = model.boxCoordinateSystem, !(bcs is NSNull) {
             // const {coord, from} = getCoordForCoordSysUsageKindBox(model);
             let coordFrom = getCoordForCoordSysUsageKindBox(model)
-            // Do not clamp `dataToLayout` (support overflow / NaN, consistent with `series.data`).
+            let boxCS = bcs as? CoordinateSystem
+            // Do not clamp `dataToLayout`/`dataToPoint` (support overflow / NaN, consistent with `series.data`).
             // if (boxCoordSys.dataToLayout) { layoutRefType = rect; refContainer = result.contentRect || result.rect; }
             //   `dataToLayout` is defaulted-nil on `CoordinateSystem`; only box coord systems (Matrix)
             //   override it, so a non-box coord sys falls through to the viewport (upstream's optional-method
             //   check). `coord` is `CoordinateSystemDataCoord` (= Any); pass through non-nil.
-            if let boxCS = bcs as? CoordinateSystem,
+            if let boxCS = boxCS,
                let result = boxCS.dataToLayout(coordFrom.coord ?? NSNull(), nil) {
                 layoutRefType = BOX_LAYOUT_REFERENCE_TYPE_RECT
                 boxCoordFrom = coordFrom.from
@@ -216,20 +234,30 @@ public enum layout {
                     refContainer = BoundingRect(r.x, r.y, r.width, r.height)
                 }
             }
-            // PORT-NOTE (deferred): the `opt.enableLayoutOnlyByCenter && boxCoordSys.dataToPoint` →
-            //   POINT-kind branch needs `BoxLayoutReferenceResult.refContainer` to become Optional (its
-            //   consumers read it non-optionally). Matrix uses `dataToLayout` (rect kind), which is what
-            //   the current box-coord consumer — Grid.resize placing a grid in a matrix cell — needs.
+            // else if (opt.enableLayoutOnlyByCenter && boxCoordSys.dataToPoint) { layoutRefType = point; ... }
+            //   `dataToPoint` is non-optional on the Swift protocol, so the guard is only the opt flag.
+            else if enableLayoutOnlyByCenter, let boxCS = boxCS {
+                layoutRefType = BOX_LAYOUT_REFERENCE_TYPE_POINT
+                boxCoordFrom = coordFrom.from
+                refPointVar = boxCS.dataToPoint(coordFrom.coord ?? NSNull(), nil)
+            }
+            // else: upstream logs a `__DEV__` error (unsupported box coord sys) — inert (dev-only log).
         }
 
+        // upstream: if (layoutRefType == null) { layoutRefType = BoxLayoutReferenceType.rect; }
+        let finalType = layoutRefType ?? BOX_LAYOUT_REFERENCE_TYPE_RECT
+
         // if (layoutRefType === rect) { if (!refContainer) refContainer = {0,0,W,H}; refPoint = center; }
+        //   The `point` kind produces no `refContainer` upstream; its consumers read only `refPoint`.
+        //   `refContainer` is non-optional on the ported result, so a viewport placeholder fills the slot
+        //   (never read in the point case).
         let container = refContainer ?? BoundingRect(0, 0, api.getWidth(), api.getHeight())
-        let refPoint = [
+        let refPoint = refPointVar ?? [
             container.x + container.width / 2,
             container.y + container.height / 2
         ]
         return BoxLayoutReferenceResult(
-            type: layoutRefType,
+            type: finalType,
             refContainer: container,
             refPoint: refPoint,
             boxCoordFrom: boxCoordFrom
@@ -469,6 +497,67 @@ public enum layout {
         return rect
     }
 
+    /**
+     * PENDING:
+     *  when preserveAspect: 'cover' and aspect is near Infinity
+     *  or when preserveAspect: 'contain' and aspect is near 0,
+     *  the result width or height is near Inifity. It's logically correct,
+     *  Therefore currently we do not handle it, until bad cases arise.
+     */
+    // upstream: applyPreserveAspect(component: ComponentModel<ComponentOption & PreserveAspectMixin>,
+    //   layoutRect: LayoutRect, aspect: number): LayoutRect
+    public static func applyPreserveAspect(
+        _ component: ComponentModel,
+        _ layoutRect: LayoutRect,
+        // That is, `width / height`. Assume `aspect` is positive.
+        _ aspect: Double
+    ) -> LayoutRect {
+        let preserveAspect = component.getShallow("preserveAspect", true)
+        if !layoutJsTruthy(preserveAspect) {
+            return layoutRect
+        }
+
+        let actualAspect = layoutRect.width / layoutRect.height
+
+        if abs(atan(aspect) - atan(actualAspect)) < 1e-9 {
+            return layoutRect
+        }
+
+        let preserveAspectAlign = component.getShallow("preserveAspectAlign", true) as? String
+        let preserveAspectVerticalAlign = component.getShallow("preserveAspectVerticalAlign", true) as? String
+        var layoutOptInner: [String: Any] = [
+            "width": layoutRect.width,
+            "height": layoutRect.height
+        ]
+        let isCover = (preserveAspect as? String) == "cover"
+
+        if (actualAspect > aspect && !isCover) || (actualAspect < aspect && isCover) {
+            layoutOptInner["width"] = layoutRect.height * aspect
+            if preserveAspectAlign == "left" {
+                layoutOptInner["left"] = 0.0
+            }
+            else if preserveAspectAlign == "right" {
+                layoutOptInner["right"] = 0.0
+            }
+            else {
+                layoutOptInner["left"] = "center"
+            }
+        }
+        else {
+            layoutOptInner["height"] = layoutRect.width / aspect
+            if preserveAspectVerticalAlign == "top" {
+                layoutOptInner["top"] = 0.0
+            }
+            else if preserveAspectVerticalAlign == "bottom" {
+                layoutOptInner["bottom"] = 0.0
+            }
+            else {
+                layoutOptInner["top"] = "middle"
+            }
+        }
+        return getLayoutRect(layoutOptInner as Any?, layoutRect)
+    }
+
     // ------------------------------------------------------------------------
     // upstream: export function positionElement(el, positionInfo, containerRect, margin?, opt?, out?): boolean
     // Value-returning port (the `out` out-param is dropped per CONVENTIONS §3): returns
@@ -535,6 +624,38 @@ public enum layout {
             out["y"] = (out["y"] ?? 0) + dy
         }
         return (true, out)
+    }
+
+    /**
+     * @param option Contains some of the properties in HV_NAMES.
+     * @param hvIdx 0: horizontal; 1: vertical.
+     */
+    // upstream: export function sizeCalculable(option: BoxLayoutOptionMixin, hvIdx: number): boolean
+    //   operating on the dynamic option bag; `!= null` -> key present & non-NSNull.
+    public static func sizeCalculable(_ option: [String: Any], _ hvIdx: Int) -> Bool {
+        func notNull(_ name: String) -> Bool {
+            guard let v = option[name] else { return false }
+            return !(v is NSNull)
+        }
+        return notNull(HV_NAMES[hvIdx][0])
+            || (notNull(HV_NAMES[hvIdx][1]) && notNull(HV_NAMES[hvIdx][2]))
+    }
+
+    // upstream: export function fetchLayoutMode(ins: any): ComponentLayoutMode
+    //   `ins.layoutMode || ins.constructor.layoutMode` — instance `layoutMode` is not modeled on
+    //   `ComponentModel` (only the `static`/class-var); read the class var via `type(of:)`.
+    public static func fetchLayoutMode(_ ins: ComponentModel) -> ComponentLayoutMode? {
+        let layoutMode = type(of: ins).layoutMode
+        // return isObject(layoutMode) ? layoutMode : layoutMode ? {type: layoutMode} : null
+        if let mode = layoutMode as? ComponentLayoutMode {
+            return mode
+        }
+        if let s = layoutMode as? String, !s.isEmpty {
+            var m = ComponentLayoutMode()
+            m.type = s
+            return m
+        }
+        return nil
     }
 
     // ------------------------------------------------------------------------
@@ -634,6 +755,14 @@ public enum layout {
                 target.removeValue(forKey: name)
             }
         }
+    }
+
+    /**
+     * Retrieve 'left', 'right', 'top', 'bottom', 'width', 'height' from object.
+     */
+    // upstream: export function getLayoutParams(source): BoxLayoutOptionMixin { return copyLayoutParams({}, source); }
+    public static func getLayoutParams(_ source: [String: Any]) -> [String: Any] {
+        return copyLayoutParams([:], source)
     }
 
     // ------------------------------------------------------------------------

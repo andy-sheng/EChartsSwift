@@ -257,12 +257,14 @@ public final class HeatmapLayer {
         for i in 0..<256 {
             let mapped = colorMapper(Double(i) / 255.0, true, out)
             let c = (mapped as? [Double]) ?? [0, 0, 0, 0]
-            // color[0..2] are 0..255 rgb; color[3] is 0..1 (clampCssFloat) — the Uint8ClampedArray
-            //   store rounds it to 0/1, matching upstream's gradient alpha behavior.
+            // color[0..2] are 0..255 rgb; color[3] is 0..1 (clampCssFloat). Upstream stores color[3]
+            //   DIRECTLY into a Uint8ClampedArray (`pixelsSingleState[off++] = color[3]`), which rounds
+            //   the 0..1 float to 0/1 — do NOT pre-scale by 255, or update()'s `gradient[+3]*alpha*256`
+            //   overflows and clamps every heat pixel to full opacity (breaks the soft fade / minOpacity).
             pixels[off] = clampU8(c.count > 0 ? c[0] : 0)
             pixels[off + 1] = clampU8(c.count > 1 ? c[1] : 0)
             pixels[off + 2] = clampU8(c.count > 2 ? c[2] : 0)
-            pixels[off + 3] = clampU8((c.count > 3 ? c[3] : 0) * 255)
+            pixels[off + 3] = clampU8(c.count > 3 ? c[3] : 0)
             off += 4
         }
         self._gradientPixels[state] = pixels

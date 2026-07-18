@@ -24,7 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
 //       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. PORT-NOTE:
-//          `util/graphic.initProps` is ported (animation/basicTransition.swift); the grow-in clip animation is still deferred here (static render, see render).
+//          `util/graphic.initProps` is ported (animation/basicTransition.swift); the first-render grow-in clip animation (createGridClipShape) is wired (see render).
 //   import { enterEmphasis, leaveEmphasis, toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
 //       -> util/states.swift (enterEmphasis/leaveEmphasis/toggleHoverEmphasis/setStatesStylesFromModel); node/edge
 //          emphasis is wired (see render). Only graph-topology focus-adjacency/blur remains deferred.
@@ -407,7 +407,20 @@ open class SankeyView: ChartView {
             let edgeBlurScope = (edgeEmphasis.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
             let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(curve, edgeFocus, edgeBlurScope, edgeDisabled)
-            states.setStatesStylesFromModel(curve, edgeModel, "lineStyle")
+            // upstream (SankeyView.ts:253-259):
+            //   setStatesStylesFromModel(curve, edgeModel, 'lineStyle', (model) => {
+            //     const style = model.getItemStyle();
+            //     applyCurveStyle(style, orient, edge);
+            //     return style;
+            //   });
+            //   The getter resolves each emphasis/blur/select-state lineStyle `color` SENTINEL
+            //   ('source'/'target'/'gradient') to a real paint (applyCurveStyleToDict), so a hovered
+            //   ribbon keeps a valid fill instead of the literal sentinel string.
+            states.setStatesStylesFromModel(curve, edgeModel, "lineStyle", { model in
+                var style = model.getItemStyle()
+                applyCurveStyleToDict(&style, orient, edge)
+                return style
+            })
 
             if reuseCurve == nil {
                 _ = mainGroup.add(curve)
@@ -493,21 +506,12 @@ open class SankeyView: ChartView {
                 rect.pathStyle.fill = fill
             }
 
-            // ENTRANCE ANIMATION — opacity fade-in (FunnelView pattern). Upstream reveals the whole
-            //   diagram via a first-render grow-in clip (createGridClipShape + initProps), which is
-            //   DEFERRED here (clip-path animation not ported per CONVENTIONS §5). As the closest
-            //   available-infra faithful stand-in, fade each node Rect from invisible to its final
-            //   opacity: capture the final opacity BEFORE zeroing, set the construction-time opacity to
-            //   0, then animate (or, with animation off, instantly `attr` via Path.attrKV's partial
-            //   "style"-dict merge) toward the final opacity via `initProps`.
-            //   Only on a FRESH build — a morph reuse keeps the node at its final opacity (no re-fade).
-            if reuseRect == nil {
-                let finalNodeOpacity = rect.pathStyle.opacity ?? 1
-                rect.pathStyle.opacity = 0
-                initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
-            }
             // rect.setStyle('decal', node.getVisual('style').decal);
-            //   PORT-NOTE (deferred): node decal (Pattern) not bridged (decal is out of the static-render scope).
+            //   The generic Displayable.setStyle('decal', …) is a no-op for the Path-specific `decal`
+            //   field, so set it directly on the Path style (mirroring the `fill` assignment above).
+            if let decal = sankeyDecal(node) {
+                rect.pathStyle.decal = decal
+            }
 
             // upstream (SankeyView.ts:315): setStatesStylesFromModel(rect, itemModel); + (323-332)
             //   toggleHoverEmphasis. The node rect is marked a highDown dispatcher carrying its
@@ -580,10 +584,22 @@ open class SankeyView: ChartView {
             }
         }, nil)
 
-        // if (!this._data && seriesModel.isAnimationEnabled()) { mainGroup.setClipPath(createGridClipShape(...)); }
-        //   PORT-NOTE (deferred): the first-render grow-in clip animation (createGridClipShape + a clip
-        //   Rect whose width tweens) is deferred — clip-path animation is not ported (CONVENTIONS §5).
-        //   graphic.initProps itself is ported (animation/basicTransition.swift); reinstate with it later.
+        // if (!this._data && seriesModel.isAnimationEnabled()) {
+        //     mainGroup.setClipPath(createGridClipShape(mainGroup.getBoundingRect(), seriesModel, function () {
+        //         mainGroup.removeClipPath();
+        //     }));
+        // }
+        //   First-render grow-in clip: a zero-width clip Rect over the diagram whose width tweens open,
+        //   revealing the ribbons/nodes left-to-right; the tween's completion callback removes the clip.
+        //   Only on the very first render (`!this._data`) with animation enabled. `[weak mainGroup]`
+        //   breaks the clip → cb → mainGroup → clip retain cycle.
+        if self._data == nil && (seriesModel.isAnimationEnabled() ?? false) {
+            if let bounds = mainGroup.getBoundingRect() {
+                mainGroup.setClipPath(createGridClipShape(bounds, seriesModel, { [weak mainGroup] in
+                    mainGroup?.removeClipPath()
+                }))
+            }
+        }
 
         self._data = seriesModel.getData()
 
@@ -644,9 +660,11 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
         // curveProps.fill = edge.node1.getVisual('color');
         curve.pathStyle.fill = sankeyColor(edge.node1.getVisual("color"))
         // curveProps.decal = edge.node1.getVisual('style').decal;
-        //   PORT-NOTE (deferred): edge decal (Pattern) not bridged (out of static-render scope).
+        curve.pathStyle.decal = sankeyDecal(edge.node1)
     case .some(.string("target")):
         curve.pathStyle.fill = sankeyColor(edge.node2.getVisual("color"))
+        // curveProps.decal = edge.node2.getVisual('style').decal;
+        curve.pathStyle.decal = sankeyDecal(edge.node2)
     case .some(.string("gradient")):
         let sourceColor = sankeyColorString(edge.node1.getVisual("color"))
         let targetColor = sankeyColorString(edge.node2.getVisual("color"))
@@ -669,11 +687,23 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
 
 // ================================================================================================
 // upstream: function createGridClipShape(rect: RectLike, seriesModel, cb)
-//   PORT-NOTE (deferred): the first-render grow-in clip animation is deferred (clip-path animation not
-//   ported per CONVENTIONS §5). It builds a zero-width Rect and `graphic.initProps` tweens its width to
-//   `rect.width + 20`, revealing the diagram left-to-right. `graphic.initProps` is ported
-//   (animation/basicTransition.swift); reinstate this clip with it when clip-path animation lands.
+//   Add animation to the view: build a clip Rect starting 10px outside the diagram's top-left with
+//   width 0 and full (padded) height, then `initProps` tweens its width open to `rect.width + 20`,
+//   revealing the diagram left-to-right; `cb` (removeClipPath) fires on completion. The shape props
+//   are passed to initProps as a DICT (matching createClipPathFromCoordSys) so the animation infra
+//   diffs against the current Rect shape and writes the tweened width back.
 // ================================================================================================
+private func createGridClipShape(_ rect: BoundingRect, _ seriesModel: SankeySeriesModel, _ cb: @escaping () -> Void) -> Rect {
+    var initialShape = RectShape()
+    initialShape.x = rect.x - 10
+    initialShape.y = rect.y - 10
+    initialShape.width = 0
+    initialShape.height = rect.height + 20
+    let rectEl = Rect(["shape": initialShape as PathShape])
+    // graphic.initProps(rectEl, { shape: { width: rect.width + 20 } }, seriesModel, cb);
+    initProps(rectEl, ["shape": ["width": rect.width + 20] as [String: Any]], seriesModel, nil, cb)
+    return rectEl
+}
 
 // export default SankeyView;  -> `open class SankeyView` above.
 
@@ -748,6 +778,47 @@ private func sankeyColorString(_ v: Any?) -> String? {
     if let str = v as? String { return str }
     if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
     return nil
+}
+
+// `node.getVisual('style').decal` bridge. The `decalVisual` stage (visual/decalVisual.swift) writes the
+//   `createOrUpdatePatternFromDecal` result (a ZRenderKit `Pattern`) into the item visual `style` bag
+//   under `decal`; surface it for `rect.setStyle('decal', …)` / `applyCurveStyle`'s decal branches. Nil
+//   when no decal was configured (the visual bag has no `decal`), matching upstream's `undefined` set.
+private func sankeyDecal(_ node: GraphNode) -> ZRenderKit.Pattern? {
+    return (node.getVisual("style") as? [String: Any])?["decal"] as? ZRenderKit.Pattern
+}
+
+// Dict-form of `applyCurveStyle` for the emphasis-state `lineStyle` bag (upstream's
+//   `setStatesStylesFromModel(curve, edgeModel, 'lineStyle', model => { const style = model.getItemStyle();
+//   applyCurveStyle(style, orient, edge); return style; })`). The state style is the dynamic `[String: Any]`
+//   bag `getItemStyle` produces (its `fill` is the lineStyle `color` sentinel 'source'/'target'/'gradient');
+//   resolve it in place to a real ZRColor so an emphasis-state ribbon keeps a valid paint instead of the
+//   literal sentinel string. `decal` is set to mirror upstream (the state-apply seam does not consume it,
+//   so it is inert for now, but kept for structural fidelity).
+private func applyCurveStyleToDict(_ style: inout [String: Any], _ orient: String, _ edge: GraphEdge) {
+    switch sankeyColorString(style["fill"]) {
+    case "source":
+        style["fill"] = sankeyColor(edge.node1.getVisual("color")).map { $0 as Any }
+        style["decal"] = sankeyDecal(edge.node1).map { $0 as Any }
+    case "target":
+        style["fill"] = sankeyColor(edge.node2.getVisual("color")).map { $0 as Any }
+        style["decal"] = sankeyDecal(edge.node2).map { $0 as Any }
+    case "gradient":
+        let sourceColor = sankeyColorString(edge.node1.getVisual("color"))
+        let targetColor = sankeyColorString(edge.node2.getVisual("color"))
+        if let sourceColor = sourceColor, let targetColor = targetColor {
+            let x2: Double = (orient == "horizontal") ? 1 : 0
+            let y2: Double = (orient == "vertical") ? 1 : 0
+            let gradient = LinearGradient(0, 0, x2, y2, [
+                GradientColorStop(offset: 0, color: sourceColor),
+                GradientColorStop(offset: 1, color: targetColor)
+            ])
+            style["fill"] = ZRenderKit.ZRColor.linearGradient(gradient)
+        }
+    default:
+        // Any other fill (a real color already, or absent) is left as-is.
+        break
+    }
 }
 
 // `useStyle(model.getItemStyle())` bridge. getItemStyle / getLineStyle return a dynamic `[String: Any]`

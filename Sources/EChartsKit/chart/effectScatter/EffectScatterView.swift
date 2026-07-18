@@ -10,8 +10,9 @@
 //   (chart/helper/EffectSymbolElement.swift) — the base symbol goes through Symbol (colour / label /
 //   emphasis hover-scale / symbolRotate / offset / entrance scale-in) and the ripple rings are the
 //   faithful EffectSymbol.startEffectAnimation. DEVIATION (identical to ScatterView): `pointsLayout` is
-//   inlined per coord system as `getSymbolPoint`. DEFERRED: pointsLayout stage / updateTransform (roam) /
-//   clipShape (createCoordSysClipAreaSimply) — documented PORT-NOTEs.
+//   inlined per coord system as `getSymbolPoint`. Ported: clipShape (createCoordSysClipAreaSimply, bridged
+//   to SymbolClipShape) / updateTransform (roam re-layout) / _updateGroupTransform (roam group matrix) /
+//   remove. DEFERRED: matrix coord system (not ported) hits the else-branch early return.
 
 import Foundation
 import ZRenderKit
@@ -101,6 +102,18 @@ open class EffectScatterView: ChartView {
                 return coord.dataToPoint([radiusVal, angleVal])
             }
         }
+        else if let geo = seriesModel.coordinateSystem as? Geo {
+            // Geo effectScatter (mirrors ScatterView): each datum is [lng, lat]; project via
+            //   geo.dataToPoint (projection + view transform). The geo coord dims are ["lng", "lat"];
+            //   fall back to the first two store dims.
+            let lngIdx = data.mapDimension("lng").map { data.getDimensionIndex($0) } ?? 0
+            let latIdx = data.mapDimension("lat").map { data.getDimensionIndex($0) } ?? 1
+            pointAt = { i in
+                let lng = effectScatterToNumber(store.get(lngIdx, i))
+                let lat = effectScatterToNumber(store.get(latIdx, i))
+                return geo.dataToPoint([lng, lat], false) ?? [Double.nan, Double.nan]
+            }
+        }
         else if let cal = seriesModel.coordinateSystem as? Calendar {
             // Calendar effectScatter (mirrors ScatterView): the 'time' dim locates the day cell, and
             //   `dataToPoint(date)` returns its center (NaN for dates outside this calendar's range, so
@@ -108,8 +121,19 @@ open class EffectScatterView: ChartView {
             let timeIdx = data.mapDimension("time").map { data.getDimensionIndex($0) } ?? 0
             pointAt = { i in cal.dataToPoint(store.get(timeIdx, i)) }
         }
+        else if let single = seriesModel.coordinateSystem as? Single {
+            // singleAxis effectScatter — upstream `pointsLayout` `dimLen === 1` branch (layout/points.ts):
+            //   `coordSys.dimensions` is ["single"], so exactly ONE store dim (the value on the single axis)
+            //   is mapped and `coordSys.dataToPoint(x)` places it on the axis, centering the cross span.
+            let singleDim = single.dimensions.first ?? "single"
+            let dimIdx = data.mapDimension(singleDim).map { data.getDimensionIndex($0) } ?? 0
+            pointAt = { i in
+                let x = effectScatterToNumber(store.get(dimIdx, i))
+                return single.dataToPoint(x)
+            }
+        }
         else {
-            // PORT-NOTE (deferred): requires geo/singleAxis/matrix coord systems (not ported).
+            // PORT-NOTE (deferred): matrix coord system not ported.
             return
         }
 
@@ -125,27 +149,84 @@ open class EffectScatterView: ChartView {
             _ = self.group.add(symbolDraw.group)
         }
 
-        // pointsLayout stores per-item layouts upstream; the port computes points on the fly per coord
-        //   system, so feed them to SymbolDraw via getSymbolPoint.
-        var opt = SymbolDrawUpdateOpt()
+        // upstream: `effectSymbolDraw.updateData(data, createSymbolDrawOpt(seriesModel))` — the render opt
+        //   carries the coord-area clipShape (createCoordSysClipAreaSimply). pointsLayout stores per-item
+        //   layouts upstream; the port computes points on the fly per coord system, so ALSO feed them to
+        //   SymbolDraw via getSymbolPoint (deviation).
+        var opt = createSymbolDrawOpt(seriesModel)
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-NOTE (deferred): pointsLayout stage / updateTransform (roam) / _updateGroupTransform (matrix.clone of
-        //   getRoamTransform) require the roam/layout-stage seam (not ported); clipShape (createCoordSysClipAreaSimply)
-        //   is deliberately omitted here (deviation, matches ScatterView) — all deferred.
+        // PORT-NOTE (deferred): pointsLayout stage (layout/points.ts) is inlined as getSymbolPoint above.
         self._data = data
+    }
+
+    // upstream: updateTransform(seriesModel, ecModel, api) {
+    //     const data = seriesModel.getData();
+    //     this.group.dirty();
+    //     const res = pointsLayout('').reset(seriesModel, ecModel, api) as StageHandlerProgressExecutor;
+    //     if (res.progress) { res.progress({ start: 0, end: data.count(), count: data.count() }, data); }
+    //     this._symbolDraw.updateLayout(createSymbolDrawOpt(seriesModel));
+    // }
+    //   Called on roam pan/zoom to reposition ripples without a full render. Upstream re-runs pointsLayout
+    //   to recompute each datum's stored point; the port computes points on the fly via the getSymbolPoint
+    //   closure SymbolDraw captured at updateData time — that closure reads the live coordSys (a reference
+    //   type whose roam transform is updated in place), so `updateLayout` re-reads the roamed positions.
+    open override func updateTransform(
+        _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
+        _ = seriesModel.getData()
+        self.group.dirty()
+        self._symbolDraw?.updateLayout(createSymbolDrawOpt(seriesModel))
+        // upstream returns void (no `{update: true}`); base modeled as `Bool?` → nil.
+        return nil
+    }
+
+    // upstream: _updateGroupTransform(seriesModel) {
+    //     const coordSys = seriesModel.coordinateSystem;
+    //     if (coordSys && coordSys.getRoamTransform) {
+    //         this.group.transform = matrix.clone(coordSys.getRoamTransform());
+    //         this.group.decomposeTransform();
+    //     }
+    // }
+    //   Applies the coord system's roam transform to the whole symbol group. `getRoamTransform` is an
+    //   optional coord-sys method (protocol default returns nil); the `coordSys.getRoamTransform` truthy
+    //   guard maps to the non-nil result.
+    private func _updateGroupTransform(_ seriesModel: SeriesModel) {
+        guard let coordSys = seriesModel.coordinateSystem as? CoordinateSystem,
+              let roam = coordSys.getRoamTransform() else {
+            return
+        }
+        self.group.transform = matrix.clone(roam)
+        self.group.decomposeTransform()
+    }
+
+    // upstream: remove(ecModel, api) { this._symbolDraw && this._symbolDraw.remove(true); }
+    open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        self._symbolDraw?.remove(true)
     }
 }
 
-// export default EffectScatterView;  -> `open class EffectScatterView` above.
+// upstream helper (not exported): createSymbolDrawOpt(seriesModel) -> { clipShape: createCoordSysClipAreaSimply(seriesModel) }.
+//   createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift) and returns a
+//   `CoordinateSystemClipArea?`; SymbolDraw's opt wants a `SymbolClipShape?`. The two protocols share the
+//   `contain(x, y)` contract, so bridge via EffectScatterClipShape below (matches the `clip: true` default).
+private func createSymbolDrawOpt(_ seriesModel: SeriesModel) -> SymbolDrawUpdateOpt {
+    var opt = SymbolDrawUpdateOpt()
+    if let area = createCoordSysClipAreaSimply(seriesModel) {
+        opt.clipShape = EffectScatterClipShape(area: area)
+    }
+    return opt
+}
 
-// upstream helper (not exported):
-//   function createSymbolDrawOpt(seriesModel): SymbolDrawUpdateOpt {
-//       return { clipShape: createCoordSysClipAreaSimply(seriesModel) };
-//   }
-// PORT-NOTE: createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift);
-//   this static view deliberately omits the clipShape from the render opt (deviation, matches ScatterView).
+// Bridges a `CoordinateSystemClipArea` (from createCoordSysClipAreaSimply) into the `SymbolClipShape`
+//   SymbolDraw's `symbolNeedsDraw` gate expects — both declare `contain(_:_:) -> Bool`.
+private struct EffectScatterClipShape: SymbolClipShape {
+    let area: CoordinateSystemClipArea
+    func contain(_ x: Double, _ y: Double) -> Bool { area.contain(x, y) }
+}
+
+// export default EffectScatterView;  -> `open class EffectScatterView` above.
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric series data is stored as `Double`. Mirrors the
 //   `scatterToNumber` coercion in chart/scatter/ScatterView.swift.

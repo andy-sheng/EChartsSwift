@@ -60,9 +60,10 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 // PieView/BarView collapse.
 //
 // PORT provenance (deferred subsystems below; a STATIC render faithfully omits them):
-//   - labelLine: `setTextGuideLine`/`getTextGuideLine` (Polyline), `setLabelLineStyle`,
-//     `getLabelLineStatesModels`, `textGuideLineConfig` remain DEFERRED with the labelGuideHelper
-//     label-guide machinery; the leader polyline is drawn inline in funnelUpdateLabel instead.
+//   - labelLine: `setTextGuideLine`/`getTextGuideLine` (Polyline) + `textGuideLineConfig` (the anchor
+//     turn-point) ARE wired; `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line
+//     styling in labelGuideHelper) remain DEFERRED — the leader polyline is drawn inline (single stroke)
+//     in funnelUpdateLabel instead.
 //   - Label EMPHASIS / states: `getLabelStatesModels`, `setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
 //     ARE now wired (see render() + funnelUpdateLabel below); the plain `defaultText = data.getName(idx)`
@@ -262,9 +263,11 @@ open class FunnelView: ChartView {
 //     - x/y          = labelLayout.x / y     (set AFTER setLabelStyle, which replaces the style)
 //     - rotation/originX/originY/z2 = labelLayout.rotation / x / y / 10
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
-// PORT-NOTE (deferred): requires `setLabelLineStyle` / `getLabelLineStatesModels` + `textGuideLineConfig`
-//   (the label-guide anchor machinery, still absent from labelGuideHelper.swift) — the leader polyline is
-//   still drawn inline at the end.
+//     - textGuideLineConfig = { anchor: linePoints ? new Point(linePoints[0][0], linePoints[0][1]) : null }
+//       IS wired (below) — the guide-line turn/anchor point.
+// PORT-NOTE (deferred): `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line styling,
+//   still absent from labelGuideHelper.swift) remain deferred — the leader polyline is drawn inline (single
+//   stroke) at the end.
 private func funnelUpdateLabel(
     _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
     _ layout: [String: Any], _ firstCreate: Bool
@@ -347,6 +350,18 @@ private func funnelUpdateLabel(
             labelLine.ignore = true
         }
     }
+
+    // polygon.textGuideLineConfig = { anchor: linePoints ? new graphic.Point(linePoints[0][0],
+    //   linePoints[0][1]) : null };
+    //   Upstream sets the guide-line anchor UNCONDITIONALLY (regardless of inside / labelLine.show) — it is
+    //   the label-guide machinery's turn point (the sector/pyramid midpoint the leader connects to). Matches
+    //   pie's labelLayout.swift, which stamps the same anchor from linePoints[0].
+    let anchorLinePoints = labelLayout["linePoints"] as? [[Double]]
+    var guideConfig = ElementTextGuideLineConfig()
+    if let lp = anchorLinePoints, let first = lp.first, first.count >= 2 {
+        guideConfig.anchor = Point(first[0], first[1])
+    }
+    polygon.textGuideLineConfig = guideConfig
 
     // "Make sure update style on labelText after setLabelStyle. Because setLabelStyle will replace a
     //   new style on it." graphic.updateProps(labelText, { style: { x, y } }, seriesModel, idx) —

@@ -99,20 +99,19 @@ extension EChartsExtensionInstallRegisters {
     // PORT-NOTE: upstream defaulter type is `SubTypeDefaulter = (ComponentOption) -> ComponentSubType`;
     //   `getAxisType` reads the dynamic option bag, so `[String: Any]` is used here.
     public func registerSubTypeDefaulter(_ componentType: String, _ defaulter: @escaping ([String: Any]) -> ComponentSubType) {
-        // PORT-STUB — THE ONE THAT COST US A YEAR. Upstream resolves a component's sub-type from its
-        // option through this defaulter; for axes that is `getAxisType` ("has `data` -> category").
-        // While this was silently empty, every axis written the way the official examples write them
-        // (`xAxis: { data: [...] }`, no `type`) degraded to a VALUE axis — a plausible chart, so
-        // nothing crashed and no test went red.
+        // upstream: registerSubTypeDefaulter(componentType, defaulter) {
+        //     ComponentModel.registerSubTypeDefaulter(componentType, defaulter);
+        // }
+        // Forwards into the real `ComponentModel` sub-type defaulter registry so a component whose
+        // subType must be inferred from its option (for axes: `getAxisType`, "has `data` -> category")
+        // is resolved through `ComponentModel.determineSubType`.
         //
-        // The axis case is no longer reachable: ECharts.swift's stand-in axis models apply
-        // `getAxisType` themselves (see mergeAxisDefaults). Any OTHER component that registers a
-        // defaulter is still silently unresolved, which is what this hit records.
-        PortStub.hit("axisModelCreator.registerSubTypeDefaulter",
-                     "component sub-type defaulters are not consulted; a component whose subType must "
-                     + "be inferred from its option resolves to its default instead")
-        _ = componentType
-        _ = defaulter
+        // PORT-NOTE: upstream's `SubTypeDefaulter` is `(ComponentOption) -> ComponentSubType`; this
+        //   file models the axis defaulter (`getAxisType`) over the dynamic option bag, so adapt via
+        //   `rawOption` (mirroring the visualMap defaulter, which likewise reads the raw bag).
+        ComponentModel.registerSubTypeDefaulter(componentType) { (option: ComponentOption) -> ComponentSubType in
+            return defaulter(option.rawOption ?? [:])
+        }
     }
 }
 // ============================================================================
@@ -222,11 +221,18 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     public override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = fetchLayoutMode(this);
+        let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode
         //     ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE (deferred): requires util/layout `fetchLayoutMode` / `getLayoutParams` (still absent;
-        //   only `mergeLayoutParam` is ported). Layout-mode param extraction/merge deferred (same as ComponentModel).
-        let layoutMode: Any? = nil  // fetchLayoutMode(self)
+        // PORT-NOTE: `option === self.option` at call (mirroring Model.mergeOption), so the input
+        //   position params are captured from that bag before the theme/default merges below.
+        let inputPositionParams: [String: Any]
+        if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
+            inputPositionParams = layout.getLayoutParams(src)
+        }
+        else {
+            inputPositionParams = [:]
+        }
 
         // const themeModel = ecModel.getTheme();
         // merge(option, themeModel.get(axisType + 'Axis'));
@@ -246,13 +252,21 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
             target["type"] = getAxisType(target)
 
+            // if (layoutMode) {
+            //     mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
+            // }
+            // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its
+            //   `ignoreSize` is read by `mergeLayoutParam`, so it is forwarded via the option bag.
+            if let mode = layoutMode {
+                var opt: [String: Any] = [:]
+                if let ignoreSize = mode.ignoreSize {
+                    opt["ignoreSize"] = ignoreSize
+                }
+                layout.mergeLayoutParam(&target, inputPositionParams, opt)
+            }
+
             self.option = target
         }
-
-        // if (layoutMode) {
-        //     mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
-        // }
-        _ = layoutMode
     }
 
     // upstream: optionUpdated(): void

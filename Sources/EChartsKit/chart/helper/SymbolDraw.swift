@@ -122,6 +122,7 @@ public final class SymbolDraw {
     private let _symbolCtor: SymbolLikeCtor
     private var _seriesScope: SymbolDrawSeriesScope?
     private var _getSymbolPoint: ((Int) -> [Double]?)?
+    private var _progressiveEls: [Symbol]?
 
     /// upstream `constructor(SymbolCtor?)` — default factory is `Symbol`.
     public init(_ symbolCtor: SymbolLikeCtor? = nil) {
@@ -130,6 +131,12 @@ public final class SymbolDraw {
 
     /// upstream: updateData(data, opt?) — diff old→new and add/update/remove symbols.
     public func updateData(_ data: SeriesData, _ opt: SymbolDrawUpdateOpt? = nil) {
+        // Remove progressive els.
+        self._progressiveEls = nil
+
+        // upstream: opt = normalizeUpdateOpt(opt). The Swift API already types `opt` as the
+        //   `SymbolDrawUpdateOpt` struct (a bare `isIgnore` function cannot be passed), so the
+        //   {isIgnore}-coercion is unnecessary here.
         let opt = opt ?? SymbolDrawUpdateOpt()
 
         let group = self.group
@@ -227,6 +234,65 @@ public final class SymbolDraw {
                 _ = self.group.remove(el)
                 data.setItemGraphicEl(idx, nil)
             }
+        }
+    }
+
+    /// upstream: incrementalPrepareUpdate(data)
+    public func incrementalPrepareUpdate(_ data: SeriesData) {
+        self._seriesScope = makeSeriesScope(data)
+        self._data = nil
+        _ = self.group.removeAll()
+    }
+
+    /// upstream: incrementalUpdate(taskParams, data, incrementalId, opt?)
+    public func incrementalUpdate(
+        _ taskParams: StageHandlerProgressParams, _ data: SeriesData,
+        _ incrementalId: Double, _ opt: SymbolDrawUpdateOpt? = nil
+    ) {
+        // Clear
+        self._progressiveEls = []
+
+        // upstream: opt = normalizeUpdateOpt(opt) — see the note in updateData; the Swift struct
+        //   type makes the coercion unnecessary.
+
+        // upstream: function updateIncrementalAndHover(el)
+        // PORT-NOTE: HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
+        //   constant; inlined here.
+        func updateIncrementalAndHover(_ el: Element) -> Bool {
+            if !el.isGroup {
+                (el as? Displayable)?.incremental = incrementalId
+                el.ensureState("emphasis").hoverLayer = 2
+            }
+            return false
+        }
+        let start = Int(taskParams.start)
+        let end = Int(taskParams.end)
+        for idx in start..<end {
+            let point = data.getItemLayout(idx) as? [Double]
+            if let point = point, symbolNeedsDraw(data, point, idx, opt) {
+                let el = self._symbolCtor(data, idx, self._seriesScope, nil)
+                _ = el.traverse(updateIncrementalAndHover)
+                el.setPosition(point)
+                _ = self.group.add(el)
+                data.setItemGraphicEl(idx, el)
+                self._progressiveEls?.append(el)
+            }
+        }
+    }
+
+    /// upstream: eachRendered(cb)
+    public func eachRendered(_ cb: (_ el: Element) -> Bool) {
+        // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
+        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
+        //   traverse each (large/progressive mode); otherwise traverse the group via `Group.traverse`
+        //   (visits children only — same substitute as BarView.eachRendered).
+        if let progressiveEls = self._progressiveEls {
+            for el in progressiveEls {
+                _ = cb(el)
+            }
+        }
+        else {
+            _ = self.group.traverse(cb)
         }
     }
 

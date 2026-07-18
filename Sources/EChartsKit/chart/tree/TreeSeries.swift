@@ -127,11 +127,12 @@ open class TreeSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // POTENTIAL-BUG: SeriesData.wrapMethod is a bookkeeping-only stub (it cannot rebind a method by
-        //   name — see data/SeriesData.swift), so the injected closure is NOT actually invoked. The
-        //   leaves-model parenting therefore does not take effect through this path (leaf nodes do not
-        //   inherit `leaves` styling). Preserved faithfully for the diffable surface and for when
-        //   wrapMethod becomes real; fix requires making SeriesData.wrapMethod actually rebind.
+        // PORT-NOTE: Swift cannot rebind a method by string name the way upstream's `wrapMethod` does, so
+        //   `wrapMethod('getItemModel', fn)` stores `fn` in SeriesData's dedicated `_getItemModelInjections`
+        //   list (see data/SeriesData.swift) and `getItemModel(idx)` threads its result through each stored
+        //   injection. This closure IS therefore invoked on every `getItemModel` call, so the leaves-model
+        //   parenting takes effect (leaf nodes inherit `leaves` itemStyle/label/lineStyle). The injection is
+        //   also carried across `cloneShallow` via `transferProperties`, matching upstream's wrap chain.
         let beforeLink: (SeriesData) -> Void = { nodeData in
             nodeData.wrapMethod("getItemModel") { args in
                 let model = args.first as? Model

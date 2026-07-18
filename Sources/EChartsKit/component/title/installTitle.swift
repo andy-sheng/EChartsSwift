@@ -27,13 +27,11 @@ import ZRenderKit
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Text` / `graphic.Rect` are the
 //        ZRenderKit scene-graph types `ZRText` / `Rect` (used directly).
 //   import {getECData} from '../../util/innerStore';                 -> `innerStore.getECData`
-//        (event wiring — the `eventData` assignment is deferred, see PORT-NOTE in `render`).
+//        (event wiring — the `eventData` assignment is wired in `render`).
 //   import {createTextStyle} from '../../label/labelStyle';
-//     -> `label/labelStyle.swift` IS ported (`labelStyle.createTextStyle`, labelStyle.swift:417).
-//        This view still uses a local minimal reproduction `createTextStyle` at the bottom of this
-//        file because the real overload takes a different opt shape (`specifiedTextStyle: TextStyleProps?`
-//        + `TextCommonParams`) than the title view's `{text, fill, y, verticalAlign}` literal; rewiring
-//        is a deferred deviation, not a missing dep. Same local reproduction as AxisBuilder.swift.
+//     -> `labelStyle.createTextStyle` (label/labelStyle.swift:417). Wired directly at the two call sites
+//        in `render`: the `{text, fill[, y, verticalAlign]}` object-literal maps to a `TextStyleProps`
+//        `specifiedTextStyle`, and `{disableBox: true}` maps to a `TextCommonParams` opt.
 //   import {createBoxLayoutReference, getLayoutRect} from '../../util/layout';
 //     -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` (util/layout.swift).
 //   import ComponentModel from '../../model/Component';              -> `ComponentModel` (model/Component.swift).
@@ -44,8 +42,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel` (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> `ExtensionAPI` (core/ExtensionAPI.swift).
 //   import {windowOpen} from '../../util/format';
-//     -> PORT-NOTE (deferred): `format.windowOpen` IS ported (format.swift:442) but only used by
-//        the deferred `link`/`sublink` click handlers in `render` (interaction wiring, CONVENTIONS §5).
+//     -> `format.windowOpen` (format.swift:442), used by the `link`/`sublink` click handlers in `render`.
 //   import { EChartsExtensionInstallRegisters } from '../../extension';
 //     -> PORT-NOTE (deferred): registration boilerplate belongs to the Orchestrate driver (see `install`
 //        note at the bottom).
@@ -176,24 +173,28 @@ public final class TitleView: ComponentView {
             titleModel.get("textVerticalAlign") as? String
         )
 
+        var textSpecified = TextStyleProps()
+        textSpecified.text = titleModel.get("text") as? String
+        textSpecified.fill = textStyleModel.getTextColor()
         let textEl = ZRText([
-            "style": createTextStyle(textStyleModel, CreateTextStyleOpt(
-                text: titleModel.get("text") as? String,
-                fill: textStyleModel.getTextColor()
-            ), disableBox: true),
+            "style": labelStyle.createTextStyle(
+                textStyleModel, textSpecified, TextCommonParams(disableBox: true), nil, nil
+            ),
             "z2": 10.0
         ])
 
         let textRect = textEl.getBoundingRect()!
 
         let subText = titleModel.get("subtext") as? String
+        var subTextSpecified = TextStyleProps()
+        subTextSpecified.text = subText
+        subTextSpecified.fill = subtextStyleModel.getTextColor()
+        subTextSpecified.y = textRect.height + ((titleModel.get("itemGap") as? Double) ?? 0)
+        subTextSpecified.verticalAlign = .top
         let subTextEl = ZRText([
-            "style": createTextStyle(subtextStyleModel, CreateTextStyleOpt(
-                text: subText,
-                fill: subtextStyleModel.getTextColor(),
-                y: textRect.height + ((titleModel.get("itemGap") as? Double) ?? 0),
-                verticalAlign: "top"
-            ), disableBox: true),
+            "style": labelStyle.createTextStyle(
+                subtextStyleModel, subTextSpecified, TextCommonParams(disableBox: true), nil, nil
+            ),
             "z2": 10.0
         ])
 
@@ -206,14 +207,32 @@ public final class TitleView: ComponentView {
         // subTextEl.silent = !sublink && !triggerEvent;
         subTextEl.silent = !jsTruthy(sublink) && !jsTruthy(triggerEvent)
 
-        // PORT-NOTE (deferred): click-to-open-URL interaction wiring (CONVENTIONS §5 / STATIC RENDER ONLY).
-        //   if (link) { textEl.on('click', () => windowOpen(link, '_' + titleModel.get('target'))); }
-        //   if (sublink) { subTextEl.on('click', () => windowOpen(sublink, '_' + titleModel.get('subtarget'))); }
+        // if (link) { textEl.on('click', () => windowOpen(link, '_' + titleModel.get('target'))); }
+        if let link = link, jsTruthy(link) {
+            _ = textEl.on("click", { _, _ in
+                format.windowOpen(link, "_" + ((titleModel.get("target") as? String) ?? ""))
+                return nil
+            })
+        }
+        // if (sublink) { subTextEl.on('click', () => windowOpen(sublink, '_' + titleModel.get('subtarget'))); }
+        if let sublink = sublink, jsTruthy(sublink) {
+            _ = subTextEl.on("click", { _, _ in
+                format.windowOpen(sublink, "_" + ((titleModel.get("subtarget") as? String) ?? ""))
+                return nil
+            })
+        }
 
-        // PORT-NOTE (deferred): event data wiring (CONVENTIONS §5) — matches MatrixView/LegendView deferral.
-        //   getECData(textEl).eventData = getECData(subTextEl).eventData = triggerEvent
-        //       ? { componentType: 'title', componentIndex: titleModel.componentIndex }
-        //       : null;
+        // getECData(textEl).eventData = getECData(subTextEl).eventData = triggerEvent
+        //     ? { componentType: 'title', componentIndex: titleModel.componentIndex }
+        //     : null;
+        let eventData: ECEventData? = jsTruthy(triggerEvent)
+            ? ([
+                "componentType": "title",
+                "componentIndex": titleModel.componentIndex as Any
+            ] as ECEventData)
+            : nil
+        innerStore.getECData(textEl).eventData = eventData
+        innerStore.getECData(subTextEl).eventData = eventData
 
         _ = group.add(textEl)
         // subText && group.add(subTextEl);
@@ -388,45 +407,3 @@ private func borderRadiusToRectRadius(_ v: Any?) -> RectRadius? {
     return nil
 }
 
-/// The object-literal `opt` passed to `createTextStyle` at the two call sites above:
-///   `{text, fill}` and `{text, fill, y, verticalAlign}`.
-private struct CreateTextStyleOpt {
-    var text: String?
-    var fill: String?
-    var x: Double?
-    var y: Double?
-    var verticalAlign: String?
-    init(text: String? = nil, fill: String? = nil, x: Double? = nil, y: Double? = nil, verticalAlign: String? = nil) {
-        self.text = text
-        self.fill = fill
-        self.x = x
-        self.y = y
-        self.verticalAlign = verticalAlign
-    }
-}
-
-/// Local minimal reproduction of `label/labelStyle.createTextStyle`. `labelStyle.swift` IS ported
-///   (`labelStyle.createTextStyle`, labelStyle.swift:417), but its overload takes a different opt shape
-///   (`specifiedTextStyle: TextStyleProps?` + `TextCommonParams`) than this view's `{text, fill, y,
-///   verticalAlign}` literal, so the rewire is deferred rather than a missing dep. Only the fields used
-///   by the title view (text/font/fill/x/y/verticalAlign/width) are populated; the full rich-text /
-///   state / inheritColor / background-box behavior (and the `disableBox` opt) lives in labelStyle.
-///   (Distinct from AxisBuilder.swift's `createTextStyle` overload by its `CreateTextStyleOpt`
-///   second parameter — no ambiguity.)
-private func createTextStyle(
-    _ textStyleModel: Model,
-    _ opt: CreateTextStyleOpt,
-    disableBox: Bool
-) -> TextStyleProps {
-    _ = disableBox   // PORT-NOTE (deferred): background-box parsing (labelStyle) is out of static-render scope.
-    var style = TextStyleProps()
-    style.text = opt.text
-    style.font = textStyleModel.getFont()
-    style.fill = opt.fill
-    style.x = opt.x
-    style.y = opt.y
-    style.verticalAlign = opt.verticalAlign.flatMap { TextVerticalAlign(rawValue: $0) }
-    // TitleTextStyleOption.width (the only text-style extra beyond LabelOption).
-    style.width = textStyleModel.get("width") as? Double
-    return style
-}

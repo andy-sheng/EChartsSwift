@@ -55,7 +55,14 @@ private func updateRipplePath(_ rippleGroup: Group, _ effectCfg: EffectSymbolCfg
         guard let ripplePath = child as? Path else { return }
         ripplePath.z = effectCfg.z
         ripplePath.zlevel = effectCfg.zlevel
-        let c = effectCfg.color
+        // upstream: const color = effectCfg.rippleEffectColor || effectCfg.color;
+        //   a non-empty rippleEffect.color overrides the symbol fill for the rings.
+        let c: ZRenderKit.ZRColor?
+        if let rec = effectCfg.rippleEffectColor, !rec.isEmpty {
+            c = zrPaintFromStyleValue(rec)
+        } else {
+            c = effectCfg.color
+        }
         // upstream: style.stroke = brushType === 'stroke' ? color : null; fill = 'fill' ? color : null.
         ripplePath.pathStyle.stroke = effectCfg.brushType == "stroke" ? c : nil
         ripplePath.pathStyle.fill = effectCfg.brushType == "fill" ? c : nil
@@ -159,6 +166,13 @@ open class EffectSymbol: Symbol {
         EChartsKit.states.leaveEmphasis(self)
     }
 
+    // upstream: fadeOut(cb) { cb && cb(); } — EffectSymbol (extends Group upstream) has no base symbol
+    //   fade tween, so it just fires the callback immediately. This override replaces Symbol's animated
+    //   fadeOut (the call site in SymbolDraw uses this 3-arg signature) so effect symbols remove at once.
+    public override func fadeOut(_ cb: @escaping () -> Void, _ seriesModel: SeriesModel?, _ fadeLabel: Bool = false) {
+        cb()
+    }
+
     // upstream: updateData(data, idx) {
     //     const seriesModel = data.hostModel;
     //     Symbol.prototype.updateData.call(this, data, idx);
@@ -193,6 +207,11 @@ open class EffectSymbol: Symbol {
             rippleGroup.x = off.0
             rippleGroup.y = off.1
         }
+
+        // upstream: const symbolRotate = data.getItemVisual(idx, 'symbolRotate');
+        //   rippleGroup.rotation = (symbolRotate || 0) * Math.PI / 180 || 0; — rings rotate with the symbol.
+        let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
+        rippleGroup.rotation = symbolRotate * Double.pi / 180
 
         let rippleEffectModel = itemModel.getModel("rippleEffect")
         // NOTE (int-vs-double option-read trap): rippleEffect numbers may box as Int OR Double — route

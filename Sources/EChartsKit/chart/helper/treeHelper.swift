@@ -27,9 +27,8 @@ import ZRenderKit
 //   import { TreeNode } from '../../data/Tree';         -> sibling `TreeNode` (data/Tree.swift).
 
 // upstream free functions of treeHelper.ts, mapped to a caseless-enum namespace (à la the module import
-//   `import { retrieveTargetInfo, aboveViewRoot } from '../helper/treeHelper'`). Only the members used
-//   by the ported sunburst action are translated; `wrapTreePathInfo` stays DEFERRED (referenced only by
-//   the deferred tree/sunburst/treemap `getDataParams` — see those series' deferred PORT-NOTEs).
+//   `import { retrieveTargetInfo, aboveViewRoot } from '../helper/treeHelper'`). All members are translated,
+//   including `wrapTreePathInfo` (the treePathInfo chain used by tree/sunburst/treemap `getDataParams`).
 public enum treeHelper {
 
     // upstream: retrieveTargetInfo returns `{ node: TreeNode }` (or undefined).
@@ -101,5 +100,41 @@ public enum treeHelper {
         return viewPath.contains(where: { $0 === node })
     }
 
-    // export function wrapTreePathInfo<T>(node, seriesModel)  — DEFERRED (see header note).
+    // upstream: wrapTreePathInfo returns `{ name, dataIndex, value }[]`.
+    public struct TreePathInfoItem {
+        public var name: String
+        public var dataIndex: Int
+        public var value: Any?   // upstream: T (getRawValue → unknown)
+        public init(name: String, dataIndex: Int, value: Any?) {
+            self.name = name
+            self.dataIndex = dataIndex
+            self.value = value
+        }
+    }
+
+    // From root to the input node (the input node will be included).
+    // export function wrapTreePathInfo<T = unknown>(node: TreeNode, seriesModel: SeriesModel)
+    public static func wrapTreePathInfo(
+        _ node: TreeNode,
+        _ seriesModel: SeriesModel
+    ) -> [TreePathInfoItem] {
+        var treePathInfo: [TreePathInfoItem] = []
+
+        var node: TreeNode? = node
+        // while (node) { ... node = node.parentNode; }
+        while let cur = node {
+            let nodeDataIndex = cur.dataIndex
+            treePathInfo.append(TreePathInfoItem(
+                name: cur.name,
+                dataIndex: nodeDataIndex,
+                value: seriesModel.getRawValue(Double(nodeDataIndex))
+            ))
+            node = cur.parentNode
+        }
+
+        // treePathInfo.reverse();
+        treePathInfo.reverse()
+
+        return treePathInfo
+    }
 }
