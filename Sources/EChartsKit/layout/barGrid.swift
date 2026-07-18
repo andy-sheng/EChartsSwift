@@ -193,13 +193,16 @@ public func computeBarLayoutForCustomSeries(_ opt: BarGridLayoutOption) -> BarGr
     var i = 0
     while Double(i) < opt.count {   // upstream: `i < opt.count || 0`
         // upstream: defaults({stackId: STACK_PREFIX + i}, opt) as BarGridLayoutAxisSeriesInfo
-        // PORT-NOTE (deferred): `defaults` merges `opt`'s (number | string) bar-size fields into a
-        //   series-info whose fields are typed `number`; upstream relies on an unsafe cast. Custom series
-        //   is not in the bar-chart scope, so string percents are not resolved here (coerced numerically only).
+        // PORT-NOTE: `defaults` merges `opt`'s (number | string) bar-size fields into a series-info whose
+        //   fields are typed `number`; upstream carries the raw value through the unsafe cast, which loses
+        //   percent strings (`Number("50%")` -> NaN in the later arithmetic). Since the `barLayout` custom
+        //   series API (CustomView.barLayout) explicitly accepts `number | string` bar sizes, resolve them
+        //   with `parsePercent` against the group `bandWidth` here — identical to how the real-series path
+        //   `createLayoutInfoListOnAxis` resolves the same options. Numbers pass through unchanged.
         params.append(BarGridLayoutAxisSeriesInfo(
-            barWidth: barGridOptionSize(opt.barWidth),
-            barMaxWidth: barGridOptionSize(opt.barMaxWidth),
-            barMinWidth: barGridOptionSize(opt.barMinWidth),
+            barWidth: number.parsePercent(opt.barWidth, bandWidthResult.w),
+            barMaxWidth: number.parsePercent(opt.barMaxWidth, bandWidthResult.w),
+            barMinWidth: number.parsePercent(opt.barMinWidth, bandWidthResult.w),
             barGap: opt.barGap,
             defaultBarGap: nil,
             barCategoryGap: opt.barCategoryGap,
@@ -742,16 +745,6 @@ private func barGridTruthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
-}
-
-// Coerce a custom-series bar-size option (`number | string`) to `Double`. Numbers pass through;
-//   `nil`/strings collapse to `0` (so upstream's `if (barWidth && ...)` reads as falsy).
-// PORT-NOTE (deferred): string percents (e.g. "50%") are not resolved here — custom series is out of bar scope.
-private func barGridOptionSize(_ v: Any?) -> Double {
-    if let d = v as? Double { return d }
-    if let i = v as? Int { return Double(i) }
-    if let n = v as? NSNumber { return n.doubleValue }
-    return 0
 }
 
 
