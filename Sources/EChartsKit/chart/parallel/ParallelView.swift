@@ -1,4 +1,4 @@
-// Ported (STATIC SUBSET) from echarts/src/chart/parallel/ParallelView.ts — keep in sync with upstream.
+// Ported from echarts/src/chart/parallel/ParallelView.ts — keep in sync with upstream.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -23,8 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                 -> `Polyline` / `Group` / `Rect` (ZRenderKit).
-//       PORT-NOTE: graphic.updateProps / graphic.initProps ARE ported (animation/basicTransition.swift),
-//       but the parallel static render sets final geometry directly (same deviation as RadarView / FunnelView / GraphView).
+//       graphic.updateProps / graphic.initProps ARE ported (animation/basicTransition.swift).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Hover emphasis IS wired: each parallel line carries its
 //       emphasis/blur/select lineStyle state styles and is a highDown dispatcher (see updateElCommon).
@@ -41,12 +40,9 @@ import ZRenderKit
 //   import { OptionAxisType } from '../../coord/axisCommonTypes';  -> OptionAxisType (= String, axisHelper.swift).
 //   import { numericToNumber } from '../../util/number';           -> `number.numericToNumber`.
 //   import { eqNaN } from 'zrender/src/core/util';                 -> `util.eqNaN` (ZRenderKit).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> saveOldStyle IS ported (basicTransition.swift).
-//       PORT-NOTE: the parallel static render sets final geometry directly, so the saveOldStyle-based
-//       update-transition path is intentionally not used (same deviation as RadarView / FunnelView).
-//   import Element from 'zrender/src/Element';                     -> Element (ZRenderKit); progressive path DEFERRED.
-//   import { getIncrementalId } from '../../util/model';           -> getIncrementalId IS ported (modelUtil.swift).
-//       PORT-NOTE (deferred): the progressive/large streaming render path is a design deviation of the static subset.
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> `saveOldStyle` (basicTransition.swift).
+//   import Element from 'zrender/src/Element';                     -> Element (ZRenderKit).
+//   import { getIncrementalId } from '../../util/model';           -> `model.getIncrementalId` (modelUtil.swift).
 
 // upstream: const DEFAULT_SMOOTH = 0.3;
 private let DEFAULT_SMOOTH: Double = 0.3
@@ -76,16 +72,7 @@ open class ParallelView: ChartView {
     private var _initialized = false
 
     // upstream: private _progressiveEls: Element[];
-    // PORT-NOTE (deferred): progressive/large render path is a design deviation — kept for structural parity.
     private var _progressiveEls: [Element] = []
-
-    // Persistent per-item polylines (index-keyed) so a merge-mode setOption VALUE change MORPHS each
-    //   line (its shape.points slide) instead of rebuild-and-snap. The static port has no `data.diff`
-    //   add/update/remove pipeline, so `_prevItemCount` gates morph-vs-rebuild: a same-count value
-    //   change morphs the persisted lines; an item add/remove (or coord loss) rebuilds fresh (keeping
-    //   the opacity-fade entrance). Reset to `[]` / `-1` whenever a branch wipes `_dataGroup`.
-    private var _lines: [Polyline] = []
-    private var _prevItemCount: Int = -1
 
     // upstream: init() { this.group.add(this._dataGroup); }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -106,70 +93,86 @@ open class ParallelView: ChartView {
 
         // Clear previously rendered progressive elements.
         self._progressiveEls = []
+        _ = dataGroup.removeAll()
 
         let data = seriesModel.getData()
-        // const oldData = this._data;
-        //   PORT-NOTE (deferred): full `data.diff(oldData)` add/update/remove pipeline. The reuse
-        //   slice below implements the upstream `update` path (updateProps shape morph) for the
-        //   same-item-count case; a count change falls back to the static rebuild (`add` path only).
+        let oldData = self._data
         // const coordSys = seriesModel.coordinateSystem;
+        //   `coordinateSystem` is `Any?` on SeriesModel; narrow to Parallel. Without a parallel coord
+        //   attached there is nothing to render — the group is already emptied, so just persist `data`.
         guard let coordSys = seriesModel.coordinateSystem as? Parallel else {
-            // PORT-NOTE: no parallel coord attached — nothing to render. Drop persisted lines so a later
-            //   coord re-attach rebuilds fresh (can't morph against a stale group).
-            _ = dataGroup.removeAll()
-            self._lines = []
-            self._prevItemCount = -1
             self._data = data
             return
         }
         let dimensions = coordSys.dimensions
         let seriesScope = makeSeriesScope(seriesModel)
 
-        let itemCount = data.count()
-        // MORPH iff we already drew a line per current item and the item COUNT is unchanged (only values
-        //   moved). Then reuse each persisted polyline and animate its shape.points to the new geometry
-        //   (upstream's `update` closure: updateProps(line, {shape:{points}})). Otherwise rebuild fresh.
-        let canMorph = !self._lines.isEmpty && self._prevItemCount == itemCount && self._lines.count == itemCount
+        // upstream:
+        //   data.diff(oldData)
+        //       .add(add).update(update).remove(remove).execute();
+        data.diff(oldData)
+            .add { newDataIndex in
+                // upstream `add`: create a fresh line for the new datum.
+                let line = addEl(data, dataGroup, newDataIndex, dimensions, coordSys)
+                updateElCommon(line, data, newDataIndex, seriesScope)
+            }
+            .update { newDataIndex, oldDataIndex in
+                // upstream `update`: reuse the old line, morph its points, save its old style for the
+                //   style transition, then re-apply the common visual/state styling.
+                guard let oldData = oldData,
+                      let line = oldData.getItemGraphicEl(oldDataIndex) as? Polyline else {
+                    // No reusable element (missing old graphic el) — fall back to an `add`.
+                    let line = addEl(data, dataGroup, newDataIndex, dimensions, coordSys)
+                    updateElCommon(line, data, newDataIndex, seriesScope)
+                    return
+                }
+                _ = dataGroup.add(line)
 
-        if canMorph {
-            for dataIndex in 0..<itemCount {
-                let line = self._lines[dataIndex]
-                let points = createLinePoints(data, dataIndex, dimensions, coordSys)
-                // Re-apply style/emphasis (parallelVisual may have re-dimmed the line via item-visual
-                //   `style.opacity`; color/state styles may have changed) WITHOUT the enter fade — the
-                //   line is already on-screen, so land its final opacity directly.
-                updateElCommon(line, data, dataIndex, seriesScope, seriesModel, morph: true)
-                data.setItemGraphicEl(dataIndex, line)
-                // Morph the polyline: target as [[Double]] (Animator 2D-array interpolation shape) — a
+                let points = createLinePoints(data, newDataIndex, dimensions, coordSys)
+                data.setItemGraphicEl(newDataIndex, line)
+
+                // graphic.updateProps(line, {shape: {points: points}}, seriesModel, newDataIndex);
+                //   Target `shape.points` as [[Double]] (Animator 2D-array interpolation shape) — a
                 //   [VectorArray] target SNAPS (0 animators). PolylineShape.animationGet/Set("points")
-                //   already round-trips [[Double]].
+                //   round-trips [[Double]].
                 let ptsD = points.map { [$0.x, $0.y] }
-                updateProps(line, ["shape": ["points": ptsD]], seriesModel, dataIndex)
+                updateProps(line, ["shape": ["points": ptsD]], seriesModel, newDataIndex)
+
+                saveOldStyle(line)
+
+                updateElCommon(line, data, newDataIndex, seriesScope)
             }
-        } else {
-            // Rebuild fresh: wipe the group, drop stale lines, replay the `add` path (with enter fade).
-            _ = dataGroup.removeAll()
-            self._lines = []
-            for dataIndex in 0..<itemCount {
-                let line = addEl(data, dataGroup, dataIndex, dimensions, coordSys)
-                updateElCommon(line, data, dataIndex, seriesScope, seriesModel, morph: false)
-                self._lines.append(line)
+            .remove { oldDataIndex in
+                // upstream `remove`: drop the old line from the group. (The group was already emptied
+                //   by removeAll() above, so this is typically a no-op — kept for structural fidelity.)
+                guard let oldData = oldData,
+                      let line = oldData.getItemGraphicEl(oldDataIndex) else {
+                    return
+                }
+                _ = dataGroup.remove(line)
             }
-        }
-        self._prevItemCount = itemCount
+            .execute()
 
         // First create
         // upstream:
         //   if (!this._initialized) {
         //       this._initialized = true;
-        //       const clipPath = createGridClipShape(coordSys, seriesModel, function () { … removeClipPath … });
+        //       const clipPath = createGridClipShape(coordSys, seriesModel, function () {
+        //           setTimeout(function () { dataGroup.removeClipPath(); });
+        //       });
         //       dataGroup.setClipPath(clipPath);
         //   }
-        // PORT-NOTE (deferred): the enter clip-reveal animation (createGridClipShape + setClipPath +
-        //   removeClipPath). graphic.initProps IS ported (basicTransition.swift), but clip-path growth
-        //   animation is a design deviation of the static subset. `_initialized` is still flipped for parity.
         if !self._initialized {
             self._initialized = true
+            let clipPath = createGridClipShape(
+                coordSys, seriesModel, {
+                    // Callback invoked when the clip-reveal animation completes (or immediately when
+                    //   animation is off). Upstream defers via setTimeout(...) to the next tick; the
+                    //   port drops the line clip once the reveal finishes.
+                    _ = dataGroup.removeClipPath()
+                }
+            )
+            _ = dataGroup.setClipPath(clipPath)
         }
 
         // this._data = data;
@@ -182,47 +185,86 @@ open class ParallelView: ChartView {
     ) {
         // upstream:
         //   this._initialized = true; this._data = null; this._dataGroup.removeAll();
-        // PORT-NOTE (deferred): progressive/large render path is a design deviation; base bookkeeping kept for parity.
         self._initialized = true
         self._data = nil
         _ = self._dataGroup.removeAll()
-        self._lines = []
-        self._prevItemCount = -1
     }
 
     // upstream: incrementalRender(taskParams, seriesModel, ecModel)
     open override func incrementalRender(
-        _ params: StageHandlerProgressParams, _ seriesModel: SeriesModel, _ ecModel: GlobalModel,
+        _ params: StageHandlerProgressParams, _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel,
         _ api: ExtensionAPI, _ payload: Payload
     ) {
-        // upstream:
-        //   const data = seriesModel.getData();
-        //   const coordSys = seriesModel.coordinateSystem;
-        //   const progressiveEls = this._progressiveEls = [];
-        //   for (let dataIndex = taskParams.start; dataIndex < taskParams.end; dataIndex++) {
-        //       const line = addEl(data, this._dataGroup, dataIndex, coordSys.dimensions, coordSys);
-        //       line.incremental = getIncrementalId(seriesModel);
-        //       updateElCommon(line, data, dataIndex, makeSeriesScope(seriesModel));
-        //       progressiveEls.push(line);
-        //   }
-        // PORT-NOTE (deferred): progressive/large render path (getIncrementalId IS ported, but
-        //   line.incremental / StageHandlerProgressParams start/end streaming is a design deviation).
-        //   No-op for the static subset.
+        let seriesModel = seriesModelBase as! ParallelSeriesModel
+        // const data = seriesModel.getData();
+        let data = seriesModel.getData()
+        // const coordSys = seriesModel.coordinateSystem;
+        guard let coordSys = seriesModel.coordinateSystem as? Parallel else {
+            return
+        }
+        // const progressiveEls: Element[] = this._progressiveEls = [];
+        self._progressiveEls = []
+        let dimensions = coordSys.dimensions
+        let seriesScope = makeSeriesScope(seriesModel)
+
+        // for (let dataIndex = taskParams.start; dataIndex < taskParams.end; dataIndex++) { ... }
+        let start = Int(params.start)
+        let end = Int(params.end)
+        for dataIndex in start..<end {
+            let line = addEl(data, self._dataGroup, dataIndex, dimensions, coordSys)
+            // line.incremental = getIncrementalId(seriesModel);
+            line.incremental = model.getIncrementalId(seriesModel)
+            updateElCommon(line, data, dataIndex, seriesScope)
+            self._progressiveEls.append(line)
+        }
     }
 
     // upstream: remove() { this._dataGroup && this._dataGroup.removeAll(); this._data = null; }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         _ = self._dataGroup.removeAll()
         self._data = nil
-        self._lines = []
-        self._prevItemCount = -1
     }
 }
 
 // upstream: function createGridClipShape(coordSys: Parallel, seriesModel: ParallelSeriesModel, cb: () => void)
-// PORT-NOTE (deferred): enter clip-reveal (Rect clip growing along the layout axis). graphic.initProps
-//   IS ported (basicTransition.swift), but the clip-growth animation is a design deviation of the static
-//   subset. Left unported; see the `_initialized` block in `render`.
+private func createGridClipShape(
+    _ coordSys: Parallel, _ seriesModel: ParallelSeriesModel, _ cb: @escaping () -> Void
+) -> Rect {
+    // const parallelModel = coordSys.model;
+    let parallelModel = coordSys.model!
+    // const rect = coordSys.getRect();
+    let rect = coordSys.getRect()
+    // const rectEl = new graphic.Rect({ shape: { x, y, width, height } });
+    var initialShape = RectShape()
+    initialShape.x = rect.x
+    initialShape.y = rect.y
+    initialShape.width = rect.width
+    initialShape.height = rect.height
+    let rectEl = Rect(["shape": initialShape])
+
+    // const dim = parallelModel.get('layout') === 'horizontal' ? 'width' : 'height';
+    // rectEl.setShape(dim, 0);
+    //   The generic `Path.setShape(key, value)` is inert for typed shapes (see Path.swift), so
+    //   read-modify-write the value-typed RectShape wholesale (same idiom as createGridClipPath).
+    let isHorizontal = (parallelModel.get("layout") as? String) == "horizontal"
+    var shape = rectEl.shape as! RectShape
+    if isHorizontal {
+        shape.width = 0
+    }
+    else {
+        shape.height = 0
+    }
+    rectEl.shape = shape
+
+    // graphic.initProps(rectEl, { shape: { width: rect.width, height: rect.height } }, seriesModel, cb);
+    //   Upstream passes `cb` in the `dataIndex` slot (animateOrSetProps shifts a function arg to `cb`);
+    //   the port passes it directly in the `cb` slot. Shape props are a DICT so the animator diffs
+    //   per-field (a struct value would just snap to the final shape).
+    initProps(rectEl,
+              ["shape": ["width": rect.width, "height": rect.height] as [String: Any]],
+              seriesModel, nil, cb)
+    return rectEl
+}
 
 // upstream: function createLinePoints(data, dataIndex, dimensions, coordSys): VectorArray[]
 private func createLinePoints(
@@ -287,26 +329,12 @@ private func updateElCommon(
     _ el: Polyline,
     _ data: SeriesData,
     _ dataIndex: Int,
-    _ seriesScope: ParallelDrawSeriesScope,
-    _ seriesModel: ParallelSeriesModel,
-    morph: Bool = false
+    _ seriesScope: ParallelDrawSeriesScope
 ) {
     // el.useStyle(data.getItemVisual(dataIndex, 'style'));
     // el.style.fill = null;
     var style = barStyleFromDict(data.getItemVisual(dataIndex, "style"))
     style.fill = nil
-    // ENTRANCE ANIMATION (port deviation): upstream ParallelView reveals lines via a growing clip-path
-    //   (createGridClipShape + setClipPath, DEFERRED — clip-path animation not ported). Approximate the
-    //   enter with the shared opacity-fade infra (FunnelView/HeatmapView idiom): capture the final opacity
-    //   BEFORE zeroing it (invisible-line guard), build the line at opacity 0, then animate toward the
-    //   final opacity via `initProps` (instant `attr` when animation is off — `Path.attrKV`'s partial
-    //   "style"-dict merge lands the final opacity so the line is never left invisible).
-    // On a MORPH reuse the line is already on-screen: skip the zero/fade and land the final opacity
-    //   directly so brush/emphasis re-dimming (parallelVisual's item-visual `style.opacity`) still lands.
-    let finalOpacity = style.opacity ?? 1.0
-    if !morph {
-        style.opacity = 0
-    }
     el.useStyle(style)
     // `useStyle`→createStyle lays the style over DEFAULT_PATH_STYLE (fill '#000') and SKIPS the nil
     // `fill`, so `el.style.fill = null` is dropped and each polyline fills as a solid black polygon
@@ -327,8 +355,7 @@ private func updateElCommon(
     // toggleHoverEmphasis(el, emphasisModel.get('focus'), emphasisModel.get('blurScope'), emphasisModel.get('disabled'));
     //   Populate the line's emphasis/blur/select state styles from the item's lineStyle model, then mark
     //   the polyline a highDown dispatcher (so a hover over it drives it into emphasis, and blurs the rest
-    //   when focus is set). Same idiom as GraphView edges / RadarView polygons. The per-state area/line
-    //   `ensureState(...).ignore` niceties in the radar path have no parallel analogue here.
+    //   when focus is set). Same idiom as GraphView edges / RadarView polygons.
     let itemModel = data.getItemModel(dataIndex)
     let emphasisModel = itemModel.getModel(["emphasis"])
     states.setStatesStylesFromModel(el, itemModel, "lineStyle")
@@ -336,12 +363,6 @@ private func updateElCommon(
     let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
     let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
     states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
-
-    // Enter-fade toward the captured final opacity (see the opacity note above where it was zeroed). On
-    //   a morph reuse the style already carries the final opacity (no zeroing), so no fade is scheduled.
-    if !morph {
-        initProps(el, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, dataIndex)
-    }
 }
 
 // upstream: function isEmptyValue(val: ParsedValue, axisType: OptionAxisType)
