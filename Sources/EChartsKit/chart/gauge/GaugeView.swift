@@ -35,12 +35,11 @@ import ZRenderKit
 //     → PORT-NOTE: util/states.swift is ported; emphasis/blur/focus states just aren't wired here yet.
 //   import {createTextStyle, setLabelValueAnimation, animateLabelValue} from '../../label/labelStyle';
 //     → createTextStyle / setLabelValueAnimation / animateLabelValue are PORTED
-//       (label/labelStyle.swift:417 / :819 / :858). DRAWING DEVIATION: the gauge title/detail text is still
-//       built with the minimal local `gaugeTextStyle` (font/fill/align only) below, same as FunnelView/Breadcrumb.
-//       The title/detail Text elements ARE now reused across renders (diffed against `_data`), so they no
-//       longer churn on refresh. The detail number roll-up itself (setLabelValueAnimation/animateLabelValue —
-//       the incremental count-up tween) is still DEFERRED: the reused detail element is updated straight to
-//       the new value each render (no reset), but the count-up interpolation is not driven.
+//       (label/labelStyle.swift:416 / :819 / :858) and now WIRED: the local `gaugeTextStyle` adapter below
+//       delegates to `labelStyle.createTextStyle` (restoring textBorder/shadow/rich styling), and the detail
+//       number roll-up (setLabelValueAnimation + animateLabelValue) is driven in `_renderTitleAndDetail`
+//       (gated on the detail's `valueAnimation` option and the series animation being enabled). The
+//       title/detail Text elements are also reused across renders (diffed against `_data`).
 //   import ChartView from '../../view/Chart';                         → ChartView (view/Chart.swift).
 //   import {parsePercent, round, linearMap, DEFAULT_PRECISION_FOR_ROUNDING_ERROR} from '../../util/number';
 //     → `number.parsePercent` / `number.round` / `number.linearMap` / `number.DEFAULT_PRECISION_FOR_ROUNDING_ERROR`.
@@ -101,9 +100,12 @@ private func formatLabel(_ value: Double?, _ labelFormatter: Any?) -> String {
         }
         else if isFunction(labelFormatter) {
             // label = labelFormatter(value);
-            // PORT-NOTE (deferred): requires the formatter-callback seam — a JS `(value: number) => string`
-            //   callback cannot be invoked from the option bag in this port; the raw numeric label is kept.
-            _ = labelFormatter
+            //   upstream `(value: number) => string`. A function formatter is stored in the option bag as
+            //   a Swift closure (cf. the VisualMapModel `(Double, Double) -> String` / GeoModel
+            //   `([String: Any]) -> String` formatter-callback seams); invoke it with the numeric value.
+            if let fn = labelFormatter as? (Double) -> String {
+                label = fn(value ?? Double.nan)
+            }
         }
     }
 
@@ -461,11 +463,8 @@ open class GaugeView: ChartView {
                     rotate = (gaugeNum(rotateType) ?? 0) * Double.pi / 180
                 }
 
-                // fill via inheritColor: labelModel textColor OR the auto (segment) color.
-                let fill = labelModel.getTextColor() ?? autoColor
-
                 if rotate == 0 {
-                    var ts = gaugeTextStyle(labelModel, text: label, fill: fill,
+                    var ts = gaugeTextStyle(labelModel, text: label, inheritColor: autoColor,
                         align: unitX < -0.4 ? .left : (unitX > 0.4 ? .right : .center),
                         verticalAlign: unitY < -0.8 ? .top : (unitY > 0.8 ? .bottom : .middle))
                     ts.x = textStyleX
@@ -475,7 +474,7 @@ open class GaugeView: ChartView {
                     _ = group.add(textEl)
                 }
                 else {
-                    var ts = gaugeTextStyle(labelModel, text: label, fill: fill,
+                    var ts = gaugeTextStyle(labelModel, text: label, inheritColor: autoColor,
                         align: .center, verticalAlign: .middle)
                     ts.x = textStyleX
                     ts.y = textStyleY
@@ -826,12 +825,8 @@ open class GaugeView: ChartView {
         var newTitleEls = [ZRText?](repeating: nil, count: data.count())
         var newDetailEls = [ZRText?](repeating: nil, count: data.count())
         // const hasAnimation = seriesModel.isAnimationEnabled();
-        //   setLabelValueAnimation/animateLabelValue (the detail number roll-up) ARE ported
-        //   (label/labelStyle.swift:819 / :858); wiring the roll-up is deferred here — the reused detail
-        //   element is updated to the new value each render (no reset), but the incremental count-up
-        //   tween is not driven. That is the SECONDARY part of the fix (the pointer/progress reset was
-        //   the primary bug).
-        _ = seriesModel.isAnimationEnabled()
+        //   Gates animateLabelValue (the detail number roll-up) in the per-datum loop below.
+        let hasAnimation = seriesModel.isAnimationEnabled()
 
         let showPointerAbove = jsTruthy(seriesModel.get(["pointer", "showAbove"]))
 
@@ -872,7 +867,7 @@ open class GaugeView: ChartView {
                 labelEl.z2 = showPointerAbove ? 0 : 2
                 var ts = gaugeTextStyle(itemTitleModel,
                     text: data.getName(idx),
-                    fill: itemTitleModel.getTextColor() ?? autoColor,
+                    inheritColor: autoColor,
                     align: .center, verticalAlign: .middle)
                 ts.x = titleX
                 ts.y = titleY
@@ -897,7 +892,7 @@ open class GaugeView: ChartView {
                 labelEl.z2 = showPointerAbove ? 0 : 2
                 var ts = gaugeTextStyle(itemDetailModel,
                     text: formatLabel(value, formatter),
-                    fill: itemDetailModel.getTextColor() ?? detailColor,
+                    inheritColor: detailColor,
                     align: .center, verticalAlign: .middle)
                 ts.x = detailX
                 ts.y = detailY
@@ -905,8 +900,25 @@ open class GaugeView: ChartView {
                 ts.width = width.isNaN ? nil : width
                 ts.height = height.isNaN ? nil : height
                 labelEl.useStyle(ts)
-                // setLabelValueAnimation / animateLabelValue (detail number roll-up) ARE ported
-                //   (label/labelStyle.swift:819 / :858); wiring them is deferred with this view's STATIC render.
+
+                // setLabelValueAnimation / animateLabelValue (detail number roll-up) — ported
+                //   (label/labelStyle.swift:819 / :858) and now wired. `setLabelValueAnimation` snapshots
+                //   the new value + a default-text getter on the label; `animateLabelValue` then TWEENS the
+                //   displayed number from the previous value to the target (gated on the detail's
+                //   `valueAnimation` option, default false, and on the series animation being enabled).
+                labelStyle.setLabelValueAnimation(
+                    labelEl,
+                    [.normal: itemDetailModel],
+                    value,
+                    { v in formatLabel(asDouble(v), formatter) }
+                )
+                if hasAnimation == true {
+                    // upstream passes a bespoke labelFetcher whose getFormattedLabel returns
+                    //   `formatLabel(interpolatedValue ?? value, formatter)`; that is exactly the
+                    //   default-text getter snapshotted above, so passing `nil` here routes `during`
+                    //   through that same getter (getLabelText falls back to opt.defaultText).
+                    labelStyle.animateLabelValue(labelEl, Double(idx), data, seriesModel, nil)
+                }
 
                 _ = itemGroup.add(labelEl)
             }
@@ -1023,26 +1035,27 @@ private func styleToDict(_ style: Any?) -> [String: Any] {
     return (style as? [String: Any]) ?? [:]
 }
 
-/// Minimal local reproduction of `label/labelStyle.createTextStyle(textStyleModel, opts, {inheritColor})`
-///   (the real one is now PORTED at label/labelStyle.swift:417). Only text/font/fill/align/verticalAlign are
-///   modeled (the geometry the gauge needs); x/y/width/height and rotation are set by the caller on the
-///   returned struct / element. This local stand-in is still used by the title/detail draw path (a deliberate
-///   DRAWING DEVIATION, same as FunnelView / Breadcrumb / AxisBuilder.createTextStyle); replace with
-///   labelStyle.createTextStyle if the gauge label path is fully wired.
+/// Thin adapter over the ported `label/labelStyle.createTextStyle(textStyleModel, specifiedTextStyle,
+///   {inheritColor})` (labelStyle.swift:416). Upstream builds every gauge title/detail/axisLabel text via
+///   `createTextStyle`, so this now delegates to it — restoring textBorder/shadow/rich styling that the
+///   former minimal (font/fill/align-only) stand-in dropped. The caller sets x/y (and width/height for the
+///   detail) on the returned struct, matching how those fields flow through upstream's specifiedTextStyle.
+///   `inheritColor` is upstream's `{ inheritColor }` opt (the segment auto-color / detail visual fill);
+///   `createTextStyle` resolves the final fill from the model's `color` (falling back to inheritColor).
 private func gaugeTextStyle(
     _ textStyleModel: Model,
     text: String?,
-    fill: String?,
+    inheritColor: String?,
     align: TextAlign?,
     verticalAlign: TextVerticalAlign?
 ) -> TextStyleProps {
-    var s = TextStyleProps()
-    s.text = text
-    s.font = textStyleModel.getFont()
-    s.fill = fill
-    s.align = align
-    s.verticalAlign = verticalAlign
-    return s
+    var specified = TextStyleProps()
+    specified.text = text
+    specified.align = align
+    specified.verticalAlign = verticalAlign
+    return labelStyle.createTextStyle(
+        textStyleModel, specified, TextCommonParams(inheritColor: inheritColor)
+    )
 }
 
 /// PORT-NOTE: `util/graphic` style-bag bridge for LINE styles (splitline/tick). `Model.getLineStyle()`
