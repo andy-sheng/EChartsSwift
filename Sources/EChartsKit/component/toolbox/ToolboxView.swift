@@ -140,6 +140,14 @@ open class ToolboxView: ComponentView {
             feature.render(featureModel, ecModel, api, payload)
         }
 
+        // Diff-remove (upstream DataDiffer `.remove(curry(processFeature, null))`): any feature that was
+        //   live in the previous render but is gone or now `show:false` this render must be disposed
+        //   (`if (isDiffRemove || !isFeatureShow) { feature.dispose(ecModel, api); }`). The port rebuilds
+        //   fresh features each render, so compare the retained set against the previous `_features`.
+        for (name, oldFeature) in self._features where features[name] == nil {
+            oldFeature.dispose(ecModel, api)
+        }
+
         self._features = features
 
         // Perform layout.
