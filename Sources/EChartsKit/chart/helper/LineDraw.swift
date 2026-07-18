@@ -27,8 +27,8 @@ import ZRenderKit
 //   import { getLabelStatesModels } from '../../label/labelStyle';   -> `labelStyle.getLabelStatesModels`.
 //   import { ILineDraw, ListForLineDraw } from './baseDraw';         -> PORT-NOTE: `baseDraw` NOT ported;
 //       `ListForLineDraw` is just `SeriesData` here, and `ILineDraw` collapses onto the concrete class.
-//   PORT-NOTE (deferred): incremental/progressive mode (incrementalPrepareUpdate / incrementalUpdate /
-//       eachRendered / _progressiveEls) is deferred — the same reduction as SymbolDraw. `updateData` /
+//   PORT-NOTE: incremental/progressive mode (incrementalPrepareUpdate / incrementalUpdate /
+//       eachRendered / _progressiveEls) is ported (mirroring SymbolDraw). `updateData` /
 //       `updateLayout` / `remove` (the merge-mode enter/update/leave DIFF that reuses + tweens each
 //       ECLine across a setOption) are ported faithfully.
 
@@ -45,6 +45,8 @@ public final class LineDraw: MarkerDraw {
 
     private let _LineCtor: LineLikeCtor
     private var _lineData: SeriesData?
+    private var _seriesScope: LineDrawSeriesScope?
+    private var _progressiveEls: [ECLine]?
 
     // upstream: constructor(LineCtor?) { this._LineCtor = LineCtor || LineGroup; }
     public init(_ lineCtor: LineLikeCtor? = nil) {
@@ -53,6 +55,9 @@ public final class LineDraw: MarkerDraw {
 
     // upstream: updateData(lineData)
     public func updateData(_ lineData: SeriesData) {
+        // Remove progressive els.
+        self._progressiveEls = nil
+
         let group = self.group
 
         let oldLineData = self._lineData
@@ -89,9 +94,65 @@ public final class LineDraw: MarkerDraw {
         })
     }
 
+    // upstream: incrementalPrepareUpdate(lineData)
+    public func incrementalPrepareUpdate(_ lineData: SeriesData) {
+        self._seriesScope = makeLineDrawSeriesScope(lineData)
+        self._lineData = nil
+        _ = self.group.removeAll()
+    }
+
+    // upstream: incrementalUpdate(taskParams, lineData, incrementalId)
+    public func incrementalUpdate(
+        _ taskParams: StageHandlerProgressParams, _ lineData: SeriesData,
+        _ incrementalId: Double
+    ) {
+        self._progressiveEls = []
+
+        // upstream: function updateIncrementalAndHover(el)
+        // PORT-NOTE: HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
+        //   constant; inlined here (same substitute as SymbolDraw). `isEffectObject` (el has
+        //   animators) is unused for the default ECLine and follows SymbolDraw's reduction.
+        func updateIncrementalAndHover(_ el: Element) -> Bool {
+            if !el.isGroup {
+                (el as? Displayable)?.incremental = incrementalId
+                el.ensureState("emphasis").hoverLayer = 2
+            }
+            return false
+        }
+
+        let start = Int(taskParams.start)
+        let end = Int(taskParams.end)
+        for idx in start..<end {
+            let itemLayout = lineData.getItemLayout(idx)
+            if lineNeedsDraw(itemLayout) {
+                let el = self._LineCtor(lineData, idx, self._seriesScope)
+                _ = el.traverse(updateIncrementalAndHover)
+                _ = self.group.add(el)
+                lineData.setItemGraphicEl(idx, el)
+                self._progressiveEls?.append(el)
+            }
+        }
+    }
+
     // upstream: remove() { this.group.removeAll(); }
     public func remove() {
         _ = self.group.removeAll()
+    }
+
+    // upstream: eachRendered(cb)
+    public func eachRendered(_ cb: (_ el: Element) -> Bool) {
+        // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
+        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
+        //   traverse each (progressive mode); otherwise traverse the group via `Group.traverse`
+        //   (same substitute as SymbolDraw.eachRendered).
+        if let progressiveEls = self._progressiveEls {
+            for el in progressiveEls {
+                _ = cb(el)
+            }
+        }
+        else {
+            _ = self.group.traverse(cb)
+        }
     }
 
     // upstream: _doAdd(lineData, idx, seriesScope)
