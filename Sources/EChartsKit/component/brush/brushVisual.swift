@@ -231,18 +231,23 @@ public func brushVisual(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: 
         // function stepAParallel(seriesModel: ParallelSeriesModel, seriesIndex: number): void
         func stepAParallel(_ seriesModel: SeriesModel, _ seriesIndex: Int) {
             // const coordSys = seriesModel.coordinateSystem;
+            //   `seriesModel.coordinateSystem` is `Any?` in this port; for a parallel series it is a
+            //   `Parallel` (coord/parallel/Parallel.swift). If the cast fails (no coord system), a
+            //   parallel series contributes nothing — matching upstream, which never sees a null here.
+            guard let coordSys = seriesModel.coordinateSystem as? Parallel else { return }
+
             // hasBrushExists = hasBrushExists || coordSys.hasAxisBrushed();
+            hasBrushExists = hasBrushExists || coordSys.hasAxisBrushed()
+
             // linkOthers(seriesIndex) && coordSys.eachActiveState(seriesModel.getData(),
             //     (activeState, dataIndex) => { activeState === 'active' && (selectedDataIndexForLink[dataIndex] = 1); });
-            //
-            // PORT-NOTE (deferred): `Parallel.hasAxisBrushed()` / `Parallel.eachActiveState()` express the
-            //   PARALLEL-AXIS brush state, which is painted by ParallelAxisView's own BrushController — and
-            //   that view's live axis-drag brush is itself unported (see the PORT-NOTE at
-            //   `installParallelActions` in core/ECharts.swift). WHAT WE DO: a parallel series contributes
-            //   nothing to `hasBrushExists` and adds no linked selection. USER-VISIBLE CONSEQUENCE: with
-            //   `brushLink`, a selection made on a PARALLEL axis does not propagate to the other series.
-            //   A rect/lineX/lineY/polygon brush over cartesian/geo series is unaffected.
-            _ = (seriesModel, seriesIndex)
+            if linkOthers(seriesIndex) {
+                coordSys.eachActiveState(seriesModel.getData()) { activeState, dataIndex in
+                    if activeState == "active" {
+                        selectedDataIndexForLink[dataIndex] = true
+                    }
+                }
+            }
         }
 
         // function stepAOthers(seriesModel, seriesIndex, rangeInfoList): void

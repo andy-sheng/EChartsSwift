@@ -63,9 +63,25 @@ public func onIrrelevantElement(
 
     // upstream: const eventElCoordSys = (eventElComponent as CoordinateSystemHostModel).coordinateSystem;
     //   if (!eventElCoordSys || eventElCoordSys.model === targetComponent) { return false; }
-    let eventElCoordSys = (eventElComponent as? SeriesModel)?.coordinateSystem
-    let coordSysModel = (eventElCoordSys as? CoordinateSystem)?.model
-    if eventElCoordSys == nil || coordSysModel === targetComponent {
+    //   PORT-NOTE: `coordinateSystem` is split across two slots in this port — a coord-sys HOST
+    //   model (GridModel/PolarModel/…) declares it via `CoordinateSystemHostModel` (a
+    //   `CoordinateSystemMaster`), while a SeriesModel stores its own (a `CoordinateSystem`).
+    //   Read whichever slot the covering component carries (mirrors ECharts.containPixel) so an
+    //   axis/grid model covering the target is not skipped and still hits the coordSys/z-order check.
+    let eventElCoordSysModel: ComponentModel?
+    let hasEventElCoordSys: Bool
+    if let host = eventElComponent as? CoordinateSystemHostModel, let coordSys = host.coordinateSystem {
+        hasEventElCoordSys = true
+        eventElCoordSysModel = coordSys.model
+    } else if let series = eventElComponent as? SeriesModel,
+              let coordSys = series.coordinateSystem as? CoordinateSystem {
+        hasEventElCoordSys = true
+        eventElCoordSysModel = coordSys.model
+    } else {
+        hasEventElCoordSys = false
+        eventElCoordSysModel = nil
+    }
+    if !hasEventElCoordSys || eventElCoordSysModel === targetComponent {
         return false
     }
 

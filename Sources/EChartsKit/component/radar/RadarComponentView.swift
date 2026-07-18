@@ -315,17 +315,65 @@ private func styleNum(_ v: Any?) -> Double? {
     return nil
 }
 
+/// Bridge a dynamic split-color value (from `splitLine.lineStyle.color` / `splitArea.areaStyle.color`,
+///   possibly per-ring in an array) onto `ZRColor`. Upstream passes the raw JS value straight into the
+///   canvas `style.fill`/`style.stroke`, which zrender renders whether it is a color string, an
+///   `echarts.graphic.LinearGradient`/`RadialGradient`/`Pattern` instance, OR a plain gradient/pattern
+///   OPTION object (`{type:'linear', x,y,x2,y2, colorStops:[{offset,color}], global}` etc.). We mirror
+///   all of those arms so a raw gradient/pattern option dict is no longer dropped.
+private func zrColorFromOption(_ v: Any?) -> ZRenderKit.ZRColor? {
+    guard let v = v else { return nil }
+    // Already a bridged ZRColor (or a pre-built gradient/pattern instance) → pass through.
+    if let c = v as? ZRenderKit.ZRColor { return c }
+    if let g = v as? LinearGradient { return .linearGradient(g) }
+    if let g = v as? RadialGradient { return .radialGradient(g) }
+    if let p = v as? Pattern { return .pattern(p) }
+    // String form (incl. the sentinel 'none').
+    if let s = v as? String { return .string(s) }
+    // Raw gradient/pattern OPTION object (a JSON option dict).
+    if let dict = v as? [String: Any] {
+        let type = dict["type"] as? String
+        if type == "linear" {
+            return .linearGradient(LinearGradient(
+                styleNum(dict["x"]), styleNum(dict["y"]),
+                styleNum(dict["x2"]), styleNum(dict["y2"]),
+                colorStopsFromOption(dict["colorStops"]),
+                dict["global"] as? Bool
+            ))
+        }
+        if type == "radial" {
+            return .radialGradient(RadialGradient(
+                styleNum(dict["x"]), styleNum(dict["y"]), styleNum(dict["r"]),
+                colorStopsFromOption(dict["colorStops"]),
+                dict["global"] as? Bool
+            ))
+        }
+        // Pattern: `{image: <string>, repeat: ...}` (only the string-image arm is ported; the
+        //   ImageLike arm is deferred to the painter seam, cf. ZRenderKit Pattern.swift).
+        if let image = dict["image"] as? String {
+            let repeatMode = (dict["repeat"] as? String)
+                .flatMap { ImagePatternRepeat(rawValue: $0) } ?? .`repeat`
+            return .pattern(Pattern(image, repeatMode))
+        }
+    }
+    return nil
+}
+
+/// Parse `colorStops: [{offset, color}]` (offset may be an Int-boxed literal like `0`/`1`).
+private func colorStopsFromOption(_ v: Any?) -> [GradientColorStop] {
+    guard let arr = v as? [Any] else { return [] }
+    return arr.compactMap { item -> GradientColorStop? in
+        guard let d = item as? [String: Any], let color = d["color"] as? String else { return nil }
+        return GradientColorStop(offset: styleNum(d["offset"]) ?? 0, color: color)
+    }
+}
+
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // A pre-built ZRColor (gradient/pattern already bridged) passes through; the String form
-    //   (incl. the sentinel 'none') is wrapped.
-    // PORT-NOTE (deferred): requires the option-dict → ZRColor bridge — a RAW gradient/pattern
-    //   OBJECT (a JSON option dict) is not converted here (same gap as the sibling
-    //   `pathStyleFromLineStyleDict`); it is dropped until that bridge lands.
-    if let fill = dict["fill"] as? ZRenderKit.ZRColor { s.fill = fill }
-    else if let fill = dict["fill"] as? String { s.fill = .string(fill) }
-    if let stroke = dict["stroke"] as? ZRenderKit.ZRColor { s.stroke = stroke }
-    else if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }
+    // fill/stroke bridge: color string, pre-built ZRColor/gradient/pattern instance, OR a raw
+    //   gradient/pattern option dict — see `zrColorFromOption`.
+    if let fill = zrColorFromOption(dict["fill"]) { s.fill = fill }
+    if let stroke = zrColorFromOption(dict["stroke"]) { s.stroke = stroke }
     if let lineWidth = styleNum(dict["lineWidth"]) { s.lineWidth = lineWidth }
     if let lineCap = dict["lineCap"] as? String { s.lineCap = lineCap }
     if let lineJoin = dict["lineJoin"] as? String { s.lineJoin = lineJoin }

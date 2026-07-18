@@ -242,8 +242,10 @@ public final class SeriesData: DataStackSeriesData {
     // PORT NOTE: upstream `wrapMethod` rebinds `this[methodName]` so registered injections fire when the
     //   method runs. Swift can not replace a method by string name, so instead `wrapMethod` stores the
     //   injection closures here, keyed by method name, and the ported methods that support wrapping invoke
-    //   them explicitly (currently only `cloneShallow`, which the tree/graph link relies on — see
-    //   linkSeriesData `transferInjection`/`cloneShallowInjection`). Registration order is preserved so the
+    //   them explicitly (`cloneShallow`, the TRANSFERABLE_METHODS `map`/`downSample`/`minmaxDownSample`/
+    //   `lttbDownSample`, and the CHANGABLE_METHODS `filterSelf`/`selectRange` — all fire via
+    //   `fireWrappedMethodInjections`; see linkSeriesData `transferInjection`/`changeInjection`/
+    //   `cloneShallowInjection` and Series.wrapData `onDataChange`). Registration order is preserved so the
     //   injections fire in the same order upstream's wrap chain does (original → transfer → cloneShallow).
     private var _wrappedMethodInjections: [String: [(SeriesData) -> Void]] = [:]
 
@@ -905,12 +907,14 @@ public final class SeriesData: DataStackSeriesData {
     @discardableResult
     public func filterSelf(_ cb: @escaping FilterCb) -> SeriesData {
         self._store = self._store.filter([], cb)
+        self.fireWrappedMethodInjections("filterSelf", self)
         return self
     }
     @discardableResult
     public func filterSelf(_ dims: ItrParamDims, _ cb: @escaping FilterCb) -> SeriesData {
         let dimIndices = util.map(SeriesData.normalizeDimensions(dims)) { dim, _ in self._getStoreDimIndex(dim) }
         self._store = self._store.filter(dimIndices, cb)
+        self.fireWrappedMethodInjections("filterSelf", self)
         return self
     }
 
@@ -929,6 +933,7 @@ public final class SeriesData: DataStackSeriesData {
         }
 
         self._store = self._store.selectRange(innerRange)
+        self.fireWrappedMethodInjections("selectRange", self)
         return self
     }
 
@@ -954,6 +959,7 @@ public final class SeriesData: DataStackSeriesData {
 
         let list = SeriesData.cloneListForMapAndSample(self)
         list._store = self._store.map(dimIndices, cb)
+        self.fireWrappedMethodInjections("map", list)
         return list
     }
 
@@ -994,6 +1000,7 @@ public final class SeriesData: DataStackSeriesData {
             sampleValue,
             sampleIndex
         )
+        self.fireWrappedMethodInjections("downSample", list)
         return list
     }
 
@@ -1009,6 +1016,7 @@ public final class SeriesData: DataStackSeriesData {
             self._getStoreDimIndex(valueDimension),
             rate
         )
+        self.fireWrappedMethodInjections("minmaxDownSample", list)
         return list
     }
 
@@ -1024,6 +1032,7 @@ public final class SeriesData: DataStackSeriesData {
             self._getStoreDimIndex(valueDimension),
             rate
         )
+        self.fireWrappedMethodInjections("lttbDownSample", list)
         return list
     }
 
@@ -1270,6 +1279,19 @@ public final class SeriesData: DataStackSeriesData {
      * New list only change the indices.
      */
     @discardableResult
+    // PORT helper: fire the side-effect injections `wrapMethod` stored for `methodName`, in registration
+    //   order, feeding each the method's result (`res`). Upstream rebinds `this[methodName]` so the injection
+    //   runs after the original method; here the ported wrappable methods call this explicitly. Mirrors the
+    //   `res` = original-method-return that upstream passes as `injectFunction.apply(this, [res].concat(...))`;
+    //   the side-effecting injections (transferInjection re-linking references, changeInjection's
+    //   `struct.update()`, onDataChange's task output-end) all return `res` unchanged, so returning the
+    //   original `res` after firing is faithful.
+    private func fireWrappedMethodInjections(_ methodName: String, _ res: SeriesData) {
+        for injection in self._wrappedMethodInjections[methodName] ?? [] {
+            injection(res)
+        }
+    }
+
     public func cloneShallow(_ list: SeriesData? = nil) -> SeriesData {
         var list = list
         if list == nil {
@@ -1289,9 +1311,7 @@ public final class SeriesData: DataStackSeriesData {
         //   invoke stored injections explicitly. This is what re-links the shared tree/graph struct onto the
         //   fresh clone (`clone.tree = struct`, `struct.data = clone`), so a tree/treemap/sunburst series'
         //   `getData().tree` survives the `dataTaskReset` cloneShallow.
-        for injection in self._wrappedMethodInjections["cloneShallow"] ?? [] {
-            injection(list!)
-        }
+        self.fireWrappedMethodInjections("cloneShallow", list!)
 
         return list!
     }
@@ -1312,8 +1332,10 @@ public final class SeriesData: DataStackSeriesData {
         self.__wrappedMethods!.append(methodName)
         // `getItemModel` is a VALUE-returning wrapped method (takes `idx`, returns a `Model` the injection
         //   may replace); it goes into the dedicated `_getItemModelInjections` store so `getItemModel`
-        //   can thread the result. All other wrapped methods (only `cloneShallow` today) run for side
-        //   effects on the new SeriesData and are stored as before.
+        //   can thread the result. All other wrapped methods (`cloneShallow`, the TRANSFERABLE_METHODS
+        //   `map`/`downSample`/`minmaxDownSample`/`lttbDownSample`, and the CHANGABLE_METHODS
+        //   `filterSelf`/`selectRange`) run for side effects on the result SeriesData; they are stored here
+        //   and fired by those methods via `fireWrappedMethodInjections`.
         if methodName == "getItemModel" {
             self._getItemModelInjections.append { res, idx in
                 // Upstream feeds `[res].concat(arguments)` → (model, idx). The ported `beforeLink`

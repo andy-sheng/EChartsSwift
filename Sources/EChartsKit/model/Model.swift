@@ -79,7 +79,12 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     //   (CONVENTIONS): keyed access casts to `[String: Any]` in `getShallow`/`_doGet`.
     public var option: ModelOption?
 
-    public init(_ option: ModelOption? = nil, _ parentModel: Model? = nil, _ ecModel: GlobalModel? = nil) {
+    // PORT-NOTE: marked `required` so `clone()` can reconstruct the dynamic subclass via
+    //   `type(of: self).init(...)` (a Swift metatype can only call a `required` initializer),
+    //   faithfully mirroring upstream's `new (this.constructor as any)(...)`. Subclasses that
+    //   declare their own designated init already override this as `required` (e.g. ComponentModel);
+    //   those without one inherit it.
+    public required init(_ option: ModelOption? = nil, _ parentModel: Model? = nil, _ ecModel: GlobalModel? = nil) {
         self.parentModel = parentModel
         self.ecModel = ecModel
         self.option = option
@@ -202,15 +207,12 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     open func restoreData() {}
 
     // Pending
-    public func clone() -> Model {
+    public func clone() -> Self {
         // upstream: const Ctor = this.constructor; return new (Ctor as any)(clone(this.option));
-        // POTENTIAL-BUG: upstream constructs via the dynamic JS constructor to preserve the subclass
-        //   type. Swift cannot call an initializer on a metatype value unless it is `required`
-        //   across the whole hierarchy; to avoid forcing every model subclass to declare a
-        //   `required init`, this returns a base `Model` carrying the cloned option — so a `clone()`
-        //   of a subclass silently loses its concrete type. Revisit if subtype-preserving clone is
-        //   needed (upstream marks this method "Pending").
-        return Model(util.clone(self.option))
+        // PORT-NOTE: `type(of: self)` is the dynamic metatype (upstream's `this.constructor`) and the
+        //   `required` designated init lets us call it on that metatype, so a `clone()` of a subclass
+        //   preserves its concrete type. The `-> Self` return type surfaces that to callers.
+        return type(of: self).init(util.clone(self.option))
     }
 
     // setReadOnly(properties): void {

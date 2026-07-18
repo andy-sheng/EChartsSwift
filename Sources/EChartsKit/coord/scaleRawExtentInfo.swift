@@ -527,14 +527,47 @@ private func parseAxisModelMinMax(_ scale: Scale, _ minMax: ScaleDataValue?) -> 
 }
 
 // PORT-NOTE: min/max callback `({min, max}) => value` — a JS function stored in the option bag (`Any`),
-//   modeled as a Swift closure. We attempt a best-effort cast to `([String: Double]) -> ScaleDataValue`
-//   and invoke it with the full (pre-filter) data extent. If the cast fails, treat as unspecified (nil).
-//   POTENTIAL-BUG: a caller-supplied closure with a different (equivalent) Swift signature would fail the
-//   cast and be silently dropped; there is no single canonical Swift type for the JS callback shape.
+//   modeled as a Swift closure. Upstream type: `(extent: {min: number, max: number}) => ScaleDataValue | NullUndefined`.
+//   `ScaleDataValue` aliases `Any`, and Swift function-type `as?` casts are invariant (a closure returning
+//   `Double` does NOT cast to one returning `Any`, nor does one taking two args cast to one taking a dict).
+//   So there is no single canonical Swift type for the JS callback shape — we attempt the plausible shapes
+//   in turn, invoking whichever matches with the full (pre-filter) data extent. Both a dictionary parameter
+//   `["min":, "max":]` and a positional `(min, max)` parameter are accepted, with either an `Any`/`Any?`
+//   (`ScaleDataValue`/`NullUndefined`) or a concrete `Double`/`Double?` return. If none matches, the callback
+//   is treated as unspecified (nil), as before.
 private func invokeAxisMinMaxCallback(_ raw: Any?, _ dataMM: [Double]) -> ScaleDataValue? {
+    let mn = dataMM[0]
+    let mx = dataMM[1]
+    let dict: [String: Double] = ["min": mn, "max": mx]
+
+    // Dictionary-parameter shapes.
     if let fn = raw as? (([String: Double]) -> ScaleDataValue) {
-        return fn(["min": dataMM[0], "max": dataMM[1]])
+        return fn(dict)
     }
+    if let fn = raw as? (([String: Double]) -> ScaleDataValue?) {
+        return fn(dict)
+    }
+    if let fn = raw as? (([String: Double]) -> Double) {
+        return fn(dict)
+    }
+    if let fn = raw as? (([String: Double]) -> Double?) {
+        return fn(dict)
+    }
+
+    // Positional `(min, max)`-parameter shapes.
+    if let fn = raw as? ((Double, Double) -> ScaleDataValue) {
+        return fn(mn, mx)
+    }
+    if let fn = raw as? ((Double, Double) -> ScaleDataValue?) {
+        return fn(mn, mx)
+    }
+    if let fn = raw as? ((Double, Double) -> Double) {
+        return fn(mn, mx)
+    }
+    if let fn = raw as? ((Double, Double) -> Double?) {
+        return fn(mn, mx)
+    }
+
     return nil
 }
 

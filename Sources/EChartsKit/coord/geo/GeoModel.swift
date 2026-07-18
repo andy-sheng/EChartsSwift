@@ -224,11 +224,28 @@ public final class GeoModel: ComponentModel, CoordinateSystemHostModel {
 
         // Default label emphasis `show`
         // modelUtil.defaultEmphasis(option, 'label', ['show']);
-        //   PORT-NOTE (deferred): requires the [String: Any] <-> DisplayStateHostOption bridge.
-        //   model.defaultEmphasis takes a typed `DisplayStateHostOption` (struct); bridging the
-        //   dynamic option bag ([String: Any]) <-> DisplayStateHostOption is not wired yet (same deferral as
-        //   Series.swift / MarkerModel). Re-enable once the bridge lands:
-        //   modelUtil.defaultEmphasis(&self.option, "label", ["show"])
+        //   `option` upstream === `self.option`. `model.defaultEmphasis` takes a typed
+        //   `DisplayStateHostOption` (struct); bridge the dynamic option bag ([String: Any]) through
+        //   it (mirrors Series.defaultEmphasisOnBag) and write the mutated bag back.
+        if let bag = self.option as? [String: Any] {
+            self.option = GeoModel.defaultEmphasisOnBag(bag, "label", ["show"])
+        }
+    }
+
+    // Bridge the dynamic `[String: Any]` option bag to the typed `DisplayStateHostOption` struct that
+    // model.defaultEmphasis consumes, run it, and return the mutated bag (mirrors Series.defaultEmphasisOnBag).
+    // Upstream mutates the option object in place (reference semantics); Swift value types require
+    // read-modify-write-back.
+    private static func defaultEmphasisOnBag(_ bag: [String: Any], _ key: String, _ subOpts: [String]) -> [String: Any] {
+        var host: DisplayStateHostOption? = DisplayStateHostOption()
+        host!.other = bag
+        host!.emphasis = bag["emphasis"] as? [String: Any]
+        model.defaultEmphasis(&host, key, subOpts)
+        var result = host!.other
+        if let emphasis = host!.emphasis {
+            result["emphasis"] = emphasis
+        }
+        return result
     }
 
     // optionUpdated(): void { ... }

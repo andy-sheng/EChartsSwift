@@ -138,8 +138,26 @@ private func sankeyMapValueToColor(_ dataExtent: [Double], _ visual: Any?, _ val
     let colors = sankeyNormalizePalette(visual)
     guard !colors.isEmpty else { return nil }
     if colors.count == 1 { return colors[0] }
+    // Faithful to `linearMap(value, dataExtent, [0, 1], /* clamp */ true)` (util/number.ts):
+    //   the mapping is `new VisualMapping({ mappingMethod: 'linear', dataExtent, … })._normalizeData`.
+    //   subDomain = hi - lo; subRange = 1 - 0 = 1. When subDomain === 0 (all-equal / single node)
+    //   linearMap returns (r0 + r1) / 2 = 0.5 (NOT 0), which lands on the mid-palette color.
     let lo = dataExtent[0], hi = dataExtent[1]
-    var t = hi > lo ? (value - lo) / (hi - lo) : 0.0
+    let subDomain = hi - lo
+    var t: Double
+    if subDomain == 0 {
+        t = 0.5
+    }
+    else if subDomain > 0 {
+        if value <= lo { t = 0 }
+        else if value >= hi { t = 1 }
+        else { t = (value - lo) / subDomain }
+    }
+    else { // subDomain < 0
+        if value >= lo { t = 0 }
+        else if value <= hi { t = 1 }
+        else { t = (value - lo) / subDomain }
+    }
     if !t.isFinite { t = 0 }
     t = Swift.min(Swift.max(t, 0), 1)
     if case let .color(c)? = ZRenderKit.color.lerp(t, colors) { return c }

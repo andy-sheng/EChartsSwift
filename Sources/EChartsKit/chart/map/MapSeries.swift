@@ -363,10 +363,14 @@ open class MapSeriesModel: SeriesModel {
     }
 
     // upstream: __ownRoamView() { return mapSeriesNeedsDrawMap(this) ? this.coordinateSystem.view : null; }
-    // PORT-NOTE (deferred): requires roam (component/helper/RoamController + coord/View `.view`).
-    //   `RoamHostModel.__ownRoamView` returns the geo View that this series owns (drives roam ownership);
-    //   Geo has no exposed `view` on the roam path here. Faithful body:
-    //     return mapSeriesNeedsDrawMap(self) ? (self.coordinateSystem as? Geo)?.view : nil
+    //   `RoamHostModel.__ownRoamView` returns the geo View that this series owns (drives roam ownership).
+    //   Typed `Any?` (mirrors GeoModel.__ownRoamView / SankeySeries) since the `RoamHostModel` conformance —
+    //   whose closure `__ownRoamView` returns `View?` — is not declared on this class yet; the live roam
+    //   pipeline (RoamController) is deferred, but the ownership predicate + owning `View` are available here.
+    public func __ownRoamView() -> Any? {
+        // return mapSeriesNeedsDrawMap(this) ? this.coordinateSystem.view : null;
+        return mapSeriesNeedsDrawMap(self) ? (self.coordinateSystem as? Geo)?.view : nil
+    }
 
     // PORT-NOTE (deferred): requires roam — the shared-geo `center`/`zoom` state (`setCenter`/`getCenter`/`getZoom`)
     //   is NOT declared on `MapSeries` in this ECharts version — it lives on the roam View / `RoamHostView`

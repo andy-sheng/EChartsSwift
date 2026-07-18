@@ -636,11 +636,21 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
     }
 
     // These methods may be overridden
-    // PORT-NOTE: upstream reassigns `path.buildPath = sourcePath.buildPath` and
-    //   `(path as SVGPath).applyTransform = (path as SVGPath).applyTransform`. Swift methods are not
-    //   assignable; an overridden `buildPath` would need a `MergedPath`/`SVGPath` carrier. For a
-    //   plain `Path` clone the base no-op `buildPath` is used (geometry is carried via `setShape`).
-    //   The `applyTransform` line is a no-op self-assignment upstream.
+    // upstream: `path.buildPath = sourcePath.buildPath`. Swift methods are not assignable, so carry the
+    //   source's `buildPath` via the `__morphBuildPath` build-hook (the same seam decal/morphPath use;
+    //   honored by getUpdatedPathProxy / getCachedPathProxy / getBoundingRect in place of `buildPath`).
+    //   Delegating to `sourcePath.buildPath` while passing the clone's OWN `shape` mirrors JS invoking
+    //   the reassigned method with `this === path`: a shaped source (Rect/Circle/…) reads the passed
+    //   shape, while an SVGPath / MergedPath ignores it and emits from its captured proxy. Without this
+    //   the clone kept only `setShape` and rendered the base no-op geometry (empty). `path` is captured
+    //   weakly to avoid a retain cycle (it owns the closure); `path.shape` is never nil (base
+    //   `getDefaultShape()` seeds an `EmptyPathShape`, and a non-nil source shape replaced it above).
+    path.__morphBuildPath = { [weak path] ctx in
+        guard let path = path else { return }
+        sourcePath.buildPath(ctx, path.shape, false)
+    }
+    //   The upstream `(path as SVGPath).applyTransform = (path as SVGPath).applyTransform` line is a
+    //   no-op self-assignment; there is nothing to port.
 
     path.z = sourcePath.z
     path.z2 = sourcePath.z2
