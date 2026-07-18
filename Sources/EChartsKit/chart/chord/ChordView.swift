@@ -23,7 +23,8 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
-//       -> only used for the first-render grow-in scale animation (initProps) — DEFERRED. See render().
+//       -> only `initProps` is used (first-render grow-in scale animation) — animation/basicTransition.swift.
+//          `removeElementWithFadeOut` is also from graphic but is DEFERRED (needs the data.diff reuse path).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
@@ -35,9 +36,9 @@ import ZRenderKit
 //   import ChordPiece from './ChordPiece';                         -> sibling ChordPiece.swift (Sector arc).
 //   import { ChordEdge } from './ChordEdge';                       -> sibling ChordEdge.swift (ribbon Path).
 //   import { parsePercent } from '../../util/number';
-//       -> only used by the DEFERRED first-render scale animation (center origin). See render().
+//       -> number.parsePercent (util/number.swift) — first-render scale-animation center origin. See render().
 //   import { getECData } from '../../util/innerStore';
-//       -> PORT-NOTE: innerStore (getECData/ECData) is ported; the ECData `dataIndex` tagging is not wired in this view yet.
+//       -> innerStore.getECData (util/innerStore.swift); wired below to tag each piece/edge `dataIndex`.
 
 // upstream: const RADIAN = Math.PI / 180;
 private let RADIAN: Double = Double.pi / 180
@@ -107,19 +108,31 @@ open class ChordView: ChartView {
             // if (layout) { const el = new ChordPiece(data, newIdx, startAngle); ... group.add(el); }
             if chordTruthy(layout) {
                 let el = ChordPiece(data, newIdx, startAngle)
-                // getECData(el).dataIndex = newIdx;  — PORT-NOTE: innerStore (ECData) is ported; tagging not wired here yet.
+                // getECData(el).dataIndex = newIdx;
+                //   (ChordPiece.updateData already tags the same value; set it here too to mirror upstream's
+                //   view-level tagging so hover/tooltip/highlight resolve the chord datum from the piece.)
+                innerStore.getECData(el).dataIndex = Double(newIdx)
                 _ = group.add(el)
             }
         }
 
         // if (!oldData) { ... first-render grow-in scale animation ... }
-        //   PORT-NOTE (deferred): the first-render scale-up animation requires util/graphic.initProps
-        //   + parsePercent-driven origin (CONVENTIONS §5 — animation).
-        //   Upstream sets group.scaleX/scaleY = 0.01, origin = parsePercent(center[0/1], api.width/height),
-        //   then `graphic.initProps(group, { scaleX: 1, scaleY: 1 }, seriesModel)` tweens it to full size.
-        //   util/graphic.initProps + parsePercent-driven origin are not wired here; the group renders at
-        //   its final scale immediately. Reinstate with the animation system + initProps.
-        _ = oldData
+        //   On the first render the whole group grows in from a near-zero scale about the chord center.
+        //   `initProps` tweens scaleX/scaleY 0.01 -> 1 (and settles to the final scale immediately when the
+        //   series' animation is disabled / in the static frame, so no visual regression there).
+        if oldData == nil {
+            // const center = seriesModel.get('center');
+            let center = (seriesModel.get("center") as? [Any]) ?? []
+            // this.group.scaleX = 0.01; this.group.scaleY = 0.01;
+            self.group.scaleX = 0.01
+            self.group.scaleY = 0.01
+            // this.group.originX = parsePercent(center[0], api.getWidth());
+            self.group.originX = number.parsePercent(center.count > 0 ? center[0] : nil, api.getWidth())
+            // this.group.originY = parsePercent(center[1], api.getHeight());
+            self.group.originY = number.parsePercent(center.count > 1 ? center[1] : nil, api.getHeight())
+            // graphic.initProps(this.group, { scaleX: 1, scaleY: 1 }, seriesModel);
+            initProps(self.group, ["scaleX": 1.0, "scaleY": 1.0], seriesModel)
+        }
 
         // this._data = data;
         self._data = data
@@ -147,7 +160,10 @@ open class ChordView: ChartView {
         for newIdx in 0..<edgeData.count() {
             // const el = new ChordEdge(nodeData, edgeData, newIdx, startAngle);
             let el = ChordEdge(nodeData, edgeData, newIdx, startAngle)
-            // getECData(el).dataIndex = newIdx;  — PORT-NOTE: innerStore (ECData) is ported; tagging not wired here yet.
+            // getECData(el).dataIndex = newIdx;
+            //   (ChordEdge already tags the same value; set it here too to mirror upstream's view-level
+            //   tagging so hover/tooltip/highlight resolve the chord edge datum from the ribbon.)
+            innerStore.getECData(el).dataIndex = Double(newIdx)
             _ = group.add(el)
         }
 
