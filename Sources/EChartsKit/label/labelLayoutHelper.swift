@@ -394,6 +394,28 @@ public enum labelLayoutHelper {
         // Do not remove `obb` (if existing) for reuse, just reset the dirty bit.
     }
 
+    /// upstream: export function computeLabelGeometry2(out, rawLocalRect, rawTransform)
+    /// Fills `out`'s geometry props from a RAW local rect + transform (rather than from a live label's
+    /// `getBoundingRect`/`getComputedTransform`). Used by the axis-break boundary-label de-overlap pass,
+    /// where the geometry is derived from a precomputed rect/transform. Unlike `computeLabelGeometry`,
+    /// this does not touch the dirty bits and resets `obb` to `nil` (recreated lazily by `ensureOBB`).
+    public static func computeLabelGeometry2(
+        _ out: LabelLayoutData,
+        _ rawLocalRect: BoundingRect,
+        _ rawTransform: MatrixArray?
+    ) {
+        out.transform = ensureCopyTransform(out.transform, rawTransform)
+        out.localRect = ensureCopyRect(out.localRect, rawLocalRect)
+        let outGlobalRect = ensureCopyRect(out.rect, rawLocalRect)
+        out.rect = outGlobalRect
+        if let t = rawTransform {
+            outGlobalRect.applyTransform(t)
+        }
+        out.axisAligned = isBoundingRectAxisAligned(rawTransform)
+        out.obb = nil // Reset to nil, will be created by `ensureOBB` when using.
+        out.geomIgnore = false
+    }
+
     /// upstream: function ensureOBB(labelGeometry)
     /// Create the OBB lazily (only when a rotated-rect check is actually needed) and cache it.
     @discardableResult
