@@ -40,9 +40,11 @@
 //     `_updateContentNotChangedOnAxis`, `_keepShow`, `_manuallyAxisShowTip`.
 //   - the HTML content host (`TooltipHTMLContent`) — this port is native, renderMode is FORCED 'richText'
 //   - `transitionDuration` animation + throttled `_updatePosition` (`createOrUpdate`/`clear`)
-//   - `confine` + the position CALLBACK / string / box-layout position exprs (only the default
-//     below/right-of-pointer, clamped-to-rect position is ported)
-//   - the `formatter` (string/function) override of the default markup
+//   - the position CALLBACK (closure-in-option) + the STRING position around a graphic element
+//     (needs an `el` bounding rect the slim entry does not thread). The `confine` gate, the array
+//     `[x,y]` / box-layout object position exprs, and `align`/`verticalAlign` ARE ported.
+//   - the FUNCTION `formatter` (closure + async ticket callback). The STRING `formatter` override
+//     of the default markup IS ported (item path).
 //   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — shown synchronously here
 //   - `findPointFromSeries` (the data-driven showTip position) — payload x/y is used instead
 //
@@ -203,11 +205,18 @@ public final class TooltipView {
             return
         }
 
+        // upstream: `const params = dataModel.getDataParams(dataIndex, dataType)` (TooltipView.ts:695).
+        //   Threaded into `_showTooltipContent` so a string `formatter` can reference the datum's vars.
+        //   PORT-NOTE (deferred): `params.marker` pre-creation is only used by the (deferred) function
+        //   formatter; the string formatter substitutes `$vars` only.
+        let params = seriesModel.getDataParams(dataIndex, dataType)
+
         _showTooltipContent(
             tooltipModel: tooltipModel,
             markupText: html,
             markupStyleCreator: markupStyleCreator,
             seriesModel: seriesModel,
+            params: params,
             x: point.count > 0 ? point[0] : 0,
             y: point.count > 1 ? point[1] : 0
         )
@@ -341,6 +350,7 @@ public final class TooltipView {
         markupText: String,
         markupStyleCreator: TooltipMarkupStyleCreator,
         seriesModel: SeriesModel?,
+        params: CallbackDataParams? = nil,
         x: Double,
         y: Double
     ) {
@@ -363,49 +373,108 @@ public final class TooltipView {
             ?? (tooltipModel.get("defaultBorderColor", true) as? String)
         _ = seriesModel
 
-        content.setContent(markupText, markupStyleCreator, tooltipModel, nearPointColor, nil)
+        // upstream `formatter` override of the default markup (TooltipView.ts:835-873). The STRING
+        //   formatter is ported: substitute the datum's `$vars` (a/b/c + named) into the template via
+        //   `formatTpl`. The FUNCTION formatter (closure + async ticket callback) and the time-axis
+        //   `timeFormat` pre-pass are DEFERRED (no closure-in-option plumbing / no `timeFormat` port).
+        let formatter = tooltipModel.get("formatter")
+        var html = markupText
+        if let formatterStr = formatter as? String, let params = params {
+            html = format.formatTpl(formatterStr, tplParamFromDataParams(params), true)
+        }
+
+        content.setContent(html, markupStyleCreator, tooltipModel, nearPointColor, nil)
         content.show()   // rich content: no-arg (upstream html `show(model, color)` args are html-only)
         _updatePosition(tooltipModel: tooltipModel, x: x, y: y)
     }
 
     // ------------------------------------------------------------------------
-    // _updatePosition — (upstream TooltipView.ts:905). Only the DEFAULT position is ported: place
-    //   the box just below/right of the pointer (upstream `refixTooltipPosition` with gap 20), then clamp
-    //   inside the chart rect (upstream `confineTooltipPosition`). The position callback / string / box-
-    //   layout exprs, `align`/`verticalAlign`, and the `shouldTooltipConfine` gate are DEFERRED.
+    // _updatePosition — (upstream TooltipView.ts:905). Ports the `position` option: an ARRAY `[x, y]`
+    //   (percent-aware via `parsePercent`), an OBJECT box-layout (`getLayoutRect`), and `align`/
+    //   `verticalAlign` offsets; falls back to the DEFAULT `refixTooltipPosition` (flip to the other
+    //   side of the pointer, gap 20) when no positionExpr; then applies `confineTooltipPosition` gated
+    //   by `shouldTooltipConfine` (true for richText unless `confine:false`).
+    //   DEFERRED: the position CALLBACK (closure-in-option) and the STRING position around a graphic
+    //   element (`calcTooltipPosition`) — the slim entry has no `el` bounding rect to anchor against,
+    //   so a string positionExpr falls through to the default refix.
     // ------------------------------------------------------------------------
     private func _updatePosition(tooltipModel: Model, x: Double, y: Double) {
-        _ = tooltipModel
         let viewWidth = _zr.getWidth() ?? 0
         let viewHeight = _zr.getHeight() ?? 0
 
-        let size = _tooltipContent.getSize()
-        let width = size.count > 0 ? size[0] : 0
-        let height = size.count > 1 ? size[1] : 0
+        // upstream: `positionExpr = positionExpr || tooltipModel.get('position')`. The payload `position`
+        //   is not threaded in the slim entry, so this reduces to the model's `position`.
+        let positionExpr = tooltipModel.get("position")
 
-        // upstream `refixTooltipPosition` (gapH == gapV == 20): flip to the other side of the pointer
-        //   when the box would overflow the right/bottom edge.
-        let gap: Double = 20
+        let contentSize = _tooltipContent.getSize()
+        let width = contentSize.count > 0 ? contentSize[0] : 0
+        let height = contentSize.count > 1 ? contentSize[1] : 0
+        var align = tooltipModel.get("align") as? String
+        var vAlign = tooltipModel.get("verticalAlign") as? String
+
         var px = x
         var py = y
-        if px + width + gap + 2 > viewWidth {
-            px -= width + gap
+
+        // PORT-NOTE (deferred): `isFunction(positionExpr)` — the position callback (closure-in-option).
+
+        if let arr = positionExpr as? [Any] {
+            // upstream: x = parsePercent(positionExpr[0], viewWidth); y = parsePercent(positionExpr[1], viewHeight)
+            px = number.parsePercent(arr.count > 0 ? arr[0] : nil, viewWidth)
+            py = number.parsePercent(arr.count > 1 ? arr[1] : nil, viewHeight)
+        }
+        else if let obj = positionExpr as? [String: Any] {
+            // upstream box-layout: seed width/height then `getLayoutRect`. align/vAlign are cleared.
+            var boxLayoutPosition = obj
+            boxLayoutPosition["width"] = width
+            boxLayoutPosition["height"] = height
+            let layoutRect = layout.getLayoutRect(
+                boxLayoutPosition, LayoutRect(0, 0, viewWidth, viewHeight)
+            )
+            px = layoutRect.x
+            py = layoutRect.y
+            align = nil
+            vAlign = nil
         }
         else {
-            px += gap
-        }
-        if py + height + gap > viewHeight {
-            py -= height + gap
-        }
-        else {
-            py += gap
+            // upstream `refixTooltipPosition(x, y, content, viewW, viewH, align ? null : 20, vAlign ? null : 20)`:
+            //   flip to the other side of the pointer when the box would overflow the right/bottom edge.
+            //   The horizontal/vertical gap is suppressed when the corresponding align is set.
+            if align == nil {
+                let gapH: Double = 20
+                // Add extra 2 pixels (float:right values wrap when the right edge hugs the viewport).
+                if px + width + gapH + 2 > viewWidth {
+                    px -= width + gapH
+                }
+                else {
+                    px += gapH
+                }
+            }
+            if vAlign == nil {
+                let gapV: Double = 20
+                if py + height + gapV > viewHeight {
+                    py -= height + gapV
+                }
+                else {
+                    py += gapV
+                }
+            }
         }
 
-        // upstream `confineTooltipPosition`: keep the box fully inside the view rect.
-        px = min(px + width, viewWidth) - width
-        py = min(py + height, viewHeight) - height
-        px = max(px, 0)
-        py = max(py, 0)
+        // upstream: align && (x -= isCenterAlign ? w/2 : align==='right' ? w : 0)
+        if let align = align {
+            px -= isCenterAlign(align) ? width / 2 : (align == "right" ? width : 0)
+        }
+        if let vAlign = vAlign {
+            py -= isCenterAlign(vAlign) ? height / 2 : (vAlign == "bottom" ? height : 0)
+        }
+
+        // upstream `confineTooltipPosition`, gated by `shouldTooltipConfine`: keep the box inside the view.
+        if shouldTooltipConfine(tooltipModel) {
+            px = min(px + width, viewWidth) - width
+            py = min(py + height, viewHeight) - height
+            px = max(px, 0)
+            py = max(py, 0)
+        }
 
         _tooltipContent.moveTo(px, py)
     }
@@ -484,6 +553,36 @@ private func asDouble(_ v: Any?) -> Double? {
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
     return nil
+}
+
+// upstream `isCenterAlign` (TooltipView.ts:1205).
+private func isCenterAlign(_ align: String) -> Bool {
+    return align == "center" || align == "middle"
+}
+
+// upstream `shouldTooltipConfine` (component/tooltip/helper.ts:27): honour the explicit `confine`
+//   option, else confine in richText mode (the outside part is not visible). This port forces
+//   richText, so absent `confine` → confine.
+private func shouldTooltipConfine(_ tooltipModel: Model) -> Bool {
+    if let confine = tooltipModel.get("confine") as? Bool {
+        return confine
+    }
+    // richText mode (forced in this native port).
+    return true
+}
+
+// Bridge the typed `CallbackDataParams` to the dynamic `[String: Any]` bag `formatTpl` reads by
+//   `$vars` (mirrors the private `callbackDataParamsToTplParam` in model/mixin/dataFormat.swift).
+private func tplParamFromDataParams(_ params: CallbackDataParams) -> [String: Any] {
+    var tplParam: [String: Any] = [:]
+    tplParam["$vars"] = params.vars
+    tplParam["seriesName"] = params.seriesName
+    tplParam["name"] = params.name
+    tplParam["value"] = params.value
+    if let percent = params.percent {
+        tplParam["percent"] = percent
+    }
+    return tplParam
 }
 
 // ============================================================================
