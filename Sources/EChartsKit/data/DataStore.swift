@@ -42,6 +42,8 @@ import ZRenderKit
 //   feature detection. Swift always has the typed storage, so the feature-detection branch
 //   is dropped; columns are modeled as `[ParsedValue]` (= `ArrayLike<ParsedValue>`, the
 //   convention `DataProvider.fillStorage` consumes) and index arrays as `ContiguousArray<Int>`.
+//   The `Int32Array` truncation semantics of `int` columns are re-applied explicitly on write
+//   via `DataStore.toInt32` (see chunk-write sites), since `[ParsedValue]` is Double-backed.
 
 /**
  * Multi dimensional data store
@@ -58,9 +60,9 @@ import ZRenderKit
 
 // type DataValueChunk = ArrayLike<ParsedValue>;
 //   -> `[ParsedValue]`. Columns are heterogeneous and may transiently hold ordinal raw
-//      values (string) before `collectOrdinalMeta`. PORT-NOTE: storage-model divergence — `int`
-//      columns are not truncated to int32 (all columns are `[ParsedValue]`/Double-backed);
-//      ordinal/number columns are pre-filled with `NaN` rather than `undefined` holes.
+//      values (string) before `collectOrdinalMeta`. PORT-NOTE: all columns are `[ParsedValue]`/
+//      Double-backed; `int` columns re-apply Int32Array truncation on write via `toInt32`.
+//      Ordinal/number columns are pre-filled with `NaN` rather than `undefined` holes.
 
 // If Ctx not specified, use List as Ctx
 // type EachCb0 = (idx) => void; EachCb1 = (x, idx) => void; EachCb2 = (x, y, idx) => void;
@@ -378,6 +380,8 @@ public final class DataStore {
     public func appendValues(_ values: [[Any?]], _ minFillLen: Int? = nil) -> (start: Int, end: Int) {
         let dimensions = self._dimensions
         let dimLen = dimensions.count
+        // `int`-typed columns are Int32Array upstream; truncate stored values (§ toInt32).
+        let dimIsInt = util.map(dimensions) { dim, _ in dim.type == .int }
 
         let start = self.count()
         let end = start + Swift.max(values.count, minFillLen ?? 0)
@@ -397,9 +401,10 @@ public final class DataStore {
                     self, sourceIdx < values.count ? values[sourceIdx] : emptyDataItem,
                     dim.property, sourceIdx, DimensionIndex(dimIdx)
                 )
-                self._chunks[dimIdx][idx] = val
+                self._chunks[dimIdx][idx] = dimIsInt[dimIdx] ? DataStore.toInt32(val) : val
 
                 // const dimRawExtent = rawExtent[dimIdx]; (value-type; mutate stored, §3)
+                // Extent uses the original (untruncated) value, mirroring upstream.
                 let numVal = DataStore.numericValue(val)
                 if numVal < self._rawExtent[dimIdx][0] { self._rawExtent[dimIdx][0] = numVal }
                 if numVal > self._rawExtent[dimIdx][1] { self._rawExtent[dimIdx][1] = numVal }
@@ -421,6 +426,8 @@ public final class DataStore {
         let dimensions = self._dimensions
         let dimLen = dimensions.count
         let dimNames = util.map(dimensions) { dim, _ in dim.property }
+        // `int`-typed columns are Int32Array upstream; truncate stored values (§ toInt32).
+        let dimIsInt = util.map(dimensions) { dim, _ in dim.type == .int }
 
         for i in 0..<dimLen {
             let dim = dimensions[i]
@@ -457,9 +464,10 @@ public final class DataStore {
                     let val = self._dimValueGetter(
                         self, dataItem, dimNames[dimIdx], idx, DimensionIndex(dimIdx)
                     )
-                    self._chunks[dimIdx][idx] = val
+                    self._chunks[dimIdx][idx] = dimIsInt[dimIdx] ? DataStore.toInt32(val) : val
 
                     // const dimRawExtent = rawExtent[dimIdx]; (value-type; mutate stored, §3)
+                    // Extent uses the original (untruncated) value, mirroring upstream.
                     let numVal = DataStore.numericValue(val)
                     if numVal < self._rawExtent[dimIdx][0] { self._rawExtent[dimIdx][0] = numVal }
                     if numVal > self._rawExtent[dimIdx][1] { self._rawExtent[dimIdx][1] = numVal }
@@ -892,9 +900,12 @@ public final class DataStore {
                     let val = retArray[i]
 
                     if dim < target._chunks.count {
-                        target._chunks[dim][rawIndex] = val
+                        // `int`-typed columns are Int32Array upstream; truncate on write.
+                        let isInt = dim < target._dimensions.count && target._dimensions[dim].type == .int
+                        target._chunks[dim][rawIndex] = isInt ? DataStore.toInt32(val) : val
                     }
 
+                    // Extent uses the original (untruncated) value, mirroring upstream.
                     let numVal = DataStore.numericValue(val)
                     if numVal < target._rawExtent[dim][0] {
                         target._rawExtent[dim][0] = numVal
@@ -1108,6 +1119,9 @@ public final class DataStore {
 
         let dimStore = target._chunks[Int(dimension)]
         let len = self.count()
+        // `int`-typed column is Int32Array upstream; truncate the written sample value.
+        let dimIsInt = Int(dimension) < target._dimensions.count
+            && target._dimensions[Int(dimension)].type == .int
         while target._rawExtent.count <= Int(dimension) { target._rawExtent.append([]) }
         target._rawExtent[Int(dimension)] = model.initExtentForUnion()
         // const rawExtentOnDim = target._rawExtent[dimension]; (value-type; mutate stored, §3)
@@ -1134,8 +1148,9 @@ public final class DataStore {
                 Swift.min(i + sampleIndex(frameValues, value), len - 1)
             )
             // Only write value on the filtered data
-            target._chunks[Int(dimension)][sampleFrameIdx] = value
+            target._chunks[Int(dimension)][sampleFrameIdx] = dimIsInt ? DataStore.toInt32(value) : value
 
+            // Extent uses the original (untruncated) value, mirroring upstream.
             if value < target._rawExtent[Int(dimension)][0] {
                 target._rawExtent[Int(dimension)][0] = value
             }
@@ -1433,6 +1448,21 @@ public final class DataStore {
         if let d = v as? Double { return d }
         if let i = v as? Int { return Double(i) }
         return Double.nan
+    }
+
+    // Emulate assignment into an `Int32Array` element (ECMAScript `ToInt32`): truncate toward
+    // zero, then wrap to signed 32-bit. Upstream `int`-typed columns are `Int32Array`, so every
+    // write is implicitly truncated by the JS engine. The Double-backed `[ParsedValue]` storage
+    // used here does not truncate on write, so `int` columns must apply it explicitly (closing
+    // the documented storage-model divergence). NaN/±∞ map to 0, matching `Int32Array`.
+    fileprivate static func toInt32(_ v: ParsedValue) -> ParsedValue {
+        let d = numericValue(v)
+        if !d.isFinite { return Double(0) }
+        let twoPow32 = 4294967296.0   // 2^32
+        var i = d.rounded(.towardZero).truncatingRemainder(dividingBy: twoPow32)   // (-2^32, 2^32)
+        if i < 0 { i += twoPow32 }                       // [0, 2^32)
+        if i >= 2147483648.0 { i -= twoPow32 }           // fold [2^31, 2^32) to negatives
+        return i
     }
 }
 
