@@ -407,7 +407,20 @@ open class SankeyView: ChartView {
             let edgeBlurScope = (edgeEmphasis.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
             let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(curve, edgeFocus, edgeBlurScope, edgeDisabled)
-            states.setStatesStylesFromModel(curve, edgeModel, "lineStyle")
+            // upstream (SankeyView.ts:253-259):
+            //   setStatesStylesFromModel(curve, edgeModel, 'lineStyle', (model) => {
+            //     const style = model.getItemStyle();
+            //     applyCurveStyle(style, orient, edge);
+            //     return style;
+            //   });
+            //   The getter resolves each emphasis/blur/select-state lineStyle `color` SENTINEL
+            //   ('source'/'target'/'gradient') to a real paint (applyCurveStyleToDict), so a hovered
+            //   ribbon keeps a valid fill instead of the literal sentinel string.
+            states.setStatesStylesFromModel(curve, edgeModel, "lineStyle", { model in
+                var style = model.getItemStyle()
+                applyCurveStyleToDict(&style, orient, edge)
+                return style
+            })
 
             if reuseCurve == nil {
                 _ = mainGroup.add(curve)
@@ -507,7 +520,11 @@ open class SankeyView: ChartView {
                 initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
             }
             // rect.setStyle('decal', node.getVisual('style').decal);
-            //   PORT-NOTE (deferred): node decal (Pattern) not bridged (decal is out of the static-render scope).
+            //   The generic Displayable.setStyle('decal', …) is a no-op for the Path-specific `decal`
+            //   field, so set it directly on the Path style (mirroring the `fill` assignment above).
+            if let decal = sankeyDecal(node) {
+                rect.pathStyle.decal = decal
+            }
 
             // upstream (SankeyView.ts:315): setStatesStylesFromModel(rect, itemModel); + (323-332)
             //   toggleHoverEmphasis. The node rect is marked a highDown dispatcher carrying its
@@ -644,9 +661,11 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
         // curveProps.fill = edge.node1.getVisual('color');
         curve.pathStyle.fill = sankeyColor(edge.node1.getVisual("color"))
         // curveProps.decal = edge.node1.getVisual('style').decal;
-        //   PORT-NOTE (deferred): edge decal (Pattern) not bridged (out of static-render scope).
+        curve.pathStyle.decal = sankeyDecal(edge.node1)
     case .some(.string("target")):
         curve.pathStyle.fill = sankeyColor(edge.node2.getVisual("color"))
+        // curveProps.decal = edge.node2.getVisual('style').decal;
+        curve.pathStyle.decal = sankeyDecal(edge.node2)
     case .some(.string("gradient")):
         let sourceColor = sankeyColorString(edge.node1.getVisual("color"))
         let targetColor = sankeyColorString(edge.node2.getVisual("color"))
@@ -748,6 +767,47 @@ private func sankeyColorString(_ v: Any?) -> String? {
     if let str = v as? String { return str }
     if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
     return nil
+}
+
+// `node.getVisual('style').decal` bridge. The `decalVisual` stage (visual/decalVisual.swift) writes the
+//   `createOrUpdatePatternFromDecal` result (a ZRenderKit `Pattern`) into the item visual `style` bag
+//   under `decal`; surface it for `rect.setStyle('decal', …)` / `applyCurveStyle`'s decal branches. Nil
+//   when no decal was configured (the visual bag has no `decal`), matching upstream's `undefined` set.
+private func sankeyDecal(_ node: GraphNode) -> ZRenderKit.Pattern? {
+    return (node.getVisual("style") as? [String: Any])?["decal"] as? ZRenderKit.Pattern
+}
+
+// Dict-form of `applyCurveStyle` for the emphasis-state `lineStyle` bag (upstream's
+//   `setStatesStylesFromModel(curve, edgeModel, 'lineStyle', model => { const style = model.getItemStyle();
+//   applyCurveStyle(style, orient, edge); return style; })`). The state style is the dynamic `[String: Any]`
+//   bag `getItemStyle` produces (its `fill` is the lineStyle `color` sentinel 'source'/'target'/'gradient');
+//   resolve it in place to a real ZRColor so an emphasis-state ribbon keeps a valid paint instead of the
+//   literal sentinel string. `decal` is set to mirror upstream (the state-apply seam does not consume it,
+//   so it is inert for now, but kept for structural fidelity).
+private func applyCurveStyleToDict(_ style: inout [String: Any], _ orient: String, _ edge: GraphEdge) {
+    switch sankeyColorString(style["fill"]) {
+    case "source":
+        style["fill"] = sankeyColor(edge.node1.getVisual("color")).map { $0 as Any }
+        style["decal"] = sankeyDecal(edge.node1).map { $0 as Any }
+    case "target":
+        style["fill"] = sankeyColor(edge.node2.getVisual("color")).map { $0 as Any }
+        style["decal"] = sankeyDecal(edge.node2).map { $0 as Any }
+    case "gradient":
+        let sourceColor = sankeyColorString(edge.node1.getVisual("color"))
+        let targetColor = sankeyColorString(edge.node2.getVisual("color"))
+        if let sourceColor = sourceColor, let targetColor = targetColor {
+            let x2: Double = (orient == "horizontal") ? 1 : 0
+            let y2: Double = (orient == "vertical") ? 1 : 0
+            let gradient = LinearGradient(0, 0, x2, y2, [
+                GradientColorStop(offset: 0, color: sourceColor),
+                GradientColorStop(offset: 1, color: targetColor)
+            ])
+            style["fill"] = ZRenderKit.ZRColor.linearGradient(gradient)
+        }
+    default:
+        // Any other fill (a real color already, or absent) is left as-is.
+        break
+    }
 }
 
 // `useStyle(model.getItemStyle())` bridge. getItemStyle / getLineStyle return a dynamic `[String: Any]`
