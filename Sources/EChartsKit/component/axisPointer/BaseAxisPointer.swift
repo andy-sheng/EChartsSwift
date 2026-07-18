@@ -38,7 +38,9 @@ import ZRenderKit
 //   `makeInner<{ lastProp, labelEl, pointerEl }, Element>()`. Each `BaseAxisPointer` owns EXACTLY ONE
 //   group, so those slots are held as plain instance members (`_pointerEl` / `_labelEl`) here — the
 //   group identity is 1:1 with `self`, so this is behaviourally identical and avoids porting the
-//   weak-map `makeInner` machinery. The `lastProp` animation-optimize slot is dropped (see `updateProps`).
+//   weak-map `makeInner` machinery. The per-element `lastProp` animation-optimize slot IS ported: the
+//   weak-map keyed by `Element` is modeled as `_lastProps` keyed by `ObjectIdentifier(el)` (see
+//   `updateProps` / `propsEqual`).
 
 // upstream:
 //   type AxisValue = CommonAxisPointerOption['value'];        -> `Any?` (ScaleDataValue = number|string|Date)
@@ -150,10 +152,14 @@ open class BaseAxisPointer: AxisPointer {
 
     /// If have transition animation.
     // upstream: private _moveAnimation: boolean;
-    //   PORT-NOTE (animation): computed by `determineAnimation` but NOT consumed for a real animated
-    //   slide — `updateProps` sets position directly (see the `_moveAnimation` note there). Kept so the
-    //   determination logic stays faithful and a future animated port can wire it.
+    //   Computed by `determineAnimation` and consumed by `updateProps`: when true the crosshair/handle
+    //   animate to the new position via the ported `graphic.updateProps` (basicTransition.swift), else
+    //   they snap directly (`stopAnimation(); attr(props)`) — see `updateProps`.
     private var _moveAnimation = false
+
+    // upstream: `makeInner<{ lastProp }, Element>()` — the per-element animation-optimize memo. Keyed by
+    //   `ObjectIdentifier(el)` (the elements are `_pointerEl` / `_labelEl` / `_handle`). Cleared in `clear`.
+    private var _lastProps: [ObjectIdentifier: [String: Any]] = [:]
 
     // upstream: private _axisModel / _axisPointerModel / _api (bound in render).
     private var _axisModel: AxisBaseModel?
@@ -387,7 +393,9 @@ open class BaseAxisPointer: AxisPointer {
         //   partial-merge would only matter if a caller ever supplied a partial style (none do).
         if let style = pointer.style { pointerEl.useStyle(style) }
         if let shape = pointer.shape {
-            updateProps(pointerEl, ["shape": shape])
+            // upstream: `doUpdateProps(pointerEl, {shape})` — the `curry(updateProps, axisPointerModel,
+            //   moveAnimation)` closure from `render`. Read the curried captures off self here.
+            self.updateProps(self._axisPointerModel!, self._moveAnimation, pointerEl, ["shape": shape])
         }
     }
 
@@ -397,7 +405,7 @@ open class BaseAxisPointer: AxisPointer {
         guard let labelEl = self._labelEl, let label = elOption.label else { return }
         if let style = label.style { labelEl.useStyle(style) }
         // upstream animates {x, y} (shape animation TODO'd out upstream too).
-        updateProps(labelEl, ["x": label.x, "y": label.y])
+        self.updateProps(axisPointerModel, self._moveAnimation, labelEl, ["x": label.x, "y": label.y])
         updateLabelShowHide(labelEl, axisPointerModel)
     }
 
@@ -549,10 +557,9 @@ open class BaseAxisPointer: AxisPointer {
         }
         // upstream: updateProps(this._axisPointerModel, !isInit && this._moveAnimation, this._handle,
         //   getHandleTransProps(this.getHandleTransform(value, ...)));
-        //   The port's `updateProps(el, props)` sets directly (no animated slide — see its PORT-NOTE);
-        //   `!isInit && this._moveAnimation` is therefore inert here.
-        _ = isInit
-        updateProps(handle, getHandleTransProps(trans))
+        //   Animate the handle to its new position unless this is the first render (isInit) — on init it
+        //   snaps directly, matching upstream's `!isInit && this._moveAnimation`.
+        self.updateProps(self._axisPointerModel!, !isInit && self._moveAnimation, handle, getHandleTransProps(trans))
     }
 
     // upstream: private _onHandleDragMove(dx, dy)
@@ -578,6 +585,9 @@ open class BaseAxisPointer: AxisPointer {
         // handle.stopAnimation(); (handle as graphic.Path).attr(getHandleTransProps(trans)); inner(handle).lastProp = null;
         _ = handle.stopAnimation()
         _ = handle.attr(getHandleTransProps(trans))
+        // Invalidate the animation-optimize memo so the next `_moveHandleToValue` re-applies (the drag
+        //   moved the handle out from under the last recorded prop).
+        self._lastProps[ObjectIdentifier(handle)] = nil
 
         // this._doDispatchAxisPointer();  — throttled (see _doDispatchThrottled).
         if let throttled = self._doDispatchThrottled {
@@ -647,6 +657,7 @@ open class BaseAxisPointer: AxisPointer {
             self._pointerEl = nil
             self._labelEl = nil
             self._payloadInfo = nil
+            self._lastProps.removeAll()
         }
 
         // throttleUtil.clear(this, '_doDispatchAxisPointer');
@@ -701,15 +712,61 @@ private func makePointerPath(_ pointer: PointerElementOption) -> Path {
 //           moveAnimation ? graphic.updateProps(el, props, animationModel)
 //                         : (el.stopAnimation(), el.attr(props)); } }
 //
-//   PORT-NOTE (animation): the animated-slide branch (`graphic.updateProps` transition) + the
-//   `inner(el).lastProp` equality memo are DROPPED — the crosshair sets its position DIRECTLY
-//   (`el.stopAnimation(); el.attr(props)`), which is upstream's own no-animation branch. `moveAnimation`
-//   is therefore not consulted here (it is still computed by `determineAnimation` for a future port).
+//   The `graphic.updateProps` (transition) branch resolves to the ported
+//   `animation/basicTransition.updateProps(el, props, model)`, which itself animates when the model's
+//   animation is enabled (and the element is on a live host) or snaps otherwise. `moveAnimation === false`
+//   snaps directly (`stopAnimation(); attr(props)`) — upstream's no-animation branch. The per-element
+//   `inner(el).lastProp` memo is modeled by `_lastProps` keyed by `ObjectIdentifier(el)` (see `propsEqual`).
 //   For a `Path`, `attr('shape', PathShape)` routes to `setShape`; for `ZRText`, `attr('x'/'y', …)` sets
 //   the position — matching the props each caller passes.
-private func updateProps(_ el: Element, _ props: [String: Any]) {
-    _ = el.stopAnimation()
-    _ = el.attr(props)
+extension BaseAxisPointer {
+    fileprivate func updateProps(_ animationModel: Model, _ moveAnimation: Bool, _ el: Element, _ props: [String: Any]) {
+        // Animation optimize.
+        let key = ObjectIdentifier(el)
+        if !propsEqual(self._lastProps[key], props) {
+            self._lastProps[key] = props
+            if moveAnimation {
+                // graphic.updateProps(el, props, animationModel) — the ported basicTransition helper.
+                EChartsKit.updateProps(el, props, animationModel)
+            }
+            else {
+                _ = el.stopAnimation()
+                _ = el.attr(props)
+            }
+        }
+    }
+}
+
+// upstream: function propsEqual(lastProps, newProps) {
+//     if (isObject(lastProps) && isObject(newProps)) { each newProps key → recurse; return !!equals; }
+//     else { return lastProps === newProps; }
+// }
+//   Deep-compares the nested prop bags. Scalars compare by value; a non-object/non-scalar value (a fresh
+//   `PathShape` struct) is never the same reference as the stored one, so it returns false — EXACTLY
+//   upstream's `lastProps === newProps` on a freshly-built object literal (forces a re-apply).
+private func propsEqual(_ lastProps: [String: Any]?, _ newProps: [String: Any]) -> Bool {
+    guard let lastProps = lastProps else { return false }
+    for (key, item) in newProps {
+        if !propValueEqual(lastProps[key], item) {
+            return false
+        }
+    }
+    return true
+}
+
+private func propValueEqual(_ last: Any?, _ new: Any?) -> Bool {
+    if let ld = last as? [String: Any], let nd = new as? [String: Any] {
+        for (k, item) in nd {
+            if !propValueEqual(ld[k], item) {
+                return false
+            }
+        }
+        return true
+    }
+    if let a = _optDouble(last), let b = _optDouble(new) { return a == b }
+    if let a = last as? String, let b = new as? String { return a == b }
+    if let a = last as? Bool, let b = new as? Bool { return a == b }
+    return false
 }
 
 // upstream: function getHandleTransProps(trans: Transform): Transform {
