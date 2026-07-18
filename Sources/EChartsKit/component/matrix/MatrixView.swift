@@ -394,9 +394,10 @@ private func createMatrixCell(
     let z2 = numOpt(_tmpCellModel.getShallow("z2"))
         ?? ((cellOption != nil && cellOption!["itemStyle"] != nil) ? zrCellDefault.special : zrCellDefault.normal)
     // upstream: const tooltipOptionShow = tooltipOption && tooltipOption.show;
-    //   Tooltip wiring is DEFERRED (interaction, CONVENTIONS §5); kept for structural parity.
-    _ = tooltipOption
-    _ = targetType
+    //   `tooltipOption` is the dynamic `[String: Any]` bag; read `.show` with JS-truthiness. Used below to
+    //   decide the standalone label's `silent`. The full `setTooltipConfig` tooltip wiring stays DEFERRED —
+    //   the shared `util/graphic.setTooltipConfig` helper is not yet ported (interaction, CONVENTIONS §5).
+    let tooltipOptionShow = jsTruthy((tooltipOption as? [String: Any])?["show"])
 
     let cellRect = createMatrixRect(shape, _tmpCellItemStyleModel.getItemStyle(), z2)
     _ = group.add(cellRect)
@@ -405,6 +406,9 @@ private func createMatrixCell(
     if let cursorOption = _tmpCellModel.get("cursor") as? String {
         cellRect.cursor = cursorOption
     }
+
+    // upstream: let cellText: Text | NullUndefined;  (held so silent/eventData below can reference it).
+    var cellText: ZRText? = nil
 
     if textValue != nil {
         // upstream: let text = textValue + '';
@@ -456,17 +460,34 @@ private func createMatrixCell(
             style.x = shape.x + shape.width / 2
             style.y = shape.y + shape.height / 2
 
-            let cellText = ZRText([
+            let text0 = ZRText([
                 "z2": z2 + 1,
                 "style": style
             ])
-            _ = group.add(cellText)
+            _ = group.add(text0)
+            cellText = text0
         }
     }
 
     // Set silent
     // upstream: const triggerEvent = matrixModel.get('triggerEvent', true);
-    //   `triggerEvent` / eventData wiring is DEFERRED (interaction, CONVENTIONS §5).
+    let triggerEvent = jsTruthy(matrixModel.get("triggerEvent", true))
+
+    // upstream: if (cellText) { let labelSilent = _tmpCellLabelModel.get('silent');
+    //     if (labelSilent == null) { labelSilent = !(triggerEvent || tooltipOptionShow); }
+    //     cellText.silent = labelSilent; cellText.ignoreHostSilent = true; }
+    //   By default, silent: false is needed for triggerEvent or tooltip interaction. This port renders the
+    //   label as a STANDALONE ZRText (not the rect's textContent), but the silent/ignoreHostSilent policy is
+    //   applied identically to that element.
+    if let cellText = cellText {
+        var labelSilent = _tmpCellLabelModel.get("silent") as? Bool
+        if labelSilent == nil {
+            labelSilent = !(triggerEvent || tooltipOptionShow)
+        }
+        cellText.silent = labelSilent!
+        cellText.ignoreHostSilent = true
+    }
+
     // upstream: let rectSilent = _tmpCellModel.get('silent'); if (rectSilent == null) { rectSilent = (
     //     !cellRect.style || cellRect.style.fill === 'none' || !cellRect.style.fill); }
     var rectSilent = _tmpCellModel.get("silent") as? Bool
@@ -496,8 +517,29 @@ private func createMatrixCell(
     }
     cellRect.silent = rectSilent!
 
-    // upstream: if (triggerEvent && cellRect) { getECData(cellRect).eventData = {...}; }
-    // PORT-NOTE (deferred): eventData / triggerEvent wiring DEFERRED (interaction, CONVENTIONS §5).
+    // Both `cellRect` (typically non-transparent) and `cellText` may trigger events, depending on both
+    // `matrix.triggerEvent`, `matrix.xxx.silent` and `matrix.xxx.label.silent` settings.
+    // upstream: if (triggerEvent && cellRect) { const eventData = {...}; getECData(cellRect).eventData = eventData; }
+    if triggerEvent {
+        var eventData: ECEventData = [
+            "componentType": "matrix",
+            "componentIndex": matrixModel.componentIndex,
+            "matrixIndex": matrixModel.componentIndex,
+            "targetType": targetType,
+            // upstream: coord: xyLocator.slice()  (Swift arrays are value types → already a copy).
+            "coord": xyLocator
+        ]
+        // upstream: name: (cellText && cellText.style) ? cellText.style.text : undefined
+        //   (this port's standalone label stores its style on `.textStyle`, upstream `ZRText.style`).
+        if let name = cellText?.textStyle?.text {
+            eventData["name"] = name
+        }
+        // upstream: value: textValue
+        if let value = textValue {
+            eventData["value"] = value
+        }
+        innerStore.getECData(cellRect).eventData = eventData
+    }
 
     model.clearTmpModel(_tmpCellModel)
     model.clearTmpModel(_tmpCellItemStyleModel)
