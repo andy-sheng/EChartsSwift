@@ -245,9 +245,29 @@ open class HeatmapView: ChartView {
             shape.height = cell.height
             if let r = heatmapRectRadius(borderRadius) { shape.r = r }
 
+            // upstream (HeatmapView.ts:266-270): `new graphic.Rect({ z2: 1, shape, style })`.
             let rect = Rect(["shape": shape as PathShape])
+            rect.z2 = 1
             var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
             let finalOpacity = cellStyle.opacity ?? 1
+
+            // upstream (HeatmapView.ts:313-327): the per-cell value label — the shared grid-like block
+            //   applies setLabelStyle to matrix cells too (rawValue[2] coerced to a string, else '-').
+            let labelStatesModels = labelStyle.getLabelStatesModels(stateModel)
+            var defaultLabelText = "-"
+            if let rawArr = seriesModel.getRawValue(Double(idx)) as? [Any],
+               rawArr.count > 2,
+               !(rawArr[2] is NSNull),
+               let s = format._strOrNil(rawArr[2]) {
+                defaultLabelText = s
+            }
+            var labelOpt = SetLabelStyleOpt()
+            labelOpt.labelFetcher = seriesModel
+            labelOpt.labelDataIndex = Double(idx)
+            labelOpt.defaultOpacity = cellStyle.opacity
+            labelOpt.defaultText = defaultLabelText
+            labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
+
             cellStyle.opacity = 0
             rect.useStyle(cellStyle)
             initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
@@ -265,8 +285,6 @@ open class HeatmapView: ChartView {
     private func _renderOnCalendar(_ seriesModel: SeriesModel, _ calendar: Calendar) {
         let group = self.group
         let data = seriesModel.getData()
-        let cw = calendar.getCellWidth()
-        let ch = calendar.getCellHeight()
         let dateDim = data.getDimension(0)   // dim 0 = the date/time value
         var borderRadius = seriesModel.get(["itemStyle", "borderRadius"])
 
@@ -278,8 +296,15 @@ open class HeatmapView: ChartView {
         var emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
 
         for idx in 0..<data.count() {
-            let point = calendar.dataToPoint(data.get(dateDim, idx))
-            guard point.count >= 2, point[0].isFinite, point[1].isFinite else { continue }
+            // upstream (HeatmapView.ts:277-281): const layout = coordSys.dataToLayout([data.get(dim, idx)]);
+            //   const shape = layout.contentRect || layout.rect;  (contentRect is the day cell shrunk
+            //   inward by lineWidth/2, honoring the calendar's cell gap — the old dataToPoint±cellSize/2
+            //   ignored that gap). `nil as Bool?` + the non-optional result pin the concrete date overload
+            //   (mirrors the CoordinateSystem witness bridge in Calendar.swift).
+            let layout: CoordinateSystemDataLayout =
+                calendar.dataToLayout(data.get(dateDim, idx) as OptionDataValueDate?, nil as Bool?)
+            guard let cell = layout.contentRect ?? layout.rect,
+                  cell.x.isFinite, cell.y.isFinite else { continue }
 
             if data.hasItemOption {
                 // Per-item re-read (upstream HeatmapView.ts:290-308 — the shared grid-like state block).
@@ -293,16 +318,36 @@ open class HeatmapView: ChartView {
             }
 
             var shape = RectShape()
-            shape.x = point[0] - cw / 2
-            shape.y = point[1] - ch / 2
-            shape.width = cw
-            shape.height = ch
+            shape.x = cell.x
+            shape.y = cell.y
+            shape.width = cell.width
+            shape.height = cell.height
             if let r = heatmapRectRadius(borderRadius) { shape.r = r }
 
+            // upstream (HeatmapView.ts:282-286): new graphic.Rect({ z2: 1, shape, style })
             let rect = Rect(["shape": shape as PathShape])
+            rect.z2 = 1
             // Entrance animation (opacity fade-in) — same as the cartesian cell path.
             var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
             let finalOpacity = cellStyle.opacity ?? 1
+
+            // upstream (HeatmapView.ts:313-327): the per-cell value label — the shared grid-like block
+            //   applies setLabelStyle to calendar cells too (rawValue[2] coerced to a string, else '-').
+            let labelStatesModels = labelStyle.getLabelStatesModels(stateModel)
+            var defaultLabelText = "-"
+            if let rawArr = seriesModel.getRawValue(Double(idx)) as? [Any],
+               rawArr.count > 2,
+               !(rawArr[2] is NSNull),
+               let s = format._strOrNil(rawArr[2]) {
+                defaultLabelText = s
+            }
+            var labelOpt = SetLabelStyleOpt()
+            labelOpt.labelFetcher = seriesModel
+            labelOpt.labelDataIndex = Double(idx)
+            labelOpt.defaultOpacity = cellStyle.opacity
+            labelOpt.defaultText = defaultLabelText
+            labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
+
             cellStyle.opacity = 0
             rect.useStyle(cellStyle)
             initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
@@ -526,6 +571,9 @@ open class HeatmapView: ChartView {
                 //   render pass — HeatmapView.ts:329-333).
                 states.setStatesStylesFromModel(rect, stateModel)
                 states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
+                // upstream (HeatmapView.ts:335): keep the reused cell's incremental id current. The morph
+                //   path is full-render only (canMorph requires !useIncremental), so this is seriesIndex + 2.
+                rect.incremental = model.getIncrementalId(seriesModel, useIncremental ? true : nil)
                 data.setItemGraphicEl(idx, rect)
                 idx += 1
                 continue
@@ -582,6 +630,16 @@ open class HeatmapView: ChartView {
             //   ensureState style assignments). PORT-NOTE (deferred): incremental id + hover layer.
             states.setStatesStylesFromModel(rect, stateModel)
             states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
+
+            // upstream (HeatmapView.ts:335-340): rect.incremental = getIncrementalId(seriesModel, useIncremental);
+            //   if (useIncremental) rect.states.emphasis.hoverLayer = HOVER_LAYER_FOR_INCREMENTAL (=2).
+            //   The port's `useIncremental: Bool` conflates upstream's `undefined` (full render) and `true`;
+            //   both are truthy for getIncrementalId (retrieve2(_, true)), so map false→nil to reproduce the
+            //   default-true result (seriesIndex + 2), while gating the hover layer on the real flag.
+            rect.incremental = model.getIncrementalId(seriesModel, useIncremental ? true : nil)
+            if useIncremental {
+                rect.ensureState("emphasis").hoverLayer = 2
+            }
 
             _ = group.add(rect)
             // Persist the cell for a later morph (cartesian full-render path only).
