@@ -532,7 +532,11 @@ private func updateCommonAttrs(
     //   (out of static-render scope): upstream copies each `on<Event>` function from the option onto the element.
 
     // if (zrUtil.hasOwn(elOption, 'draggable')) { el.draggable = elOption.draggable; }
-    // PORT-NOTE (deferred): `el.draggable` (ElementDraggable) is interaction; drag not wired this phase.
+    //   `Element.draggable` (ElementDraggable) accepts a Bool or a 'horizontal'/'vertical' string;
+    //   `Element.attr("draggable", ...)` bridges both to the enum (see ZRenderKit Element.attrKV).
+    if elOption.option["draggable"] != nil {
+        _ = el.attr("draggable", elOption.option["draggable"] ?? false)
+    }
 
     // Other attributes
     if elOption.name != nil {   // elOption.name != null && (el.name = elOption.name)
