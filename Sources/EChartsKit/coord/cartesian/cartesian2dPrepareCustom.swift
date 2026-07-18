@@ -41,10 +41,12 @@ import ZRenderKit
 //         const val = dataItem[dimIdx];
 //         const halfSize = dataSize[dimIdx] / 2;
 //         return axis.type === 'category'
-//             ? axis.getBandWidth()
+//             ? calcBandWidth(axis).w
 //             : Math.abs(axis.dataToCoord(val - halfSize) - axis.dataToCoord(val + halfSize));
 //     });
 // }
+// PORT-NOTE: pinned upstream (echarts 6.1.0) uses `calcBandWidth(axis).w` here (breaks/statistics-aware),
+//   not the deprecated `axis.getBandWidth()`. Mirrors the polar/single prepareCustom siblings.
 private func dataToCoordSize(_ coordSys: Cartesian2D, _ dataSize: [Double], _ dataItem: [Double]?) -> [Double] {
     let item = dataItem ?? [0, 0]
     return cartesian2DDimensions.enumerated().map { (dimIdx, dim) -> Double in
@@ -54,9 +56,9 @@ private func dataToCoordSize(_ coordSys: Cartesian2D, _ dataSize: [Double], _ da
         let val = dimIdx < item.count ? item[dimIdx] : 0
         // const halfSize = dataSize[dimIdx] / 2;
         let halfSize = (dimIdx < dataSize.count ? dataSize[dimIdx] : 0) / 2
-        // axis.type === 'category' ? axis.getBandWidth() : abs(dataToCoord(val - h) - dataToCoord(val + h))
+        // axis.type === 'category' ? calcBandWidth(axis).w : abs(dataToCoord(val - h) - dataToCoord(val + h))
         return axis.type == "category"
-            ? axis.getBandWidth()
+            ? calcBandWidth(axis).w
             : abs(axis.dataToCoord(val - halfSize) - axis.dataToCoord(val + halfSize))
     }
 }
