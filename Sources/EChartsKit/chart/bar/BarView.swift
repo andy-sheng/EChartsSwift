@@ -300,7 +300,11 @@ open class BarView: ChartView {
             bgEl.useStyle(barStyleFromDict(backgroundModel.getItemStyle()))
             // Only cartesian2d support borderRadius.
             // upstream: (bgEl as Rect).setShape('r', barBorderRadius);
-            _ = bgEl.setShape("r", barBorderRadius)
+            // Whole-shape write (per-key `setShape('r', …)` is a no-op — see `updateStyle`).
+            if var bgShape = bgEl.shape as? RectShape {
+                bgShape.r = .number(barBorderRadius)
+                _ = bgEl.setShape(bgShape)
+            }
             bgEls[dataIndex] = bgEl
             return bgEl
         }
@@ -377,7 +381,11 @@ open class BarView: ChartView {
                         bgEl = oldBgEls[oldIndex]
                         bgEl?.useStyle(barStyleFromDict(backgroundModel.getItemStyle()))
                         // Only cartesian2d support borderRadius.
-                        _ = bgEl?.setShape("r", barBorderRadius)
+                        // Whole-shape write (per-key `setShape('r', …)` is a no-op — see `updateStyle`).
+                        if let bg = bgEl, var bgShape = bg.shape as? RectShape {
+                            bgShape.r = .number(barBorderRadius)
+                            _ = bg.setShape(bgShape)
+                        }
                         bgEls[newIndex] = bgEl
                     }
                     let bgLayout = getLayoutCartesian2D(data, newIndex, nil)
@@ -820,17 +828,19 @@ func updateStyle(
     let style = data.getItemVisual(dataIndex, "style")
 
     if !isPolar {
-        // upstream: const borderRadius = itemModel.get(['itemStyle', 'borderRadius']) as ... || 0;
+        // upstream: const borderRadius = itemModel.get(['itemStyle', 'borderRadius']) as number | number[] || 0;
         //   (el as Rect).setShape('r', borderRadius);
-        let borderRadius = (itemModel.get(["itemStyle", "borderRadius"]) as? Double) ?? 0
-        // POTENTIAL-BUG: `setShape('r', …)` per-key set is a documented no-op in ZRenderKit Path
-        //   (Path.setShape(key,value) only marks dirty; only whole-shape setShape mutates). Corner radius
-        //   is therefore silently dropped: itemStyle.borderRadius does not round the bar corners. A local
-        //   whole-shape read-modify-write here would still be clobbered by the subsequent
-        //   setShape(layout)/initProps(layout) that replace the shape wholesale (the layout RectShape
-        //   carries no `r`). The real fix belongs in ZRenderKit (per-key setShape) or by threading `r`
-        //   into the layout shape. borderRadius also may be `number[]` (only Double read here).
-        _ = el.setShape("r", borderRadius)
+        // PORT-NOTE: the per-key `setShape('r', …)` is a no-op in ZRenderKit (RectShape.animationSet only
+        //   tweens x/y/width/height; `r` is a `RectRadius?` enum with no keyed setter — fixing that seam
+        //   belongs in ZRenderKit). Here we faithfully thread the corner radius by a whole-shape
+        //   read-modify-write, which SURVIVES the subsequent shape animation: initProps/updateProps pass
+        //   only the partial `{x,y,width,height}` dict via `rectShapeAnimShape`, whose per-key
+        //   `animationSet` leaves `r` untouched. Supports both the `number` and `number[]` option forms.
+        let borderRadius = itemModel.get(["itemStyle", "borderRadius"])
+        if let rect = el as? Rect, var rectShape = rect.shape as? RectShape {
+            rectShape.r = barRectRadiusFromOption(borderRadius)
+            _ = rect.setShape(rectShape)
+        }
     }
     else {
         // PORT-NOTE (deferred): polar cornerRadius (getSectorCornerRadius IS ported in sectorHelper.swift,
@@ -932,6 +942,23 @@ func getLineWidth(
     let width = rawLayout.width.isNaN ? Double.greatestFiniteMagnitude : Swift.abs(rawLayout.width)
     let height = rawLayout.height.isNaN ? Double.greatestFiniteMagnitude : Swift.abs(rawLayout.height)
     return Swift.min(lineWidth, width, height)
+}
+
+// upstream: `itemModel.get(['itemStyle', 'borderRadius']) as number | number[] || 0` fed to
+//   `(el as Rect).setShape('r', …)`. Bridges the option value (number | number[]) to the ZRenderKit
+//   `RectRadius` tagged enum; anything unparseable falls back to `.number(0)` (mirrors `|| 0`, i.e. no
+//   rounding).
+func barRectRadiusFromOption(_ v: Any?) -> RectRadius {
+    switch v {
+    case let d as Double: return .number(d)
+    case let i as Int: return .number(Double(i))
+    case let n as NSNumber: return .number(n.doubleValue)
+    case let arr as [Double]: return .array(arr)
+    case let arri as [Int]: return .array(arri.map(Double.init))
+    case let arrn as [NSNumber]: return .array(arrn.map { $0.doubleValue })
+    case let arrAny as [Any]: return .array(arrAny.map { barToNumber($0) })
+    default: return .number(0)
+    }
 }
 
 // upstream: class LargePath / interface LargePathProps / function createLarge / largePathUpdateDataIndex /
