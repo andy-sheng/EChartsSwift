@@ -45,7 +45,7 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
 //   import { RectLike } from 'zrender/src/core/BoundingRect';      -> ZRenderKit.RectLike.
 //   import { ColorString } from '../../util/types';                -> util/types (label-only; deferred).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> animation/basicTransition.swift (ported); not called on the band morph path here.
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> animation/basicTransition.swift (ported); NOW called on the band morph/update path (see the morph branch in render), mirroring upstream line 139, so cross-merge style transitions preserve the old style.
 
 // upstream: type LayerSeries = ReturnType<ThemeRiverSeriesModel['getLayerSeries']>;
 //   PORT-NOTE (sibling contract): `ThemeRiverSeriesModel.getLayerSeries()` is ASSUMED to return
@@ -216,6 +216,13 @@ open class ThemeRiverView: ChartView {
                 //   the shape-morph animator. TRAP: the updateProps shape-array targets MUST be [[Double]]
                 //   (matching ThemeRiverBandShape.animationGet) — a [VectorArray] target snaps (0 animators).
                 polygon = _bands[layerIdx]
+                // upstream (ThemeRiverView.ts:139): saveOldStyle(polygon) on the update/morph path —
+                //   capture the PREVIOUS render's style BEFORE the new `useStyle` overwrites it, so a
+                //   merge-mode style transition (universalTransition's animateElementStyles) can tween
+                //   old→new. Upstream calls it after `updateProps` (which does not touch style) but before
+                //   the final `useStyle`; here `useStyle` runs first in the branch, so capture just ahead
+                //   of it to preserve the same old→new endpoint.
+                saveOldStyle(polygon)
                 bandStyle.opacity = finalOpacity
                 polygon.useStyle(bandStyle)
                 let upperD = points1.map { [$0.x, $0.y] }
