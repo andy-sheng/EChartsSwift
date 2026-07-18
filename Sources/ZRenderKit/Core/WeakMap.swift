@@ -66,7 +66,57 @@ public final class WeakMap<K: AnyObject, V> {
 
     public func has(_ key: K) -> Bool {
         // upstream: return !!(this._guard(key) as any)[this._id];
-        return _table.object(forKey: _guard(key)) != nil
+        // The `!!` coerces the stored value to a JS boolean: a *falsy* stored value
+        // (undefined/null, 0, NaN, '', false) yields `has() === false` even though the key
+        // is present. Mirror that truthiness test here rather than a bare presence check so a
+        // stored 0/''/false/nil reads has()==false exactly as upstream does.
+        guard let box = _table.object(forKey: _guard(key)) else {
+            return false
+        }
+        return WeakMap._isTruthy(box.value)
+    }
+
+    // JS `!!value` truthiness for an arbitrary stored `V`. Not a distinct upstream method —
+    // it inlines the `!!` coercion in `has()` — but factored out here because Swift lacks the
+    // implicit boolean coercion. Falsy: nil/Optional.none, false, 0 (any numeric zero), NaN,
+    // "" (empty string). Everything else (non-empty strings, non-zero numbers, objects) is
+    // truthy.
+    private static func _isTruthy(_ value: V) -> Bool {
+        let any: Any = value
+        let mirror = Mirror(reflecting: any)
+        if mirror.displayStyle == .optional {
+            // Optional.none → JS undefined/null → falsy; otherwise test the wrapped value.
+            guard let wrapped = mirror.children.first?.value else {
+                return false
+            }
+            return _isTruthyAny(wrapped)
+        }
+        return _isTruthyAny(any)
+    }
+
+    private static func _isTruthyAny(_ any: Any) -> Bool {
+        switch any {
+        case let b as Bool:
+            return b
+        case let d as Double:
+            return d != 0 && !d.isNaN
+        case let f as Float:
+            return f != 0 && !f.isNaN
+        case let i as Int:
+            return i != 0
+        case let s as String:
+            return !s.isEmpty
+        case let ss as Substring:
+            return !ss.isEmpty
+        default:
+            // Other numeric widths coerce to Double via NSNumber; non-numeric objects are
+            // truthy in JS (only the primitives above are falsy).
+            if let n = any as? NSNumber {
+                let d = n.doubleValue
+                return d != 0 && !d.isNaN
+            }
+            return true
+        }
     }
 
     // upstream: protected _guard(key: K): K
