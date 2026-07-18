@@ -75,13 +75,9 @@ open class FunnelSeriesModel: SeriesModel {
 
         // Extend labelLine emphasis
         // this._defaultLabelLine(option);
-        // PORT-NOTE (deferred): `_defaultLabelLine` mutates `option.labelLine.show`/`option.emphasis.labelLine.show`
-        //   from `label.show`/`emphasis.label.show` (via `model.defaultEmphasis`, which IS ported). The
-        //   label/labelLine subsystem is deferred (nothing reads `labelLine.show` in the static FunnelView
-        //   render), and `defaultEmphasis` operates on a typed `DisplayStateHostOption` whereas the option
-        //   is the raw `[String: Any]` bag — the whole series family (Pie/Geo/Graph/Marker) defers this
-        //   uniformly. Kept as a documented no-op with faithful call shape. Faithful body in
-        //   `_defaultLabelLine` below.
+        //   Upstream's `option` here is the same reference as `this.option` (merged with defaultOption by
+        //   super.init), so `_defaultLabelLine` operates on the merged model option bag (`self.option`).
+        self._defaultLabelLine(option)
     }
 
     // upstream: getInitialData(this, option, ecModel): SeriesData { return createSeriesDataSimply(...); }
@@ -105,15 +101,47 @@ open class FunnelSeriesModel: SeriesModel {
     }
 
     // upstream: _defaultLabelLine(option: FunnelSeriesOption) { ... }
-    // PORT-NOTE (deferred): deferred with the label/labelLine subsystem (see `init` above). Faithful upstream body:
-    //     // Extend labelLine emphasis
-    //     defaultEmphasis(option, 'labelLine', ['show']);
-    //     const labelLineNormalOpt = option.labelLine;
-    //     const labelLineEmphasisOpt = option.emphasis.labelLine;
-    //     // Not show label line if `label.normal.show = false`
-    //     labelLineNormalOpt.show = labelLineNormalOpt.show && option.label.show;
-    //     labelLineEmphasisOpt.show = labelLineEmphasisOpt.show && option.emphasis.label.show;
-    //   (`model.defaultEmphasis` IS ported.)
+    //   Operates on the merged model option bag. Upstream passes `option`, which after `super.init` is the
+    //   same reference as `this.option`; the Swift base init merges defaultOption into `self.option`, so the
+    //   merged bag (with `labelLine.show`/`label.show` defaults present) lives there — the raw `_ option`
+    //   param is pre-merge and must NOT be used. `model.defaultEmphasis` consumes a typed
+    //   `DisplayStateHostOption`, so the `[String: Any]` bag is bridged in/out (cf. SeriesModel.init's
+    //   `defaultEmphasisOnBag` for the `label` key).
+    open func _defaultLabelLine(_ option: ModelOption?) {
+        guard var opt = self.option as? [String: Any] else { return }
+
+        // Extend labelLine emphasis
+        // defaultEmphasis(option, 'labelLine', ['show']);
+        var host: DisplayStateHostOption? = DisplayStateHostOption()
+        host!.other = opt
+        host!.emphasis = opt["emphasis"] as? [String: Any]
+        model.defaultEmphasis(&host, "labelLine", ["show"])
+        opt = host!.other
+        if let emphasis = host!.emphasis {
+            opt["emphasis"] = emphasis
+        }
+
+        // const labelLineNormalOpt = option.labelLine;
+        var labelLineNormalOpt = (opt["labelLine"] as? [String: Any]) ?? [:]
+        // const labelLineEmphasisOpt = option.emphasis.labelLine;
+        var emphasisOpt = (opt["emphasis"] as? [String: Any]) ?? [:]
+        var labelLineEmphasisOpt = (emphasisOpt["labelLine"] as? [String: Any]) ?? [:]
+
+        let labelOpt = (opt["label"] as? [String: Any]) ?? [:]
+        let emphasisLabelOpt = (emphasisOpt["label"] as? [String: Any]) ?? [:]
+
+        // Not show label line if `label.normal.show = false`
+        // labelLineNormalOpt.show = labelLineNormalOpt.show && option.label.show;
+        labelLineNormalOpt["show"] = funnelLogicalAnd(labelLineNormalOpt["show"], labelOpt["show"])
+        // labelLineEmphasisOpt.show = labelLineEmphasisOpt.show && option.emphasis.label.show;
+        labelLineEmphasisOpt["show"] = funnelLogicalAnd(labelLineEmphasisOpt["show"], emphasisLabelOpt["show"])
+
+        // Write the mutated sub-objects back into the option bag (upstream mutates in place).
+        opt["labelLine"] = labelLineNormalOpt
+        emphasisOpt["labelLine"] = labelLineEmphasisOpt
+        opt["emphasis"] = emphasisOpt
+        self.option = opt
+    }
 
     // Overwrite
     // upstream: getDataParams(dataIndex: number): FunnelCallbackDataParams { ... percent ... }
@@ -217,6 +245,22 @@ open class FunnelSeriesModel: SeriesModel {
 
 // Coerce a stored `ParsedValue` (Any) to a Double for the `data.get(valueDim, i) as number` read in
 //   `getDataParams`; nil when the slot is absent/non-numeric.
+// Faithful JS `a && b`: returns `b` when `a` is truthy, otherwise `a`. Used to gate `labelLine.show`
+//   on `label.show` (both are boolean `show` options, but any-typed in the dynamic bag).
+private func funnelLogicalAnd(_ a: Any?, _ b: Any?) -> Any? {
+    return funnelIsTruthy(a) ? b : a
+}
+
+// JS truthiness for the dynamic-bag values that flow through `funnelLogicalAnd`.
+private func funnelIsTruthy(_ v: Any?) -> Bool {
+    guard let v = v, !(v is NSNull) else { return false }
+    if let b = v as? Bool { return b }
+    if let i = v as? Int { return i != 0 }
+    if let d = v as? Double { return d != 0 }
+    if let s = v as? String { return !s.isEmpty }
+    return true
+}
+
 private func funnelSeriesAsDouble(_ v: Any?) -> Double? {
     if v == nil || v is NSNull { return nil }
     if let d = v as? Double { return d }
