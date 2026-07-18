@@ -82,9 +82,25 @@ public final class SliderTimelineView: TimelineView {
     public private(set) var _progressLine: Line?
     public private(set) var _tickSymbols: [Path] = []
     public private(set) var _tickLabels: [ZRText] = []
+    // upstream: `labelDataIndexStore = makeInner<{dataIndex}, graphic.Text>()`. A `Text` has no data
+    //   dimension of its own, so upstream stashes each label's dataIndex on an inner-store slot read
+    //   back by `_updateTicksStatus`. Ported as a parallel array indexed with `_tickLabels`.
+    private var _tickLabelDataIndices: [Int] = []
 
-    // init(ecModel, api) { this.api = api; } — `api` is passed to render directly here; nothing to cache.
-    public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {}
+    // upstream stored `api`/`model` (assigned in init + render). Cached here so the click/play handlers
+    //   (`_changeTimeline`/`_handlePlayClick`) can dispatch actions and `_updateTicksStatus` can read the
+    //   current index without threading them through every call.
+    public private(set) var api: ExtensionAPI?
+    private var _timelineModel: SliderTimelineModel?
+    // upstream: `private _timer: number` (setTimeout id). The auto-advance play LOOP (`_doPlayStop`) is
+    //   DEFERRED (needs the live host's timer/dispatch loop), but `_clearTimer` is wired so the play/stop
+    //   click (`_handlePlayClick`) faithfully cancels any pending advance.
+    private var _timer: DispatchWorkItem?
+
+    // init(ecModel, api) { this.api = api; }
+    public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
+        self.api = api
+    }
 
     /**
      * @override
@@ -95,10 +111,15 @@ public final class SliderTimelineView: TimelineView {
     ) {
         guard let timelineModel = model as? SliderTimelineModel else { return }
 
+        // this.model = timelineModel; this.api = api; this.ecModel = ecModel;
+        self._timelineModel = timelineModel
+        self.api = api
+
         // this.group.removeAll();
         _ = self.group.removeAll()
         self._tickSymbols = []
         self._tickLabels = []
+        self._tickLabelDataIndices = []
         self._currentPointer = nil
         self._progressLine = nil
 
@@ -124,8 +145,11 @@ public final class SliderTimelineView: TimelineView {
             self._position(layoutInfo, timelineModel)
         }
 
-        // this._doPlayStop();      — DEFERRED (auto-advance play timer; needs the live host).
-        // this._updateTicksStatus(); — DEFERRED (progress/emphasis toggle states; needs states).
+        // this._doPlayStop();      — DEFERRED (auto-advance play timer; needs the live host's
+        //   setTimeout/dispatch loop — see `_timer` note above).
+
+        // this._updateTicksStatus();
+        self._updateTicksStatus()
     }
 
     // ────────────────────────────── _layout ──────────────────────────────
@@ -429,10 +453,28 @@ public final class SliderTimelineView: TimelineView {
             //   (exact for the category case; a graceful non-crashing fallback otherwise).
             let itemModel = data.getItemModel(timelineClampIndex(Int(tick.value), count))
             let itemStyleModel = itemModel.getModel("itemStyle")
+            let hoverStyleModel = itemModel.getModel(["emphasis", "itemStyle"])
+            let progressStyleModel = itemModel.getModel(["progress", "itemStyle"])
 
-            // giveSymbol(itemModel, itemStyleModel, group, {x: tickCoord, y: 0})
+            // symbolOpt.onclick = bind(this._changeTimeline, this, tick.value)
+            //   giveSymbol(itemModel, itemStyleModel, group, {x: tickCoord, y: 0, onclick})
             let el = timelineGiveSymbol(itemModel, itemStyleModel, group, x: tickCoord, y: 0)
-            // el.ensureState('emphasis')/'progress' + enableHoverEmphasis + tooltip ecData — DEFERRED.
+            let tickValue = tick.value
+            _ = el.on("click", { [weak self] _, _ in
+                self?._changeTimeline(tickValue)
+                return nil
+            })
+
+            // el.ensureState('emphasis').style = hoverStyleModel.getItemStyle();
+            // el.ensureState('progress').style = progressStyleModel.getItemStyle();
+            el.ensureState("emphasis").style = hoverStyleModel.getItemStyle()
+            el.ensureState("progress").style = progressStyleModel.getItemStyle()
+
+            // enableHoverEmphasis(el);
+            states.enableHoverEmphasis(el)
+
+            // tooltip ecData (getECData(el).dataIndex/dataModel) — DEFERRED (tooltip CONTENT).
+
             self._tickSymbols.append(el)
         }
     }
@@ -452,6 +494,7 @@ public final class SliderTimelineView: TimelineView {
         let labels = axis.getViewLabels()
 
         self._tickLabels = []
+        self._tickLabelDataIndices = []
 
         for labelItem in labels {
             // if (labelItem.tick.offInterval) { return; }
@@ -461,6 +504,8 @@ public final class SliderTimelineView: TimelineView {
 
             let itemModel = data.getItemModel(dataIndex)
             let normalLabelModel = itemModel.getModel("label")
+            let hoverLabelModel = itemModel.getModel(["emphasis", "label"])
+            let progressLabelModel = itemModel.getModel(["progress", "label"])
 
             let tickCoord = axis.dataToCoord(labelItem.tick.value)
 
@@ -480,9 +525,26 @@ public final class SliderTimelineView: TimelineView {
             // rotation: layoutInfo.labelRotation - layoutInfo.rotation
             textEl.rotation = layoutInfo.labelRotation - layoutInfo.rotation
 
-            // textEl.ensureState('emphasis')/'progress' + enableHoverEmphasis + onclick — DEFERRED.
+            // onclick: bind(this._changeTimeline, this, dataIndex)
+            _ = textEl.on("click", { [weak self] _, _ in
+                self?._changeTimeline(dataIndex)
+                return nil
+            })
+
+            // textEl.ensureState('emphasis').style = createTextStyle(hoverLabelModel);
+            // textEl.ensureState('progress').style = createTextStyle(progressLabelModel);
+            //   PORT: a `ZRText`'s per-state style lives in `ElementState.textStyle` (typed side-channel,
+            //   see Element.swift), not the generic `style` bag used for Path elements.
+            textEl.ensureState("emphasis").textStyle = labelStyle.createTextStyle(hoverLabelModel, nil, nil, nil, nil)
+            textEl.ensureState("progress").textStyle = labelStyle.createTextStyle(progressLabelModel, nil, nil, nil, nil)
 
             _ = group.add(textEl)
+            // enableHoverEmphasis(textEl);
+            states.enableHoverEmphasis(textEl)
+
+            // labelDataIndexStore(textEl).dataIndex = dataIndex;
+            self._tickLabelDataIndices.append(dataIndex)
+
             self._tickLabels.append(textEl)
         }
     }
@@ -496,11 +558,15 @@ public final class SliderTimelineView: TimelineView {
 
         // const itemStyle = timelineModel.getModel('controlStyle').getItemStyle();
         let itemStyle = timelineModel.getModel("controlStyle").getItemStyle()
+        // const hoverStyle = timelineModel.getModel(['emphasis', 'controlStyle']).getItemStyle();
+        let hoverStyle = timelineModel.getModel(["emphasis", "controlStyle"]).getItemStyle()
         // const playState = timelineModel.getPlayState();
         let playState = timelineModel.getPlayState()
+        // const inverse = timelineModel.get('inverse', true);
+        let inverse = tlTruthy(timelineModel.get("inverse", true))
 
         // makeBtn(position, iconName, onclick, willRotate?)
-        func makeBtn(_ position: [Double]?, _ iconName: String, _ willRotate: Bool = false) {
+        func makeBtn(_ position: [Double]?, _ iconName: String, _ onclick: @escaping () -> Void, _ willRotate: Bool = false) {
             // if (!position) { return; }
             guard let position = position else { return }
             // const iconSize = parsePercent(retrieve2(controlStyle[iconName+'BtnSize'], controlSize), controlSize);
@@ -511,7 +577,7 @@ public final class SliderTimelineView: TimelineView {
             )
             // const rect = [0, -iconSize/2, iconSize, iconSize];
             let rect = [0, -iconSize / 2, iconSize, iconSize]
-            // makeControlIcon(timelineModel, iconName+'Icon', rect, { x, y, originX, originY, rotation, style })
+            // makeControlIcon(timelineModel, iconName+'Icon', rect, { x, y, originX, originY, rotation, style, onclick })
             let btn = makeControlIcon(
                 timelineModel, iconName + "Icon", rect,
                 x: position[0], y: position[1],
@@ -519,13 +585,20 @@ public final class SliderTimelineView: TimelineView {
                 rotation: willRotate ? -rotation : 0,
                 style: itemStyle
             )
-            // btn.ensureState('emphasis') + enableHoverEmphasis — DEFERRED.
+            _ = btn.on("click", { _, _ in onclick(); return nil })
+            // btn.ensureState('emphasis').style = hoverStyle;
+            btn.ensureState("emphasis").style = hoverStyle
             _ = group.add(btn)
+            // enableHoverEmphasis(btn);
+            states.enableHoverEmphasis(btn)
         }
 
-        makeBtn(layoutInfo.nextBtnPosition, "next")
-        makeBtn(layoutInfo.prevBtnPosition, "prev")
-        makeBtn(layoutInfo.playPosition, (playState ? "stop" : "play"), true)
+        // makeBtn(nextBtnPosition, 'next', bind(this._changeTimeline, this, inverse ? '-' : '+'))
+        makeBtn(layoutInfo.nextBtnPosition, "next", { [weak self] in self?._changeTimeline(inverse ? "-" : "+") })
+        // makeBtn(prevBtnPosition, 'prev', bind(this._changeTimeline, this, inverse ? '+' : '-'))
+        makeBtn(layoutInfo.prevBtnPosition, "prev", { [weak self] in self?._changeTimeline(inverse ? "+" : "-") })
+        // makeBtn(playPosition, playState ? 'stop' : 'play', bind(this._handlePlayClick, this, !playState), true)
+        makeBtn(layoutInfo.playPosition, (playState ? "stop" : "play"), { [weak self] in self?._handlePlayClick(!playState) }, true)
     }
 
     // ────────────────────────────── _renderCurrentPointer ──────────────────────────────
@@ -554,6 +627,74 @@ public final class SliderTimelineView: TimelineView {
             var shape = (progressLine.shape as? LineShape) ?? LineShape()
             shape.x2 = toCoord
             progressLine.shape = shape
+        }
+    }
+
+    // ────────────────────────────── _handlePlayClick ──────────────────────────────
+    private func _handlePlayClick(_ nextState: Bool) {
+        self._clearTimer()
+        // this.api.dispatchAction({ type: 'timelinePlayChange', playState: nextState, from: this.uid })
+        guard let api = self.api else { return }
+        var payload = Payload(type: "timelinePlayChange")
+        payload.other["playState"] = nextState
+        payload.other["from"] = self.uid
+        api.dispatchAction(payload)
+    }
+
+    // _handlePointerDrag / _handlePointerDragend / _pointerChangeTimeline / _toAxisCoord /
+    //   _findNearestTick — the checkpoint-pointer DRAG interaction — are DEFERRED (the pointer is not
+    //   made draggable in `_renderCurrentPointer`; needs the live host's drag events).
+
+    // ────────────────────────────── _doPlayStop ──────────────────────────────
+    //   DEFERRED (auto-advance play loop). Upstream schedules a `setTimeout` that dispatches the next
+    //   `timelineChange` after `playInterval`; that needs the live host's timer/dispatch loop.
+
+    // ────────────────────────────── _clearTimer ──────────────────────────────
+    private func _clearTimer() {
+        // if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+        if let timer = self._timer {
+            timer.cancel()
+            self._timer = nil
+        }
+    }
+
+    // ────────────────────────────── _changeTimeline ──────────────────────────────
+    private func _changeTimeline(_ nextIndexArg: Any) {
+        guard let api = self.api, let model = self._timelineModel else { return }
+        let currentIndex = model.getCurrentIndex()
+
+        // nextIndex === '+' → currentIndex + 1;  '-' → currentIndex - 1;  else the given number.
+        var nextIndex: Int
+        if let s = nextIndexArg as? String {
+            nextIndex = s == "+" ? currentIndex + 1 : currentIndex - 1
+        }
+        else {
+            nextIndex = Int(tlReadDouble(nextIndexArg) ?? 0)
+        }
+
+        // this.api.dispatchAction({ type: 'timelineChange', currentIndex: nextIndex, from: this.uid })
+        var payload = Payload(type: "timelineChange")
+        payload.other["currentIndex"] = nextIndex
+        payload.other["from"] = self.uid
+        api.dispatchAction(payload)
+    }
+
+    // ────────────────────────────── _updateTicksStatus ──────────────────────────────
+    private func _updateTicksStatus() {
+        // const currentIndex = this.model.getCurrentIndex();
+        guard let model = self._timelineModel else { return }
+        let currentIndex = model.getCurrentIndex()
+        let tickSymbols = self._tickSymbols
+        let tickLabels = self._tickLabels
+
+        // for (i) tickSymbols[i].toggleState('progress', i < currentIndex);
+        for i in 0..<tickSymbols.count {
+            tickSymbols[i].toggleState("progress", i < currentIndex)
+        }
+        // for (i) tickLabels[i].toggleState('progress', labelDataIndexStore(tickLabels[i]).dataIndex <= currentIndex);
+        for i in 0..<tickLabels.count {
+            let dataIndex = i < self._tickLabelDataIndices.count ? self._tickLabelDataIndices[i] : 0
+            tickLabels[i].toggleState("progress", dataIndex <= currentIndex)
         }
     }
 }
