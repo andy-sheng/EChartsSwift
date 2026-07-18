@@ -209,7 +209,11 @@ open class LegendModel: ComponentModel {
             // If has any selected in option.selected
             for i in 0..<legendData.count {
                 // const name = legendData[i].get('name');
-                let name = legendData[i].get("name") as? String ?? ""   // POTENTIAL-BUG: a numeric legend.data name (upstream allows string|number) coerces to "" here; the whole file assumes String names (select/allSelect/isSelected all `as? String`), so a systemic string-coercion is needed, not a local fix.
+                // upstream `name` is string|number; used as a `selected` map key it is coerced to a
+                //   string by JS object-key semantics (`selected[name]`). Mirror that coercion via
+                //   `model.convertOptionIdName` (the `idOrName + ''` path) so a numeric legend.data
+                //   name keys distinctly ("1", "2", ...) instead of all collapsing to "".
+                let name = model.convertOptionIdName(legendData[i].get("name"), "") ?? ""
                 if self.isSelected(name) {
                     // Force to unselect others
                     self.select(name)
@@ -220,7 +224,7 @@ open class LegendModel: ComponentModel {
             // Try select the first if selectedMode is single
             // !hasSelected && this.select(legendData[0].get('name'));
             if !hasSelected {
-                self.select(legendData[0].get("name") as? String ?? "")
+                self.select(model.convertOptionIdName(legendData[0].get("name"), "") ?? "")
             }
         }
     }
@@ -325,7 +329,8 @@ open class LegendModel: ComponentModel {
             let data = self._data
             // zrUtil.each(data, function (dataItem) { selected[dataItem.get('name')] = false; });
             util.each(data) { dataItem, _ in
-                if let n = dataItem.get("name") as? String {
+                // selected[dataItem.get('name')] = false;  (name coerced to a string key)
+                if let n = model.convertOptionIdName(dataItem.get("name"), nil) {
                     selected[n] = false
                 }
             }
@@ -380,7 +385,8 @@ open class LegendModel: ComponentModel {
         var selected = opt["selected"] as? [String: Any] ?? [:]
         // zrUtil.each(data, function (dataItem) { selected[dataItem.get('name', true)] = true; });
         util.each(data) { dataItem, _ in
-            if let name = dataItem.get("name", true) as? String {
+            // selected[dataItem.get('name', true)] = true;  (name coerced to a string key)
+            if let name = model.convertOptionIdName(dataItem.get("name", true), nil) {
                 selected[name] = true
             }
         }
@@ -397,8 +403,8 @@ open class LegendModel: ComponentModel {
         var selected = opt["selected"] as? [String: Any] ?? [:]
         // zrUtil.each(data, function (dataItem) {
         util.each(data) { dataItem, _ in
-            // const name = dataItem.get('name', true);
-            guard let name = dataItem.get("name", true) as? String else { return }
+            // const name = dataItem.get('name', true);  (name coerced to a string key)
+            guard let name = model.convertOptionIdName(dataItem.get("name", true), nil) else { return }
             // Initially, default value is true
             // if (!selected.hasOwnProperty(name)) { selected[name] = true; }
             if selected[name] == nil {
