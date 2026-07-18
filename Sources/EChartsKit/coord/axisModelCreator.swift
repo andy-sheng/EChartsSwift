@@ -222,11 +222,18 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     public override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = fetchLayoutMode(this);
+        let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode
         //     ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE (deferred): requires util/layout `fetchLayoutMode` / `getLayoutParams` (still absent;
-        //   only `mergeLayoutParam` is ported). Layout-mode param extraction/merge deferred (same as ComponentModel).
-        let layoutMode: Any? = nil  // fetchLayoutMode(self)
+        // PORT-NOTE: `option === self.option` at call (mirroring Model.mergeOption), so the input
+        //   position params are captured from that bag before the theme/default merges below.
+        let inputPositionParams: [String: Any]
+        if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
+            inputPositionParams = layout.getLayoutParams(src)
+        }
+        else {
+            inputPositionParams = [:]
+        }
 
         // const themeModel = ecModel.getTheme();
         // merge(option, themeModel.get(axisType + 'Axis'));
@@ -246,13 +253,21 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
             target["type"] = getAxisType(target)
 
+            // if (layoutMode) {
+            //     mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
+            // }
+            // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its
+            //   `ignoreSize` is read by `mergeLayoutParam`, so it is forwarded via the option bag.
+            if let mode = layoutMode {
+                var opt: [String: Any] = [:]
+                if let ignoreSize = mode.ignoreSize {
+                    opt["ignoreSize"] = ignoreSize
+                }
+                layout.mergeLayoutParam(&target, inputPositionParams, opt)
+            }
+
             self.option = target
         }
-
-        // if (layoutMode) {
-        //     mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
-        // }
-        _ = layoutMode
     }
 
     // upstream: optionUpdated(): void
