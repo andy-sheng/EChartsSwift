@@ -243,10 +243,17 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
      */
     open override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = fetchLayoutMode(this);
-        // const inputPositionParams = layoutMode ? getLayoutParams(option) : {};
-        // PORT-NOTE (deferred): requires fetchLayoutMode / getLayoutParams (util/layout.ts) — only
-        //   mergeLayoutParam is ported (util/layout.swift). Layout-mode param extraction and the final
-        //   `mergeLayoutParam` below are deferred until those two land.
+        let layoutMode = layout.fetchLayoutMode(self)
+        // const inputPositionParams = layoutMode ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
+        // PORT-NOTE: `option === self.option` at call, so capture the input position params from that
+        //   bag BEFORE the theme/default merges below (mirrors axisModelCreator.mergeDefaultAndTheme).
+        let inputPositionParams: [String: Any]
+        if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
+            inputPositionParams = layout.getLayoutParams(src)
+        }
+        else {
+            inputPositionParams = [:]
+        }
 
         // Backward compat: using subType on theme.
         // But if name duplicate between series subType
@@ -277,15 +284,39 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
 
         // Default label emphasis `show`
         // modelUtil.defaultEmphasis(option, 'label', ['show']);
-        // PORT-NOTE (deferred): requires bridging the dynamic `[String: Any]` option bag to the typed
-        //   `DisplayStateHostOption` struct that modelUtil.defaultEmphasis consumes (with read-modify-
-        //   write-back through self.option). Top-level label emphasis defaulting deferred.
+        if let bag = (self.option ?? option) as? [String: Any] {
+            self.option = SeriesModel.defaultEmphasisOnBag(bag, "label", ["show"])
+        }
 
         // this.fillDataTextStyle(option.data);
         self.fillDataTextStyle((self.option as? [String: Any])?["data"])
 
-        // if (layoutMode) { mergeLayoutParam(option, inputPositionParams, layoutMode); }
-        // PORT-NOTE (deferred): requires fetchLayoutMode/getLayoutParams (layout-mode selection, not yet ported) — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
+        // if (layoutMode) { mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode); }
+        // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
+        //   is read by `mergeLayoutParam`, so it is forwarded via the option bag (cf. axisModelCreator).
+        if let mode = layoutMode, var target = self.option as? [String: Any] {
+            var opt: [String: Any] = [:]
+            if let ignoreSize = mode.ignoreSize {
+                opt["ignoreSize"] = ignoreSize
+            }
+            layout.mergeLayoutParam(&target, inputPositionParams, opt)
+            self.option = target
+        }
+    }
+
+    // Bridge the dynamic `[String: Any]` option bag to the typed `DisplayStateHostOption` struct that
+    // modelUtil.defaultEmphasis consumes, run it, and return the mutated bag. Upstream mutates the
+    // option object in place (reference semantics); Swift value types require read-modify-write-back.
+    private static func defaultEmphasisOnBag(_ bag: [String: Any], _ key: String, _ subOpts: [String]) -> [String: Any] {
+        var host: DisplayStateHostOption? = DisplayStateHostOption()
+        host!.other = bag
+        host!.emphasis = bag["emphasis"] as? [String: Any]
+        model.defaultEmphasis(&host, key, subOpts)
+        var result = host!.other
+        if let emphasis = host!.emphasis {
+            result["emphasis"] = emphasis
+        }
+        return result
     }
 
     open override func mergeOption(_ newSeriesOption: ModelOption?, _ ecModel: GlobalModel?) {
@@ -301,8 +332,20 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         self.fillDataTextStyle(mergedData)
 
         // const layoutMode = fetchLayoutMode(this);
+        let layoutMode = layout.fetchLayoutMode(self)
         // if (layoutMode) { mergeLayoutParam(this.option, newSeriesOption, layoutMode); }
-        // PORT-NOTE (deferred): requires fetchLayoutMode/getLayoutParams (layout-mode selection, not yet ported) — layout-mode merge deferred (mergeLayoutParam exists in util/layout.swift).
+        // PORT-NOTE: upstream merges the newSeriesOption box params INTO this.option; the delta box
+        //   params live in the raw `newSeriesOption`. Only `ignoreSize` from the layout mode is read.
+        if let mode = layoutMode,
+           var target = self.option as? [String: Any],
+           let source = newSeriesOption as? [String: Any] {
+            var opt: [String: Any] = [:]
+            if let ignoreSize = mode.ignoreSize {
+                opt["ignoreSize"] = ignoreSize
+            }
+            layout.mergeLayoutParam(&target, source, opt)
+            self.option = target
+        }
 
         let sourceManager = inner(self).sourceManager
         sourceManager?.dirty()
@@ -331,14 +374,24 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         // FIXME Performance ?
         if let arr = data as? [Any], !util.isTypedArray(data) {
             // const props = ['show'];
-            for i in 0..<arr.count {
+            let props = ["show"]
+            // PORT-NOTE: upstream mutates each `data[i]` in place (reference semantics). Swift value
+            //   types require read-modify-write-back: mutate a local copy of the array and, if any item
+            //   changed, write it back through `self.option["data"]` (both call sites pass that bag).
+            var mutated = arr
+            var changed = false
+            for i in 0..<mutated.count {
                 // if (data[i] && data[i].label)
-                if let item = arr[i] as? [String: Any], item["label"] != nil {
+                if let item = mutated[i] as? [String: Any], item["label"] != nil {
                     // modelUtil.defaultEmphasis(data[i], 'label', props);
-                    // PORT-NOTE (deferred): requires bridging the dynamic `[String: Any]` data item to the
-                    //   typed `DisplayStateHostOption` that modelUtil.defaultEmphasis consumes (and writing
-                    //   the mutated item back through self.option's data array). Per-item emphasis defaulting deferred.
+                    mutated[i] = SeriesModel.defaultEmphasisOnBag(item, "label", props)
+                    changed = true
                 }
+            }
+            if changed {
+                var opt = (self.option as? [String: Any]) ?? [:]
+                opt["data"] = mutated
+                self.option = opt
             }
         }
     }
