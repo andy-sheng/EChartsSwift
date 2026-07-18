@@ -226,12 +226,9 @@ func resizeGeo(_ geo: Geo, _ geoModel: MapOrGeoModel, _ api: ExtensionAPI) {
         boxLayoutOption["aspect"] = aspect
 
         // viewRect = layout.getLayoutRect(boxLayoutOption, refContainer);
-        let viewRectVar = layout.getLayoutRect(boxLayoutOption, refContainer)
+        var viewRectVar = layout.getLayoutRect(boxLayoutOption, refContainer)
         // viewRect = layout.applyPreserveAspect(geoModel, viewRect, aspect);
-        // PORT-NOTE (deferred): requires layout.applyPreserveAspect (util/layout.ts — confirmed absent
-        //   from the partial util/layout.swift port, same as chart/graph/createView.swift). Call is
-        //   kept as a reference; wire it once ported:
-        //     viewRectVar = layout.applyPreserveAspect(geoModel, viewRectVar, aspect)
+        viewRectVar = layout.applyPreserveAspect(geoModel, viewRectVar, aspect)
         viewRect = viewRectVar
     }
 
