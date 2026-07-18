@@ -119,12 +119,14 @@ open class ChordPiece: Sector {
         }
         else {
             // graphic.updateProps(el, { shape: shape }, seriesModel, idx);
-            // PORT-NOTE: applying the target shape directly is behaviorally equivalent to upstream here —
-            //   upstream's `updateProps` tween is immediately superseded by the unconditional
-            //   `sector.setShape(sectorShape)` below (same final shape), so its animator starts final→final
-            //   (a no-op). The port instead drives the visible enter animation via the first-render sweep
-            //   (collapsed endAngle + initProps) in the block just below.
-            _ = el.setShape(shape)
+            //   Tween the whole shape from the element's current shape toward `shape`. `updateProps`
+            //   captures the current shape as the animator source, sets the element to the final state
+            //   immediately (setToFinal — so the shape-dependent label layout below is correct), then
+            //   plays the tween; the unconditional `sector.setShape(sectorShape)` just below re-applies
+            //   the identical final shape (upstream does the same). Shape props MUST be a DICT of the
+            //   animatable numeric fields — a full SectorShape struct is opaque to the animator
+            //   (the struct->dict rule). Instant (no animator) when the series' animation is disabled.
+            updateProps(el, ["shape": chordShapeProps(shape)], seriesModel, idx)
         }
 
         // const sectorShape = extend(getSectorCornerRadius(itemModel.getModel('itemStyle'), layout, true), layout);
@@ -134,23 +136,7 @@ open class ChordPiece: Sector {
             sectorShape.cornerRadius = cornerRadius
         }
         // sector.setShape(sectorShape);
-        //   Entrance (angle-expansion form, mirroring PieView's PiePiece / SunburstPiece sweep): upstream
-        //   ChordPiece snaps the shape on first create (`el.setShape(shape)`) and tweens the WHOLE shape via
-        //   `graphic.updateProps` on later updates. Here we ADD a faithful first-render sweep — create the
-        //   sector collapsed (endAngle == startAngle), then tween endAngle open to the final layout angle
-        //   via the shared basicTransition `initProps`. Shape props MUST be a DICT of animatable fields (a
-        //   full SectorShape struct is opaque to the animator — the struct->dict rule). Instant (final
-        //   angle, no animator) when the series' animation is disabled.
-        if firstCreate {
-            let finalEndAngle = sectorShape.endAngle
-            var collapsedShape = sectorShape
-            collapsedShape.endAngle = sectorShape.startAngle
-            _ = sector.setShape(collapsedShape)
-            initProps(sector, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
-        }
-        else {
-            _ = sector.setShape(sectorShape)
-        }
+        _ = sector.setShape(sectorShape)
         // sector.useStyle(data.getItemVisual(idx, 'style'));
         sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
         // setStatesStylesFromModel(sector, itemModel);
@@ -341,6 +327,21 @@ private func sectorShapeFromChordLayout(_ layout: [String: Any]) -> SectorShape 
     shape.endAngle = chordNum(layout["endAngle"]) ?? Double.nan
     shape.clockwise = (layout["clockwise"] as? Bool) ?? true
     return shape
+}
+
+// The animatable numeric fields of a `SectorShape` as a `[String: Any]` dict — the form
+//   `updateProps(el, { shape: … })` requires (the animator tweens keyed numeric fields; a full
+//   SectorShape struct is opaque to it). `clockwise`/`cornerRadius` are not tweened (matching
+//   SectorShape.animationGet), and are carried by the unconditional `setShape` that follows.
+private func chordShapeProps(_ shape: SectorShape) -> [String: Any] {
+    return [
+        "cx": shape.cx,
+        "cy": shape.cy,
+        "r0": shape.r0,
+        "r": shape.r,
+        "startAngle": shape.startAngle,
+        "endAngle": shape.endAngle
+    ]
 }
 
 // JS `||` / `!x` falsiness (TRAP #1 companion). Mirrors the file-local `jsTruthy` in the sibling ports
