@@ -1389,11 +1389,8 @@ func buildAxisLabel(
     ) * PI / 180
 
     let labelLayout = AxisBuilder.innerTextLayout(cfg.rotation, labelRotation, cfg.labelDirection)
-    // upstream: axisModel.getCategories && axisModel.getCategories(true)
-    // PORT-NOTE (deferred): per-category `textStyle` override (rawCategoryData[tickValue].textStyle →
-    //   new Model) is not wired; `labelModel` is used for every label. (Category `OrdinalRawValue` is
-    //   `Any` here.)
-    _ = axisModel.getCategories(true)
+    // upstream: const rawCategoryData = axisModel.getCategories && axisModel.getCategories(true);
+    let rawCategoryData = axisModel.getCategories(true)
 
     var labelEls: [ZRText] = []
     let triggerEvent = truthy(axisModel.get("triggerEvent"))
@@ -1407,8 +1404,24 @@ func buildAxisLabel(
         //   (`axisLabel.formatter` function form), which is not wired; read it back when that lands.
         _ = labelItem.rawLabel
 
-        let itemLabelModel = labelModel
+        var itemLabelModel = labelModel
         let tickValue = axisHelper.getTickValueOutermost(axis.scale, labelItemTick)
+        // upstream: if (rawCategoryData && rawCategoryData[tickValue]) {
+        //   const rawCategoryItem = rawCategoryData[tickValue];
+        //   if (isObject(rawCategoryItem) && rawCategoryItem.textStyle) {
+        //     itemLabelModel = new Model(rawCategoryItem.textStyle, labelModel, axisModel.ecModel);
+        //   }
+        // }
+        if let rawCategoryData = rawCategoryData {
+            let tvIdx = Int(tickValue)
+            if tvIdx >= 0 && tvIdx < rawCategoryData.count {
+                let rawCategoryItem = rawCategoryData[tvIdx]
+                if util.isObject(rawCategoryItem),
+                   let textStyle = (rawCategoryItem as? [String: Any])?["textStyle"] {
+                    itemLabelModel = Model(textStyle, labelModel, axisModel.ecModel)
+                }
+            }
+        }
 
         // upstream: itemLabelModel.getTextColor() || axisModel.get(['axisLine', 'lineStyle', 'color'])
         // POTENTIAL-BUG: upstream `textColor` may be a function (per-label color callback). `ColorString`
