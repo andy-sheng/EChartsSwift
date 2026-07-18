@@ -28,9 +28,8 @@ import ZRenderKit
 //   import * as numberUtil from '../../util/number';                -> `number` namespace (util/number.swift).
 //   import * as graphic from '../../util/graphic';
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Polygon` are the
-//        ZRenderKit scene-graph types `Group` / `Polygon` (used directly). `graphic.updateProps` is
-//        reproduced by the local no-animation shim `updateProps` at the bottom (same deviation as
-//        BarView.swift).
+//        ZRenderKit scene-graph types `Group` / `Polygon` (used directly). `graphic.updateProps`
+//        resolves to the real ported `animation/basicTransition.updateProps` (same as BarView.swift).
 //   import { toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
 //     -> states.toggleHoverEmphasis / states.setStatesStylesFromModel (util/states.swift).
 //   import * as markerHelper from './markerHelper';                 -> sibling `markerHelper`.
@@ -466,9 +465,14 @@ public final class MarkAreaView: MarkerView {
                 if !layout.allClipped {
                     if let polygon = polygon {
                         // graphic.updateProps(polygon, { z2: retrieve2(z2, 0), shape: { points: layout.points } }, maModel, newIdx);
+                        // PORT-NOTE: the real ported `updateProps` (animation/basicTransition) animates
+                        //   the polygon to its new points/z2 when the model has animation enabled, else
+                        //   sets them instantly. `shape` is a partial `[String: Any]` (not the typed
+                        //   PolygonShape) so `animateToShallow` recurses per-field and the `points`
+                        //   array tweens — same seam as BarView's `rectShapeAnimShape`.
                         updateProps(polygon, [
                             "z2": (util.retrieve2(z2 as? Double, 0.0) ?? 0),
-                            "shape": makeMarkAreaPolygonShape(layout.points) as PathShape
+                            "shape": ["points": layout.points] as [String: Any]
                         ], maModel, newIdx)
                     }
                     else {
@@ -629,22 +633,6 @@ private func makeMarkAreaPolygonShape(_ points: [[Double]]) -> PolygonShape {
     var s = PolygonShape()
     s.points = points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
     return s
-}
-
-// PORT-NOTE (deferred): `animation/basicTransition.updateProps` IS ported, but this view deliberately
-//   uses the NO-ANIMATION branch (set the element to its final shape/z2 immediately) — a local shim so
-//   markArea does not animate yet. Route through the real transition once markArea animation lands. Same
-//   deviation as BarView.swift.
-private func updateProps(
-    _ el: Polygon, _ props: [String: Any], _ animatableModel: Any? = nil, _ dataIndex: Int? = nil
-) {
-    if let shape = props["shape"] as? PathShape {
-        _ = el.setShape(shape)
-    }
-    if let z2 = props["z2"] as? Double {
-        el.z2 = z2
-    }
-    _ = (animatableModel, dataIndex)
 }
 
 // PORT-NOTE (deferred): faithful minimal reproduction of `visual/helper.getVisualFromData`. Only the `'color'`
