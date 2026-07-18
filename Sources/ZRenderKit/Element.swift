@@ -224,6 +224,27 @@ public final class ElementState {
     public var textStyle: TextStyleProps?
 }
 
+// upstream `saveCurrentToNormalState` writes a running animator's FINAL value into the normal state
+//   via `animator.saveTo(target)`, where `target` is either the normal state itself (top-level
+//   transform props) or `normalState[targetName]` (a `shape` / `style` sub-bag). `saveTo` routes
+//   through the dynamic `(target as any)[key] = value`, which the port models as `AnimationTarget`.
+//   `ElementState` (top-level, backed by `props`) and `_RefBag` (a sub-bag write-back wrapper)
+//   provide that reference-typed keyed set.
+extension ElementState: AnimationTarget {
+    public func animationGet(_ key: String) -> Any? { return self.props[key] }
+    public func animationSet(_ key: String, _ value: Any?) { self.props[key] = value }
+}
+
+// A reference-typed wrapper over a value-type `[String: Any]` sub-bag, so `Animator.saveTo` can
+//   write the animation's final sub-bag values through `AnimationTarget`; the caller reads `.dict`
+//   back out and stores it into the normal state's sub-bag (`normalState.props[targetName]`).
+fileprivate final class _RefBag: AnimationTarget {
+    var dict: [String: Any]
+    init(_ dict: [String: Any]) { self.dict = dict }
+    func animationGet(_ key: String) -> Any? { return self.dict[key] }
+    func animationSet(_ key: String, _ value: Any?) { self.dict[key] = value }
+}
+
 // TextPositionCalculationResult is now ported in Contain/text.swift; the opaque stub is removed.
 public typealias ElementCalculateTextPosition = (
     _ out: TextPositionCalculationResult,
@@ -458,9 +479,10 @@ open class Element: Transformable, AnimationTarget {
     /// fill+stroke into the text's default style. Storage already adds the attached text to the
     /// display list, so this is what makes `setTextContent` + `textConfig.position` actually render.
     ///
-    /// PORT-NOTE: the `autoOverflowArea` / `overflowRect` branch is not ported (it needs the
-    /// inverse-transform overflow clamp + the full parseText overflow engine); everything else
-    /// (the rectText demo's position/rotation/distance/offset/origin/fill controls) is faithful.
+    /// PORT-NOTE: the `autoOverflowArea` / `overflowRect` inverse-transform clamp IS ported (the
+    /// overflow area is computed in the text's local coord by inverse-transforming the host-space
+    /// layoutRect); the downstream `parseText` overflow/ellipsis engine that consumes `overflowRect`
+    /// lives in Text.swift's `calcInnerTextOverflowArea`.
     public func updateInnerText(_ forceUpdate: Bool? = nil) {
         guard let textEl = self._textContent, (!textEl.ignore || (forceUpdate ?? false)) else { return }
         if self.textConfig == nil { self.textConfig = ElementTextConfig() }
@@ -478,9 +500,10 @@ open class Element: Transformable, AnimationTarget {
         innerTransformable.copyTransform(textEl)   // reset x/y/rotation from the text
 
         let hasPosition = textConfig.position != nil
+        let autoOverflowArea = textConfig.autoOverflowArea ?? false
 
         var layoutRect: BoundingRect? = nil
-        if hasPosition {
+        if autoOverflowArea || hasPosition {
             let lr = tmpBoundingRect
             if let lrc = textConfig.layoutRect {
                 lr.copy(BoundingRect(lrc.x, lrc.y, lrc.width, lrc.height))
@@ -536,6 +559,34 @@ open class Element: Transformable, AnimationTarget {
                 innerTransformable.originY = -textOffset[1]
             }
         }
+
+        // Ensure the inner-text default-style bag exists (upstream creates it here, before the
+        // autoOverflowArea branch and the fill/stroke computation below).
+        if self._innerTextDefaultStyle == nil { self._innerTextDefaultStyle = DefaultTextStyle() }
+        var defStyle = self._innerTextDefaultStyle!
+
+        // upstream: compute the inside-text overflow area in the text's LOCAL coord by inverse-
+        //   transforming the (host-space) layoutRect. `overflowRect` exists iff autoOverflowArea.
+        //   The overflowRect BoundingRect is a persisted reference: handed to the text once (via
+        //   setDefaultTextStyle when it first appears / disappears), then mutated in place on later
+        //   frames — so the text sees updates without re-setting (mirrors upstream's shared object).
+        let hadOverflowRect = (defStyle.overflowRect != nil)
+        if autoOverflowArea, let layoutRect = layoutRect {
+            let overflowRect = defStyle.overflowRect ?? BoundingRect(0, 0, 0, 0)
+            defStyle.overflowRect = overflowRect
+            tmpInnerTextTrans = innerTransformable.getLocalTransform(tmpInnerTextTrans)
+            if let inv = matrix.invert(tmpInnerTextTrans) {
+                tmpInnerTextTrans = inv
+            }
+            BoundingRect.copy(overflowRect, layoutRect)
+            // If transform to a non-orthogonal state (e.g. rotate PI/3), the result of this "apply"
+            // is not expected. But we don't need to address it until a real scenario arises.
+            overflowRect.applyTransform(tmpInnerTextTrans)
+        }
+        else {
+            defStyle.overflowRect = nil
+        }
+        let overflowRectChanged = (defStyle.overflowRect != nil) != hadOverflowRect
         // [CAUTION] Do not change `innerTransformable` below.
 
         // Calculate text color (inside vs outside).
@@ -571,8 +622,6 @@ open class Element: Transformable, AnimationTarget {
         }
         textFill = textFill ?? "#000"
 
-        if self._innerTextDefaultStyle == nil { self._innerTextDefaultStyle = DefaultTextStyle() }
-        var defStyle = self._innerTextDefaultStyle!
         if textFill != defStyle.fill || textStroke != defStyle.stroke || autoStroke != defStyle.autoStroke
             || textAlign != defStyle.align || textVerticalAlign != defStyle.verticalAlign {
             textStyleChanged = true
@@ -581,7 +630,12 @@ open class Element: Transformable, AnimationTarget {
             defStyle.autoStroke = autoStroke
             defStyle.align = textAlign
             defStyle.verticalAlign = textVerticalAlign
-            self._innerTextDefaultStyle = defStyle
+        }
+        // Persist the (possibly overflowRect- and/or fill-updated) default style, and hand it to the
+        // text when the style changed OR the overflowRect reference appeared/disappeared (value-type
+        // struct: the text needs the fresh reference once; see the autoOverflowArea note above).
+        self._innerTextDefaultStyle = defStyle
+        if textStyleChanged || overflowRectChanged {
             textEl.setDefaultTextStyle(defStyle)
         }
 
@@ -789,12 +843,32 @@ open class Element: Transformable, AnimationTarget {
     // Save current state to normal
     public func saveCurrentToNormalState(_ toState: ElementState) {
         self._innerSaveToNormal(toState)
-        // PORT-NOTE: upstream additionally walks `this.animators` here to bake a running animation's
-        //   FINAL value into `_normalState` before switching. That loop SKIPS loop animators and
-        //   state-transition animators (`__fromStateTransition`), so it only fires when a plain
-        //   `animateTo` is interrupted by a state change mid-flight — a combination the state demos do
-        //   not produce. Omitted (writing into the value-type `_normalState` sub-bags would also need
-        //   a reference target). See DEMO_PARITY_GAPS.md / state.
+
+        // If we are switching from normal to other state during animation, we need to save the FINAL
+        //   value of the animation to the normal state (not the interpolated value) so that removing
+        //   the state restores to where the animation was heading. Loop animators and state-transition
+        //   animators (except normal) are ignored.
+        guard let normalState = self._normalState else { return }
+        for i in 0..<self.animators.count {
+            let animator = self.animators[i]
+            let fromStateTransition = animator.__fromStateTransition
+            if animator.getLoop()
+                || (fromStateTransition != nil && fromStateTransition != PRESERVED_NORMAL_STATE) {
+                continue
+            }
+            let targetName = animator.targetName
+            // Respecting the order of animation if multiple animators animate on the same property
+            //   (if additive animation is used). Sub-bag (`shape`/`style`) targets are written through
+            //   a reference wrapper and stored back into the value-type normal-state sub-bag.
+            if let tn = targetName, !tn.isEmpty {
+                let wrapper = _RefBag((normalState.props[tn] as? [String: Any]) ?? [:])
+                animator.saveTo(wrapper)
+                normalState.props[tn] = wrapper.dict
+            }
+            else {
+                animator.saveTo(normalState)
+            }
+        }
     }
 
     // Save the CURRENT value of every prop a target state will change — once — so it can be restored
