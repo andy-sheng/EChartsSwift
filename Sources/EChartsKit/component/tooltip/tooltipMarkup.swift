@@ -592,14 +592,30 @@ public func retrieveVisualColorForTooltipMarker(
 // style color. Here the visual style bag is `[String: Any]`, so the color arrives as `Any?`; this
 // coerces to `ZRColor` before delegating. A plain color string / gradient passes through; anything
 // non-coercible (incl. nil) yields the `convertToColorString(undefined)` default ('transparent').
-// POTENTIAL-BUG: visual styles authored with `ZRenderKit.ZRColor` (rather than a String / EChartsKit
-//   `ZRColor`) fall through to the default; re-wire once the visual style bag carries a typed color.
+// The visual style bag may carry the color either as a String, an EChartsKit `ZRColor` (e.g. from
+//   `getColorFromPalette` / an itemStyle color callback), or a `ZRenderKit.ZRColor` (a typed path
+//   style `fill`/`stroke`); all three are handled so the marker dot keeps its color.
 private func convertToColorStringLoose(_ v: Any?) -> ColorString {
     if let s = v as? String {
         return format.convertToColorString(.color(s))
     }
     if let z = v as? ZRColor {
         return format.convertToColorString(z)
+    }
+    // A visual style authored with a `ZRenderKit.ZRColor` (path style color). Mirror
+    //   `format.convertToColorString` semantics: string passes through; gradient -> first stop
+    //   color (else 'transparent'); pattern/object-without-colorStops -> 'transparent'.
+    if let zr = v as? ZRenderKit.ZRColor {
+        switch zr {
+        case .string(let s):
+            return format.convertToColorString(.color(s))
+        case .linearGradient(let g):
+            return g.colorStops.first.map { $0.color } ?? "transparent"
+        case .radialGradient(let g):
+            return g.colorStops.first.map { $0.color } ?? "transparent"
+        case .pattern:
+            return "transparent"
+        }
     }
     return "transparent"
 }
