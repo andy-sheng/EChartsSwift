@@ -286,13 +286,44 @@ public enum states {
         return state
     }
 
+    // upstream: `getFromStateStyle(el, props, toStateName, defaultValue)` (states.ts:200). Specialized to
+    //   the single `['opacity']` call site (createBlurDefaultState); returns the mined opacity. Reads
+    //   `el.style.opacity` (falling back to `defaultOpacity` when nil), then lets any in-flight style
+    //   animator that is NOT a transition INTO `toStateName` overwrite it with its FINAL-frame value via
+    //   `animator.saveTo(fromState, ['opacity'])`. So blurring mid style-animation dims from the
+    //   animation's end opacity, not the interpolated current value.
+    static func getFromStateStyleOpacity(_ el: Displayable, _ toStateName: String, _ defaultOpacity: Double) -> Double {
+        // upstream `fromState: PathStyleProps = {}` scratch object — `saveTo` writes via `animationSet`,
+        //   so a plain AnimationTarget bag stands in for the JS style literal.
+        let fromState = StyleStateScratch()
+        fromState.values["opacity"] = el.style?.opacity ?? defaultOpacity
+        for animator in el.animators {
+            if let fst = animator.__fromStateTransition,
+               // Don't consider the animation to the target (blur) state.
+               !fst.contains(toStateName),
+               animator.targetName == "style" {
+                animator.saveTo(fromState, ["opacity"])
+            }
+        }
+        if let o = fromState.values["opacity"] as? Double { return o }
+        if let n = fromState.values["opacity"] as? NSNumber { return n.doubleValue }
+        return defaultOpacity
+    }
+
+    // Scratch AnimationTarget backing `getFromStateStyleOpacity` (upstream's `{}` literal): `saveTo`
+    //   pushes the animator's final-frame value here via `animationSet`.
+    final class StyleStateScratch: AnimationTarget {
+        var values: [String: Any?] = [:]
+        func animationGet(_ key: String) -> Any? { return values[key] ?? nil }
+        func animationSet(_ key: String, _ value: Any?) { values[key] = value }
+    }
+
     static func createBlurDefaultState(_ el: Displayable, _ inState: ElementState?) -> ElementState? {
         let hasBlur = util.indexOf(el.currentStates, "blur") >= 0
         let currentOpacity = el.style?.opacity
-        // PORT-NOTE: upstream `getFromStateStyle(el, ['opacity'], 'blur', {opacity: 1})` also mines any
-        //   in-flight non-blur style animator for its opacity. The animator-`saveTo` mining is dropped
-        //   (state demos do not blur mid style-animation); the default `{opacity: 1}` path is kept.
-        let fromOpacity: Double = hasBlur ? 0 : (el.style?.opacity ?? 1)
+        // upstream `getFromStateStyle(el, ['opacity'], 'blur', {opacity: 1})` — mines any in-flight
+        //   non-blur style animator for its final opacity (see getFromStateStyleOpacity).
+        let fromOpacity: Double = hasBlur ? 0 : getFromStateStyleOpacity(el, "blur", 1)
 
         let state = inState ?? ElementState()
         var blurStyle = state.style ?? [:]
