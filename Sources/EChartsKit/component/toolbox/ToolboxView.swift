@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // upstream imports (mapped to this port):
-//   import * as textContain from 'zrender/src/contain/text';   -> title-overflow adjust block (DEFERRED, see below).
+//   import * as textContain from 'zrender/src/contain/text';   -> `text.getBoundingRect` (title-overflow adjust block).
 //   import * as graphic from '../../util/graphic';             -> `createIcon` reproduced via `makePath`
 //     (util/graphic.ts createIcon not ported as a namespace; same seam as ScrollableLegendView /
 //     SliderTimelineView). `graphic.setTooltipConfig` is DEFERRED (interaction).
@@ -82,7 +82,21 @@ open class ToolboxView: ComponentView {
         // The DataDiffer(oldNames, newNames).add/update/remove is reduced to iterating the feature
         //   options (no reuse across setOption). Order follows the option's key iteration.
         for featureName in featureOpts.keys {
-            let featureOpt = (featureOpts[featureName] as? [String: Any]) ?? [:]
+            var featureOpt = (featureOpts[featureName] as? [String: Any]) ?? [:]
+
+            // FIX#11236, merge feature title from MagicType newOption. TODO: consider seriesIndex ?
+            //   if (payload && payload.newTitle != null && payload.featureName === featureName) {
+            //       featureOpt.title = payload.newTitle;
+            //   }
+            //   Upstream mutates `featureOpt.title` AFTER the Model is built (its JS option holds
+            //   `featureOpt` by reference, so the later `featureModel.get('title')` read sees it). The
+            //   Swift `Model` copies the dict, so apply the merge BEFORE constructing the Model to get the
+            //   identical `featureModel.get('title')` result.
+            if let newTitle = payload.other["newTitle"],
+               (payload.other["featureName"] as? String) == featureName {
+                featureOpt["title"] = newTitle
+            }
+
             // const featureModel = new Model(featureOpt, toolboxModel, ecModel);
             let featureModel = Model(featureOpt, toolboxModel, ecModel)
             // const isFeatureShow = featureModel && featureModel.get('show');
@@ -155,10 +169,58 @@ open class ToolboxView: ComponentView {
             _ = group.add(toolboxMakeBackground(bounding, toolboxModel))
         }
 
-        // Adjust icon title positions to avoid them out of screen (`isVertical || group.eachChild(...)`).
-        // PORT-NOTE (deferred): the emphasis title-overflow reposition reads the icon's emphasis
-        //   textConfig/textContent state (requires the live-host width/height overflow check). Titles use their default position.
-        _ = isVertical
+        // Adjust icon title positions to avoid them out of screen
+        // isVertical || group.eachChild(function (icon: IconPath) { ... });
+        if !isVertical {
+            _ = group.eachChild({ icon, _ in
+                // const titleText = (icon as ExtendedPath).__title;
+                //   The port carries the title on the icon's textContent normal style (`textStyle.text`).
+                let textContent = icon.getTextContent()
+                let titleText = textContent?.textStyle?.text
+
+                // const emphasisState = icon.ensureState('emphasis');
+                // const emphasisTextConfig = emphasisState.textConfig || (emphasisState.textConfig = {});
+                //   ensureState returns the SAME stored state; read its textConfig (default `{}`) and
+                //   write it back below (mirrors upstream's `|| (= {})` assignment, even for background els).
+                let emphasisState = icon.ensureState("emphasis")
+                var emphasisTextConfig = emphasisState.textConfig ?? ElementTextConfig()
+
+                // const emphasisTextState = textContent && textContent.ensureState('emphasis');
+                let emphasisTextState = textContent?.ensureState("emphasis")
+
+                // May be background element
+                // if (emphasisTextState && !isFunction(emphasisTextState) && titleText) { ... }
+                if let emphasisTextState = emphasisTextState,
+                   let titleText = titleText, !titleText.isEmpty {
+                    // const emphasisTextStyle = emphasisTextState.style || (emphasisTextState.style = {});
+                    //   The port's ZRText per-state style lives in the typed `textStyle` side channel.
+                    var emphasisTextStyle = emphasisTextState.textStyle ?? TextStyleProps()
+                    let rect = text.getBoundingRect(
+                        titleText, ZRText.makeFont(emphasisTextStyle) ?? ""
+                    )
+                    let offsetX = icon.x + group.x
+                    let offsetY = icon.y + group.y + itemSize
+
+                    var needPutOnTop = false
+                    if offsetY + rect.height > api.getHeight() {
+                        emphasisTextConfig.position = "top"
+                        needPutOnTop = true
+                    }
+                    let topOffset: Double = needPutOnTop ? (-5 - rect.height) : (itemSize + 10)
+                    if offsetX + rect.width / 2 > api.getWidth() {
+                        emphasisTextConfig.position = ["100%", topOffset] as [Any]
+                        emphasisTextStyle.align = .right
+                    }
+                    else if offsetX - rect.width / 2 < 0 {
+                        emphasisTextConfig.position = [0.0, topOffset] as [Any]
+                        emphasisTextStyle.align = .left
+                    }
+                    emphasisTextState.textStyle = emphasisTextStyle
+                }
+
+                emphasisState.textConfig = emphasisTextConfig
+            })
+        }
     }
 
     // function createIconPaths(featureModel, feature, featureName)
