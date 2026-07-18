@@ -24,7 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
 //       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. PORT-NOTE:
-//          `util/graphic.initProps` is ported (animation/basicTransition.swift); the grow-in clip animation is still deferred here (static render, see render).
+//          `util/graphic.initProps` is ported (animation/basicTransition.swift); the first-render grow-in clip animation (createGridClipShape) is wired (see render).
 //   import { enterEmphasis, leaveEmphasis, toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
 //       -> util/states.swift (enterEmphasis/leaveEmphasis/toggleHoverEmphasis/setStatesStylesFromModel); node/edge
 //          emphasis is wired (see render). Only graph-topology focus-adjacency/blur remains deferred.
@@ -506,19 +506,6 @@ open class SankeyView: ChartView {
                 rect.pathStyle.fill = fill
             }
 
-            // ENTRANCE ANIMATION — opacity fade-in (FunnelView pattern). Upstream reveals the whole
-            //   diagram via a first-render grow-in clip (createGridClipShape + initProps), which is
-            //   DEFERRED here (clip-path animation not ported per CONVENTIONS §5). As the closest
-            //   available-infra faithful stand-in, fade each node Rect from invisible to its final
-            //   opacity: capture the final opacity BEFORE zeroing, set the construction-time opacity to
-            //   0, then animate (or, with animation off, instantly `attr` via Path.attrKV's partial
-            //   "style"-dict merge) toward the final opacity via `initProps`.
-            //   Only on a FRESH build — a morph reuse keeps the node at its final opacity (no re-fade).
-            if reuseRect == nil {
-                let finalNodeOpacity = rect.pathStyle.opacity ?? 1
-                rect.pathStyle.opacity = 0
-                initProps(rect, ["style": ["opacity": finalNodeOpacity] as [String: Any]], seriesModel, node.dataIndex)
-            }
             // rect.setStyle('decal', node.getVisual('style').decal);
             //   The generic Displayable.setStyle('decal', …) is a no-op for the Path-specific `decal`
             //   field, so set it directly on the Path style (mirroring the `fill` assignment above).
@@ -597,10 +584,22 @@ open class SankeyView: ChartView {
             }
         }, nil)
 
-        // if (!this._data && seriesModel.isAnimationEnabled()) { mainGroup.setClipPath(createGridClipShape(...)); }
-        //   PORT-NOTE (deferred): the first-render grow-in clip animation (createGridClipShape + a clip
-        //   Rect whose width tweens) is deferred — clip-path animation is not ported (CONVENTIONS §5).
-        //   graphic.initProps itself is ported (animation/basicTransition.swift); reinstate with it later.
+        // if (!this._data && seriesModel.isAnimationEnabled()) {
+        //     mainGroup.setClipPath(createGridClipShape(mainGroup.getBoundingRect(), seriesModel, function () {
+        //         mainGroup.removeClipPath();
+        //     }));
+        // }
+        //   First-render grow-in clip: a zero-width clip Rect over the diagram whose width tweens open,
+        //   revealing the ribbons/nodes left-to-right; the tween's completion callback removes the clip.
+        //   Only on the very first render (`!this._data`) with animation enabled. `[weak mainGroup]`
+        //   breaks the clip → cb → mainGroup → clip retain cycle.
+        if self._data == nil && (seriesModel.isAnimationEnabled() ?? false) {
+            if let bounds = mainGroup.getBoundingRect() {
+                mainGroup.setClipPath(createGridClipShape(bounds, seriesModel, { [weak mainGroup] in
+                    mainGroup?.removeClipPath()
+                }))
+            }
+        }
 
         self._data = seriesModel.getData()
 
@@ -688,11 +687,23 @@ private func applyCurveStyle(_ curve: SankeyPath, _ orient: String, _ edge: Grap
 
 // ================================================================================================
 // upstream: function createGridClipShape(rect: RectLike, seriesModel, cb)
-//   PORT-NOTE (deferred): the first-render grow-in clip animation is deferred (clip-path animation not
-//   ported per CONVENTIONS §5). It builds a zero-width Rect and `graphic.initProps` tweens its width to
-//   `rect.width + 20`, revealing the diagram left-to-right. `graphic.initProps` is ported
-//   (animation/basicTransition.swift); reinstate this clip with it when clip-path animation lands.
+//   Add animation to the view: build a clip Rect starting 10px outside the diagram's top-left with
+//   width 0 and full (padded) height, then `initProps` tweens its width open to `rect.width + 20`,
+//   revealing the diagram left-to-right; `cb` (removeClipPath) fires on completion. The shape props
+//   are passed to initProps as a DICT (matching createClipPathFromCoordSys) so the animation infra
+//   diffs against the current Rect shape and writes the tweened width back.
 // ================================================================================================
+private func createGridClipShape(_ rect: BoundingRect, _ seriesModel: SankeySeriesModel, _ cb: @escaping () -> Void) -> Rect {
+    var initialShape = RectShape()
+    initialShape.x = rect.x - 10
+    initialShape.y = rect.y - 10
+    initialShape.width = 0
+    initialShape.height = rect.height + 20
+    let rectEl = Rect(["shape": initialShape as PathShape])
+    // graphic.initProps(rectEl, { shape: { width: rect.width + 20 } }, seriesModel, cb);
+    initProps(rectEl, ["shape": ["width": rect.width + 20] as [String: Any]], seriesModel, nil, cb)
+    return rectEl
+}
 
 // export default SankeyView;  -> `open class SankeyView` above.
 
