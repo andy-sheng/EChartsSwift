@@ -115,15 +115,14 @@ open class SunburstSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // POTENTIAL-BUG: SeriesData.wrapMethod cannot rebind a method by name (see data/SeriesData.swift);
-        //   `getItemModel` never invokes the stored injection, and `_wrappedMethodInjections` is typed
-        //   `[String: [(SeriesData) -> Void]]` (only SeriesData-returning methods like cloneShallow),
-        //   whereas getItemModel returns Model. So this injected closure is NEVER run and the per-node
-        //   level-model parenting (`model.parentModel = levelModel`) does NOT take effect through this
-        //   path — per-datum option inheritance from a `levels[]` entry is silently dropped. Preserved
-        //   faithfully for the diffable surface; fixing needs SeriesData.getItemModel to call the
-        //   injection (out of scope here). (`getLevelModel` below still resolves the per-depth level
-        //   model directly for the layout, so the layout itself is unaffected.)
+        // PORT-NOTE: SeriesData.wrapMethod cannot rebind a method by string name, so a `getItemModel`
+        //   injection is routed into the dedicated `_getItemModelInjections` store, which
+        //   `SeriesData.getItemModel` threads through its (possibly replaced) result — see
+        //   data/SeriesData.swift. The closure below therefore DOES fire per datum: it resolves the node
+        //   for `idx`, selects the per-depth `levelModels[node.depth]`, and sets it as `model.parentModel`,
+        //   so `node.getModel('itemStyle'|'label')` inherits the matching `levels[]` entry (mirroring
+        //   upstream's `beforeLink` wrap). (`getLevelModel` below independently resolves the per-depth
+        //   level model for the layout path.)
         let beforeLink: (SeriesData) -> Void = { nodeData in
             nodeData.wrapMethod("getItemModel") { args in
                 let model = args.first as? Model
