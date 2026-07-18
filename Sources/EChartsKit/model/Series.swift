@@ -448,10 +448,17 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         if let task = task {
             let data = task.context.data!
             // upstream: return (dataType == null || !data.getLinkedData) ? data : data.getLinkedData(dataType);
-            // PORT-NOTE (deferred): `!data.getLinkedData` checks method existence; requires the
-            //   Graph/Tree getLinkedData (base SeriesData.getLinkedData fatalErrors — not ported).
-            //   Treat as absent here -> always return `data` (the linked-data branch lands with Graph/Tree).
-            _ = dataType
+            // PORT-NOTE: `!data.getLinkedData` is an instance-method presence check == "data is a linked
+            //   (graph/tree) data". Swift can't attach the method per-instance, so the real logic lives in
+            //   `linkSeriesData` (data/helper/linkSeriesData.swift): `getLinkedData(data)` returns the
+            //   mainData for a linked data and `nil` for an unlinked one. So `getLinkedData(data, dataType)`
+            //   is non-nil iff data IS linked and the sub-data exists → mirrors `data.getLinkedData(dataType)`.
+            if dataType == nil {
+                return data
+            }
+            if let linked = linkSeriesData.getLinkedData(data, dataType) {
+                return linked
+            }
             return data
         }
         else {
@@ -488,8 +495,16 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     open func getAllData() -> [(data: SeriesData, type: SeriesDataType?)] {
         let mainData = self.getData()
         // upstream: (mainData && mainData.getLinkedDataAll) ? mainData.getLinkedDataAll() : [{ data: mainData }];
-        // PORT-NOTE (deferred): requires the Graph/Tree getLinkedDataAll (base SeriesData.getLinkedDataAll
-        //   fatalErrors — not ported); treat as absent.
+        // PORT-NOTE: `mainData.getLinkedDataAll` presence == "mainData is a linked (graph/tree) data".
+        //   `linkSeriesData.getLinkedData(mainData)` is non-nil iff linked, so it stands in for the presence
+        //   check; then route to `linkSeriesData.getLinkedDataAll` (data/helper/linkSeriesData.swift). A
+        //   linked data always has non-nil sub-data entries, so `compactMap` narrows the helper's optional
+        //   `data` back to the non-optional return contract.
+        if linkSeriesData.getLinkedData(mainData) != nil {
+            return linkSeriesData.getLinkedDataAll(mainData).compactMap { entry in
+                entry.data.map { (data: $0, type: entry.type) }
+            }
+        }
         return [(data: mainData, type: nil)]
     }
 
