@@ -65,18 +65,55 @@ public final class TimelineAxis: Axis {
         return self.timelineModel.getModel("label")
     }
 
-    // PORT-DEVIATION: upstream inherits `Axis.getViewLabels` → `createAxisLabels`, whose CATEGORY branch
-    //   (`makeCategoryLabels` → `calculateCategoryInterval`) reads the interval cache via
-    //   `modelInner(axis.model)`. The timeline axis has no base `model` (it structurally overrides the
-    //   slot with a `TimelineModel`, held in `timelineModel` — see above), so that path would crash on a
-    //   `category` axisType. Timelines always show ALL ticks (one per option index), so override
-    //   `getViewLabels` to build one label per CUSTOMIZED tick (the `getTicksOverride` list) directly via
-    //   the shared label formatter — equivalent to the numeric/time branch (`makeRealNumberLabels`) but
-    //   applied to every axisType, avoiding the category interval machinery.
+    // PORT-DEVIATION: upstream inherits `Axis.getViewLabels` → `createAxisLabels`, whose CATEGORY branch's
+    //   'auto' interval (`makeCategoryLabels` → `makeAutoCategoryInterval` → `calculateCategoryInterval`)
+    //   reads the interval cache via `modelInner(axis.model)`. The timeline axis has no base `model` (it
+    //   structurally overrides the slot with a `TimelineModel`, held in `timelineModel` — see above), so
+    //   the 'auto' path would crash on a `category` axisType. We therefore mirror `createAxisLabels` here
+    //   but never invoke the base-model 'auto' machinery: a numeric / callback `label.interval` is honored
+    //   faithfully (via `makeTicksLabelsByCategoryIntervalNumOrCb`'s `ordinalScaleCreateTicks`), while the
+    //   default 'auto' falls back to interval 0 (all ticks — timelines are small and show every option).
     public override func getViewLabels(_ ctx: AxisLabelsComputingContext? = nil) -> [AxisLabelInfoDetermined] {
         _ = ctx
-        let ticks = self.scale.getTicks()
         let labelFormatter = axisHelper.makeLabelFormatter(self)
+
+        // upstream `createAxisLabels`: "Only ordinal scale support tick interval" — the CATEGORY branch
+        //   honors `label.interval`; value/time fall through to `makeRealNumberLabels` (all ticks).
+        if self.type == "category", let ordinalScale = self.scale as? OrdinalScale {
+            // makeCategoryLabelsActually: optionLabelInterval = getOptionCategoryInterval(labelModel).
+            let optionLabelInterval = axisHelper.getOptionCategoryInterval(self.getLabelModel())
+            let categoryIntervalCb = optionLabelInterval as? CategoryTickLabelSplitIntervalCb
+            // optionLabelInterval === 'auto' → base-model machinery (unavailable here) → 0 (all ticks);
+            //   otherwise the explicit numeric interval. A callback passes 0 (filtered per-tick below).
+            let numericLabelInterval: Double = categoryIntervalCb != nil
+                ? 0
+                : ((optionLabelInterval as? Double) ?? 0)
+
+            // makeTicksLabelsByCategoryIntervalNumOrCb (onlyTick: false).
+            var result: [AxisLabelInfoDetermined] = []
+            helper.ordinalScaleCreateTicks(ordinalScale, numericLabelInterval) { tick, isExtentBoundary in
+                var tickObj = tick
+                let tickLabel = ordinalScale.getLabel(tickObj)
+                if let categoryIntervalCb = categoryIntervalCb {
+                    // When interval is function, a falsy return means ignore the tick.
+                    let isOnInterval = categoryIntervalCb(tickObj.value, tickLabel)
+                    tickObj.offInterval = !isOnInterval
+                    // axis extent min max labels should be always included.
+                    if !isOnInterval && !isExtentBoundary {
+                        return
+                    }
+                }
+                result.append(AxisLabelInfoDetermined(
+                    formattedLabel: labelFormatter(tickObj, nil),
+                    rawLabel: tickLabel,
+                    tick: tickObj
+                ))
+            }
+            return result
+        }
+
+        // makeRealNumberLabels: one label per (customized `getTicksOverride`) tick.
+        let ticks = self.scale.getTicks()
         var result: [AxisLabelInfoDetermined] = []
         for (idx, tick) in ticks.enumerated() {
             result.append(AxisLabelInfoDetermined(
