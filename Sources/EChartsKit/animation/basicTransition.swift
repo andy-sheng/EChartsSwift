@@ -2,11 +2,12 @@
 // Real animation replacing the per-view no-op shims (BarView/CandlestickView). `initProps`/`updateProps`
 // animate via el.animateTo when the series has animation enabled, else set the props instantly.
 //
-// PORT-NOTE (deferred): upstream's `getAnimationConfig` also reads a global animation
-//   override from `ecModel.getUpdatePayload()` (dataZoom/resize actions — the method IS ported on
-//   Global but not consumed here) and supports a `getAnimationDelayParams` hook (pictorial bar only)
-//   plus a `removeOpt` override for the leave path. None of those are wired here — they are out of
-//   scope for the shared-helper port and land with the task(s) that need them (dataZoom/pictorial bar).
+// PORT-NOTE: `getAnimationConfig` now consumes the global animation override from
+//   `ecModel.getUpdatePayload().animation` (dataZoom/resize actions), evaluates function-valued
+//   `animationDuration`/`animationDelay(dataIndex)` (staggered enter), and honors a `removeOpt`
+//   override on the leave path. The `getAnimationDelayParams` hook (pictorial bar per-element delay)
+//   is still deferred: the Swift PictorialBar port does not monkeypatch that method onto its item
+//   model and `Model` exposes no such member, so `extraDelayParams` is threaded but always nil here.
 import Foundation
 import ZRenderKit
 
@@ -20,35 +21,71 @@ private func transNum(_ v: Any?) -> Double? {
 }
 
 /// Return nil if animation is disabled.
+///
+/// `extraDelayParams` is the pictorial-bar-only second argument passed to a function-valued
+/// `animationDelay` (upstream's `getAnimationDelayParams` hook). The Swift port has no producer for
+/// it yet, so it is always nil here (see the header PORT-NOTE).
 func getAnimationConfig(
     _ type: ECAnimType, _ model: Model?, _ dataIndex: Int,
-    _ extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)?
+    _ extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)?,
+    _ extraDelayParams: AnimationDelayCallbackParam? = nil
 ) -> (duration: Double, delay: Double, easing: AnimationEasing?)? {
-    _ = dataIndex
+    // Check if there is global animation configuration from dataZoom/resize that can override the
+    // config in option. It only applies when animation is enabled; otherwise it is ignored.
+    var animationPayload: PayloadAnimationPart?
+    if let model = model, let ecModel = model.ecModel {
+        animationPayload = ecModel.getUpdatePayload()?.animation
+    }
     let isUpdate = (type == .update)
     guard let model = model, model.isAnimationEnabled() == true else { return nil }
-    let duration: Double
-    let delay: Double
-    let easing: AnimationEasing?
+    // duration/delay stay `Any?` until after the payload override so a function value can still be
+    // superseded by a numeric payload value (upstream evaluates isFunction last).
+    var durationVal: Any?
+    var delayVal: Any?
+    var easing: AnimationEasing?
     if let extra = extra {
-        duration = extra.duration ?? 200
+        durationVal = extra.duration ?? 200.0
         easing = extra.easing ?? .named("cubicOut")
-        delay = 0
+        delayVal = 0.0
     } else {
-        duration = transNum(model.getShallow(isUpdate ? "animationDurationUpdate" : "animationDuration")) ?? 0
-        delay = transNum(model.getShallow(isUpdate ? "animationDelayUpdate" : "animationDelay")) ?? 0
-        if let e = model.getShallow(isUpdate ? "animationEasingUpdate" : "animationEasing") as? String {
+        durationVal = model.getShallow(isUpdate ? "animationDurationUpdate" : "animationDuration")
+        delayVal = model.getShallow(isUpdate ? "animationDelayUpdate" : "animationDelay")
+        let rawEasing = model.getShallow(isUpdate ? "animationEasingUpdate" : "animationEasing")
+        if let e = rawEasing as? String {
             easing = .named(e)
+        } else if let e = rawEasing as? AnimationEasing {
+            easing = e
         } else {
             easing = nil
         }
+    }
+    // animation from payload has highest priority.
+    if let p = animationPayload {
+        if let d = p.duration { durationVal = d }
+        if let e = p.easing { easing = e }
+        if let dl = p.delay { delayVal = dl }
+    }
+    // Function-valued animationDelay(dataIndex, extraDelayParams) — per-index staggered enter.
+    let delay: Double
+    if let f = delayVal as? AnimationDelayCallback {
+        delay = f(Double(dataIndex), extraDelayParams)
+    } else {
+        delay = transNum(delayVal) ?? 0
+    }
+    // Function-valued animationDuration(dataIndex).
+    let duration: Double
+    if let f = durationVal as? AnimationDurationCallback {
+        duration = f(Double(dataIndex))
+    } else {
+        duration = transNum(durationVal) ?? 0
     }
     return (duration: duration, delay: delay, easing: easing)
 }
 
 private func animateOrSetProps(
     _ type: ECAnimType, _ el: Element, _ props: [String: Any], _ model: Model?,
-    _ dataIndex: Int?, _ isFrom: Bool, _ cb: (() -> Void)?, _ during: ((Double) -> Void)?
+    _ dataIndex: Int?, _ isFrom: Bool, _ cb: (() -> Void)?, _ during: ((Double) -> Void)?,
+    _ removeOpt: AnimationOption? = nil
 ) {
     let isRemove = (type == .leave)
     if !isRemove {
@@ -57,11 +94,11 @@ private func animateOrSetProps(
     }
     // upstream: getAnimationConfig(type, animatableModel, dataIndex, isRemove ? (removeOpt || {}) : null)
     //   — a truthy (possibly-empty) extraOpts object forces getAnimationConfig's extraOpts branch,
-    //   which hardcodes 200ms/cubicOut/delay 0 for the leave path, independent of the series'
-    //   animationDuration.
+    //   which defaults to 200ms/cubicOut/delay 0 for the leave path (independent of the series'
+    //   animationDuration) but is overridden by any field the caller supplies via `removeOpt`.
     let extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)? =
-        isRemove ? (duration: nil, easing: nil, delay: nil) : nil
-    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra)
+        isRemove ? (duration: removeOpt?.duration, easing: removeOpt?.easing, delay: removeOpt?.delay) : nil
+    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra, nil)
     if let cfg = cfg, cfg.duration > 0 {
         var ac = ElementAnimateConfig()
         ac.duration = cfg.duration
@@ -105,25 +142,27 @@ func initProps(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
 //   (`dataIndex?: number | AnimateOrSetPropsOption`). The scalar form is the overload above; this
 //   struct carries the fields the object form adds. Only `isFrom` is actually needed by a ported call
 //   site today (universalTransition's `fadeInElement`), but the whole (modeled) bag is kept so the
-//   signature stays diffable. `removeOpt` is NOT modeled — see the header PORT-NOTE (the leave-path
-//   override is out of scope and unported).
+//   signature stays diffable. `removeOpt` only affects the leave path (upstream `removeElement`); it
+//   is threaded through but inert on the enter/update forms that exist today.
 struct AnimateOrSetPropsOption {
     var dataIndex: Int?
     var cb: (() -> Void)?
     var during: ((Double) -> Void)?
+    var removeOpt: AnimationOption?
     var isFrom: Bool?
     init(dataIndex: Int? = nil, cb: (() -> Void)? = nil,
-         during: ((Double) -> Void)? = nil, isFrom: Bool? = nil) {
+         during: ((Double) -> Void)? = nil, removeOpt: AnimationOption? = nil, isFrom: Bool? = nil) {
         self.dataIndex = dataIndex
         self.cb = cb
         self.during = during
+        self.removeOpt = removeOpt
         self.isFrom = isFrom
     }
 }
 
 /// upstream `initProps(el, props, animatableModel, opt: AnimateOrSetPropsOption)` — the object form.
 func initProps(_ el: Element, _ props: [String: Any], _ model: Model?, _ opt: AnimateOrSetPropsOption) {
-    animateOrSetProps(.enter, el, props, model, opt.dataIndex, opt.isFrom ?? false, opt.cb, opt.during)
+    animateOrSetProps(.enter, el, props, model, opt.dataIndex, opt.isFrom ?? false, opt.cb, opt.during, opt.removeOpt)
 }
 
 /// Update graphic element properties with or without animation according to the configuration in
