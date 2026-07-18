@@ -32,10 +32,9 @@
 //      `__t` key cannot be witnessed from EChartsKit; instead the animator runs with `duration()` (a
 //      forced, track-less looping clip) and the `during` callback's `percent` parameter IS `__t / maxT`.
 //      Mathematically identical: `__t = percent * maxT`.
-//   3. The `line`/`rect`/`roundRect` "continuity trail" (stretch scaleY between frames) is a PORT-NOTE
-//      (deferred): it only applies to those three symbolTypes; the default effect symbol is `circle`,
-//      unaffected. Requires tracking `__lastT`/`__lastPos`/`symbolScale`/`symbolType` in the per-symbol
-//      State (not captured here).
+//   3. The `line`/`rect`/`roundRect` "continuity trail" (stretch scaleY between frames) tracks
+//      `__lastT`/`__lastPos`/`symbolScale`/`symbolType` in the per-symbol `State` (see below). It only
+//      applies to those three symbolTypes; the default effect symbol is `circle`, unaffected.
 
 import Foundation
 import ZRenderKit
@@ -60,6 +59,11 @@ public enum EffectLine {
         // EffectPolyline frame-walk cursors (upstream `_lastFrame` / `_lastFramePercent`).
         var lastFrame = 0
         var lastFramePercent: Double = 0
+        // Continuity-trail state (upstream `symbol.__lastT` / `EffectLine._symbolType` / `_symbolScale`).
+        //   `lastT` is `undefined` until the first frame — nil here mirrors that.
+        var lastT: Double?
+        var symbolType = "circle"
+        var symbolScaleY: Double = 1
     }
 
     /// Build the moving trail symbol for one line item, add it to `group`, and start its looping
@@ -101,6 +105,10 @@ public enum EffectLine {
         sym.scaleY = sizeH
         // Shadow color is same with color in default (upstream setStyle('shadowColor', color)).
         if let colorStr = colorStr { sym.pathStyle.shadowColor = colorStr }
+        // upstream: symbol.setStyle(effectModel.getItemStyle(['color']));  — merge the effect
+        //   sub-model's item-style props (opacity/border/shadow…) onto the trail symbol. `color`
+        //   is excluded so the fill set by createSymbol is preserved.
+        applyEffectItemStyle(sym, effectModel.getItemStyle(["color"]))
 
         // ---- _updateEffectAnimation ------------------------------------------------------------------
         // let period = effectModel.get('period') * 1000;
@@ -112,6 +120,8 @@ public enum EffectLine {
         let state = State()
         state.isPolyline = isPolyline
         state.maxT = roundTrip ? 2 : 1
+        state.symbolType = symbolType          // upstream EffectLine._symbolType
+        state.symbolScaleY = sizeH             // upstream EffectLine._symbolScale[1]
         updateAnimationPoints(state, points)
 
         // if (constantSpeed > 0) period = lineLength / constantSpeed * 1000;
@@ -250,8 +260,11 @@ public enum EffectLine {
             let p1 = state.p1
             let p2 = state.p2
             let cp1 = state.cp1
-            sym.x = curve.quadraticAt(p1[0], cp1[0], p2[0], t)
-            sym.y = curve.quadraticAt(p1[1], cp1[1], p2[1], t)
+            // upstream: `const pos = [symbol.x, symbol.y]; const lastPos = pos.slice();` — capture the
+            //   PREVIOUS pixel position before overwriting, for the continuity-trail stretch below.
+            let lastPos = [sym.x, sym.y]
+            var posX = curve.quadraticAt(p1[0], cp1[0], p2[0], t)
+            var posY = curve.quadraticAt(p1[1], cp1[1], p2[1], t)
 
             // Tangent
             let tx = tt <= 1 ? curve.quadraticDerivativeAt(p1[0], cp1[0], p2[0], t)
@@ -259,9 +272,58 @@ public enum EffectLine {
             let ty = tt <= 1 ? curve.quadraticDerivativeAt(p1[1], cp1[1], p2[1], t)
                              : curve.quadraticDerivativeAt(p2[1], cp1[1], p1[1], 1 - t)
             sym.rotation = -atan2(ty, tx) - Double.pi / 2
-            // PORT-NOTE (deferred): the `line`/`rect`/`roundRect` continuity-trail scaleY stretch
-            //   (only those symbolTypes; the default effect symbol is `circle`, unaffected).
+
+            // enable continuity trail for 'line', 'rect', 'roundRect' symbolType
+            if state.symbolType == "line" || state.symbolType == "rect" || state.symbolType == "roundRect" {
+                if let lastT = state.lastT, lastT < tt {
+                    sym.scaleY = dist(lastPos, [posX, posY]) * 1.05
+                    // make sure the last segment render within endPoint
+                    if t == 1 {
+                        posX = lastPos[0] + (posX - lastPos[0]) / 2
+                        posY = lastPos[1] + (posY - lastPos[1]) / 2
+                    }
+                } else if state.lastT == 1 {
+                    // After first loop, __t does NOT start with 0, so connect p1 to pos directly.
+                    sym.scaleY = 2 * dist(p1, [posX, posY])
+                } else {
+                    sym.scaleY = state.symbolScaleY
+                }
+            }
+            state.lastT = tt                    // upstream symbol.__lastT = symbol.__t
+            sym.x = posX
+            sym.y = posY
         }
+    }
+
+    // upstream: `symbol.setStyle(effectModel.getItemStyle(['color']))` — MERGE the effect sub-model's
+    //   item-style props onto the trail symbol's existing style (the `color`/`fill` set by createSymbol
+    //   is preserved because 'color' is excluded from the mapper). Only keys the mapper actually
+    //   produced (i.e. the user set on `effect`) are present, so this merges just those fields — the
+    //   analog of upstream's dynamic-key `setStyle(obj)` extend. Numeric option values may box as Int
+    //   OR Double (see effectNum), so route numbers through the coercion helper.
+    private static func applyEffectItemStyle(_ sym: Path, _ dict: [String: Any]) {
+        if dict.isEmpty { return }
+        if let v = zrPaintFromStyleValue(dict["stroke"]) { sym.pathStyle.stroke = v }
+        if let v = effectNum(dict["lineWidth"]) { sym.pathStyle.lineWidth = v }
+        if let v = effectNum(dict["opacity"]) { sym.pathStyle.opacity = v }
+        if let v = effectNum(dict["shadowBlur"]) { sym.pathStyle.shadowBlur = v }
+        if let v = effectNum(dict["shadowOffsetX"]) { sym.pathStyle.shadowOffsetX = v }
+        if let v = effectNum(dict["shadowOffsetY"]) { sym.pathStyle.shadowOffsetY = v }
+        if let v = dict["shadowColor"] as? String { sym.pathStyle.shadowColor = v }
+        switch dict["lineDash"] {
+        case let str as String:
+            if str == "dashed" { sym.pathStyle.lineDash = .dashed }
+            else if str == "dotted" { sym.pathStyle.lineDash = .dotted }
+            else if str == "solid" { sym.pathStyle.lineDash = .solid }
+        case let arr as [Double]: sym.pathStyle.lineDash = .values(arr)
+        case let arri as [Int]: sym.pathStyle.lineDash = .values(arri.map(Double.init))
+        default: break
+        }
+        if let v = effectNum(dict["lineDashOffset"]) { sym.pathStyle.lineDashOffset = v }
+        if let v = dict["lineCap"] as? String { sym.pathStyle.lineCap = v }
+        if let v = dict["lineJoin"] as? String { sym.pathStyle.lineJoin = v }
+        if let v = effectNum(dict["miterLimit"]) { sym.pathStyle.miterLimit = v }
+        sym.dirtyStyle()
     }
 
     // vec2.dist for a [x, y] point pair.
