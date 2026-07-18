@@ -23,8 +23,8 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
-//       -> only `initProps` is used (first-render grow-in scale animation) — animation/basicTransition.swift.
-//          `removeElementWithFadeOut` is also from graphic but is DEFERRED (needs the data.diff reuse path).
+//       -> `initProps` (first-render grow-in scale animation) and `removeElementWithFadeOut` (fade-out of
+//          removed pieces/edges on the data.diff remove path) — both from animation/basicTransition.swift.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
@@ -59,9 +59,9 @@ open class ChordView: ChartView {
     }
 
     // upstream: private _data: SeriesData;  private _edgeData: SeriesData;
-    //   Kept for parity with upstream's diff bookkeeping. The `data.diff(oldData)` incremental
-    //   enter/update/remove is DEFERRED (CONVENTIONS §5 — static render); the group is rebuilt from
-    //   scratch each pass, so these are only used to detect the first render (see below).
+    //   The previous render's node/edge data, retained so `data.diff(oldData)` can reuse element
+    //   instances (enter/update/remove) and fade out removed pieces/edges. Also used to detect the
+    //   first render (`if (!oldData)` — the grow-in scale animation below).
     private var _data: SeriesData?
     private var _edgeData: SeriesData?
 
@@ -100,21 +100,65 @@ open class ChordView: ChartView {
         //   legend there is nothing to display for it, so chordLayout leaves its layout undefined and the
         //   piece must be skipped (upstream comment on `.add` / `.update`).
         // ------------------------------------------------------------------------------------------
-        _ = group.removeAll()
-
-        for newIdx in 0..<data.count() {
-            // const layout = data.getItemLayout(newIdx);
-            let layout = data.getItemLayout(newIdx)
-            // if (layout) { const el = new ChordPiece(data, newIdx, startAngle); ... group.add(el); }
-            if chordTruthy(layout) {
-                let el = ChordPiece(data, newIdx, startAngle)
-                // getECData(el).dataIndex = newIdx;
-                //   (ChordPiece.updateData already tags the same value; set it here too to mirror upstream's
-                //   view-level tagging so hover/tooltip/highlight resolve the chord datum from the piece.)
-                innerStore.getECData(el).dataIndex = Double(newIdx)
-                _ = group.add(el)
+        // data.diff(oldData).add(...).update(...).remove(...).execute();
+        //   Enter/update/remove `ChordPiece`s, REUSING element instances across renders and FADING OUT
+        //   removed pieces (`removeElementWithFadeOut`). `ChordPiece.updateData` registers the reused
+        //   element via `data.setItemGraphicEl`, so the next render's diff recovers it through
+        //   `oldData.getItemGraphicEl`.
+        data.diff(oldData)
+            .add { newIdx in
+                // Consider the case when there are only two nodes A and B, and there is a link between A
+                // and B. At first, they are both disselected from legend. And then when A is selected, A
+                // will go into `add`. But since there are no edges to be displayed, A should not be added.
+                // So we should only add A when layout is defined.
+                // const layout = data.getItemLayout(newIdx);
+                let layout = data.getItemLayout(newIdx)
+                // if (layout) { const el = new ChordPiece(data, newIdx, startAngle); ... group.add(el); }
+                if chordTruthy(layout) {
+                    let el = ChordPiece(data, newIdx, startAngle)
+                    // getECData(el).dataIndex = newIdx;
+                    //   (ChordPiece.updateData already tags the same value; set it here too to mirror
+                    //   upstream's view-level tagging so hover/tooltip/highlight resolve the chord datum.)
+                    innerStore.getECData(el).dataIndex = Double(newIdx)
+                    _ = group.add(el)
+                }
             }
-        }
+            .update { newIdx, oldIdx in
+                // let el = oldData.getItemGraphicEl(oldIdx) as ChordPiece;
+                var el = oldData?.getItemGraphicEl(oldIdx) as? ChordPiece
+                // const layout = data.getItemLayout(newIdx);
+                let layout = data.getItemLayout(newIdx)
+                // Consider the case when there are only two nodes A and B, and there is a link between A
+                // and B, and when A is disselected from legend, there should be nothing to display. But in
+                // `data.diff`, B will go into `update` having no layout. In this case, we need to remove B.
+                // if (!layout) { el && graphic.removeElementWithFadeOut(el, seriesModel, oldIdx); return; }
+                if !chordTruthy(layout) {
+                    if let el = el {
+                        removeElementWithFadeOut(el, seriesModel, oldIdx)
+                    }
+                    return
+                }
+                // if (!el) { el = new ChordPiece(data, newIdx, startAngle); }
+                // else { el.updateData(data, newIdx, startAngle); }
+                if el == nil {
+                    el = ChordPiece(data, newIdx, startAngle)
+                }
+                else {
+                    el!.updateData(data, newIdx, startAngle)
+                }
+                // group.add(el);
+                if let el = el {
+                    _ = group.add(el)
+                }
+            }
+            .remove { oldIdx in
+                // const el = oldData.getItemGraphicEl(oldIdx) as ChordPiece;
+                // el && graphic.removeElementWithFadeOut(el, seriesModel, oldIdx);
+                if let el = oldData?.getItemGraphicEl(oldIdx) {
+                    removeElementWithFadeOut(el, seriesModel, oldIdx)
+                }
+            }
+            .execute()
 
         // if (!oldData) { ... first-render grow-in scale animation ... }
         //   On the first render the whole group grows in from a near-zero scale about the chord center.
@@ -147,25 +191,42 @@ open class ChordView: ChartView {
         let nodeData: SeriesData = seriesModel.getData()
         // const edgeData = seriesModel.getEdgeData();
         let edgeData: SeriesData = seriesModel.getEdgeData()
+        // const oldData = this._edgeData;
+        let oldData = self._edgeData
         // const group = this.group;
         let group = self.group
 
-        // ------------------------------------------------------------------------------------------
-        // STATIC render deviation (same as render above): upstream drives `edgeData.diff(oldData)
-        //   .add/update/remove(...).execute()`. The diff + `removeElementWithFadeOut` + `updateData`
-        //   reuse are DEFERRED — one `ChordEdge` (ribbon) is rebuilt per edge each pass. The node pieces
-        //   were already re-added by render(); the edges are added after them (upstream adds edges last,
-        //   so they paint over — matching z-order via `ChordPiece.z2 = 2`).
-        // ------------------------------------------------------------------------------------------
-        for newIdx in 0..<edgeData.count() {
-            // const el = new ChordEdge(nodeData, edgeData, newIdx, startAngle);
-            let el = ChordEdge(nodeData, edgeData, newIdx, startAngle)
-            // getECData(el).dataIndex = newIdx;
-            //   (ChordEdge already tags the same value; set it here too to mirror upstream's view-level
-            //   tagging so hover/tooltip/highlight resolve the chord edge datum from the ribbon.)
-            innerStore.getECData(el).dataIndex = Double(newIdx)
-            _ = group.add(el)
-        }
+        // edgeData.diff(oldData).add(...).update(...).remove(...).execute();
+        //   Enter/update/remove `ChordEdge` ribbons, REUSING element instances and FADING OUT removed
+        //   edges. `ChordEdge.updateData` registers the reused element via `edgeData.setItemGraphicEl`,
+        //   so the next render's diff recovers it through `oldData.getItemGraphicEl`. Edges are added
+        //   after the node pieces so they paint over (matching z-order via `ChordPiece.z2 = 2`).
+        edgeData.diff(oldData)
+            .add { newIdx in
+                // const el = new ChordEdge(nodeData, edgeData, newIdx, startAngle);
+                let el = ChordEdge(nodeData, edgeData, newIdx, startAngle)
+                // getECData(el).dataIndex = newIdx;
+                //   (ChordEdge already tags the same value; set it here too to mirror upstream's
+                //   view-level tagging so hover/tooltip/highlight resolve the chord edge datum.)
+                innerStore.getECData(el).dataIndex = Double(newIdx)
+                _ = group.add(el)
+            }
+            .update { newIdx, oldIdx in
+                // const el = oldData.getItemGraphicEl(oldIdx) as ChordEdge;
+                // el.updateData(nodeData, edgeData, newIdx, startAngle); group.add(el);
+                if let el = oldData?.getItemGraphicEl(oldIdx) as? ChordEdge {
+                    el.updateData(nodeData, edgeData, newIdx, startAngle)
+                    _ = group.add(el)
+                }
+            }
+            .remove { oldIdx in
+                // const el = oldData.getItemGraphicEl(oldIdx) as ChordEdge;
+                // el && graphic.removeElementWithFadeOut(el, seriesModel, oldIdx);
+                if let el = oldData?.getItemGraphicEl(oldIdx) {
+                    removeElementWithFadeOut(el, seriesModel, oldIdx)
+                }
+            }
+            .execute()
 
         // this._edgeData = edgeData;
         self._edgeData = edgeData
