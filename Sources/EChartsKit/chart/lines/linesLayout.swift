@@ -63,12 +63,13 @@ public let linesLayout: StageHandler = {
             return nil
         }
 
-        // PORT-NOTE (deferred): only cartesian2d `dataToPoint` is used here. Although Polar/Geo have landed,
-        //   only `Cartesian2D.dataToPoint` witnesses the `CoordinateSystem.dataToPoint(_:_:)` protocol
-        //   requirement; `Polar.dataToPoint(_:clamp:)` / `Geo.dataToPoint(_:noRoam:)` have divergent
-        //   signatures (protocol-witness gap), so a generic dispatch would not resolve. Guard the cartesian
-        //   path (the established scatter/line/graph deviation); other systems produce no layout.
-        guard let coordSys = coordSysAny as? Cartesian2D else {
+        // upstream calls `coordSys.dataToPoint(...)` generically for whatever coordinate system the lines
+        //   series is bound to (defaults to 'geo'; also grid/cartesian2d + calendar). Guard against the
+        //   `CoordinateSystem` protocol and dispatch through its `dataToPoint(_:_:)` requirement: Cartesian2D,
+        //   Geo and Calendar all witness it, so geo/calendar lines now lay out (was cartesian-only).
+        //   `Polar` conforms only to `CoordinateSystemMaster` (its `dataToPoint(_:clamp:)` has a divergent
+        //   signature and does not witness the protocol), so it fails the cast and produces no layout.
+        guard let coordSys = coordSysAny as? CoordinateSystem else {
             return nil
         }
 
@@ -148,15 +149,15 @@ public let linesLayout: StageHandler = {
                     if isPolyline {
                         // for (let j = 0; j < len; j++) { pts.push(coordSys.dataToPoint(lineCoords[j])); }
                         for j in 0..<len {
-                            pts.append(coordSys.dataToPoint(lineCoords[j]))
+                            pts.append(coordSys.dataToPoint(lineCoords[j], nil))
                         }
                     }
                     // else {
                     else {
                         // pts[0] = coordSys.dataToPoint(lineCoords[0]);
-                        pts.append(coordSys.dataToPoint(lineCoords[0]))
+                        pts.append(coordSys.dataToPoint(lineCoords[0], nil))
                         // pts[1] = coordSys.dataToPoint(lineCoords[1]);
-                        pts.append(coordSys.dataToPoint(lineCoords[1]))
+                        pts.append(coordSys.dataToPoint(lineCoords[1], nil))
 
                         // const curveness = itemModel.get(['lineStyle', 'curveness']);
                         let curveness = linesNum(itemModel.get(["lineStyle", "curveness"]))
