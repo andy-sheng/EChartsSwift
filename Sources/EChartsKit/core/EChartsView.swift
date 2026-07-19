@@ -653,6 +653,33 @@ public final class EChartsView {
             self._updateAxisPointers(ecModel)
         }
 
+        // ITEM-PATH `showTip`/`hideTip` (a user `dispatchAction({type:'showTip', seriesIndex, dataIndex})`).
+        //   Upstream registers these with `update:'tooltip:manuallyShowTip'` / `'tooltip:manuallyHideTip'`,
+        //   which `doDispatchAction` → `updateDirectly` routes to the tooltip COMPONENT VIEW's method of
+        //   that name. This port has no ComponentView for the tooltip (EChartsView owns the single
+        //   `TooltipView` directly — see installTooltipActions' PORT-NOTE), so the `update`-field routing
+        //   lands on nothing. Observe the emitted action event instead and call the view method the update
+        //   field names, exactly as the `updateAxisPointer` hook above substitutes for the axis view
+        //   broadcast. The AXIS path (`dataByCoordSys`, dispatched by axisTrigger) never reaches the ec bus
+        //   — globalListener hands it to `_realDispatchAxisPointer` — but guard on it anyway so the two
+        //   seams can never both show.
+        //   `ECActionEvent.eventData` IS a copy of the payload's dynamic bag (doDispatchAction:
+        //   `e.eventData = actionResult ?? batchItem.other`), so the finder keys round-trip intact.
+        ec.on("showTip") { [weak self] params in
+            guard let self = self, let ecModel = self.ec.getModel() else { return }
+            guard let e = params as? ECActionEvent else { return }
+            guard e.eventData["dataByCoordSys"] == nil, e.eventData["seriesIndex"] != nil else { return }
+            var payload = Payload(type: "showTip")
+            payload.other = e.eventData
+            self._ensureTooltipView()?.manuallyShowTip(payload: payload, ecModel: ecModel, api: self.ec.api)
+            self.zr.refresh()
+        }
+        ec.on("hideTip") { [weak self] _ in
+            guard let self = self else { return }
+            self.tooltipView?.hide()
+            self.zr.refresh()
+        }
+
         // Upstream `ecInstance.dispatchAction` re-renders and repaints the DRIVER's own zr. Here the driver
         //   (`ec`) is zr-less and the DISPLAY zr is a separate copy of `ec.getRoot()` (a stable Group,
         //   mutated in place by each re-render). An INTERNAL `api.dispatchAction` — a legend toggle, a
