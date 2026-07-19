@@ -1158,6 +1158,11 @@ public final class ECharts: EChartsType {
         //   (the 'treeRoam' view-group roam action). See chart/tree/treeAction.swift.
         installTreeAction(ECharts._registers)
         registerTreemapRoamAction()
+        // -- chart/treemap/treemapAction.ts `installTreemapAction(registers)` — registers the three noop
+        //   actions ('treemapZoomToNode'/'treemapRender'/'treemapMove', update:'updateView') so they are
+        //   dispatchable, plus the real 'treemapRootToNode' handler (retrieveTargetInfo → model.resetViewRoot,
+        //   the drill-up/down root switch). See chart/treemap/treemapAction.swift.
+        installTreemapAction(ECharts._registers)
         // -- chart/sankey/install.ts `installSankeyAction(registers)` — registerAction('dragNode',
         //   update:'update') (node drag → SankeySeriesModel.setNodePosition persists localX/localY, the
         //   full update() re-renders the moved node + re-routes its edge ribbons) + registerSankeyRoamAction()
