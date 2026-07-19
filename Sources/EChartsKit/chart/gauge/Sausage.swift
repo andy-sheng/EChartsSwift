@@ -101,7 +101,8 @@ public final class SausagePath: Path {
 
         let cx = shape.cx
         let cy = shape.cy
-        let r0 = Swift.max(shape.r0, 0)
+        // upstream: const r0 = Math.max(shape.r0 || 0, 0); the `|| 0` coerces a NaN r0 to 0.
+        let r0 = Swift.max(shape.r0.isNaN ? 0 : shape.r0, 0)
         let r = Swift.max(shape.r, 0)
         let dr = (r - r0) * 0.5
         let rCenter = r0 + dr
