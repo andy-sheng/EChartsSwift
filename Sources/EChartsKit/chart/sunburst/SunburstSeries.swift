@@ -28,8 +28,8 @@ import ZRenderKit
 //       sibling tree-data track). This file references `Tree.createTree`, `tree.data`,
 //       `tree.getNodeByDataIndex`, `tree.root`, `node.depth`, `node.contains(...)`.
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
-//       -> PORT-NOTE: chart/helper/treeHelper.swift IS ported, but `wrapTreePathInfo` within it is a
-//          deferred stub (only consumed by `getDataParams`, itself deferred).
+//       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
+//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -153,10 +153,10 @@ open class SunburstSeriesModel: SeriesModel {
      * @override
      */
     // upstream: getDataParams(dataIndex): SunburstDataParams { ... params.treePathInfo = wrapTreePathInfo(node, this); ... }
-    // PORT-NOTE (deferred): requires `wrapTreePathInfo` — chart/helper/treeHelper.swift IS ported but
-    //   `wrapTreePathInfo` within it is still a deferred stub (same status the sibling TreeSeries /
-    //   TreemapSeries getDataParams cite) — and `super.getDataParams` (DataFormatMixin). `treePathInfo`
-    //   only feeds labels/tooltip. Faithful upstream body (for the eventual port):
+    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
+    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
+    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
+    //   `treePathInfo` slot. Wire the body below as soon as that field lands:
     //     const params = super.getDataParams.apply(this, arguments) as SunburstDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
     //     params.treePathInfo = wrapTreePathInfo(node, this);

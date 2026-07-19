@@ -246,8 +246,9 @@ option = {
                         // SunburstPiece routes its label text through it. The blocker is the closure's
                         // ARGUMENT: `treePathInfo` does not exist on the ported `CallbackDataParams`
                         // (util/types.swift), because `SunburstSeries.getDataParams` — the override
-                        // that would attach it — is still a deferred stub awaiting `wrapTreePathInfo`
-                        // (see the PORT-NOTE at SunburstSeries.swift). With no depth on the params
+                        // that would attach it — is still deferred, blocked on `CallbackDataParams`
+                        // gaining the `treePathInfo` slot (SYMBOLS row 18); `treeHelper.wrapTreePathInfo`
+                        // is already fully ported. With no depth on the params
                         // there is nothing for the closure to branch on, so it is dropped: the native
                         // pane falls back to the default label (the node `name`, which this data does
                         // not set) and the sectors come out unlabelled.

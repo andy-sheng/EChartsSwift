@@ -38,8 +38,8 @@ import ZRenderKit
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
 //       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); tree's use is deferred with getDataParams.
 //   import { wrapTreePathInfo } from '../helper/treeHelper';
-//       -> treeHelper IS ported (chart/helper/treeHelper.swift), but `wrapTreePathInfo` (the only symbol
-//          used here) is still deferred within it — used only by the deferred `getDataParams`.
+//       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
+//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
 //   import tokens from '../../visual/tokens';
 //       -> visual/tokens.ts IS ported (visual/tokens.swift); the single consumed value `tokens.color.borderTint`
 //          (= color.neutral20 = '#cfd2d7') is inlined verbatim in `defaultOption` below.
@@ -248,11 +248,10 @@ open class TreeSeriesModel: SeriesModel {
 
     // Add tree path to tooltip param
     // getDataParams(dataIndex) { const params = super.getDataParams(...); params.treeAncestors = wrapTreePathInfo(node, this); params.collapsed = !node.isExpand; return params; }
-    // PORT-NOTE (deferred): requires `super.getDataParams` (DataFormatMixin.getDataParams IS ported in
-    //   model/mixin/dataFormat.swift but not yet a conformance wired on this SeriesModel) and
-    //   `wrapTreePathInfo` (chart/helper/treeHelper.swift IS ported but `wrapTreePathInfo` within it is a
-    //   stub). `treeAncestors`/`collapsed` only feed labels/tooltip, both deferred. Faithful upstream
-    //   body (for the eventual port):
+    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
+    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
+    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
+    //   `treeAncestors` / `collapsed` slots. Wire the body below as soon as those fields land:
     //     const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
     //     params.treeAncestors = wrapTreePathInfo(node, this);

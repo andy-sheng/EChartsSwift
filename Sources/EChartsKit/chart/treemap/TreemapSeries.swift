@@ -29,7 +29,8 @@ import ZRenderKit
 //       `tree.getNodeByDataIndex`, `tree.root`, `node.depth`, `root.contains(...)`.
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
-//       -> wrapTreePathInfo (chart/helper/treeHelper.swift); used by `getDataParams` (still deferred below).
+//       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
+//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -233,10 +234,10 @@ open class TreemapSeriesModel: SeriesModel {
     //     params.treePathInfo = params.treeAncestors;
     //     return params;
     // }
-    // PORT-NOTE (deferred): requires `wrapTreePathInfo` — chart/helper/treeHelper.swift IS ported but
-    //   `wrapTreePathInfo` within it is still a deferred stub — and `CallbackDataParams` gaining
-    //   `treeAncestors`/`treePathInfo` slots (they only feed labels/tooltip, both deferred). Same deferral as
-    //   the sibling SunburstSeries.getDataParams. Faithful upstream body preserved above for the eventual port.
+    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
+    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
+    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
+    //   `treeAncestors` / `treePathInfo` slots. Wire the faithful body preserved above as soon as they land.
 
     /**
      * @public
