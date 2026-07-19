@@ -24,9 +24,9 @@ import ZRenderKit
 // import axisDefault from './axisDefault';                               -> axisDefault (coord/axisDefault.swift; map is `axisDefault.option`)
 // import ComponentModel from '../model/Component';                       -> ComponentModel (model/Component.swift)
 // import { getLayoutParams, mergeLayoutParam, fetchLayoutMode } from '../util/layout';
-//     -> PORT-NOTE (deferred): requires util/layout `fetchLayoutMode` / `getLayoutParams` (still absent;
-//        only `mergeLayoutParam` is ported in util/layout.swift). The layout-mode param extraction/merge in
-//        `mergeDefaultAndTheme` is deferred (same deferral as ComponentModel.mergeDefaultAndTheme).
+//     -> all three ported: layout.fetchLayoutMode / layout.getLayoutParams / layout.mergeLayoutParam
+//        (util/layout.swift). The layout-mode param extraction/merge in `mergeDefaultAndTheme` is
+//        implemented below (calls all three) — no longer deferred.
 // import OrdinalMeta from '../data/OrdinalMeta';                         -> OrdinalMeta (data/OrdinalMeta.swift)
 // import { DimensionName, BoxLayoutOptionMixin, OrdinalRawValue } from '../util/types';
 //     -> DimensionName / BoxLayoutOptionMixin / OrdinalRawValue (util/types.swift)
@@ -219,12 +219,18 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     // private __ordinalMeta: OrdinalMeta;
     private var __ordinalMeta: OrdinalMeta!
 
+    // PORT-NOTE: this override is not exercised in the current build — AxisModel is only instantiated by
+    //   the factory passed to registers.registerComponentModel(...), which is still a PortStub that does
+    //   not invoke the factory (Phase 6b registrar wiring). Live polar/parallel axes use their own
+    //   overrides (e.g. PolarAxisModel.mergeDefaultAndTheme). The body is a faithful port kept ready for
+    //   when the dynamic-class factory is wired; it is not a live behavior fix today.
     public override func mergeDefaultAndTheme(_ option: ModelOption?, _ ecModel: GlobalModel?) {
         // const layoutMode = fetchLayoutMode(this);
         let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode
         //     ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE: `option === self.option` at call (mirroring Model.mergeOption), so the input
+        // PORT-NOTE: `option === self.option` because Model's constructor stores `self.option = option`
+        //   before init() calls mergeDefaultAndTheme(option) (upstream Component.ts:155-161), so the input
         //   position params are captured from that bag before the theme/default merges below.
         let inputPositionParams: [String: Any]
         if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
@@ -240,7 +246,8 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
         // option.type = getAxisType(option);
         // PORT-NOTE: upstream mutates the shared `option` object in place; Swift bags are value types,
         //   so merge into a mutable copy and write it back to `self.option` (`option === self.option`
-        //   at call, mirroring Model.mergeOption's writeback). merge overwrite defaults to false.
+        //   at call because Model's constructor stores `self.option = option` before init() calls
+        //   mergeDefaultAndTheme(option); see Component.ts:155-161). merge overwrite defaults to false.
         if var target = (self.option ?? option) as? [String: Any] {
             if let themeModel = ecModel?.getTheme(),
                let themeAxis = themeModel.get(__axisType + "Axis") as? [String: Any] {
