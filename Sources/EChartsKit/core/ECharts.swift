@@ -2859,10 +2859,18 @@ public final class ECharts: EChartsType {
         }
 
         // handleLegacySelectEvents(messageCenter, this, this._api);
-        //   PORT-NOTE (gap): `legacy/dataSelectAction.ts` is NOT ported (the deprecated
-        //   'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat events, which re-emit the
-        //   modern 'selectchanged' under the pre-v5 names). Consequence: a listener bound to one of the
-        //   DEPRECATED event names never fires. The modern events are unaffected.
+        //   `legacy/dataSelectAction.ts` is now ported (dataSelectAction.handleLegacySelectEvents): it
+        //   registers the deprecated 'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat
+        //   events that re-emit the modern 'selectchanged' under the pre-v5 names.
+        //   PORT-NOTE (gap — the handler RUNS today, it is NOT dormant): 'selectchanged' is already
+        //   published as the NON-refined event type (actionRegister.swift:48 registers select/unselect/
+        //   toggleSelect with `event = SELECT_CHANGED_EVENT_TYPE` and no `refineEvent`, so
+        //   `nonRefinedEventType` resolves to 'selectchanged'), and doDispatchAction triggers it with an
+        //   `ECActionEvent` replicated from the payload. The handler accepts that shape. What is still
+        //   missing is `refineEvent` (`makeSelectChangedEvent`), which is what computes the `selected`
+        //   array; without it the reconstructed event has `selected == []`, so the legacy per-series
+        //   events still emit nothing. See the detailed note in legacy/dataSelectAction.swift.
+        dataSelectAction.handleLegacySelectEvents(messageCenter, self, self._api)
     }
 
     // ------------------------------------------------------------------------

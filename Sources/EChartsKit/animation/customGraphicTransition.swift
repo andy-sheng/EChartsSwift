@@ -262,8 +262,14 @@ public func applyLeaveTransition(
         // TODO TODO use leave after leaveAnimation in series is introduced
         // TODO Data index?
         var config = getElementAnimationConfig(.update, el, elOption, animatableModel, 0)
-        config.done = {
-            parent?.remove(el)
+        // PORT-NOTE (divergence, intentional): `el` and `parent` are captured WEAKLY. The config is handed
+        //   to `el.animateTo` below, so a strong capture would form el -> animator -> done -> el, a cycle
+        //   that only breaks when the animation completes; a chart disposed mid-leave-transition would leak
+        //   the whole element subtree. Upstream relies on JS GC and has no equivalent hazard.
+        config.done = { [weak el, weak parent] in
+            if let el = el {
+                parent?.remove(el)
+            }
             onRemove?()
         }
         el.animateTo(leaveToProps, config)
