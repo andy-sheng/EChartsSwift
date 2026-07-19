@@ -230,10 +230,11 @@ open class MarkPointView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mpData.eachItemGraphicEl(el => el.traverse(child => getECData(child).dataModel = mpModel));
-        //   PORT-NOTE (deferred): tooltip host-model wiring (interaction/tooltip). Additionally the
-        //   direct build above does not register graphic els into `mpData._graphicEls` (that is
-        //   SymbolDraw's job), so this loop would iterate nothing; and `getECData(child).dataModel`
-        //   requires `MarkPointModel: DataModel` (blocked — DataFormatMixin conformance, see MarkerModel).
+        //   PORT-NOTE (deferred): tooltip host-model wiring (interaction/tooltip). `MarkPointModel`
+        //   now conforms to `DataModel` (inherited from `MarkerModel`, see MarkerModel.swift), so the
+        //   conformance no longer blocks this. It stays deferred because the direct build above does
+        //   not register graphic els into `mpData._graphicEls` (that is SymbolDraw's job), so this
+        //   loop would iterate nothing; wire it once the els are registered.
 
         self.markKeep(symbolDraw)
 

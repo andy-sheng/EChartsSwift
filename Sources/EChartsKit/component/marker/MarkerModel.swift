@@ -372,6 +372,24 @@ open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
 //      protocol + extension (mirrors SeriesModel), grafting `getRawValue`/`getFormattedLabel` and the
 //      base `getDataParams`/`formatTooltip` that the overrides above build on.
 
+// PORT-NOTE: the marker views tag their graphic els with `getECData(el).dataModel = markerModel`
+//   (ECData.dataModel: DataModel?, innerStore.swift). `DataModel` (util/types.swift) refines
+//   `DataHost` + `DataFormatMixin` (both conformed on the class above) and additionally requires the
+//   3-arg `getDataParams(_:_:_:)`. The `el:` parameter is a port artifact that exists only on
+//   upstream's CustomSeries `getDataParams` override; MarkerModel itself provides only the 2-arg form,
+//   so add the 3-arg witness delegating to it. Declared on the BASE class so it covers all three
+//   subclasses (MarkPointModel / MarkLineModel / MarkAreaModel). Same-module conformance ⇒ no
+//   `@retroactive`. Default `= nil` keeps both the 2-arg and 3-arg forms callable.
+extension MarkerModel: DataModel {
+    public func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil,
+        _ el: Element? = nil
+    ) -> CallbackDataParams {
+        return self.getDataParams(dataIndex, dataType)
+    }
+}
+
 // export default MarkerModel;  -> `open class MarkerModel` above.
 
 // JS truthiness for the dynamic `getShallow('animation')` result (CONVENTIONS §6).

@@ -518,12 +518,11 @@ public final class MarkAreaView: MarkerView {
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
             // getECData(polygon).dataModel = maModel;
             // PORT-NOTE (deferred): `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens`
-            //   (neutral99) ARE ported now — but this label block stays deferred for a different reason:
-            //   `labelFetcher: maModel` requires `maModel` (a MarkerModel) to be a `DataFormatMixin`
-            //   (for the getFormattedLabel the fetcher provides), and `getECData(polygon).dataModel =
-            //   maModel` requires MarkerModel to conform to `DataModel`. MarkerModel conforms to neither
-            //   yet (only SeriesModel is a DataFormatMixin; see MarkerModel.swift class header). Wire this
-            //   block once MarkerModel gains DataFormatMixin/DataModel conformance.
+            //   (neutral99) ARE ported now, and `MarkerModel` now conforms to `DataFormatMixin`/`DataModel`
+            //   (see MarkerModel.swift) so `labelFetcher: maModel` and `getECData(polygon).dataModel =
+            //   maModel` are no longer blocked on the conformance. This label + host-model block stays a
+            //   separate consumer-wiring follow-up (per SYMBOLS row 10); wire it together with the tooltip
+            //   host-model tagging.
         })
 
         inner(polygonGroup).data = areaData

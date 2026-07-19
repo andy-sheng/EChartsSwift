@@ -2895,11 +2895,14 @@ public final class ECharts: EChartsType {
                             // const dataModel = ecData.dataModel || ecModel.getSeriesByIndex(ecData.seriesIndex);
                             // params = dataModel && dataModel.getDataParams(ecData.dataIndex, ecData.dataType, el) || {};
                             //
-                            // PORT-NOTE: `ecData.dataModel` is never populated in this port (the
-                            //   markPoint/markLine/markArea views that set it are blocked on
-                            //   `MarkerModel: DataModel` conformance — see MarkPointView.swift). So the
-                            //   `|| ecModel.getSeriesByIndex(...)` arm always runs. Consequence: a click on a
-                            //   MARKER element packs its params from the HOST SERIES, not the marker model.
+                            // PORT-NOTE: `ecData.dataModel` is not yet populated in this port. `MarkerModel`
+                            //   now conforms to `DataModel` (see MarkerModel.swift), so the conformance no
+                            //   longer blocks it — but the markPoint/markLine/markArea views do not yet
+                            //   assign `getECData(el).dataModel = markerModel` (a separate consumer-wiring
+                            //   follow-up, SYMBOLS row 10). Until they do, the `|| ecModel.getSeriesByIndex(...)`
+                            //   arm always runs, so a click on a MARKER element packs its params from the HOST
+                            //   SERIES, not the marker model. When the views are wired, restore the
+                            //   `ecData.dataModel || ecModel.getSeriesByIndex(...)` precedence (typed `DataModel?`).
                             // PORT-NOTE: `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
                             //   exists only on the CustomSeries override (`DataFormatMixin.getDataParams` takes
                             //   two). Custom series' extra `el`-derived params are therefore not packed.

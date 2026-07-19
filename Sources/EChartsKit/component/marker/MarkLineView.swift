@@ -473,9 +473,8 @@ final class MarkLineView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mlData.line.eachItemGraphicEl(function (el) { getECData(el).dataModel = mlModel; ... });
-        // PORT-NOTE: `MarkerModel` now conforms to `DataFormatMixin`/`DataHost` (MarkerModel.swift); the
-        //   only remaining piece for `ECData.dataModel` (typed `DataModel?`) is the `DataModel` conformance
-        //   — added as a retroactive extension at the bottom of this file (MarkLineModel: DataModel). The
+        // PORT-NOTE: `MarkerModel` conforms to `DataFormatMixin`/`DataHost`/`DataModel` on the base class
+        //   (MarkerModel.swift), so `ECData.dataModel` (typed `DataModel?`) accepts `mlModel` directly. The
         //   child callback returns `Void` upstream (falsy → never stops descending); mapped to the `Group`
         //   traverse overload with a `false`-returning closure.
         lineData.eachItemGraphicEl { el, _ in
@@ -589,20 +588,8 @@ private func createList(
 // export default MarkLineView;  -> `final class MarkLineView` above.
 
 // PORT-NOTE: `getECData(el).dataModel = mlModel` (renderSeries, host-model tooltip tagging) needs
-//   `mlModel` to be a `DataModel`. `MarkerModel` already conforms to `DataHost` + `DataFormatMixin`
-//   (MarkerModel.swift); `DataModel` additionally requires the 3-arg `getDataParams(_:_:_:)`.
-//   `MarkerModel` provides only the 2-arg form (the `el` argument exists only on the CustomSeries
-//   override in upstream), so add the 3-arg witness delegating to it. Same-module conformance ⇒ no
-//   `@retroactive` needed.
-extension MarkLineModel: DataModel {
-    func getDataParams(
-        _ dataIndex: Double,
-        _ dataType: SeriesDataType?,
-        _ el: Element?
-    ) -> CallbackDataParams {
-        return self.getDataParams(dataIndex, dataType)
-    }
-}
+//   `mlModel` to be a `DataModel`. `MarkerModel` conforms to `DataModel` on the BASE class
+//   (MarkerModel.swift), which covers `MarkLineModel`; no subclass-specific extension is needed here.
 
 // ── local helpers (not in upstream; bridge dynamic option bags <-> MarkerPositionOption) ──────────
 
