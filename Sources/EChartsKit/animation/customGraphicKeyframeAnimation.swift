@@ -22,8 +22,8 @@
 //   `keyframeAnimation: { duration, loop, keyframes: [{ percent, easing, style/shape/... }] }`).
 //
 // upstream imports (mapped):
-//   import { ELEMENT_ANIMATABLE_PROPS } from './customGraphicTransition';  -> defined below (['', 'style',
-//     'shape', 'extra']); customGraphicTransition is not otherwise ported.
+//   import { ELEMENT_ANIMATABLE_PROPS } from './customGraphicTransition';  -> provided by
+//     animation/customGraphicTransition.swift (public top-level `let`, same module).
 //   import { getAnimationConfig } from './basicTransition';  -> animation/basicTransition.swift.
 //   import { makeInner } from '../util/model';               -> EChartsKit `model.makeInner`.
 //   Element / Animator / AnimationEasing                     -> ZRenderKit.
@@ -31,9 +31,9 @@
 import Foundation
 import ZRenderKit
 
-// upstream: export const ELEMENT_ANIMATABLE_PROPS = ['', 'style', 'shape', 'extra'] as const;
-//   '' targets the element's root (transform) props; the others target the like-named sub-bag.
-let ELEMENT_ANIMATABLE_PROPS: [String] = ["", "style", "shape", "extra"]
+// upstream: import { ELEMENT_ANIMATABLE_PROPS } from './customGraphicTransition';
+//   Now provided by animation/customGraphicTransition.swift (public top-level `let`, same module).
+//   The former local duplicate was removed — customGraphicTransition is the SINGLE OWNER.
 
 // upstream: const KEYFRAME_EXCLUDE_KEYS = ['percent', 'easing', 'shape', 'style', 'extra'];
 private let KEYFRAME_EXCLUDE_KEYS: Set<String> = ["percent", "easing", "shape", "style", "extra"]
