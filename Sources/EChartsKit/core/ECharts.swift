@@ -2903,20 +2903,32 @@ public final class ECharts: EChartsType {
                             // const dataModel = ecData.dataModel || ecModel.getSeriesByIndex(ecData.seriesIndex);
                             // params = dataModel && dataModel.getDataParams(ecData.dataIndex, ecData.dataType, el) || {};
                             //
-                            // PORT-NOTE: `ecData.dataModel` is not yet populated in this port. `MarkerModel`
-                            //   now conforms to `DataModel` (see MarkerModel.swift), so the conformance no
-                            //   longer blocks it — but the markPoint/markLine/markArea views do not yet
-                            //   assign `getECData(el).dataModel = markerModel` (a separate consumer-wiring
-                            //   follow-up, SYMBOLS row 10). Until they do, the `|| ecModel.getSeriesByIndex(...)`
-                            //   arm always runs, so a click on a MARKER element packs its params from the HOST
-                            //   SERIES, not the marker model. When the views are wired, restore the
-                            //   `ecData.dataModel || ecModel.getSeriesByIndex(...)` precedence (typed `DataModel?`).
+                            // PORT-NOTE: `ecData.dataModel` is populated by all three marker views now that
+                            //   `MarkerModel` conforms to `DataModel` (MarkerModel.swift):
+                            //   `getECData(el).dataModel = mlModel` (MarkLineView.renderSeries),
+                            //   `= mpModel` (MarkPointView.renderSeries) and `= maModel`
+                            //   (MarkAreaView.renderSeries). Upstream's
+                            //   `ecData.dataModel || ecModel.getSeriesByIndex(...)` precedence is therefore
+                            //   restored: a click on a MARKER element packs its params from the MARKER model,
+                            //   not the host series. `SeriesModel` does not conform to `DataModel`, so the two
+                            //   arms of the `||` cannot share one `DataModel?` binding and are branched
+                            //   instead; the evaluation order is upstream's.
                             // PORT-NOTE: `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
                             //   exists only on the CustomSeries override (`DataFormatMixin.getDataParams` takes
-                            //   two). Custom series' extra `el`-derived params are therefore not packed.
-                            let dataModel: SeriesModel? = ecData.seriesIndex != nil
-                                ? ecModel.getSeriesByIndex(ecData.seriesIndex!) : nil
-                            if let dataModel = dataModel {
+                            //   two); `MarkerModel`'s 3-arg `DataModel` witness delegates to the 2-arg form and
+                            //   ignores it. `CustomSeries` DOES define a 3-arg `getDataParams`
+                            //   (chart/custom/CustomSeries.swift), but it is an OVERLOAD returning
+                            //   `CustomCallbackDataParams` — not a `DataModel` witness — so it is unreachable
+                            //   through the `SeriesModel`-typed binding of the fallback arm below. Custom
+                            //   series' extra `el`-derived params are therefore still not packed.
+                            if let dataModel = ecData.dataModel {
+                                params = ECElementEvent(
+                                    type: eveName,
+                                    dataParams: dataModel.getDataParams(dataIndex, ecData.dataType, el)
+                                )
+                            }
+                            else if let seriesIndex = ecData.seriesIndex,
+                                    let dataModel = ecModel.getSeriesByIndex(seriesIndex) {
                                 params = ECElementEvent(
                                     type: eveName,
                                     dataParams: dataModel.getDataParams(dataIndex, ecData.dataType)

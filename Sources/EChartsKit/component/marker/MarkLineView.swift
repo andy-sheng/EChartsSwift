@@ -587,10 +587,6 @@ private func createList(
 
 // export default MarkLineView;  -> `final class MarkLineView` above.
 
-// PORT-NOTE: `getECData(el).dataModel = mlModel` (renderSeries, host-model tooltip tagging) needs
-//   `mlModel` to be a `DataModel`. `MarkerModel` conforms to `DataModel` on the BASE class
-//   (MarkerModel.swift), which covers `MarkLineModel`; no subclass-specific extension is needed here.
-
 // ── local helpers (not in upstream; bridge dynamic option bags <-> MarkerPositionOption) ──────────
 
 // Build a MarkerPositionOption from a raw `[String: Any]` data item (position-only fields).
