@@ -479,7 +479,7 @@ open class LinesSeriesModel: SeriesModel {
     }
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }
-    open func preventIncremental() -> Bool {
+    open override func preventIncremental() -> Bool {
         // PORT-NOTE (deferred): `effect` render is ANIMATED and DEFERRED (CONVENTIONS §5). The option flag
         //   is still read faithfully so the (deferred) incremental/effect pipeline sees the right value.
         return jsTruthy(self.get(["effect", "show"]))

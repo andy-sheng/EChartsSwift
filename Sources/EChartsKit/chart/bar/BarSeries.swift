@@ -149,11 +149,10 @@ open class BarSeriesModel: BaseBarSeriesModel {
     // upstream: __preparePipelineContext(view: ChartView, pipeline: Pick<Pipeline, 'progressiveEnabled' | 'threshold'>)
     //   `Pick<Pipeline, ...>` -> `PipelinePick` (core/Scheduler.swift / util/modelUtil.swift).
     // NOTE: this is a declaration-merged optional method on the upstream `SeriesModel` interface; the
-    //   base Swift `SeriesModel` does not declare it, so it is introduced fresh here. The Scheduler
-    //   currently always calls `model.preparePipelineContext` directly (base SeriesModel declares no
-    //   such slot — see the POTENTIAL-BUG in core/Scheduler.swift), so this override is not yet reached
-    //   by the pipeline; kept faithful for when it is.
-    open func __preparePipelineContext(_ view: ChartView, _ pipeline: PipelinePick) -> PipelineContext {
+    //   Swift base `SeriesModel` declares it as an `open func` whose body is upstream's "absent"
+    //   fallback (`model.preparePipelineContext`), so this is a real `override` and the Scheduler
+    //   (`updateStreamModes`) dispatches to it dynamically.
+    open override func __preparePipelineContext(_ view: ChartView, _ pipeline: PipelinePick) -> PipelineContext {
         var context = model.preparePipelineContext(self, view, pipeline)
         // Do not support progressive in normal mode.
         if context.progressiveRender {
