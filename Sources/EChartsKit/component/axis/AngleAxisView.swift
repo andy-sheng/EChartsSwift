@@ -27,8 +27,8 @@ import ZRenderKit
 //     → `util/graphic` is NOT ported as a namespace. `graphic.Circle` / `graphic.Arc` / `graphic.Ring` /
 //       `graphic.Sector` / `graphic.Line` / `graphic.Text` are the ZRenderKit scene-graph shapes (used
 //       directly — the sanctioned DRAWING deviation; cf. CartesianAxisView / RadarComponentView).
-//       `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath). `graphic.setTooltipConfig` is the
-//       tooltip-config seam, deferred below (PORT-NOTE).
+//       `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath). `graphic.setTooltipConfig` →
+//       the file-scope `setTooltipConfig` (util/graphic.swift) — wired at the axisLabel builder.
 //   import {createTextStyle} from '../../label/labelStyle';
 //     → PORT-NOTE: `label/labelStyle` is ported (createTextStyle); this view uses the module-internal `createTextStyle(_ textStyleModel,
 //       text:, font:, overflow:, width:, ellipsis:, fill:, align:, verticalAlign:)` reproduction that lives
@@ -398,9 +398,18 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
             _ = group.add(textEl)
 
             // upstream: graphic.setTooltipConfig({ el: textEl, componentModel: angleAxisModel,
-            //   itemName: labelItem.formattedLabel, formatterParamsExtra: { isTruncated, value, tickIndex } });
-            // PORT-NOTE (deferred): requires `graphic.setTooltipConfig` (util/graphic tooltip-config
-            //   seam) — tooltip wiring deferred (static render scope, CONVENTIONS §5).
+            //   itemName: labelItem.formattedLabel, formatterParamsExtra: {
+            //     isTruncated: () => textEl.isTruncated, value: labelItem.rawLabel, tickIndex: idx } });
+            setTooltipConfig(
+                el: textEl,
+                componentModel: angleAxisModel,
+                itemName: labelItem.labelItem.formattedLabel,
+                formatterParamsExtra: [
+                    "isTruncated": { [weak textEl] () -> Bool in textEl?.isTruncated ?? false } as () -> Bool,
+                    "value": labelItem.labelItem.rawLabel,
+                    "tickIndex": idx
+                ]
+            )
 
             // Pack data for mouse event
             if triggerEvent {
