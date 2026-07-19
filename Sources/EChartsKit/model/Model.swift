@@ -79,6 +79,14 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     //   (CONVENTIONS): keyed access casts to `[String: Any]` in `getShallow`/`_doGet`.
     public var option: ModelOption?
 
+    // PORT-NOTE: upstream `type ItemModel = Model<...> & { getAnimationDelayParams?(path): {...} }`
+    //   (PictorialBarView.ts): a per-instance method monkeypatched onto the item model in
+    //   `getItemModel` and read structurally in basicTransition's `animateOrSetProps`
+    //   (`animatableModel.getAnimationDelayParams(el, dataIndex)`). Ported as an OPTIONAL STORED
+    //   CLOSURE so a consumer (PictorialBarView) can assign it on a specific item Model; nil on
+    //   every other Model, matching the `getAnimationDelayParams?` optional call semantics.
+    public var getAnimationDelayParams: ((Element, Int) -> AnimationDelayCallbackParam)?
+
     // PORT-NOTE: marked `required` so `clone()` can reconstruct the dynamic subclass via
     //   `type(of: self).init(...)` (a Swift metatype can only call a `required` initializer),
     //   faithfully mirroring upstream's `new (this.constructor as any)(...)`. Subclasses that

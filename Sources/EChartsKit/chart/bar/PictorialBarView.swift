@@ -663,6 +663,8 @@ private func pbCreateOrUpdateRepeatSymbols(
     // Iterate existing symbol paths in the bundle. A symbol is a Displayable (Path shape or ZRImage).
     for el in bundle.children() {
         guard let path = el as? Displayable else { continue }
+        // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
+        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
         if index < repeatTimes {
             pbUpdateAttr(path, nil, makeTarget(index), symbolMeta, isUpdate, nil)
         }
@@ -670,6 +672,9 @@ private func pbCreateOrUpdateRepeatSymbols(
             let captured = path
             pbUpdateAttr(path, nil, ["scaleX": 0.0, "scaleY": 0.0], symbolMeta, isUpdate, {
                 _ = bundle.remove(captured)
+                // Evict the side-store entry so it shares the path's lifetime (upstream stores the
+                // fields on the path, freed when the path is removed/deallocated).
+                _pictorialAnimStore[ObjectIdentifier(captured)] = nil
             })
         }
         index += 1
@@ -677,6 +682,8 @@ private func pbCreateOrUpdateRepeatSymbols(
 
     while index < repeatTimes {
         let path = pbCreatePath(symbolMeta)
+        // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
+        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
         _ = bundle.add(path)
 
         let target = makeTarget(index)
@@ -841,11 +848,33 @@ private func pbRectShapeAnimShape(_ s: RectShape) -> [String: Any] {
     return ["x": s.x, "y": s.y, "width": s.width, "height": s.height]
 }
 
+// upstream `PictorialSymbol` carries `__pictorialAnimationIndex` / `__pictorialRepeatTimes` stored on
+//   the path. Swift can not add stored props to `Displayable`, so a side-store keyed by identity holds
+//   them (mirrors the layoutHelper HierNode pattern). Read by `getAnimationDelayParams`.
+private var _pictorialAnimStore: [ObjectIdentifier: (index: Int, repeatTimes: Int)] = [:]
+
 // upstream: function getItemModel(data, dataIndex) — monkeypatches getAnimationDelayParams /
-//   isAnimationEnabled onto the item model. The port does not monkeypatch (see pbGetSymbolMeta), so this
-//   just returns the item model.
+//   isAnimationEnabled onto the item model. isAnimationEnabled is computed inline in pbGetSymbolMeta;
+//   getAnimationDelayParams is assigned here as the optional stored closure on Model, read structurally
+//   by basicTransition's animateOrSetProps as `model.getAnimationDelayParams?(el, dataIndex)`.
 private func pbGetItemModel(_ data: SeriesData, _ dataIndex: Int) -> Model {
-    return data.getItemModel(dataIndex)
+    let itemModel = data.getItemModel(dataIndex)
+    // upstream getAnimationDelayParams(this, path):
+    //   { index: path.__pictorialAnimationIndex, count: path.__pictorialRepeatTimes }
+    //   The order is the same as the z-order, see `symbolRepeatDiretion`.
+    // PORT-NOTE: animationModel is also passed to non-symbol elements (the clip path, barRect), which
+    //   are never registered in `_pictorialAnimStore`. Upstream reads the un-set fields off such a path
+    //   as `undefined` (→ NaN when a function-valued animationDelay reads params.index/count); the port
+    //   substitutes 0/0 here. Divergence only surfaces for a user-supplied function-valued animationDelay
+    //   that reads those params on a non-symbol element; no built-in producer does.
+    itemModel.getAnimationDelayParams = { path, _ in
+        let params = _pictorialAnimStore[ObjectIdentifier(path)]
+        return AnimationDelayCallbackParam(
+            count: Double(params?.repeatTimes ?? 0),
+            index: Double(params?.index ?? 0)
+        )
+    }
+    return itemModel
 }
 
 // upstream: function createBar(data, opt, symbolMeta, isUpdate?)
@@ -911,6 +940,14 @@ private func pbRemoveBar(
 ) {
     // Not show text when animating.
     bar.__pictorialBarRect?.removeTextContent()
+    // Evict side-store entries for this bar's symbol paths (upstream frees the fields with the path).
+    if let bundle = bar.__pictorialBundle {
+        for el in bundle.children() {
+            if let path = el as? Displayable {
+                _pictorialAnimStore[ObjectIdentifier(path)] = nil
+            }
+        }
+    }
     removeElementWithFadeOut(bar, animationModel, dataIndex)
     data.setItemGraphicEl(dataIndex, nil)
 }
