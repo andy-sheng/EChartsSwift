@@ -118,32 +118,51 @@ public enum linkSeriesData {
         //   via `wrapMethod` + `curry` so the injection runs after the original method. Swift cannot
         //   replace a method by name, so `SeriesData.wrapMethod` STORES the injection keyed by method
         //   name and the ported wrappable methods fire it explicitly (in registration order, matching
-        //   upstream's outer-most-last wrap chain). All wrappable methods fire their stored injections:
-        //   `cloneShallow` re-links the shared tree/graph struct onto the clone produced by
-        //   `dataTaskReset` (so a hierarchical series' `getData().tree` survives); the transferable
-        //   methods (`map`/`downSample`/`minmaxDownSample`/`lttbDownSample`) and the changable methods
-        //   (`filterSelf`/`selectRange`) fire via `SeriesData.fireWrappedMethodInjections`: the
-        //   transferable methods fire the transfer injection on the derived list they produce, while
-        //   `filterSelf`/`selectRange` fire the change injection (`struct.update()`) after filtering
-        //   `self` in place.
+        //   upstream's outer-most-last wrap chain). All wrappable methods fire their stored injections —
+        //   but only on the SeriesData instances registered here: `SeriesData.transferProperties` does
+        //   NOT copy `_wrappedMethodInjections` onto derived/cloned lists (upstream does, implicitly, by
+        //   copying the wrapped FUNCTION for each name in `__wrappedMethods`), so a clone-of-a-clone
+        //   fires nothing. Safe today because `dataTaskReset` always clones from `getRawData()`, i.e. the
+        //   registered original. // PORT-TODO: copy `_wrappedMethodInjections` in `transferProperties` if
+        //   a derived list ever needs re-linking (note the ported injections capture the registered `data`
+        //   explicitly where upstream re-binds `this`, so a naive copy would fire against the wrong list).
+        //   The individual methods: `cloneShallow` is itself in TRANSFERABLE_METHODS, so it is registered
+        //   TWICE and fires transferInjection (re-link the sibling datas) followed by cloneShallowInjection
+        //   (clone the sibling datas) in registration order — together this is what re-links the shared
+        //   tree/graph struct onto the clone produced by `dataTaskReset` (so a hierarchical series'
+        //   `getData().tree` survives). The remaining transferable methods (`map`/`downSample`/
+        //   `minmaxDownSample`/`lttbDownSample`) and the changable methods (`filterSelf`/`selectRange`)
+        //   fire via `SeriesData.fireWrappedMethodInjections`: the transferable methods fire the transfer
+        //   injection on the derived list they produce, while `filterSelf`/`selectRange` fire the change
+        //   injection (`struct.update()`) after filtering `self` in place.
+        // PORT NOTE(ARC): the receiver is captured WEAKLY below — the closure is stored back onto that
+        //   same object's `_wrappedMethodInjections`, which in JS is collectable but under ARC would be a
+        //   direct self-retain cycle. NOTE this alone does not fully break the cycle: the captured `opt`
+        //   still reaches the data transitively via `opt.struct.data` (Tree/Graph hold `SeriesData`
+        //   strongly, and `SeriesData.tree`/`.graph` hold the struct strongly in return).
+        //   // PORT-TODO: make `Tree.data` / `Graph.data` / `Graph.edgeData` weak back-references so a
+        //   linked tree/graph/sankey/treemap/sunburst SeriesData actually deallocates with its host model.
         for (_, data) in datas! {
             for methodName in mainData.TRANSFERABLE_METHODS {
-                data.wrapMethod(methodName) { args in
-                    transferInjection(data, opt, (args.first as? SeriesData) ?? data)
+                data.wrapMethod(methodName) { [weak data] args in
+                    guard let data else { return nil }
+                    return transferInjection(data, opt, (args.first as? SeriesData) ?? data)
                 }
             }
         }
 
         // Beyond transfer, additional features should be added to `cloneShallow`.
-        mainData.wrapMethod("cloneShallow") { args in
-            cloneShallowInjection(opt, (args.first as? SeriesData) ?? mainData)
+        mainData.wrapMethod("cloneShallow") { [weak mainData] args in
+            guard let mainData else { return nil }
+            return cloneShallowInjection(opt, (args.first as? SeriesData) ?? mainData)
         }
 
         // Only mainData trigger change, because struct.update may trigger
         // another changable methods, which may bring about dead lock.
         for methodName in mainData.CHANGABLE_METHODS {
-            mainData.wrapMethod(methodName) { args in
-                changeInjection(opt, args.first ?? nil)
+            mainData.wrapMethod(methodName) { [weak mainData] args in
+                guard mainData != nil else { return nil }
+                return changeInjection(opt, args.first ?? nil)
             }
         }
 
