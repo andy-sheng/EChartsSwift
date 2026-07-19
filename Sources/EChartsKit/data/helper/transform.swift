@@ -68,12 +68,12 @@ public struct ExternalDataTransform {
     // Must include namespace like: 'ecStat:regression'
     public var type: String
     public var __isBuiltIn: Bool?
-    public var transform: (_ param: ExternalDataTransformParam) -> ExternalDataTransformResult
+    public var transform: (_ param: ExternalDataTransformParam) throws -> ExternalDataTransformResult
 
     public init(
         type: String,
         __isBuiltIn: Bool? = nil,
-        transform: @escaping (_ param: ExternalDataTransformParam) -> ExternalDataTransformResult
+        transform: @escaping (_ param: ExternalDataTransformParam) throws -> ExternalDataTransformResult
     ) {
         self.type = type
         self.__isBuiltIn = __isBuiltIn
@@ -585,7 +585,7 @@ private func applySingleDataTransform(
     }
 
     let resultList: [ExternalDataTransformResultItem] = model.normalizeToArray(
-        externalTransform.transform(ExternalDataTransformParam(
+        try externalTransform.transform(ExternalDataTransformParam(
             upstream: extUpSourceList[0],
             upstreamList: extUpSourceList,
             config: util.clone(transOption.config)
