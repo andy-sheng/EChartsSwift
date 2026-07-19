@@ -39,9 +39,11 @@ import ZRenderKit
 //   import labelLayout from './labelLayout';                       -> `pieLabelLayout` (sibling
 //       labelLayout.swift); wired in render() after every sector is built.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> label/labelGuideHelper.swift. The leader-line Polyline IS drawn (line style inlined in
-//          `_updateLabel`, points filled by `pieLabelLayout`); the state-driven `setLabelLineStyle`/
-//          `getLabelLineStatesModels` helpers themselves remain DEFERRED.
+//       -> label/labelGuideHelper.swift. BOTH helpers now EXIST there
+//          (`labelGuideHelper.setLabelLineStyle` / `labelGuideHelper.getLabelLineStatesModels`); only
+//          the CALL SITE here is pending, so the leader-line Polyline is still drawn with an inlined
+//          line style in `_updateLabel` (points filled by `pieLabelLayout`). See the
+//          `// PORT-TODO: wire setLabelLineStyle` marker there; do NOT re-derive the helper.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle.swift (`setLabelStyle`/`getLabelStatesModels`); wired in `_updateLabel`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
@@ -67,8 +69,9 @@ import ZRenderKit
 //   label / leader-line subsystem (`setLabelStyle` / `getLabelStatesModels` / `setTextGuideLine` +
 //   `pieLabelLayout`), and states / emphasis (`setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //   `ensureState('emphasis')` radius grow).
-// STILL DEFERRED: the state-driven `setLabelLineStyle`/`getLabelLineStatesModels` labelGuideHelper
-//   helpers (the leader-line style is inlined in `_updateLabel` instead — a cross-file dependency).
+// HELPERS PORTED, CALL SITE PENDING: the state-driven `setLabelLineStyle`/`getLabelLineStatesModels`
+//   labelGuideHelper helpers both EXIST now; this view has not been switched over yet, so the
+//   leader-line style stays inlined in `_updateLabel` (see the PORT-TODO there).
 // NOW WIRED (was deferred): the `select`-state `selectedOffset` dx/dy translate (exploded slice) on the
 //   sector + its label + leader line; the focus/blur fan-out (`toggleHoverEmphasis`); the SSR
 //   `scaleX/scaleY` enter branch and the `animationType === 'scale'` r-grow enter (alongside the
@@ -473,8 +476,11 @@ open class PieView: ChartView {
         //     if (labelPosition !== 'outside' && labelPosition !== 'outer') { sector.removeTextGuideLine(); }
         //     else { let polyline = getTextGuideLine(); if (!polyline) { ...setTextGuideLine... };
         //            setLabelLineStyle(this, getLabelLineStatesModels(itemModel), {...}); }
-        //   The state-driven `setLabelLineStyle`/`getLabelLineStatesModels` helpers are still DEFERRED, so
-        //   the line style is inlined here (mirrors FunnelView): a stroke-only Polyline attached as the
+        // PORT-TODO: wire setLabelLineStyle. Both helpers are PORTED and available
+        //   (`labelGuideHelper.setLabelLineStyle(sector, labelGuideHelper.getLabelLineStatesModels(
+        //   itemModel), <stroke/opacity defaultStyle>)`); only this call site is pending, and it should
+        //   REPLACE the inline style below rather than sit alongside it.
+        //   Until then the line style is inlined here (mirrors FunnelView): a stroke-only Polyline attached as the
         //   sector's textGuideLine. Its POINTS are filled later by `pieLabelLayout` (which also flips
         //   `ignore` for hidden labels). REUSE the existing guide line on a refresh so the reused sector
         //   keeps its leader-line element identity.

@@ -93,6 +93,38 @@ public final class Polyline: Path {
         let shape = shape as! PolylineShape
         poly.buildPath(ctx, shape, false)
     }
+
+    // Cross-module per-instance `buildPath` override seam. Upstream
+    //   `label/labelGuideHelper.setLabelLineStyle` does `labelLine.buildPath = buildLabelLinePath` —
+    //   a per-instance method reassignment on the live Polyline. Swift methods aren't reassignable,
+    //   so route a custom builder through the existing `__morphBuildPath` build-hook (honored by
+    //   `getUpdatedPathProxy` / `getCachedPathProxy` / `getBoundingRect` in place of `buildPath`;
+    //   the same seam decal/morphPath use). The builder receives the live `PathProxy` and this
+    //   Polyline's current `shape` (mirrors upstream `buildPath(ctx, this.shape)`). Pass `nil` to
+    //   restore the default `poly.buildPath`.
+    //
+    // COLLISION (read before reusing this): `__morphBuildPath` is a SINGLE slot on `Path`, shared with
+    //   the morph/clone/decal seams — `morphPath.swift:411` unconditionally nils it on restore, and
+    //   `morphPath.swift:464` / `ToolPath.swift:648` / `Path.swift:477` (decal) all assign it. It is
+    //   last-writer-wins with no diagnostic, so a label-line Polyline that is morphed (universal
+    //   transition), cloned via `clonePath`, or given a decal silently LOSES this override and reverts
+    //   to the default `poly.buildPath` (straight segments, no smooth-corner bezier). That is tolerable
+    //   only because `labelGuideHelper.setLabelLineStyle` re-installs the override on every update; a
+    //   caller that cannot re-install must add a dedicated `__buildPathOverride` slot on `Path`
+    //   (consulted before `__morphBuildPath`) rather than share this one.
+    // PORT-NOTE: the name has no upstream analogue (upstream just reassigns the method); SYMBOLS.tsv
+    //   row 47 asked for "__morphBuildPath exposed publicly" — this wraps that slot instead of
+    //   exposing it raw so the shape cast + weak capture live in one place.
+    public func setBuildPathOverride(_ builder: ((PathProxy, PolylineShape) -> Void)?) {
+        guard let builder = builder else {
+            self.__morphBuildPath = nil
+            return
+        }
+        self.__morphBuildPath = { [weak self] ctx in
+            guard let self = self, let shape = self.shape as? PolylineShape else { return }
+            builder(ctx, shape)
+        }
+    }
 }
 
 // upstream: export default Polyline;
