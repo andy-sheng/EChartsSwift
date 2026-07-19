@@ -629,14 +629,16 @@ public enum labelGuideHelper {
             var shapeBag = stateObj.shape ?? [:]
             shapeBag["smooth"] = smooth
             stateObj.shape = shapeBag
-            // upstream: stateObj.style = styleObj; — the untyped per-state style bag ([String: Any]).
-            // PORT-TODO: the RAW `getLineStyle()` bag is stored un-bridged (upstream has no bridge to
-            //   do). Its consumer `PathStyleProps.animationSet` reads `value as? Double` /
-            //   `as? [Double]`, so an Int-boxed option `lineStyle.width: 2` (→ "lineWidth") and the
-            //   String presets of `lineStyle.type` (→ "lineDash": "dashed"/"dotted"/"solid") are
-            //   silently DROPPED in emphasis/blur/select, while the normal branch honors both via
-            //   `barStyleFromDict`. Same known gap as ECLine.swift:324-326 — not parity; fix belongs
-            //   in `animationSet` (Int/String coercion) so every state bag benefits.
+            // upstream: stateObj.style = styleObj; — the untyped per-state style bag ([String: Any]),
+            //   stored RAW exactly as upstream does (upstream has no bridge to do).
+            // PORT-NOTE: its consumer is `PathStyleProps.animationSet` (via useState → _transitionState
+            //   → animateToShallow → animObjSet), which used to read `value as? Double` / `as? [Double]`
+            //   and so silently DROPPED an Int-boxed `lineStyle.width: 2` (→ "lineWidth") and the String
+            //   presets of `lineStyle.type` (→ "lineDash": "dashed"/"dotted"/"solid") on
+            //   emphasis/blur/select. Fixed at that seam (Int/NSNumber → Double + LineDash coercion in
+            //   `PathStyleProps.animationSet`, Path.swift) rather than normalized here, so every state
+            //   bag benefits — including the identical ECLine.swift gap — and the bag keeps the untyped
+            //   shape upstream expects.
             stateObj.style = styleObj
         }
     }
@@ -785,21 +787,37 @@ public enum labelGuideHelper {
             }
         }
 
-        if let labelLine = labelLine, var style = labelLine.pathStyle {
+        if let labelLine = labelLine {
             // upstream: defaults(labelLine.style, defaultStyle);
+            // (`pathStyle` is an IUO always populated by `Path.init` via useStyle/createStyle. The `??`
+            //  fallback keeps the mandatory `fill = nil` below on the UNCONDITIONAL path — upstream has
+            //  no guard here, and silently skipping it would render the leader line as a black-filled
+            //  closed shape. `createStyle()` is the right fallback: its result already has
+            //  `zrStyleMagic == true`, whereas a bare `PathStyleProps()` would make `useStyle` re-run
+            //  `createStyle`, and `extendPathStyle` skips nil sources — resurrecting `fill = '#000'`.)
+            var style = labelLine.pathStyle ?? labelLine.createStyle()
             if let defaultStyle = defaultStyle {
                 applyStyleDefaults(&style, defaultStyle)
             }
-            // Not fill. (upstream: labelLine.style.fill = null — the createStyle/useStyle merge would
-            //   otherwise keep the '#000' default.)
+            // Not fill. (upstream: labelLine.style.fill = null — the createStyle/useStyle merge
+            //   would otherwise keep the '#000' default.)
             style.fill = nil
             // PORT-NOTE: assign through `useStyle`, NOT `labelLine.pathStyle = style`. A direct store
-            //   bypasses the Swift-only `_syncCommonStyle()` mirror (private, Path.swift) that copies
-            //   opacity/shadow*/blend from `pathStyle` into the inherited `Displayable.style` which
-            //   `shouldBePainted`/`getPaintRect` read — pie/funnel pass an `opacity` in `defaultStyle`,
-            //   so a direct store would leave culling/paint-rect reading a stale value. It also skips
-            //   `dirtyStyle()`. `style` was copied out of the live `pathStyle`, so `zrStyleMagic` is
-            //   already true and `useStyle` skips the re-merge: pure assign + sync + dirty.
+            //   skips `dirtyStyle()` — required here, since clearing `fill` must invalidate the cached
+            //   paint — and bypasses the Swift-only `_syncCommonStyle()` mirror (private, Path.swift)
+            //   that copies opacity/shadow*/blend from `pathStyle` into the inherited
+            //   `Displayable.style` read by `shouldBePainted`/`getPaintRect`.
+            //   Scope of `applyStyleDefaults`: like upstream's `defaults()` — which reads `target[key]`
+            //   through the `createObject(DEFAULT_PATH_STYLE, ...)` prototype — it only fills slots that
+            //   are nil, and every CommonStyleProps field (opacity / shadowBlur / shadowOffset* /
+            //   shadowColor / blend) already has a non-nil DEFAULT_PATH_STYLE value. So `defaultStyle`
+            //   can only ever land the keys left nil in DEFAULT_PATH_STYLE (`stroke`, `decal`,
+            //   `lineDash`, `lineJoin`), and `_syncCommonStyle()` is provably a no-op at this call
+            //   site — it runs for hygiene, not because a live opacity path exists.
+            //   `zrStyleMagic` is pinned true so `useStyle` takes the pure assign + sync + dirty path:
+            //   were it ever false, `createStyle`/`extendPathStyle` would re-merge DEFAULT_PATH_STYLE
+            //   and — skipping the nil source — restore `fill = '#000'`.
+            style.zrStyleMagic = true
             labelLine.useStyle(style)
 
             let showAbove = asBool(normalModel.get("showAbove"))
