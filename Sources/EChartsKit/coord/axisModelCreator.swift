@@ -89,7 +89,32 @@ extension EChartsExtensionInstallRegisters {
     // PORT-NOTE: upstream signature is `registerComponentModel(ComponentModelClass)`. Ported as
     //   (type, factory) to carry the dynamically-generated class's per-type identity/defaults.
     public func registerComponentModel(_ componentModelType: ComponentFullType, _ factory: @escaping AxisModelFactory) {
-        // PORT-STUB: the registrar does not instantiate dynamically-generated axis model classes.
+        // upstream: registerComponentModel(ComponentModelClass) { ComponentModel.registerClass(ComponentModelClass); }
+        //
+        // PORT-STUB (Phase 6b — "dynamic axis-model synthesis"). This CANNOT be forwarded to
+        // `ComponentModel.registerClass(_:)` today, and the blocker is structural, not cosmetic:
+        //
+        //   1. `ComponentModel.registerClass` takes a `Constructor` (= `ClassManageable.Type`, util/clazz.swift)
+        //      and keys the registry off the class's STATIC `type`. Upstream keys each generated subclass by
+        //      its full type ('xAxis.category', 'xAxis.value', …); a single Swift `AxisModel` class has ONE
+        //      static `type`, so all four axis types would collide on one key — the per-type closure captures
+        //      (`axisName` / `axisType` / merged `defaultOption`) carried by `factory` have nowhere to live.
+        //   2. Instantiation goes back through the metatype (`model/Global.swift`:
+        //      `componentModelClass.init(newCmptOptionBag, self, self)`), so even a successful registration
+        //      would never invoke `factory`, leaving the created `AxisModel` unconfigured — see the
+        //      AxisModel class PORT-NOTE below for that rationale in full.
+        //   3. Registering under the full type would rewrite `storage['xAxis']` from `.clz` to `.container`
+        //      (util/clazz.swift `ClassManagement.registerClass`), DISPLACING the live stand-in
+        //      `EChartsXAxisModel` / `EChartsYAxisModel` that the cartesian path depends on today.
+        //
+        // Wiring this therefore requires a factory-capable class registry (`ClassManagement` +
+        // `ComponentModel.getClass` + the `Global.swift` instantiation site) — out of scope for a
+        // single-file port. Until then the hand-written stand-ins serve; note `axisModelCreator` itself
+        // has no live caller — its only callers are `installPolarAxisModels` (PolarAxisModel.swift:244)
+        // and `installParallelAxisModel` (ParallelAxisModel.swift:360), and neither of THOSE is invoked
+        // anywhere; core/ECharts.swift registers AngleAxisModel / RadiusAxisModel (861-862) and
+        // ParallelAxisModel (900) directly via `ComponentModel.registerClass`. So this stub is inert
+        // rather than lossy.
         PortStub.hit("axisModelCreator.registerComponentModel",
                      "axis model classes are not registered dynamically; ECharts.swift's hand-written "
                      + "stand-in models (EChartsXAxisModel / EChartsYAxisModel / …) serve instead")
@@ -217,7 +242,12 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     }
 
     // private __ordinalMeta: OrdinalMeta;
-    private var __ordinalMeta: OrdinalMeta!
+    //   PORT-NOTE: modeled as a plain Optional rather than an IUO — an implicit unwrap here is a latent
+    //   SIGTRAP (PORTING.md §12) because `getCategories`/`getOrdinalMeta` can be reached before
+    //   `optionUpdated` has built the meta. Mirrors the EChartsXAxisModel / EChartsYAxisModel stand-ins
+    //   (core/ECharts.swift:197, 219); PolarAxisModel (:113) / SingleAxisModel (:179) / ParallelAxisModel
+    //   still use an IUO here and should be converted in the same pass.
+    private var __ordinalMeta: OrdinalMeta?
 
     // PORT-NOTE: this override is not exercised in the current build — AxisModel is only instantiated by
     //   the factory passed to registers.registerComponentModel(...), which is still a PortStub that does
@@ -304,13 +334,22 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
                 // return (option as CategoryAxisBaseOption).data;
                 return option?["data"] as? [OrdinalRawValue]
             }
-            return self.__ordinalMeta.categories
+            return self.__ordinalMeta?.categories
         }
         return nil
     }
 
     public func getOrdinalMeta() -> OrdinalMeta {
-        return self.__ordinalMeta
+        // PORT-NOTE: upstream returns the field raw (`undefined` before `optionUpdated`). The
+        //   non-Optional return type of `AxisModelExtendedInCreator.getOrdinalMeta()` forces a Swift-only
+        //   deviation: lazily create the meta if `optionUpdated` has not run yet. It MUST be memoized —
+        //   OrdinalMeta is a mutable identity object into which categories are collected during data init,
+        //   so returning a fresh instance per call would make categories written by one caller invisible
+        //   to the next and break meta identity comparisons (the known ordinalMeta-sharing trap).
+        if let meta = self.__ordinalMeta { return meta }
+        let meta = OrdinalMeta.createByAxisModel(self)
+        self.__ordinalMeta = meta
+        return meta
     }
 
     public func updateAxisBreaks(_ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult {
