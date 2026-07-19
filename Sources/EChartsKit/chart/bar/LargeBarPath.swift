@@ -117,9 +117,15 @@ public final class LargeBarPath: Path {
 // upstream: function createLarge(seriesModel, group, progressiveEls?, incremental?) (bar/BarView.ts:1137).
 //   Reads the barGrid layout (`largePoints` / `largeDataIndices` / `size` / `valueAxisHorizontal` /
 //   `largeBackgroundPoints`), builds the background LargeBarPath (if `showBackground`) then the data
-//   LargeBarPath, and styles them from the series visual. `progressiveEls`/`incremental` are the
-//   progressive path (not driven here — the native harness has no incremental pipeline).
-func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
+//   LargeBarPath, styles them from the series visual, wires the throttled hit-test, and (in the
+//   progressive/incremental path) stamps `incremental` + collects the new els into `progressiveEls`.
+func barCreateLarge(
+    _ seriesModel: BarSeriesModel,
+    _ group: ZRenderKit.Group,
+    _ progressiveEls: inout [Element]?,
+    _ incremental: Bool = false
+) {
+    // TODO support polar
     let data = seriesModel.getData()
     // upstream: const baseDimIdx = data.getLayout('valueAxisHorizontal') ? 1 : 0;
     let valueAxisHorizontal = (data.getLayout("valueAxisHorizontal") as? Bool) ?? false
@@ -127,20 +133,28 @@ func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
     let largeDataIndices = (data.getLayout("largeDataIndices") as? [Double]) ?? []
     let barWidth = (data.getLayout("size") as? Double) ?? 0
 
+    let backgroundModel = seriesModel.getModel("backgroundStyle")
+    let bgPointsOpt = data.getLayout("largeBackgroundPoints") as? [Double]
+    // upstream: const incrementalId = incremental ? getIncrementalId(seriesModel) : 0;
+    let incrementalId = incremental ? model.getIncrementalId(seriesModel) : 0
+
     // upstream: background LargePath (showBackground) — draw first (z2 0), then the data path (z2 1).
-    if let bgPoints = data.getLayout("largeBackgroundPoints") as? [Double], !bgPoints.isEmpty {
+    if let bgPoints = bgPointsOpt {
         let bgEl = LargeBarPath()
         var bgShape = LargeBarPathShape()
         bgShape.points = bgPoints
         bgEl.setShape(bgShape)
+        bgEl.incremental = incrementalId
+        bgEl.silent = true
+        bgEl.z2 = 0
         bgEl.baseDimIdx = baseDimIdx
         bgEl.largeDataIndices = largeDataIndices
         bgEl.barWidth = barWidth
-        bgEl.silent = true
-        bgEl.z2 = 0
-        let bgModel = seriesModel.getModel("backgroundStyle")
-        bgEl.useStyle(barStyleFromDict(bgModel.getItemStyle(nil, nil)))
+        bgEl.useStyle(barStyleFromDict(backgroundModel.getItemStyle(nil, nil)))
         _ = group.add(bgEl)
+
+        // upstream: progressiveEls && progressiveEls.push(bgEl);
+        progressiveEls?.append(bgEl)
     }
 
     // upstream: the data LargePath.
@@ -148,16 +162,105 @@ func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
     var shape = LargeBarPathShape()
     shape.points = (data.getLayout("largePoints") as? [Double]) ?? []
     el.setShape(shape)
+    el.incremental = incrementalId
+    el.ignoreCoarsePointer = true
+    el.z2 = 1
     el.baseDimIdx = baseDimIdx
     el.largeDataIndices = largeDataIndices
     el.barWidth = barWidth
-    el.ignoreCoarsePointer = true
-    el.z2 = 1
+    _ = group.add(el)
     // upstream: el.useStyle(data.getVisual('style')); el.style.stroke = null;
     let globalStyle = data.getVisual("style") as? [String: Any]
     el.useStyle(barStyleFromDict(globalStyle))
-    el.pathStyle?.stroke = nil   // stroke rendered first would overlap the fill; large mode fills only
-    let ecData = innerStore.getECData(el)
-    ecData.seriesIndex = seriesModel.seriesIndex
-    _ = group.add(el)
+    // Stroke is rendered first to avoid overlapping with fill. See #20465
+    el.pathStyle?.stroke = nil
+    // Enable tooltip and user mouse/touch event handlers.
+    innerStore.getECData(el).seriesIndex = seriesModel.seriesIndex
+
+    // upstream: if (!seriesModel.get('silent')) { el.on('mousedown'|'mousemove', largePathUpdateDataIndex); }
+    if !((seriesModel.get("silent") as? Bool) ?? false) {
+        // Adapt the ZRElementEvent callback to the throttled `(LargeBarPath, ZRElementEvent)` helper —
+        //   `this` (upstream) is the bound element; here `el` is captured weakly to avoid the retain
+        //   cycle (el → Eventful → handler → el), and the ElementEvent arrives as the single trigger arg.
+        let onHit: EventCallback = { [weak el] _, args in
+            guard let largePath = el, let event = args.first as? ZRElementEvent else { return nil }
+            largePathUpdateDataIndex(largePath, event)
+            return nil
+        }
+        _ = el.on("mousedown", onHit)
+        _ = el.on("mousemove", onHit)
+    }
+
+    // upstream: progressiveEls && progressiveEls.push(el);
+    progressiveEls?.append(el)
+}
+
+// upstream: the non-progressive `createLarge(seriesModel, this.group)` call in `_renderLarge`.
+//   Delegates to the full port with no `progressiveEls` collection and `incremental = false`.
+func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
+    var noProgressive: [Element]? = nil
+    barCreateLarge(seriesModel, group, &noProgressive, false)
+}
+
+// Use throttle to avoid frequently traverse to find dataIndex.
+// upstream (bar/BarView.ts:1194): const largePathUpdateDataIndex = throttle(function (this: LargePath,
+//   event: ZRElementEvent) { ... }, 30, false). The Swift `ThrottledFunction` is nullary (scope/args
+//   dropped), so the latest `(largePath, event)` pair is stashed in a module slot before triggering the
+//   shared throttle — mirroring upstream's single module-level throttled fn running `fn.apply(scope,
+//   args)` with the most-recent call's `this`/args when its timer fires.
+private var largePathPendingHit: (largePath: LargeBarPath, event: ZRElementEvent)?
+
+private let largePathHitThrottle: ThrottledFunction = throttleUtil.throttle({
+    guard let pending = largePathPendingHit else { return }
+    let largePath = pending.largePath
+    // upstream: const dataIndex = largePathFindDataIndex(largePath, event.offsetX, event.offsetY);
+    let dataIndex = largePathFindDataIndex(
+        largePath,
+        pending.event.offsetX,
+        pending.event.offsetY
+    )
+    // upstream: getECData(largePath).dataIndex = dataIndex >= 0 ? dataIndex : null;
+    innerStore.getECData(largePath).dataIndex = dataIndex >= 0 ? Double(dataIndex) : nil
+    // Release the strong reference to the hovered LargeBarPath so a re-rendered path
+    //   (BarView._clear drops it from the group) can deallocate promptly.
+    largePathPendingHit = nil
+}, 30, false)
+
+let largePathUpdateDataIndex: (LargeBarPath, ZRElementEvent) -> Void = { largePath, event in
+    largePathPendingHit = (largePath, event)
+    largePathHitThrottle()
+}
+
+// upstream: function largePathFindDataIndex(largePath, x, y) (bar/BarView.ts:1201). Walks the packed
+//   3-per-bar points, standardizing a negative value-dim size, and returns the datum's `largeDataIndices`
+//   entry when (x, y) falls inside the bar rect — else -1.
+func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double) -> Int {
+    let baseDimIdx = largePath.baseDimIdx
+    let valueDimIdx = 1 - baseDimIdx
+    guard let shape = largePath.shape as? LargeBarPathShape else { return -1 }
+    let points = shape.points
+    let largeDataIndices = largePath.largeDataIndices
+    let barWidth = largePath.barWidth
+
+    let len = points.count / 3
+    for i in 0..<len {
+        let ii = i * 3
+        var size = [0.0, 0.0]
+        var startPoint = [0.0, 0.0]
+        size[baseDimIdx] = barWidth
+        size[valueDimIdx] = points[ii + 2]
+        startPoint[baseDimIdx] = points[ii + baseDimIdx]
+        startPoint[valueDimIdx] = points[ii + valueDimIdx]
+        if size[valueDimIdx] < 0 {
+            startPoint[valueDimIdx] += size[valueDimIdx]
+            size[valueDimIdx] = -size[valueDimIdx]
+        }
+
+        if x >= startPoint[0] && x <= startPoint[0] + size[0]
+            && y >= startPoint[1] && y <= startPoint[1] + size[1] {
+            return Int(largeDataIndices[i])
+        }
+    }
+
+    return -1
 }

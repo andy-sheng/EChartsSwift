@@ -496,8 +496,8 @@ open class BarView: ChartView {
         self._clear()
         // upstream: createLarge(seriesModel, this.group);
         //   One LargeBarPath over the barGrid `largePoints` layout, drawn per-bar via the fill boost
-        //   (LargeBarPath.swift) — the mouse-event throttle (largePathUpdateDataIndex) is the only piece
-        //   still deferred (tooltip hit-testing over the large path), not the draw.
+        //   (LargeBarPath.swift); the throttled mouse-event hit-test (largePathUpdateDataIndex) is wired
+        //   inside `barCreateLarge` for tooltip/highDown over the large path.
         barCreateLarge(seriesModel, self.group)
         self._updateLargeClip(seriesModel)
     }
@@ -505,7 +505,7 @@ open class BarView: ChartView {
     private func _incrementalRenderLarge(_ params: StageHandlerProgressParams, _ seriesModel: BarSeriesModel) {
         self._removeBackground()
         // upstream: createLarge(seriesModel, this.group, this._progressiveEls, true);
-        // PORT-NOTE (deferred): large/progressive draw (see `_renderLarge`).
+        barCreateLarge(seriesModel, self.group, &self._progressiveEls, true)
     }
 
     private func _updateLargeClip(_ seriesModel: BarSeriesModel) {
@@ -1103,10 +1103,9 @@ func barRectRadiusFromOption(_ v: Any?) -> RectRadius {
 }
 
 // upstream: class LargePath / interface LargePathProps / function createLarge / largePathUpdateDataIndex /
-//   largePathFindDataIndex — the large/progressive draw path.
-// PORT-NOTE (deferred): large/progressive draw. It needs `throttle` (util/throttle, not ported),
-//   `model.getIncrementalId`, `data.getLayout('largePoints' | 'size' | ...)`, and a raw
-//   `CanvasRenderingContext2D.rect` batch — none of which are on the cartesian normal path.
+//   largePathFindDataIndex — the large/progressive draw path. Ported in LargeBarPath.swift
+//   (`LargeBarPath` / `LargeBarPathShape` / `barCreateLarge` / `largePathUpdateDataIndex` /
+//   `largePathFindDataIndex`), throttle via util/throttle.
 
 func createBackgroundShape(
     _ isHorizontalOrRadial: Bool,
