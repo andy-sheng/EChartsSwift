@@ -101,6 +101,13 @@ public final class ZRRawEvent: PointerLike {
     public var deltaX: Double?
     public var deltaY: Double?
 
+    // modifier keys (DOM MouseEvent.shiftKey/ctrlKey/altKey). Consumed by
+    //   echarts/src/component/helper/RoamController.ts isAvailableBehavior (~line 585).
+    //   Populated per gesture by the native UIKit bridge. // PORT-NOTE: provided by the bridge.
+    public var shiftKey: Bool = false
+    public var ctrlKey: Bool = false
+    public var altKey: Bool = false
+
     // touch lists
     public var targetTouches: [Touch]?
     public var changedTouches: [Touch]?
