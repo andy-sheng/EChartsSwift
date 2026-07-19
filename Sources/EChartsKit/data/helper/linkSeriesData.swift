@@ -118,13 +118,14 @@ public enum linkSeriesData {
         //   via `wrapMethod` + `curry` so the injection runs after the original method. Swift cannot
         //   replace a method by name, so `SeriesData.wrapMethod` STORES the injection keyed by method
         //   name and the ported wrappable methods fire it explicitly (in registration order, matching
-        //   upstream's outer-most-last wrap chain). `cloneShallow` fires today (it is what re-links the
-        //   shared tree/graph struct onto the clone produced by `dataTaskReset`, so a hierarchical
-        //   series' `getData().tree` survives). The other transferable methods (downSample/map) and the
-        //   changable methods (filterSelf/selectRange) record their injections here but do not yet fire
-        //   them — PORT-NOTE (deferred): SeriesData.downSample/map/filterSelf/selectRange must invoke
-        //   their stored injections when data-zoom/sampling lands (they are unreachable in the current
-        //   static render path, and firing them is a SeriesData-side change, not this file's).
+        //   upstream's outer-most-last wrap chain). All wrappable methods fire their stored injections:
+        //   `cloneShallow` re-links the shared tree/graph struct onto the clone produced by
+        //   `dataTaskReset` (so a hierarchical series' `getData().tree` survives); the transferable
+        //   methods (`map`/`downSample`/`minmaxDownSample`/`lttbDownSample`) and the changable methods
+        //   (`filterSelf`/`selectRange`) fire via `SeriesData.fireWrappedMethodInjections`: the
+        //   transferable methods fire the transfer injection on the derived list they produce, while
+        //   `filterSelf`/`selectRange` fire the change injection (`struct.update()`) after filtering
+        //   `self` in place.
         for (_, data) in datas! {
             for methodName in mainData.TRANSFERABLE_METHODS {
                 data.wrapMethod(methodName) { args in
