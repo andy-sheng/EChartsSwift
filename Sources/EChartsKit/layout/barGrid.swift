@@ -614,7 +614,19 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
                         largeBackgroundPoints[idxOffset + 2] = bgSize
                     }
 
-                    largeDataIndices[dataIndex] = dataIndexD
+                    // PORT-NOTE: upstream (barGrid.ts:490) indexes by the GLOBAL `dataIndex` into a
+                    //   CHUNK-sized Float32Array (`createFloat32Array(params.count)`). In JS an
+                    //   out-of-range typed-array write is silently DROPPED; Swift's `[Double]` would
+                    //   trap ("Index out of range"). Guard the write to reproduce the JS drop.
+                    // PORT-TODO: chunk-local vs global index mismatch (upstream barGrid.ts:490).
+                    //   Unreachable today — `ECharts.runSeriesStageHandler` drives this stage in a single
+                    //   unchunked pass over [0, count), so `dataIndex < count` always holds. Revisit when
+                    //   progressive chunking lands (sub-project C2): from chunk 2 on, every write here
+                    //   would be dropped and `largePathFindDataIndex` (which reads `largeDataIndices` at
+                    //   the CHUNK-RELATIVE slot `idxOffset / 3`) would report the wrong datum.
+                    if dataIndex < largeDataIndices.count {
+                        largeDataIndices[dataIndex] = dataIndexD
+                    }
                 }
 
                 idxOffset += 3

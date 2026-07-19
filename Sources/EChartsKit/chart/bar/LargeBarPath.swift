@@ -179,16 +179,8 @@ func barCreateLarge(
 
     // upstream: if (!seriesModel.get('silent')) { el.on('mousedown'|'mousemove', largePathUpdateDataIndex); }
     if !((seriesModel.get("silent") as? Bool) ?? false) {
-        // Adapt the ZRElementEvent callback to the throttled `(LargeBarPath, ZRElementEvent)` helper —
-        //   `this` (upstream) is the bound element; here `el` is captured weakly to avoid the retain
-        //   cycle (el → Eventful → handler → el), and the ElementEvent arrives as the single trigger arg.
-        let onHit: EventCallback = { [weak el] _, args in
-            guard let largePath = el, let event = args.first as? ZRElementEvent else { return nil }
-            largePathUpdateDataIndex(largePath, event)
-            return nil
-        }
-        _ = el.on("mousedown", onHit)
-        _ = el.on("mousemove", onHit)
+        _ = el.on("mousedown", largePathHitHandler)
+        _ = el.on("mousemove", largePathHitHandler)
     }
 
     // upstream: progressiveEls && progressiveEls.push(el);
@@ -200,6 +192,22 @@ func barCreateLarge(
 func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
     var noProgressive: [Element]? = nil
     barCreateLarge(seriesModel, group, &noProgressive, false)
+}
+
+// upstream binds ONE module-level handler on both events (`el.on('mousedown', largePathUpdateDataIndex)`),
+//   relying on `this` being the element the listener is bound to. `Element.on` forwards `context ?? self`
+//   as the handler's `thisCtx` (Element.swift:1597), so `thisCtx` IS that element — a single shared
+//   handler mirrors upstream exactly, with no per-element closure allocation.
+// NOTE: `Eventful`'s handler record holds `ctx` STRONGLY (Core/Eventful.swift:28), so an element
+//   self-retains through its own listener records regardless of how the handler captures. That is a
+//   pre-existing framework-wide property of the port, not something this call site can or should work
+//   around; `BarView._clear` drops the path from the group, and the throttle slot below is cleared so
+//   nothing outside the element's own event table keeps it alive.
+private let largePathHitHandler: EventCallback = { thisCtx, args in
+    guard let largePath = thisCtx as? LargeBarPath,
+          let event = args.first as? ZRElementEvent else { return nil }
+    largePathUpdateDataIndex(largePath, event)
+    return nil
 }
 
 // Use throttle to avoid frequently traverse to find dataIndex.
@@ -242,7 +250,11 @@ func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double)
     let largeDataIndices = largePath.largeDataIndices
     let barWidth = largePath.barWidth
 
-    let len = points.count / 3
+    // PORT-NOTE: upstream bounds the loop by `points.length / 3` alone and reads `largeDataIndices[i]`
+    //   — an out-of-range typed-array read yields `undefined` in JS (harmless), but traps in Swift.
+    //   `points` and `largeDataIndices` come from two independent `getLayout(...) as? [Double]` reads
+    //   (either of which can fall through to `[]`), so bound by BOTH.
+    let len = Swift.min(points.count / 3, largeDataIndices.count)
     for i in 0..<len {
         let ii = i * 3
         var size = [0.0, 0.0]
@@ -258,7 +270,10 @@ func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double)
 
         if x >= startPoint[0] && x <= startPoint[0] + size[0]
             && y >= startPoint[1] && y <= startPoint[1] + size[1] {
-            return Int(largeDataIndices[i])
+            // `Int(Double)` traps on NaN/infinity (a Float32Array slot never written stays 0, but a
+            //   malformed layout could carry NaN) — degrade to "no datum", matching the JS `undefined`.
+            let idx = largeDataIndices[i]
+            return idx.isFinite ? Int(idx) : -1
         }
     }
 

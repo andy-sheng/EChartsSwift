@@ -41,7 +41,8 @@ import ZRenderKit
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
 //     -> PORT-NOTE: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
-//   import {throttle} from '../../util/throttle';                    -> PORT-NOTE (deferred): requires util/throttle (not ported; large mode only).
+//   import {throttle} from '../../util/throttle';                    -> `throttleUtil.throttle` (util/throttle.swift),
+//     used by `largePathUpdateDataIndex` in LargeBarPath.swift (large mode only).
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';  -> sibling `createClipPath`.
 //   import Sausage from '../../util/shape/sausage';                  -> PORT-NOTE (deferred): requires util/shape/sausage (not ported; polar roundCap only).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
@@ -214,9 +215,12 @@ open class BarView: ChartView {
 
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
-        //   each (large mode, deferred); otherwise traverse the group via `Group.traverse` (visits
-        //   children only — see the same note in view/Chart.swift `eachRendered`).
+        // PORT-NOTE: `util/graphic.traverseElements` is not ported, so the collected elements are visited
+        //   WITHOUT descending into their children — harmless today because `_progressiveEls` only ever
+        //   holds `LargeBarPath`s, which have no children. `_progressiveEls` is populated by the
+        //   progressive `barCreateLarge` overload via `_incrementalRenderLarge` (dormant until the
+        //   progressive render-task routing lands — see the note there); otherwise traverse the group via
+        //   `Group.traverse` (visits children only — see the same note in view/Chart.swift `eachRendered`).
         if let progressiveEls = self._progressiveEls {
             for el in progressiveEls {
                 _ = cb(el)
@@ -502,6 +506,16 @@ open class BarView: ChartView {
         self._updateLargeClip(seriesModel)
     }
 
+    // PORT-TODO (DORMANT — not reachable in the current build, so UNVERIFIED): `incrementalRender` (and
+    //   therefore this method) is only ever invoked from `renderTaskReset`'s progressive branch
+    //   (view/Chart.swift `progressMethodMap("incrementalPrepareRender")`), which runs off the Scheduler's
+    //   piped render task. `ECharts.renderSeries` (core/ECharts.swift:2341) currently BYPASSES
+    //   `renderTask.perform` and calls `chartView.render(...)` directly, and `Scheduler.prepareView` is a
+    //   documented no-op pending sub-project C2 — so a large bar series always takes `_renderLarge`, never
+    //   this path, even though `updateStreamModes` does set `progressiveRender = true` for it. The
+    //   progressive `barCreateLarge` overload below is therefore ported-but-unexercised; verify it (and
+    //   the chunk-local vs global `largeDataIndices` index mismatch flagged in layout/barGrid.swift) when
+    //   progressive stage routing lands.
     private func _incrementalRenderLarge(_ params: StageHandlerProgressParams, _ seriesModel: BarSeriesModel) {
         self._removeBackground()
         // upstream: createLarge(seriesModel, this.group, this._progressiveEls, true);
