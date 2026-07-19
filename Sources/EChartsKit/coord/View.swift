@@ -138,9 +138,11 @@ open class View: Transformable {
     var dataRect: BoundingRect?
     var viewRect: BoundingRect?
 
-    // upstream: syncBackEl / syncBackType  (ROAM animation, DEFERRED).
-    // PORT-NOTE (deferred): requires the ROAM interaction module; view roam sync-back
-    //   (syncBackEl / syncBackType) is unused in the static path.
+    // upstream: syncBackEl: Element | NullUndefined;
+    var syncBackEl: Element?
+
+    // upstream: syncBackType: typeof VIEW_COORD_SYS_TRANS_ROAM | typeof VIEW_COORD_SYS_TRANS_OVERALL;
+    var syncBackType: Int = VIEW_COORD_SYS_TRANS_ROAM
 
     // upstream: constructor(invertY?, legacyCenterBase?, legacyGeo?) { super(); ... }
     public init(
@@ -744,9 +746,49 @@ public func calcCompensationScaleToPreserveNodeSize(
         / jsNumOr(viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX, 1)
 }
 
+/**
+ * NOTICE:
+ *  - `syncBackEl` should be in the pixel space without any other transformation
+ *    in its accesters, otherwise the roaming may incorrect.
+ *  - `syncBackEl` can be a `Group`, having its own descendants and transformation.
+ *    But in this case, `dataToPoint` can only reach the space of `syncBackEl` itself.
+ */
+// upstream: export function applyViewCoordSysTransToElement(syncBackEl, syncBackType, viewCoordSys, animatableModel)
+//   viewInner.syncBackEl = syncBackEl; viewInner.syncBackType = syncBackType;
+//   if (!animatableModel) { viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType); syncBackEl.dirty(); }
+//   else { updateProps(syncBackEl, viewCoordSysCopyTrans(null, viewCoordSys, syncBackType), animatableModel); }
+//   `animatableModel == nil` => no animation (first render / __updateOnOwnRoam). Upstream types
+//   syncBackEl as nullable and calls dirty()/updateProps optimistically; per PORTING.md §12 we port
+//   the force-deref as optional-chaining (`syncBackEl?.dirty()`) / an `if let` guard rather than `!`.
+//   Marshal the copied Transformable's x/y/scaleX/scaleY into a [String: Any] props dict for the Swift
+//   updateProps signature (JS reads them off the object directly). PORT-TODO: intentional narrowing to
+//   4 transform props — roam mutates only x/y/scaleX/scaleY; add rotation/originX/originY/skewX/skewY
+//   if strict parity with upstream's whole-Transformable pass is later needed.
+public func applyViewCoordSysTransToElement(
+    _ syncBackEl: Element?, _ syncBackType: Int, _ viewCoordSys: View, _ animatableModel: Model?
+) {
+    viewCoordSys.syncBackEl = syncBackEl
+    viewCoordSys.syncBackType = syncBackType
+
+    if animatableModel == nil {
+        viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType)
+        syncBackEl?.dirty()
+    }
+    else if let syncBackEl = syncBackEl {
+        let trans = viewCoordSysCopyTrans(nil, viewCoordSys, syncBackType)
+        let props: [String: Any] = [
+            "x": trans.x,
+            "y": trans.y,
+            "scaleX": trans.scaleX,
+            "scaleY": trans.scaleY
+        ]
+        updateProps(syncBackEl, props, animatableModel)
+    }
+}
+
 // PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
-//     applyViewCoordSysTransToElement, ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
+//     ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
 //     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl,
 //     syncBackToRoamOptionFromRoamTrans (model write-back), syncBackRoamOptionToRoamHostModel.
 
