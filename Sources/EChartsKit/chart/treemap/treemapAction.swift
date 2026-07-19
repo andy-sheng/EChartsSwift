@@ -66,16 +66,15 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
     rootToNode.update = "updateView"
     registerAction(rootToNode) { payload, ecModel, _ in
         // ecModel.eachComponent({ mainType: 'series', subType: 'treemap', query: payload }, handleRootToNode);
-        //   The `query: payload` (a `seriesId` / `seriesIndex` filter) is resolved by iterating the treemap
-        //   series and matching the payload — the same idiom installTreeAction / installSankeyAction use.
+        //   `query: payload` is resolved by the faithful mechanism — `makeQueryConditionKindA` builds the
+        //   `{seriesId, seriesIndex, seriesName}` query (handling the numeric and array id/name forms of
+        //   `OptionId`, which a hand-rolled `as? String` compare drops) and `eachComponent` applies it.
+        //   Same idiom as `ECharts.updateDirectly`.
         var payload = payload
-        let targetSeriesId = payload.other["seriesId"] as? String
-        let targetSeriesIndex = treemapActionInt(payload.other["seriesIndex"])
+        let condition = model.makeQueryConditionKindA(payload, "series", "treemap")
 
-        ecModel.eachSeriesByType("treemap") { s, index in
-            guard let model = s as? TreemapSeriesModel else { return }
-            if let sid = targetSeriesId, !sid.isEmpty, model.id != sid { return }
-            if let sIndex = targetSeriesIndex, Double(sIndex) != index { return }
+        ecModel.eachComponent(condition) { cmpt, _ in
+            guard let model = cmpt as? TreemapSeriesModel else { return }
 
             // function handleRootToNode(model, index) {
             //   const types = ['treemapZoomToNode', 'treemapRootToNode'];
@@ -90,10 +89,16 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
                 //         payload.direction = helper.aboveViewRoot(originViewRoot, targetInfo.node)
                 //             ? 'rollUp' : 'drillDown';
                 //     }
-                //   PORT-NOTE: `Payload` is a value type, so writing `payload.other["direction"]` mutates only
-                //     this local copy — it does not propagate back to the dispatch batch. That matches the
-                //     current port: no consumer reads `payload.direction` (the drill-down/roll-up animation
-                //     direction in TreemapView is DEFERRED). Kept faithful for when that path is wired.
+                //   PORT-TODO: this is a DEAD WRITE. `Payload` is a value type, so `payload.other["direction"]`
+                //     mutates only this local copy and never reaches the dispatch batch or the ensuing
+                //     layout/render pass. Upstream stamps the flag on the shared payload object and reads it
+                //     back in TreemapView.render as `reRoot.direction` — not only for the drill-down/roll-up
+                //     ANIMATION (TreemapView.ts:199/378) but also at TreemapView.ts:1090
+                //     (`parentNode && (!reRoot || reRoot.direction === 'drillDown')`), which selects the
+                //     element's starting rect and is therefore a rendering concern too. Thread the direction
+                //     another way when TreemapView._doAnimation is ported — e.g. return it in this handler's
+                //     ECEventData, or store it on TreemapSeriesModel so render() can reconstruct `reRoot`.
+                //     The assignment is kept so the upstream line stays traceable.
                 if let originViewRoot = model.getViewRoot() {
                     payload.other["direction"] = treeHelper.aboveViewRoot(originViewRoot, targetInfo.node)
                         ? "rollUp" : "drillDown"
@@ -106,11 +111,6 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
     }
 }
 
-// `payload.seriesIndex` coercion (Int/Double/NSNumber). Payload numbers may arrive boxed either way through
-//   the dynamic `other` bag; mirror the Int-vs-Double option-read guard.
-private func treemapActionInt(_ v: Any?) -> Int? {
-    if let i = v as? Int { return i }
-    if let d = v as? Double { return Int(d) }
-    if let n = v as? NSNumber { return n.intValue }
-    return nil
-}
+// (The local `seriesIndex` Int coercion helper is gone: the `query: payload` filter is now resolved by
+//   `model.makeQueryConditionKindA` + `ecModel.eachComponent`, which handle the numeric/array id and
+//   index forms of `OptionId` upstream-faithfully.)

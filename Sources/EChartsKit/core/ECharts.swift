@@ -1721,14 +1721,23 @@ public final class ECharts: EChartsType {
     /// Run a SERIES_STAGE_TASK handler (`reset` per series, then drive its returned executor over the
     /// data range). Upstream the Scheduler drives `progress`/`dataEach` over data chunks; here it is a
     /// single synchronous pass over `[0, data.count())` (no progressive chunking — documented).
-    private func runSeriesStageHandler(_ handler: StageHandler, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    /// `payload` mirrors upstream's Scheduler handing the in-flight action payload to each stage handler's
+    /// `reset(seriesModel, ecModel, api, payload)`. Stage handlers that re-root on an action — notably
+    /// `treemapLayout`, which reads `payload.type === 'treemapZoomToNode'` + `retrieveTargetInfo`
+    /// (chart/treemap/treemapLayout.swift) — are inert without it. Defaults to the driver's parked
+    /// `_payload` (see doDispatchAction). NOT `ecModel.getUpdatePayload()`: upstream threads the payload
+    /// through the call chain, and the model-stashed copy is never cleared — reading it here would replay
+    /// a stale action payload on the next unrelated `setOption` update.
+    private func runSeriesStageHandler(_ handler: StageHandler, _ ecModel: GlobalModel, _ api: ExtensionAPI,
+                                       _ payload: Payload? = nil) {
         guard let reset = handler.reset else { return }
+        let stagePayload = payload ?? _payload
         ecModel.eachSeries { seriesModel, _ in
             // seriesType gate (handler.seriesType) — only run for matching series.
             if let st = handler.seriesType, seriesModel.subType != st {
                 return
             }
-            guard let executor = reset(seriesModel, ecModel, api, nil) as? StageHandlerProgressExecutor else {
+            guard let executor = reset(seriesModel, ecModel, api, stagePayload) as? StageHandlerProgressExecutor else {
                 return
             }
             let data = seriesModel.getData()
@@ -1922,7 +1931,11 @@ public final class ECharts: EChartsType {
         //   whose `reset` colors each node FROM that layout). Like candlestick, treemapVisual READS the
         //   layout, so the layout MUST run first; both are SERIES_STAGE_TASKs (reset does the full work and
         //   returns nil), so drive them through `runSeriesStageHandler` (layout, then visual).
-        runSeriesStageHandler(treemapLayout, ecModel, api)
+        //   `treemapLayout` MUST see the in-flight payload: the drill-down re-root (`treemapZoomToNode`)
+        //   is performed by THAT stage (estimateRootSize + calculateRootPosition), not by the noop action
+        //   handler. `runSeriesStageHandler` resolves the driver's parked `_payload` by default; passed
+        //   explicitly here to make the dependency legible.
+        runSeriesStageHandler(treemapLayout, ecModel, api, _payload)
         runSeriesStageHandler(treemapVisual, ecModel, api)
 
         // LAYOUT + VISUAL — tree. Upstream registers `treeLayout` (a 2-arg OVERALL layout fn that computes
@@ -2345,7 +2358,12 @@ public final class ECharts: EChartsType {
     // 'series:beforeupdate' + 'series:transition'.
     private func renderSeries(_ ecModel: GlobalModel, _ api: ExtensionAPI,
                               _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
-        let payload = Payload(type: "")
+        // upstream: `renderSeries(ecModel, api, payload, ...)` — the in-flight action payload reaches every
+        //   series view's `render`. Views read it both to filter themselves out of a targeted dispatch
+        //   (`findComponents({... query: payload})`, e.g. TreemapView) and to recover the action's target
+        //   node (`retrieveTargetInfo`). Mirrors `renderComponents` above. (Not `getUpdatePayload()` —
+        //   that stash is never cleared and would replay a stale payload on the next plain update.)
+        let payload = _payload ?? Payload(type: "")
 
         // updateParams = extend(updateParams || {}, { updatedSeries: ecModel.getSeries() });
         var updateParams = updateParams
@@ -2571,6 +2589,11 @@ public final class ECharts: EChartsType {
             //   payload)`), so park it on the driver for the duration — `render()` hands it to the
             //   component views + the brush visual stage. Restored (not just cleared) so a nested
             //   dispatch — e.g. brushVisual's own `brushSelect` — cannot strand the outer payload.
+            // Upstream `updateMethods.updateView/updateVisual/updateLayout` each open with
+            //   `ecModel.setUpdatePayload(payload)`; stage handlers and views that are handed no payload
+            //   directly recover it via `getUpdatePayload()`. Mirrors `updateDirectly` (the highDown
+            //   branch above), which already does this.
+            _model?.setUpdatePayload(payload)
             let prevPayload = _payload
             _payload = payload
             defer { _payload = prevPayload }
