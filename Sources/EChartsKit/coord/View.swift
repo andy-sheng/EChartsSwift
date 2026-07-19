@@ -40,8 +40,10 @@ import ZRenderKit
 //   import ExtensionAPI, { getViewOfComponentOrSeries } from '../core/ExtensionAPI';  -> core/ExtensionAPI.swift.
 //   import { decomposeTransform, payloadDisableAnimation, updateProps, WH, XY } from '../util/graphic';
 //       -> `decomposeTransform` reproduced privately below (util/graphic.swift has not landed it yet;
-//          reproducing here avoids a cross-file basename dependency). `updateProps`/`payloadDisableAnimation`
-//          are roam/animation-only (DEFERRED). `WH`/`XY` used only by roam sync-back (DEFERRED).
+//          reproducing here avoids a cross-file basename dependency). `updateProps` IS ported and IS
+//          used here (animation/basicTransition.swift:174, called from applyViewCoordSysTransToElement
+//          below). `payloadDisableAnimation` is roam-only (DEFERRED). `WH`/`XY` used only by roam
+//          sync-back (DEFERRED).
 //   import type ComponentModel from '../model/Component';               -> ComponentModel.
 //   import type Model from '../model/Model';                            -> Model.
 //   import { MatrixArray, invert, mul, create, copy } from 'zrender/src/core/matrix';  -> ZRenderKit.matrix.
@@ -142,7 +144,13 @@ open class View: Transformable {
     var syncBackEl: Element?
 
     // upstream: syncBackType: typeof VIEW_COORD_SYS_TRANS_ROAM | typeof VIEW_COORD_SYS_TRANS_OVERALL;
-    var syncBackType: Int = VIEW_COORD_SYS_TRANS_ROAM
+    // PORT-NOTE: Optional so that "never assigned" stays distinguishable from ROAM. Upstream's
+    //   `ViewInner` is a `makeInner` bag whose `syncBackType` is `undefined` until
+    //   `applyViewCoordSysTransToElement` writes it, and upstream relies on that: `viewCoordSysSyncBack`
+    //   asserts `viewInner.syncBackType != null` (View.ts:653). A defaulted non-Optional Int would let
+    //   an unset view read as a plausible ROAM and make the deferred `calcOverallTransFromSyncBackEl`
+    //   (View.ts:387-402) pick the wrong trans slot.
+    var syncBackType: Int?
 
     // upstream: constructor(invertY?, legacyCenterBase?, legacyGeo?) { super(); ... }
     public init(
@@ -520,6 +528,63 @@ public func isViewCoordSys(_ coordSys: CoordinateSystem?) -> Bool {
     return coordSys != nil && coordSys!.type == VIEW_COORD_SYS_TYPE
 }
 
+/**
+ * NOTICE:
+ *  - `syncBackEl` should be in the pixel space without any other transformation
+ *    in its accesters, otherwise the roaming may incorrect.
+ *  - `syncBackEl` can be a `Group`, having its own descendants and transformation.
+ *    But in this case, `dataToPoint` can only reach the space of `syncBackEl` itself.
+ */
+// upstream: export function applyViewCoordSysTransToElement(syncBackEl, syncBackType, viewCoordSys, animatableModel)
+//   viewInner.syncBackEl = syncBackEl; viewInner.syncBackType = syncBackType;
+//   if (!animatableModel) { viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType); syncBackEl.dirty(); }
+//   else { updateProps(syncBackEl, viewCoordSysCopyTrans(null, viewCoordSys, syncBackType), animatableModel); }
+//   `animatableModel == nil` => no animation (first render / __updateOnOwnRoam). Upstream types
+//   syncBackEl as nullable and calls dirty()/updateProps optimistically; per PORTING.md §12 we port
+//   the force-deref as optional-chaining (`syncBackEl?.dirty()`) / an `if let` guard rather than `!`.
+//   Upstream hands the whole copied `Transformable` to `updateProps`, and zrender's `copyTransform`
+//   writes all 11 TRANSFORMABLE_PROPS as own properties, so upstream animates all 11. The Swift
+//   `updateProps` takes a `[String: Any]`, so marshal the SAME 11 keys via
+//   `transformablePropsDict` — both branches must propagate an identical prop set (a
+//   VIEW_COORD_SYS_TRANS_OVERALL trans for `invertY` decomposes to `skewX = .pi` with a negated
+//   `scaleY`, which a narrowed x/y/scaleX/scaleY dict would silently drop).
+public func applyViewCoordSysTransToElement(
+    _ syncBackEl: Element?, _ syncBackType: Int, _ viewCoordSys: View, _ animatableModel: Model?
+) {
+    viewCoordSys.syncBackEl = syncBackEl
+    viewCoordSys.syncBackType = syncBackType
+
+    if animatableModel == nil {
+        viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType)
+        syncBackEl?.dirty()
+    }
+    else if let syncBackEl = syncBackEl {
+        let trans = viewCoordSysCopyTrans(nil, viewCoordSys, syncBackType)
+        updateProps(syncBackEl, transformablePropsDict(trans), animatableModel)
+    }
+}
+
+// PORT-NOTE: no upstream counterpart — upstream passes the `Transformable` object straight to
+//   `updateProps`, which reads the keys off it. The Swift `updateProps` is dict-based, so this
+//   adapter enumerates the same key list as `ZRenderKit.copyTransform`
+//   (Sources/ZRenderKit/Core/Transformable.swift TRANSFORMABLE_PROPS). Keep the two in sync;
+//   every property is a non-Optional `Double`, matching `Element.attrKV`'s `value as? Double`.
+func transformablePropsDict(_ t: Transformable) -> [String: Any] {
+    return [
+        "x": t.x,
+        "y": t.y,
+        "originX": t.originX,
+        "originY": t.originY,
+        "anchorX": t.anchorX,
+        "anchorY": t.anchorY,
+        "rotation": t.rotation,
+        "scaleX": t.scaleX,
+        "scaleY": t.scaleY,
+        "skewX": t.skewX,
+        "skewY": t.skewY
+    ]
+}
+
 // upstream: function parseCenterOption(out, viewInner, centerOption): boolean { ... }
 //   Returns the parsed center in `dataRect` space, or nil when no valid center (upstream `false`).
 //   The `out`-param + boolean-return pattern collapses to an `Optional` (nil == false).
@@ -744,46 +809,6 @@ public func calcCompensationScaleToPreserveNodeSize(
     // Scale node when zoom changes
     return ((viewCoordSys.zoom - 1) * nodeScaleRatio + 1)
         / jsNumOr(viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX, 1)
-}
-
-/**
- * NOTICE:
- *  - `syncBackEl` should be in the pixel space without any other transformation
- *    in its accesters, otherwise the roaming may incorrect.
- *  - `syncBackEl` can be a `Group`, having its own descendants and transformation.
- *    But in this case, `dataToPoint` can only reach the space of `syncBackEl` itself.
- */
-// upstream: export function applyViewCoordSysTransToElement(syncBackEl, syncBackType, viewCoordSys, animatableModel)
-//   viewInner.syncBackEl = syncBackEl; viewInner.syncBackType = syncBackType;
-//   if (!animatableModel) { viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType); syncBackEl.dirty(); }
-//   else { updateProps(syncBackEl, viewCoordSysCopyTrans(null, viewCoordSys, syncBackType), animatableModel); }
-//   `animatableModel == nil` => no animation (first render / __updateOnOwnRoam). Upstream types
-//   syncBackEl as nullable and calls dirty()/updateProps optimistically; per PORTING.md §12 we port
-//   the force-deref as optional-chaining (`syncBackEl?.dirty()`) / an `if let` guard rather than `!`.
-//   Marshal the copied Transformable's x/y/scaleX/scaleY into a [String: Any] props dict for the Swift
-//   updateProps signature (JS reads them off the object directly). PORT-TODO: intentional narrowing to
-//   4 transform props — roam mutates only x/y/scaleX/scaleY; add rotation/originX/originY/skewX/skewY
-//   if strict parity with upstream's whole-Transformable pass is later needed.
-public func applyViewCoordSysTransToElement(
-    _ syncBackEl: Element?, _ syncBackType: Int, _ viewCoordSys: View, _ animatableModel: Model?
-) {
-    viewCoordSys.syncBackEl = syncBackEl
-    viewCoordSys.syncBackType = syncBackType
-
-    if animatableModel == nil {
-        viewCoordSysCopyTrans(syncBackEl, viewCoordSys, syncBackType)
-        syncBackEl?.dirty()
-    }
-    else if let syncBackEl = syncBackEl {
-        let trans = viewCoordSysCopyTrans(nil, viewCoordSys, syncBackType)
-        let props: [String: Any] = [
-            "x": trans.x,
-            "y": trans.y,
-            "scaleX": trans.scaleX,
-            "scaleY": trans.scaleY
-        ]
-        updateProps(syncBackEl, props, animatableModel)
-    }
 }
 
 // PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
