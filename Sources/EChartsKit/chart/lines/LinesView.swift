@@ -21,19 +21,23 @@
 import Foundation
 import ZRenderKit
 
-// upstream imports (all deferred except linesLayout math / ChartView / SeriesData / Cartesian2D):
-//   import LineDraw from '../helper/LineDraw';            -> PORT-NOTE (deferred): requires helper/LineDraw, not ported.
-//       LineDraw.updateData is a per-edge enter/update/leave diff that reuses `Line`/`Polyline`
-//       helper instances (each reading `data.getItemLayout(i)`), plus fromSymbol/toSymbol arrow
-//       markers (ECLinePath) + label + emphasis/blur state. The static render inlines it: one
-//       ZRenderKit `Line` / `BezierCurve` / `Polyline` per data item, geometry set directly (same
-//       deviation as GraphView's edge loop / TreeView's links).
+// upstream imports:
+//   import LineDraw from '../helper/LineDraw';            -> ported as chart/helper/LineDraw.swift and WIRED.
+//       LineDraw.updateData is a per-edge enter/update/leave diff that reuses `ECLine` instances (each
+//       reading `data.getItemLayout(i)` via `ECLine.setLinePoints`), plus fromSymbol/toSymbol arrow
+//       markers + label + emphasis/blur state. `_lineDraw` below owns the straight/curved (non-polyline)
+//       lines: its group is added once (`_lineDrawAdded`) and driven by `_lineDraw.updateData(data)`.
+//       PORT-NOTE: the POLYLINE mode is still inlined (ECLine models only a 2/3-point Line/BezierCurve),
+//       so an N-point `Polyline` per data item is built directly.
 //   import EffectLine from '../helper/EffectLine';        -> PORT-NOTE: ported as chart/lines/EffectLine.swift.
 //       The moving-dot / trail EFFECT is ANIMATED (CONVENTIONS §5) and is wired (see render + EffectLine.swift).
-//   import Line from '../helper/Line';                    -> PORT-NOTE: helper/Line NOT ported (inline shape).
+//   import Line from '../helper/Line';                    -> PORT-NOTE: ported as chart/helper/ECLine.swift
+//       (renamed to avoid colliding with the ZRenderKit `Line` SHAPE); driven via LineDraw.
 //   import Polyline from '../helper/Polyline';            -> PORT-NOTE: helper/Polyline NOT ported (inline shape).
 //   import EffectPolyline from '../helper/EffectPolyline';-> PORT-NOTE: ported (in chart/lines/EffectLine.swift); effect wired.
-//   import LargeLineDraw from '../helper/LargeLineDraw';  -> PORT-NOTE (deferred): requires helper/LargeLineDraw, not ported (large/progressive DEFERRED).
+//   import LargeLineDraw from '../helper/LargeLineDraw';  -> ported as chart/helper/LargeLineDraw.swift;
+//       NOT wired here — the large/progressive path (`_isLargeDraw`) is DEFERRED (see SYMBOLS.tsv row 8;
+//       wiring it into LinesView is a separate follow-up).
 //   import linesLayout from './linesLayout';              -> the per-item dataToPoint + curveness-control-point
 //       math is inlined below (see `render`); the layout STAGE is not run — the view projects coords
 //       itself, exactly as ScatterView inlines pointsLayout and LineView inlines dataToPoint.
@@ -76,8 +80,8 @@ open class LinesView: ChartView {
     //   routed through the shared `chart/helper/LineDraw`, which DIFFS `data` (enter/update/leave) and
     //   reuses + tweens each ECLine across a merge-mode setOption. Its group is added to `self.group`
     //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
-    //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; and geo/polar lines +
-    //   LargeLineDraw stay DEFERRED (only Cartesian2D is wired).
+    //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; geo/polar lines stay
+    //   DEFERRED (only Cartesian2D is wired), as does WIRING the (ported) LargeLineDraw.
     private let _lineDraw = LineDraw()
     private var _lineDrawAdded = false
 
@@ -131,8 +135,11 @@ open class LinesView: ChartView {
 
         // upstream: this._hasEffet = seriesModel.get(['effect', 'show']); — when set, the LineDraw draws
         //   `EffectLine`/`EffectPolyline` (a moving trail symbol) instead of a plain `Line`/`Polyline`.
-        //   The static port keeps the inline line shapes and ADDS the animated trail symbol (see
-        //   chart/lines/EffectLine.swift) per item when the flag is on.
+        //   PORT DEVIATION: upstream picks the per-item ctor at construction time
+        //   (`new LineDraw(hasEffect ? EffectLine : Line)`); this port always uses LineDraw's default
+        //   `ECLine` ctor for the non-polyline lines and ADDS the trail symbol alongside them (see the
+        //   `hasEffect` block after `_lineDraw.updateData(data)`, and chart/lines/EffectLine.swift).
+        //   The POLYLINE branch still keeps the inline `Polyline` shapes and gets the trail the same way.
         let hasEffect = linesTruthy(seriesModel.get(["effect", "show"]))
 
         // Line color: `visualStyleAccessPath = 'lineStyle'`, `visualDrawType = 'stroke'` — the visual/style
