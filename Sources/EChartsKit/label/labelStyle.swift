@@ -35,11 +35,11 @@
 //       Swift call site (Model is untyped `ModelOption`), so it collapses to a plain `String`
 //       parameter defaulting to `"label"`.
 //
-// GAP (documented, see the final report): `label.style.__marginType` (upstream `LabelExtendedTextStyle`,
-//   L825-830) has no home on the ported `TextStyleProps` struct (ZRenderKit/Graphic/Text.swift) —
-//   the margin VALUE is computed faithfully (`minMargin` takes precedence over `textMargin`), but the
-//   tag distinguishing which one produced it is not stored. See the two PORT-NOTEs in
-//   `setTextStyleCommon` below.
+// GAP CLOSED: `label.style.__marginType` (upstream `LabelExtendedTextStyle`, L825-830) now has a home —
+//   `TextStyleProps.__marginType` (ZRenderKit/Graphic/Text.swift), typed `Int?` holding this file's
+//   `LabelMarginType` raw value (module layering: ZRenderKit cannot see EChartsKit's enum). Both the
+//   margin VALUE and the tag are stamped in `setTextStyleCommon` below, and the tag is consumed by
+//   `labelLayoutHelper.computeLabelGeometry` / `computeLabelGlobalRect`.
 //
 // PORTED (L1a follow-up): `setLabelValueAnimation` (L739) and `animateLabelValue` (L763) — the
 //   "number roll-up" label value animation — are now implemented below (near `labelInner`). They use
@@ -521,21 +521,30 @@ public enum labelStyle {
 
         // `minMargin` has a higher precedence than `textMargin`, because `textMargin` is allowed to be
         // set in `defaultOption`.
-        if let minMarginRaw = textStyleModel.get("minMargin") {
+        // upstream tests `minMargin != null` / `textMargin != null`, which is false for a null-valued
+        //   option; `NSNull` is this port's `null`, so it must not enter the branch (it would stamp
+        //   `__marginType` with no meaningful margin).
+        if let minMarginRaw = textStyleModel.get("minMargin"), !(minMarginRaw is NSNull) {
             // `minMargin` only supports a number value.
-            let mm: Double = util.isNumber(minMarginRaw) ? ((_num(minMarginRaw) ?? 0) / 2) : 0
+            // Int-vs-Double option-read trap: `util.isNumber` is `value is Double`, so an Int-boxed
+            //   option (`"minMargin": 5`) would fail it and silently collapse to 0. JS `isNumber` is
+            //   true for any numeric, so use the `_num` coercion helper as the numeric test.
+            let mm: Double = (_num(minMarginRaw) ?? 0) / 2
             textStyle.margin = .array([mm, mm, mm, mm])
-            // PORT-NOTE (deferred): requires a `TextStyleProps.__marginType` field + `LabelMarginType`.
-            //   Upstream also stamps `__marginType = LabelMarginType.minMargin` on the style object here,
-            //   for later margin-conflict resolution. `TextStyleProps` (ZRenderKit) has no such field; the
-            //   whole margin machinery is a documented gap (see labelLayoutHelper.swift).
+            // upstream: labelTextStyle.__marginType = LabelMarginType.minMargin;
+            //   `TextStyleProps.__marginType` (ZRenderKit) stores the RAW VALUE, because the enum lives
+            //   here in EChartsKit while the struct lives in ZRenderKit (which cannot depend on this
+            //   module) — see the field's PORT-NOTE in ZRenderKit/Graphic/Text.swift.
+            textStyle.__marginType = LabelMarginType.minMargin.rawValue
         }
-        else if let textMarginRaw = textStyleModel.get("textMargin") {
-            if let normalized = _normalizeCssArrayAny(textMarginRaw) {
-                textStyle.margin = .array(normalized)
-            }
-            // PORT-NOTE (deferred): `__marginType = LabelMarginType.textMargin` not stored — same missing
-            //   `TextStyleProps.__marginType` field + `LabelMarginType` gap as above.
+        else if let textMarginRaw = textStyleModel.get("textMargin"), !(textMarginRaw is NSNull) {
+            // upstream `normalizeCssArray(textMargin)` always yields an array, so `margin` and the tag
+            //   are always written together (`LabelExtendedTextStyle`: "`margin` must exist if
+            //   `__marginType` exists"). A value this port cannot coerce (e.g. a String) falls back to
+            //   a zero margin rather than leaving `margin` unset.
+            textStyle.margin = .array(_normalizeCssArrayAny(textMarginRaw) ?? [0, 0, 0, 0])
+            // upstream: labelTextStyle.__marginType = LabelMarginType.textMargin;
+            textStyle.__marginType = LabelMarginType.textMargin.rawValue
         }
 
         setTokenTextStyle(
@@ -925,9 +934,9 @@ public enum labelStyle {
     // ───────────────────────────── LabelMarginType (labelStyle.ts:819) ─────────────────────────────
     //
     // PENDING (upstream comment): Temporary impl. unify them?
-    // PORT: the enum itself is trivial and ported faithfully; ATTACHING the tag to a style object
-    //   (`LabelExtendedTextStyle.__marginType`) is a documented gap — see the file header and the two
-    //   PORT-NOTEs in `setTextStyleCommon` above.
+    // PORT: attaching the tag to a style object (`LabelExtendedTextStyle.__marginType`) is done via the
+    //   `TextStyleProps.__marginType: Int?` field (ZRenderKit/Graphic/Text.swift), which stores THIS
+    //   enum's `rawValue` — ZRenderKit is a lower module and cannot reference this type.
     public enum LabelMarginType: Int {
         case minMargin = 1
         case textMargin = 2

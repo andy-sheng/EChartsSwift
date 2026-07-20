@@ -1142,10 +1142,14 @@ func fixMinMaxLabelShow(
         // the user accepts the visual touch between adjacent labels, thus "hide min/max label"
         // should be conservative, since the space might be sufficient in this case.
         if !truthy(optionHideOverlap) {
-            // upstream copies with `marginForce: [0, 0, 0, 0]`; the margin machinery is a no-op in this
-            //   port (see `labelLayoutHelper.newLabelLayoutWithGeometry`), so this is an identity copy.
-            outmostLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(outmostLL)
-            innerLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(innerLL)
+            let marginForce: [Double?] = [0, 0, 0, 0]
+            // Make a copy to apply `ignoreMargin`.
+            outmostLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(
+                labelLayoutHelper.ComputeLabelGeometryOpt(marginForce: marginForce), outmostLL
+            )
+            innerLabelLayout = labelLayoutHelper.newLabelLayoutWithGeometry(
+                labelLayoutHelper.ComputeLabelGeometryOpt(marginForce: marginForce), innerLL
+            )
         }
         if labelLayoutHelper.labelIntersect(
             outmostLabelLayout, innerLabelLayout, nil,

@@ -219,6 +219,19 @@ public struct TextStyleProps {
     public var padding: NumberOrNumberArray?
     public var margin: NumberOrNumberArray?
 
+    // upstream: `interface LabelExtendedTextStyle extends TextStyleProps { __marginType?: LabelMarginType }`
+    //   (echarts/src/label/labelStyle.ts:825-830). TS extends `TextStyleProps` ad hoc; Swift structs have
+    //   no subtyping, so the field lives directly on `TextStyleProps` (a stored property — an extension
+    //   cannot add one). Stamped by `labelStyle.setTextStyleCommon` (labelStyle.ts:472/478), read by
+    //   `labelLayoutHelper.computeLabelGeometry` (labelLayoutHelper.ts:178).
+    // PORT-NOTE (module layering): the tag's upstream type `LabelMarginType` is an EChartsKit symbol
+    //   (`labelStyle.LabelMarginType`, Int raw: minMargin = 1, textMargin = 2) and EChartsKit depends on
+    //   ZRenderKit (not vice-versa), so this field stores the RAW VALUE as `Int?`. The enum stays in
+    //   EChartsKit; consumers write `.minMargin.rawValue` / compare against `.textMargin.rawValue`.
+    // NOTE (upstream invariant): `margin` must exist (and be length 4, as `normalizeCssArray` returns)
+    //   whenever `__marginType` exists.
+    public var __marginType: Int?
+
     public var borderColor: String?
     public var borderWidth: Double?
     public var borderRadius: NumberOrNumberArray?
@@ -1708,6 +1721,8 @@ public func extendTextStyle(_ target: inout TextStyleProps, _ source: TextStyleP
     if source.backgroundColor != nil { target.backgroundColor = source.backgroundColor }
     if source.padding != nil { target.padding = source.padding }
     if source.margin != nil { target.margin = source.margin }
+    // upstream `extend` copies all own enumerable keys, so the `__marginType` tag travels with `margin`.
+    if source.__marginType != nil { target.__marginType = source.__marginType }
     if source.borderColor != nil { target.borderColor = source.borderColor }
     if source.borderWidth != nil { target.borderWidth = source.borderWidth }
     if source.borderRadius != nil { target.borderRadius = source.borderRadius }
