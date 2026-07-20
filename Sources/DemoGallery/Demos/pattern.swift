@@ -12,7 +12,7 @@ extension DemoRegistry {
 
         // `Pattern(image, repeat)` -> wrapped as ZRColor.pattern, applied via the gradFill helper
         // (which assigns any ZRColor to `style.fill`).
-        let pat = Pattern(asset, .repeat)
+        let pat = Pattern(.url(asset), .repeat)
 
         let circ1 = circle(180, 100, 80)
         zr.add(gradFill(circ1, .pattern(pat)))
@@ -20,7 +20,7 @@ extension DemoRegistry {
 
         // Second circle mirrors the HTML's two-circle layout (image-path vs image-object); both
         // resolve to the same tiled Pattern here.
-        let pat2 = Pattern(asset, .repeat)
+        let pat2 = Pattern(.url(asset), .repeat)
         let circ2 = circle(500, 100, 80)
         zr.add(gradFill(circ2, .pattern(pat2)))
         zr.add(text("图片对象", 500, 92, "#ffffff", size: 22, align: .center))

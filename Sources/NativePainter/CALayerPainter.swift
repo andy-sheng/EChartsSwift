@@ -302,7 +302,7 @@ private func resolveCGImage(_ img: ZRImage) -> CGImage? {
 
 /// `Any?` → `CGImage?`. `ImageLike` is the opaque `Any` seam (CONVENTIONS §9); a plain
 /// `as? CGImage` on `Any` mis-fires for CoreFoundation types, so dispatch on the CFTypeID.
-private func asCGImage(_ value: Any?) -> CGImage? {
+func asCGImage(_ value: Any?) -> CGImage? {
     guard let value = value else { return nil }
     let cf = value as CFTypeRef
     if CFGetTypeID(cf) == CGImage.typeID {

@@ -45,7 +45,8 @@ import ImageIO
 //   takes `Any?` (a `[String: Any]` decal, the sentinel String `"none"`, or nil) rather than the typed
 //   `DecalObject` struct (kept in util/types.swift for provenance).
 // * `PatternObject` maps to the ZRenderKit `Pattern` (the ImagePatternObject arm). The generated tile is
-//   rasterized to a PNG `data:` URI carried in `Pattern.image` (the `string` arm of `ImageLike | string`);
+//   rasterized to a PNG `data:` URI carried in `Pattern.image` as `.url(...)` (the `string` arm of the
+//   upstream `ImageLike | string`, modeled by the `ImageSource` enum);
 //   the NativePainter renderer (`CGRenderer.fillPatternClipped`/`tilePattern`) decodes + tiles it. The
 //   SVG arm is the deferred svg backend seam (CONVENTIONS §9).
 // * `decalMap` (the WeakMap keyed by the decal object's IDENTITY) is dropped — our decal objects are value
@@ -107,7 +108,10 @@ public func createOrUpdatePatternFromDecal(
     //   setPatternnSource(pattern);
     //   pattern.rotation = decalOpt.rotation;
     //   pattern.scaleX = pattern.scaleY = isSVG ? 1 : 1 / dpr;
-    let pattern = setPatternSource(decalOpt, dpr: dpr, isSVG: isSVG)
+    // DEVIATION: upstream has no failure arm (it assigns the live canvas element unconditionally);
+    //   our rasterization goes through ImageIO and can fail, so a nil tile propagates as "no decal"
+    //   rather than being cached as an empty-string image URI.
+    guard let pattern = setPatternSource(decalOpt, dpr: dpr, isSVG: isSVG) else { return nil }
     pattern.rotation = decalOpt.rotation
     pattern.scaleX = isSVG ? 1 : 1 / dpr
     pattern.scaleY = isSVG ? 1 : 1 / dpr
@@ -116,7 +120,7 @@ public func createOrUpdatePatternFromDecal(
 }
 
 // upstream: function setPatternnSource(pattern) { ... } (nested; returns the assembled Pattern here).
-private func setPatternSource(_ decalOpt: DecalOpt, dpr: Double, isSVG: Bool) -> Pattern {
+private func setPatternSource(_ decalOpt: DecalOpt, dpr: Double, isSVG: Bool) -> Pattern? {
     // upstream: build the cacheKey from [dpr, ...decalKeys values]; join(',') + (isSVG ? '-svg' : '').
     var keys: [String] = [numToken(dpr)]
     for k in decalKeys {
@@ -126,6 +130,8 @@ private func setPatternSource(_ decalOpt: DecalOpt, dpr: Double, isSVG: Bool) ->
     if let cached = _decalCache[cacheKey] {
         // upstream reuses the cached HTMLCanvasElement/SVGVNode as the pattern image; here the whole
         //   Pattern is cached (same tile → same data URI + geometry).
+        // NOTE: `cached.image` is already an `ImageSource` — pass it through unwrapped; do NOT
+        //   re-wrap in `.url(...)` (that would nest an ImageSource inside the String arm).
         return Pattern(cached.image, .repeat)
     }
 
@@ -158,7 +164,12 @@ private func setPatternSource(_ decalOpt: DecalOpt, dpr: Double, isSVG: Bool) ->
         symbolArray: symbolArray, lineBlockLengthY: lineBlockLengthY
     )
 
-    let pattern = Pattern(dataURI ?? "", .repeat)
+    // DEVIATION (see createOrUpdatePatternFromDecal): upstream cannot fail here. Bail WITHOUT
+    //   caching on a failed rasterization — caching an empty image URI would poison every
+    //   subsequent hit on this cacheKey with a permanently blank tile.
+    guard let dataURI = dataURI else { return nil }
+
+    let pattern = Pattern(.url(dataURI), .repeat)
     _decalCache[cacheKey] = pattern
     return pattern
 }

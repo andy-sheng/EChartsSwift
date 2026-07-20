@@ -1306,7 +1306,7 @@ func zrPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
 private func zrPatternFromDict(_ dict: [String: Any]) -> ZRenderKit.Pattern? {
     guard let image = dict["image"] as? String, !image.isEmpty else { return nil }
     let repeatMode = (dict["repeat"] as? String).flatMap { ImagePatternRepeat(rawValue: $0) } ?? .repeat
-    let pat = ZRenderKit.Pattern(image, repeatMode)
+    let pat = ZRenderKit.Pattern(.url(image), repeatMode)
     if let x = styleNum(dict["x"]) { pat.x = x }
     if let y = styleNum(dict["y"]) { pat.y = y }
     if let r = styleNum(dict["rotation"]) { pat.rotation = r }
@@ -1318,7 +1318,9 @@ private func zrPatternFromDict(_ dict: [String: Any]) -> ZRenderKit.Pattern? {
 // Bridge an EChartsKit `ImagePatternObject` (the typed arm of `ZRColor.pattern`) to a ZRenderKit
 //   `Pattern`. Same fields as `zrPatternFromDict`, carried from the protocol accessors.
 private func zrPatternFromImagePattern(_ ip: ImagePatternObject) -> ZRenderKit.Pattern {
-    let pat = ZRenderKit.Pattern(ip.image, ip.`repeat` ?? .repeat)
+    // `ImagePatternObject.image` is a separate symbol still typed `String` (the string arm only),
+    //   so it is lifted into the `ImageSource` union here.
+    let pat = ZRenderKit.Pattern(.url(ip.image), ip.`repeat` ?? .repeat)
     if let x = ip.x { pat.x = x }
     if let y = ip.y { pat.y = y }
     if let r = ip.rotation { pat.rotation = r }

@@ -498,7 +498,7 @@ private func radiusPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
 private func radiusPatternFromDict(_ dict: [String: Any]) -> ZRenderKit.Pattern? {
     guard let image = dict["image"] as? String, !image.isEmpty else { return nil }
     let repeatMode = (dict["repeat"] as? String).flatMap { ImagePatternRepeat(rawValue: $0) } ?? .repeat
-    let pat = ZRenderKit.Pattern(image, repeatMode)
+    let pat = ZRenderKit.Pattern(.url(image), repeatMode)
     if let x = styleNum(dict["x"]) { pat.x = x }
     if let y = styleNum(dict["y"]) { pat.y = y }
     if let r = styleNum(dict["rotation"]) { pat.rotation = r }
