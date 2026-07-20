@@ -513,9 +513,11 @@ open class BarView: ChartView {
     //   `renderTask.perform` and calls `chartView.render(...)` directly, and `Scheduler.prepareView` is a
     //   documented no-op pending sub-project C2 — so a large bar series always takes `_renderLarge`, never
     //   this path, even though `updateStreamModes` does set `progressiveRender = true` for it. The
-    //   progressive `barCreateLarge` overload below is therefore ported-but-unexercised; verify it (and
-    //   the chunk-local vs global `largeDataIndices` index mismatch flagged in layout/barGrid.swift) when
-    //   progressive stage routing lands.
+    //   progressive `barCreateLarge` overload below is therefore ported-but-unexercised; verify it when
+    //   progressive stage routing lands. Watch in particular for upstream's chunk-local vs GLOBAL index
+    //   mismatch in `layout/barGrid` (`largeDataIndices[dataIndex]` written into a CHUNK-sized buffer,
+    //   barGrid.ts:490) — under chunking that write goes out of range and will trap loudly here, which is
+    //   the intended signal; `largePathFindDataIndex` reads the CHUNK-RELATIVE slot `idxOffset / 3`.
     private func _incrementalRenderLarge(_ params: StageHandlerProgressParams, _ seriesModel: BarSeriesModel) {
         self._removeBackground()
         // upstream: createLarge(seriesModel, this.group, this._progressiveEls, true);
@@ -735,6 +737,19 @@ open class BarView: ChartView {
     private func _clear(_ model: SeriesModel? = nil) {
         let group = self.group
         let data = self._data
+
+        // PORT-NOTE (no upstream counterpart — ARC): `barCreateLarge` binds mousedown/mousemove on each
+        //   `LargeBarPath`, and ZRenderKit's `Eventful` holds the handler's `ctx` (here the element
+        //   itself, via `Element.on`'s `context ?? self`) STRONGLY — so a large path self-retains through
+        //   its own event table and `group.removeAll()` alone would leak it, together with its packed
+        //   `points`/`largeDataIndices` buffers (~12 MB per re-render at the 500k-bar scale this path
+        //   exists for). Unbind before dropping. JS needs none of this: its GC collects the cycle.
+        _ = group.traverse({ el in
+            if let largePath = el as? LargeBarPath {
+                _ = largePath.off()
+            }
+            return false
+        })
         if let model = model, (model.isAnimationEnabled() ?? false), data != nil, self._isLargeDraw != true {
             self._removeBackground()
             self._backgroundEls = [:]

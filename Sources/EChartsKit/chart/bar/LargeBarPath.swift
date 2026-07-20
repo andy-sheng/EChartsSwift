@@ -13,6 +13,12 @@ import ZRenderKit
 // upstream: interface LagePathShape { points: ArrayLike<number>; } (bar/BarView.ts:1096) — the packed
 //   `largePoints`, 3 numbers per bar: `[startX, startY, sizeAlongValueAxis]`.
 public struct LargeBarPathShape: PathShape {
+    // PORT-TODO: PORTING.md section 7 — an upstream `ArrayLike<number>` fed by a `Float32Array`
+    //   (`vendor.createFloat32Array` in layout/barGrid) should be `ContiguousArray<Double>`. Kept
+    //   `[Double]` to match `util/vendor.createFloat32Array`'s current return type (vendor.swift:75)
+    //   and the `getLayout("largePoints")` boxing; migrate this, `LargeBarPath.largeDataIndices` and
+    //   `createFloat32Array` together in a dedicated pass — NOT as a side effect of this lane.
+    //   `[Double]` on a large-data hot path is the shape that has previously produced O(n^2) bridging.
     public var points: [Double] = []
     public init() {}
     // points are not tweened (the whole shape is replaced via setShape) → default no-op animation.
@@ -23,6 +29,8 @@ public struct LargeBarPathShape: PathShape {
 public final class LargeBarPath: Path {
     // upstream: baseDimIdx (0 when the value axis is vertical, 1 when horizontal), largeDataIndices, barWidth.
     public var baseDimIdx: Int = 0
+    // PORT-TODO: PORTING.md section 7 — upstream `Float32Array` buffer; should be
+    //   `ContiguousArray<Double>` (see the note on `LargeBarPathShape.points`).
     public var largeDataIndices: [Double] = []
     public var barWidth: Double = 0
 
@@ -198,11 +206,14 @@ func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
 //   relying on `this` being the element the listener is bound to. `Element.on` forwards `context ?? self`
 //   as the handler's `thisCtx` (Element.swift:1597), so `thisCtx` IS that element — a single shared
 //   handler mirrors upstream exactly, with no per-element closure allocation.
-// NOTE: `Eventful`'s handler record holds `ctx` STRONGLY (Core/Eventful.swift:28), so an element
-//   self-retains through its own listener records regardless of how the handler captures. That is a
-//   pre-existing framework-wide property of the port, not something this call site can or should work
-//   around; `BarView._clear` drops the path from the group, and the throttle slot below is cleared so
-//   nothing outside the element's own event table keeps it alive.
+// LEAK WARNING: `Eventful`'s handler record holds `ctx` STRONGLY (Core/Eventful.swift, `EventHandler.ctx`)
+//   and `Element.on` passes `context ?? self`, so binding ANY listener makes the element self-retain
+//   (el -> _eventful -> handler.ctx -> el). Dropping the path from the group is therefore NOT enough to
+//   free it — at 500k bars each orphaned `LargeBarPath` pins its whole packed `points` array (~12 MB per
+//   re-render). `BarView._clear` MUST `off()` the outgoing large paths before `group.removeAll()`; it
+//   does. (A `[weak el]` capture never helped: the cycle is through `ctx`, not the closure.)
+// PORT-TODO (framework): `EventHandler.ctx` should be held weakly/unowned in the `context ?? self` case
+//   — upstream JS GC collects that self-cycle freely. Track separately; it affects every `Element.on`.
 private let largePathHitHandler: EventCallback = { thisCtx, args in
     guard let largePath = thisCtx as? LargeBarPath,
           let event = args.first as? ZRElementEvent else { return nil }
@@ -270,10 +281,13 @@ func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double)
 
         if x >= startPoint[0] && x <= startPoint[0] + size[0]
             && y >= startPoint[1] && y <= startPoint[1] + size[1] {
-            // `Int(Double)` traps on NaN/infinity (a Float32Array slot never written stays 0, but a
-            //   malformed layout could carry NaN) — degrade to "no datum", matching the JS `undefined`.
+            // `Int(Double)` traps on NaN/infinity AND on any FINITE value outside `Int`'s range (a
+            //   Float32 slot can legitimately hold ~3.4e38, far past Int64.max — `isFinite` would let
+            //   that through and still trap). `Int(exactly:)` on the truncated value is total: it
+            //   covers all three cases and degrades to "no datum", matching the JS `undefined` an
+            //   out-of-range typed-array read yields.
             let idx = largeDataIndices[i]
-            return idx.isFinite ? Int(idx) : -1
+            return Int(exactly: idx.rounded(.towardZero)) ?? -1
         }
     }
 
