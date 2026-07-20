@@ -106,11 +106,14 @@ final class DecalPatternTests: XCTestCase {
         guard let pattern = createOrUpdatePatternFromDecal(decal, api) else {
             return XCTFail("dots decal should produce a Pattern")
         }
-        XCTAssertTrue(pattern.image.hasPrefix("data:image/png;base64,"), "tile should be a PNG data URI")
+        guard case let .url(tileURI) = pattern.image else {
+            return XCTFail("expected a .url(dataURI) image source, got \(pattern.image)")
+        }
+        XCTAssertTrue(tileURI.hasPrefix("data:image/png;base64,"), "tile should be a PNG data URI")
         XCTAssertEqual(pattern.repeat, .repeat)
         XCTAssertEqual(pattern.scaleX, 1, accuracy: 1e-9)   // 1 / dpr(1)
         // The tile image decodes to the computed pattern size (16 × 12 at dpr 1).
-        guard let img = decodeDataURI(pattern.image) else { return XCTFail("tile PNG should decode") }
+        guard let img = decodeDataURI(tileURI) else { return XCTFail("tile PNG should decode") }
         XCTAssertEqual(img.width, 16)
         XCTAssertEqual(img.height, 12)
     }
@@ -128,7 +131,10 @@ final class DecalPatternTests: XCTestCase {
             return XCTFail("lines decal should produce a Pattern")
         }
         XCTAssertEqual(pattern.rotation, Double.pi / 6, accuracy: 1e-9)
-        guard let img = decodeDataURI(pattern.image) else { return XCTFail("tile PNG should decode") }
+        guard case let .url(linesURI) = pattern.image else {
+            return XCTFail("expected a .url(dataURI) image source, got \(pattern.image)")
+        }
+        guard let img = decodeDataURI(linesURI) else { return XCTFail("tile PNG should decode") }
         XCTAssertEqual(img.width, 1)
         XCTAssertEqual(img.height, 7)
     }
@@ -237,7 +243,10 @@ final class DecalPatternTests: XCTestCase {
         guard let decalPattern = bar.pathStyle.decal else {
             return XCTFail("bar.pathStyle.decal should carry the generated tiling Pattern")
         }
-        XCTAssertFalse(decalPattern.image.isEmpty, "the decal Pattern must carry a tile image")
+        guard case let .url(decalURI) = decalPattern.image else {
+            return XCTFail("expected a .url(dataURI) image source, got \(decalPattern.image)")
+        }
+        XCTAssertFalse(decalURI.isEmpty, "the decal Pattern must carry a tile image")
 
         // Path.update() synthesizes the hidden decal element (mirrors host geometry, filled with the
         // pattern). Storage/renderScene add it to the display list right after the bar.

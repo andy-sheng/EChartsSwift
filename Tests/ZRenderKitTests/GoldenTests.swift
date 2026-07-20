@@ -474,7 +474,7 @@ final class CALayerPainterSmokeTests: XCTestCase {
     func testRotatedPatternFillsRectAndClips() throws {
         // 20x20 tile: ECharts-blue with a white dot + amber corner (same as the pattern demos).
         let tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAd0lEQVR4nGP8dSLiPwMURK3IY6AUMFFsAq0NZAwpOAb3MjUAEzUNI8nA1f2WlHt5NR5DQguPk+bC1QRchEueiYHKgIkuBq4mMgKwqWMiJcCJUcfEQGXARDcDQwl4G5c8I7F5GRQBxIQtEzGG4XMRA7kGEgsGv4EAElwhSajUA98AAAAASUVORK5CYII="
-        let pat = Pattern(tile, .repeat)
+        let pat = Pattern(.url(tile), .repeat)
         pat.x = 100; pat.scaleX = 0.5; pat.rotation = 0.5235987755982988  // π/6
 
         var rs = RectShape(); rs.x = 0; rs.y = 0; rs.width = 200; rs.height = 200

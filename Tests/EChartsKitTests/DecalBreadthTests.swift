@@ -50,7 +50,7 @@ final class DecalBreadthTests: XCTestCase {
         guard let pattern = decaled.pathStyle.decal else {
             return XCTFail("pie sector with itemStyle.decal should carry pathStyle.decal (via barStyleFromDict)")
         }
-        XCTAssertFalse(pattern.image.isEmpty, "the decal Pattern must carry a tile image")
+        XCTAssertFalse(decalImageURI(pattern)?.isEmpty ?? true, "the decal Pattern must carry a tile image")
 
         decaled.update()
         guard let decalEl = decaled.getDecalElement() else {
@@ -91,7 +91,7 @@ final class DecalBreadthTests: XCTestCase {
         guard let pattern = decaled.pathStyle.decal else {
             return XCTFail("funnel piece with itemStyle.decal should carry pathStyle.decal (via barStyleFromDict)")
         }
-        XCTAssertFalse(pattern.image.isEmpty)
+        XCTAssertFalse(decalImageURI(pattern)?.isEmpty ?? true)
 
         decaled.update()
         guard let decalEl = decaled.getDecalElement() else {
@@ -180,7 +180,7 @@ final class DecalBreadthTests: XCTestCase {
         guard let region = decaledRegion else {
             return XCTFail("the West region should carry a decal Pattern on its CompoundPath")
         }
-        XCTAssertFalse(region.pathStyle.decal!.image.isEmpty)
+        XCTAssertFalse(decalImageURI(region.pathStyle.decal!)?.isEmpty ?? true)
 
         region.update()
         guard let decalEl = region.getDecalElement() else {
@@ -273,4 +273,12 @@ final class DecalBreadthTests: XCTestCase {
         XCTAssertNil(data.getItemVisual(idx, "decal"),
                      "without aria.decal.show no node decal is assigned")
     }
+}
+
+
+// PORT-NOTE: `Pattern.image` is an `ImageSource` enum (`.url(String)` / `.image(ImageLike)`) since the
+//   Pattern retype; decal tiles are always produced as `.url(dataURI)`.
+private func decalImageURI(_ pattern: ZRenderKit.Pattern) -> String? {
+    if case let .url(uri) = pattern.image { return uri }
+    return nil
 }

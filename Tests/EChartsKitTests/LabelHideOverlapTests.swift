@@ -35,7 +35,10 @@ final class LabelHideOverlapTests: XCTestCase {
     func testLabelIntersectIgnoredShortCircuits() {
         let a = geom(0, 0, 10, 10)
         let b = geom(5, 5, 10, 10)
-        b.geomIgnore = true
+        // upstream labelLayoutHelper.ts:595-598 gates on the LIVE element (`layoutInfo.label.ignore`),
+        //   NOT the `geomIgnore` geometry snapshot — `fixMinMaxLabelShow`/`hideOverlap` flip
+        //   `label.ignore` after geometry is computed, so the snapshot goes stale.
+        b.label.ignore = true
         XCTAssertFalse(labelLayoutHelper.labelIntersect(a, b),
                        "an ignored label never counts as intersecting")
     }

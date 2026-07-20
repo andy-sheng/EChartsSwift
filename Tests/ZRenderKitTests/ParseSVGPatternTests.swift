@@ -41,8 +41,11 @@ final class ParseSVGPatternTests: XCTestCase {
         guard case let .pattern(pattern)? = rect.pathStyle.fill else {
             return XCTFail("expected a Pattern fill on the rect, got \(String(describing: rect.pathStyle.fill))")
         }
-        XCTAssertFalse(pattern.image.isEmpty, "the rasterized tile is carried as a data URI")
-        XCTAssertTrue(pattern.image.hasPrefix("data:image/png;base64,"),
+        guard case let .url(patternImage) = pattern.image else {
+            return XCTFail("expected a .url(dataURI) image source, got \(pattern.image)")
+        }
+        XCTAssertFalse(patternImage.isEmpty, "the rasterized tile is carried as a data URI")
+        XCTAssertTrue(patternImage.hasPrefix("data:image/png;base64,"),
                       "the tile is a PNG data URI produced by the seam")
         XCTAssertEqual(pattern.repeat, .repeat)
     }
