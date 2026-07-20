@@ -343,11 +343,11 @@ public enum labelLayoutHelper {
     ///
     /// upstream copies `LABEL_LAYOUT_BASE_PROPS` (label, labelLine, layoutOption, priority, defaultAttr,
     ///   marginForce, minMarginForce, marginDefault, suggestIgnore) from `source` into the partial
-    ///   `newBaseWithDefaults`, then calls `ensureLabelLayoutWithGeometry`. The MARGIN machinery
-    ///   (`marginForce`/`minMarginForce`/`marginDefault`) is a documented no-op in this port (see the
-    ///   note above `computeLabelGeometry`), so the only variation upstream drives through this
-    ///   function — a `marginForce` override — has no effect here; the copy carries the same geometry as
-    ///   `source`. Faithful for the default labels the axis path produces.
+    ///   `newBaseWithDefaults`, then calls `ensureLabelLayoutWithGeometry`. Of the MARGIN machinery,
+    ///   `marginForce`/`minMarginForce` remain a documented no-op in this port (see the MARGIN note in
+    ///   `computeLabelGeometry`), so the only variation upstream drives through this function — a
+    ///   `marginForce` override — has no effect here. `marginDefault` IS copied and applied, so the
+    ///   copy's `localRect`/`rect` may differ from a source that carried no `marginDefault`.
     public static func newLabelLayoutWithGeometry(_ source: LabelLayoutData) -> LabelLayoutData? {
         let out = LabelLayoutData(
             label: source.label,
@@ -359,7 +359,8 @@ public enum labelLayoutHelper {
             seriesIndex: source.seriesIndex,
             priority: source.priority,
             defaultAttr: source.defaultAttr,
-            suggestIgnore: source.suggestIgnore
+            suggestIgnore: source.suggestIgnore,
+            marginDefault: source.marginDefault
         )
         return ensureLabelLayoutWithGeometry(out)
     }
@@ -377,7 +378,22 @@ public enum labelLayoutHelper {
         let outLocalRect = ensureCopyRect(out.localRect, label.getBoundingRect() ?? BoundingRect(0, 0, 0, 0))
         out.localRect = outLocalRect
 
-        // MARGIN gap: `__marginType`/`margin` machinery deferred → no `expandOrShrinkRect` expansion.
+        // MARGIN gap (owner: SYMBOLS.tsv row 3, `ZRenderKit/Text.__marginType+labelMargin`): the
+        //   `style.margin` / `style.__marginType` resolution and the `marginForce` / `minMarginForce`
+        //   overrides remain deferred. Only `marginDefault` (upstream's fallback, [top, right, bottom,
+        //   left]) is wired here, because the axis-name overlap resolver depends on it.
+        //   upstream (labelLayoutHelper.ts:178-193):
+        //     let marginType = labelStyleExt.__marginType;
+        //     if (marginType == null && marginDefault) { margin = marginDefault; marginType = textMargin; }
+        //     ... if (marginType === LabelMarginType.textMargin) {
+        //           expandOrShrinkRect(outLocalRect, _tmpLabelMargin, false, false); }
+        //   `__marginType` is still a documented gap, so it is always `nil` here → the `marginType == null`
+        //   gate is always taken and `marginType` is always `textMargin`. When row 3's lane lands
+        //   `__marginType`, it only needs to wrap this block in that gate and add the `minMargin` branch.
+        //   NOTE: `false, false` = EXPAND (`shrinkOrExpand: true` would NEGATE the deltas, i.e. shrink).
+        if let margin = out.marginDefault, margin.count == 4 {
+            expandOrShrinkRect(outLocalRect, margin, false, false)
+        }
 
         let outGlobalRect = ensureCopyRect(out.rect, outLocalRect)
         out.rect = outGlobalRect
@@ -442,7 +458,14 @@ public enum labelLayoutHelper {
         guard let base = baseLayoutInfo, let target = targetLayoutInfo else {
             return false
         }
-        if base.geomIgnore || target.geomIgnore {
+        // upstream: if ((base.label && base.label.ignore) || (target.label && target.label.ignore))
+        //   Gate on the LIVE element, not the `geomIgnore` snapshot: `fixMinMaxLabelShow` / `hideOverlap`
+        //   mutate `label.ignore` AFTER geometry is computed without dirtying it, so the snapshot goes
+        //   stale (a force-re-shown min label would keep `geomIgnore == true` and never be de-overlapped).
+        //   Upstream's `label` is optional (pure geometry carriers pass none); here `label` is always a
+        //   real `ZRText`, and `computeLabelGeometry2`'s throwaway carrier has `ignore == false`, so the
+        //   two forms agree. `geomIgnore` is retained on the type as the geometry-time snapshot.
+        if base.label.ignore || target.label.ignore {
             return false
         }
         // Fast rejection.
@@ -555,6 +578,12 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
     public var priority: Double
     public var defaultAttr: SavedLabelAttr
     public var suggestIgnore: Bool
+    /// upstream `LABEL_LAYOUT_BASE_PROPS['marginDefault']`: `[top, right, bottom, left]` used when the
+    /// label carries no explicit `style.margin`. The `style.margin`/`__marginType` and
+    /// `marginForce`/`minMarginForce` overrides remain a documented gap (see the MARGIN note above), but
+    /// `marginDefault` IS applied by `computeLabelGeometry` — the axis-name overlap resolver
+    /// (`AxisBuilder`'s `DEFAULT_*_NAME_MARGIN_LEVELS`) depends on it.
+    public var marginDefault: [Double]?
 
     // ─── LabelGeometry ───
     /// `nil` == fully dirty (upstream uninitialized `NullUndefined`).
@@ -579,7 +608,8 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         seriesIndex: Double = 0,
         priority: Double = 0,
         defaultAttr: SavedLabelAttr = SavedLabelAttr(),
-        suggestIgnore: Bool = false
+        suggestIgnore: Bool = false,
+        marginDefault: [Double]? = nil
     ) {
         self.label = label
         self.labelLine = labelLine
@@ -591,6 +621,7 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         self.priority = priority
         self.defaultAttr = defaultAttr
         self.suggestIgnore = suggestIgnore
+        self.marginDefault = marginDefault
         self.dirty = nil
         self.rect = BoundingRect(0, 0, 0, 0)
         self.localRect = nil
