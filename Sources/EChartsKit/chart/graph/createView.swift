@@ -27,8 +27,8 @@ import ZRenderKit
 //       -> PORT-NOTE: coord/View.swift is ported. This file still uses a stand-in view coord sys and
 //          ports the *pure box/scale computation* only (see `GraphViewBox`).
 //   import {createBoxLayoutReference, getLayoutRect, applyPreserveAspect} from '../../util/layout';
-//       -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` (util/layout.swift).
-//          `applyPreserveAspect` is NOT ported (see util/layout.swift header) -> PORT-NOTE (deferred) below.
+//       -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` / `layout.applyPreserveAspect`
+//          (all ported in util/layout.swift; wired in `getViewRect` below).
 //   import * as bbox from 'zrender/src/core/bbox';                   -> `bbox` (ZRenderKit Core/bbox.swift).
 //   import GraphSeriesModel, { GraphNodeItemOption } from './GraphSeries';
 //       -> PORT-NOTE: GraphSeries.swift is ported; `GraphSeriesModel` referenced as sibling.
@@ -220,17 +220,21 @@ public struct GraphViewBox {
 private func getViewRect(_ seriesModel: GraphSeriesModel, _ api: ExtensionAPI, _ aspect: Double) -> LayoutRect {
     let layoutRef = layout.createBoxLayoutReference(seriesModel, api)
     // const option = extend(seriesModel.getBoxLayoutParams(), { aspect: aspect });
-    //   `getBoxLayoutParams()` yields a `BoxLayoutOptionMixin` struct with no `aspect` slot, and the
-    //   `getLayoutRect(BoxLayoutOptionMixin, …)` overload ignores `aspect` regardless, so it is passed
-    //   through directly. `aspect` is consumed only by `applyPreserveAspect` (PORT-NOTE below).
-    let option = seriesModel.getBoxLayoutParams()
+    //   `aspect` is not a field of `BoxLayoutOptionMixin`; rebuilt as a `[String: Any]` bag (+ aspect)
+    //   so `layout.getLayoutRect`'s dynamic overload reads it, preserving upstream behavior
+    //   (mirrors coord/geo/geoCreator.swift).
+    let box = seriesModel.getBoxLayoutParams()
+    var option: [String: Any] = [:]
+    if let v = box.left { option["left"] = v }
+    if let v = box.top { option["top"] = v }
+    if let v = box.right { option["right"] = v }
+    if let v = box.bottom { option["bottom"] = v }
+    if let v = box.width { option["width"] = v }
+    if let v = box.height { option["height"] = v }
+    option["aspect"] = aspect
     let viewRect = layout.getLayoutRect(option, layoutRef.refContainer)
     // return applyPreserveAspect(seriesModel, viewRect, aspect);
-    // PORT-NOTE (deferred): requires layout.applyPreserveAspect (util/layout.ts, not ported — see
-    //   layout.swift header) — returns the un-adjusted viewRect until it lands. `aspect` referenced to
-    //   preserve the faithful call shape.
-    _ = aspect
-    return viewRect
+    return layout.applyPreserveAspect(seriesModel, viewRect, aspect)
 }
 
 // export default function createViewCoordSys(ecModel, api)

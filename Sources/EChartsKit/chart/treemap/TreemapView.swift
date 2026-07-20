@@ -55,10 +55,11 @@ import ZRenderKit
 //   import Displayable from 'zrender/src/graphic/Displayable';     -> `Displayable`.
 //   import { makeInner, convertOptionIdName } from '../../util/model';  -> `model.makeInner` / `model.convertOptionIdName`.
 //   import { PathStyleProps, PathProps } from 'zrender/src/graphic/Path';  -> `PathStyleProps` / `PathProps`.
-//   import { TreeSeriesNodeItemOption } from '../tree/TreeSeries';  -> type-only (link click; DEFERRED).
-//   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> PORT-NOTE (deferred): requires ./treemapAction (not ported; drill/zoom actions).
+//   import { TreeSeriesNodeItemOption } from '../tree/TreeSeries';  -> type-only (the link-click item model).
+//   import { TreemapRootToNodePayload, ... } from './treemapAction';  -> the payload interfaces are type-only;
+//       the port carries their fields on the dynamic `Payload.other` bag (see treemapAction.swift).
 //   import { ColorString, ECElement } from '../../util/types';     -> type-only.
-//   import { windowOpen } from '../../util/format';                -> PORT-NOTE: only used by the deferred link click.
+//   import { windowOpen } from '../../util/format';                -> `format.windowOpen` (link node click).
 //   import { TextStyleProps } from 'zrender/src/graphic/Text';     -> `TextStyleProps`.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle IS ported (label/labelStyle.swift); treemap still uses a MINIMAL faithful
@@ -200,10 +201,13 @@ open class TreemapView: ChartView {
 
         // const types = ['treemapZoomToNode', 'treemapRootToNode'];
         // const targetInfo = helper.retrieveTargetInfo(payload, types, seriesModel);
-        // PORT-NOTE (deferred): treeHelper.retrieveTargetInfo IS ported, but its input payload comes from
-        //   the drill/zoom actions (./treemapAction, not ported) which are never dispatched, so no target is
-        //   ever passed; the breadcrumb tail is instead found by `findTarget` (see `_renderBreadcrumb`).
-        let targetInfo: FoundTargetInfo? = nil
+        //   The drill/zoom payloads are dispatched by `_zoomToNode` / `_rootToNode` below and handled by
+        //   installTreemapAction (chart/treemap/treemapAction.swift). When the payload is neither type,
+        //   `retrieveTargetInfo` returns nil and the breadcrumb tail falls back to `findTarget`
+        //   (see `_renderBreadcrumb`), exactly as upstream.
+        let types = ["treemapZoomToNode", "treemapRootToNode"]
+        let targetInfo: FoundTargetInfo? = treeHelper.retrieveTargetInfo(payload, types, seriesModel)
+            .map { FoundTargetInfo(node: $0.node) }
         // const payloadType = payload && payload.type;  -> consumed only by the deferred animation routing.
         // const layoutInfo = seriesModel.layoutInfo;
         //   `seriesModel.layoutInfo` is the treemapLayout output rect (`LayoutRect?` in the sibling port;
@@ -325,10 +329,72 @@ open class TreemapView: ChartView {
     //   is not ported (roam is instead applied as a container transform; see viewGroupRoamApplyStateToGroup).
 
     private func _initEvents(_ containerGroup: Group) {
-        // containerGroup.on('click', (e) => { ... nodeClick zoomToNode | link | rootToNode ... });
-        // PORT-NOTE (deferred): node click (zoomToNode / rootToNode drill actions, link windowOpen)
-        //   requires ./treemapAction + util/event + util/format.windowOpen (not ported).
-        _ = containerGroup
+        // containerGroup.on('click', (e) => { ... }, this);
+        //   The click bubbles up from the per-node rects to this container group, so a single listener
+        //   (installed once, when the container group is created) serves every tile — as upstream.
+        // PORT-NOTE: upstream's trailing `, this` context argument is DROPPED. `Eventful` retains the
+        //   context strongly (EventHandler.ctx, ZRenderKit/Core/Eventful.swift), and this view owns
+        //   `_containerGroup`, so passing `self` would form the cycle TreemapView -> Group -> handler.ctx
+        //   -> TreemapView and leak the view (and its series data) on dispose. The closure reaches `self`
+        //   through the weak capture and never reads the context param — matching SunburstView/TreeView.
+        _ = containerGroup.on("click", { [weak self] _, args in
+            guard let self = self else { return nil }
+            // if (this._state !== 'ready') { return; }
+            if self._state != "ready" {
+                return nil
+            }
+
+            // const nodeClick = this.seriesModel.get('nodeClick', true);
+            guard let seriesModel = self.seriesModel else { return nil }
+            let nodeClickRaw = seriesModel.get("nodeClick", true)
+            // if (!nodeClick) { return; }  — falsy is `false` / nil / '' here.
+            if nodeClickRaw == nil || (nodeClickRaw as? Bool) == false || (nodeClickRaw as? String) == "" {
+                return nil
+            }
+            // Bind WITHOUT returning on a non-String value: upstream only string-compares inside the
+            //   `else` arm, so a truthy non-string `nodeClick` (e.g. `true`) must still reach the
+            //   `isLeafRoot -> _rootToNode` roll-up below.
+            let nodeClick = nodeClickRaw as? String
+
+            // const targetInfo = this.findTarget(e.offsetX, e.offsetY);
+            guard let e = args.first as? ZRElementEvent else { return nil }
+            guard let targetInfo = self.findTarget(e.offsetX, e.offsetY) else {
+                // if (!targetInfo) { return; }
+                return nil
+            }
+
+            // const node = targetInfo.node;
+            let node = targetInfo.node
+            // if (node.getLayout().isLeafRoot) { this._rootToNode(targetInfo); }
+            let isLeafRoot = ((node.getLayout() as? [String: Any])?["isLeafRoot"] as? Bool) ?? false
+            if isLeafRoot {
+                self._rootToNode(targetInfo)
+            }
+            else {
+                // if (nodeClick === 'zoomToNode') { this._zoomToNode(targetInfo); }
+                if nodeClick == "zoomToNode" {
+                    self._zoomToNode(targetInfo)
+                }
+                // else if (nodeClick === 'link') { ... windowOpen(link, linkTarget) ... }
+                else if nodeClick == "link" {
+                    // const itemModel = node.hostTree.data.getItemModel(node.dataIndex);
+                    //   `node.getModel()` is the ported equivalent (nil for dataIndex < 0).
+                    let itemModel = node.getModel()
+                    // const link = itemModel.get('link', true);
+                    let link = itemModel?.get("link", true) as? String
+                    // const linkTarget = itemModel.get('target', true) || 'blank';
+                    //   JS `||` falls back for the EMPTY STRING too (PORTING.md §8: string truthiness
+                    //   replicated explicitly), so `target: ''` must still yield 'blank'.
+                    let targetRaw = itemModel?.get("target", true) as? String
+                    let linkTarget = (targetRaw?.isEmpty ?? true) ? "blank" : targetRaw!
+                    // link && windowOpen(link, linkTarget);
+                    if let link = link, !link.isEmpty {
+                        format.windowOpen(link, linkTarget)
+                    }
+                }
+            }
+            return nil
+        })
     }
 
     private func _renderBreadcrumb(_ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI, _ targetInfoIn: FoundTargetInfo?) {
@@ -357,10 +423,20 @@ open class TreemapView: ChartView {
         guard let targetInfo = targetInfo else {
             return
         }
-        self._breadcrumb!.render(seriesModel, api, targetInfo.node) { _ in
-            // if (this._state !== 'animating') { aboveViewRoot(...) ? this._rootToNode(...) : this._zoomToNode(...); }
-            // PORT-NOTE (deferred): breadcrumb click (drill/zoom dispatchAction via helper.aboveViewRoot)
-            //   requires ./treemapAction (not ported); treeHelper.aboveViewRoot IS ported but has no action to feed.
+        self._breadcrumb!.render(seriesModel, api, targetInfo.node) { [weak self] node in
+            // if (this._state !== 'animating') {
+            //     helper.aboveViewRoot(seriesModel.getViewRoot(), node)
+            //         ? this._rootToNode({node: node}) : this._zoomToNode({node: node});
+            // }
+            guard let self = self, self._state != "animating" else { return }
+            // `getViewRoot()` is `TreeNode?` in the sibling port (upstream is non-null).
+            guard let viewRoot = seriesModel.getViewRoot() else { return }
+            if treeHelper.aboveViewRoot(viewRoot, node) {
+                self._rootToNode(FoundTargetInfo(node: node))
+            }
+            else {
+                self._zoomToNode(FoundTargetInfo(node: node))
+            }
         }
     }
 
@@ -386,8 +462,34 @@ open class TreemapView: ChartView {
         // this._clearController();  -> DEFERRED (roam not ported).
     }
 
-    // upstream: _zoomToNode(targetInfo) / _rootToNode(targetInfo) — DEFERRED (dispatchAction not ported).
-    // PORT-NOTE (deferred): requires ./treemapAction — treemapZoomToNode / treemapRootToNode actions not ported.
+    // private _zoomToNode(targetInfo: FoundTargetInfo) { this.api.dispatchAction({
+    //     type: 'treemapZoomToNode', from: this.uid, seriesId: this.seriesModel.id,
+    //     targetNode: targetInfo.node }); }
+    //   `treemapZoomToNode` is registered (as a noop with update:'updateView') by installTreemapAction;
+    //   the actual re-root is performed by the treemapLayout stage, which reads the payload's target node
+    //   through `treeHelper.retrieveTargetInfo` on the ensuing update. The driver delivers this payload to
+    //   that stage via `ECharts.runSeriesStageHandler(treemapLayout, …, _payload)` — without that thread
+    //   the stage sees `payloadType == nil` and the drill-down is a no-op.
+    private func _zoomToNode(_ targetInfo: FoundTargetInfo) {
+        guard let seriesModel = self.seriesModel, let api = self.api else { return }
+        var payload = Payload(type: "treemapZoomToNode")
+        payload.other["from"] = self.uid
+        payload.other["seriesId"] = seriesModel.id
+        payload.other["targetNode"] = targetInfo.node
+        api.dispatchAction(payload)
+    }
+
+    // private _rootToNode(targetInfo: FoundTargetInfo) { this.api.dispatchAction({
+    //     type: 'treemapRootToNode', from: this.uid, seriesId: this.seriesModel.id,
+    //     targetNode: targetInfo.node }); }
+    private func _rootToNode(_ targetInfo: FoundTargetInfo) {
+        guard let seriesModel = self.seriesModel, let api = self.api else { return }
+        var payload = Payload(type: "treemapRootToNode")
+        payload.other["from"] = self.uid
+        payload.other["seriesId"] = seriesModel.id
+        payload.other["targetNode"] = targetInfo.node
+        api.dispatchAction(payload)
+    }
 
     /**
      * @param x Global coord x.

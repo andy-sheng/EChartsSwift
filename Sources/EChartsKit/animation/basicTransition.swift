@@ -6,8 +6,8 @@
 //   `ecModel.getUpdatePayload().animation` (dataZoom/resize actions), evaluates function-valued
 //   `animationDuration`/`animationDelay(dataIndex)` (staggered enter), and honors a `removeOpt`
 //   override on the leave path. The `getAnimationDelayParams` hook (pictorial bar per-element delay)
-//   is still deferred: the Swift PictorialBar port does not monkeypatch that method onto its item
-//   model and `Model` exposes no such member, so `extraDelayParams` is threaded but always nil here.
+//   is wired: `animateOrSetProps` reads `model.getAnimationDelayParams?(el, dataIndex)` (the optional
+//   stored closure on `Model`, assigned by PictorialBarView) and threads it as `extraDelayParams`.
 import Foundation
 import ZRenderKit
 
@@ -23,8 +23,8 @@ private func transNum(_ v: Any?) -> Double? {
 /// Return nil if animation is disabled.
 ///
 /// `extraDelayParams` is the pictorial-bar-only second argument passed to a function-valued
-/// `animationDelay` (upstream's `getAnimationDelayParams` hook). The Swift port has no producer for
-/// it yet, so it is always nil here (see the header PORT-NOTE).
+/// `animationDelay` (upstream's `getAnimationDelayParams` hook). It is produced by the caller
+/// (`animateOrSetProps` via `model.getAnimationDelayParams`) and nil for every other series.
 func getAnimationConfig(
     _ type: ECAnimType, _ model: Model?, _ dataIndex: Int,
     _ extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)?,
@@ -98,7 +98,10 @@ private func animateOrSetProps(
     //   animationDuration) but is overridden by any field the caller supplies via `removeOpt`.
     let extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)? =
         isRemove ? (duration: removeOpt?.duration, easing: removeOpt?.easing, delay: removeOpt?.delay) : nil
-    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra, nil)
+    // upstream: (animatableModel && animatableModel.getAnimationDelayParams)
+    //   ? animatableModel.getAnimationDelayParams(el, dataIndex as number) : null
+    let extraDelayParams = model?.getAnimationDelayParams?(el, dataIndex ?? 0)
+    let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra, extraDelayParams)
     if let cfg = cfg, cfg.duration > 0 {
         var ac = ElementAnimateConfig()
         ac.duration = cfg.duration

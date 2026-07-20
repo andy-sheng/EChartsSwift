@@ -41,7 +41,8 @@ import ZRenderKit
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
 //     -> PORT-NOTE: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
-//   import {throttle} from '../../util/throttle';                    -> PORT-NOTE (deferred): requires util/throttle (not ported; large mode only).
+//   import {throttle} from '../../util/throttle';                    -> `throttleUtil.throttle` (util/throttle.swift),
+//     used by `largePathUpdateDataIndex` in LargeBarPath.swift (large mode only).
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';  -> sibling `createClipPath`.
 //   import Sausage from '../../util/shape/sausage';                  -> PORT-NOTE (deferred): requires util/shape/sausage (not ported; polar roundCap only).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
@@ -214,9 +215,12 @@ open class BarView: ChartView {
 
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
-        //   each (large mode, deferred); otherwise traverse the group via `Group.traverse` (visits
-        //   children only — see the same note in view/Chart.swift `eachRendered`).
+        // PORT-NOTE: `util/graphic.traverseElements` is not ported, so the collected elements are visited
+        //   WITHOUT descending into their children — harmless today because `_progressiveEls` only ever
+        //   holds `LargeBarPath`s, which have no children. `_progressiveEls` is populated by the
+        //   progressive `barCreateLarge` overload via `_incrementalRenderLarge` (dormant until the
+        //   progressive render-task routing lands — see the note there); otherwise traverse the group via
+        //   `Group.traverse` (visits children only — see the same note in view/Chart.swift `eachRendered`).
         if let progressiveEls = self._progressiveEls {
             for el in progressiveEls {
                 _ = cb(el)
@@ -496,16 +500,28 @@ open class BarView: ChartView {
         self._clear()
         // upstream: createLarge(seriesModel, this.group);
         //   One LargeBarPath over the barGrid `largePoints` layout, drawn per-bar via the fill boost
-        //   (LargeBarPath.swift) — the mouse-event throttle (largePathUpdateDataIndex) is the only piece
-        //   still deferred (tooltip hit-testing over the large path), not the draw.
+        //   (LargeBarPath.swift); the throttled mouse-event hit-test (largePathUpdateDataIndex) is wired
+        //   inside `barCreateLarge` for tooltip/highDown over the large path.
         barCreateLarge(seriesModel, self.group)
         self._updateLargeClip(seriesModel)
     }
 
+    // PORT-TODO (DORMANT — not reachable in the current build, so UNVERIFIED): `incrementalRender` (and
+    //   therefore this method) is only ever invoked from `renderTaskReset`'s progressive branch
+    //   (view/Chart.swift `progressMethodMap("incrementalPrepareRender")`), which runs off the Scheduler's
+    //   piped render task. `ECharts.renderSeries` (core/ECharts.swift:2341) currently BYPASSES
+    //   `renderTask.perform` and calls `chartView.render(...)` directly, and `Scheduler.prepareView` is a
+    //   documented no-op pending sub-project C2 — so a large bar series always takes `_renderLarge`, never
+    //   this path, even though `updateStreamModes` does set `progressiveRender = true` for it. The
+    //   progressive `barCreateLarge` overload below is therefore ported-but-unexercised; verify it when
+    //   progressive stage routing lands. Watch in particular for upstream's chunk-local vs GLOBAL index
+    //   mismatch in `layout/barGrid` (`largeDataIndices[dataIndex]` written into a CHUNK-sized buffer,
+    //   barGrid.ts:490) — under chunking that write goes out of range and will trap loudly here, which is
+    //   the intended signal; `largePathFindDataIndex` reads the CHUNK-RELATIVE slot `idxOffset / 3`.
     private func _incrementalRenderLarge(_ params: StageHandlerProgressParams, _ seriesModel: BarSeriesModel) {
         self._removeBackground()
         // upstream: createLarge(seriesModel, this.group, this._progressiveEls, true);
-        // PORT-NOTE (deferred): large/progressive draw (see `_renderLarge`).
+        barCreateLarge(seriesModel, self.group, &self._progressiveEls, true)
     }
 
     private func _updateLargeClip(_ seriesModel: BarSeriesModel) {
@@ -721,6 +737,19 @@ open class BarView: ChartView {
     private func _clear(_ model: SeriesModel? = nil) {
         let group = self.group
         let data = self._data
+
+        // PORT-NOTE (no upstream counterpart — ARC): `barCreateLarge` binds mousedown/mousemove on each
+        //   `LargeBarPath`, and ZRenderKit's `Eventful` holds the handler's `ctx` (here the element
+        //   itself, via `Element.on`'s `context ?? self`) STRONGLY — so a large path self-retains through
+        //   its own event table and `group.removeAll()` alone would leak it, together with its packed
+        //   `points`/`largeDataIndices` buffers (~12 MB per re-render at the 500k-bar scale this path
+        //   exists for). Unbind before dropping. JS needs none of this: its GC collects the cycle.
+        _ = group.traverse({ el in
+            if let largePath = el as? LargeBarPath {
+                _ = largePath.off()
+            }
+            return false
+        })
         if let model = model, (model.isAnimationEnabled() ?? false), data != nil, self._isLargeDraw != true {
             self._removeBackground()
             self._backgroundEls = [:]
@@ -1103,10 +1132,9 @@ func barRectRadiusFromOption(_ v: Any?) -> RectRadius {
 }
 
 // upstream: class LargePath / interface LargePathProps / function createLarge / largePathUpdateDataIndex /
-//   largePathFindDataIndex — the large/progressive draw path.
-// PORT-NOTE (deferred): large/progressive draw. It needs `throttle` (util/throttle, not ported),
-//   `model.getIncrementalId`, `data.getLayout('largePoints' | 'size' | ...)`, and a raw
-//   `CanvasRenderingContext2D.rect` batch — none of which are on the cartesian normal path.
+//   largePathFindDataIndex — the large/progressive draw path. Ported in LargeBarPath.swift
+//   (`LargeBarPath` / `LargeBarPathShape` / `barCreateLarge` / `largePathUpdateDataIndex` /
+//   `largePathFindDataIndex`), throttle via util/throttle.
 
 func createBackgroundShape(
     _ isHorizontalOrRadial: Bool,
