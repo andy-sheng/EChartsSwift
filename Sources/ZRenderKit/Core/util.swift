@@ -70,6 +70,11 @@ public enum util {
     public static func clone<T>(_ source: T) -> T {
         // if (source == null || typeof source !== 'object') return source;
         if let dict = source as? [String: Any] {
+            // !BUILTIN_OBJECT[typeStr] && !isPrimitive(source) && !isDom(source)
+            if isPrimitiveBag(dict) {
+                // result stays === source: a primitive-tagged bag is assigned, not traversed.
+                return source
+            }
             var result: [String: Any] = [:]
             for key in dict.keys {
                 // Check if key is __proto__ to avoid prototype pollution — N/A in Swift.
@@ -80,6 +85,11 @@ public enum util {
             return result as! T
         }
         else if let arr = source as? [Any] {
+            // if (!isPrimitive(source)) — ALWAYS FALSE here; see the `[Any]` PORT-TODO on
+            // setAsPrimitive: a Swift array has neither an in-band slot nor a stable identity,
+            // so it can never carry the tag. Left as a comment-only structural mirror rather
+            // than a live call, which would cost an `Any` box + a failed dictionary cast per
+            // array node of the option tree on every clone.
             var result: [Any] = []
             for i in 0..<arr.count {
                 result.append(clone(arr[i]))
@@ -89,8 +99,9 @@ public enum util {
         }
         // PORT-NOTE: TYPED_ARRAY branch (ContiguousArray<Float/Double/…>) — value
         //            semantics already copy on assignment, so the passthrough below
-        //            reproduces it; BUILTIN_OBJECT / isDom / isPrimitive guards have
-        //            no Swift analogue and collapse into this passthrough.
+        //            reproduces it (and subsumes upstream's `!isPrimitive` guard on that
+        //            branch: a tagged typed array is likewise never traversed);
+        //            BUILTIN_OBJECT / isDom have no Swift analogue and collapse here too.
         return source
     }
 
@@ -115,7 +126,8 @@ public enum util {
 
             // isObject(sourceProp) && isObject(targetProp) && !isArray(...) && !isDom(...)
             // && !isBuiltInObject(...) && !isPrimitive(...): nested plain objects only.
-            if let sp = sourceProp as? [String: Any], var tp = targetProp as? [String: Any] {
+            if let sp = sourceProp as? [String: Any], var tp = targetProp as? [String: Any],
+               !isPrimitiveBag(sp), !isPrimitiveBag(tp) {
                 // 如果需要递归覆盖，就递归调用merge
                 target[key] = merge(&tp, sp, overwrite)
             }
@@ -483,7 +495,75 @@ public enum util {
     // PORT-NOTE: trim(str) — String trimming; use Swift
     //            `str.trimmingCharacters(in: .whitespacesAndNewlines)` at call sites.
 
-    // PORT-NOTE: setAsPrimitive / isPrimitive — JS hidden-key tagging for clone/merge.
+    // const primitiveKey = '__ec_primitive__';
+    //
+    // PORT-NOTE: upstream stamps a hidden own-property on the object itself
+    //   (`obj[primitiveKey] = true`) and relies on JS reference semantics, so every later
+    //   holder of that reference observes the tag. Swift splits this into two cases:
+    //     · plain option/style bags are `[String: Any]` VALUE types — they can carry the key
+    //       in-band exactly like upstream, but only through an `inout` parameter, so the
+    //       mutation is written back into the caller's storage (dict overload below).
+    //     · reference (class) objects have no dynamic property slot, so they are recorded in
+    //       an identity side-set (weak, so the tag dies with the object like the JS property).
+    //   `isPrimitive` consults both, so call sites read exactly as upstream.
+    // PORT-TODO: `[Any]` (e.g. `dataset.transform` given as an ARRAY of transforms) cannot
+    //   carry the tag — a Swift array has neither an in-band slot nor a stable identity. Two
+    //   divergences follow from that, both inert today:
+    //     (a) `merge` — NO divergence in effect: upstream's nested-merge branch is itself
+    //         guarded by `!isArray(...)`, so an array-valued option is replaced wholesale with
+    //         or without the tag, which is exactly what `disableTransformOptionMerge` wants.
+    //     (b) `clone` — REAL divergence: upstream returns a tagged array by reference,
+    //         untraversed, whereas this port deep-copies it (the `[Any]` branch of `clone`),
+    //         so both identity and tag are lost on every clone of the option tree. Harmless
+    //         only because no consumer relies on transform-option identity today; revisit if
+    //         one appears.
+    private static let primitiveKey = "__ec_primitive__"
+
+    private static let primitiveObjects = NSHashTable<AnyObject>.weakObjects()
+
+    /**
+     * Set an object as primitive to be ignored traversing children in clone or merge
+     */
+    // The `T: AnyObject` generic constraint is load-bearing and must NOT be relaxed back to a
+    // plain `AnyObject` parameter: Swift would then implicitly box `[String: Any]`, `[Any]` or
+    // any struct into a temporary `__SwiftValue`/`NSDictionary`, add THAT box to the weak
+    // table, and deallocate it on return — a silent permanent no-op with no compile error.
+    // The constraint is checked statically (Dictionary/Array/structs do not conform), so a
+    // value bag fails to compile here and the caller is pointed at the `inout` overload below.
+    public static func setAsPrimitive<T: AnyObject>(_ obj: T) {
+        // obj[primitiveKey] = true;
+        primitiveObjects.add(obj)
+    }
+
+    /// Value-bag overload — see the PORT-NOTE above. `inout` so the in-band key lands in the
+    /// caller's own storage (upstream mutates through the shared reference). Option/style bags
+    /// MUST use this overload; it is the load-bearing one in-tree.
+    public static func setAsPrimitive(_ obj: inout [String: Any]) {
+        // obj[primitiveKey] = true;
+        obj[primitiveKey] = true
+    }
+
+    public static func isPrimitive(_ obj: Any) -> Bool {
+        // return obj[primitiveKey];
+        // The identity side-set is consulted FIRST: a class object that bridges to a Swift
+        // dictionary (NSDictionary/NSMutableDictionary, anything from Obj-C or
+        // JSONSerialization) would otherwise match the in-band branch, find no key, and report
+        // false — silently dropping a tag `setAsPrimitive` really did record.
+        if type(of: obj) is AnyClass, primitiveObjects.contains(obj as AnyObject) {
+            return true
+        }
+        if let dict = obj as? [String: Any] {
+            return isPrimitiveBag(dict)
+        }
+        return false
+    }
+
+    /// Fast path for call sites that already hold the bag: avoids re-boxing to `Any` and
+    /// repeating the `as? [String: Any]` dynamic cast. `clone`/`merge` run this per node of
+    /// the whole option tree on every `setOption`, so the saved cast is not academic.
+    private static func isPrimitiveBag(_ d: [String: Any]) -> Bool {
+        return (d[primitiveKey] as? Bool) == true
+    }
 
     // PORT-NOTE: MapPolyfill / maybeNativeMap / HashMap / createHashMap — JS Map shim;
     //            use Swift `Dictionary` directly where geometry needs key/value storage.

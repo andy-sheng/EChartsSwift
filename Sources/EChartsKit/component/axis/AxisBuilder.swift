@@ -25,10 +25,11 @@ import ZRenderKit
 //   import { retrieve, defaults, extend, each, isObject, isString, isNumber, isFunction, retrieve2,
 //       assert, map, retrieve3, filter } from 'zrender/src/core/util';    → `util.*` (ZRenderKit)
 //   import * as graphic from '../../util/graphic';
-//     → PORT-NOTE: `util/graphic` NOT ported yet. `graphic.Group/Line/Text/Rect` are the ZRenderKit
-//       scene-graph types used directly (`Group`, `Line`, `ZRText`, `Rect`); `graphic.subPixelOptimizeLine`
-//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred (see the
-//       setTooltipConfig PORT-NOTEs at the axisName / axisLabel call sites).
+//     → PORT-NOTE: `graphic.Group/Line/Text/Rect` are the ZRenderKit scene-graph types used directly
+//       (`Group`, `Line`, `ZRText`, `Rect`); `graphic.subPixelOptimizeLine`
+//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred to the
+//       SYMBOLS.tsv row-37 lane (see the setTooltipConfig PORT-NOTEs at the axisName / axisLabel
+//       call sites).
 //   import {getECData} from '../../util/innerStore';                    → `innerStore.getECData` (deferred; event wiring)
 //   import {createTextStyle} from '../../label/labelStyle';
 //     → `label/labelStyle.swift` IS ported (`LabelStyle.createTextStyle`, labelStyle.swift:417). AxisBuilder
@@ -54,7 +55,8 @@ import ZRenderKit
 //       newLabelLayoutWithGeometry, LabelLayoutData } from '../../label/labelLayoutHelper';
 //     → PORT-NOTE: `label/labelLayoutHelper` is ported (labelLayoutHelper.swift). The real OBB-carrying
 //       `LabelLayoutData` + `ensureLabelLayoutWithGeometry` landed in the L2c pass; the axis label path
-//       now calls the real sibling directly (see the bottom-of-file note).
+//       now calls the real sibling directly (see the bottom-of-file note). `LabelGeometry` /
+//       `LabelLayoutWithGeometry` both collapse to `LabelLayoutData` in this port.
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 → `ExtensionAPI`
 //   import { makeInner } from '../../util/model';                       → `model.makeInner` (util/modelUtil.swift)
 //   import { getAxisBreakHelper } from './axisBreakHelper';             → `getAxisBreakHelper()`
@@ -63,7 +65,8 @@ import ZRenderKit
 //     → PORT-NOTE (deferred): requires the `axisAction` module (break-expand action), not ported.
 //   import { getScaleBreakHelper, hasBreaks } from '../../scale/break';  → `scale/break.swift`
 //     (getScaleBreakHelper / hasBreaks are ported; `hasBreaks` gates the break-marker glyph below).
-//   import BoundingRect from 'zrender/src/core/BoundingRect';           → `BoundingRect` (ZRenderKit; used by overlap → deferred)
+//   import BoundingRect from 'zrender/src/core/BoundingRect';           → `BoundingRect` (ZRenderKit; the
+//     `stOccupiedRect` label-rect union in `resetOverlapRecordToShared`)
 //   import Point from 'zrender/src/core/Point';                        → `Point` (ZRenderKit)
 //   import { copyTransform } from 'zrender/src/core/Transformable';     → `copyTransform` (free func, ZRenderKit)
 //   import { AxisLabelInfoDetermined, AxisLabelsComputingContext, AxisTickLabelComputingKind,
@@ -207,7 +210,11 @@ public struct AxisBuilderCfg {
  */
 // upstream: interface AxisBuilderCfgDetermined. Held/mutated by reference (updateCfg rewrites `raw`),
 //   so a `final class` (CONVENTIONS §4).
-final class AxisBuilderCfgDetermined {
+//   PORT-NOTE: upstream's interface is module-internal, but the exported `AxisBuilderSharedContext`
+//     references it in `resolveAxisNameOverlap`; Swift requires the type itself to be `public` for that
+//     public typealias. Deliberately public-but-OPAQUE: every member stays internal, so this widens the
+//     shipped EChartsKit surface by a name only — external callers can neither construct nor read it.
+public final class AxisBuilderCfgDetermined {
     var raw: AxisBuilderCfg
     var position: [Double]
     var rotation: Double
@@ -262,9 +269,38 @@ public final class AxisBuilderSharedContextRecord {
     // Represents axis rotation. The magnitude is 1.
     public var dirVec: Point?
     public var transGroup: Group?
-    // PORT-NOTE (deferred): `labelInfoList` / `stOccupiedRect` / `nameLayout` / `nameLocation` feed the
-    //   cross-axis name/label overlap resolution feature (labelLayoutHelper is ported, but this
-    //   overlap-nudging path is out of the line+ticks+labels scope of this axis port).
+    // - Used for overlap detection for both self and other axes.
+    // - Sorted in ascending order of the distance to transformGroup.x/y.
+    //  This sorting is for OBB intersection checking.
+    // - No nil item, and ignored items has been removed.
+    // upstream: labelInfoList?: LabelLayoutWithGeometry[]  (the Swift geometry-carrying type is LabelLayoutData)
+    public var labelInfoList: [LabelLayoutData]?
+    // `stOccupiedRect` is based on the "standard axis".
+    // If no label, be `nil`.
+    // - When `nameLocation` is 'center', `stOccupiedRect` is the union of labels, and is used for the case
+    //   below, where even if the `name` does not intersect with `1,000,000`, it is still pulled left to avoid
+    //   the overlap with `stOccupiedRect`.
+    //        1,000,000 -
+    //      n           |
+    //      a     1,000 -
+    //      m           |
+    //      e         0 -----------
+    // - When `nameLocaiton` is 'start'/'end', `stOccupiedRect` is not used, because they are not likely to
+    //   overlap. Additionally, these cases need to be considered:
+    //      If axis labels rotating, axis names should not be pulled by the union rect of labels.
+    //          ----|-----|   axis name with
+    //              1     5   big height
+    //                0     0
+    //                  0     0
+    //      Axis line and axis labels should not be unioned to one rect for overlap detection, because of
+    //      the most common case below (The axis name is inserted into the indentation to save space):
+    //          ----|------------|  A axis name
+    //          1,000,000   300,000,000
+    public var stOccupiedRect: BoundingRect?
+    // upstream: nameLayout?: LabelLayoutWithGeometry | NullUndefined
+    public var nameLayout: LabelLayoutData?
+    // upstream: nameLocation?: AxisBaseOption['nameLocation']  (string-literal union → String)
+    public var nameLocation: String?
     // Only used in __DEV__ mode.
     public var ready: [String: Bool] = [:]
     public init() {}
@@ -309,31 +345,162 @@ public final class AxisBuilderSharedContext {
      */
     // upstream: readonly resolveAxisNameOverlap: (cfg, ctx, axisModel, nameLayoutInfo, nameMoveDirVec, thisRecord) => void
     public typealias ResolveAxisNameOverlap = (
-        _ cfg: Any,        // AxisBuilderCfgDetermined
+        _ cfg: AxisBuilderCfgDetermined,
         _ ctx: AxisBuilderSharedContext?,
         _ axisModel: AxisBaseModel,
-        _ nameLayoutInfo: Any,  // LabelLayoutWithGeometry — deferred
+        _ nameLayoutInfo: LabelLayoutData,  // The existing has been ensured.
         _ nameMoveDirVec: Point,
-        _ thisRecord: AxisBuilderSharedContextRecord
+        _ thisRecord: AxisBuilderSharedContextRecord  // The existing has been ensured.
     ) -> Void
     public let resolveAxisNameOverlap: ResolveAxisNameOverlap
 }
 
-// PORT-NOTE (deferred): `resetOverlapRecordToShared` + `_stTransTmp` + `_stLabelRectTmp` (label rect
-//   union for cross-axis name-overlap detection) build on `labelLayoutHelper`
-//   (ensureLabelLayoutWithGeometry, LabelLayoutWithGeometry, BoundingRect union math — all ported).
-//   The overlap-detection feature itself is out of this port's scope (line+ticks+labels only).
+/**
+ * [CAUTION]
+ *  1. The call of this function must be after axisLabel overlap handlings
+ *     (such as `hideOverlap`, `fixMinMaxLabelShow`) and after transform calculating.
+ *  2. Can be called multiple times and should be idempotent.
+ */
+// upstream: function resetOverlapRecordToShared(cfg, shared, axisModel, labelLayoutList: LabelLayoutData[])
+//   PORT-NOTE: upstream's module-level scratch `_stTransTmp` / `_stLabelRectTmp` are replaced by locals,
+//     since the matrix module is value-return in this port (PORTING §10, no out-params).
+func resetOverlapRecordToShared(
+    _ cfg: AxisBuilderCfgDetermined,
+    _ shared: AxisBuilderSharedContext,
+    _ axisModel: AxisBaseModel,
+    _ labelLayoutList: [LabelLayoutData]
+) {
+    let axis = axisModel.axis as! Axis
+    let record = shared.ensureRecord(axisModel)
+    var labelInfoList: [LabelLayoutData] = []
+    var stOccupiedRect: BoundingRect?
+    let useStOccupiedRect = hasAxisName(cfg.axisName) && axisHelper.isNameLocationCenter(cfg.nameLocation)
 
+    util.each(labelLayoutList) { layout, _ in
+        guard let layoutInfo = labelLayoutHelper.ensureLabelLayoutWithGeometry(layout),
+              !layoutInfo.label.ignore else {
+            return
+        }
+        labelInfoList.append(layoutInfo)
+
+        let transGroup = record.transGroup
+        if useStOccupiedRect {
+            // Transform to "standard axis" for creating stOccupiedRect (the label rects union).
+            var stTrans: MatrixArray
+            if let groupTransform = transGroup?.transform {
+                stTrans = matrix.invert(groupTransform) ?? matrix.identity()
+            }
+            else {
+                stTrans = matrix.identity()
+            }
+            if let layoutTransform = layoutInfo.transform {
+                stTrans = matrix.mul(stTrans, layoutTransform)
+            }
+            let stLabelRect = BoundingRect(0, 0, 0, 0)
+            stLabelRect.copy(layoutInfo.localRect ?? BoundingRect(0, 0, 0, 0))
+            stLabelRect.applyTransform(stTrans)
+            if let existing = stOccupiedRect {
+                existing.union(stLabelRect)
+            }
+            else {
+                let created = BoundingRect(0, 0, 0, 0)
+                created.copy(stLabelRect)
+                stOccupiedRect = created
+            }
+        }
+    }
+
+    // upstream: sortByDim = Math.abs(record.dirVec.x) > 0.1 ? 'x' : 'y'
+    let sortByX = Swift.abs(record.dirVec?.x ?? 0) > 0.1
+    let sortByValue = (sortByX ? record.transGroup?.x : record.transGroup?.y) ?? 0
+    func sortKey(_ info: LabelLayoutData) -> Double {
+        let k = Swift.abs((sortByX ? info.label.x : info.label.y) - sortByValue)
+        // PORT-NOTE: JS leaves the relative order of NaN keys arbitrary, but Swift's `sorted(by:)` TRAPS
+        //   ("predicate is not a strict weak ordering") if the predicate is inconsistent. Map NaN to
+        //   +inf so it sorts last deterministically instead of crashing.
+        return k.isNaN ? Double.greatestFiniteMagnitude : k
+    }
+    // PORT-NOTE: `Array.sort` in JS is stable (ES2019) but Swift's `sort` is not; keep the original
+    //   order for equal keys by carrying the index as a tiebreaker.
+    labelInfoList = labelInfoList.enumerated()
+        .sorted { lhs, rhs in
+            let k1 = sortKey(lhs.element), k2 = sortKey(rhs.element)
+            return k1 == k2 ? lhs.offset < rhs.offset : k1 < k2
+        }
+        .map { $0.element }
+
+    if useStOccupiedRect, let stOccupiedRect = stOccupiedRect {
+        let extent = axis.getExtent()
+        let axisLineX = Swift.min(extent[0], extent[1])
+        let axisLineWidth = Swift.max(extent[0], extent[1]) - axisLineX
+        // If `nameLocation` is 'middle', enlarge axis labels boundingRect to axisLine to avoid bad
+        //  case like that axis name is placed in the gap between axis labels and axis line.
+        // If only one label exists, the entire band should be occupied for
+        // visual consistency, so extent it to [0, canvas width].
+        stOccupiedRect.union(BoundingRect(axisLineX, 0, axisLineWidth, 1))
+    }
+
+    record.stOccupiedRect = stOccupiedRect
+    record.labelInfoList = labelInfoList
+}
 /**
  * The default resolver does not involve other axes within the same coordinate system.
  */
-// PORT-NOTE (deferred): `resolveAxisNameOverlapDefault` + `moveIfOverlap` + `moveIfOverlapByLinearLabels`
-//   implement axis-name overlap avoidance via OBB intersection (labelLayoutHelper, ported). The feature
-//   is out of this port's scope; the default resolver is a no-op, so the axis name is placed at its
-//   computed `nameGap` position without overlap nudging.
 public let resolveAxisNameOverlapDefault: AxisBuilderSharedContext.ResolveAxisNameOverlap = {
-    _, _, _, _, _, _ in
-    // PORT-NOTE (deferred): no-op axis-name overlap resolver (see comment above).
+    cfg, ctx, axisModel, nameLayoutInfo, nameMoveDirVec, thisRecord in
+    if axisHelper.isNameLocationCenter(cfg.nameLocation) {
+        if let stOccupiedRect = thisRecord.stOccupiedRect {
+            // upstream: computeLabelGeometry2({}, stOccupiedRect, thisRecord.transGroup.transform)
+            //   PORT-NOTE: `LabelLayoutData` requires a `label` element (upstream's `{}` is an untyped
+            //     bag used purely as a geometry carrier), so a throwaway `ZRText` backs the rect.
+            let basedLayoutInfo = LabelLayoutData(label: ZRText())
+            labelLayoutHelper.computeLabelGeometry2(
+                basedLayoutInfo, stOccupiedRect, thisRecord.transGroup?.transform
+            )
+            moveIfOverlap(basedLayoutInfo, nameLayoutInfo, nameMoveDirVec)
+        }
+    }
+    else {
+        moveIfOverlapByLinearLabels(
+            thisRecord.labelInfoList ?? [], thisRecord.dirVec ?? Point(0, 0), nameLayoutInfo, nameMoveDirVec
+        )
+    }
+    _ = (ctx, axisModel)
+}
+
+// [NOTICE] not consider ignore.
+// upstream: function moveIfOverlap(basedLayoutInfo: LabelGeometry, movableLayoutInfo, moveDirVec)
+private func moveIfOverlap(
+    _ basedLayoutInfo: LabelLayoutData,
+    _ movableLayoutInfo: LabelLayoutData,
+    _ moveDirVec: Point
+) {
+    let mtv = Point()
+    if labelLayoutHelper.labelIntersect(basedLayoutInfo, movableLayoutInfo, mtv, BoundingRectIntersectOpt(
+        direction: atan2(moveDirVec.y, moveDirVec.x),
+        bidirectional: false,
+        touchThreshold: 0.05
+    )) {
+        labelLayoutHelper.labelLayoutApplyTranslation(movableLayoutInfo, mtv)
+    }
+}
+
+// upstream: export function moveIfOverlapByLinearLabels(baseLayoutInfoList, baseDirVec, movableLayoutInfo, moveDirVec)
+public func moveIfOverlapByLinearLabels(
+    _ baseLayoutInfoList: [LabelLayoutData],
+    _ baseDirVec: Point,
+    _ movableLayoutInfo: LabelLayoutData,
+    _ moveDirVec: Point
+) {
+    // Detect and move from far to close.
+    let sameDir = Point.dot(moveDirVec, baseDirVec) >= 0
+    let len = baseLayoutInfoList.count
+    for idx in 0..<Swift.max(len, 0) {
+        let labelInfo = baseLayoutInfoList[sameDir ? idx : len - 1 - idx]
+        if !labelInfo.label.ignore {
+            moveIfOverlap(labelInfo, movableLayoutInfo, moveDirVec)
+        }
+    }
 }
 
 /**
@@ -736,7 +903,10 @@ let builders: [String: AxisElementsBuilder] = [
         // Remove the existing name result created in estimation phase.
         if let nameEl = local.nameEl {
             _ = group.remove(nameEl)
+            // upstream: local.nameEl = sharedRecord.nameLayout = sharedRecord.nameLocation = null;
             local.nameEl = nil
+            sharedRecord.nameLayout = nil
+            sharedRecord.nameLocation = nil
         }
 
         let name = cfg.axisName
@@ -753,22 +923,25 @@ let builders: [String: AxisElementsBuilder] = [
         let axis = axisModel.axis as! Axis
         let extent = axis.getExtent()
         let gapStartEndSignal: Double = axis.inverse ? -1 : 1
-        // upstream uses `Point`; only pos.x/pos.y are needed here (nameMoveDirVec drives the deferred
-        //   overlap resolution — see PORT-NOTE below).
+        // upstream uses `Point` for both; `pos` is spread to posX/posY at the ZRText attrs below.
         var posX: Double = 0
         var posY: Double = 0
+        let nameMoveDirVec = Point(0, 0)
         if nameLocation == "start" {
             posX = extent[0] - gapStartEndSignal * gap
+            nameMoveDirVec.x = -gapStartEndSignal
         }
         else if nameLocation == "end" {
             posX = extent[1] + gapStartEndSignal * gap
+            nameMoveDirVec.x = gapStartEndSignal
         }
         else { // 'middle' or 'center'
             posX = (extent[0] + extent[1]) / 2
             posY = cfg.labelOffset + nameDirection * gap
+            nameMoveDirVec.y = nameDirection
         }
-        // PORT-NOTE (deferred): `nameMoveDirVec` + `matrixUtil.rotate` transform is only consumed by
-        //   `resolveAxisNameOverlap` (the out-of-scope name-overlap resolver). Dropped.
+        // upstream: const mt = matrixUtil.create(); nameMoveDirVec.transform(matrixUtil.rotate(mt, mt, cfg.rotation));
+        _ = nameMoveDirVec.transform(matrix.rotate(matrix.create(), cfg.rotation))
 
         var nameRotation = axisModel.get("nameRotate") as? Double
         if nameRotation != nil {
@@ -807,8 +980,11 @@ let builders: [String: AxisElementsBuilder] = [
             cfg.raw.nameTruncateMaxWidth, truncateOpt["maxWidth"] as? Double, axisNameAvailableWidth
         )
 
-        // upstream: const nameMarginLevel = extraParams.nameMarginLevel || 0;  (drives margin defaults — deferred)
-        _ = extraParams.nameMarginLevel
+        // upstream: const nameMarginLevel = extraParams.nameMarginLevel || 0;
+        //   PORT-NOTE: upstream types this `0 | 1 | 2`, a literal union Swift cannot express, and JS would
+        //     merely yield `undefined` (no marginDefault) for an out-of-range value. `Int` here indexes the
+        //     3-row DEFAULT_*_NAME_MARGIN_LEVELS tables, so clamp instead of trapping on a bad caller.
+        let nameMarginLevel = Swift.min(Swift.max(extraParams.nameMarginLevel ?? 0, 0), 2)
 
         let fill = textStyleModel.getTextColor()
             ?? (axisModel.get(["axisLine", "lineStyle", "color"]) as? ColorString)
@@ -838,6 +1014,8 @@ let builders: [String: AxisElementsBuilder] = [
 
         // PORT-NOTE (deferred): graphic.setTooltipConfig (util/graphic.swift is ported, but the axis-name
         //   tooltip params/wiring are out of this render-focused scope).
+        //   SCOPE: owned by SYMBOLS.tsv row 37 (`util/graphic.setTooltipConfig`), which enumerates this
+        //   call site — left to that lane to avoid a two-lane edit of the same hunk.
         // PORT-NOTE (deferred): textEl.__fullText = name — the truncation-tooltip decoration is not wired.
         // Id for animation
         textEl.anid = "name"
@@ -853,15 +1031,29 @@ let builders: [String: AxisElementsBuilder] = [
         textEl.updateTransform()
 
         local.nameEl = textEl
-        // PORT-NOTE (deferred): sharedRecord.nameLayout = ensureLabelLayoutWithGeometry({...}) and
-        //   sharedRecord.nameLocation — used only by the out-of-scope name-overlap resolver.
-        _ = sharedRecord
+        let nameLayoutSource = LabelLayoutData(
+            label: textEl,
+            priority: textEl.z2
+        )
+        nameLayoutSource.defaultAttr.ignore = textEl.ignore
+        // Make axis name visually far from axis labels (but not too aggressive, consider multiple small
+        //   charts) when nameLocation is center; top/bottom margin is `0` for 'start'/'end' so the xAxis
+        //   name is inserted into the indention above the axis labels to save space.
+        nameLayoutSource.marginDefault = axisHelper.isNameLocationCenter(nameLocation)
+            ? DEFAULT_CENTER_NAME_MARGIN_LEVELS[nameMarginLevel]
+            : DEFAULT_ENDS_NAME_MARGIN_LEVELS[nameMarginLevel]
+        let nameLayout = labelLayoutHelper.ensureLabelLayoutWithGeometry(nameLayoutSource)
+        sharedRecord.nameLayout = nameLayout
+        sharedRecord.nameLocation = nameLocation
         _ = group.add(textEl)
 
         textEl.decomposeTransform()
 
-        // PORT-NOTE (deferred): if (cfg.shouldNameMoveOverlap && nameLayout) { shared.resolveAxisNameOverlap(...) }
-        //   Out of scope (name-overlap resolver). The default resolver is a no-op regardless.
+        if cfg.shouldNameMoveOverlap, let nameLayout = nameLayout {
+            let record = shared.ensureRecord(axisModel)
+            // PORT-NOTE: upstream `__DEV__` assert(record.labelInfoList) dropped.
+            shared.resolveAxisNameOverlap(cfg, shared, axisModel, nameLayout, nameMoveDirVec, record)
+        }
     }
 ]
 
@@ -905,9 +1097,10 @@ func layOutAxisTickLabel(
         )
     }
 
-    // PORT-NOTE (deferred): `resetOverlapRecordToShared` (cross-axis overlap record) is part of the
-    //   out-of-scope name/label overlap resolution.
-    _ = shared
+    // Always call it even this axis has no name, since it serves in overlapping detection
+    // and grid outerBounds on other axis.
+    // PORT-NOTE: `local.labelLayoutList` is optional here (upstream's is always an array by this point).
+    resetOverlapRecordToShared(cfg, shared, axisModel, labelLayoutList ?? [])
 }
 
 // upstream: function adjustBreakLabels(axisModel, axisRotation, labelLayoutList)  (AxisBuilder.ts)
@@ -1485,6 +1678,8 @@ func buildAxisLabel(
         inner.layoutRotation = labelLayout.rotation
 
         // PORT-NOTE (deferred): graphic.setTooltipConfig (tooltip + truncation params) not wired on axis labels.
+        //   SCOPE: owned by SYMBOLS.tsv row 37 (`util/graphic.setTooltipConfig`), which enumerates this
+        //   call site — left to that lane to avoid a two-lane edit of the same hunk.
 
         // Pack data for mouse event
         if triggerEvent {

@@ -76,7 +76,8 @@ import ZRenderKit
 //          only in the stubbed AxisBuilder label-overlap path below.
 //   import {AxisBuilderSharedContext, resolveAxisNameOverlapDefault, moveIfOverlapByLinearLabels, getLabelInner}
 //       from '../../component/axis/AxisBuilder';
-//       -> component/axis/AxisBuilder.swift (ported). Axis-elements building is wired; only the outerBounds-shrink / cross-axis name-overlap refinement remains deferred (see below).
+//       -> component/axis/AxisBuilder.swift (ported). Axis-elements building and the cross-axis
+//          name-overlap resolver are wired; only the outerBounds-shrink remains deferred (see below).
 //   import { error, log } from '../../util/log';                            -> `log.error` / `log.log` (util/log.swift)
 //   import { AxisTickLabelComputingKind } from '../axisTickLabelBuilder';   -> coord/axisTickLabelBuilder.swift
 //   import { injectCoordSysByOption } from '../../core/CoordinateSystem';
@@ -959,10 +960,10 @@ public func registerLegacyGridContainLabelImpl(_ impl: @escaping LegacyLayOutGri
 // PORT-NOTE (component/axis AxisBuilder label-overlap path):
 //   `AxisBuilderSharedContext` / `AxisBuilder` (component/axis/AxisBuilder.swift), `expandOrShrinkRect` / `XY`
 //   / `WH` (util/graphic.swift), and the `*CommonPartBuilder` helpers (cartesianAxisHelper.swift) are ported.
-//   `createAxisBiulders` / `createOrUpdateAxesView` build the real axis elements. Still DEFERRED: the
-//   `layOutGridByOuterBounds` outerBounds-shrink and the grid-specific `resolveAxisNameOverlapForGrid`
-//   name-overlap resolver (a refinement, not axisLine/tick/label geometry). `layOutGridByOuterBounds` threads
-//   the shared context as an opaque `Any?` while stubbed so the `resize` control flow stays structurally faithful.
+//   `createAxisBiulders` / `createOrUpdateAxesView` build the real axis elements, and the grid-specific
+//   `resolveAxisNameOverlapForGrid` name-overlap resolver is wired. Still DEFERRED: the
+//   `layOutGridByOuterBounds` outerBounds-shrink; it threads the shared context as an opaque `Any?`
+//   while stubbed so the `resize` control flow stays structurally faithful.
 // ============================================================================
 
 // Return noPxChange.
@@ -995,11 +996,7 @@ func createAxisBiulders(
     _ api: ExtensionAPI
 ) -> Any? {  // upstream returns AxisBuilderSharedContext; typed `Any?` so callers (layOutGridByOuterBounds) stay loose.
     // upstream: const axisBuilderSharedCtx = new AxisBuilderSharedContext(resolveAxisNameOverlapForGrid);
-    // PORT-NOTE (deferred): `resolveAxisNameOverlapForGrid` (grid-specific name-overlap resolver, see
-    //   the stub below) requires `moveIfOverlapByLinearLabels` (component/axis/AxisBuilder), which is
-    //   deferred. The ported `resolveAxisNameOverlapDefault` is sufficient to BUILD the axis elements
-    //   (overlap nudging is a refinement, not required for correct axisLine/tick/label geometry).
-    let axisBuilderSharedCtx = AxisBuilderSharedContext(resolveAxisNameOverlapDefault)
+    let axisBuilderSharedCtx = AxisBuilderSharedContext(resolveAxisNameOverlapForGrid)
     // See `AxisBaseOptionCommon['nameMoveOverlap']`: default is `!containLabel`.
     let defaultNameMoveOverlap = !((optionContainLabel as? Bool) ?? false)
     func buildFor(_ axis: Axis2D) {
@@ -1036,33 +1033,52 @@ func createOrUpdateAxesView(
 ) {
     // upstream: each shown axis → updateCartesianAxisViewCommonPartBuilder(...) then axisBuilder.build(...).
     let isDetermine = kind == AxisTickLabelComputingKind.determine
-    func buildFor(_ axis: Axis2D) {
+    func buildTickLabelFor(_ axis: Axis2D) {
         if axisHelper.shouldAxisShow(axis.model) {
             cartesianAxisHelper.updateCartesianAxisViewCommonPartBuilder(
                 axis.axisBuilder, gridRect, axis.model as! CartesianAxisModel
             )
-            // upstream grid.ts builds the tick/label part first, then — in a second pass over all axes —
-            //   the axis NAME and axis LINE (determine pass only). Merging axisName/axisLine into the first
-            //   build is close enough for the static render (no cross-axis name-overlap nudging), but both
-            //   MUST be built: without "axisLine" the cartesian axis line never renders (e.g. the onZero
-            //   baseline for a zero-crossing value axis — line-negative), and without "axisName" the axis
-            //   `name` option produces no text.
             _ = axis.axisBuilder.build(
                 isDetermine ? ["axisTickLabelDetermine": true] : ["axisTickLabelEstimate": true],
                 AxisBuilderBuildExtraParams(noPxChange: noPxChange)
             )
+        }
+    }
+    axesMap.x.each { axis, _ in buildTickLabelFor(axis) }
+    axesMap.y.each { axis, _ in buildTickLabelFor(axis) }
+
+    // upstream: const nameMarginLevelMap = {x: 0, y: 0}; calcNameMarginLevel(0); calcNameMarginLevel(1);
+    //   PORT-NOTE: upstream indexes `gridRect[WH[xyIdx]]` / `layoutRef.refContainer[WH[xyIdx]]` via the
+    //     XY/WH dimension-name tables; expressed here with explicit width/height accessors.
+    var nameMarginLevelMap: [String: Int] = ["x": 0, "y": 0]
+    func calcNameMarginLevel(_ xyIdx: Int) {
+        let gridWH = xyIdx == 0 ? gridRect.width : gridRect.height
+        let refWH = xyIdx == 0 ? layoutRef.refContainer.width : layoutRef.refContainer.height
+        nameMarginLevelMap[xyIdx == 0 ? "y" : "x"] = gridWH <= refWH * 0.5
+            ? 0 : ((1 - xyIdx) == 1 ? 2 : 1)
+    }
+    calcNameMarginLevel(0)
+    calcNameMarginLevel(1)
+
+    // To resolve overlap, `axisName` layout depends on `axisTickLabel` layout result
+    //   (all of the axes of the same `grid`; consider multiple x or y axes) — hence the second pass.
+    func buildNameLineFor(_ axis: Axis2D, _ xy: String) {
+        if axisHelper.shouldAxisShow(axis.model) {
+            if outerBoundsContain == "all" || isDetermine {
+                _ = axis.axisBuilder.build(
+                    ["axisName": true],
+                    AxisBuilderBuildExtraParams(nameMarginLevel: nameMarginLevelMap[xy])
+                )
+            }
             if isDetermine {
-                _ = axis.axisBuilder.build(["axisName": true], AxisBuilderBuildExtraParams(noPxChange: noPxChange))
-                _ = axis.axisBuilder.build(["axisLine": true], AxisBuilderBuildExtraParams(noPxChange: noPxChange))
+                // Without "axisLine" the cartesian axis line never renders (e.g. the onZero baseline for
+                //   a zero-crossing value axis — line-negative).
+                _ = axis.axisBuilder.build(["axisLine": true], AxisBuilderBuildExtraParams())
             }
         }
     }
-    axesMap.x.each { axis, _ in buildFor(axis) }
-    axesMap.y.each { axis, _ in buildFor(axis) }
-    // PORT-NOTE (deferred): upstream then computes `nameMarginLevelMap` via calcNameMarginLevel(0/1) to
-    //   nudge axis NAME margins by relative grid size — requires `calcNameMarginLevel` (not ported). An
-    //   axis-name refinement (not axisLine/tick/label geometry); deferred with the name-overlap resolver.
-    _ = (outerBoundsContain, layoutRef)
+    axesMap.x.each { axis, _ in buildNameLineFor(axis, "x") }
+    axesMap.y.each { axis, _ in buildNameLineFor(axis, "y") }
 }
 
 // upstream: prepareOuterBounds(gridModel, rawGridRect: BoundingRect, layoutRef): {outerBoundsRect, parsedOuterBoundsContain, outerBoundsClamp}
@@ -1117,9 +1133,31 @@ func prepareOuterBounds(
 }
 
 // upstream: const resolveAxisNameOverlapForGrid: AxisBuilderSharedContext['resolveAxisNameOverlap'] = (...) => {...}
-// PORT-NOTE (deferred): the axis-name overlap resolution against perpendicular axes needs
-//   `moveIfOverlapByLinearLabels` (component/axis/AxisBuilder), which is deferred (AxisBuilder.swift).
-//   `resolveAxisNameOverlapDefault` / `AxisBuilderSharedContext` are ported and used in the meantime.
+let resolveAxisNameOverlapForGrid: AxisBuilderSharedContext.ResolveAxisNameOverlap = {
+    cfg, ctx, axisModel, nameLayoutInfo, nameMoveDirVec, thisRecord in
+    let perpendicularDim = (axisModel.axis as! Axis).dim == "x" ? "y" : "x"
+
+    resolveAxisNameOverlapDefault(cfg, ctx, axisModel, nameLayoutInfo, nameMoveDirVec, thisRecord)
+
+    // If nameLocation 'center', and there are multiple axes parallel to this axis, do not adjust by
+    //  other axes, because the axis name should be close to its axis line as much as possible even
+    //  if overlapping; otherwise it might cause misleading.
+    // If nameLocation 'center', do not adjust by perpendicular axes, since they are not likely to overlap.
+    // If nameLocation 'start'/'end', move name within the same direction to escape overlap with the
+    //  perpendicular axes.
+    if !axisHelper.isNameLocationCenter(cfg.nameLocation) {
+        util.each(ctx?.recordMap[perpendicularDim] ?? []) { perpenRecord, _ in
+            // perpendicular axis may be no name.
+            if let perpenRecord = perpenRecord,
+               let labelInfoList = perpenRecord.labelInfoList,
+               let dirVec = perpenRecord.dirVec {
+                moveIfOverlapByLinearLabels(
+                    labelInfoList, dirVec, nameLayoutInfo, nameMoveDirVec
+                )
+            }
+        }
+    }
+}
 
 // JS truthiness for a dynamic option value (used where upstream relies on `if (x)` / `!x`).
 // PORT-NOTE: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).

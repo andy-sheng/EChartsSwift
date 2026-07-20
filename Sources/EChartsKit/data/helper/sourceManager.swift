@@ -24,8 +24,8 @@
 //      The dataset host path here is now fully wired (see `_getUpstreamSourceManagers`).
 // import SeriesModel from '../../model/Series';                       -> SeriesModel (model/Series.swift)
 // import { setAsPrimitive, map, isTypedArray, assert, each, retrieve2 } from 'zrender/src/core/util';
-//   -> ZRenderKit `util.*` (map/isTypedArray/assert/each/retrieve2). `setAsPrimitive` is NOT
-//      ported; used only by `disableTransformOptionMerge` (dataset) -> PORT-NOTE.
+//   -> ZRenderKit `util.*` (setAsPrimitive/map/isTypedArray/assert/each/retrieve2).
+//      `setAsPrimitive` is used only by `disableTransformOptionMerge` (dataset).
 // import { SourceMetaRawOption, Source, createSource, cloneSourceShallow } from '../Source';
 //   -> data/Source.swift (same module).
 // import { SeriesEncodableModel, OptionSourceData, SOURCE_FORMAT_TYPED_ARRAY, SOURCE_FORMAT_ORIGINAL,
@@ -498,12 +498,34 @@ public func disableTransformOptionMerge(_ datasetModel: DatasetModel) {
     let transformOption = (datasetModel.option as? [String: Any])?["transform"]
     if jsTruthy(transformOption) {
         // transformOption && setAsPrimitive(datasetModel.option.transform);
-        // PORT-NOTE (deferred): requires `util.setAsPrimitive` (not ported — util.swift:474): `setAsPrimitive`
-        //   tags the transform option object with a hidden key so the option-merge pass replaces
-        //   it wholesale instead of deep-merging it. Only affects a *second* `setOption` re-merge;
-        //   the static single-setOption transform data path is unaffected. Wire once
-        //   `setAsPrimitive` lands.
-        _ = transformOption
+        //
+        // PORT-NOTE: upstream tags the transform option OBJECT itself and every holder of that
+        //   reference sees the tag. Here the option tree is a `[String: Any]` value bag, so the
+        //   tag must be written back into `datasetModel.option` (see util.setAsPrimitive's
+        //   `inout` overload). `DatasetModel.option` is declared `{ get set }` for exactly this
+        //   write — do not reintroduce a `datasetModel as? Model` downcast to reach it.
+        // PORT-TODO: an ARRAY-valued `transform` (a list of transforms) cannot carry the tag —
+        //   see util.setAsPrimitive. Harmless for merge: `util.merge` never recurses into
+        //   arrays, so an array transform option is already replaced wholesale rather than
+        //   deep-merged. (util.clone does deep-copy it, unlike upstream; see that PORT-TODO.)
+        var tagged = false
+        if var transformBag = transformOption as? [String: Any],
+           var optionBag = datasetModel.option as? [String: Any] {
+            util.setAsPrimitive(&transformBag)
+            optionBag["transform"] = transformBag
+            datasetModel.option = optionBag
+            tagged = true
+        }
+        // This symbol exists solely to provide the tag; a silent skip would drop the
+        // merge protection with no diagnostic. An array-valued transform is the one shape
+        // legitimately not taggable (see the PORT-TODO above), so exempt it.
+        if __DEV__ {
+            util.assert(
+                tagged || transformOption is [Any],
+                "disableTransformOptionMerge: could not tag the transform option "
+                    + "(unexpected option shape) — merge protection is not in effect."
+            )
+        }
     }
 }
 

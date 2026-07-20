@@ -112,10 +112,14 @@ final class OptionManager {
                 if let seriesDict = series as? [String: Any],
                    let data = seriesDict["data"],
                    util.isTypedArray(data) {
-                    // PORT-NOTE (deferred): requires `util.setAsPrimitive(series.data)` — JS hidden-key
-                    //   tagging (util.swift:474), not ported. The typed-array-reuse guard is inert until
-                    //   it lands.
-                    _ = data
+                    // setAsPrimitive(series.data) — INTENTIONALLY absent, not deferred.
+                    //   `util.setAsPrimitive` is ported, but it cannot tag this operand and does
+                    //   not need to: `isTypedArray` matches `ContiguousArray<…>`, a VALUE type
+                    //   with no in-band slot and no identity. The effect the tag buys upstream
+                    //   (clone must not traverse/copy the user's typed array) already holds,
+                    //   because `util.clone` matches neither the `[String: Any]` nor the `[Any]`
+                    //   branch for a ContiguousArray and returns it unchanged — verified.
+                    //   The `if` is kept as a structural mirror of the upstream statement.
                 }
             }
             let datasetList: [Any] = model.normalizeToArray(ro["dataset"])
@@ -124,8 +128,9 @@ final class OptionManager {
                 if let datasetDict = dataset as? [String: Any],
                    let source = datasetDict["source"],
                    util.isTypedArray(source) {
-                    // PORT-NOTE (deferred): requires `util.setAsPrimitive(dataset.source)` — see the series note above.
-                    _ = source
+                    // setAsPrimitive(dataset.source) — intentionally absent for the same reason
+                    //   as the series note above (typed-array value operand; `util.clone`
+                    //   already passes it through unchanged).
                 }
             }
         }

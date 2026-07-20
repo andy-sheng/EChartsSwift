@@ -59,7 +59,10 @@ public protocol DatasetModel: AnyObject {
     var uid: String { get }                                             // ComponentModel.uid
     var ecModel: GlobalModel? { get }                                   // Model.ecModel
     var componentIndex: Double { get }                                  // ComponentModel.componentIndex
-    var option: ModelOption? { get }                                    // Model.option (disableTransformOptionMerge)
+    // `set` is required by `disableTransformOptionMerge`: the option tree is a `[String: Any]`
+    // VALUE bag, so tagging `option.transform` as primitive must be written back through the
+    // host. Witnessed for free by `open class Model`'s stored `public var option: ModelOption?`.
+    var option: ModelOption? { get set }                                // Model.option (disableTransformOptionMerge)
     func get(_ path: String, _ ignoreParent: Bool?) -> ModelOption?     // Model.get(path, ignoreParent)
     func getSourceManager() -> SourceManager                            // DatasetModelImpl.getSourceManager()
 }

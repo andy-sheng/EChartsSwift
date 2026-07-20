@@ -511,7 +511,15 @@ final class VisualMapping {
         }
         else if util.isObject(visualTypes), let dict = visualTypes as? [String: Any] {
             var collected: [String] = []
-            for (type, _) in dict { collected.append(type) }
+            for (type, _) in dict {
+                // PORT-NOTE: upstream's visualSolution.createMappings() stashes the extra opacity->colorAlpha
+                //   mapping in a prototype-hidden slot (`mappings.__hidden.__alphaForOpacity`), so this
+                //   `each` — which iterates own properties only — never sees it. A Swift dictionary has no
+                //   hidden slot, so skip the key explicitly to match. The caller's dict still holds the
+                //   entry, so the `type === 'opacity' ? '__alphaForOpacity' : type` lookups still resolve.
+                if type == "__alphaForOpacity" { continue }
+                collected.append(type)
+            }
             types = collected
         }
         else {

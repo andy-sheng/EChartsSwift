@@ -407,6 +407,7 @@ public enum labelLayoutHelper {
             seriesIndex: source.seriesIndex,
             priority: source.priority,
             defaultAttr: source.defaultAttr,
+            marginDefault: source.marginDefault,
             suggestIgnore: source.suggestIgnore
         )
         out.marginForce = newBaseWithDefaults.marginForce ?? source.marginForce
@@ -533,7 +534,14 @@ public enum labelLayoutHelper {
         guard let base = baseLayoutInfo, let target = targetLayoutInfo else {
             return false
         }
-        if base.geomIgnore || target.geomIgnore {
+        // upstream: if ((base.label && base.label.ignore) || (target.label && target.label.ignore))
+        //   Gate on the LIVE element, not the `geomIgnore` snapshot: `fixMinMaxLabelShow` / `hideOverlap`
+        //   mutate `label.ignore` AFTER geometry is computed without dirtying it, so the snapshot goes
+        //   stale (a force-re-shown min label would keep `geomIgnore == true` and never be de-overlapped).
+        //   Upstream's `label` is optional (pure geometry carriers pass none); here `label` is always a
+        //   real `ZRText`, and `computeLabelGeometry2`'s throwaway carrier has `ignore == false`, so the
+        //   two forms agree. `geomIgnore` is retained on the type as the geometry-time snapshot.
+        if base.label.ignore || target.label.ignore {
             return false
         }
         // Fast rejection.
@@ -705,6 +713,7 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         self.minMarginForce = minMarginForce
         self.marginDefault = marginDefault
         self.suggestIgnore = suggestIgnore
+        self.marginDefault = marginDefault
         self.dirty = nil
         self.rect = BoundingRect(0, 0, 0, 0)
         self.localRect = nil
