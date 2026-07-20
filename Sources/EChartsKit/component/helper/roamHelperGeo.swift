@@ -106,10 +106,14 @@ func geoRoamApplyStateToView(_ hostModel: ComponentModel, _ view: View) {
 //   (e, x, y) => mapOrGeoModel.coordinateSystem.containPoint([x, y]), clipRect, ..., false, true)`.
 //   `onDispatched` is a port seam: after `api.dispatchAction` re-renders (full update() this phase), the
 //   caller (EChartsView) flushes the live zr display list + repaints (same seam as the graph slice).
+//   `clipRect` is upstream's roam limit (roamHelper.ts:85-87 `isInClip: (e, x, y) => !clipRect ||
+//   clipRect.contain(x, y)`), passed by MapDraw when the geo `shouldClip()`. It is a LABELLED param placed
+//   before the unlabelled `onDispatched` seam so existing 4-arg call sites keep binding the closure.
 public func updateGeoRoamControllerSimply(
     _ hostModel: ComponentModel,
     _ api: ExtensionAPI,
     _ controller: RoamController,
+    clipRect: BoundingRect? = nil,
     _ onDispatched: (() -> Void)? = nil
 ) {
     // upstream: `const coordSys = getOwnRoamViewCoordSys(componentOrSeries); if (!coordSys) { disable(); }`
@@ -128,7 +132,8 @@ public func updateGeoRoamControllerSimply(
             guard let geo = geoRoamHostCoordSys(hostModel) else { return false }
             return geo.containPoint([x, y])
         },
-        isInClip: nil,
+        // upstream roamHelper: `isInClip: (e, x, y) => !clipRect || clipRect.contain(x, y)`.
+        isInClip: clipRect.map { rect in { (_: ElementEvent, x: Double, y: Double) in rect.contain(x, y) } },
         roamTrigger: hostModel.get("roamTrigger") as? String
     )
     controller.enable(roam, opt)

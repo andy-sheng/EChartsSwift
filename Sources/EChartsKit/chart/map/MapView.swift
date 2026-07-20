@@ -26,12 +26,16 @@ import ZRenderKit
 //     → `Circle`/`Polygon`/`Polyline`/`CompoundPath`/`ZRText` are ZRenderKit shapes. `util/graphic`
 //       (initProps/updateProps/Circle helpers) is ported; this static render builds the shapes directly.
 //   import MapDraw from '../../component/helper/MapDraw';
-//     → PORT-NOTE (deferred): requires `component/helper/MapDraw` (NOT ported). Upstream `MapView.render` delegates ALL region
-//       drawing to a persistent `MapDraw` instance (which also owns the roam controller, the SVG map path,
-//       the visualMap-encoded region fill, emphasis/select/blur states, and event/tooltip triggers). For
-//       this STATIC render the GeoJSON region subset of `MapDraw._buildGeoJSON` (with the SERIES-DATA
-//       colouring branch that `GeoView` omits) is inlined below (`_buildGeoJSON`), and the rest is deferred
-//       (see the DEFERRED block). This mirrors how `GeoView.swift` inlines the geo-component subset.
+//     → `MapDraw` (component/helper/MapDraw.swift) IS NOW PORTED — roam controller + `_transformGroup`,
+//       GeoJSON + geoSVG builds, the visualMap-encoded region fill + decal, the emphasis/select/blur
+//       states, and the event/tooltip/state triggers — with TWO documented gaps: the `GeoProjection.stream`
+//       clip/resample path (`projectionStream` is nil, `projectPolys` dormant) and the name-keyed geo
+//       `labelFetcher` (replaced by an eager `getFormattedLabel`); see the PORT-TODOs in MapDraw.swift.
+//     → PORT-NOTE (deferred — the SWITCHOVER, not the port): `MapView.render` still uses the STATIC inlined
+//       subset below (`_buildGeoJSON` / `_buildSVG`) rather than a persistent `_mapDraw`. Delegating is a
+//       driver-level change (render lifecycle + roam routing) needing PNG-oracle validation, so it is
+//       intentionally NOT done here; see the identical note in `GeoView.swift`. When it lands, delete the
+//       inlined subset (MapView:176-518, 519-660 and the file-tail PORT-NOTE helpers).
 //   import ChartView from '../../view/Chart';                     → `ChartView` (view/Chart.swift).
 //   import MapSeries, { getMainMapSeries, MapDataItemOption, mapSeriesNeedsDrawMap, SERIES_TYPE_MAP }
 //       from './MapSeries';   → assumed sibling `MapSeriesModel` / free functions (see block below).
@@ -75,9 +79,10 @@ open class MapView: ChartView {
     }
 
     // upstream: private _mapDraw: MapDraw;
-    // PORT-NOTE (deferred): requires MapDraw (NOT ported). The GeoJSON region backdrop (with data
-    //   colouring) is built directly in `_buildGeoJSON`; this slot (and the roam controller / SVG map it
-    //   owns) is deferred.
+    // PORT-NOTE (deferred — the SWITCHOVER, not the port): `MapDraw` IS ported
+    //   (Sources/EChartsKit/component/helper/MapDraw.swift). Only this view-level slot is deferred: the
+    //   GeoJSON region backdrop (with data colouring) is still built directly in `_buildGeoJSON` here, so
+    //   the roam controller / SVG map / persistent `_transformGroup` MapDraw owns are not routed to yet.
 
     // ── Persistent GeoJSON region elements for the COLOR-MORPH path (L5 transition fidelity) ──────────
     //   A map's region GEOMETRY is fixed (from the registered GeoJSON); a merge-mode value change only
@@ -845,7 +850,10 @@ open class MapView: ChartView {
     // ------------------------------------------------------------------------------------------------
 
     // upstream: __updateOnOwnRoam(payload, model, api) { mapDraw.__updateOnOwnRoam(model); }
-    // PORT-NOTE (deferred — roam): requires MapDraw/transformGroup to re-transform (not ported).
+    // PORT-NOTE (deferred — roam ROUTING): the transformGroup re-transform EXISTS —
+    //   `MapDraw.__updateOnOwnRoam` (component/helper/MapDraw.swift) + `applyViewCoordSysTransToElement`
+    //   (coord/View.swift). This view simply does not own a persistent `_mapDraw` yet (see the `_mapDraw`
+    //   slot note above), so there is no transformGroup here to re-transform.
 
     // upstream: remove() { this._clearMapDraw(); this.group.removeAll(); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
