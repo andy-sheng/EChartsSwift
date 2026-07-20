@@ -577,7 +577,10 @@ public enum model {
      * "normalMerge" / "replaceMerge" / "replaceAll" modes.)
      */
     public static func mappingToExists(
-        _ existings: [MappingExistingItem]?,
+        // PORT: upstream `existings: T[]` may contain elided items / null "holes" (left behind by a
+        //   previous `replaceMerge`); `prepareResult` iterates by index precisely to preserve them,
+        //   so the element type must be Optional here and in the internal helpers.
+        _ existings: [MappingExistingItem?]?,
         _ newCmptOptionsInput: [ComponentOption]?,
         _ mode: MappingToExistsMode
     ) -> MappingResult {
@@ -638,7 +641,7 @@ public enum model {
     }
 
     static func prepareResult(
-        _ existings: [MappingExistingItem],
+        _ existings: [MappingExistingItem?],
         _ existingIdIdxMap: HashMap<Double>,
         _ mode: MappingToExistsMode
     ) -> MappingResult {
@@ -651,7 +654,7 @@ public enum model {
         // Do not use native `map` to in case that the array `existings`
         // contains elided items, which will be omitted.
         for index in 0..<existings.count {
-            let existing: MappingExistingItem? = existings[index]
+            let existing = existings[index]
             // Because of replaceMerge, `existing` may be null/undefined.
             if let existing = existing, existing.id != nil {
                 existingIdIdxMap.set(existing.id, Double(index))
@@ -675,7 +678,7 @@ public enum model {
 
     static func mappingById(
         _ result: inout MappingResult,
-        _ existings: [MappingExistingItem],
+        _ existings: [MappingExistingItem?],
         _ existingIdIdxMap: HashMap<Double>,
         _ newCmptOptions: inout [ComponentOption?]
     ) {

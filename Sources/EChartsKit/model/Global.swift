@@ -410,12 +410,12 @@ open class GlobalModel: Model, PaletteMixin {
             let oldCmptList = componentsMap.get(mainType)
             // upstream passes `oldCmptList` (ComponentModel[]) where MappingExistingItem[] is expected.
             // The ported protocols require optional id/name/subType witnesses, so wrap each model.
-            // POTENTIAL-BUG: "holes" (removed components) are dropped by `compactMap`; the internal index
-            //   alignment stays consistent (existings/result/idIdxMap all derive from this list), but
-            //   cross-merge hole preservation (§(3) at the top) is not modeled — a latent divergence in
-            //   replaceMerge scenarios with removed components.
-            let oldExistings: [MappingExistingItem]? = oldCmptList.map { list in
-                list.compactMap { (cmpt: ComponentModel?) -> MappingExistingItem? in
+            // "Holes" (removed components, left behind by a previous `replaceMerge`) are PRESERVED as
+            //   nil elements, per model.ts:302-304: upstream's `existings: T[]` carries the holes and
+            //   `prepareResult` iterates by index precisely so they are not omitted. Using `map`
+            //   (not `compactMap`) keeps existings/result/idIdxMap index-aligned with `oldCmptList`.
+            let oldExistings: [MappingExistingItem?]? = oldCmptList.map { list in
+                list.map { (cmpt: ComponentModel?) -> MappingExistingItem? in
                     cmpt.map { ExistingComponentItem($0) }
                 }
             }

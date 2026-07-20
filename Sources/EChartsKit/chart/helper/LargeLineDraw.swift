@@ -72,9 +72,9 @@ public final class LargeLinesPath: Path {
     // upstream: hoverDataIdx — the datum index found by the last `contain` hit-test (for tooltip).
     public var hoverDataIdx: Int = -1
 
-    // upstream: notClear — the incremental-layer keep-alive flag (inherited from Displayable).
-    //   Redeclared as non-optional here to mirror upstream's `notClear: boolean`; writes flow to
-    //   the base Displayable.notClear via `self.notClear`.
+    // upstream: notClear — the incremental-layer keep-alive flag. NOT redeclared here: the base
+    //   `Displayable.notClear` (Bool?) is used directly, avoiding a shadowing member that would win
+    //   overload resolution over the base.
 
     // Our own bounding-rect cache (the base `_rect` is private to ZRenderKit; upstream caches on
     //   `this._rect` — we mirror the "ignore stroke, derive from segs" rect here).
@@ -93,7 +93,7 @@ public final class LargeLinesPath: Path {
     }
 
     // upstream: beforeBrush(param) { if (param && !param.contentRetained) { this.reset(); } }
-    //   PORT-NOTE: `Displayable.beforeBrush` is `public` (not `open`) so it cannot be overridden from
+    //   PORT-TODO: `Displayable.beforeBrush` is `public` (not `open`) so it cannot be overridden from
     //   this module — and the progressive brush hook is inert here anyway (no incremental pipeline),
     //   exactly as sibling LargeSymbolPath omits the override. `reset()` is kept for provenance.
 
@@ -124,7 +124,7 @@ public final class LargeLinesPath: Path {
                     let x = segs[i]; i += 1
                     let y = segs[i]; i += 1
                     _ = ctx.moveTo(x, y)
-                    for _ in 1..<max(count, 1) where count > 1 {
+                    for _ in 1..<count {
                         let lx = segs[i]; i += 1
                         let ly = segs[i]; i += 1
                         _ = ctx.lineTo(lx, ly)
@@ -176,7 +176,7 @@ public final class LargeLinesPath: Path {
                     //   vertex to the k-th vertex (p0->p1, p0->p2, ...), NOT consecutive segments.
                     let x0 = segs[i]; i += 1
                     let y0 = segs[i]; i += 1
-                    for _ in 1..<max(count, 1) where count > 1 {
+                    for _ in 1..<count {
                         let x1 = segs[i]; i += 1
                         let y1 = segs[i]; i += 1
                         if line.containStroke(x0, y0, x1, y1, lineWidth, x, y) {
@@ -239,6 +239,11 @@ public final class LargeLinesPath: Path {
         var maxX = -Double.infinity
         var maxY = -Double.infinity
         var i = 0
+        // DEVIATION: upstream (LargeLineDraw.ts:217) loops `i < points.length` and reads both coords
+        //   unconditionally, so a trailing partial pair (polyline segs length is
+        //   `numPolylines + 2*totalCoords` — odd whenever numPolylines is odd) reads `undefined` as y
+        //   and yields a NaN rect whose `contain` always returns false (hover off). An OOB read would
+        //   trap in Swift, so the `i + 1` guard drops the partial pair and produces a finite rect.
         while i + 1 < points.count {
             let x = points[i]; i += 1
             let y = points[i]; i += 1
@@ -334,12 +339,10 @@ public final class LargeLineDraw {
     }
 
     // upstream: eachRendered(cb) { this._newAdded[0] && cb(this._newAdded[0]); }
-    @discardableResult
-    public func eachRendered(_ cb: (Element) -> Bool?) -> Bool? {
+    public func eachRendered(_ cb: (Element) -> Bool?) {
         if let first = self._newAdded.first {
-            return cb(first)
+            _ = cb(first)
         }
-        return nil
     }
 
     // upstream: private _create()
