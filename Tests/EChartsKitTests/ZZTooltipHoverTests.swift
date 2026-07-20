@@ -110,4 +110,63 @@ final class ZZTooltipHoverTests: XCTestCase {
         XCTAssertFalse(tv.isShown(), "moving the pointer off bar 0 must hide the tooltip via the mouseout leg")
         XCTAssertTrue(contentEl.ignore, "the hidden tooltip ZRText must be ignored (not drawn)")
     }
+
+    // ------------------------------------------------------------------------
+    // The ITEM-PATH `showTip` ACTION (no pointer involved):
+    //
+    //     ec.dispatchAction({type:'showTip', seriesIndex:0, dataIndex:i})
+    //       -> ECharts.doDispatchAction emits the 'showtip' action event
+    //       -> EChartsView's `ec.on("showTip")` hook (substitutes for upstream's
+    //          `update:'tooltip:manuallyShowTip'` ComponentView routing)
+    //       -> TooltipView.manuallyShowTip -> findPointFromSeries(finder, ecModel)
+    //       -> Cartesian2D.dataToPoint  -> tryShow(point:)
+    //
+    // The load-bearing assertion is that the box lands on the DATUM's pixel: before findPointFromSeries
+    // was wired, `manuallyShowTip` fell back to the payload x/y and then to the VIEW CENTRE, so all three
+    // data indices produced the SAME box position. Distinct positions prove the point is data-driven.
+    // ------------------------------------------------------------------------
+    func testShowTipActionPositionsTooltipOnTheDatumPixel() {
+        let view = makeBarView()
+        _ = view.zr.storage.getDisplayList(true)
+
+        var xs: [Double] = []
+        var texts: [String] = []
+        for i in 0..<3 {
+            var payload = Payload(type: "showTip")
+            payload.other["seriesIndex"] = 0
+            payload.other["dataIndex"] = i
+            view.ec.dispatchAction(payload)
+
+            guard let tv = view.tooltipView, let el = tv.contentEl else {
+                XCTFail("showTip {seriesIndex:0, dataIndex:\(i)} must create + show the TooltipView"); return
+            }
+            XCTAssertTrue(tv.isShown(), "showTip must show the tooltip for dataIndex \(i)")
+            XCTAssertFalse(el.ignore, "the tooltip ZRText must be visible for dataIndex \(i)")
+            xs.append(el.x)
+            texts.append(el.textStyle?.text ?? "")
+        }
+
+        // (1) The three positions must be pairwise DISTINCT — the view-centre fallback would collapse them.
+        XCTAssertEqual(Set(xs).count, 3,
+                       "showTip must place the box at each datum's own pixel, not one fixed fallback — got \(xs)")
+
+        // (2) The CONTENT must match the SAME datum the position was computed from (raw-vs-inside index
+        //     consistency: both go through `modelUtil.queryDataIndex` now).
+        XCTAssertTrue(texts[0].contains("A") && texts[0].contains("10"), "dataIndex 0 → 'A'/10, got:\n\(texts[0])")
+        XCTAssertTrue(texts[1].contains("B") && texts[1].contains("20"), "dataIndex 1 → 'B'/20, got:\n\(texts[1])")
+        XCTAssertTrue(texts[2].contains("C") && texts[2].contains("30"), "dataIndex 2 → 'C'/30, got:\n\(texts[2])")
+
+        // (3) The `name` finder form (upstream: `showTip {seriesIndex, name}`) must resolve the same datum
+        //     as `dataIndex` — the guard used to require a literal `dataIndex` and silently ignore this.
+        var byName = Payload(type: "showTip")
+        byName.other["seriesIndex"] = 0
+        byName.other["name"] = "C"
+        view.ec.dispatchAction(byName)
+        XCTAssertEqual(view.tooltipView?.contentEl?.x, xs[2],
+                       "showTip by `name` must land on the same pixel as showTip by `dataIndex`")
+
+        // (4) hideTip hides it.
+        view.ec.dispatchAction(Payload(type: "hideTip"))
+        XCTAssertEqual(view.tooltipView?.isShown(), false, "hideTip must hide the tooltip")
+    }
 }

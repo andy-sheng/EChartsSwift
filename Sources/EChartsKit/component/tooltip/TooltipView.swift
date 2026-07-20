@@ -46,7 +46,9 @@
 //   - the FUNCTION `formatter` (closure + async ticket callback). The STRING `formatter` override
 //     of the default markup IS ported (item path).
 //   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — shown synchronously here
-//   - `findPointFromSeries` (the data-driven showTip position) — payload x/y is used instead
+//   - `findPointFromSeries` (the data-driven showTip position) — NO LONGER DEFERRED: it is wired in
+//     `manuallyShowTip`, which `EChartsView` routes the item-path `showTip` action to. Still deferred
+//     on that path: `target`/`position`/`positionDefault` (see the PORT-NOTE there).
 //
 // ARCHITECTURE (see MEMORY / phase brief):
 //   Upstream `TooltipView` is a `ComponentView` that reaches the live zrender via `api.getZr()`. In THIS
@@ -491,23 +493,69 @@ public final class TooltipView {
     // manuallyShowTip — of upstream `manuallyShowTip` (TooltipView.ts:292), seriesIndex branch only.
     //   This is the `update:'tooltip:manuallyShowTip'` target of the `showTip` action. `EChartsView`
     //   invokes it when a `showTip` payload is dispatched (the analogue of the upstream per-instance
-    //   view routing). Reads `seriesIndex`/`dataIndex` (+ optional `x`/`y`) from the payload.
+    //   view routing). Upstream's branch condition is `payload.seriesIndex != null` ONLY — the datum is
+    //   then resolved by `findPointFromSeries` → `modelUtil.queryDataIndex`, which accepts any of
+    //   `dataIndexInside` / `dataIndex` / `name` (TooltipView.ts:287 documents all three payload forms).
     // ------------------------------------------------------------------------
     public func manuallyShowTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
         _ = api
         setModelIfNeeded(ecModel)
 
+        // upstream: `if (payload.seriesIndex != null) { ... }` — no `dataIndex` requirement here.
         guard let seriesIndex = asDouble(payload.other["seriesIndex"]),
-              let dataIndex = asDouble(payload.other["dataIndex"]),
               let seriesModel = ecModel.getSeriesByIndex(seriesIndex) else {
             return
         }
 
-        // PORT-NOTE (deferred): upstream `findPointFromSeries(payload, ecModel)` computes the on-chart
-        //   point from the series layout when the payload has no x/y. Slim: use the payload's x/y, else
-        //   fall back to the view centre (best-effort for a data-only showTip).
-        let px = asDouble(payload.other["x"]) ?? ((_zr.getWidth() ?? 0) / 2)
-        let py = asDouble(payload.other["y"]) ?? ((_zr.getHeight() ?? 0) / 2)
+        // Resolve the datum ONCE, exactly as `findPointFromSeries` does internally
+        //   (`modelUtil.queryDataIndex(data, finder)`), and use that SAME index for the tooltip CONTENT.
+        //   queryDataIndex maps a raw `dataIndex` through `data.indexOfRawIndex` → an INSIDE index, which
+        //   is what `tryShow`/`formatTooltip`/`getDataParams` expect (upstream derives the content from
+        //   `pointInfo.el`'s ecData, i.e. also the inside index). Passing the RAW payload `dataIndex` here
+        //   would render datum A's markup at datum B's pixel whenever the data is filtered (dataZoom).
+        let data = seriesModel.getData()
+        let dataIndexAny = model.queryDataIndex(data, payload)
+        // upstream (findPointFromSeries): `if (dataIndex == null || dataIndex < 0 || isArray(dataIndex)) return`
+        if dataIndexAny is [Any] { return }
+        guard let dataIndex = asDouble(dataIndexAny), dataIndex >= 0 else { return }
+
+        // upstream (TooltipView.ts:356, the `payload.seriesIndex != null` branch):
+        //   const pointInfo = findPointFromSeries(payload, ecModel);
+        //   const cx = pointInfo.point[0]; const cy = pointInfo.point[1];
+        //   if (cx != null && cy != null) { this._tryShow({offsetX: cx, offsetY: cy, target: pointInfo.el,
+        //       position: payload.position, positionDefault: 'bottom'}, dispatchAction); }
+        //   Note upstream reaches this branch BEFORE the `payload.x/y` branch, so the data-driven point
+        //   wins over any x/y carried on the payload.
+        //   Upstream passes the WHOLE payload as the finder, so mirror the full finder bag here
+        //   (`isStacked` included — it selects the stackResultDimension branch).
+        let pointInfo = findPointFromSeries(
+            FindPointFinder(
+                seriesIndex: seriesIndex,
+                dataIndex: payload.other["dataIndex"],
+                dataIndexInside: payload.other["dataIndexInside"],
+                name: payload.other["name"],
+                isStacked: payload.other["isStacked"] as? Bool
+            ),
+            ecModel
+        )
+        // PORT-NOTE (deferred): `pointInfo.el` (upstream's `target`), `position: payload.position` and
+        //   `positionDefault: 'bottom'` are all dropped — `tryShow` has no target/position/positionDefault
+        //   parameter here, so an action-driven tooltip is placed by the same hover-side offset logic in
+        //   `_updatePosition` (upstream deliberately puts a MANUALLY triggered tooltip BELOW the point, and
+        //   honours an explicit `payload.position`). The position-around-a-graphic-element expr is a
+        //   documented deferral of this view — see the SCOPE note above.
+
+        // upstream: `if (cx != null && cy != null)` — show NOTHING when the point could not be resolved.
+        //   (No payload-x/y or view-centre fallback: upstream reaches the `payload.x/y` branch only when
+        //   `payload.seriesIndex == null`.) The `.isFinite` test is the Swift analogue of the JS null
+        //   check: `Cartesian2D.dataToPoint` returns `[NaN, NaN]` for an out-of-extent value, and the
+        //   stacked branch seeds `[NaN, NaN]`, neither of which may be handed to `moveTo`.
+        guard pointInfo.point.count >= 2,
+              pointInfo.point[0].isFinite, pointInfo.point[1].isFinite else {
+            return
+        }
+        let px: Double = pointInfo.point[0]
+        let py: Double = pointInfo.point[1]
 
         tryShow(
             event: nil,

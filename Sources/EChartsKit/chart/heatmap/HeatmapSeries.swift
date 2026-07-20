@@ -113,7 +113,7 @@ open class HeatmapSeriesModel: SeriesModel {
     //   the Scheduler progressive gate (Scheduler.swift: `!(seriesModel.preventIncremental && preventIncremental())`),
     //   same contract as LinesSeries.preventIncremental. Upstream returns undefined (falsy) when the guard
     //   fails; the Swift `false` is the equivalent truthy value.
-    open func preventIncremental() -> Bool {
+    open override func preventIncremental() -> Bool {
         guard let coordType = self.get("coordinateSystem") as? String,
               let coordSysCreator = CoordinateSystemManager.get(coordType),
               let dimensions = coordSysCreator.dimensions, dimensions.count >= 2 else {

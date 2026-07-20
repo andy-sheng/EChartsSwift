@@ -37,10 +37,11 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { ColorString } from '../../util/types';                -> util/types.swift.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> PORT-NOTE (deferred): requires `setLabelLineStyle` / `getLabelLineStatesModels`.
-//          labelGuideHelper.swift is partially ported (only the geometry helpers projectPointToLine/
-//          limitTurnAngle/limitSurfaceAngle exist — confirmed both symbols absent). The leader polyline
-//          is drawn inline in funnelUpdateLabel below instead.
+//       -> PORT-NOTE: BOTH helpers now EXIST in label/labelGuideHelper.swift
+//          (`labelGuideHelper.getLabelLineStatesModels` and `labelGuideHelper.setLabelLineStyle`).
+//          Only the CALL SITE is pending here — the leader polyline is still drawn inline (single
+//          stroke) in funnelUpdateLabel below. See the `// PORT-TODO: wire setLabelLineStyle` marker
+//          there. Do NOT re-derive a second copy of the helper.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle IS ported (label/labelStyle.swift); both are wired in funnelUpdateLabel
 //          below, replacing the former inline plain-text reproduction.
@@ -61,9 +62,9 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 //
 // PORT provenance (deferred subsystems below; a STATIC render faithfully omits them):
 //   - labelLine: `setTextGuideLine`/`getTextGuideLine` (Polyline) + `textGuideLineConfig` (the anchor
-//     turn-point) ARE wired; `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line
-//     styling in labelGuideHelper) remain DEFERRED — the leader polyline is drawn inline (single stroke)
-//     in funnelUpdateLabel instead.
+//     turn-point) ARE wired. `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line
+//     styling) are now PORTED in labelGuideHelper.swift; only the call site here is pending, so the
+//     leader polyline is still drawn inline (single stroke) in funnelUpdateLabel for the moment.
 //   - Label EMPHASIS / states: `getLabelStatesModels`, `setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
 //     ARE now wired (see render() + funnelUpdateLabel below); the plain `defaultText = data.getName(idx)`
@@ -265,9 +266,12 @@ open class FunnelView: ChartView {
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
 //     - textGuideLineConfig = { anchor: linePoints ? new Point(linePoints[0][0], linePoints[0][1]) : null }
 //       IS wired (below) — the guide-line turn/anchor point.
-// PORT-NOTE (deferred): `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line styling,
-//   still absent from labelGuideHelper.swift) remain deferred — the leader polyline is drawn inline (single
-//   stroke) at the end.
+// PORT-TODO: wire setLabelLineStyle. `labelGuideHelper.setLabelLineStyle` and
+//   `labelGuideHelper.getLabelLineStatesModels` are BOTH ported and available — only this call site is
+//   still pending, so the leader polyline is drawn inline (single stroke) at the end. Upstream is:
+//     labelGuideHelper.setLabelLineStyle(
+//         polygon, labelGuideHelper.getLabelLineStatesModels(itemModel), <stroke/opacity defaultStyle>)
+//   which should REPLACE the inline single-stroke drawing below (not sit alongside it).
 private func funnelUpdateLabel(
     _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
     _ layout: [String: Any], _ firstCreate: Bool

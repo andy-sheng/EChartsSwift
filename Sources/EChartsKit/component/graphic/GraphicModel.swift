@@ -445,7 +445,10 @@ open class GraphicComponentModel: ComponentModel {
         //   (they conform), and (b) project each new element into a `ComponentOption` carrying its
         //   `id`/`name` plus the element reference in `rawOption[GRAPHIC_EL_KEY]`, then recover the
         //   element from the result. This reproduces upstream identity flow.
-        let existings: [MappingExistingItem] = existList.compactMap { $0 as MappingExistingItem? }
+        // `existList` is genuinely sparse (holes left by removed elements) and the loop below indexes
+        //   `existList[index]` against `mappingResult[index]`, so the holes MUST be preserved: `map`,
+        //   not `compactMap` (which would collapse them and shift every subsequent index).
+        let existings: [MappingExistingItem?] = existList.map { $0 as MappingExistingItem? }
         let newCmptOptions: [ComponentOption] = flattenedList.map { el in
             var c = ComponentOption()
             c.id = el.id

@@ -302,14 +302,13 @@ public final class Scheduler {
         // upstream: const context = seriesModel.__preparePipelineContext
         //     ? seriesModel.__preparePipelineContext(view, pipeline)
         //     : preparePipelineContext(seriesModel, view, pipeline);
-        // POTENTIAL-BUG: `__preparePipelineContext` is now overridden by concrete series (e.g.
-        //   BarSeries, which sets `large = true` under progressiveRender), but the base `SeriesModel`
-        //   declares no such slot, so this always calls the free `model.preparePipelineContext` and
-        //   the override is bypassed. Dormant while progressive is disabled (native painter →
-        //   progressiveRender false); to fix, declare the optional method on base SeriesModel (out of
-        //   this file's scope) and dispatch to it when present.
-        let context = model.preparePipelineContext(
-            seriesModel, view,
+        // PORT-NOTE: the upstream ternary is a feature-detect on an optional declaration-merged method.
+        //   Swift cannot feature-detect, so base `SeriesModel.__preparePipelineContext` implements the
+        //   "absent" branch (`model.preparePipelineContext(...)`) and concrete series override it
+        //   (e.g. BarSeries sets `large = true` under progressiveRender). The unconditional call below
+        //   therefore dispatches dynamically and is equivalent to both upstream branches.
+        let context = seriesModel.__preparePipelineContext(
+            view,
             PipelinePick(progressiveEnabled: pipeline.progressiveEnabled, threshold: pipeline.threshold)
         )
 
@@ -337,16 +336,14 @@ public final class Scheduler {
                 tail: nil,
                 threshold: seriesModel.getProgressiveThreshold(),
                 // upstream: progressive && !(seriesModel.preventIncremental && seriesModel.preventIncremental())
-                // POTENTIAL-BUG: `preventIncremental` is now overridden by concrete series (e.g.
-                //   LinesSeries returns true when effect.show), but the base SeriesModel declares no
-                //   such slot, so it is not consulted here (treated as absent/false). Dormant while
-                //   progressive is disabled (native painter → `progressive` false → progressiveEnabled
-                //   false regardless); to fix, declare the optional method on base SeriesModel (out of
-                //   this file's scope) and gate on it.
-                progressiveEnabled: jsTruthy(progressive) && true,
+                // PORT-NOTE: `preventIncremental` is optional upstream (hence the `&&` feature-detect);
+                //   base `SeriesModel.preventIncremental` returns `false` (the "absent" branch), and
+                //   concrete series override it (e.g. LinesSeries returns true when `effect.show`), so
+                //   the unconditional dynamic call below matches upstream.
+                progressiveEnabled: jsTruthy(progressive) && !seriesModel.preventIncremental(),
                 blockIndex: -1,
                 // upstream: Math.round(progressive || 700)
-                step: floor((jsTruthy(progressive) ? ((progressive as? Double) ?? 700) : 700) + 0.5),
+                step: floor((jsTruthy(progressive) ? (schedulerNum(progressive) ?? 700) : 700) + 0.5),
                 count: 0
             ))
 
@@ -827,4 +824,14 @@ private func jsTruthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
+}
+
+// Numeric coercion of an option value (Int or Double) to Double. Not an upstream symbol — guards the
+// Int-vs-Double option-read trap: option literals (e.g. `progressive: 500`) are boxed as `Int`, so a
+// bare `as? Double` returns nil and the configured value is silently dropped.
+private func schedulerNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let s = v as? String { return Double(s) }
+    return nil
 }

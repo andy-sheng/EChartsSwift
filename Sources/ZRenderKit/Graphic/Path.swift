@@ -166,19 +166,26 @@ public struct PathStyleProps {
         }
     }
 
+    // PORT-NOTE: this is the per-key setter for BOTH the animated tween path (values arrive as
+    //   `Double`) and the untyped per-state style bags that flow through `useState` →
+    //   `_transitionState` → `animateToShallow` → `animObjSet` (e.g. `labelGuideHelper`'s
+    //   `stateObj.style = getLineStyle()` bag, `ECLine.swift`). Those bags are raw option values, so a
+    //   plain `value as? Double` silently DROPS an Int-boxed `lineStyle.width: 2` (the Int-vs-Double
+    //   option-read trap) and the String presets of `lineStyle.type`. Coerce at this seam — the same
+    //   normalization `Path.attrKV` already applies — so every state bag benefits.
     public mutating func animationSet(_ key: String, _ value: Any?) {
         switch key {
-        case "opacity": if let v = value as? Double { opacity = v }
-        case "fillOpacity": if let v = value as? Double { fillOpacity = v }
-        case "strokeOpacity": if let v = value as? Double { strokeOpacity = v }
-        case "lineWidth": if let v = value as? Double { lineWidth = v }
-        case "lineDashOffset": if let v = value as? Double { lineDashOffset = v }
-        case "lineDash": if let arr = value as? [Double] { lineDash = .values(arr) }
-        case "strokePercent": if let v = value as? Double { strokePercent = v }
-        case "miterLimit": if let v = value as? Double { miterLimit = v }
-        case "shadowBlur": if let v = value as? Double { shadowBlur = v }
-        case "shadowOffsetX": if let v = value as? Double { shadowOffsetX = v }
-        case "shadowOffsetY": if let v = value as? Double { shadowOffsetY = v }
+        case "opacity": if let v = coerceToDouble(value) { opacity = v }
+        case "fillOpacity": if let v = coerceToDouble(value) { fillOpacity = v }
+        case "strokeOpacity": if let v = coerceToDouble(value) { strokeOpacity = v }
+        case "lineWidth": if let v = coerceToDouble(value) { lineWidth = v }
+        case "lineDashOffset": if let v = coerceToDouble(value) { lineDashOffset = v }
+        case "lineDash": if let d = coerceToLineDash(value) { lineDash = d }
+        case "strokePercent": if let v = coerceToDouble(value) { strokePercent = v }
+        case "miterLimit": if let v = coerceToDouble(value) { miterLimit = v }
+        case "shadowBlur": if let v = coerceToDouble(value) { shadowBlur = v }
+        case "shadowOffsetX": if let v = coerceToDouble(value) { shadowOffsetX = v }
+        case "shadowOffsetY": if let v = coerceToDouble(value) { shadowOffsetY = v }
         case "shadowColor": if let v = value as? String { shadowColor = v }
         case "fill": if let c = animValueToZRColor(value) { fill = c }
         case "stroke": if let c = animValueToZRColor(value) { stroke = c }
@@ -1131,6 +1138,29 @@ private func coerceToDouble(_ value: Any?) -> Double? {
     if let d = value as? Double { return d }
     if let i = value as? Int { return Double(i) }
     if let n = value as? NSNumber { return n.doubleValue }
+    return nil
+}
+
+// Any → LineDash for the untyped per-state style bags handed to `PathStyleProps.animationSet`.
+//   upstream `lineDash?: false | number[] | 'solid' | 'dashed' | 'dotted'` — the option-level
+//   `lineStyle.type` presets arrive as Strings and the arrays as Int/Double mixes, neither of which a
+//   bare `value as? [Double]` accepts.
+private func coerceToLineDash(_ value: Any?) -> LineDash? {
+    if let d = value as? LineDash { return d }
+    if let b = value as? Bool { return b ? nil : LineDash.false }
+    if let s = value as? String {
+        switch s {
+        case "solid": return .solid
+        case "dashed": return .dashed
+        case "dotted": return .dotted
+        default: return nil
+        }
+    }
+    if let arr = value as? [Double] { return .values(arr) }
+    if let arr = value as? [Any] {
+        let nums = arr.compactMap { coerceToDouble($0) }
+        return nums.count == arr.count ? .values(nums) : nil
+    }
     return nil
 }
 

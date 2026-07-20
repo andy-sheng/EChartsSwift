@@ -30,10 +30,11 @@ import ZRenderKit
 //   calls) + the module-local projection helpers (`projectPointToLine` / `projectPointToArc` /
 //   `projectPointToRect` / `nearestPointOnRect` / `nearestPointOnPath` / `getCandidateAnchor`) +
 //   the `updateLabelLinePoints` entry point + `getLabelLineStatesModels`.
-//   DEFERRED (leader-line *style/state* creation): `setLabelLineStyle`, `setLabelLineState`,
-//   `buildLabelLinePath`. These require a per-instance `labelLine.buildPath = …` override, which the
-//   Swift `Polyline` (method override + value-type shape) does not expose — that is a ZRenderKit
-//   cross-file change. Pie/funnel keep drawing their own leader-line style inline for now.
+//   PORTED (leader-line *style/state* creation): `setLabelLineStyle`, `setLabelLineState`,
+//   `buildLabelLinePath`. Upstream's per-instance `labelLine.buildPath = buildLabelLinePath` override
+//   is routed through the ZRenderKit `Polyline.setBuildPathOverride` seam (backed by the existing
+//   `__morphBuildPath` build-hook), added for this port. Pie/funnel may still draw their own
+//   leader-line style inline until they wire this helper.
 
 /// Namespace for the ported labelGuideHelper functions (caseless enum, mirrors `labelStyle`).
 public enum labelGuideHelper {
@@ -49,6 +50,17 @@ public enum labelGuideHelper {
     private static func asDouble(_ v: Any?) -> Double? {
         if let d = v as? Double { return d }
         if let i = v as? Int { return Double(i) }
+        return nil
+    }
+
+    /// Local truthiness coercion mirroring JS `!!v` for option reads that upstream treats as
+    /// booleans (`show`, `showAbove`). A bare `as? Bool` returns nil for an Int-boxed `show: 1`
+    /// (see the Int-vs-Double option-read trap), which would flip the value to "hidden".
+    private static func asBool(_ v: Any?) -> Bool? {
+        if let b = v as? Bool { return b }
+        if let i = v as? Int { return i != 0 }
+        if let d = v as? Double { return d != 0 && !d.isNaN }
+        if let s = v as? String { return !s.isEmpty }
         return nil
     }
 
@@ -569,5 +581,255 @@ public enum labelGuideHelper {
             statesModels[stateName] = itemModel.getModel([stateName, labelLineName])
         }
         return statesModels
+    }
+
+    // upstream: type LabelLineModel = Model<LabelLineOption>; -> the non-generic Swift `Model`.
+
+    /// upstream module-local:
+    ///   function setLabelLineState(labelLine: Polyline, ignore, stateName, stateModel: Model)
+    /// Apply the per-state (`normal`/`emphasis`/`blur`/`select`) ignore/smooth/lineStyle onto the
+    /// leader-line Polyline. For `normal` the values land on the element itself; otherwise they land
+    /// on the element's `ensureState(stateName)` state object.
+    private static func setLabelLineState(
+        _ labelLine: Polyline, _ ignore: Bool, _ stateName: String, _ stateModel: Model
+    ) {
+        let isNormal = stateName == "normal"
+
+        // upstream: let smooth = stateModel.get('smooth');
+        //           smooth = smooth === true ? 0.3 : Math.max(+smooth, 0) || 0;
+        //   (Int-vs-Double trap: `smooth` may be boxed as Int or Double; Bool-`true` → 0.3.)
+        let smoothRaw = stateModel.get("smooth")
+        var smooth: Double = 0
+        if let b = smoothRaw as? Bool {
+            // `true` → 0.3; `false` → `+false` = 0.
+            smooth = b ? 0.3 : 0
+        }
+        else if let n = asDouble(smoothRaw) {
+            // Math.max(+smooth, 0) || 0 : NaN (`|| 0`) → 0, negatives clamped to 0.
+            smooth = n.isNaN ? 0 : Swift.max(n, 0)
+        }
+
+        // upstream: const styleObj = stateModel.getModel('lineStyle').getLineStyle();
+        //   getLineStyle() returns the dynamic `LineStyleProps` ([String: Any]) bag.
+        let styleObj = stateModel.getModel("lineStyle").getLineStyle()
+
+        if isNormal {
+            // upstream: const stateObj = labelLine; stateObj.ignore = ignore;
+            labelLine.ignore = ignore
+            // upstream: (stateObj.shape as Polyline['shape']).smooth = smooth;  (always set)
+            labelLine.setShape("smooth", smooth)
+            // upstream: labelLine.useStyle(styleObj) — bridge the [String: Any] to PathStyleProps.
+            labelLine.useStyle(barStyleFromDict(styleObj))
+        }
+        else {
+            // upstream: const stateObj = labelLine.ensureState(stateName);
+            let stateObj = labelLine.ensureState(stateName)
+            stateObj.ignore = ignore
+            // upstream: stateObj.shape = stateObj.shape || {}; (stateObj.shape).smooth = smooth;
+            var shapeBag = stateObj.shape ?? [:]
+            shapeBag["smooth"] = smooth
+            stateObj.shape = shapeBag
+            // upstream: stateObj.style = styleObj; — the untyped per-state style bag ([String: Any]),
+            //   stored RAW exactly as upstream does (upstream has no bridge to do).
+            // PORT-NOTE: its consumer is `PathStyleProps.animationSet` (via useState → _transitionState
+            //   → animateToShallow → animObjSet), which used to read `value as? Double` / `as? [Double]`
+            //   and so silently DROPPED an Int-boxed `lineStyle.width: 2` (→ "lineWidth") and the String
+            //   presets of `lineStyle.type` (→ "lineDash": "dashed"/"dotted"/"solid") on
+            //   emphasis/blur/select. Fixed at that seam (Int/NSNumber → Double + LineDash coercion in
+            //   `PathStyleProps.animationSet`, Path.swift) rather than normalized here, so every state
+            //   bag benefits — including the identical ECLine.swift gap — and the bag keeps the untyped
+            //   shape upstream expects.
+            stateObj.style = styleObj
+        }
+    }
+
+    /// upstream module-local:
+    ///   function buildLabelLinePath(path: CanvasRenderingContext2D, shape: Polyline['shape'])
+    /// The custom `buildPath` installed on the leader line: a straight 2-segment polyline, or — when
+    /// `smooth > 0` and there are ≥ 3 points — a rounded corner built from two bezier curves.
+    private static func buildLabelLinePath(_ path: PathProxy, _ shape: PolylineShape) {
+        let smooth = shape.smooth ?? 0
+        guard let points = shape.points, !points.isEmpty else {
+            return
+        }
+        _ = path.moveTo(points[0].x, points[0].y)
+        if smooth > 0 && points.count >= 3 {
+            let len1 = vector.dist(points[0], points[1])
+            let len2 = vector.dist(points[1], points[2])
+            // upstream: if (!len1 || !len2)
+            //   JS falsiness catches NaN as well as 0 (PORTING.md §11), and a NaN datum does reach
+            //   leader lines — without the isNaN legs the bezier branch would emit NaN controls.
+            if len1 == 0 || len2 == 0 || len1.isNaN || len2.isNaN {
+                _ = path.lineTo(points[1].x, points[1].y)
+                _ = path.lineTo(points[2].x, points[2].y)
+                return
+            }
+
+            let moveLen = Swift.min(len1, len2) * smooth
+
+            let midPoint0 = vector.lerp(points[1], points[0], moveLen / len1)
+            let midPoint2 = vector.lerp(points[1], points[2], moveLen / len2)
+
+            let midPoint1 = vector.lerp(midPoint0, midPoint2, 0.5)
+            _ = path.bezierCurveTo(
+                midPoint0.x, midPoint0.y, midPoint0.x, midPoint0.y, midPoint1.x, midPoint1.y
+            )
+            _ = path.bezierCurveTo(
+                midPoint2.x, midPoint2.y, midPoint2.x, midPoint2.y, points[2].x, points[2].y
+            )
+        }
+        else {
+            for i in 1..<points.count {
+                _ = path.lineTo(points[i].x, points[i].y)
+            }
+        }
+    }
+
+    /// upstream: local `defaults(labelLine.style, defaultStyle)` — fills each style field left
+    /// undefined on `style` from `defaultStyle` (target-set values win). Local reimplementation
+    /// because ZRenderKit's `extendPathStyle` is module-internal.
+    private static func applyStyleDefaults(_ style: inout PathStyleProps, _ defaultStyle: PathStyleProps) {
+        if style.shadowBlur == nil { style.shadowBlur = defaultStyle.shadowBlur }
+        if style.shadowOffsetX == nil { style.shadowOffsetX = defaultStyle.shadowOffsetX }
+        if style.shadowOffsetY == nil { style.shadowOffsetY = defaultStyle.shadowOffsetY }
+        if style.shadowColor == nil { style.shadowColor = defaultStyle.shadowColor }
+        if style.opacity == nil { style.opacity = defaultStyle.opacity }
+        if style.blend == nil { style.blend = defaultStyle.blend }
+        if style.fill == nil { style.fill = defaultStyle.fill }
+        if style.stroke == nil { style.stroke = defaultStyle.stroke }
+        if style.decal == nil { style.decal = defaultStyle.decal }
+        if style.strokePercent == nil { style.strokePercent = defaultStyle.strokePercent }
+        if style.strokeNoScale == nil { style.strokeNoScale = defaultStyle.strokeNoScale }
+        if style.fillOpacity == nil { style.fillOpacity = defaultStyle.fillOpacity }
+        if style.strokeOpacity == nil { style.strokeOpacity = defaultStyle.strokeOpacity }
+        if style.lineDash == nil { style.lineDash = defaultStyle.lineDash }
+        if style.lineDashOffset == nil { style.lineDashOffset = defaultStyle.lineDashOffset }
+        if style.lineWidth == nil { style.lineWidth = defaultStyle.lineWidth }
+        if style.lineCap == nil { style.lineCap = defaultStyle.lineCap }
+        if style.lineJoin == nil { style.lineJoin = defaultStyle.lineJoin }
+        if style.miterLimit == nil { style.miterLimit = defaultStyle.miterLimit }
+        if style.strokeFirst == nil { style.strokeFirst = defaultStyle.strokeFirst }
+    }
+
+    /// upstream: export function setLabelLineStyle(targetEl, statesModels, defaultStyle?)
+    /// Create a label line if necessary and set its style.
+    public static func setLabelLineStyle(
+        _ targetEl: Element,
+        _ statesModels: [String: Model],
+        _ defaultStyle: PathStyleProps? = nil
+    ) {
+        var labelLine = targetEl.getTextGuideLine()
+        let label = targetEl.getTextContent()
+        guard let label = label else {
+            // Not show label line if there is no label.
+            if labelLine != nil {
+                targetEl.removeTextGuideLine()
+            }
+            return
+        }
+
+        // PORT-NOTE: upstream reads `statesModels.normal` unguarded and runs the DISPLAY_STATES loop
+        //   regardless — `getLabelLineStatesModels` always populates "normal", so this early return is
+        //   the Swift-side Optional safety net, NOT an upstream branch.
+        guard let normalModel = statesModels["normal"] else {
+            return
+        }
+        let showNormal = asBool(normalModel.get("show"))
+        let labelIgnoreNormal = label.ignore
+
+        for stateName in states.DISPLAY_STATES {
+            guard let stateModel = statesModels[stateName] else {
+                continue
+            }
+            let isNormal = stateName == "normal"
+            let stateShow = asBool(stateModel.get("show"))
+            // upstream: isNormal ? labelIgnoreNormal
+            //   : retrieve2(label.states[stateName] && label.states[stateName].ignore, labelIgnoreNormal)
+            let isLabelIgnored: Bool = isNormal
+                ? labelIgnoreNormal
+                : (util.retrieve2(label.states[stateName]?.ignore, labelIgnoreNormal) ?? false)
+            if isLabelIgnored  // Not show when label is not shown in this state.
+                || !(util.retrieve2(stateShow, showNormal) ?? false) // Use normal state by default if not set.
+            {
+                // upstream: const stateObj = isNormal ? labelLine : (labelLine && labelLine.states[stateName]);
+                if isNormal {
+                    labelLine?.ignore = true
+                }
+                else if let stateObj = labelLine?.states[stateName] {
+                    stateObj.ignore = true
+                }
+                if let labelLine = labelLine {
+                    setLabelLineState(labelLine, true, stateName, stateModel)
+                }
+                continue
+            }
+            // Create labelLine if not exists
+            if labelLine == nil {
+                let newLine = Polyline()
+                targetEl.setTextGuideLine(newLine)
+                labelLine = newLine
+                // Reset state of normal because it's new created.
+                // NOTE: NORMAL should always been the first!
+                if !isNormal && (labelIgnoreNormal || !(showNormal ?? false)) {
+                    setLabelLineState(newLine, true, "normal", normalModel)
+                }
+
+                // Use same state proxy.
+                if let stateProxy = targetEl.stateProxy {
+                    newLine.stateProxy = stateProxy
+                }
+            }
+
+            // `labelLine` is non-nil here (either pre-existing or just created above); bind it so the
+            // invariant is compiler-enforced rather than resting on loop-order reasoning.
+            if let currentLine = labelLine {
+                setLabelLineState(currentLine, false, stateName, stateModel)
+            }
+        }
+
+        if let labelLine = labelLine {
+            // upstream: defaults(labelLine.style, defaultStyle);
+            // (`pathStyle` is an IUO always populated by `Path.init` via useStyle/createStyle. The `??`
+            //  fallback keeps the mandatory `fill = nil` below on the UNCONDITIONAL path — upstream has
+            //  no guard here, and silently skipping it would render the leader line as a black-filled
+            //  closed shape. `createStyle()` is the right fallback: its result already has
+            //  `zrStyleMagic == true`, whereas a bare `PathStyleProps()` would make `useStyle` re-run
+            //  `createStyle`, and `extendPathStyle` skips nil sources — resurrecting `fill = '#000'`.)
+            var style = labelLine.pathStyle ?? labelLine.createStyle()
+            if let defaultStyle = defaultStyle {
+                applyStyleDefaults(&style, defaultStyle)
+            }
+            // Not fill. (upstream: labelLine.style.fill = null — the createStyle/useStyle merge
+            //   would otherwise keep the '#000' default.)
+            style.fill = nil
+            // PORT-NOTE: assign through `useStyle`, NOT `labelLine.pathStyle = style`. A direct store
+            //   skips `dirtyStyle()` — required here, since clearing `fill` must invalidate the cached
+            //   paint — and bypasses the Swift-only `_syncCommonStyle()` mirror (private, Path.swift)
+            //   that copies opacity/shadow*/blend from `pathStyle` into the inherited
+            //   `Displayable.style` read by `shouldBePainted`/`getPaintRect`.
+            //   Scope of `applyStyleDefaults`: like upstream's `defaults()` — which reads `target[key]`
+            //   through the `createObject(DEFAULT_PATH_STYLE, ...)` prototype — it only fills slots that
+            //   are nil, and every CommonStyleProps field (opacity / shadowBlur / shadowOffset* /
+            //   shadowColor / blend) already has a non-nil DEFAULT_PATH_STYLE value. So `defaultStyle`
+            //   can only ever land the keys left nil in DEFAULT_PATH_STYLE (`stroke`, `decal`,
+            //   `lineDash`, `lineJoin`), and `_syncCommonStyle()` is provably a no-op at this call
+            //   site — it runs for hygiene, not because a live opacity path exists.
+            //   `zrStyleMagic` is pinned true so `useStyle` takes the pure assign + sync + dirty path:
+            //   were it ever false, `createStyle`/`extendPathStyle` would re-merge DEFAULT_PATH_STYLE
+            //   and — skipping the nil source — restore `fill = '#000'`.
+            style.zrStyleMagic = true
+            labelLine.useStyle(style)
+
+            let showAbove = asBool(normalModel.get("showAbove"))
+
+            // upstream: const labelLineConfig = (targetEl.textGuideLineConfig = targetEl.textGuideLineConfig || {});
+            var labelLineConfig = targetEl.textGuideLineConfig ?? ElementTextGuideLineConfig()
+            labelLineConfig.showAbove = showAbove ?? false
+            targetEl.textGuideLineConfig = labelLineConfig
+
+            // Custom the buildPath. (upstream: labelLine.buildPath = buildLabelLinePath — routed
+            //   through the per-instance `setBuildPathOverride` seam on Polyline.)
+            labelLine.setBuildPathOverride(buildLabelLinePath)
+        }
     }
 }

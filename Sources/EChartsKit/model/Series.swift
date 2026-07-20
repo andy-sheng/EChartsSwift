@@ -86,9 +86,12 @@ public let SERIES_UNIVERSAL_TRANSITION_PROP = "__universalTransitionEnabled"
 //     getLegendIcon(opt: LegendIconParams): ECSymbol | Group
 //     brushSelector(dataIndex, data, selectors, area): boolean
 //     enableAriaDecal(): void
-//   These are kept as documentation only: they are optional by contract (declaration-merged) and
+//   Most are kept as documentation only: they are optional by contract (declaration-merged) and
 //   are implemented by concrete series subclasses as needed. (ChartView/Axis/ECSymbol/
 //   LegendIconParams now exist; only the brush selectors remain deferred.)
+//   EXCEPTION: `preventIncremental` and `__preparePipelineContext` are real `open func` slots on the
+//   class below (see near `getProgressiveThreshold`) — core/Scheduler.swift dispatches on them, and
+//   Swift cannot feature-detect a method, so each base body implements upstream's "absent" branch.
 
 // upstream: class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentModel<Opt>
 //
@@ -813,6 +816,30 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
      */
     open func getProgressiveThreshold() -> Double {
         return (self.get("progressiveThreshold") as? Double) ?? 0
+    }
+
+    // upstream (declaration-merged `interface SeriesModel`, Series.ts:82-89):
+    //     preventIncremental(): boolean;
+    //     __preparePipelineContext(
+    //         view: ChartView, pipeline: Pick<Pipeline, 'progressiveEnabled' | 'threshold'>
+    //     ): PipelineContext;
+    //   Both are *optional* upstream (null-checked at every call site); TS feature-detects them via
+    //     `seriesModel.preventIncremental && seriesModel.preventIncremental()`
+    //     `seriesModel.__preparePipelineContext ? seriesModel.__preparePipelineContext(view, pipeline)
+    //                                           : preparePipelineContext(seriesModel, view, pipeline)`
+    // PORT-NOTE: Swift cannot feature-detect a method, so the "absent" branch of each upstream ternary
+    //   becomes the *base implementation* here and the concrete-series implementations become plain
+    //   `override`s (BarSeries, LinesSeries, HeatmapSeries). This is behavior-preserving: a series that
+    //   does not implement the hook takes exactly the fallback upstream would take.
+    //   Declared in the CLASS BODY (not an extension) so dispatch is dynamic — an extension method is
+    //   statically dispatched and the subclass implementations would be silently bypassed.
+    //   Call sites: core/Scheduler.swift (`updateStreamModes`, `restorePipelines`).
+    open func preventIncremental() -> Bool {
+        return false
+    }
+
+    open func __preparePipelineContext(_ view: ChartView, _ pipeline: PipelinePick) -> PipelineContext {
+        return model.preparePipelineContext(self, view, pipeline)
     }
 
     // PENGING If selectedMode is null ?
