@@ -451,6 +451,39 @@ public final class ECharts: EChartsType {
         _themeStorage[name] = theme
     }
 
+    // ------------------------------------------------------------------------
+    // Loading-effect registry. Upstream echarts.ts keeps a module-level
+    //   `loadingEffects` map (echarts.ts:2907) and `registerLoading(name, loadingFx)`
+    //   (echarts.ts:3290) writes to it; `showLoading(name, cfg)` looks the creator up
+    //   there and adds the returned element to zr.
+    //   PORT-NOTE (deferred, out of this symbol's scope): the three consumers are
+    //   unported — (1) the built-in `default` creator (`loading/default.ts`), which
+    //   upstream registers at module scope (echarts.ts:3371, alongside
+    //   registerPreprocessor/registerProcessor); the port's equivalent site is
+    //   `installOnce()`. Its graphic dependencies ARE all ported (Group/Rect/Text and
+    //   `Arc` at ZRenderKit/Graphic/Shape/Arc.swift:59 + `Path.animateShape` at
+    //   ZRenderKit/Graphic/Path.swift:863) — the real blocker is the return type:
+    //   upstream's creator returns `graphic.Group & LoadingEffect`, but the Swift
+    //   `LoadingEffect` protocol (util/types.swift:721-724) is a bare `AnyObject` with
+    //   a `resize` requirement and does NOT extend `Element`, and `Group` supplies no
+    //   `resize`, so neither the creator's return nor upstream's `zr.add(el)`
+    //   (echarts.ts:1544) can type-check today. (2) the `showLoading` / `hideLoading`
+    //   instance methods (echarts.ts:1518-1560), (3) the `_loadingFX` field
+    //   (echarts.ts:506).
+    //   The map is populated but NOT read anywhere yet: because showLoading is
+    //   unported, effects registered today are inert until it lands.
+    //   SYMBOLS.tsv's notes for this row also ask for `registerLoading("default",
+    //   loadingDefault)` in `installOnce()`; NOT done — it contradicts the same row's
+    //   own out-of-scope list and requires widening `LoadingEffect` to extend
+    //   `Element` first.
+    // ------------------------------------------------------------------------
+    private static var loadingEffects: [String: LoadingEffectCreator] = [:]
+
+    // upstream: export function registerLoading(name: string, loadingFx: LoadingEffectCreator): void
+    public static func registerLoading(_ name: String, _ loadingFx: @escaping LoadingEffectCreator) {
+        ECharts.loadingEffects[name] = loadingFx
+    }
+
     // upstream (echarts.init): theme = isString(theme) ? themeStorage[theme] : theme
     private func resolveTheme() -> [String: Any] {
         if let name = _userTheme as? String {

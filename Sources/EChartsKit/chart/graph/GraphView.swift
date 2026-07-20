@@ -25,10 +25,10 @@ import ZRenderKit
 //   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw (chart/helper/SymbolDraw.swift).
 //       The node symbol is built inline with `symbol.createSymbol` (same deviation as ScatterView /
 //       TreeView); SymbolDraw's enter/update/leave diff + `SymbolClz` reuse are DEFERRED.
-//   import LineDraw from '../helper/LineDraw';                     -> PORT-NOTE (deferred): requires chart/helper/LineDraw (not ported).
-//       Each edge is drawn inline with a ZRenderKit `Line` (straight) or `BezierCurve` (curveness),
-//       exactly how TreeView draws its parent->child links; LineDraw's diff + `ECLinePath` + fromSymbol/
-//       toSymbol arrow markers + effect/label are DEFERRED.
+//   import LineDraw from '../helper/LineDraw';                     -> ported as chart/helper/LineDraw.swift
+//       (wired in LinesView). NOT used here: this view draws each edge inline with a ZRenderKit `Line`
+//       (straight) or `BezierCurve` (curveness), exactly how TreeView draws its parent->child links.
+//       WIRING GraphView onto LineDraw (per-edge diff + fromSymbol/toSymbol markers + effect/label) is DEFERRED.
 //   import RoamController from '../../component/helper/RoamController';   -> RoamController (component/helper/RoamController.swift); not wired in GraphView (roam DEFERRED).
 //   import { isRoamPayloadHasZoom, updateRoamControllerSimply } from '../../component/helper/roamHelper';
 //       -> roamHelper (component/helper/roamHelper*.swift); not wired in GraphView (roam DEFERRED).
@@ -51,12 +51,19 @@ import ZRenderKit
 //       -> PORT-NOTE: coord/View NOT ported (roam / view coord-system transform DEFERRED).
 //   import Symbol from '../helper/Symbol';                         -> SymbolElement (chart/helper/SymbolElement.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
-//   import Line from '../helper/Line';                             -> PORT-NOTE (deferred): requires chart/helper/Line (not ported; inline Line/BezierCurve shape used instead).
+//   import Line from '../helper/Line';                             -> ported as chart/helper/ECLine.swift
+//       (renamed to avoid colliding with the ZRenderKit `Line` SHAPE). NOT used here — this view builds an
+//       inline `Line`/`BezierCurve` per edge; wiring GraphView onto LineDraw/ECLine is DEFERRED.
 //   import { getECData } from '../../util/innerStore';             -> getECData (util/innerStore.swift).
 //   import { simpleLayoutEdge } from './simpleLayoutHelper';       -> sibling simpleLayoutHelper.swift (used by drag; DEFERRED).
 //   import { circularLayout, rotateNodeLabel } from './circularLayoutHelper';  -> sibling circularLayoutHelper.swift.
 //   import { clone, extend } from 'zrender/src/core/util';         -> ZRenderKit.util (only used by thumbnail; DEFERRED).
-//   import ECLinePath from '../helper/LinePath';                   -> PORT-NOTE (deferred): requires chart/helper/LinePath / ECLinePath (not ported).
+//   import ECLinePath from '../helper/LinePath';                   -> PORT-NOTE: no ECLinePath TYPE exists in
+//       this port. Its behaviour is modelled inside chart/helper/ECLine.swift by the `Line` (straight) /
+//       `BezierCurve` (quadratic) pair — see `createLine` / `setLineShapePoints` / `setCurveShapePoints`
+//       plus the `setChildPercent` / `pointAtOf` / `tangentAtOf` helpers. Upstream references ECLinePath
+//       in THIS file ONLY inside `_renderThumbnail` (GraphView.ts:410-412), which is DEFERRED here along
+//       with thumbnailBridge (note below) — so there is nothing for this file to reference.
 //   import { NullUndefined, RoamHostView, RoamPayload } from '../../util/types';  -> util/types.swift (type-only).
 //   import { getThumbnailBridge, ThumbnailBridge } from '../../component/helper/thumbnailBridge';
 //       -> PORT-NOTE (deferred): requires component/helper/thumbnailBridge (not ported; thumbnail deferred).
@@ -307,7 +314,10 @@ open class GraphView: ChartView {
             let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(edge, edgeFocus, edgeBlurScope, edgeDisabled)
             states.setStatesStylesFromModel(edge, edgeItemModel, "lineStyle")
-            // fromSymbol / toSymbol arrow markers (ECLinePath.setLinePoints + Symbol) — PORT-NOTE (deferred): requires chart/helper/LinePath (ECLinePath).
+            // fromSymbol / toSymbol arrow markers — PORT-NOTE (deferred): the end-symbol machinery IS ported,
+            //   in chart/helper/ECLine.swift (upstream `Line._createLine` + `_updateCommonStl`). What blocks
+            //   it here is that this view inlines its edge geometry instead of constructing an `ECLine` per
+            //   edge — ECLine is what builds and positions the end symbols.
             edgeData.setItemGraphicEl(i, edge)
 
             // Edge label (wave-1) — upstream chart/helper/Line.ts `_updateCommonStl` (setLabelStyle with

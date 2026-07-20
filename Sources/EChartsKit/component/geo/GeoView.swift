@@ -23,11 +23,18 @@ import ZRenderKit
 
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import MapDraw from '../helper/MapDraw';
-//     → PORT-NOTE (deferred): `component/helper/MapDraw` is NOT ported. Upstream `GeoView` delegates ALL region
-//       drawing to a `MapDraw` instance (which also owns the roam controller, SVG map path, series-map
-//       data/visualMap encoding, emphasis/select/blur states, and event/tooltip triggers). For this
-//       STATIC render the GeoJSON region-backdrop subset of `MapDraw._buildGeoJSON` is inlined below
-//       (`_buildGeoJSON`), and the rest is deferred (see the DEFERRED block). Reconcile when MapDraw lands.
+//     → `MapDraw` (component/helper/MapDraw.swift) IS NOW PORTED — roam controller (incl. the `clipRect`
+//       roam limit) + `_transformGroup`, GeoJSON + geoSVG builds, series-map data/visualMap encoding,
+//       emphasis/select/blur states, and the event/tooltip/state triggers — with TWO documented gaps: the
+//       `GeoProjection.stream` clip/resample path (`projectionStream` is nil, `projectPolys` dormant) and
+//       the name-keyed geo `labelFetcher` (replaced by an eager `getFormattedLabel`); see its PORT-TODOs.
+//     → PORT-NOTE (deferred — the SWITCHOVER, not the port): this view still uses the STATIC inlined subset
+//       below (`_buildGeoJSON` / `_buildSVG`), which projects through `Geo.dataToPoint` (roam folded in) and
+//       rebuilds `this.group` every render, instead of MapDraw's persistent `_transformGroup` +
+//       `applyViewCoordSysTransToElement` architecture. Delegating to a persistent `_mapDraw` is a
+//       driver-level change (render lifecycle + roam routing) that must be validated against the PNG
+//       oracle, so it is intentionally NOT done here. When it lands, delete the inlined subset
+//       (GeoView:80-101, 138-173, 305-701 and the file-tail PORT-NOTE helpers) in favour of MapDraw's.
 //   import ComponentView from '../../view/Component';             → `ComponentView` (view/ComponentView.swift).
 //   import GlobalModel from '../../model/Global';                 → `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';           → `ExtensionAPI`.
@@ -78,8 +85,10 @@ public final class GeoView: ComponentView {
     public let type = "geo"
 
     // upstream: private _mapDraw: MapDraw;
-    // PORT-NOTE (deferred): MapDraw NOT ported. The GeoJSON region backdrop is built directly in `_buildGeoJSON`;
-    //   this slot (and the roam controller / SVG map it owns) is deferred.
+    // PORT-NOTE (deferred — the SWITCHOVER, not the port): `MapDraw` IS ported
+    //   (Sources/EChartsKit/component/helper/MapDraw.swift). Only this view-level slot is deferred: the
+    //   GeoJSON region backdrop is still built directly in `_buildGeoJSON` here, so the roam controller /
+    //   SVG map / persistent `_transformGroup` that MapDraw owns are not routed to yet.
 
     // upstream: private _api: ExtensionAPI;
     private var _api: ExtensionAPI?
