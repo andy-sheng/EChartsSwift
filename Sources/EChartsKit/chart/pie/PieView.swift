@@ -244,10 +244,11 @@ open class PieView: ChartView {
         _ sector: Sector, _ data: SeriesData, _ idx: Int,
         _ startAngle: Double, _ firstCreate: Bool, _ seriesModel: PieSeriesModel
     ) {
-        // `startAngle` is consumed only by upstream's shared-running expansion form; the independent
-        //   collapsed-sweep used by the firstCreate branch below opens each sector from its OWN
-        //   startAngle, so it needs no cross-piece threading. Kept in the signature for provenance.
-        _ = startAngle
+        // `startAngle` is the pie's GLOBAL start angle (the first sector's startAngle, threaded down
+        //   from `render`) on the very first render, and NaN on every later render / on a datum added to
+        //   an already-drawn pie. The firstCreate expansion branch below reads it to pick upstream's two
+        //   enter forms: the global CLOCKWISE SWEEP (all sectors collapsed onto the same global start,
+        //   then both angles animate out) vs. the in-place open (one new slice grows from its own start).
 
         // upstream: const itemModel = data.getItemModel(idx); const emphasisModel = itemModel.getModel('emphasis');
         let itemModel = data.getItemModel(idx)
@@ -291,12 +292,25 @@ open class PieView: ChartView {
                 startShape.r = sectorShape.r0
                 _ = sector.setShape(startShape)
                 initProps(sector, ["shape": ["r": finalR] as [String: Any]], seriesModel, idx)
+            } else if !startAngle.isNaN {
+                // Expansion, FIRST render of the whole pie (upstream `startAngle != null`) — the CLOCKWISE
+                //   SWEEP: seed EVERY sector collapsed onto the pie's shared GLOBAL start angle, then
+                //   animate BOTH startAngle and endAngle out to the layout values, so all sectors sweep
+                //   together from the one origin like a clock hand. (The previous code opened each slice in
+                //   place from its own final start — upstream's OTHER, `startAngle == null`, branch below.)
+                //   Shape props MUST be a dict of animatable fields (the struct->dict rule).
+                var collapsedShape = sectorShape
+                collapsedShape.startAngle = startAngle
+                collapsedShape.endAngle = startAngle
+                _ = sector.setShape(collapsedShape)
+                initProps(sector, ["shape": [
+                    "startAngle": sectorShape.startAngle,
+                    "endAngle": sectorShape.endAngle
+                ] as [String: Any]], seriesModel, idx)
             } else {
-                // Expansion — KEEP the port's independent collapsed-sweep form (upstream's `startAngle == null`
-                //   branch): seed the sector collapsed (endAngle == startAngle) and sweep endAngle open to the
-                //   final layout angle via initProps. Shape props MUST be a dict of animatable fields (a full
-                //   SectorShape struct is opaque to the animator — the struct->dict rule). Instant (final
-                //   angle, no animator) when the series' animation is off.
+                // Expansion, a datum added to an already-drawn pie (upstream's `startAngle == null` branch):
+                //   seed the new slice collapsed at its OWN final start (endAngle == startAngle) and grow
+                //   only endAngle open. Instant (final angle, no animator) when the series' animation is off.
                 let finalEndAngle = sectorShape.endAngle
                 var collapsedShape = sectorShape
                 collapsedShape.endAngle = sectorShape.startAngle

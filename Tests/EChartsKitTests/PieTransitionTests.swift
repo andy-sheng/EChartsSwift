@@ -12,6 +12,12 @@ final class PieTransitionTests: XCTestCase {
         return nil
     }
 
+    // Collect sectors in scene-graph (data) order.
+    private func allSectors(_ el: Element, into out: inout [Sector]) {
+        if let s = el as? Sector { out.append(s) }
+        if let g = el as? Group { for c in g.children() { allSectors(c, into: &out) } }
+    }
+
     private func option(_ animation: Bool) -> [String: Any] {
         [
             "animation": animation,
@@ -50,6 +56,43 @@ final class PieTransitionTests: XCTestCase {
         track.step(target, 1.0)
         XCTAssertNotEqual((sec.shape as? SectorShape)?.endAngle ?? 0, startAngle,
                           "endAngle track at t=1 should be swept open")
+    }
+
+    // The clockwise-sweep fix: on the FIRST render of the whole pie, every sector is seeded collapsed
+    // onto the pie's shared GLOBAL start angle (the first sector's startAngle) and BOTH its startAngle
+    // and endAngle animate out — so the pie draws on like a sweeping clock hand (upstream PieView.ts
+    // `startAngle != null` branch). The bug was that non-first sectors opened in place from their OWN
+    // final start (only endAngle animated), so this test targets the SECOND sector, whose global start
+    // differs from its own start. Regression guard: the buggy code has no `startAngle` track here at all.
+    func test_nonfirst_sector_sweeps_from_global_start() {
+        let ec = ECharts(width: 400, height: 400)
+        ec.setOption(option(true))
+        var sectors: [Sector] = []
+        allSectors(ec.getRoot(), into: &sectors)
+        guard sectors.count >= 2 else { return XCTFail("expected >= 2 pie sectors, got \(sectors.count)") }
+
+        // Live shapes have already jumped to FINAL (initProps setToFinal) by the time setOption returns.
+        let globalStart = (sectors[0].shape as? SectorShape)?.startAngle ?? .nan   // first sector's own start
+        let second = sectors[1]
+        let ownStart = (second.shape as? SectorShape)?.startAngle ?? .nan          // second sector's own start
+        XCTAssertFalse(globalStart.isNaN || ownStart.isNaN, "sector shapes must be sectors")
+        XCTAssertNotEqual(globalStart, ownStart, accuracy: 1e-6,
+                          "precondition: the second sector's own start must differ from the global start")
+
+        guard let animator = second.animators.first(where: { $0.targetName == "shape" }) else {
+            return XCTFail("no shape-targeted animator on the second sector")
+        }
+        // The fix REQUIRES a startAngle track here (the buggy in-place open animated only endAngle).
+        guard let startTrack = animator.getTrack("startAngle") else {
+            return XCTFail("second sector has no startAngle track — it opened in place, not a global sweep")
+        }
+        let target = animator.getTarget()
+        startTrack.step(target, 0.0)
+        XCTAssertEqual((second.shape as? SectorShape)?.startAngle ?? .nan, globalStart, accuracy: 1e-6,
+                       "at t=0 the second sector's startAngle should be collapsed onto the GLOBAL start")
+        startTrack.step(target, 1.0)
+        XCTAssertEqual((second.shape as? SectorShape)?.startAngle ?? .nan, ownStart, accuracy: 1e-6,
+                       "at t=1 the second sector's startAngle should reach its own final start")
     }
 
     func test_sector_final_angle_when_animation_off() {
