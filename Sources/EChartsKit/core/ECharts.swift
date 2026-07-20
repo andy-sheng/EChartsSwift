@@ -715,6 +715,12 @@ public final class ECharts: EChartsType {
         // Trigger the lazy Swift-global that runs `registerLayOutOnCoordSysUsage` for pie's box coord-sys-usage
         //   (registerLayOutOnCoordSysUsage asserts uniqueness — reference EXACTLY once, here in installOnce).
         _ = pieLayOutOnCoordSysUsageRegistered
+        // createLegacyDataSelectAction(SERIES_TYPE_PIE, registers.registerAction);   (pie/install.ts:33)
+        //   Registers the pre-v5 pieToggleSelect/pieSelect/pieUnSelect action names, each forwarding to the
+        //   modern toggleSelect/select/unselect with the matched `seriesIndex` list.
+        dataSelectAction.createLegacyDataSelectAction(SERIES_TYPE_PIE) { type, handler in
+            registerAction(type, handler)
+        }
 
         // -- chart/funnel/install.ts (minimal) -- registerSeriesModel(FunnelSeries) + registerChartView(FunnelView) +
         //   registerLayout(funnelLayoutStageHandler). Funnel has NO cartesian coord (coordinateSystemUsage:"box",
@@ -936,10 +942,14 @@ public final class ECharts: EChartsType {
         //   The STATISTIC processor (mapDataStatistic) runs in the data-processor stage (stage 4) to merge
         //   multi-series region values + stamp each series' `originalData`/`seriesGroup`; the mapSymbolLayout
         //   stage (run in render) places the per-region legend symbols. MapView draws one CompoundPath per
-        //   region, filled by the datum value (visualMap/itemStyle). createLegacyDataSelectAction('map', ...) is
-        //   DEFERRED (legacy/dataSelectAction.ts not ported); roam/select actions DEFERRED. mapInstall.swift is
+        //   region, filled by the datum value (visualMap/itemStyle). roam actions DEFERRED. mapInstall.swift is
         //   commented-only (diffable surface); actual wiring lives here per the geo/heatmap install convention.
         ComponentModel.registerClass(MapSeriesModel.self)                          // registerSeriesModel(MapSeries)
+        // createLegacyDataSelectAction('map', registers.registerAction);          (map/install.ts:37)
+        //   Registers the pre-v5 mapToggleSelect/mapSelect/mapUnSelect action names (legacy/dataSelectAction.swift).
+        dataSelectAction.createLegacyDataSelectAction("map") { type, handler in
+            registerAction(type, handler)
+        }
 
         // -- chart/custom/install.ts (minimal) -- registerSeriesModel(CustomSeries) +
         //   registerChartView(CustomChartView) (view keyed by subType 'custom' below). The `renderItem`
@@ -2859,10 +2869,18 @@ public final class ECharts: EChartsType {
         }
 
         // handleLegacySelectEvents(messageCenter, this, this._api);
-        //   PORT-NOTE (gap): `legacy/dataSelectAction.ts` is NOT ported (the deprecated
-        //   'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat events, which re-emit the
-        //   modern 'selectchanged' under the pre-v5 names). Consequence: a listener bound to one of the
-        //   DEPRECATED event names never fires. The modern events are unaffected.
+        //   `legacy/dataSelectAction.ts` is now ported (dataSelectAction.handleLegacySelectEvents): it
+        //   registers the deprecated 'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat
+        //   events that re-emit the modern 'selectchanged' under the pre-v5 names.
+        //   PORT-NOTE (gap — the handler RUNS today, it is NOT dormant): 'selectchanged' is already
+        //   published as the NON-refined event type (actionRegister.swift:48 registers select/unselect/
+        //   toggleSelect with `event = SELECT_CHANGED_EVENT_TYPE` and no `refineEvent`, so
+        //   `nonRefinedEventType` resolves to 'selectchanged'), and doDispatchAction triggers it with an
+        //   `ECActionEvent` replicated from the payload. The handler accepts that shape. What is still
+        //   missing is `refineEvent` (`makeSelectChangedEvent`), which is what computes the `selected`
+        //   array; without it the reconstructed event has `selected == []`, so the legacy per-series
+        //   events still emit nothing. See the detailed note in legacy/dataSelectAction.swift.
+        dataSelectAction.handleLegacySelectEvents(messageCenter, self, self._api)
     }
 
     // ------------------------------------------------------------------------
@@ -2895,17 +2913,32 @@ public final class ECharts: EChartsType {
                             // const dataModel = ecData.dataModel || ecModel.getSeriesByIndex(ecData.seriesIndex);
                             // params = dataModel && dataModel.getDataParams(ecData.dataIndex, ecData.dataType, el) || {};
                             //
-                            // PORT-NOTE: `ecData.dataModel` is never populated in this port (the
-                            //   markPoint/markLine/markArea views that set it are blocked on
-                            //   `MarkerModel: DataModel` conformance — see MarkPointView.swift). So the
-                            //   `|| ecModel.getSeriesByIndex(...)` arm always runs. Consequence: a click on a
-                            //   MARKER element packs its params from the HOST SERIES, not the marker model.
+                            // PORT-NOTE: `ecData.dataModel` is populated by all three marker views now that
+                            //   `MarkerModel` conforms to `DataModel` (MarkerModel.swift):
+                            //   `getECData(el).dataModel = mlModel` (MarkLineView.renderSeries),
+                            //   `= mpModel` (MarkPointView.renderSeries) and `= maModel`
+                            //   (MarkAreaView.renderSeries). Upstream's
+                            //   `ecData.dataModel || ecModel.getSeriesByIndex(...)` precedence is therefore
+                            //   restored: a click on a MARKER element packs its params from the MARKER model,
+                            //   not the host series. `SeriesModel` does not conform to `DataModel`, so the two
+                            //   arms of the `||` cannot share one `DataModel?` binding and are branched
+                            //   instead; the evaluation order is upstream's.
                             // PORT-NOTE: `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
                             //   exists only on the CustomSeries override (`DataFormatMixin.getDataParams` takes
-                            //   two). Custom series' extra `el`-derived params are therefore not packed.
-                            let dataModel: SeriesModel? = ecData.seriesIndex != nil
-                                ? ecModel.getSeriesByIndex(ecData.seriesIndex!) : nil
-                            if let dataModel = dataModel {
+                            //   two); `MarkerModel`'s 3-arg `DataModel` witness delegates to the 2-arg form and
+                            //   ignores it. `CustomSeries` DOES define a 3-arg `getDataParams`
+                            //   (chart/custom/CustomSeries.swift), but it is an OVERLOAD returning
+                            //   `CustomCallbackDataParams` — not a `DataModel` witness — so it is unreachable
+                            //   through the `SeriesModel`-typed binding of the fallback arm below. Custom
+                            //   series' extra `el`-derived params are therefore still not packed.
+                            if let dataModel = ecData.dataModel {
+                                params = ECElementEvent(
+                                    type: eveName,
+                                    dataParams: dataModel.getDataParams(dataIndex, ecData.dataType, el)
+                                )
+                            }
+                            else if let seriesIndex = ecData.seriesIndex,
+                                    let dataModel = ecModel.getSeriesByIndex(seriesIndex) {
                                 params = ECElementEvent(
                                     type: eveName,
                                     dataParams: dataModel.getDataParams(dataIndex, ecData.dataType)

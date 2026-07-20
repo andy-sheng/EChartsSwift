@@ -1126,6 +1126,21 @@ public struct CallbackDataParams {
 
     // Param name list for mapping `a`, `b`, `c`, `d`, `e`
     public var vars: [String]   // upstream: `$vars` ('$' prefix is reserved in Swift)
+
+    // PORT-NOTE: upstream declares these on the per-chart interfaces that EXTEND `CallbackDataParams`:
+    //   `TreeSeriesCallbackDataParams` { collapsed, treeAncestors? }   — chart/tree/TreeSeries.ts:126
+    //   `TreemapSeriesCallbackDataParams` { treePathInfo?, treeAncestors? } — chart/treemap/TreemapSeries.ts:81
+    //   `SunburstDataParams` { treePathInfo }                          — chart/sunburst/SunburstSeries.ts:62
+    //   A Swift `struct` cannot gain stored properties through an `extension`, and the tree/treemap/
+    //   sunburst `getDataParams` overrides must return the base `CallbackDataParams` (that is the
+    //   overridable witness signature on `SeriesModel`), so the three slots live here on the base and
+    //   stay `nil` for every other series. All three upstream element shapes are `{name, dataIndex,
+    //   value}` — i.e. the single `treeHelper.TreePathInfoItem` produced by `wrapTreePathInfo`.
+    //   Defaulted so the existing memberwise-init call sites (model/mixin/dataFormat.swift) are unchanged.
+    /// @deprecated in treemap ("compatitable the previous code"); still the primary slot for sunburst.
+    public var treePathInfo: [treeHelper.TreePathInfoItem]? = nil
+    public var treeAncestors: [treeHelper.TreePathInfoItem]? = nil
+    public var collapsed: Bool? = nil
 }
 // upstream: ParsedValue | ParsedValue[]
 public typealias InterpolatableValue = Any                                // PORT-NOTE: ParsedValue | ParsedValue[]

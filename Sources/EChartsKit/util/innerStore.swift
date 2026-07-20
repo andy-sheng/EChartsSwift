@@ -38,7 +38,18 @@ public enum SSRItemType: String {   // upstream: type SSRItemType = 'chart' | 'l
 // those mutations must persist on the host element, so value semantics would be wrong (CONVENTIONS §4).
 public final class ECData {
     public var dataIndex: Double?
-    public var dataModel: DataModel?
+    // PORT-NOTE: `weak` (upstream relies on GC). This is a BACK-reference from a graphic element to
+    //   the model that owns it, and a strong edge closes a permanent retain cycle: `makeInner`'s
+    //   backing `WeakMap` is an NSMapTable with weak KEYS but STRONG VALUES, so this bag is retained
+    //   while its Element key lives; the marker views assign `dataModel = mlModel/mpModel/maModel`,
+    //   and `markerModel.setData(data)` makes the model own the `SeriesData`, whose `_graphicEls`
+    //   strongly holds those same Elements. The weak key would then never be cleared. The referenced
+    //   models are owned by `GlobalModel` (component/series maps) for their whole lifetime, so `weak`
+    //   does not shorten the useful lifetime; if the model IS torn down, readers fall back to the
+    //   `ecModel.getSeriesByIndex(...)` arm (ECharts.swift packEventData) rather than resurrecting it.
+    //   `DataModel: DataHost, DataFormatMixin` and `DataFormatMixin: DataHost, AnyObject`, so the
+    //   existential is class-bound and `weak` is legal.
+    public weak var dataModel: DataModel?
     public var eventData: ECEventData?
     public var seriesIndex: Double?
     public var dataType: SeriesDataType?

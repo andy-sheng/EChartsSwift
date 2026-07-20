@@ -36,10 +36,10 @@ import ZRenderKit
 //   import { LayoutRect } from '../../util/layout';                 -> `LayoutRect` (== BoundingRect).
 //   import Model from '../../model/Model';                          -> Model (model/Model.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); tree's use is deferred with getDataParams.
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); consumed by `formatTooltip` below.
 //   import { wrapTreePathInfo } from '../helper/treeHelper';
-//       -> treeHelper IS ported (chart/helper/treeHelper.swift), but `wrapTreePathInfo` (the only symbol
-//          used here) is still deferred within it — used only by the deferred `getDataParams`.
+//       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
+//          `getDataParams` override below.
 //   import tokens from '../../visual/tokens';
 //       -> visual/tokens.ts IS ported (visual/tokens.swift); the single consumed value `tokens.color.borderTint`
 //          (= color.neutral20 = '#cfd2d7') is inlined verbatim in `defaultOption` below.
@@ -247,17 +247,33 @@ open class TreeSeriesModel: SeriesModel {
     }
 
     // Add tree path to tooltip param
-    // getDataParams(dataIndex) { const params = super.getDataParams(...); params.treeAncestors = wrapTreePathInfo(node, this); params.collapsed = !node.isExpand; return params; }
-    // PORT-NOTE (deferred): requires `super.getDataParams` (DataFormatMixin.getDataParams IS ported in
-    //   model/mixin/dataFormat.swift but not yet a conformance wired on this SeriesModel) and
-    //   `wrapTreePathInfo` (chart/helper/treeHelper.swift IS ported but `wrapTreePathInfo` within it is a
-    //   stub). `treeAncestors`/`collapsed` only feed labels/tooltip, both deferred. Faithful upstream
-    //   body (for the eventual port):
+    // getDataParams(dataIndex) {
     //     const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
     //     params.treeAncestors = wrapTreePathInfo(node, this);
     //     params.collapsed = !node.isExpand;
     //     return params;
+    // }
+    open override func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        // const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
+        var params = super.getDataParams(dataIndex, dataType)
+
+        // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
+        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        //   With no node there is no path to wrap, so the base params are returned untouched.
+        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
+            return params
+        }
+        // params.treeAncestors = wrapTreePathInfo(node, this);
+        params.treeAncestors = treeHelper.wrapTreePathInfo(node, self)
+        // params.collapsed = !node.isExpand;
+        params.collapsed = !node.isExpand
+
+        return params
+    }
 
     // __ownRoamView() { return this.coordinateSystem; }
     //   Part of the `RoamHostModel` interface. PORT-NOTE (deferred): requires the View coord-sys + roam

@@ -230,10 +230,23 @@ open class MarkPointView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mpData.eachItemGraphicEl(el => el.traverse(child => getECData(child).dataModel = mpModel));
-        //   PORT-NOTE (deferred): tooltip host-model wiring (interaction/tooltip). Additionally the
-        //   direct build above does not register graphic els into `mpData._graphicEls` (that is
-        //   SymbolDraw's job), so this loop would iterate nothing; and `getECData(child).dataModel`
-        //   requires `MarkPointModel: DataModel` (blocked — DataFormatMixin conformance, see MarkerModel).
+        // PORT-NOTE: `MarkPointModel` conforms to `DataModel` (inherited from `MarkerModel`, see
+        //   MarkerModel.swift), so `ECData.dataModel` (typed `DataModel?`) accepts `mpModel` directly.
+        //   `symbolDraw.updateData(mpData)` above registers each symbol via `data.setItemGraphicEl`
+        //   (SymbolDraw.swift), so `eachItemGraphicEl` iterates the real symbols. Swift's
+        //   `Group.traverse` visits CHILDREN only (it does not call back with `self`, unlike zrender's
+        //   `Element.traverse`), so `el` itself is tagged first; the child callback returns `Void`
+        //   upstream (falsy → never stops descending), mapped to a `false`-returning closure.
+        mpData.eachItemGraphicEl { el, _ in
+            innerStore.getECData(el).dataModel = mpModel
+
+            if let group = el as? Group {
+                group.traverse { child in
+                    innerStore.getECData(child).dataModel = mpModel
+                    return false
+                }
+            }
+        }
 
         self.markKeep(symbolDraw)
 

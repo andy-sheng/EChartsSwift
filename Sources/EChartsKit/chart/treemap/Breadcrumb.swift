@@ -25,9 +25,8 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';                  -> ZRenderKit `Group` / `Polygon` / `ZRText` (used directly).
 //   import {getECData} from '../../util/innerStore';                -> `innerStore.getECData`.
 //   import * as layout from '../../util/layout';                    -> `layout.*` (util/layout.swift).
-//   import {wrapTreePathInfo} from '../helper/treeHelper';          -> PORT-NOTE (deferred): requires
-//       treeHelper.wrapTreePathInfo (treeHelper.swift is ported but wrapTreePathInfo itself is not —
-//       treePathInfo for event data).
+//   import {wrapTreePathInfo} from '../helper/treeHelper';          -> treeHelper.wrapTreePathInfo
+//       (chart/helper/treeHelper.swift, fully ported); consumed by `packEventData` below.
 //   import TreemapSeriesModel, { TreemapSeriesNodeItemOption, TreemapSeriesOption } from './TreemapSeries';
 //       -> sibling TreemapSeries.swift.
 //   import ExtensionAPI from '../../core/ExtensionAPI';             -> `ExtensionAPI`.
@@ -319,7 +318,7 @@ private func makeItemPoints(
 private func packEventData(_ el: Element, _ seriesModel: TreemapSeriesModel, _ itemNode: TreeNode?) {
     // getECData(el).eventData = { componentType: 'series', ..., nodeData: {...}, treePathInfo: ... };
     //   `ECEventData` is `[String: Any]` in this port.
-    innerStore.getECData(el).eventData = [
+    var eventData: [String: Any] = [
         "componentType": "series",
         "componentSubType": "treemap",
         "componentIndex": seriesModel.componentIndex,
@@ -331,9 +330,15 @@ private func packEventData(_ el: Element, _ seriesModel: TreemapSeriesModel, _ i
             "dataIndex": itemNode.map { Double($0.dataIndex) } as Any,
             "name": itemNode?.name as Any
         ] as [String: Any]
-        // treePathInfo: itemNode && wrapTreePathInfo(itemNode, seriesModel)
-        // PORT-NOTE (deferred): requires treeHelper.wrapTreePathInfo (not ported — tree path info for tooltip/event).
     ]
+    // treePathInfo: itemNode && wrapTreePathInfo(itemNode, seriesModel)
+    //   Upstream's `&&` yields `undefined` when `itemNode` is nullish; leave the key genuinely absent
+    //   rather than storing a boxed `Optional.none`, so key-presence checks match upstream truthiness.
+    if let itemNode = itemNode {
+        eventData["treePathInfo"] = treeHelper.wrapTreePathInfo(itemNode, seriesModel)
+    }
+    // getECData(el).eventData = { ... };
+    innerStore.getECData(el).eventData = eventData
 }
 
 // export default Breadcrumb;  -> `open class Breadcrumb` above.

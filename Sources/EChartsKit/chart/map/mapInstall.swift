@@ -31,7 +31,8 @@ import ZRenderKit
 //          fill instead of the region itemStyle backdrop).
 //   import MapSeries from './MapSeries';                         -> MapSeriesModel (sibling MapSeries.swift, ported).
 //   import {createLegacyDataSelectAction} from '../../legacy/dataSelectAction';
-//       -> PORT-NOTE (deferred): requires legacy/dataSelectAction.ts (select actions) — NOT ported.
+//       -> `dataSelectAction.createLegacyDataSelectAction` (legacy/dataSelectAction.swift) — PORTED.
+//          Only the driver-side registration call below is outstanding.
 //   import {install as installGeo} from '../../component/geo/install';
 //       -> the geo component install (geoCreator + GeoModel + GeoView). Wired by the driver via `use`.
 //   import { mapSymbolLayoutStageHandler } from './mapSymbolLayout';
@@ -42,9 +43,10 @@ import ZRenderKit
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
 // PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
-//   render-layer file (same convention as chart/sankey/sankeyInstall.swift). `MapView` and
-//   `mapSymbolLayoutStageHandler` are ported; `createLegacyDataSelectAction` (select actions) is
-//   still DEFERRED. Preserved as commented source for the diffable surface:
+//   render-layer file (same convention as chart/sankey/sankeyInstall.swift). `MapView`,
+//   `mapSymbolLayoutStageHandler` and `createLegacyDataSelectAction` are ALL ported — what remains is
+//   purely the driver-owned registration boilerplate. Preserved as commented source for the diffable
+//   surface:
 //
 //     export function install(registers) {
 //         use(installGeo);                                        // -> geo component (geoCreator/GeoModel/GeoView)
@@ -58,7 +60,12 @@ import ZRenderKit
 //             mapDataStatisticStageHandler                        // -> mapDataStatisticStageHandler (mapDataStatistic.swift)
 //         );
 //
-//         createLegacyDataSelectAction('map', registers.registerAction);   // DEFERRED (select actions)
+//         createLegacyDataSelectAction('map', registers.registerAction);
+//             // PORTED + WIRED: provider is dataSelectAction.createLegacyDataSelectAction
+//             // (legacy/dataSelectAction.swift); the registration call itself lives in
+//             // `ECharts.installOnce()` beside `ComponentModel.registerClass(MapSeriesModel.self)`,
+//             // per this repo's convention that install() bodies are inlined there. The pie-side call
+//             // (upstream chart/pie/install.ts:33) is wired in the same place, next to PieSeriesModel.
 //     }
 //
 // INTEGRATION SURFACE (for the driver, once MapView + mapSymbolLayout land):
@@ -68,4 +75,5 @@ import ZRenderKit
 //   - registerLayout:      `mapSymbolLayoutStageHandler`  (chart/map/mapSymbolLayout.swift — later phase)
 //   - registerProcessor(PRIORITY.PROCESSOR.STATISTIC):
 //                          `mapDataStatisticStageHandler` (chart/map/mapDataStatistic.swift — ported here)
-//   - registerAction:      `createLegacyDataSelectAction('map', ...)`  (legacy select — DEFERRED)
+//   - registerAction:      `dataSelectAction.createLegacyDataSelectAction("map", ...)`
+//                          (legacy/dataSelectAction.swift — PORTED and CALLED from ECharts.installOnce())

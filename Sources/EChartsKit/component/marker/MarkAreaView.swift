@@ -516,14 +516,16 @@ public final class MarkAreaView: MarkerView {
             // setLabelStyle(polygon, getLabelStatesModels(itemModel), { labelFetcher: maModel,
             //     labelDataIndex: idx, defaultText: areaData.getName(idx) || '',
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
+            // PORT-NOTE (deferred): only the `setLabelStyle(...)` half above stays deferred —
+            //   `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens` (neutral99)
+            //   ARE ported, but the `labelFetcher: maModel` / `inheritColor` wiring is a separate
+            //   follow-up. The host-model tagging below is NOT deferred (see next line).
+
             // getECData(polygon).dataModel = maModel;
-            // PORT-NOTE (deferred): `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens`
-            //   (neutral99) ARE ported now — but this label block stays deferred for a different reason:
-            //   `labelFetcher: maModel` requires `maModel` (a MarkerModel) to be a `DataFormatMixin`
-            //   (for the getFormattedLabel the fetcher provides), and `getECData(polygon).dataModel =
-            //   maModel` requires MarkerModel to conform to `DataModel`. MarkerModel conforms to neither
-            //   yet (only SeriesModel is a DataFormatMixin; see MarkerModel.swift class header). Wire this
-            //   block once MarkerModel gains DataFormatMixin/DataModel conformance.
+            // PORT-NOTE: `MarkAreaModel` conforms to `DataModel` (inherited from `MarkerModel`, see
+            //   MarkerModel.swift), so `ECData.dataModel` (typed `DataModel?`) accepts `maModel`
+            //   directly. Upstream tags the polygon only (no traverse).
+            innerStore.getECData(polygon).dataModel = maModel
         })
 
         inner(polygonGroup).data = areaData

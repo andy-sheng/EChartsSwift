@@ -247,6 +247,10 @@ public final class SeriesData: DataStackSeriesData {
     //   `fireWrappedMethodInjections`; see linkSeriesData `transferInjection`/`changeInjection`/
     //   `cloneShallowInjection` and Series.wrapData `onDataChange`). Registration order is preserved so the
     //   injections fire in the same order upstream's wrap chain does (original → transfer → cloneShallow).
+    //   NOTE `cloneShallow` is itself a member of TRANSFERABLE_METHODS, so linkSeriesData registers it
+    //   TWICE (transfer injection for every data, cloneShallow injection for mainData) and its single fire
+    //   site runs both, in registration order. This store is deliberately NOT copied by
+    //   `transferProperties` (upstream effectively copies it, via the wrapped function) — see the note there.
     private var _wrappedMethodInjections: [String: [(SeriesData) -> Void]] = [:]
 
     // upstream `wrapMethod('getItemModel', injectFn)` (used by Tree.createTree's `beforeLink` to hang the
@@ -1306,11 +1310,15 @@ public final class SeriesData: DataStackSeriesData {
         SeriesData.transferProperties(list!, self)
         list!._store = self._store
 
-        // PORT NOTE: fire the injections `linkSeriesData` registered on `cloneShallow` (transferInjection +
-        //   cloneShallowInjection). Upstream does this via the `wrapMethod` rebind; here the ported methods
-        //   invoke stored injections explicitly. This is what re-links the shared tree/graph struct onto the
-        //   fresh clone (`clone.tree = struct`, `struct.data = clone`), so a tree/treemap/sunburst series'
-        //   `getData().tree` survives the `dataTaskReset` cloneShallow.
+        // PORT NOTE: fire the injections `linkSeriesData` registered on `cloneShallow`. Because
+        //   `cloneShallow` is also in TRANSFERABLE_METHODS it carries TWO injections on a mainData, run
+        //   here in registration order: transferInjection (re-point the sibling datas at the clone) then
+        //   cloneShallowInjection (clone the sibling datas). Upstream does this via the `wrapMethod`
+        //   rebind; here the ported methods invoke stored injections explicitly. This is what re-links the
+        //   shared tree/graph struct onto the fresh clone (`clone.tree = struct`, `struct.data = clone`),
+        //   so a tree/treemap/sunburst series' `getData().tree` survives the `dataTaskReset` cloneShallow.
+        //   NOTE the clone itself carries NO injections (`transferProperties` does not copy them), so a
+        //   clone-of-a-clone re-links nothing — see the note in `transferProperties`.
         self.fireWrappedMethodInjections("cloneShallow", list!)
 
         return list!
@@ -1335,7 +1343,9 @@ public final class SeriesData: DataStackSeriesData {
         //   can thread the result. All other wrapped methods (`cloneShallow`, the TRANSFERABLE_METHODS
         //   `map`/`downSample`/`minmaxDownSample`/`lttbDownSample`, and the CHANGABLE_METHODS
         //   `filterSelf`/`selectRange`) run for side effects on the result SeriesData; they are stored here
-        //   and fired by those methods via `fireWrappedMethodInjections`.
+        //   and fired by those methods via `fireWrappedMethodInjections`. `cloneShallow` is BOTH an
+        //   explicitly-wrapped method and a member of TRANSFERABLE_METHODS, so on a mainData it collects
+        //   two injections (transfer, then cloneShallow) that its one fire site runs in registration order.
         if methodName == "getItemModel" {
             self._getItemModelInjections.append { res, idx in
                 // Upstream feeds `[res].concat(arguments)` → (model, idx). The ported `beforeLink`
@@ -1454,9 +1464,17 @@ public final class SeriesData: DataStackSeriesData {
         target.__wrappedMethods = source.__wrappedMethods
         // Upstream copies each wrapped method FUNCTION by name (methods are instance props in JS). The port
         //   keeps the injections in side stores; carry the value-returning `getItemModel` injections onto
-        //   the clone so a cloned tree/sunburst data keeps its per-node level-model parenting. (The
-        //   `cloneShallow` injections in `_wrappedMethodInjections` are re-established by linkSeriesData's
-        //   own cloneShallow injection, so they are not copied here — matching the prior behavior.)
+        //   the clone so a cloned tree/sunburst data keeps its per-node level-model parenting.
+        // KNOWN DIVERGENCE: `_wrappedMethodInjections` is NOT copied. Upstream's function copy carries the
+        //   wrap chain itself, so an upstream clone/downSample/map result still fires transferInjection +
+        //   cloneShallowInjection + changeInjection on its OWN subsequent calls; the ported clone fires
+        //   nothing. Nothing re-registers them either (neither `linkAll` nor `linkSingle` calls
+        //   `wrapMethod`). Unreachable on the main path only because `dataTaskReset` (Series.swift) always
+        //   clones from `getRawData()`, i.e. the registered original; `mapDataStatistic.swift`'s
+        //   `series.setData(data.cloneShallow())` on `getData()` is the latent second-order case.
+        //   // PORT-TODO: copy `_wrappedMethodInjections` here if a derived list ever needs re-linking —
+        //   but note the ported injections capture the registered `data` explicitly where upstream rebinds
+        //   `this`, so a naive copy would fire against the original rather than the clone.
         target._getItemModelInjections = source._getItemModelInjections
 
         // CLONE_PROPERTIES
