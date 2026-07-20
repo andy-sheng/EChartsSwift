@@ -756,7 +756,13 @@ public final class RasterizerPainter {
     /// texture then lands 1:1 on the path.
     /// PORT-NOTE: rebuilt on every refresh (no tile cache); pattern demos only.
     private func makePatternPaint(_ pat: ZRenderKit.Pattern, coverRect: CGRect, alpha: Double) -> RAPaint? {
-        guard let img = loadCGImage(pat.image) else { return nil }
+        // `Pattern.image` is an `ImageSource` (`.url` string | already-decoded `ImageLike`).
+        let patImage: CGImage?
+        switch pat.image {
+        case .url(let s): patImage = loadCGImage(s)
+        case .image(let like): patImage = Self.asCGImage(like)
+        }
+        guard let img = patImage else { return nil }
         let imgW = CGFloat(img.width), imgH = CGFloat(img.height)
         let sx = CGFloat(pat.scaleX), sy = CGFloat(pat.scaleY)
         guard imgW > 0, imgH > 0, sx != 0, sy != 0,

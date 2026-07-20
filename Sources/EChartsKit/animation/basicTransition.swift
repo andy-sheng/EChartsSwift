@@ -8,6 +8,10 @@
 //   override on the leave path. The `getAnimationDelayParams` hook (pictorial bar per-element delay)
 //   is wired: `animateOrSetProps` reads `model.getAnimationDelayParams?(el, dataIndex)` (the optional
 //   stored closure on `Model`, assigned by PictorialBarView) and threads it as `extraDelayParams`.
+//
+// PORT-NOTE: upstream's public `removeElement` (ts:272) is now a real top-level function (it used to be
+//   inlined into `fadeOutDisplayable`), so callers can drive an arbitrary leave-props animation —
+//   e.g. `scaleX/scaleY -> 0` — instead of only the opacity fade of `removeElementWithFadeOut`.
 import Foundation
 import ZRenderKit
 
@@ -96,6 +100,8 @@ private func animateOrSetProps(
     //   — a truthy (possibly-empty) extraOpts object forces getAnimationConfig's extraOpts branch,
     //   which defaults to 200ms/cubicOut/delay 0 for the leave path (independent of the series'
     //   animationDuration) but is overridden by any field the caller supplies via `removeOpt`.
+    //   The `delay` slot is inert: upstream hardcodes `delay = 0` on the extraOpts branch (ts:84-86),
+    //   mirrored above, so `removeOpt.delay` is carried for signature fidelity but never read.
     let extra: (duration: Double?, easing: AnimationEasing?, delay: Double?)? =
         isRemove ? (duration: removeOpt?.duration, easing: removeOpt?.easing, delay: removeOpt?.delay) : nil
     // upstream: (animatableModel && animatableModel.getAnimationDelayParams)
@@ -177,7 +183,9 @@ func updateProps(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
 }
 
 /// If the element is removed, or is currently mid-way through a "leave" (remove) animation.
-private func isElementRemoved(_ el: Element) -> Bool {
+///
+/// Module-internal (upstream exports it via util/graphic.ts; every Swift consumer is in EChartsKit).
+func isElementRemoved(_ el: Element) -> Bool {
     if el.__zr == nil {
         return true
     }
@@ -189,16 +197,42 @@ private func isElementRemoved(_ el: Element) -> Bool {
     return false
 }
 
-private func fadeOutDisplayable(_ el: Displayable, _ model: Model?, _ dataIndex: Int, _ done: (() -> Void)?) {
-    // Don't do remove animation twice on the same Displayable (upstream checks this per-Displayable
-    // inside removeElement, not once on the top-level element — a Group itself never carries a
-    // leave-scoped animator, only its faded children do).
+/// Remove a graphic element, animating `props` on the "leave" scope.
+///
+/// upstream `removeElement(el, props, animatableModel, dataIndex, cb, during)`.
+func removeElement(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
+                   _ dataIndex: Int? = nil, _ cb: (() -> Void)? = nil,
+                   _ during: ((Double) -> Void)? = nil) {
+    // Don't do remove animation twice.
     if isElementRemoved(el) {
         return
     }
+    animateOrSetProps(.leave, el, props, model, dataIndex, false, cb, during)
+}
+
+/// upstream `removeElement(el, props, animatableModel, opt: AnimateOrSetPropsOption)` — the object
+/// form of the 4th parameter. This is the only form that can carry `removeOpt`, the leave-path
+/// duration/easing override consumed by `animateOrSetProps`'s `extra` branch. (Upstream forces
+/// `delay = 0` on getAnimationConfig's extraOpts branch, so `removeOpt.delay` is intentionally
+/// ignored.)
+func removeElement(_ el: Element, _ props: [String: Any], _ model: Model?,
+                   _ opt: AnimateOrSetPropsOption) {
+    // Don't do remove animation twice.
+    if isElementRemoved(el) {
+        return
+    }
+    animateOrSetProps(.leave, el, props, model, opt.dataIndex, opt.isFrom ?? false,
+                      opt.cb, opt.during, opt.removeOpt)
+}
+
+private func fadeOutDisplayable(_ el: Displayable, _ model: Model?, _ dataIndex: Int, _ done: (() -> Void)?) {
+    // upstream 297-310: removeTextContent/removeTextGuideLine run UNCONDITIONALLY; the single
+    //   `isElementRemoved` guard lives in `removeElement` and governs only the fade animation. An
+    //   element already mid-leave (e.g. from SymbolElement.fadeOut's scaleX/scaleY -> 0) therefore
+    //   still gets its label and label-guide-line stripped.
     el.removeTextContent()
     el.removeTextGuideLine()
-    animateOrSetProps(.leave, el, ["style": ["opacity": 0.0] as [String: Any]], model, dataIndex, false, done, nil)
+    removeElement(el, ["style": ["opacity": 0.0] as [String: Any]], model, dataIndex, done)
 }
 
 /// Remove a graphic element, fading it (and its Group descendants) out first.

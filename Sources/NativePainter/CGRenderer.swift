@@ -273,11 +273,16 @@ public final class CGRenderer: Renderer {
         }
     }
 
-    /// Resolve a `Pattern`'s image (a `string` URL / file path / data-URI) to a `CGImage`.
-    /// PORT-NOTE: upstream `image: ImageLike | string` — the decoded `ImageLike` (`__image`) arm and
-    /// SVG patterns are the deferred seam; here only the `string` arm is decoded via ImageIO.
+    /// Resolve a `Pattern`'s image (`ImageSource`: a URL / file path / data-URI string, or an
+    /// already-decoded native image) to a `CGImage`.
+    /// PORT-NOTE: SVG patterns remain the deferred renderer seam (CONVENTIONS §9).
     private func resolvePatternImage(_ pattern: Pattern) -> CGImage? {
-        return loadCGImage(pattern.image)
+        switch pattern.image {
+        case .url(let s):
+            return loadCGImage(s)
+        case .image(let like):
+            return asCGImage(like)
+        }
     }
 
     // MARK: - 3. Image

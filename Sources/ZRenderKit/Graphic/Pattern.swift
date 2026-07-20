@@ -2,10 +2,11 @@
 
 // upstream: import { ImageLike } from '../core/types';
 // upstream: import { SVGVNode } from '../svg/core';
-// PORT-NOTE: ImageLike is a browser image-source union (HTMLImageElement | ... ); it is
-// still unported (see Core/types.swift) and routed through the Renderer/Painter seam
-// (CONVENTIONS §9). String slots below stand in for the SSR/string arm; the ImageLike arm
-// is deferred to Phase 2.
+// PORT-NOTE: ImageLike is a browser image-source union (HTMLImageElement | ... ), routed through
+// the Renderer/Painter seam (CONVENTIONS §9) as the opaque `ImageLike` alias. `Pattern.image`'s
+// upstream `ImageLike | string` union is modeled by the `ImageSource` enum (Image.swift:54).
+// Remaining `String` slots below (`svgElement`, `ImagePatternObject.image`) still stand in for the
+// SSR/string arm only — those are separate symbols, retyped separately.
 // PORT-NOTE: SVGVNode — svg renderer virtual node; svg backend is not ported (CONVENTIONS §9).
 
 public enum ImagePatternRepeat: String {
@@ -67,8 +68,9 @@ public class Pattern {
     // interface makes it optional, so we model it as `String?` (nil here, matching runtime).
     public var type: String?
 
-    // PORT-NOTE: image: ImageLike | string — only the `string` arm is typed for now.
-    public var image: String
+    // upstream: image: ImageLike | string — modeled by the `ImageSource` enum (non-Optional:
+    // upstream's constructor assigns it unconditionally).
+    public var image: ImageSource
     /**
      * svg element can only be used in svg renderer currently.
      *
@@ -85,7 +87,7 @@ public class Pattern {
     public var scaleX: Double
     public var scaleY: Double
 
-    public init(_ image: String, _ repeat: ImagePatternRepeat) {
+    public init(_ image: ImageSource, _ repeat: ImagePatternRepeat) {
         // Should do nothing more in this constructor. Because gradient can be
         // declard by `color: {image: ...}`, where this constructor will not be called.
         self.image = image

@@ -712,7 +712,7 @@ private final class SVGParser {
             return nil
         }
 
-        let pattern = Pattern(dataURI, .repeat)
+        let pattern = Pattern(.url(dataURI), .repeat)
         // <pattern x/y> offset (DEVIATION: patternTransform is ignored). The seam rasterizes at
         // exactly width×height points, so the tile is tiled at native size (repeat).
         pattern.x = svgParseFloat(xmlNode.getAttribute("x") ?? "0")

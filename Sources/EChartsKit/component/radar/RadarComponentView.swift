@@ -353,7 +353,7 @@ private func zrColorFromOption(_ v: Any?) -> ZRenderKit.ZRColor? {
         if let image = dict["image"] as? String {
             let repeatMode = (dict["repeat"] as? String)
                 .flatMap { ImagePatternRepeat(rawValue: $0) } ?? .`repeat`
-            return .pattern(Pattern(image, repeatMode))
+            return .pattern(Pattern(.url(image), repeatMode))
         }
     }
     return nil

@@ -37,37 +37,37 @@ public enum labelLayoutHelper {
     // XY / WH dimension name tables (upstream `const XY = ['x', 'y']; const WH = ['width', 'height'];`).
     // Modeled as index-based accessors on BoundingRect / ZRText below.
 
-    /// upstream: `computeLabelGlobalRect(out, label)` (chart/pie/labelLayout.ts) via
-    ///   `computeLabelGeometry(_tmpLabelGeometry, label, _computeLabelGeometryOpt)`.
-    /// Fills `out` (a global BoundingRect) with the label's local bounding rect expanded by the pie
-    /// `marginDefault` ([1, 0, 1, 0] = top/bottom 1px) and then transformed by the label's computed
-    /// transform (its x / y / rotation).
+    /// upstream: `computeLabelGlobalRect(out, label)` (chart/pie/labelLayout.ts:334) —
+    ///   ```js
+    ///   _tmpLabelGeometry.rect = out;
+    ///   computeLabelGeometry(_tmpLabelGeometry, label, _computeLabelGeometryOpt);
+    ///   ```
+    /// Fills `out` (a global BoundingRect) with the label's local bounding rect expanded by the label's
+    /// own `style.margin` + `style.__marginType`, and then transformed by the label's computed transform
+    /// (its x / y / rotation). The pie `marginDefault` ([1, 0, 1, 0] = top/bottom 1px) applies ONLY when
+    /// the label carries no `__marginType` (i.e. neither `textMargin` nor `minMargin` was set).
     ///
-    /// PORT NOTE: upstream resolves `textMargin` vs `minMargin` from `style.margin` / `__marginType`.
-    /// The `__marginType` plumbing is a documented gap in the port's `labelStyle` (margin machinery
-    /// deferred), so labels carry no explicit margin and this always takes the `marginDefault`
-    /// (textMargin) branch — faithful for pie's default labels.
+    /// PORT-NOTE: upstream reuses a module-level `_tmpLabelGeometry: Partial<LabelGeometry>` scratch;
+    ///   the ported `LabelLayoutData` takes its `label` as a `let` at init, so the scratch cannot be
+    ///   reused across labels and a fresh one is built per call.
     public static func computeLabelGlobalRect(_ out: BoundingRect, _ label: ZRText) {
-        let rawTransform = label.getComputedTransform()
-
-        // NOTE: getBoundingRect must be called AFTER getComputedTransform (upstream note): the latter
-        //   runs the host's `updateInnerText`, which may relayout the label.
-        let localRect = (label.getBoundingRect() ?? BoundingRect(0, 0, 0, 0)).clone()
-
-        // marginDefault = [1, 0, 1, 0] (top, right, bottom, left); marginType == textMargin.
-        //   expandOrShrinkRect(localRect, margin, expand): x -= left; width += left + right;
-        //                                                  y -= top;  height += top + bottom.
-        let marginTop = 1.0, marginRight = 0.0, marginBottom = 1.0, marginLeft = 0.0
-        localRect.x -= marginLeft
-        localRect.width += marginLeft + marginRight
-        localRect.y -= marginTop
-        localRect.height += marginTop + marginBottom
-
-        out.copy(localRect)
-        if let t = rawTransform {
-            out.applyTransform(t)
-        }
+        let _tmpLabelGeometry = LabelLayoutData(label: label)
+        _tmpLabelGeometry.rect = out
+        computeLabelGeometry(_tmpLabelGeometry, label, _computeLabelGeometryOpt)
     }
+
+    /// upstream:
+    ///   ```js
+    ///   const _computeLabelGeometryOpt = {
+    ///       minMarginForce: [null, 0, null, 0],
+    ///       marginDefault: [1, 0, 1, 0], // Arbitrary value
+    ///   };
+    ///   ```
+    ///   (chart/pie/labelLayout.ts:338)
+    fileprivate static let _computeLabelGeometryOpt = ComputeLabelGeometryOpt(
+        minMarginForce: [nil, 0, nil, 0],
+        marginDefault: [1, 0, 1, 0]  // Arbitrary value
+    )
 
     /// An item participating in `shiftLayoutOnXY`: carries a global `rect` (mutated in place) and the
     /// backing `label` whose element x / y are shifted alongside.
@@ -269,11 +269,51 @@ public enum labelLayoutHelper {
     //   `labelIntersect`, `hideOverlap` and `restoreIgnore`. These drive the global label-overlap
     //   stage (upstream `LabelManager.layout` → `hideOverlap`).
     //
-    // MARGIN gap (unchanged from L1c): upstream `computeLabelGeometry` resolves `style.margin` vs
-    //   `style.__marginType` (textMargin/minMargin) plus the `marginForce`/`minMarginForce`/
-    //   `marginDefault` overrides. `__marginType` is a documented gap in the port's `labelStyle`, so
-    //   labels carry no explicit margin here and no margin expansion is applied (all four terms are
-    //   0). Faithful for the default labels the driver produces.
+    // MARGIN: `computeLabelGeometry` resolves `style.margin` vs `style.__marginType` (textMargin
+    //   expands the LOCAL rect, minMargin the GLOBAL rect) — `TextStyleProps.__marginType` is stamped
+    //   by `labelStyle.setTextStyleCommon` — plus the per-layout `opt` overrides
+    //   (`marginForce` / `minMarginForce` / `marginDefault`), modeled as `ComputeLabelGeometryOpt` and
+    //   carried on `LabelLayoutData` (upstream `LABEL_LAYOUT_BASE_PROPS`).
+
+    /// upstream: `Pick<LabelLayoutData, 'marginForce' | 'minMarginForce' | 'marginDefault'>` —
+    ///   `computeLabelGeometry`'s optional `opt` argument. Each entry is `[top, right, bottom, left]`.
+    public struct ComputeLabelGeometryOpt {
+        /// To replace user specified `textMargin` or `minMargin`. e.g., `[0, nil, 0, nil]` means that
+        ///   the top and bottom margin is replaced as `0`, and use the original settings of left/right.
+        public var marginForce: [Double?]?
+        /// For backward compatibility for `minMargin`. `minMargin` can only be a number rather than
+        ///   number[], some series only apply `minMargin` on top/bottom but disregard left/right.
+        public var minMarginForce: [Double?]?
+        /// If no `textMargin` and `minMargin` is specified, use this as default.
+        public var marginDefault: [Double]?
+
+        public init(
+            marginForce: [Double?]? = nil,
+            minMarginForce: [Double?]? = nil,
+            marginDefault: [Double]? = nil
+        ) {
+            self.marginForce = marginForce
+            self.minMarginForce = minMarginForce
+            self.marginDefault = marginDefault
+        }
+    }
+
+    /// upstream: `const _tmpLabelMargin: number[] = [0, 0, 0, 0];` — the module-level scratch buffer
+    ///   `computeLabelGeometry` fills each call.
+    /// PORT-NOTE: `static var` on a caseless enum is the direct analogue of the module-level `const`
+    ///   (mutated in place, never reallocated). Single-threaded like upstream's render pass.
+    fileprivate static var _tmpLabelMargin: [Double] = [0, 0, 0, 0]
+
+    /// upstream: `margin ? margin[i] : 0` — reads `style.margin` (`number | number[]`) index-wise.
+    ///   A JS out-of-range read yields `undefined`, which `expandOrShrinkRect` treats as no-op, so an
+    ///   array shorter than 4 contributes 0 for the missing indices rather than dropping the margin.
+    fileprivate static func _labelMarginAt(_ margin: NumberOrNumberArray?, _ i: Int) -> Double {
+        switch margin {
+        case .none: return 0
+        case .number(let n): return n
+        case .array(let a): return i < a.count ? a[i] : 0
+        }
+    }
 
     // upstream:
     //   const LABEL_LAYOUT_DIRTY_BIT_OTHERS = 1;
@@ -332,7 +372,9 @@ public enum labelLayoutHelper {
     public static func ensureLabelLayoutWithGeometry(_ labelLayout: LabelLayoutData?) -> LabelLayoutData? {
         guard let labelLayout = labelLayout else { return nil }
         if isLabelLayoutDirty(labelLayout) {
-            computeLabelGeometry(labelLayout, labelLayout.label)
+            // upstream: computeLabelGeometry(labelLayout, labelLayout.label, labelLayout) — the layout
+            //   itself supplies the `opt` overrides (it carries the same three props).
+            computeLabelGeometry(labelLayout, labelLayout.label, labelLayout.computeLabelGeometryOpt)
         }
         return labelLayout
     }
@@ -343,12 +385,18 @@ public enum labelLayoutHelper {
     ///
     /// upstream copies `LABEL_LAYOUT_BASE_PROPS` (label, labelLine, layoutOption, priority, defaultAttr,
     ///   marginForce, minMarginForce, marginDefault, suggestIgnore) from `source` into the partial
-    ///   `newBaseWithDefaults`, then calls `ensureLabelLayoutWithGeometry`. The MARGIN machinery
-    ///   (`marginForce`/`minMarginForce`/`marginDefault`) is a documented no-op in this port (see the
-    ///   note above `computeLabelGeometry`), so the only variation upstream drives through this
-    ///   function — a `marginForce` override — has no effect here; the copy carries the same geometry as
-    ///   `source`. Faithful for the default labels the axis path produces.
-    public static func newLabelLayoutWithGeometry(_ source: LabelLayoutData) -> LabelLayoutData? {
+    ///   `newBaseWithDefaults` (each prop only where it is `null` there), then calls
+    ///   `ensureLabelLayoutWithGeometry`.
+    ///
+    /// PORT-NOTE: `newBaseWithDefaults` is upstream a `Partial<LabelLayoutData>`; the only props any
+    ///   caller actually sets on it are the three margin overrides (AxisBuilder passes `{marginForce}`),
+    ///   so it is modeled as the `ComputeLabelGeometryOpt` bag. Every other `LABEL_LAYOUT_BASE_PROPS`
+    ///   entry is unconditionally copied from `source`, which is what the upstream `== null` fill does
+    ///   for an otherwise-empty `newBaseWithDefaults`.
+    public static func newLabelLayoutWithGeometry(
+        _ newBaseWithDefaults: ComputeLabelGeometryOpt,
+        _ source: LabelLayoutData
+    ) -> LabelLayoutData? {
         let out = LabelLayoutData(
             label: source.label,
             labelLine: source.labelLine,
@@ -361,13 +409,22 @@ public enum labelLayoutHelper {
             defaultAttr: source.defaultAttr,
             suggestIgnore: source.suggestIgnore
         )
+        out.marginForce = newBaseWithDefaults.marginForce ?? source.marginForce
+        out.minMarginForce = newBaseWithDefaults.minMarginForce ?? source.minMarginForce
+        out.marginDefault = newBaseWithDefaults.marginDefault ?? source.marginDefault
         return ensureLabelLayoutWithGeometry(out)
     }
 
     /// upstream: export function computeLabelGeometry(out, label, opt?)
     /// Fills `out`'s geometry props (transform / localRect / global rect / axisAligned / ignore) from
-    /// the live label. See the MARGIN gap note above (no margin expansion in the port).
-    public static func computeLabelGeometry(_ out: LabelLayoutData, _ label: ZRText) {
+    /// the live label, expanding the rect by the label's `style.margin` as selected by
+    /// `style.__marginType` (`textMargin` expands the LOCAL rect, `minMargin` the GLOBAL one), with
+    /// `opt`'s `marginForce` / `minMarginForce` / `marginDefault` overriding per index.
+    public static func computeLabelGeometry(
+        _ out: LabelLayoutData,
+        _ label: ZRText,
+        _ opt: ComputeLabelGeometryOpt? = nil
+    ) {
         // [CAUTION] These props may be modified directly for performance consideration.
         let rawTransform = label.getComputedTransform()
         out.transform = ensureCopyTransform(out.transform, rawTransform)
@@ -377,12 +434,46 @@ public enum labelLayoutHelper {
         let outLocalRect = ensureCopyRect(out.localRect, label.getBoundingRect() ?? BoundingRect(0, 0, 0, 0))
         out.localRect = outLocalRect
 
-        // MARGIN gap: `__marginType`/`margin` machinery deferred → no `expandOrShrinkRect` expansion.
+        // upstream:
+        //   const labelStyleExt = label.style as LabelExtendedTextStyle;
+        //   let margin = labelStyleExt.margin;
+        //   const marginForce = opt && opt.marginForce; ... etc
+        //   let marginType = labelStyleExt.__marginType;
+        //   if (marginType == null && marginDefault) { margin = marginDefault; marginType = textMargin; }
+        var margin: NumberOrNumberArray? = label.textStyle?.margin
+        let marginForce = opt?.marginForce
+        let minMarginForce = opt?.minMarginForce
+        let marginDefault = opt?.marginDefault
+        var marginType = label.textStyle?.__marginType
+        if marginType == nil, let marginDefault = marginDefault {
+            margin = .array(marginDefault)
+            marginType = labelStyle.LabelMarginType.textMargin.rawValue
+        }
+
+        // `textMargin` and `minMargin` can not exist both.
+        for i in 0..<4 {
+            _tmpLabelMargin[i] =
+                (marginType == labelStyle.LabelMarginType.minMargin.rawValue
+                    && minMarginForce != nil && i < minMarginForce!.count && minMarginForce![i] != nil)
+                ? minMarginForce![i]!
+                : (marginForce != nil && i < marginForce!.count && marginForce![i] != nil)
+                ? marginForce![i]!
+                : _labelMarginAt(margin, i)
+        }
+
+        if marginType == labelStyle.LabelMarginType.textMargin.rawValue {
+            expandOrShrinkRect(outLocalRect, _tmpLabelMargin, false, false)
+        }
 
         let outGlobalRect = ensureCopyRect(out.rect, outLocalRect)
         out.rect = outGlobalRect
         if let t = rawTransform {
             outGlobalRect.applyTransform(t)
+        }
+
+        // Notice: label.style.margin is actually `minMargin / 2`, handled by `setTextStyleCommon`.
+        if marginType == labelStyle.LabelMarginType.minMargin.rawValue {
+            expandOrShrinkRect(outGlobalRect, _tmpLabelMargin, false, false)
         }
 
         out.axisAligned = isBoundingRectAxisAligned(rawTransform)
@@ -554,7 +645,24 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
     public var seriesIndex: Double
     public var priority: Double
     public var defaultAttr: SavedLabelAttr
+    /// upstream `LabelLayoutBase['marginForce']`: to replace user specified `textMargin` / `minMargin`.
+    ///   Format `[top, right, bottom, left]`; a `nil` entry keeps the original setting for that side.
+    public var marginForce: [Double?]?
+    /// upstream `LabelLayoutBase['minMarginForce']`: backward compatibility for `minMargin`, which some
+    ///   series apply only on top/bottom.
+    public var minMarginForce: [Double?]?
+    /// upstream `LabelLayoutBase['marginDefault']`: used when neither `textMargin` nor `minMargin` is
+    ///   specified. Format `[top, right, bottom, left]`.
+    public var marginDefault: [Double]?
     public var suggestIgnore: Bool
+
+    /// The `Pick<LabelLayoutData, 'marginForce' | 'minMarginForce' | 'marginDefault'>` view of self,
+    ///   which upstream gets for free by passing the layout itself as `computeLabelGeometry`'s `opt`.
+    public var computeLabelGeometryOpt: labelLayoutHelper.ComputeLabelGeometryOpt {
+        labelLayoutHelper.ComputeLabelGeometryOpt(
+            marginForce: marginForce, minMarginForce: minMarginForce, marginDefault: marginDefault
+        )
+    }
 
     // ─── LabelGeometry ───
     /// `nil` == fully dirty (upstream uninitialized `NullUndefined`).
@@ -579,6 +687,9 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         seriesIndex: Double = 0,
         priority: Double = 0,
         defaultAttr: SavedLabelAttr = SavedLabelAttr(),
+        marginForce: [Double?]? = nil,
+        minMarginForce: [Double?]? = nil,
+        marginDefault: [Double]? = nil,
         suggestIgnore: Bool = false
     ) {
         self.label = label
@@ -590,6 +701,9 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
         self.seriesIndex = seriesIndex
         self.priority = priority
         self.defaultAttr = defaultAttr
+        self.marginForce = marginForce
+        self.minMarginForce = minMarginForce
+        self.marginDefault = marginDefault
         self.suggestIgnore = suggestIgnore
         self.dirty = nil
         self.rect = BoundingRect(0, 0, 0, 0)

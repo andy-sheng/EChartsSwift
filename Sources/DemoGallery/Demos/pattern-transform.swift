@@ -19,7 +19,7 @@ extension DemoRegistry {
         // is faithful).
 
         // fill: { image: ..., rotation: Math.PI / 6, scaleX: 0.5, x: 100 }
-        let pat = Pattern(upstreamAsset("test.png").path, .repeat)
+        let pat = Pattern(.url(upstreamAsset("test.png").path), .repeat)
         pat.x = 100
         pat.scaleX = 0.5
         pat.rotation = π / 6
