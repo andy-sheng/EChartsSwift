@@ -1682,6 +1682,17 @@ func createTextStyle(
     style.overflow = overflow
     style.width = width   // TextStyleProps.width is narrowed to Double? in this port
     style.ellipsis = ellipsis
+    // Rich-text token styles (e.g. `axisLabel.rich`). This convenience shim otherwise drops `rich`, so a
+    //   `{tag|…}` formatter (the bar-race flag emoji: `value + '{flag|' + emoji + '}'`) rendered its
+    //   markup LITERALLY. Reuse the fully-ported rich builder (`LabelStyle.setTextStyleCommon` →
+    //   getRichItemNames + setTokenTextStyle) on a throwaway probe and copy just `.rich` across, so the
+    //   `{flag|…}` tag parses into the `rich.flag` style. Gated on `rich` being present, so a plain
+    //   axisLabel keeps the untouched plain-text fast path (probe.rich stays nil → style.rich stays nil).
+    if textStyleModel.get("rich") != nil {
+        var probe = TextStyleProps()
+        labelStyle.setTextStyleCommon(&probe, textStyleModel)
+        style.rich = probe.rich
+    }
     return style
 }
 

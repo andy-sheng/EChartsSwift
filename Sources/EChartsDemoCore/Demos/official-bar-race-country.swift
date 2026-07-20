@@ -32,14 +32,20 @@
 //     `interface Flag`, the `: string[]` / `: Flag[]` / `: number` / `: any` annotations, `param.value as
 //     number[]`, the `myChart.setOption<echarts.EChartsOption>(...)` type arguments, and `export {};`.
 //     `myChart.setOption(option)` and the whole `setTimeout` / `updateYear` timeline are KEPT.
-//   - Native pane: the three JS closures cannot cross into a Swift option (see the PORT-NOTEs) — the bars
-//     lose their per-country flag colours, the y-axis labels lose their flag emoji (the `rich.flag` style is
-//     kept, but nothing emits a `{flag|…}` tag for it to hit), and the x-axis ticks lose their
-//     round-to-integer formatter. Everything else — dataset, encode, realtimeSort, valueAnimation label,
-//     graphic year, and the race itself — is ported.
+//   - Native pane: the three JS closures ARE now carried as native Swift closures (the framework supports
+//     them — see the closure definitions below): `series[0].itemStyle.color` (a `ColorCallback` painting
+//     each bar its country's flag colour), `yAxis.axisLabel.formatter` (an `AxisLabelCategoryFormatter`
+//     appending the country's flag emoji as a rich-text `{flag|…}` tag, hitting the `rich.flag` style),
+//     and `xAxis.axisLabel.formatter` (an `AxisLabelValueFormatter` rounding the income ticks). realtimeSort
+//     re-sorts the bars + y-axis labels each frame (BarView's `coordsys:aftercreate` sort hook). Everything
+//     else — dataset, encode, valueAnimation label, graphic year, and the race itself — is ported.
+//     KNOWN GAP: the rich `{flag|…}` emoji is over-measured by the native text layout (an emoji advance-width
+//     limitation in the shared text subsystem), so a long country name is clipped a few chars on the left
+//     where echarts.js fits it within `grid.left`. The flag + colour + re-sort are all correct.
 //   - `graphic.elements[0].style.text` is the YEAR AS A STRING natively (upstream hands zrender the raw
 //     number and lets it coerce; a Swift `TextStyleProps.text` is a String).
 import Foundation
+import EChartsKit
 
 // ---------------------------------------------------------------------------
 // The two upstream fetches, as repo assets.
@@ -95,6 +101,91 @@ private func barRaceCountryRows(year: Double) -> [[Any]] {
 /// `series[0].data`, which takes precedence over the dataset).
 private let barRaceCountryStartRows: [[Any]] = barRaceCountryRows(year: barRaceCountryStartYear)
 
+// ---------------------------------------------------------------------------
+// The three JS closures the earlier port dropped, now native (the framework supports them):
+//   - `series[0].itemStyle.color`  — a `(CallbackDataParams) -> ZRColor` callback (visual/style.swift
+//     resolves `itemStyle.color` as a `ColorCallback` when `util.isFunction`).
+//   - `yAxis.axisLabel.formatter`  — an `AxisLabelCategoryFormatter` (coord/axisHelper.swift invokes a
+//     function formatter on a category axis).
+//   - `xAxis.axisLabel.formatter`  — an `AxisLabelValueFormatter` (rounds the income ticks to integers).
+// ---------------------------------------------------------------------------
+
+/// `countryColors` — each country's flag colour, keyed by country name (dim 3). Ported verbatim from the
+/// demo's own `webOptionJS` map below; the `itemStyle.color` closure reads it.
+private let barRaceCountryColors: [String: String] = [
+    "Australia": "#00008b",
+    "Canada": "#f00",
+    "China": "#ffde00",
+    "Cuba": "#002a8f",
+    "Finland": "#003580",
+    "France": "#ed2939",
+    "Germany": "#000",
+    "Iceland": "#003897",
+    "India": "#f93",
+    "Japan": "#bc002d",
+    "North Korea": "#024fa2",
+    "South Korea": "#000",
+    "New Zealand": "#00247d",
+    "Norway": "#ef2b2d",
+    "Poland": "#dc143c",
+    "Russia": "#d52b1e",
+    "Turkey": "#e30a17",
+    "United Kingdom": "#00247d",
+    "United States": "#b22234"
+]
+
+/// `getFlag`'s lookup table — country name → flag emoji, parsed from the inlined
+/// `emoji-flags@1.3.0/data.json` (all 251 entries). Upstream: `flags.find(item => item.name === name).emoji`.
+private let barRaceCountryFlagByName: [String: String] = {
+    guard let data = try? Data(contentsOf: barRaceCountryFlagsURL),
+          let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [:] }
+    var out: [String: String] = [:]
+    for item in arr {
+        if let name = item["name"] as? String, let emoji = item["emoji"] as? String {
+            out[name] = emoji
+        }
+    }
+    return out
+}()
+
+/// upstream `getFlag(countryName)` — `if (!countryName) return ''; return (flags.find(...) || {}).emoji;`
+private func barRaceCountryGetFlag(_ countryName: String) -> String {
+    if countryName.isEmpty { return "" }
+    return barRaceCountryFlagByName[countryName] ?? ""
+}
+
+/// dim 3 (Country) off a `CallbackDataParams.value` — the raw dataset row `[Income, LifeExp, Pop,
+/// Country, Year]`. Unwraps any boxed `Any?` cell so it stringifies as `China`, not `Optional("China")`.
+private func barRaceCountryNameOf(_ value: Any) -> String {
+    guard let row = value as? [Any], row.count > 3 else { return "" }
+    let cell = row[3]
+    let m = Mirror(reflecting: cell)
+    if m.displayStyle == .optional {
+        return m.children.first.map { "\($0.value)" } ?? ""
+    }
+    return "\(cell)"
+}
+
+/// `series[0].itemStyle.color` — upstream `function (param) { return countryColors[param.value[3]] ||
+/// '#5470c6'; }`. Paints each bar its country's flag colour (dim 3 = Country).
+private let barRaceCountryColorCallback: (CallbackDataParams) -> EChartsKit.ZRColor = { param in
+    let country = barRaceCountryNameOf(param.value)
+    return .color(barRaceCountryColors[country] ?? "#5470c6")
+}
+
+/// `yAxis.axisLabel.formatter` — upstream `function (value) { return value + '{flag|' + getFlag(value)
+/// + '}'; }`. Appends the country's flag emoji as a rich-text `{flag|…}` tag (styled by `rich.flag`).
+private let barRaceCountryFlagFormatter: AxisLabelCategoryFormatter = { rawValue, _, _ in
+    let name = "\(rawValue)"
+    return name + "{flag|" + barRaceCountryGetFlag(name) + "}"
+}
+
+/// `xAxis.axisLabel.formatter` — upstream `function (n) { return Math.round(n) + ''; }`. The income ticks
+/// as rounded integers.
+private let barRaceCountryXAxisFormatter: AxisLabelValueFormatter = { n, _, _ in
+    return String(Int(n.rounded()))
+}
+
 /// The full option for one frame — the Swift twin of upstream's `option` object, whose `series[0].data`
 /// and `graphic.elements[0].style.text` each `updateYear(year)` rewrites before re-`setOption`ing it.
 /// `seriesData: nil` is the INITIAL option, which carries no series data at all (the `dataset` supplies it).
@@ -103,10 +194,12 @@ private func barRaceCountryOption(seriesData: [[Any]]?, year: Double) -> [String
         "realtimeSort": true,
         "seriesLayoutBy": "column",
         "type": "bar",
-        // PORT-NOTE: series[0].itemStyle.color omitted — JS closure `function (param) { return
-        // countryColors[param.value[3]] || '#5470c6'; }`, which painted each bar its country's flag colour
-        // (dim 3 = Country; e.g. China '#ffde00', United States '#b22234'). Native bars fall back to the
-        // palette colour.
+        // upstream: itemStyle.color = function (param) { return countryColors[param.value[3]] || '#5470c6'; }
+        //   Now native — the visual/style stage resolves an `itemStyle.color` that `util.isFunction` as a
+        //   `ColorCallback` and runs it per datum (dim 3 = Country; e.g. China '#ffde00', US '#b22234').
+        "itemStyle": [
+            "color": (barRaceCountryColorCallback as (CallbackDataParams) -> EChartsKit.ZRColor)
+        ] as [String: Any],
         "encode": [
             "x": barRaceCountryDimension,
             "y": 3.0
@@ -129,9 +222,11 @@ private func barRaceCountryOption(seriesData: [[Any]]?, year: Double) -> [String
             "right": 80.0
         ] as [String: Any],
         "xAxis": [
-            "max": "dataMax"
-            // PORT-NOTE: xAxis.axisLabel.formatter omitted — JS closure `function (n) { return
-            // Math.round(n) + ''; }`, i.e. the income ticks rendered as rounded integers.
+            "max": "dataMax",
+            // upstream: axisLabel.formatter = function (n) { return Math.round(n) + ''; }
+            "axisLabel": [
+                "formatter": (barRaceCountryXAxisFormatter as AxisLabelValueFormatter)
+            ] as [String: Any]
         ] as [String: Any],
         "dataset": [
             "source": barRaceCountryStartRows
@@ -143,10 +238,11 @@ private func barRaceCountryOption(seriesData: [[Any]]?, year: Double) -> [String
             "axisLabel": [
                 "show": true,
                 "fontSize": 14.0,
-                // PORT-NOTE: yAxis.axisLabel.formatter omitted — JS closure `function (value) { return
-                // value + '{flag|' + getFlag(value) + '}'; }`, which appended the country's flag emoji as a
-                // rich-text `{flag|…}` tag. Nothing emits that tag natively, so `rich.flag` below is never
-                // hit — it is kept anyway, so the option stays faithful.
+                // upstream: axisLabel.formatter = function (value) { return value + '{flag|' + getFlag(value) + '}'; }
+                //   Now native — coord/axisHelper.swift invokes a function formatter on a category axis,
+                //   so each label appends the country's flag emoji as a rich-text `{flag|…}` tag hitting
+                //   the `rich.flag` style below.
+                "formatter": (barRaceCountryFlagFormatter as AxisLabelCategoryFormatter),
                 "rich": [
                     "flag": [
                         "fontSize": 25.0,
