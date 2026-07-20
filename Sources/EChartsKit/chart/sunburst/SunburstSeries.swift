@@ -29,7 +29,7 @@ import ZRenderKit
 //       `tree.getNodeByDataIndex`, `tree.root`, `node.depth`, `node.contains(...)`.
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
 //       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
-//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
+//          `getDataParams` override below.
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -152,15 +152,32 @@ open class SunburstSeriesModel: SeriesModel {
     /*
      * @override
      */
-    // upstream: getDataParams(dataIndex): SunburstDataParams { ... params.treePathInfo = wrapTreePathInfo(node, this); ... }
-    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
-    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
-    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
-    //   `treePathInfo` slot. Wire the body below as soon as that field lands:
+    // getDataParams(dataIndex) {
     //     const params = super.getDataParams.apply(this, arguments) as SunburstDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-    //     params.treePathInfo = wrapTreePathInfo(node, this);
+    //     params.treePathInfo = wrapTreePathInfo<SunburstSeriesNodeItemOption['value']>(node, this);
     //     return params;
+    // }
+    open override func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        // const params = super.getDataParams.apply(this, arguments) as SunburstDataParams;
+        var params = super.getDataParams(dataIndex, dataType)
+
+        // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
+        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        //   With no node there is no path to wrap, so the base params are returned untouched.
+        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
+            return params
+        }
+        // params.treePathInfo = wrapTreePathInfo(node, this);
+        //   PORT-NOTE: upstream's `<SunburstSeriesNodeItemOption['value']>` only narrows the element
+        //   `value` type; the Swift `TreePathInfoItem.value` is `Any?`, so the generic arg has no analogue.
+        params.treePathInfo = treeHelper.wrapTreePathInfo(node, self)
+
+        return params
+    }
 
     // getLevelModel(node: TreeNode) { return this._levelModels && this._levelModels[node.depth]; }
     open func getLevelModel(_ node: TreeNode) -> Model? {

@@ -10,12 +10,10 @@
 //   - webOptionJS is the example verbatim, minus the TypeScript annotation on the formatter's
 //     parameter (`function (param: any)` → `function (param)`; a classic <script> cannot parse it)
 //     and the trailing `export {};` (a bare export is a SyntaxError that kills the page).
-//   - `series[0].label.formatter` (a JS closure) is dropped from the Swift `option`, so the native
-//     pane renders the sectors with their DEFAULT label text instead of 'radial'/'tangential'/'0'.
-//     The nodes have no `name`, so those default labels come out empty: the native pane shows the
-//     rings and their rotations but no words, where the web pane shows the words. That gap is the
-//     point of the side-by-side — see the PORT-NOTE at the label block for WHY it cannot be carried
-//     (it is NOT "Swift dicts can't hold closures" — they can, and the framework casts for one).
+//   - `series[0].label.formatter` (a JS closure) is carried as a Swift
+//     `(CallbackDataParams) -> String` closure in the `option` dict — the framework casts for exactly
+//     that signature (`DataFormatMixin.getFormattedLabel`) and `params.treePathInfo` is populated by
+//     `SunburstSeriesModel.getDataParams`, so both panes write the same 'radial'/'tangential'/'0'.
 //   - `sort: undefined` has no Swift spelling; the option below passes `NSNull()`, which upstream's
 //     `sort != null` guard (sunburstLayout) treats identically — no sorting — while still shadowing
 //     the `sort: 'desc'` default during defaults-merge.
@@ -23,6 +21,7 @@
 //     literal transcribed 1:1.
 
 import Foundation
+import EChartsKit
 
 // The example's tree: values only, no names. Nodes at depth 2 of the last three roots carry no
 // `value` of their own (they inherit the sum of their children) — kept exactly as upstream has it.
@@ -234,31 +233,31 @@ option = {
                     "label": [
                         "color": "#000",
                         "textBorderColor": "#fff",
-                        "textBorderWidth": 2.0
-                        // PORT-NOTE: label.formatter omitted — the JS closure read
-                        // `param.treePathInfo.length` (the node's depth) and returned the ring's own
-                        // rotate mode as its text: 'radial' at depth 2, 'tangential' at depth 3, '0'
-                        // at depth 4, '' at the root.
-                        //
-                        // The blocker is NOT the closure itself: a Swift `(CallbackDataParams) ->
-                        // String` in this dict WOULD be honoured — `DataFormatMixin.getFormattedLabel`
-                        // casts to exactly that signature (model/mixin/dataFormat.swift), and
-                        // SunburstPiece routes its label text through it. The blocker is the closure's
-                        // ARGUMENT: `treePathInfo` does not exist on the ported `CallbackDataParams`
-                        // (util/types.swift), because `SunburstSeries.getDataParams` — the override
-                        // that would attach it — is still deferred, blocked on `CallbackDataParams`
-                        // gaining the `treePathInfo` slot (SYMBOLS row 18); `treeHelper.wrapTreePathInfo`
-                        // is already fully ported. With no depth on the params
-                        // there is nothing for the closure to branch on, so it is dropped: the native
-                        // pane falls back to the default label (the node `name`, which this data does
-                        // not set) and the sectors come out unlabelled.
-                        //
-                        // Deliberately NOT worked around by hanging a literal `formatter: "radial"` off
-                        // each `levels[i].label` (which would resolve — the level model is the item
-                        // model's parentModel, which is exactly how `rotate`/`itemStyle.color` below
-                        // reach the sectors). Faking the text would hide the missing `treePathInfo`
-                        // behind a label the port never actually computed. When `getDataParams` lands,
-                        // this key becomes a one-line Swift closure and the panes converge.
+                        "textBorderWidth": 2.0,
+                        // formatter: function (param) {
+                        //   var depth = param.treePathInfo.length;
+                        //   if (depth === 2) { return 'radial'; }
+                        //   else if (depth === 3) { return 'tangential'; }
+                        //   else if (depth === 4) { return '0'; }
+                        //   return '';
+                        // }
+                        // PORT-NOTE: `params.treePathInfo` is now populated by
+                        //   `SunburstSeriesModel.getDataParams` (chart/sunburst/SunburstSeries.swift), which
+                        //   calls `treeHelper.wrapTreePathInfo`. A `(CallbackDataParams) -> String` closure in
+                        //   this dict is honoured verbatim: `DataFormatMixin.getFormattedLabel` casts to
+                        //   exactly that signature (model/mixin/dataFormat.swift) and SunburstPiece routes its
+                        //   label text through it. `treePathInfo` is Optional here (it stays `nil` for every
+                        //   non-tree series), so the count reads through `?? 0` — which lands in the `default`
+                        //   branch, i.e. upstream's trailing `return ''`.
+                        "formatter": { (param: CallbackDataParams) -> String in
+                            let depth = param.treePathInfo?.count ?? 0
+                            switch depth {
+                            case 2: return "radial"
+                            case 3: return "tangential"
+                            case 4: return "0"
+                            default: return ""
+                            }
+                        } as (CallbackDataParams) -> String
                     ] as [String: Any],
                     "levels": sunburstLabelRotateLevels
                 ] as [String: Any]

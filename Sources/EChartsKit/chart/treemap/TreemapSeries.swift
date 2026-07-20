@@ -30,7 +30,7 @@ import ZRenderKit
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import {wrapTreePathInfo} from '../helper/treeHelper';
 //       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
-//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
+//          `getDataParams` override below.
 //   import { ... } from '../../util/types';                          -> type-only; the dynamic option tree is
 //       the `[String: Any]` bag per CONVENTIONS §2.
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
@@ -234,10 +234,26 @@ open class TreemapSeriesModel: SeriesModel {
     //     params.treePathInfo = params.treeAncestors;
     //     return params;
     // }
-    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
-    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
-    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
-    //   `treeAncestors` / `treePathInfo` slots. Wire the faithful body preserved above as soon as they land.
+    open override func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        // const params = super.getDataParams.apply(this, arguments) as TreemapSeriesCallbackDataParams;
+        var params = super.getDataParams(dataIndex, dataType)
+
+        // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
+        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        //   With no node there is no path to wrap, so the base params are returned untouched.
+        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
+            return params
+        }
+        // params.treeAncestors = wrapTreePathInfo(node, this);
+        params.treeAncestors = treeHelper.wrapTreePathInfo(node, self)
+        // compatitable the previous code.
+        params.treePathInfo = params.treeAncestors
+
+        return params
+    }
 
     /**
      * @public

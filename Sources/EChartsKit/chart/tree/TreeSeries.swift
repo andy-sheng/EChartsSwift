@@ -36,10 +36,10 @@ import ZRenderKit
 //   import { LayoutRect } from '../../util/layout';                 -> `LayoutRect` (== BoundingRect).
 //   import Model from '../../model/Model';                          -> Model (model/Model.swift).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
-//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); tree's use is deferred with getDataParams.
+//       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift, ported); consumed by `formatTooltip` below.
 //   import { wrapTreePathInfo } from '../helper/treeHelper';
 //       -> treeHelper.wrapTreePathInfo (chart/helper/treeHelper.swift, fully ported); consumed by the
-//          `getDataParams` override below, still blocked on util/types.CallbackDataParams.treeFields.
+//          `getDataParams` override below.
 //   import tokens from '../../visual/tokens';
 //       -> visual/tokens.ts IS ported (visual/tokens.swift); the single consumed value `tokens.color.borderTint`
 //          (= color.neutral20 = '#cfd2d7') is inlined verbatim in `defaultOption` below.
@@ -247,16 +247,33 @@ open class TreeSeriesModel: SeriesModel {
     }
 
     // Add tree path to tooltip param
-    // getDataParams(dataIndex) { const params = super.getDataParams(...); params.treeAncestors = wrapTreePathInfo(node, this); params.collapsed = !node.isExpand; return params; }
-    // PORT-TODO (blocked on util/types.CallbackDataParams.treeFields): `treeHelper.wrapTreePathInfo` IS
-    //   fully ported (chart/helper/treeHelper.swift) and `super.getDataParams` IS available
-    //   (model/Series.swift). The only remaining blocker is `CallbackDataParams` gaining the optional
-    //   `treeAncestors` / `collapsed` slots. Wire the body below as soon as those fields land:
+    // getDataParams(dataIndex) {
     //     const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
     //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
     //     params.treeAncestors = wrapTreePathInfo(node, this);
     //     params.collapsed = !node.isExpand;
     //     return params;
+    // }
+    open override func getDataParams(
+        _ dataIndex: Double,
+        _ dataType: SeriesDataType? = nil
+    ) -> CallbackDataParams {
+        // const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
+        var params = super.getDataParams(dataIndex, dataType)
+
+        // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
+        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        //   With no node there is no path to wrap, so the base params are returned untouched.
+        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
+            return params
+        }
+        // params.treeAncestors = wrapTreePathInfo(node, this);
+        params.treeAncestors = treeHelper.wrapTreePathInfo(node, self)
+        // params.collapsed = !node.isExpand;
+        params.collapsed = !node.isExpand
+
+        return params
+    }
 
     // __ownRoamView() { return this.coordinateSystem; }
     //   Part of the `RoamHostModel` interface. PORT-NOTE (deferred): requires the View coord-sys + roam
