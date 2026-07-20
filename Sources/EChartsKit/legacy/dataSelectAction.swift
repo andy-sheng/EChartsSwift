@@ -49,16 +49,13 @@ public enum dataSelectAction {
 
     // export function createLegacyDataSelectAction(seriesType, ecRegisterAction: typeof registerAction)
     //   `ecRegisterAction` is the two-arg `registerAction(type, handler)` arm (the only one used here).
-    // PORT-NOTE (provider ported, registration outstanding): upstream calls this from the map and pie
-    //   installs (`createLegacyDataSelectAction('map'/'pie', registers.registerAction)` —
-    //   chart/map/install.ts:44, chart/pie/install.ts:33). In this port:
-    //     - mapInstall.swift exists but its `install()` is commented-out boilerplate by this repo's
-    //       convention (registration is owned by the Orchestrate/Integrate driver), so the call site is
-    //       recorded there as a driver task, not a missing port.
-    //     - there is NO pieInstall.swift at all yet — that file is an outright gap.
-    //   Consequence TODAY: this function has zero callers, so the pre-v5 select ACTION names
-    //   (pieSelect/pieUnSelect/pieToggleSelect/mapSelect/…) are still unregistered. The provider below is
-    //   complete; do not re-defer it, and do not mark this row fully landed until a caller exists.
+    // PORT-NOTE (registration site): upstream calls this from the map and pie installs
+    //   (`createLegacyDataSelectAction('map'/'pie', registers.registerAction)` — chart/map/install.ts:37,
+    //   chart/pie/install.ts:33). In this port the `*Install.swift` files are commented-only diffable
+    //   surface; the ACTUAL install() bodies are inlined in `ECharts.installOnce()` (the geo/heatmap
+    //   convention), so both calls live there — pie next to `ComponentModel.registerClass(PieSeriesModel)`
+    //   and map next to `ComponentModel.registerClass(MapSeriesModel)`. `ecRegisterAction` is passed as a
+    //   closure forwarding to the free two-arg `registerAction` (overload disambiguation).
     public static func createLegacyDataSelectAction(
         _ seriesType: String,
         _ ecRegisterAction: (String, @escaping ActionHandler) -> Void

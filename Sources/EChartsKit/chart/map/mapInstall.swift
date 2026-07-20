@@ -61,10 +61,11 @@ import ZRenderKit
 //         );
 //
 //         createLegacyDataSelectAction('map', registers.registerAction);
-//             // provider PORTED (dataSelectAction.createLegacyDataSelectAction); registration still
-//             // owned by the driver. NOTE: the equivalent pie-side call (upstream chart/pie/install.ts:33)
-//             // has NO home in this port at all — there is no pieInstall.swift yet. Until one of these
-//             // two call sites lands, the pre-v5 select action names are unregistered.
+//             // PORTED + WIRED: provider is dataSelectAction.createLegacyDataSelectAction
+//             // (legacy/dataSelectAction.swift); the registration call itself lives in
+//             // `ECharts.installOnce()` beside `ComponentModel.registerClass(MapSeriesModel.self)`,
+//             // per this repo's convention that install() bodies are inlined there. The pie-side call
+//             // (upstream chart/pie/install.ts:33) is wired in the same place, next to PieSeriesModel.
 //     }
 //
 // INTEGRATION SURFACE (for the driver, once MapView + mapSymbolLayout land):
@@ -75,4 +76,4 @@ import ZRenderKit
 //   - registerProcessor(PRIORITY.PROCESSOR.STATISTIC):
 //                          `mapDataStatisticStageHandler` (chart/map/mapDataStatistic.swift — ported here)
 //   - registerAction:      `dataSelectAction.createLegacyDataSelectAction("map", ...)`
-//                          (legacy/dataSelectAction.swift — PORTED; driver just needs to call it)
+//                          (legacy/dataSelectAction.swift — PORTED and CALLED from ECharts.installOnce())

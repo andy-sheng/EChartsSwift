@@ -715,6 +715,12 @@ public final class ECharts: EChartsType {
         // Trigger the lazy Swift-global that runs `registerLayOutOnCoordSysUsage` for pie's box coord-sys-usage
         //   (registerLayOutOnCoordSysUsage asserts uniqueness — reference EXACTLY once, here in installOnce).
         _ = pieLayOutOnCoordSysUsageRegistered
+        // createLegacyDataSelectAction(SERIES_TYPE_PIE, registers.registerAction);   (pie/install.ts:33)
+        //   Registers the pre-v5 pieToggleSelect/pieSelect/pieUnSelect action names, each forwarding to the
+        //   modern toggleSelect/select/unselect with the matched `seriesIndex` list.
+        dataSelectAction.createLegacyDataSelectAction(SERIES_TYPE_PIE) { type, handler in
+            registerAction(type, handler)
+        }
 
         // -- chart/funnel/install.ts (minimal) -- registerSeriesModel(FunnelSeries) + registerChartView(FunnelView) +
         //   registerLayout(funnelLayoutStageHandler). Funnel has NO cartesian coord (coordinateSystemUsage:"box",
@@ -936,10 +942,14 @@ public final class ECharts: EChartsType {
         //   The STATISTIC processor (mapDataStatistic) runs in the data-processor stage (stage 4) to merge
         //   multi-series region values + stamp each series' `originalData`/`seriesGroup`; the mapSymbolLayout
         //   stage (run in render) places the per-region legend symbols. MapView draws one CompoundPath per
-        //   region, filled by the datum value (visualMap/itemStyle). createLegacyDataSelectAction('map', ...) is
-        //   DEFERRED (legacy/dataSelectAction.ts not ported); roam/select actions DEFERRED. mapInstall.swift is
+        //   region, filled by the datum value (visualMap/itemStyle). roam actions DEFERRED. mapInstall.swift is
         //   commented-only (diffable surface); actual wiring lives here per the geo/heatmap install convention.
         ComponentModel.registerClass(MapSeriesModel.self)                          // registerSeriesModel(MapSeries)
+        // createLegacyDataSelectAction('map', registers.registerAction);          (map/install.ts:37)
+        //   Registers the pre-v5 mapToggleSelect/mapSelect/mapUnSelect action names (legacy/dataSelectAction.swift).
+        dataSelectAction.createLegacyDataSelectAction("map") { type, handler in
+            registerAction(type, handler)
+        }
 
         // -- chart/custom/install.ts (minimal) -- registerSeriesModel(CustomSeries) +
         //   registerChartView(CustomChartView) (view keyed by subType 'custom' below). The `renderItem`
