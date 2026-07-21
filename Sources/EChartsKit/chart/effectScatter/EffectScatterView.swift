@@ -9,26 +9,31 @@
 // PORT SCOPE (L2): now routed through the shared SymbolDraw with the ported `EffectSymbol` ctor
 //   (chart/helper/EffectSymbolElement.swift) — the base symbol goes through Symbol (colour / label /
 //   emphasis hover-scale / symbolRotate / offset / entrance scale-in) and the ripple rings are the
-//   faithful EffectSymbol.startEffectAnimation. DEVIATION (identical to ScatterView): `pointsLayout` is
-//   inlined per coord system as `getSymbolPoint`. Ported: clipShape (createCoordSysClipAreaSimply, bridged
+//   faithful EffectSymbol.startEffectAnimation. DEVIATION (identical to ScatterView): the `pointsLayout`
+//   DRAWING placement is inlined per coord system as `getSymbolPoint` (the stage itself is still run by the
+//   driver and by updateTransform, for the item layout the brush selector reads). Ported: clipShape
+//   (createCoordSysClipAreaSimply, bridged
 //   to SymbolClipShape) / updateTransform (roam re-layout) / _updateGroupTransform (roam group matrix) /
 //   remove. DEFERRED: matrix coord system (not ported) hits the else-branch early return.
 
 import Foundation
 import ZRenderKit
 
-// upstream imports (all deferred except createSymbol / ChartView / SeriesData / Cartesian2D / Polar):
+// upstream imports (all ported except the matrix coord system, which only the unused
+//   `_updateGroupTransform` would read — dead upstream too):
 //   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw (chart/helper/SymbolDraw.swift).
 //   import EffectSymbol from '../helper/EffectSymbol';             -> EffectSymbol (chart/helper/EffectSymbolElement.swift).
-//   import * as matrix from 'zrender/src/core/matrix';            -> only used by updateTransform (roam, deferred).
-//   import pointsLayout from '../../layout/points';                -> PORT-NOTE (deferred): requires layout/points (not ported; the per-datum placement is inlined below).
+//   import * as matrix from 'zrender/src/core/matrix';            -> zrender matrix (used by _updateGroupTransform).
+//   import pointsLayout from '../../layout/points';                -> `pointsLayout` (layout/points.swift, ported). The stage is
+//       run by the driver (its setItemLayout feeds the brush selector) and re-run by updateTransform below; this view's
+//       per-datum DRAWING placement is inlined as getSymbolPoint (same dims, incl. the stackResultDimension substitution).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import { StageHandlerProgressExecutor } from '../../util/types';  -> type-only.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';
-//       -> PORT-NOTE: createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift);
-//          this static view deliberately omits the clip shape (deviation, matches ScatterView).
+//       -> createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift) and IS
+//          used: `createSymbolDrawOpt` below bridges its area into SymbolClipShape via EffectScatterClipShape.
 //   import { SymbolDrawUpdateOpt } from '../helper/baseDraw';      -> SymbolDrawUpdateOpt (chart/helper/SymbolDraw.swift).
 
 // upstream: class EffectScatterView extends ChartView { static readonly type = 'effectScatter'; type = ...; ... }
@@ -72,17 +77,24 @@ open class EffectScatterView: ChartView {
 
         // Per-datum point placement. Upstream `pointsLayout` (layout/points.ts) is generic over the coord
         //   system: it maps `coordSys.dimensions` to data dims and calls `coordSys.dataToPoint(point)`.
-        //   The static render below inlines that for the two coord systems wired so far — cartesian2d and
-        //   polar. Each branch returns a `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
-        //   PORT-NOTE (deferred): requires geo/singleAxis/calendar/matrix coord systems (not ported); effectScatter on those is deferred.
+        //   The render below inlines that for every coord system wired here — cartesian2d, polar, geo,
+        //   calendar and singleAxis (the upstream `dimLen === 1` branch). Each branch returns a
+        //   `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
+        //   PORT-NOTE (deferred): matrix coord system only (not ported) — it falls to the else early-return.
         let pointAt: (Int) -> [Double]
         if let coord = seriesModel.coordinateSystem as? Cartesian2D {
             let baseAxis = coord.getBaseAxis()
             let valueAxis = coord.getOtherAxis(baseAxis)
             // PORT-NOTE: `mapDimension` is force-unwrapped — a series' base/value dims are always present.
             //   Same unmarked idiom as LineView/ScatterView (their identical `mapDimension(...)!` derivation).
-            let baseDimIdx = data.getDimensionIndex(data.mapDimension(baseAxis.dim)!)
-            let valueDimIdx = data.getDimensionIndex(data.mapDimension(valueAxis.dim)!)
+            //   Stacked series: `pointsLayout` substitutes a stacked dim with the `stackResultDimension`
+            //   (layout/points.swift, the two `isDimensionStacked` guards) BEFORE `dataToPoint`. The
+            //   inlined placement does the same via `effectScatterResolveStackedDim`, so the drawn ripple
+            //   and the stage's `setItemLayout` (the brush hit region) land on the same pixel.
+            let baseDim = effectScatterResolveStackedDim(data, data.mapDimension(baseAxis.dim)!)
+            let valueDim = effectScatterResolveStackedDim(data, data.mapDimension(valueAxis.dim)!)
+            let baseDimIdx = data.getDimensionIndex(baseDim)
+            let valueDimIdx = data.getDimensionIndex(valueDim)
             let isValueAxisH = valueAxis.isHorizontal()
             pointAt = { i in
                 let baseVal = effectScatterToNumber(store.get(baseDimIdx, i))
@@ -94,8 +106,10 @@ open class EffectScatterView: ChartView {
             // Polar dims are ["radius", "angle"] (polarDimensions); `dataToPoint([radiusVal, angleVal])`
             //   dispatches radius→dataToRadius and angle→dataToAngle in that order. Map the data dims by
             //   the coord dim name (mirrors pointsLayout's `map(coordSys.dimensions, data.mapDimension)`).
-            let radiusDimIdx = data.getDimensionIndex(data.mapDimension("radius")!)
-            let angleDimIdx = data.getDimensionIndex(data.mapDimension("angle")!)
+            let radiusDimIdx = data.getDimensionIndex(
+                effectScatterResolveStackedDim(data, data.mapDimension("radius")!))
+            let angleDimIdx = data.getDimensionIndex(
+                effectScatterResolveStackedDim(data, data.mapDimension("angle")!))
             pointAt = { i in
                 let radiusVal = effectScatterToNumber(store.get(radiusDimIdx, i))
                 let angleVal = effectScatterToNumber(store.get(angleDimIdx, i))
@@ -126,7 +140,8 @@ open class EffectScatterView: ChartView {
             //   `coordSys.dimensions` is ["single"], so exactly ONE store dim (the value on the single axis)
             //   is mapped and `coordSys.dataToPoint(x)` places it on the axis, centering the cross span.
             let singleDim = single.dimensions.first ?? "single"
-            let dimIdx = data.mapDimension(singleDim).map { data.getDimensionIndex($0) } ?? 0
+            let dimIdx = data.mapDimension(singleDim)
+                .map { data.getDimensionIndex(effectScatterResolveStackedDim(data, $0)) } ?? 0
             pointAt = { i in
                 let x = effectScatterToNumber(store.get(dimIdx, i))
                 return single.dataToPoint(x)
@@ -157,7 +172,10 @@ open class EffectScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-NOTE (deferred): pointsLayout stage (layout/points.ts) is inlined as getSymbolPoint above.
+        // PORT-NOTE (deviation, not a gap): the pointsLayout stage (layout/points.swift) IS registered and run
+        //   by the driver (its `setItemLayout` feeds the brush selector); this view inlines the equivalent
+        //   `dataToPoint` math as getSymbolPoint above — same mapped dims AND the same stackResultDimension
+        //   substitution — instead of reading it back (same as ScatterView).
         self._data = data
     }
 
@@ -168,15 +186,25 @@ open class EffectScatterView: ChartView {
     //     if (res.progress) { res.progress({ start: 0, end: data.count(), count: data.count() }, data); }
     //     this._symbolDraw.updateLayout(createSymbolDrawOpt(seriesModel));
     // }
-    //   Called on roam pan/zoom to reposition ripples without a full render. Upstream re-runs pointsLayout
-    //   to recompute each datum's stored point; the port computes points on the fly via the getSymbolPoint
-    //   closure SymbolDraw captured at updateData time — that closure reads the live coordSys (a reference
-    //   type whose roam transform is updated in place), so `updateLayout` re-reads the roamed positions.
+    //   Called on roam pan/zoom to reposition ripples without a full render. DRAWING is already correct
+    //   without the re-layout (the getSymbolPoint closure SymbolDraw captured at updateData time reads the
+    //   live coordSys, a reference type whose roam transform is updated in place), but the pointsLayout
+    //   re-run is still REQUIRED for faithfulness: it refreshes `data.setItemLayout(i, point)`, which
+    //   `EffectScatterSeriesModel#brushSelector` reads — without it a brush after a roam would select at
+    //   the PRE-roam pixel positions.
     open override func updateTransform(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) -> Bool? {
-        _ = seriesModel.getData()
+        let data = seriesModel.getData()
         self.group.dirty()
+        // const res = pointsLayout('').reset(seriesModel, ecModel, api) as StageHandlerProgressExecutor;
+        // if (res.progress) { res.progress({start: 0, end: data.count(), count: data.count()}, data); }
+        if let res = pointsLayout("").reset?(seriesModel, ecModel, api, payload)
+            as? StageHandlerProgressExecutor,
+           let progress = res.progress {
+            let count = Double(data.count())
+            progress(StageHandlerProgressParams(start: 0, end: count, count: count), data)
+        }
         self._symbolDraw?.updateLayout(createSymbolDrawOpt(seriesModel))
         // upstream returns void (no `{update: true}`); base modeled as `Bool?` → nil.
         return nil
@@ -227,6 +255,19 @@ private struct EffectScatterClipShape: SymbolClipShape {
 }
 
 // export default EffectScatterView;  -> `open class EffectScatterView` above.
+
+// Mirrors the stacked-dimension substitution `pointsLayout` performs before `dataToPoint`
+//   (layout/points.swift: `if (isDimensionStacked(data, dims[n])) { dims[n] = stackResultDim; }`).
+//   The inlined per-datum placement in `render` must apply it too, otherwise a STACKED effectScatter
+//   would draw its ripples at the raw (unstacked) value while the `pointsLayout("effectScatter")` stage
+//   writes the stacked pixel into `setItemLayout` — i.e. the brush hit region would miss the symbol.
+private func effectScatterResolveStackedDim(_ data: SeriesData, _ dim: String) -> String {
+    if isDimensionStacked(data, dim),
+       let stackResultDim = data.getCalculationInfo("stackResultDimension") as? String {
+        return stackResultDim
+    }
+    return dim
+}
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric series data is stored as `Double`. Mirrors the
 //   `scatterToNumber` coercion in chart/scatter/ScatterView.swift.

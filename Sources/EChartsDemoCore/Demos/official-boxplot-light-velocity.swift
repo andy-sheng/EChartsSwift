@@ -11,20 +11,16 @@
 // example is static (no setInterval / re-setOption). `itemNameFormatter: 'expr {value}'` is a template
 // STRING upstream, not a closure, so nothing was dropped.
 //
-// nativeSupported: FALSE — but the gap is NARROWER than it looks, so don't let this note mislead the next
-// reader. EChartsKit already has BOTH halves this example is usually assumed to be blocked on:
+// nativeSupported: TRUE — every piece this example needs is ported and wired:
 //   - the `boxplot` SERIES: `ComponentModel.registerClass(BoxplotSeriesModel.self)` + `BoxplotView` in the
 //     view factory + `boxplotLayout(ecModel)` + `registerBoxplotAxisHandlers` are all wired in
 //     `ECharts.installOnce()`.
 //   - the `dataset` TRANSFORM PIPELINE: `sourceManager.swift` reads `fromDatasetIndex` /
-//     `fromTransformResult`, `data/helper/transform.swift` is the `applyDataTransform` engine, and
-//     `transformInstall` registers the `filter` + `sort` built-ins against it.
-// The ONE missing piece is the `boxplot` transform TYPE itself: upstream `chart/boxplot/boxplotTransform.ts`
-// is not ported, so nothing ever calls `registerExternalTransform` for it and `applyDataTransform` throws
-// `Can not find transform on type "boxplot".` on `dataset[1]` — hence the native pane is off. The math it
-// wraps (`prepareBoxplotData.swift`) IS already ported, so the remaining work is the thin
-// `ExternalDataTransform` wrapper + one registration call. The `option` below is a 1:1 Swift transcription
-// of the official option, so this demo lights up for free the moment that wrapper lands.
+//     `fromTransformResult`, `data/helper/transform.swift` is the `applyDataTransform` engine.
+//   - the `boxplot` transform TYPE itself: `chart/boxplot/boxplotTransform.swift` (the thin
+//     `ExternalDataTransform` wrapper around the ported `prepareBoxplotData.swift` math), registered by
+//     `registerExternalTransform(boxplotTransform)` in `component/transform/transformInstall.swift:69`.
+// The `option` below is a 1:1 Swift transcription of the official option.
 
 // The raw sample matrix (upstream `dataset[0].source`): 5 experiment runs, 20 measurements each.
 // Hoisted out of the option literal with an explicit type — a 100-element untyped nested literal is

@@ -1,6 +1,8 @@
 // boxplot-basic — a single cartesian boxplot series. Renders on BOTH panes: native (EChartsKit's
 // BoxplotView draws a BoxPath box+median+whiskers per datum) and echarts.js. Data per item =
-// [min, Q1, median, Q3, max] (pre-computed; the boxplotTransform dataset transform is deferred).
+// [min, Q1, median, Q3, max] (pre-computed here; the `boxplot` dataset transform IS ported —
+// chart/boxplot/boxplotTransform.swift, registered in component/transform/transformInstall.swift:69 —
+// see the official-boxplot-* demos for the transform-driven form).
 extension EChartsDemoRegistry {
     static let demo_boxplot_basic = EChartsDemo(
         name: "boxplot-basic", category: "Boxplot",

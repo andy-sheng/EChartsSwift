@@ -24,20 +24,16 @@ import ZRenderKit
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> the registration surface is
 //       owned by the Orchestrate/Integrate driver (core/ECharts.swift), not this render-layer file.
-//   import EffectScatterView from './EffectScatterView';                      -> sibling EffectScatterView.swift (ported, STATIC).
+//   import EffectScatterView from './EffectScatterView';                      -> sibling EffectScatterView.swift (ported).
 //   import EffectScatterSeriesModel from './EffectScatterSeries';             -> sibling EffectScatterSeries.swift (ported).
-//   import layoutPoints from '../../layout/points';
-//       -> PORT-NOTE (deferred): requires layout/points.ts (not ported). The static EffectScatterView inlines per-datum
-//          `coord.dataToPoint` placement (same deviation as ScatterView), so the `registerLayout(layoutPoints)`
-//          stage is not wired. Register once layout/points.swift lands.
+//   import layoutPoints from '../../layout/points';                           -> `pointsLayout` (layout/points.swift, ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
 // PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file (same convention as chart/boxplot/boxplotInstall.swift).
-//   The integration points are:
-//     - ComponentModel.registerClass(EffectScatterSeriesModel.self)   // registerSeriesModel(EffectScatterSeriesModel)
-//     - _chartViewFactories["effectScatter"] = { EffectScatterView() } // registerChartView(EffectScatterView)
-//     - registerLayout(layoutPoints('effectScatter'))                  // PORT-NOTE (deferred): requires layout/points.ts (not ported).
+//   All three registrations are performed there — see the `-- chart/effectScatter/install.ts --` block in
+//   `installOnce()`, the `_chartViewFactories` stored dictionary literal, and the LAYOUT section of
+//   `render()`; the mapping is tabulated under INTEGRATION SURFACE below.
 //   Preserved as commented source for the diffable surface:
 //
 //     export function install(registers) {
@@ -45,3 +41,26 @@ import ZRenderKit
 //         registers.registerSeriesModel(EffectScatterSeriesModel);
 //         registers.registerLayout(layoutPoints('effectScatter'));
 //     }
+//
+// INTEGRATION SURFACE (all PORTED and WIRED in core/ECharts.swift — per-registrar locations below):
+//   - registerSeriesModel: `ComponentModel.registerClass(EffectScatterSeriesModel.self)` inside
+//                          `installOnce()`         (chart/effectScatter/EffectScatterSeries.swift)
+//   - registerChartView:   `"effectScatter": { EffectScatterView() },` — an entry in the
+//                          `_chartViewFactories` stored property's dictionary literal, NOT in
+//                          `installOnce()`         (chart/effectScatter/EffectScatterView.swift).
+//                          The view delegates to the shared `SymbolDraw(EffectSymbol)` — base symbol +
+//                          animated ripple rings (chart/helper/EffectSymbolElement.swift).
+//   - registerLayout(layoutPoints('effectScatter')):
+//                          `runSeriesStageHandler(pointsLayout("effectScatter"), ecModel, api)` in the
+//                          LAYOUT section of `render()` (layout/points.swift), alongside the sibling
+//                          `pointsLayout("scatter")` / `pointsLayout("line", true)` stages. It writes each
+//                          datum's pixel position with `data.setItemLayout(i, point)`, which
+//                          `EffectScatterSeriesModel#brushSelector` reads back via
+//                          `data.getItemLayout(dataIndex)` — without this stage a brush over an
+//                          effectScatter selects nothing. `EffectScatterView.updateTransform` re-runs the
+//                          same stage on roam (as upstream does), so the brush region stays in sync.
+//                          PORT-NOTE (deviation, identical to ScatterView): EffectScatterView does NOT read
+//                          that item layout for drawing; it inlines the equivalent `coordSys.dataToPoint`
+//                          math per datum (`getSymbolPoint`, including the stage's stackResultDimension
+//                          substitution for stacked series) so roam repositioning can run without a full
+//                          re-layout. The stage output is therefore consumed only by the brush selector.
