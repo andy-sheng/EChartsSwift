@@ -484,14 +484,13 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
 
     handler.seriesType = seriesType
 
-    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. The ported `createRenderPlanner()` yields a
-    //   `(SeriesModel) -> StageHandlerPlanReturn?` (nil == no reset), but `StageHandler.plan`
-    //   (`StageHandlerPlan`) has a NON-optional `StageHandlerPlanReturn` return in this port, so
-    //   "no reset" cannot be represented without either forcing `.reset` (spurious re-plans) or
-    //   relaxing the `StageHandlerPlan` typealias to an optional return. Left unwired until that
-    //   typealias is relaxed; for the non-progressive bar path the `reset` stage still recomputes
-    //   layout each pass, so basic rendering is unaffected. See util/types.swift `StageHandlerPlan`.
-    _ = createRenderPlanner()
+    // PORT-TODO: upstream `plan: createRenderPlanner()`. `StageHandlerPlan` now returns
+    //   `StageHandlerPlanReturn?` (util/types.swift), so the planner's nil-for-no-reset answer IS
+    //   representable — the old "non-optional return" blocker no longer exists. What remains is the arity
+    //   mismatch: wire it with the adapter used in chart/lines/linesLayout.swift:48-51
+    //   (`let planner = createRenderPlanner(); handler.plan = { sm, _, _, _ in planner(sm) }`), created
+    //   ONCE so its makeInner large/progressive state persists across calls. Left unwired for now; the
+    //   `reset` stage still recomputes layout each pass, so the non-progressive bar path is unaffected.
     handler.plan = nil
 
     handler.reset = { seriesModel, _, _, _ -> Any? in

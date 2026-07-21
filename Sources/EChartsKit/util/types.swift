@@ -713,8 +713,11 @@ public struct StageHandlerProgressExecutor {
 }
 public typealias StageHandlerPlanReturn = TaskPlanCallbackReturn
 // upstream: (seriesModel, ecModel, api, payload?): StageHandlerPlanReturn
+// PORT-NOTE: upstream StageHandlerPlanReturn = 'reset' | false | null | undefined; Swift's
+//   TaskPlanCallbackReturn is a non-optional enum whose sole case is `.reset`, so the falsy half of
+//   the union lives in the Optional layer -> the faithful return type is `StageHandlerPlanReturn?`.
 public typealias StageHandlerPlan =
-    (SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn
+    (SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?
 
 // upstream: (api: ExtensionAPI, cfg: object): LoadingEffect
 public typealias LoadingEffectCreator = (ExtensionAPI, Any) -> LoadingEffect

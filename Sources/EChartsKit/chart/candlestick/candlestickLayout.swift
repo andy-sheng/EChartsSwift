@@ -99,12 +99,13 @@ public let candlestickLayout: StageHandler = {
 
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
-    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. Left unwired due to the optional-return
-    //   mismatch of `StageHandler.plan` — `createRenderPlanner()` yields a nil-for-no-reset plan, but the
-    //   `StageHandlerPlan` typealias has a NON-optional return here, so "no reset" cannot be represented
-    //   without relaxing that typealias (same deviation as layout/barGrid.swift `handler.plan = nil`). The
-    //   `reset` stage still recomputes layout each pass, so the non-progressive render is unaffected.
-    _ = createRenderPlanner()
+    // PORT-TODO: upstream `plan: createRenderPlanner()`. `StageHandlerPlan` now returns
+    //   `StageHandlerPlanReturn?` (util/types.swift), so the planner's nil-for-no-reset answer IS
+    //   representable — the old "non-optional return" blocker no longer exists. What remains is the arity
+    //   mismatch: wire it with the adapter used in chart/lines/linesLayout.swift:48-51
+    //   (`let planner = createRenderPlanner(); handler.plan = { sm, _, _, _ in planner(sm) }`), created
+    //   ONCE so its makeInner state persists. Left unwired (same as layout/barGrid.swift); the `reset`
+    //   stage still recomputes layout each pass, so the non-progressive render is unaffected.
     handler.plan = nil
 
     handler.reset = { (seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in

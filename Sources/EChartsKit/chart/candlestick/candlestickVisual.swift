@@ -64,12 +64,13 @@ public let candlestickVisual: StageHandler = {
 
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
-    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. `createRenderPlanner()` yields a
-    //   `(SeriesModel) -> StageHandlerPlanReturn?` while `StageHandler.plan` (`StageHandlerPlan`) has a
-    //   NON-optional return, so "no reset" cannot be represented without spurious re-plans. Left unwired
-    //   (same deviation as layout/barGrid.swift's `handler.plan = nil`). The `reset` stage still
-    //   recomputes visuals each pass, so basic rendering is unaffected.
-    _ = createRenderPlanner()
+    // PORT-TODO: upstream `plan: createRenderPlanner()`. `StageHandlerPlan` now returns
+    //   `StageHandlerPlanReturn?` (util/types.swift), so the planner's nil-for-no-reset answer IS
+    //   representable — the old "non-optional return" blocker no longer exists. What remains is the arity
+    //   mismatch: wire it with the adapter used in chart/lines/linesLayout.swift:48-51
+    //   (`let planner = createRenderPlanner(); handler.plan = { sm, _, _, _ in planner(sm) }`), created
+    //   ONCE so its makeInner state persists. Left unwired (same as layout/barGrid.swift); the `reset`
+    //   stage still recomputes visuals each pass, so basic rendering is unaffected.
     handler.plan = nil
 
     // For legend.

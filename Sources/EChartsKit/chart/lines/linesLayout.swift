@@ -40,14 +40,15 @@ public let linesLayout: StageHandler = {
     handler.seriesType = "lines"
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. Left unwired due to the signature
-    //   mismatch of `StageHandler.plan` — `createRenderPlanner()` yields a 1-arg `(SeriesModel) ->
-    //   StageHandlerPlanReturn?` (nil-for-no-reset), but `StageHandlerPlan` is the 4-arg
-    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn` (non-optional return)
-    //   and cannot be assigned without relaxing that typealias (same deviation as candlestickLayout.swift /
-    //   layout/barGrid.swift `handler.plan = nil`).
-    _ = createRenderPlanner()
-    handler.plan = nil
+    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
+    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
+    //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
+    //   and wrapped in an arity adapter that ignores the extra args, which upstream's planner also ignores.
+    let planner = createRenderPlanner()
+    handler.plan = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> StageHandlerPlanReturn? in
+        return planner(seriesModel)
+    }
 
     // reset: function (seriesModel: LinesSeriesModel) { ... }
     handler.reset = { (seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in
