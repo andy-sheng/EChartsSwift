@@ -26,8 +26,8 @@ import ZRenderKit
 //
 // This file faithfully ports the STATIC core of CustomView.ts:
 //   - `render` (the per-datum renderItem dispatch) — the enter/update/leave DIFF via `data.diff(oldData)`
-//     is now ported (per-datum graphic els are reused across renders; see the render note). Only the
-//     transition/leave animation body is still substituted (removeElementWithFadeOut for the leave path).
+//     is now ported (per-datum graphic els are reused across renders; see the render note), including
+//     the real `applyLeaveTransition` leave path.
 //   - `createEl` + the per-type graphic-element builders (group/rect/circle/ring/sector/arc/
 //     polygon/polyline/line/bezierCurve/text/image/compoundPath; `path` SVG-data building deferred).
 //   - `updateElNormal` STATIC parts — apply shape + style + transform (x/y/rotation/scale) + z2.
@@ -35,23 +35,29 @@ import ZRenderKit
 //     `params`, plus the coord-system dispatch via the ported `prepareCustoms`.
 //   - `mergeChildren` group building.
 //
-// DEFERRED (each marked // PORT-NOTE at its site):
-//   - the transition/animation/morph machinery: `applyUpdateTransition` / `applyLeaveTransition` /
-//     `applyKeyframeAnimation` / `stopPreviousKeyframeAnimationAndRestore` — replaced by a direct
-//     static apply of the final shape/style/transform (mirrors GraphicComponentView's
-//     `applyUpdateTransitionStatic`).
-//   - the top-level enter/update/leave DIFF (`data.diff(oldData)`) is now PORTED in `render` (per-datum
-//     graphic els are reused across renders — the reset-on-update fix). Still DEFERRED: the GROUP-CHILD
-//     by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren` still rebuilds a
-//     group's children by index each render.
+// ALSO PORTED (was deferred in earlier waves — do NOT grep this file for a stale "deferred" claim):
+//   - the transition machinery is WIRED: `applyUpdateTransition` / `applyLeaveTransition`
+//     (animation/customGraphicTransition.swift) + `applyKeyframeAnimation` /
+//     `stopPreviousKeyframeAnimationAndRestore` (animation/customGraphicKeyframeAnimation.swift).
+//     The element's typed value-struct `shape` / `style` are re-applied right after
+//     `applyUpdateTransition` (see `applyTypedShapeAndStyle`'s FRAMEWORK GAP note), since the generic
+//     `attr(dict)` seam can only carry the animatable numeric/colour keys.
+//   - the top-level enter/update/leave DIFF (`data.diff(oldData)`) is PORTED in `render` (per-datum
+//     graphic els are reused across renders — the reset-on-update fix).
 //   - emphasis/blur/select STATES: `updateElOnState` / `setDefaultStateProxy` / `toggleHoverEmphasis`
 //     are ported (util/states is present) AND the per-state application loop that CALLS `updateElOnState`
-//     (the `for (STATES)` walk + `retrieveStateOption` + `updateZForEachState` per-state z2) is now WIRED.
+//     (the `for (STATES)` walk + `retrieveStateOption` + `updateZForEachState` per-state z2) is WIRED.
+//
+// DEFERRED (each marked // PORT-NOTE at its site):
+//   - MORPH (universalTransition / morphPath).
+//   - the GROUP-CHILD by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren`
+//     still rebuilds a group's children by index each render.
 //   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
 //   - the legacy ec4 style compat (`convertFromEC4CompatibleStyle` / `isEC4CompatibleStyle` /
 //     `convertToEC4StyleForCustomSerise`) and the deprecated `api.style` / `api.styleEmphasis`.
 //   - `attachTextContent` / rich-label nuance — only basic `textContent` (a plain text child) is wired.
-//   - decal pattern (`createOrUpdatePatternFromDecal`), universal transition, incremental hover-layer.
+//   - decal pattern (`createOrUpdatePatternFromDecal`) is WIRED in `updateElNormal`; universal
+//     transition and the incremental hover-layer stay deferred.
 //
 // upstream imports (Swift mapping / deferral):
 //   import { hasOwn, assert, isString, retrieve2, retrieve3, defaults, each, indexOf, map }
@@ -86,15 +92,19 @@ import ZRenderKit
 //   import { ...styleCompat... } from '../../util/styleCompat';      -> DEFERRED (ec4 compat not ported).
 //   import { ItemStyleProps } from '../../model/mixin/itemStyle';    -> DEFERRED (deprecated api.style).
 //   import { throwError } from '../../util/log';                     -> `log.error` (util/log.swift).
-//   import { createOrUpdatePatternFromDecal } from '../../util/decal';  -> DEFERRED (decal not ported).
+//   import { createOrUpdatePatternFromDecal } from '../../util/decal';  -> `createOrUpdatePatternFromDecal`
+//       (util/decal.swift) — a bare top-level func; wired in `updateElNormal`.
 //   import CustomSeriesModel, { ...many types... } from './CustomSeries';
 //       -> sibling `CustomSeries.swift` (CustomSeriesModel + the render-item api/param types +
 //          `customInnerStore`). Referenced; see the integration contract note near `makeRenderItem`.
-//   import { PatternObject } from 'zrender/src/graphic/Pattern';     -> DEFERRED (decal).
+//   import { PatternObject } from 'zrender/src/graphic/Pattern';     -> ZRenderKit `Pattern`.
 //   import { applyLeaveTransition, applyUpdateTransition, ElementRootTransitionProp }
-//       from '../../animation/customGraphicTransition';              -> DEFERRED (transitions).
+//       from '../../animation/customGraphicTransition';              -> `applyLeaveTransition` /
+//       `applyUpdateTransition` (animation/customGraphicTransition.swift), bare top-level funcs.
 //   import { applyKeyframeAnimation, stopPreviousKeyframeAnimationAndRestore }
-//       from '../../animation/customGraphicKeyframeAnimation';       -> DEFERRED (keyframes).
+//       from '../../animation/customGraphicKeyframeAnimation';       -> `applyKeyframeAnimation` /
+//       `stopPreviousKeyframeAnimationAndRestore` (animation/customGraphicKeyframeAnimation.swift),
+//       bare top-level funcs; both wired in `updateElNormal`.
 //   import type SeriesModel from '../../model/Series';               -> `SeriesModel`.
 //   import { getCustomSeries } from './customSeriesRegister';        -> `getCustomSeries` (subType fallback in makeRenderItem).
 //   import tokens from '../../visual/tokens';                        -> DEFERRED (used only in api.style).
@@ -288,13 +298,9 @@ open class CustomChartView: ChartView {
             .remove { oldIdx in
                 // upstream: const el = oldData.getItemGraphicEl(oldIdx);
                 //   el && applyLeaveTransition(el, customInnerStore(el).option, customSeries);
-                // PORT-NOTE (deferred substitute): `applyLeaveTransition` (customGraphicTransition — the
-                //   leave-config-aware animated remove) is DEFERRED with the transition machinery; the
-                //   ported `removeElementWithFadeOut` is the leave-path substitute (fade-out then remove;
-                //   an immediate remove if animation is off). `oldData` is non-nil in this branch (the
-                //   diff emits removes only when there is old data).
+                // `oldData` is non-nil in this branch (the diff emits removes only when there is old data).
                 if let el = oldData?.getItemGraphicEl(oldIdx) {
-                    removeElementWithFadeOut(el, customSeries, oldIdx)
+                    applyLeaveTransition(el, customInnerStore(el).option ?? [:], customSeries)
                 }
             }
             .update { newIdx, oldIdx in
@@ -554,37 +560,122 @@ private func updateElNormal(
         el.setTextConfig(txCfgOpt)
     }
 
-    // Default transition ['x', 'y'] — upstream mutates elOption.transition; transition is DEFERRED so
-    //   this is a no-op here (kept as a comment for provenance).
-    //   if (elOption && elOption.transition == null) { elOption.transition = DEFAULT_TRANSITION; }
-    _ = DEFAULT_TRANSITION
+    // upstream mutates the option object in place; `elOption` is a value dict here, so shadow it.
+    // PORT-NOTE (divergence): upstream's normalizations below (the DEFAULT_TRANSITION default, the ec4
+    //   text compat, `style.decal` / `style.__decalPattern`) are observable through the SHARED option
+    //   object; here they are confined to this local copy. Currently benign only because
+    //   `customInnerStore(el).option` is never assigned (upstream does not assign it either — only
+    //   GraphicView.ts:262 does). If the option is ever stored on the el, it MUST be this NORMALIZED
+    //   copy, not the caller's raw dict.
+    var elOption = elOption
+
+    // Default transition ['x', 'y']
+    // upstream: if (elOption && elOption.transition == null) { elOption.transition = DEFAULT_TRANSITION; }
+    if elOption["transition"] == nil {
+        elOption["transition"] = DEFAULT_TRANSITION
+    }
+
+    // FRAMEWORK GAP (the Int-vs-Double option-read trap): `applyUpdateTransition` applies the transform
+    //   props through `Element.attr`, whose `_setKnownKV` only accepts a `Double` — an Int-boxed literal
+    //   (`["x": 10, "position": [0, 5]]` in a `renderItem` return) would be silently dropped. The
+    //   ANIMATION payloads are hit even harder: `Animator.Track.addKeyframe` classifies a value with
+    //   `util.isNumber` (`value is Double`), so an Int-boxed `enterFrom: ["style": ["opacity": 0]]`
+    //   degrades the track to `discrete` and the from-frame is then dropped by `_setKnownKV` — the
+    //   fade-in silently becomes a snap. So coerce EVERY numeric leaf that reaches
+    //   `applyUpdateTransition` / `updateLeaveTo` / `applyKeyframeAnimation`: the root transform props
+    //   (+ the legacy `position`/`scale`/`origin` array aliases), the `enterFrom`/`leaveTo` bags at the
+    //   root and inside each `ELEMENT_ANIMATABLE_PROPS` sub-bag, and the `keyframeAnimation` keyframes.
+    //   JS has a single number type, so upstream has no analog.
+    // PORT-NOTE: ideally this lives in the PROVIDER (customGraphicTransition /
+    //   customGraphicKeyframeAnimation) so the other consumer (GraphicComponentView) gets it too; kept
+    //   consumer-side here because that file is owned by another migration row.
+    for key in TRANSFORMABLE_PROPS where elOption[key] != nil {
+        if let d = customToDouble(elOption[key]) { elOption[key] = d }
+    }
+    // The legacy transform aliases — mirrors `LEGACY_TRANSFORM_PROPS_MAP` in customGraphicTransition.swift.
+    for legacyKey in ["position", "scale", "origin"] {
+        if let (a, b) = customVec2(elOption[legacyKey]) { elOption[legacyKey] = [a, b] }
+    }
+    for animKey in ["enterFrom", "leaveTo"] {
+        if let v = elOption[animKey] { elOption[animKey] = customCoerceNumericLeaves(v) }
+    }
+    if let kf = elOption["keyframeAnimation"] {
+        elOption["keyframeAnimation"] = customCoerceNumericLeaves(kf)
+    }
+    for bagName in ELEMENT_ANIMATABLE_PROPS where !bagName.isEmpty {
+        guard var bag = elOption[bagName] as? [String: Any] else { continue }
+        var touched = false
+        for animKey in ["enterFrom", "leaveTo"] {
+            if let v = bag[animKey] {
+                bag[animKey] = customCoerceNumericLeaves(v)
+                touched = true
+            }
+        }
+        if touched { elOption[bagName] = bag }
+    }
 
     // Do some normalization on style.
-    let styleOpt = elOption["style"] as? [String: Any]
+    var styleOpt = elOption["style"] as? [String: Any]
 
-    if let styleOpt = styleOpt {
+    if styleOpt != nil {
         if el.type == "text" {
-            // Compatible with ec4: if `textFill`/`textStroke` exist use them as fill/stroke.
-            // PORT-NOTE: this ec4 compat is handled inside the text-style bridge (`bridgeTextStyle`,
-            //   which reads textFill/textStroke), so this site is intentionally a no-op.
-            _ = styleOpt
+            // upstream:
+            //   const textOptionStyle = styleOpt as TextStyleProps;
+            //   hasOwn(textOptionStyle, 'textFill') && (textOptionStyle.fill = textOptionStyle.textFill);
+            //   hasOwn(textOptionStyle, 'textStroke') && (textOptionStyle.stroke = textOptionStyle.textStroke);
+            // Compatible with ec4: if `textFill`/`textStroke` exist they OVERWRITE fill/stroke — so the
+            //   normalized bag (not just `bridgeTextStyle`) carries the colour, and the transition
+            //   machinery (`applyPropsDirectly` / `prepareStyleTransitionFrom`) can see it too.
+            if let textFill = styleOpt?["textFill"] { styleOpt?["fill"] = textFill }
+            if let textStroke = styleOpt?["textStroke"] { styleOpt?["stroke"] = textStroke }
         }
-        // upstream: decal pattern resolution (createOrUpdatePatternFromDecal) — DEFERRED (decal).
+
+        // upstream:
+        //   let decalPattern;
+        //   const decalObj = isPath(el) ? (styleOpt as ...).decal : null;
+        //   if (api && decalObj) { (decalObj as InnerDecalObject).dirty = true;
+        //       decalPattern = createOrUpdatePatternFromDecal(decalObj, api); }
+        //   (styleOpt as InnerCustomZRPathOptionStyle).__decalPattern = decalPattern;
+        // PORT-NOTE: the `decalObj.dirty = true` marker drives upstream's `decalMap` WeakMap cache; the
+        //   Swift `decal.swift` dropped that identity cache for a value-keyed one, so the marker is moot.
+        var decalPattern: Pattern?
+        let decalObj: Any? = (el is Path) ? styleOpt?["decal"] : nil
+        if let api = api, let decalObj = decalObj {
+            decalPattern = createOrUpdatePatternFromDecal(decalObj, api)
+        }
+        // Always overwrite in case user specify this prop.
+        styleOpt?["__decalPattern"] = decalPattern
+
+        // upstream: if (isDisplayable(el)) { if (styleOpt) { const decalPattern = styleOpt.__decalPattern;
+        //   if (decalPattern) { (styleOpt as PathStyleProps).decal = decalPattern; } } }
+        if el is Displayable, let decalPattern = decalPattern {
+            styleOpt?["decal"] = decalPattern
+        }
+        elOption["style"] = styleOpt
     }
 
     // upstream: applyUpdateTransition(el, elOption, seriesModel, { dataIndex, isInit, clearStyle: true });
-    // PORT-NOTE (deferred): the transition/animation machinery (`applyUpdateTransition`) is deferred;
-    //   `applyUpdateTransitionStatic` below is the static substitute — apply the final shape / style /
-    //   transform directly (mirrors GraphicComponentView).
-    applyUpdateTransitionStatic(el, elOption)
+    applyUpdateTransition(
+        el, elOption, seriesModel,
+        ApplyUpdateTransitionOpts(dataIndex: dataIndex, isInit: isInit, clearStyle: true)
+    )
+    // FRAMEWORK GAP (typed value-struct shape/style): `applyUpdateTransition` applies its final props
+    //   through the generic `el.attr(["shape"/"style": dict])` seam, which can only MERGE the keys the
+    //   element's `PathShape.animationSet` / `*StyleProps.animationSet` expose (numeric/colour fields of
+    //   an ALREADY-typed shape). A custom `renderItem` return also carries keys that only the typed
+    //   bridges below can express — `points`, `pathData`, a text `style.text`, an image `style.image`,
+    //   a rect `r` array, and the shape's own `fill: null` default. So re-apply the typed final shape and
+    //   style AFTER the transition (both accessors read/write the LIVE `path.shape` / `path.pathStyle`
+    //   per key, so a running animator keeps tweening on top of this and is not clobbered).
+    applyTypedShapeAndStyle(el, elOption)
 
     // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, seriesModel);
     applyKeyframeAnimation(el, elOption["keyframeAnimation"], seriesModel)
-    _ = (api, dataIndex, isInit)
 }
 
-// STATIC substitute for `applyUpdateTransition` — apply the element's final shape/style/transform.
-private func applyUpdateTransitionStatic(_ el: Element, _ elOption: [String: Any]) {
+// The typed-struct half of `applyUpdateTransition`'s `applyPropsDirectly` — see the FRAMEWORK GAP note
+//   at the call site. Transform / legacy-transform / misc props are handled by `applyUpdateTransition`.
+private func applyTypedShapeAndStyle(_ el: Element, _ elOption: [String: Any]) {
     // Shape (typed struct per element kind).
     if let shapeOpt = elOption["shape"] as? [String: Any], let path = el as? Path {
         applyShape(path, customInnerStore(el).customGraphicType, shapeOpt)
@@ -593,28 +684,9 @@ private func applyUpdateTransitionStatic(_ el: Element, _ elOption: [String: Any
     if let styleOpt = elOption["style"] as? [String: Any] {
         applyStyle(el, styleOpt)
     }
-    // Legacy transform aliases (upstream LEGACY_TRANSFORM_PROPS_MAP, customGraphicTransition — DEFERRED):
-    //   `position:[x,y]` / `scale:[sx,sy]` / `origin:[ox,oy]` arrays. Applied BEFORE the scalar loop so an
-    //   explicit x/y/scaleX/... still wins. (renderItem specs like wind-barb/calendar-icon use `position`.)
-    if let (px, py) = customVec2(elOption["position"]) { _ = el.attr("x", px); _ = el.attr("y", py) }
-    if let (sx, sy) = customVec2(elOption["scale"]) { _ = el.attr("scaleX", sx); _ = el.attr("scaleY", sy) }
-    if let (ox, oy) = customVec2(elOption["origin"]) { _ = el.attr("originX", ox); _ = el.attr("originY", oy) }
-    // Transform props (x / y / rotation / scaleX / scaleY / originX / originY).
-    for key in ["x", "y", "rotation", "scaleX", "scaleY", "originX", "originY"] {
-        if let v = customToDouble(elOption[key]) {
-            _ = el.attr(key, v)
-        }
-    }
-    // Common display flags.
-    if let ignore = elOption["ignore"] as? Bool {
-        el.ignore = ignore
-    }
-    if let silent = elOption["silent"] as? Bool {
-        el.silent = silent
-    }
-    if let invisible = elOption["invisible"] as? Bool, let disp = el as? Displayable {
-        disp.invisible = invisible
-    }
+    // Transform props (x/y/rotation/scale*/origin*, incl. the legacy `position`/`scale`/`origin` array
+    //   aliases) and the misc flags (ignore/silent/invisible/autoBatch) are applied by
+    //   `applyUpdateTransition` (prepareTransformAllPropsFinal + applyMiscProps).
 }
 
 // Build the concrete `PathShape` for the element's type from a `[String: Any]` shape bag, then
@@ -1526,20 +1598,19 @@ private func mergeChildren(
     var i = el.childCount() - 1
     while i >= index {
         if let child = el.childAt(i) {
-            removeChildFromGroup(el, child, seriesModel, dataIndex)
+            removeChildFromGroup(el, child, seriesModel)
         }
         i -= 1
     }
 }
 
 // upstream: function removeChildFromGroup(group, child, seriesModel) { child && applyLeaveTransition(...) }
-//   PORT-NOTE (deferred substitute): `applyLeaveTransition` (customGraphicTransition) is deferred with
-//   the transition machinery; use the ported `removeElementWithFadeOut` leave-path substitute (as the
-//   top-level `.remove` diff branch does).
+//   Do not support leave elements that are not mentioned in the latest `renderItem` return. Otherwise
+//   users may not have a clear and simple concept that how to control all of the elements.
 private func removeChildFromGroup(
-    _ group: Group, _ child: Element, _ seriesModel: CustomSeriesModel, _ dataIndex: Int
+    _ group: Group, _ child: Element, _ seriesModel: CustomSeriesModel
 ) {
-    removeElementWithFadeOut(child, seriesModel, dataIndex)
+    applyLeaveTransition(child, customInnerStore(group).option ?? [:], seriesModel)
 }
 
 // upstream: function diffGroupChildren / getKey / processAddUpdate / processRemove
@@ -1586,6 +1657,28 @@ private func customToDouble(_ v: Any?) -> Double? {
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     return nil
+}
+
+// Deep Int→Double coercion for an animation payload (`enterFrom` / `leaveTo` / `keyframeAnimation`).
+//   See the FRAMEWORK GAP note in `updateElNormal`: the animator classifies a keyframe value with
+//   `util.isNumber` (`value is Double`) and `Element._setKnownKV` only accepts a `Double`, so an
+//   Int-boxed option literal (`["opacity": 0]`) is silently dropped. Bools/Strings (and any other
+//   value kind) pass through untouched; the walk is structural (dicts + arrays).
+private func customCoerceNumericLeaves(_ value: Any?) -> Any? {
+    guard let value = value else { return nil }
+    if value is Bool || value is String || value is Double { return value }
+    if let i = value as? Int { return Double(i) }
+    if let f = value as? Float { return Double(f) }
+    if let dict = value as? [String: Any] {
+        var out = dict
+        for (k, v) in dict { out[k] = customCoerceNumericLeaves(v) }
+        return out
+    }
+    if let arr = value as? [Any] {
+        return arr.map { customCoerceNumericLeaves($0) as Any }
+    }
+    if let n = value as? NSNumber { return n.doubleValue }
+    return value
 }
 
 // A `[x, y]` legacy transform-alias array (`position`/`scale`/`origin`) → the two Doubles.
@@ -1649,7 +1742,10 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
     out.strokeFirst = s["strokeFirst"] as? Bool
     if let dash = s["lineDash"] as? [Double] { out.lineDash = .values(dash) }
     // fill/stroke gradients now bridge via `toZRColor` → `zrPaintFromStyleValue`.
-    // PORT-NOTE (deferred): decal-pattern / lineDash-string style-bridge cases are still deferred.
+    // `decal` carries the tiling Pattern resolved by `createOrUpdatePatternFromDecal` in `updateElNormal`
+    //   (a raw decal OPTION dict left here is not a Pattern and is correctly ignored).
+    out.decal = s["decal"] as? Pattern
+    // PORT-NOTE (deferred): the lineDash-string style-bridge case is still deferred.
     return out
 }
 
@@ -1657,9 +1753,11 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
 private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     var out = TextStyleProps()
     out.text = s["text"] as? String
-    // Compatible with ec4: textFill/textStroke → fill/stroke.
-    out.fill = (s["fill"] as? String) ?? (s["textFill"] as? String)
-    out.stroke = (s["stroke"] as? String) ?? (s["textStroke"] as? String)
+    // Compatible with ec4: textFill/textStroke → fill/stroke. Upstream (CustomView.ts:508-515) lets
+    //   textFill/textStroke WIN when present, so mirror that precedence here (this is a fallback — the
+    //   normalization already happened on the style bag in `updateElNormal`).
+    out.fill = (s["textFill"] as? String) ?? (s["fill"] as? String)
+    out.stroke = (s["textStroke"] as? String) ?? (s["stroke"] as? String)
     out.opacity = customToDouble(s["opacity"])
     out.lineWidth = customToDouble(s["lineWidth"])
     out.font = s["font"] as? String
