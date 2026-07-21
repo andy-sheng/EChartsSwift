@@ -30,17 +30,53 @@ import ZRenderKit
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> layout/barCommon.swift.
 
 // export function install(registers) { ... }
-// PORT-NOTE: registration boilerplate lives in the Orchestrate/Integrate driver (ECharts.swift),
-//   not this render-layer file (same convention as boxplotInstall.swift). The wiring is:
-//     registers.registerChartView(PictorialBarView);           → `_chartViewFactories["pictorialBar"]`
-//     registers.registerSeriesModel(PictorialBarSeriesModel);  → `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
-//     registers.registerLayout(VISUAL.LAYOUT, createCrossSeriesLayoutHandler(pictorialBar));
-//         → `_pictorialBarLayoutHandler` (bandWidth/offset/size on each series' data layout)
-//     registers.registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(pictorialBar));
-//         → `_pictorialBarProgressiveLayoutHandler` (per-item rect x/y/width/height layout, which
-//            PictorialBarView reads back via data.getItemLayout)
-//     registerBarGridAxisHandlers(registers);   → already invoked for 'pictorialBar' by the bar wiring
-//         (registerBarGridAxisHandlers registers BOTH 'bar' and 'pictorialBar' axis handlers).
+// PORT-NOTE: registration boilerplate lives in the Orchestrate/Integrate driver (core/ECharts.swift),
+//   not this render-layer file (same convention as boxplotInstall.swift). All four registrations are
+//   performed there — see the `-- chart/bar/installPictorialBar.ts --` block in `installOnce()` and the
+//   layout stage; the mapping is tabulated under INTEGRATION SURFACE below.
+//   Preserved as commented source for the diffable surface:
 //
-//   The two layout handlers + the series/view registration are performed in ECharts.installOnce()
-//   and the layout stage; see the `-- chart/bar/installPictorialBar.ts --` block there.
+//     export function install(registers) {
+//         registers.registerChartView(PictorialBarView);
+//         registers.registerSeriesModel(PictorialBarSeriesModel);
+//
+//         registers.registerLayout(
+//             registers.PRIORITY.VISUAL.LAYOUT, createCrossSeriesLayoutHandler(SERIES_TYPE_PICTORIAL_BAR)
+//         );
+//         // Do layout after other overall layout, which can prepare some information.
+//         registers.registerLayout(
+//             registers.PRIORITY.VISUAL.PROGRESSIVE_LAYOUT, createProgressiveLayout(SERIES_TYPE_PICTORIAL_BAR)
+//         );
+//
+//         registerBarGridAxisHandlers(registers);
+//     }
+//
+// INTEGRATION SURFACE (all PORTED and WIRED in `ECharts.installOnce()` — core/ECharts.swift):
+//   - registerSeriesModel: `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
+//                          (chart/bar/PictorialBarSeries.swift; ECharts.swift `-- chart/bar/installPictorialBar.ts --`)
+//   - registerChartView:   `_chartViewFactories["pictorialBar"] = { PictorialBarView() }`
+//                          (chart/bar/PictorialBarView.swift)
+//   - registerLayout(PRIORITY.VISUAL.LAYOUT):
+//                          `createCrossSeriesLayoutHandler(SERIES_TYPE_PICTORIAL_BAR)` held as
+//                          `ECharts._pictorialBarLayoutHandler` (layout/barGrid.swift); its `overallReset`
+//                          runs in the layout stage.
+//   - registerLayout(PRIORITY.VISUAL.PROGRESSIVE_LAYOUT):
+//                          `createProgressiveLayout(SERIES_TYPE_PICTORIAL_BAR)` held as
+//                          `ECharts._pictorialBarProgressiveLayoutHandler` (layout/barGrid.swift); driven
+//                          through `runSeriesStageHandler` right after the cross-series handler.
+//                          PORT-NOTE: the driver additionally gates BOTH pictorialBar layout stages on
+//                          `!ecModel.getSeriesByType(SERIES_TYPE_PICTORIAL_BAR).isEmpty`. This is
+//                          behaviourally equivalent to upstream, NOT a deviation: the cross-series
+//                          `overallReset` only walks `eachAxisOnKey(ecModel, makeAxisStatKey2("pictorialBar",
+//                          cartesian2d))` and `setLayout` is applied only inside `eachSeriesOnAxisOnKey` for
+//                          that same key (axis-stat clients are keyed by `seriesModel.subType`), so with no
+//                          pictorialBar series the key holds zero axes and the stage is already a no-op;
+//                          `runSeriesStageHandler` likewise skips every series whose `subType` differs from
+//                          `handler.seriesType`. Plain bar series' bandWidth/offset/size are never touched
+//                          either way — the guard is only a cheap early-out.
+//   - registerBarGridAxisHandlers(registers):
+//                          `registerBarGridAxisHandlers(_registers)` (layout/barGrid.swift) is called once
+//                          from the bar wiring and registers BOTH "bar" and "pictorialBar" axis handlers
+//                          (barGrid.swift `register("bar")` / `register("pictorialBar")`, guarded by
+//                          `callOnlyOnce`), so pictorialBar needs no second call — matching upstream, where
+//                          the same `callOnlyOnce` makes the duplicate install-time call a no-op.
