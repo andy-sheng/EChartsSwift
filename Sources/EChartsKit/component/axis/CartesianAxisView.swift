@@ -26,8 +26,9 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';                   -> `graphic.*` is NOT ported as a
 //     namespace. `graphic.Group` / `graphic.Line` are the ZRenderKit `Group` / `Line`. The echarts
 //     wrappers `graphic.subPixelOptimizeLine` (which delegates to the value-returning
-//     `subPixelOptimizeNS.subPixelOptimizeLine`) and `graphic.groupTransition` are reproduced/deferred
-//     below (see `subPixelOptimizeLine` free function + the `groupTransition` PORT-NOTE in `render`).
+//     `subPixelOptimizeNS.subPixelOptimizeLine`) is reproduced below (see the `subPixelOptimizeLine`
+//     free function); `graphic.groupTransition` is the ported top-level `groupTransition`
+//     (util/graphic.swift), called in `render`.
 //   import AxisView from './AxisView';                               -> `AxisView` (component/axis/AxisView.swift).
 //     PORT-NOTE: `AxisView` is ported (base class of this view). Public API used here:
 //     `open class AxisView: ComponentView` with an overridable `type: String`,
@@ -129,10 +130,25 @@ open class CartesianAxisView: AxisView {
 
         if !isInitialSortFromBarRacing {
             // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-            // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), not ported. It matches
-            //   old/new elements by `anid` and animates the transition (`updateProps`). Deferred with
-            //   the animation seam; the final geometry (built fresh above) is correct without it.
-            _ = oldAxisGroup
+            //   `graphic.groupTransition` is ported as the top-level free func `groupTransition`
+            //   (util/graphic.swift): it matches old/new elements by `anid` and animates the
+            //   transition (`updateProps`). `oldAxisGroup` is nil on the first render — the
+            //   nil-guard lives inside `groupTransition`, matching upstream's `if (!g1 || !g2)`.
+            //   PORT-NOTE: only the `x` / `y` / `rotation` props actually interpolate today (axis
+            //   labels — the bar-racing case). The `shape` leg does NOT tween: `getAnimatableProps`
+            //   puts a whole `PathShape` STRUCT under the "shape" key, and `animateToShallow`'s
+            //   recursion guard is `util.isObject`, which is false for a struct — so the track is
+            //   classified VALUE_TYPE_UNKOWN / `discrete` and `Animator.start()` sets it straight to
+            //   the final value (correct final geometry, instant instead of tweened). Shape-carrying
+            //   axis elements (splitLine `line_*`, minorSplitLine `minor_line_*`, splitArea `area_*`,
+            //   AxisBuilder's axisLine / ticks) therefore snap.
+            // PORT-TODO: shape transition is discrete — `graphic.getAnimatableProps`
+            //   (util/graphic.swift) must emit `shape` as a scalar `[String: Any]` sub-bag (the
+            //   TreeView `bezierShapeDict` / ParallelView / SankeyView precedent) so `animateToShallow`
+            //   recurses into `ShapeAnimationAccessor`; that needs a key-enumeration hook on
+            //   `protocol PathShape` (ZRenderKit/Graphic/Path.swift). Provider-side fix, tracked
+            //   separately; drop this marker once it lands.
+            groupTransition(oldAxisGroup, self._axisGroup, axisModel)
         }
 
         super.render(axisModel, ecModel, api, payload)
@@ -245,7 +261,9 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
             ])
             // upstream: anid: tickValue != null ? 'line_' + tickValue : null
             //   PORT-NOTE: `AxisTickCoord.tickValue` is a non-optional `Double`, so the `!= null` guard
-            //   is always true; `anid` is only consumed by the deferred `groupTransition`.
+            //   is always true; `anid` is consumed by `groupTransition` (called in `render`) — which
+            //   matches this element to its previous-render twin, but transitions its `shape`
+            //   discretely (see the PORT-TODO on the `groupTransition` call).
             line.anid = "line_\(tickValue)"
             line.autoBatch = true
             line.silent = true
