@@ -37,8 +37,14 @@ public struct SectorShape: PathShape {
     public init() {}
 
     // Keyed access for animateTo({shape: {...}}) — exposes the animatable numeric fields
-    //   (mirrors RectShape). `clockwise` (Bool) and `cornerRadius` (union) are not tweened.
-    // PORT-NOTE: `cornerRadius` (number | number[]) is not exposed for keyed animation.
+    //   (mirrors RectShape). `clockwise` (Bool) is not tweened.
+    // `cornerRadius` (upstream `number | number[]`, here the `CornerRadius` union) IS exposed to both
+    //   keyed accessors, but is never numerically tweened: the animator treats an unknown value type
+    //   as a discrete jump, matching upstream, which only ASSIGNS `state.shape = cornerRadius`. Both
+    //   halves are required by the state machinery — `Element._innerSaveToNormal` records the normal
+    //   value through `animationGet` (so state EXIT restores it) and the state apply writes the
+    //   per-state value back through `animationSet`. Consumers: chart/sunburst/SunburstPiece (per-state
+    //   `borderRadius`), chart/pie.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "cx": return cx
@@ -47,11 +53,20 @@ public struct SectorShape: PathShape {
         case "r": return r
         case "startAngle": return startAngle
         case "endAngle": return endAngle
+        case "cornerRadius": return cornerRadius
         default: return nil
         }
     }
 
     public mutating func animationSet(_ key: String, _ value: Any?) {
+        // `cornerRadius` is not a Double — handle it BEFORE the numeric guard below (which covers only
+        //   cx/cy/r0/r/startAngle/endAngle) or the boxed union would be silently dropped.
+        if key == "cornerRadius" {
+            if let cr = value as? CornerRadius {
+                cornerRadius = cr
+            }
+            return
+        }
         guard let v = value as? Double else { return }
         switch key {
         case "cx": cx = v

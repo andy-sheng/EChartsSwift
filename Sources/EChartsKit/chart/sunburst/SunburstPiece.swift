@@ -162,12 +162,28 @@ open class SunburstPiece: Sector {
         // zrUtil.each(SPECIAL_STATES, function (stateName) { ... ensureState ... getSectorCornerRadius ... });
         //   The per-state itemStyle half of this upstream loop (`state.style =
         //   itemModel.getModel([stateName, 'itemStyle']).getItemStyle()` over emphasis/blur/select) IS
-        //   wired below via `states.setStatesStylesFromModel` (see the call ~line 232, which iterates the
-        //   same SPECIAL_STATES and stores each state's itemStyle onto `ensureState(name).style`).
-        // PORT-NOTE (deferred): only the per-state corner-radius augmentation
-        //   (`getSectorCornerRadius(itemStyleModel, sectorShape)` -> `ensureState(name).shape`) is still
-        //   deferred — `setStatesStylesFromModel` sets `.style` but not `.shape`, and the static render
-        //   only needs the normal-state corner radius (applied above).
+        //   wired via `states.setStatesStylesFromModel` further down (search for that call — it iterates
+        //   the same SPECIAL_STATES and stores each state's itemStyle onto `ensureState(name).style`;
+        //   it is kept at its ported position because it also has to run after `useStyle`).
+        //   The corner-radius half of the same loop is ported HERE, at upstream's position (it is the
+        //   part `setStatesStylesFromModel` does NOT cover — that writes `.style`, never `.shape`):
+        //       const cornerRadius = getSectorCornerRadius(itemStyleModel, sectorShape);
+        //       if (cornerRadius) { state.shape = cornerRadius; }
+        //   `state.shape` is the dynamic prop bag, and upstream ASSIGNS the whole `{cornerRadius}`
+        //   object returned by `getSectorCornerRadius`, so the ported form assigns a fresh one-key bag
+        //   (not a merge) — same idiom as PieView's select/blur states.
+        //   `SectorShape.animationGet`/`animationSet` both expose `cornerRadius` (Sector.swift), which is
+        //   what carries it through the state machinery: `animationSet` applies the per-state value on
+        //   ENTER and `animationGet` is what `Element._innerSaveToNormal` records so state EXIT restores
+        //   the normal radius. It is not numerically tweened (a discrete jump), matching upstream, which
+        //   only extends/assigns the shape.
+        for stateName in EChartsKit.states.SPECIAL_STATES {
+            let state = sector.ensureState(stateName)
+            let itemStyleModel = itemModel.getModel([stateName, "itemStyle"])
+            if let cornerRadius = getSectorCornerRadius(itemStyleModel, sectorShape) {
+                state.shape = ["cornerRadius": cornerRadius]
+            }
+        }
 
         if firstCreate {
             // sector.setShape(sectorShape);
@@ -233,8 +249,9 @@ open class SunburstPiece: Sector {
         // ── Per-state (emphasis/blur/select) itemStyle on the sector body ──
         //   upstream sets these inside the `SPECIAL_STATES` loop (ensureState(name).style =
         //   itemModel.getModel([name,'itemStyle']).getItemStyle()); `setStatesStylesFromModel` is the
-        //   ported form of that loop (the per-state corner-radius augmentation stays deferred — see the
-        //   SPECIAL_STATES PORT-NOTE above). The label's per-state text styles are already installed by
+        //   ported form of that loop's STYLE half; the corner-radius half of the same upstream loop is
+        //   ported at its upstream position — see the `SPECIAL_STATES` loop above (which writes
+        //   `ensureState(name).shape`). The label's per-state text styles are already installed by
         //   `setLabelStyle` in `_updateLabel` (getLabelStatesModels), so the sector body is all that
         //   remains here. Mirrors PieView / GraphView.
         // NOTE: `states` (the ported util/states enum) is qualified with the module name because a
