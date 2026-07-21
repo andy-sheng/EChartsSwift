@@ -85,10 +85,13 @@ public let linesLayout: StageHandler = {
             var lineCoords: [[Double]] = []
             // if (isLarge) {
             if isLarge {
-                // PORT-NOTE (deferred): the large-mode layout produces the flat `linesPoints` buffer consumed
-                //   only by the large draw path (a `LargeLinesPath`-style consumer), which is not yet ported —
-                //   confirmed no reader of `linesPoints` exists outside this file. Ported here for structural
-                //   fidelity (same deferral pattern as candlestickLayout's largeProgress).
+                // This branch is the SOLE PRODUCER of the flat `linesPoints` buffer, and it IS consumed:
+                //   `LinesView.render`'s large branch hands the data to chart/helper/LargeLineDraw.updateData,
+                //   which reads `data.getLayout("linesPoints") as? [Double]`. Both sides gate on the same
+                //   `pipelineContext.large`, so producer and consumer cannot disagree. The buffer is
+                //   FIXED-SIZE (as upstream's Float32Array) — that is the LAYOUT INVARIANT
+                //   LargeLinesPath.buildPath / findDataIndex rely on (a Swift out-of-bounds read TRAPS where
+                //   upstream's typed array merely yields NaN), so do NOT switch this to appending.
                 // let points;
                 var points: [Double]
                 // const segCount = params.end - params.start;

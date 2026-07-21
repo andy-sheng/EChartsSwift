@@ -560,9 +560,10 @@ open class LinesSeriesModel: SeriesModel {
                 "trailLength": 0.2
             ] as [String: Any],
 
-            // `large` IS wired: LinesView derives `isLargeDraw` from `large` + `largeThreshold` and draws
-            //   through chart/helper/LargeLineDraw (the packed `linesPoints` buffer is built in the view,
-            //   since the linesLayout STAGE is not run). Only the PROGRESSIVE half is still deferred.
+            // `large` IS wired end-to-end: `large` + `largeThreshold` reach `pipelineContext.large` via
+            //   Scheduler.updateStreamModes → modelUtil.preparePipelineContext; the linesLayout STAGE
+            //   branches on it to pack the `linesPoints` buffer, and LinesView reads the SAME flag to draw
+            //   that buffer through chart/helper/LargeLineDraw. Only the PROGRESSIVE half is still deferred.
             "large": false,
             // Available when large is true
             "largeThreshold": 2000.0,

@@ -139,6 +139,19 @@ public final class LineDraw: MarkerDraw {
         _ = self.group.removeAll()
     }
 
+    // PORT ADDITION (no upstream counterpart). Upstream `_updateLineDraw` THROWS AWAY the whole
+    //   `LineDraw` and constructs a new one whenever the draw MODE flips (normal ↔ large, or the
+    //   per-item ctor changes), so the first post-flip `updateData` sees `oldLineData == nil` and
+    //   enters every element fresh. This port REUSES one `LineDraw` instance per view, so a mode flip
+    //   must drop the DIFF STATE too — otherwise `updateData` diffs against the pre-flip data and
+    //   tweens elements from a stale state instead of entering them. Same clearing as
+    //   `incrementalPrepareUpdate`'s `_lineData = nil` + `group.removeAll()`.
+    public func reset() {
+        _ = self.group.removeAll()
+        self._lineData = nil
+        self._progressiveEls = nil
+    }
+
     // upstream: eachRendered(cb)
     public func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
