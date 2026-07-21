@@ -87,4 +87,86 @@ final class CustomRenderTests: XCTestCase {
         XCTAssertEqual(fills.count, 5, "each custom Rect carries the renderItem fill")
         XCTAssertEqual(Set(fills), ["#5470c6"], "custom rects use the renderItem-specified fill")
     }
+
+    // A minimal renderItem: one rect bar per datum, optionally carrying an extra style bag.
+    private func makeRectRenderItem(extraStyle: [String: Any] = [:]) -> CustomSeriesRenderItem {
+        return { _, api in
+            let x = (api.value(0.0, nil) as? Double) ?? 0
+            let y = (api.value(1.0, nil) as? Double) ?? 0
+            let top = api.coord([x, y], nil)
+            let base = api.coord([x, 0.0], nil)
+            guard top.count >= 2, base.count >= 2 else { return nil }
+            var style: [String: Any] = ["fill": "#5470c6"]
+            for (k, v) in extraStyle { style[k] = v }
+            return [
+                "type": "rect",
+                "shape": [
+                    "x": top[0] - 5, "y": top[1],
+                    "width": 10.0, "height": base[1] - top[1]
+                ] as [String: Any],
+                "style": style
+            ] as [String: Any]
+        }
+    }
+
+    private func rectCount(_ ec: ECharts) -> Int {
+        var n = 0
+        _ = ec.getRoot().traverse { el in
+            if el is Rect { n += 1 }
+            return false
+        }
+        return n
+    }
+
+    private func customOption(_ renderItem: @escaping CustomSeriesRenderItem,
+                              _ data: [[Double]],
+                              animation: Bool) -> [String: Any] {
+        return [
+            "animation": animation,
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "custom",
+                        "renderItem": renderItem,
+                        "data": data] as [String: Any]]
+        ]
+    }
+
+    // The LEAVE path (`applyLeaveTransition`, replacing the old removeElementWithFadeOut): when the data
+    //   shrinks, the surplus per-datum els must actually leave the group.
+    func testCustomLeaveTransitionRemovesElementsWhenDataShrinks() {
+        for animation in [false, true] {
+            let ec = ECharts(width: 400, height: 300)
+            let renderItem = makeRectRenderItem()
+            ec.setOption(customOption(renderItem, [[0, 5], [1, 8], [2, 4]], animation: animation))
+            XCTAssertEqual(rectCount(ec), 3, "3 data → 3 rects (animation: \(animation))")
+
+            ec.setOption(customOption(renderItem, [[0, 5], [1, 8]], animation: animation))
+            XCTAssertEqual(rectCount(ec), 2,
+                "shrinking to 2 data must remove the leaving el from the group (animation: \(animation))")
+        }
+    }
+
+    #if canImport(CoreGraphics) && canImport(ImageIO)
+    // `style.decal` on a custom path resolves through createOrUpdatePatternFromDecal into a real Pattern.
+    func testCustomStyleDecalResolvesToPattern() {
+        let ec = ECharts(width: 400, height: 300)
+        let renderItem = makeRectRenderItem(extraStyle: [
+            "decal": ["symbol": "rect", "color": "#000", "dashArrayX": [5, 5], "dashArrayY": [5, 5]]
+                as [String: Any]
+        ])
+        ec.setOption(customOption(renderItem, [[0, 5], [1, 8]], animation: false))
+
+        var rects: [Rect] = []
+        _ = ec.getRoot().traverse { el in
+            if let r = el as? Rect { rects.append(r) }
+            return false
+        }
+        XCTAssertEqual(rects.count, 2)
+        for r in rects {
+            XCTAssertTrue(r.pathStyle?.decal is ZRenderKit.Pattern,
+                "style.decal must resolve to a tiling Pattern, got \(String(describing: r.pathStyle?.decal))")
+        }
+    }
+    #endif
 }

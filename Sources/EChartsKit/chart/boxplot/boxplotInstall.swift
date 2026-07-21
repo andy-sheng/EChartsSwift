@@ -23,8 +23,9 @@ import ZRenderKit
 
 // upstream imports:
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> EChartsExtensionInstallRegisters
-//       (stub registrar; the full registerSeriesModel/registerChartView/registerLayout/registerTransform
-//        surface is owned by the Orchestrate/Integrate driver, not this file).
+//       (stub registrar; the registerSeriesModel/registerChartView/registerLayout/registerTransform
+//        surface is owned by the Orchestrate/Integrate driver — `ECharts.installOnce()` in
+//        core/ECharts.swift — not this file).
 //   import BoxplotSeriesModel from './BoxplotSeries';                         -> sibling BoxplotSeries.swift (ported).
 //   import BoxplotView from './BoxplotView';
 //       -> sibling BoxplotView.swift (ported); hosts the BoxPath custom shape.
@@ -34,14 +35,19 @@ import ZRenderKit
 //       -> sibling boxplotTransform.swift (ported): the `echarts:boxplot` dataset transform.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the later Orchestrate/Integrate driver, not this
+// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/themeRiver/themeRiverInstall.swift and
-//   component/grid/installSimple.swift). The base `EChartsExtensionInstallRegisters` only exposes
-//   registerProcessor/PRIORITY; registerSeriesModel/registerChartView/registerLayout/registerTransform
-//   are owned by the driver's factory registration (core/ECharts.swift). All four boxplot siblings ARE
-//   ported and ready to wire: BoxplotSeriesModel, BoxplotView, boxplotLayoutStageHandler, boxplotTransform;
-//   `registerBoxplotAxisHandlers` is ported and callable against the registrar. Preserved as commented
-//   source for the diffable surface:
+//   component/grid/installSimple.swift). Upstream's registrars are not bridged to GlobalModel
+//   instantiation in this port (the base `EChartsExtensionInstallRegisters` only exposes
+//   registerProcessor/PRIORITY), so `ECharts.installOnce()` (core/ECharts.swift) performs the
+//   equivalent registration explicitly. ALL FIVE install() registrations below are LIVE in the driver,
+//   but in four different places: `registerSeriesModel` + `registerBoxplotAxisHandlers` directly in
+//   `ECharts.installOnce()`; `registerChartView` as a `_chartViewFactories` map entry; `registerTransform`
+//   in `transformInstall` (which `installOnce()` calls); and `registerLayout` as the bare
+//   `boxplotLayout(ecModel)` call in `ECharts.render()`'s layout stage — see
+//   the INTEGRATION SURFACE block for the exact call sites (this note claims registration liveness
+//   only; per-file gaps stay tracked by the `PORT-TODO:` markers in the sibling files). Preserved as
+//   commented source for the diffable surface:
 //
 //     export function install(registers) {
 //         registers.registerSeriesModel(BoxplotSeriesModel);
@@ -52,9 +58,20 @@ import ZRenderKit
 //         registerBoxplotAxisHandlers(registers);
 //     }
 //
-// INTEGRATION SURFACE (for the driver):
-//   - registerSeriesModel: `BoxplotSeriesModel`          (chart/boxplot/BoxplotSeries.swift — ported)
-//   - registerChartView:   `BoxplotView`                 (chart/boxplot/BoxplotView.swift — ported)
-//   - registerLayout:      `boxplotLayoutStageHandler`   (chart/boxplot/boxplotLayout.swift — ported)
-//   - registerTransform:   `boxplotTransform`            (chart/boxplot/boxplotTransform.swift — ported)
-//   - registerBoxplotAxisHandlers(registers)             (chart/boxplot/boxplotLayout.swift — ported, callable)
+// INTEGRATION SURFACE (performed by `ECharts.installOnce()` / the driver's stages):
+//   - registerSeriesModel: `ComponentModel.registerClass(BoxplotSeriesModel.self)` — in `installOnce()`
+//                            (core/ECharts.swift, the `-- chart/boxplot/install.ts --` block)
+//   - registerChartView:   the `"boxplot": { BoxplotView() }` entry in the `_chartViewFactories`
+//                            dictionary literal (core/ECharts.swift), NOT a call inside `installOnce()`.
+//   - registerLayout:      the bare `boxplotLayout(ecModel)` call in `ECharts.render()`'s layout stage
+//                            (core/ECharts.swift) — the OVERALL layout stage, again NOT in `installOnce()`;
+//                            `boxplotLayoutStageHandler` is the registrar
+//                            wrapper around that same bare 1-arg handler (chart/boxplot/boxplotLayout.swift).
+//   - registerTransform:   `try! registerExternalTransform(boxplotTransform)` — this port centralizes
+//                            external-transform registration in `transformInstall` (component/transform/
+//                            transformInstall.swift), which `ECharts.installOnce()` calls; it enables
+//                            `transform: { type: "boxplot" }` (registerExternalTransform strips the
+//                            official `echarts:` namespace).
+//   - registerBoxplotAxisHandlers(registers): `registerBoxplotAxisHandlers(_registers)` (core/ECharts.swift)
+//                            — populates the axisStatistics `clientsForLookup` (bandWidth → box width);
+//                            the axis-statistics processor registered by the bar handlers picks it up.
