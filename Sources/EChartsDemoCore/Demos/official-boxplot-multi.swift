@@ -20,18 +20,14 @@
 //     example is random, so no port of it can be pixel-comparable. Nothing else differs — no closures are
 //     dropped (the transform takes no `config` here).
 //
-// nativeSupported: FALSE — the same single missing piece as `official-boxplot-light-velocity` /
-// `-light-velocity2`, and for the same reason, so don't read this as "boxplot is unsupported". EChartsKit
-// already has both halves this is usually assumed to be blocked on: the `boxplot` SERIES
-// (BoxplotSeriesModel + BoxplotView + boxplotLayout + registerBoxplotAxisHandlers, all wired in
-// `ECharts.installOnce()`) and the `dataset` TRANSFORM PIPELINE (`sourceManager.swift` reads
+// nativeSupported: TRUE — same wiring as `official-boxplot-light-velocity` / `-light-velocity2`: the
+// `boxplot` SERIES (BoxplotSeriesModel + BoxplotView + boxplotLayout + registerBoxplotAxisHandlers, all
+// wired in `ECharts.installOnce()`), the `dataset` TRANSFORM PIPELINE (`sourceManager.swift` reads
 // `fromDatasetIndex` / `fromTransformResult`; `data/helper/transform.swift` is the `applyDataTransform`
-// engine). What is missing is the `boxplot` transform TYPE: upstream `chart/boxplot/boxplotTransform.ts` is
-// not ported, so `registerExternalTransform` is never called for it (`component/transform/transformInstall.swift`
-// registers only `filter` + `sort`) and `applyDataTransform` throws `Can not find transform on type
-// "boxplot".` on `dataset[3]`. The math it wraps (`prepareBoxplotData.swift`) IS ported, so the remaining
-// work is the thin `ExternalDataTransform` wrapper plus one registration call. The `option` below is a 1:1
-// transcription of the official option, so this demo lights up for free the moment that wrapper lands.
+// engine), and the `boxplot` transform TYPE itself — `chart/boxplot/boxplotTransform.swift`, the thin
+// `ExternalDataTransform` wrapper around the ported `prepareBoxplotData.swift`, registered by
+// `registerExternalTransform(boxplotTransform)` in `component/transform/transformInstall.swift:69`.
+// The `option` below is a 1:1 transcription of the official option.
 import Foundation
 
 extension EChartsDemoRegistry {

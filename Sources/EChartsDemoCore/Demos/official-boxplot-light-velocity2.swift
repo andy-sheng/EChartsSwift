@@ -17,18 +17,14 @@
 //     CLOSURE here (the sibling example uses the template STRING 'expr {value}', which ports fine; this one
 //     does not). See the PORT-NOTE at the drop site.
 //
-// nativeSupported: FALSE — the same single missing piece as `official-boxplot-light-velocity`, and for the
-// same reason, so don't read this as "boxplot is unsupported". EChartsKit already has both halves this is
-// usually assumed to be blocked on: the `boxplot` SERIES (BoxplotSeriesModel + BoxplotView + boxplotLayout +
-// registerBoxplotAxisHandlers, all wired in `ECharts.installOnce()`) and the `dataset` TRANSFORM PIPELINE
-// (sourceManager reads `fromDatasetIndex`/`fromTransformResult`; `data/helper/transform.swift` is the
-// `applyDataTransform` engine). What is missing is the `boxplot` transform TYPE: upstream
-// `chart/boxplot/boxplotTransform.ts` is not ported, so `registerExternalTransform` is never called for it
-// (`component/transform/transformInstall.swift` registers only `filter` + `sort`) and `applyDataTransform`
-// throws `Can not find transform on type "boxplot".` on `dataset[1]`. The math it wraps
-// (`prepareBoxplotData.swift`) IS ported, so the remaining work is the thin `ExternalDataTransform` wrapper
-// plus one registration call. The `option` below is a 1:1 transcription, so this demo lights up the moment
-// that wrapper lands — modulo the item names noted at the drop site.
+// nativeSupported: TRUE — same wiring as `official-boxplot-light-velocity`: the `boxplot` SERIES
+// (BoxplotSeriesModel + BoxplotView + boxplotLayout + registerBoxplotAxisHandlers, all wired in
+// `ECharts.installOnce()`), the `dataset` TRANSFORM PIPELINE (sourceManager reads
+// `fromDatasetIndex`/`fromTransformResult`; `data/helper/transform.swift` is the `applyDataTransform`
+// engine), and the `boxplot` transform TYPE itself — `chart/boxplot/boxplotTransform.swift`, the thin
+// `ExternalDataTransform` wrapper around the ported `prepareBoxplotData.swift`, registered by
+// `registerExternalTransform(boxplotTransform)` in `component/transform/transformInstall.swift:69`.
+// The `option` below is a 1:1 transcription — modulo the item names noted at the drop site.
 
 // The raw sample matrix (upstream `dataset[0].source`): 5 experiment runs, 20 measurements each.
 // Hoisted out of the option literal with an explicit type — a 100-element untyped nested literal is
