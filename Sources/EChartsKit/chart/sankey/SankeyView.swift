@@ -377,10 +377,15 @@ open class SankeyView: ChartView {
             //       { labelFetcher: { getFormattedLabel(...) { seriesModel.getFormattedLabel(..., 'edge', ...) } },
             //         labelDataIndex: edge.dataIndex, defaultText: defaultEdgeLabelText });
             //     curve.setTextConfig({ position: 'inside' });
-            // PORT-NOTE: same deviation as the node label — the shared `SetLabelStyleOpt.labelFetcher` (a
-            //   `DataFormatMixin`) calls `getFormattedLabel` with `dataType == nil` (upstream passes 'edge').
-            //   For the default edge label (no formatter) this is inert: `getFormattedLabel` returns nil and
-            //   the core falls back to `defaultText` (defaultEdgeLabelText), so the resolved text is identical.
+            // PORT-NOTE: same deviation as the node label — passing `seriesModel` as the
+            //   `SetLabelStyleOpt.labelFetcher` calls `getFormattedLabel` with `dataType == nil` (upstream
+            //   passes 'edge'). For the default edge label (no formatter) this is inert:
+            //   `getFormattedLabel` returns nil and the core falls back to `defaultText`
+            //   (defaultEdgeLabelText), so the resolved text is identical. A formatter-configured edge
+            //   label does resolve the wrong dataType. FOLLOW-UP (consumer lane owns this file):
+            //   `labelFetcher` is now the `LabelFetcher` protocol, so the faithful form
+            //   `edgeLabelOpt.labelFetcher = LabelFetcherFn { idx, status, _, dimIdx, fmt, ext in
+            //   seriesModel.getFormattedLabel(idx, status, .edge, dimIdx, fmt, ext) }` is expressible.
             //   The forced 'inside' position is field-merged onto the textConfig `setLabelStyle` created
             //   (upstream's `setTextConfig` extends; this port's assigns wholesale, so mutate-in-place keeps
             //   the other textConfig fields).
@@ -486,11 +491,15 @@ open class SankeyView: ChartView {
             // `setLabelStyle` ATTACHES the label as the rect's textContent (setTextContent + textConfig
             //   position — sankey node default 'right') across normal/emphasis/blur/select states, so the
             //   old inline `sankeySetLabel` node call is removed and the shared core owns the label.
-            // PORT-NOTE: the shared `SetLabelStyleOpt.labelFetcher` (a `DataFormatMixin`) calls
+            // PORT-NOTE: passing `seriesModel` as the `SetLabelStyleOpt.labelFetcher` calls
             //   `getFormattedLabel` with `dataType == nil`; upstream passes 'node'. For the default node
             //   label (no formatter) this is inert — `getFormattedLabel` returns nil and the core falls
             //   back to `defaultText` (node.id) — so the resolved text is identical. `inheritColor` is the
             //   node fill so a color:'inherit' label tracks the node paint.
+            //   FOLLOW-UP (consumer lane owns this file): `labelFetcher` is now the `LabelFetcher`
+            //   protocol, so the faithful forced-dataType form
+            //   `nodeLabelOpt.labelFetcher = LabelFetcherFn { idx, status, _, dimIdx, fmt, ext in
+            //   seriesModel.getFormattedLabel(idx, status, .node, dimIdx, fmt, ext) }` is expressible.
             let nodeLabelModels = labelStyle.getLabelStatesModels(itemModel)
             var nodeLabelOpt = SetLabelStyleOpt()
             nodeLabelOpt.labelFetcher = seriesModel

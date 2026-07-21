@@ -38,7 +38,15 @@ public struct GetFormattedLabelExtendParams {
 //   - the `class` arm (the four methods) becomes the protocol *extension* (default
 //     implementations). A conforming `ComponentModel`/`SeriesModel` inherits the method set
 //     exactly as `zrUtil.mixin` would graft it. `extends DataHost` -> protocol refinement.
-public protocol DataFormatMixin: DataHost, AnyObject {
+// PORT (`LabelFetcher` refinement): upstream's `SetLabelStyleOpt.labelFetcher` is an anonymous
+//   object-literal type declaring exactly one method — `getFormattedLabel` — which TS structural
+//   typing lets any model satisfy implicitly. Swift is nominal, so that shape is named as the
+//   `LabelFetcher` protocol (label/labelStyle.swift) and `DataFormatMixin` refines it here; the
+//   extension's `getFormattedLabel` below (parameter list byte-identical to the requirement)
+//   witnesses it for every conforming model, so `opt.labelFetcher = seriesModel` keeps working.
+//   NOTE: `extension DataFormatMixin: LabelFetcher {}` is not expressible in Swift (a protocol
+//   extension cannot carry an inheritance clause), hence the in-place refinement.
+public protocol DataFormatMixin: DataHost, AnyObject, LabelFetcher {
     // PORT: upstream declares `ecModel: GlobalModel` (non-optional). `Model.ecModel` is `GlobalModel?`
     //   (the Model port chose optional), and a subclass cannot re-type an inherited stored property, so
     //   the requirement is relaxed to `GlobalModel?` to let `SeriesModel` (and `ComponentModel`) conform.
