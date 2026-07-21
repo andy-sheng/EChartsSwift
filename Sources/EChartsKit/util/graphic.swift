@@ -342,8 +342,16 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
             "rotation": el.rotation
         ]
         // if (isPath(el)) { obj.shape = clone(el.shape); }
+        //   PORT-NOTE: upstream's `clone(el.shape)` yields a plain object whose keys `animateTo`
+        //     recurses into and tweens one by one. A Swift `PathShape` is a struct, for which
+        //     `util.isObject` is false, so handing the struct itself to `updateProps` would make
+        //     `animateToShallow` treat "shape" as ONE discrete leaf key (VALUE_TYPE_UNKOWN ->
+        //     `track.discrete`, and `animateTo` builds the Animator with `allowDiscrete = false`,
+        //     so it is instantly set and finished — the transition would be a silent no-op).
+        //     `animationProps()` is the shape's per-key `[String: Any]` bag (a value copy, like
+        //     upstream's `clone`), which restores upstream's nested per-key recursion.
         if isPath(el), let path = el as? Path, let shape = path.shape {
-            obj["shape"] = util.clone(shape)
+            obj["shape"] = shape.animationProps()
         }
         return obj
     }

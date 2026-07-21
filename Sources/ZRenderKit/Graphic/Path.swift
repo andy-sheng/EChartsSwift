@@ -317,6 +317,17 @@ public protocol PathShape {
     // animation seam (ShapeAnimationAccessor) can drive `animateTo({shape: {...}})`.
     func animationGet(_ key: String) -> Any?
     mutating func animationSet(_ key: String, _ value: Any?)
+
+    // The shape as a per-key animatable bag, i.e. upstream's plain `shape` object itself.
+    // PORT-NOTE: upstream code that snapshots a shape for animation writes `props.shape =
+    //   clone(el.shape)` and hands the resulting PLAIN OBJECT to `animateTo` (see
+    //   `util/graphic.ts groupTransition`), where `animateToShallow` recurses into it key by key
+    //   (`isObject(targetVal)`) and tweens each field. A Swift `PathShape` is a struct, so
+    //   `util.isObject` is false for it and the whole shape would be treated as ONE discrete leaf
+    //   value — instantly set, never tweened. Exposing the shape as `[String: Any]` restores
+    //   upstream's nested per-key recursion; it is also the convention every hand-written call site
+    //   already uses (e.g. BarView's `rectShapeAnimShape` -> ["x":…,"y":…,"width":…,"height":…]).
+    func animationProps() -> [String: Any]
 }
 
 public extension PathShape {
@@ -325,6 +336,22 @@ public extension PathShape {
     // PORT-NOTE: each *Shape overrides animationGet/animationSet to expose its numeric fields.
     func animationGet(_ key: String) -> Any? { nil }
     mutating func animationSet(_ key: String, _ value: Any?) {}
+
+    // Default: enumerate the struct's stored properties (upstream enumerates the shape object's own
+    //   keys in `clone`) and keep those the shape exposes through its own `animationGet` — i.e.
+    //   exactly the fields that `animationSet` can write back. Shapes without a keyed accessor yield
+    //   an empty bag, which is inert (same as their shape animation being inert today).
+    //   Reflection is acceptable here: this runs once per transition snapshot, not per frame.
+    func animationProps() -> [String: Any] {
+        var props: [String: Any] = [:]
+        for child in Mirror(reflecting: self).children {
+            guard let key = child.label else { continue }
+            if let value = animationGet(key) {
+                props[key] = value
+            }
+        }
+        return props
+    }
 }
 
 // Reference bridge between the by-reference animation machinery and the by-value `Path.shape`

@@ -402,6 +402,18 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
 //   observable effect). Delete when `axisSplitHelper.swift` lands and call the sibling directly.
 //   (Mirrors upstream axisSplitHelper.ts; `gridModel === axisModel` for single-axis.)
 // ============================================================================
+
+// upstream: `anid: 'area_' + tickValue` — JS string-concatenates a `number`, so an integral tick
+//   value stringifies WITHOUT a fractional part ('area_0', 'area_1'). Swift's `String(Double)`
+//   would emit 'area_0.0'/'area_1.0' (and 'area_1e+16' for large values), diverging from the
+//   ECharts oracle's anid strings. Format integral values as integers to mirror upstream.
+private func anidTickKey(_ tickValue: Double) -> String {
+    if tickValue == tickValue.rounded() && tickValue.magnitude < 1e15 {
+        return String(Int(tickValue))
+    }
+    return String(tickValue)
+}
+
 private func rectCoordAxisBuildSplitArea(
     _ axisView: SingleAxisView,
     _ axisGroup: Group,
@@ -504,7 +516,7 @@ private func rectCoordAxisBuildSplitArea(
 
         // upstream: axisGroup.add(new graphic.Rect({ anid, shape, style, autoBatch: true, silent: true }));
         let rect = Rect([
-            "anid": "area_" + String(tickValue),
+            "anid": "area_" + anidTickKey(tickValue),
             "shape": rectShape as PathShape,
             "style": pathStyleFromDict(styleDict),
             "silent": true
