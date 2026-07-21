@@ -839,8 +839,10 @@ public final class ECharts: EChartsType {
         //   (`data.setItemLayout(i, pts)`), same wiring as candlestickLayout. LinesView also inlines the
         //   per-item dataToPoint + curveness control-point math (like ScatterView/LineView), so the layout
         //   stage is run here for fidelity but the view does not depend on it. The effect (moving-dot/trail)
-        //   + large draw path are ANIMATED/DEFERRED; linesVisual (palette stroke) lands with a later phase —
-        //   the shared visual/style stage supplies the lineStyle→stroke color meanwhile. linesInstall.swift
+        //   + large draw path are ANIMATED/DEFERRED. `linesVisual` IS ported and is driven directly in
+        //   `render()` (see the VISUAL comment beside `runSeriesStageHandler(linesVisual, …)` below); it
+        //   writes ONLY fromSymbol/toSymbol/fromSymbolSize/toSymbolSize and NO color, so the lineStyle→
+        //   stroke color still comes from the shared visual/style stage. linesInstall.swift
         //   is commented-only (diffable surface); actual wiring lives here.
         ComponentModel.registerClass(LinesSeriesModel.self)
 
@@ -1918,11 +1920,23 @@ public final class ECharts: EChartsType {
         //   Same two stages as bar (bandWidth/offset/size, then each item's rect x/y/width/height), gated on
         //   the 'pictorialBar' series type. PictorialBarView.render reads the per-item rect via
         //   data.getItemLayout to size each symbol to its bar.
-        //   GUARD: only run when a pictorialBar series is actually present. The cross-series bar-grid
-        //   overallReset re-divides the axis band across bar-ish series and rewrites their layout; running
-        //   it a SECOND time (after the plain-bar handler above) corrupts plain bar rects on a chart that
-        //   has no pictorialBar at all. Gating on presence keeps plain bar charts intact while still laying
-        //   out pictorialBar when it is used.
+        //   GUARD (canonical explanation; chart/bar/pictorialBarInstall.swift cites this note): the
+        //   `!getSeriesByType(...).isEmpty` gate is a cheap early-out, NOT a correctness requirement and NOT
+        //   a deviation from upstream. Axis-stat clients are keyed per `seriesModel.subType`, so the
+        //   cross-series `overallReset` only walks `eachAxisOnKey(makeAxisStatKey2("pictorialBar",
+        //   cartesian2d))` and only `setLayout`s the series registered under that same key
+        //   (layout/barGrid.swift `createCrossSeriesLayoutHandler`). With no pictorialBar series that key
+        //   holds zero axes, so the stage is already a no-op; plain bar bandWidth/offset/size are never
+        //   touched either way, and `runSeriesStageHandler` likewise skips every series whose `subType`
+        //   differs from `handler.seriesType`.
+        //   PORT-NOTE (ordering deviation): upstream registers the second stage at
+        //   `PRIORITY.VISUAL.PROGRESSIVE_LAYOUT` so it runs after EVERY overall layout stage ("Do layout
+        //   after other overall layout, which can prepare some information."). This driver has no priority
+        //   buckets and runs both pictorialBar stages back-to-back here, so the overall layouts below
+        //   (pieLayout, funnelLayout, candlestickLayout, boxplotLayout, sunburstLayoutStageHandler,
+        //   treemapLayout) execute AFTER it instead of before. Benign today — pictorialBar only consumes
+        //   bandWidth/offset/size from the cross-series handler immediately above — revisit if any later
+        //   overall stage must prepare information for it.
         if !ecModel.getSeriesByType(SERIES_TYPE_PICTORIAL_BAR).isEmpty {
             ECharts._pictorialBarLayoutHandler.overallReset?(ecModel, api, nil)
             runSeriesStageHandler(ECharts._pictorialBarProgressiveLayoutHandler, ecModel, api)
@@ -2044,6 +2058,22 @@ public final class ECharts: EChartsType {
         //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
         //   (polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
+
+        // VISUAL — lines endpoint symbol visuals (upstream `registerVisual(linesVisual)`). A
+        //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset` normalizes `symbol`/`symbolSize` into
+        //   pairs and stores `fromSymbol`/`toSymbol`/`fromSymbolSize`/`toSymbolSize` as DATA visuals, then
+        //   returns a per-item `dataEach` (only when `data.hasItemOption`) writing the same four as ITEM
+        //   visuals. It writes NO color (the stroke still comes from the shared visual/style stage), so it
+        //   is order-independent w.r.t. performVisualStage; driven here — directly, like candlestickVisual/
+        //   treemapVisual — because `buildVisualHandlers()` (the ported `visualFuncs` registrar array) is
+        //   still empty pending the sub-project C2 visual-routing fix.
+        //   LIVE (not a dormant stage): the four visuals are read on the main render path — LinesView
+        //   drives the straight/curved lines through `_lineDraw` (LinesView.swift:216-220) -> LineDraw ->
+        //   `ECLine`, whose makeSymbol/makeSymbolTypeValue do `getItemVisual(idx, 'fromSymbol'|'toSymbol'|
+        //   'fromSymbolSize'|'toSymbolSize')` (ECLine.swift:69-115). Only the inlined POLYLINE branch
+        //   (LinesView.finishBuildLine) still ignores them. The LinesSeries default `symbol:
+        //   ['none','none']` keeps every default-symbol demo pixel-identical.
+        runSeriesStageHandler(linesVisual, ecModel, api)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
         //   (non-cartesian) coordinate system, already built + updated by `_coordSysMgr.create`/`.update`

@@ -36,7 +36,12 @@ private let e = 1e-4
 
 // PORT-NOTE: upstream models the sector corner radius as the inline union `number | number[]`.
 //   Modeled as a tagged enum (no untagged unions in Swift). Used by SectorShape + normalizeCornerRadius.
-public enum CornerRadius {
+//   PORT-NOTE: `Equatable` is a port addition (upstream compares the raw union with `===`). It lets
+//   `anyStrictEqual` (Element.swift) see through the boxed enum so an UNCHANGED corner radius is
+//   filtered out of an `animateTo` prop bag instead of always allocating a no-op animator. The only
+//   deviation vs upstream is the `.array` case (JS `===` on two equal arrays is false); the animator
+//   upstream would create there only re-sets the same value, so the rendered result is unchanged.
+public enum CornerRadius: Equatable {
     case number(Double)
     case array([Double])
 }

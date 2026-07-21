@@ -64,6 +64,76 @@ import ZRenderKit
 // export const SERIES_TYPE_GRAPH = 'graph';
 public let SERIES_TYPE_GRAPH = "graph"
 
+// upstream (hoisted inside beforeLink):
+//   function resolveParentPath(this: Model, pathArr: readonly string[]): string[] {
+//       if (pathArr && (pathArr[0] === 'label' || pathArr[1] === 'label')) {
+//           const newPathArr = pathArr.slice();
+//           if (pathArr[0] === 'label') { newPathArr[0] = 'edgeLabel'; }
+//           else if (pathArr[1] === 'label') { newPathArr[1] = 'edgeLabel'; }
+//           return newPathArr;
+//       }
+//       return pathArr as string[];
+//   }
+// Shared by the two edge-label Model wrappers below (an edge's `label` option path resolves against
+//   the series-level `edgeLabel` instead of `label`).
+private func graphResolveEdgeLabelPath(_ path: [String]?) -> [String]? {
+    guard let pathArr = path else { return path }
+    if pathArr.first == "label" || (pathArr.count > 1 && pathArr[1] == "label") {
+        var newPathArr = pathArr
+        if pathArr.first == "label" {
+            newPathArr[0] = "edgeLabel"
+        }
+        else if pathArr.count > 1 && pathArr[1] == "label" {
+            newPathArr[1] = "edgeLabel"
+        }
+        return newPathArr
+    }
+    return pathArr
+}
+
+// upstream `newGetModel` produces each child model carrying `resolveParentPath` but WITHOUT the
+//   `getModel` swap, so grandchildren fall back to the original `getModel` (no further redirect).
+//   Mirrored here as a Model subclass that overrides only `resolveParentPath`.
+private final class GraphEdgeLabelChildModel: Model {
+    override func resolveParentPath(_ path: [String]?) -> [String]? {
+        return graphResolveEdgeLabelPath(path)
+    }
+}
+
+// upstream wraps the edge item model so BOTH `resolveParentPath` redirects label->edgeLabel AND
+//   `getModel` is replaced by `newGetModel` (which stamps `resolveParentPath` onto every produced
+//   child model). Swift cannot reassign an instance method by name, so the swap is a Model subclass:
+//   `resolveParentPath` is overridden, and `getModel` re-wraps each produced child into
+//   `GraphEdgeLabelChildModel` (== `oldGetModel.call(...)` then `model.resolveParentPath = ...`).
+// PORT-NOTE (two documented divergences of subclass-vs-own-property, both unreachable today):
+//   1. `Model.clone()` (Model.swift) reconstructs via `type(of: self).init(...)`, so a clone of one of
+//      these wrappers KEEPS the redirect; upstream's `clone()` is `new (this.constructor)(...)` with
+//      `constructor === Model`, and the per-instance `resolveParentPath`/`getModel` assignments are
+//      dropped by the clone. Nothing on the graph/chord paths clones an edge item/child model, so this
+//      is not reachable. If it ever becomes reachable, override `clone()` here to return a plain `Model`.
+//   2. Re-wrapping (rather than mutating in place) is only safe while the incoming model is a BASE
+//      `Model`: if some prior `getItemModel` injection ever returns a `Model` SUBCLASS, this re-wrap
+//      silently downgrades its dynamic type and drops any state it carries. `edgeData` carries exactly
+//      one `getItemModel` injection today, so there is no prior wrapper to lose.
+private final class GraphEdgeLabelItemModel: Model {
+    // function resolveParentPath(this: Model, pathArr) { ... redirect label -> edgeLabel ... }
+    override func resolveParentPath(_ path: [String]?) -> [String]? {
+        return graphResolveEdgeLabelPath(path)
+    }
+
+    // function newGetModel(this: Model, path, parentModel?) {
+    //     const model = oldGetModel.call(this, path, parentModel);
+    //     model.resolveParentPath = resolveParentPath;
+    //     return model;
+    // }
+    override func getModel(_ path: [String]? = nil, _ parentModel: Model? = nil) -> Model {
+        let model = super.getModel(path, parentModel)
+        // `super.getModel` freshly constructs a base `Model` (Model.swift, no clone), so re-wrapping it
+        //   loses nothing — see the divergence PORT-NOTE above.
+        return GraphEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
+    }
+}
+
 // upstream: class GraphSeriesModel extends SeriesModel<GraphSeriesOption> implements RoamHostModel
 open class GraphSeriesModel: SeriesModel {
 
@@ -257,13 +327,22 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return pathArr;
         // }
-        // POTENTIAL-BUG: this dynamically rebinds `model.resolveParentPath` / `model.getModel` per-instance
-        //   (JS prototype-method swap) so an edge's `label` path resolves against `edgeLabel`. Swift
-        //   cannot swap instance methods by assignment, and `wrapMethod` is a stub, so the `edgeLabel`
-        //   path-redirect is NOT applied (correctness gap: edge labels ignore edgeLabel config). Preserved
-        //   faithfully for when Model gains a settable `resolveParentPath` hook.
+        // PORT-NOTE: upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
+        //   prototype-method swap). Swift cannot rebind an instance method by name, so the swap is expressed
+        //   as the two Model subclasses at file scope (`GraphEdgeLabelItemModel` / `GraphEdgeLabelChildModel`):
+        //   the injection re-wraps the produced edge item model into `GraphEdgeLabelItemModel`, which redirects
+        //   a `label` path to `edgeLabel` and stamps the redirect onto each child model it produces.
+        //   `oldGetModel` / `newGetModel` are the base `Model.getModel` / `GraphEdgeLabelItemModel.getModel`.
         edgeData.wrapMethod("getItemModel") { args in
-            return args.first as Any?
+            // function (model: Model) {
+            //     model.resolveParentPath = resolveParentPath;
+            //     model.getModel = newGetModel;
+            //     return model;
+            // }
+            guard let model = args.first as? Model else { return args.first as Any? }
+            // Upstream MUTATES the model in place; Swift re-wraps it instead (see the divergence
+            //   PORT-NOTE on `GraphEdgeLabelItemModel` for why that is equivalent here).
+            return GraphEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
         }
     }
 
