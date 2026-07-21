@@ -86,7 +86,12 @@ open class GraphView: ChartView {
 
     // PORT-NOTE: private _controller: RoamController;  — RoamController is ported but not wired in GraphView (roam DEFERRED).
     // PORT-NOTE (deferred): private _firstRender / _active — only used by roam + thumbnail (deferred).
-    // PORT-NOTE (deferred): private _layoutTimeout / _layouting — forceLayout iteration (deferred, see render).
+    // upstream: private _layoutTimeout: number;  private _layouting: boolean;
+    //   `setTimeout(step, 16)` → a main-queue `DispatchWorkItem` (this port's established `setTimeout`
+    //   idiom — see util/throttle.swift and component/timeline/SliderTimelineView.swift), so
+    //   `clearTimeout(this._layoutTimeout)` becomes `_layoutTimeout?.cancel()`.
+    private var _layoutTimeout: DispatchWorkItem?
+    private var _layouting: Bool = false
 
     // upstream: private _model: GraphSeriesModel;  private _api: ExtensionAPI;
     private var _model: GraphSeriesModel?
@@ -112,6 +117,20 @@ open class GraphView: ChartView {
     //   Now that `_mainGroup` is no longer wiped each render, track it by edge index so it can be
     //   removed-and-rebuilt on update (and dropped on leave) instead of accumulating every render.
     private var _edgeLabelEls: [Int: ZRText] = [:]
+    // The per-edge label's resolved `distance` Y offset, cached so the force-layout iteration can
+    //   RE-PLACE the label along the moved edge (upstream re-runs Line's `beforeUpdate` every frame)
+    //   without rebuilding its style models. Keyed by edge index, alongside `_edgeLabelEls`.
+    private var _edgeLabelDistanceY: [Int: Double] = [:]
+
+    // upstream: private _active: boolean;  — set true by render(), false by remove(); `updateLayout`
+    //   early-returns when it is false, so a late force-layout step after a teardown does not
+    //   re-materialize elements into an emptied group.
+    private var _active: Bool = false
+
+    // The box holding the self-referencing force-layout `step` closure (upstream's named function
+    //   expression). OWNED by the view so every abandonment path (re-render / remove) can break the
+    //   closure cycle, not just the settled path.
+    private var _forceStepBox: _GraphForceStepBox?
 
     // upstream: init(ecModel, api) {
     //     const symbolDraw = new SymbolDraw();  const lineDraw = new LineDraw();
@@ -145,6 +164,8 @@ open class GraphView: ChartView {
 
         self._model = seriesModel
         self._api = api
+        // upstream: `this._active = true;` (render entry) — the guard `updateLayout` checks.
+        self._active = true
 
         let group = self._mainGroup
 
@@ -170,9 +191,9 @@ open class GraphView: ChartView {
         // ------------------------------------------------------------------------------------------
 
         // clearTimeout(this._layoutTimeout);  const forceLayout = seriesModel.forceLayout; ...
-        //   PORT-NOTE (deferred): forceLayout (iterative physics) + layoutAnimation iteration deferred this phase
-        //   (forceLayout.swift / forceHelper.swift are ported, but the animated iteration is not driven here). Only circularLayout + simpleLayout are shipped, and
-        //   both write final node/edge layouts before render, so no iteration is needed here.
+        //   The forceLayout iteration block is wired — but placed further down, at upstream's own
+        //   position (GraphView.ts:147-153, AFTER symbolDraw.updateData / lineDraw.updateData), because
+        //   `updateLayout` repositions the elements those two calls create.
 
         // --- Nodes: symbolDraw.updateData(data) --------------------------------------------------
         // L2 breadth: the shared SymbolDraw (chart/helper) draws graph node symbols — each a Symbol
@@ -187,11 +208,7 @@ open class GraphView: ChartView {
         //   upstream, instead of rendering at their raw coordinates. `fitPoint` is identity when there is
         //   no view coord.
         let viewCoord = seriesModel.coordinateSystem as? GraphViewCoordSys
-        func fitPoint(_ p: GraphPoint) -> GraphPoint {
-            guard let vc = viewCoord else { return p }
-            let m = vc.dataToPoint([p.x, p.y], nil)
-            return GraphPoint(x: m[0], y: m[1])
-        }
+        func fitPoint(_ p: GraphPoint) -> GraphPoint { self._fitPoint(p, viewCoord) }
 
         // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
         //   symbolKeepAspect data + item visuals SymbolDraw reads (GraphSeries.hasSymbolVisual = true).
@@ -326,13 +343,20 @@ open class GraphView: ChartView {
             //   Line/BezierCurve, so the label is a free-standing sibling in `_mainGroup`. With the edge
             //   now REUSED across renders (`_mainGroup` no longer wiped), remove this edge's previous label
             //   before rebuilding it at the new endpoints, or labels would accumulate every render.
-            if let oldLabel = self._edgeLabelEls[i] { _ = group.remove(oldLabel); self._edgeLabelEls[i] = nil }
-            if let lbl = graphAddEdgeLabel(
+            if let oldLabel = self._edgeLabelEls[i] {
+                _ = group.remove(oldLabel)
+                self._edgeLabelEls[i] = nil
+                self._edgeLabelDistanceY[i] = nil
+            }
+            if let built = graphAddEdgeLabel(
                 group: group, edgeData: edgeData, idx: i,
                 edgeItemModel: edgeItemModel, seriesModel: seriesModel,
                 p1: p1, p2: p2, cp: cp, edgeStroke: edgeStyle.stroke
             ) {
-                self._edgeLabelEls[i] = lbl
+                self._edgeLabelEls[i] = built.label
+                // Cache the resolved `distance` Y offset so the force iteration can RE-PLACE the label
+                //   along the moved edge without re-resolving its label models (see `_updateEdgeLayout`).
+                self._edgeLabelDistanceY[i] = built.distanceY
             }
             seenEdgeIdx.insert(i)
         }
@@ -341,7 +365,35 @@ open class GraphView: ChartView {
         for (idx, old) in self._edgeEls where !seenEdgeIdx.contains(idx) {
             _ = self._edgeGroup.remove(old)
             self._edgeEls[idx] = nil
-            if let lbl = self._edgeLabelEls[idx] { _ = group.remove(lbl); self._edgeLabelEls[idx] = nil }
+            if let lbl = self._edgeLabelEls[idx] {
+                _ = group.remove(lbl)
+                self._edgeLabelEls[idx] = nil
+                self._edgeLabelDistanceY[idx] = nil
+            }
+        }
+
+        // upstream GraphView.ts:147-153 (runs here, right after symbolDraw.updateData + lineDraw.updateData):
+        //   clearTimeout(this._layoutTimeout);
+        //   const forceLayout = seriesModel.forceLayout;
+        //   const layoutAnimation = seriesModel.get(['force', 'layoutAnimation']);
+        //   if (forceLayout) { isForceLayout = true; this._startForceLayoutIteration(forceLayout, api, layoutAnimation); }
+        // `seriesModel.forceLayout` is typed `Any?` (GraphSeries.swift:98) — downcast to the concrete
+        //   instance chart/graph/forceLayout.swift stores there.
+        self._layoutTimeout?.cancel()
+        self._layoutTimeout = nil
+        // Abandoning a pending iteration must also break its self-referencing closure (ARC; JS just
+        //   drops the step function on the floor).
+        self._forceStepBox?.step = nil
+        self._forceStepBox = nil
+        var isForceLayout = false
+        if let forceLayout = seriesModel.forceLayout as? ForceLayoutInstance {
+            isForceLayout = true
+            // `layoutAnimation` is consumed for JS TRUTHINESS upstream (`layoutAnimation ? … : …`), so
+            //   read it the same way GraphSeries.isAnimationEnabled reads this very option
+            //   (`jsTruthy(get(['force','layoutAnimation']))`) — `as? Bool` would drop `layoutAnimation: 1`
+            //   and make the two readers disagree (Int-vs-Double option-read trap, PORTING.md §8).
+            let layoutAnimation = graphJsTruthy(seriesModel.get(["force", "layoutAnimation"]))
+            self._startForceLayoutIteration(forceLayout, api, layoutAnimation)
         }
 
         // Phase 45: `emphasis.focus:'adjacency'` — after all node/edge elements exist, overwrite each
@@ -388,7 +440,13 @@ open class GraphView: ChartView {
             rotateNodeLabel(node, circularRotateLabel, cx, cy)
         })
 
-        // this._renderThumbnail(...);  — PORT-NOTE (deferred): thumbnail deferred.
+        // upstream: `if (!isForceLayout) { this._renderThumbnail(seriesModel, api, this._symbolDraw, this._lineDraw); }`
+        //   — the `isForceLayout` gate is restored (force layout renders its thumbnail from
+        //   `_startForceLayoutIteration` instead), but the call itself is PORT-NOTE (deferred): the
+        //   thumbnail requires component/helper/thumbnailBridge (not ported).
+        // PORT-TODO: if (!isForceLayout) this._renderThumbnail(seriesModel, api, this._symbolDraw,
+        //   this._lineDraw) — needs component/helper/thumbnailBridge.
+        _ = isForceLayout
 
         // this._firstRender = false;  — PORT-NOTE (deferred): roam state deferred.
     }
@@ -399,10 +457,86 @@ open class GraphView: ChartView {
         self.remove(ecModel, api)
     }
 
-    // upstream: _startForceLayoutIteration(...)  — PORT-NOTE (deferred): forceLayout iteration deferred this phase.
     // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — PORT-NOTE (deferred): roam deferred.
     // upstream: _updateNodeAndLinkScale()  — PORT-NOTE (deferred): setSymbolScale (roam) deferred.
-    // upstream: updateLayout(seriesModel)  — PORT-NOTE (deferred): requires SymbolDraw/LineDraw.updateLayout (LineDraw not ported); adjustEdge itself is ported.
+
+    // upstream:
+    //   updateLayout(seriesModel: GraphSeriesModel) {
+    //       if (!this._active) { return; }
+    //       adjustEdge(seriesModel.getGraph(), getNodeGlobalScale(seriesModel));
+    //       this._symbolDraw.updateLayout();
+    //       this._lineDraw.updateLayout();
+    //   }
+    // Repositions the EXISTING node symbols / edge shapes against the (mutated) layouts, without
+    //   re-running the visual + style pass — this is what each force-layout iteration calls per frame.
+    //   `this._lineDraw.updateLayout()` → `_updateEdgeLayout` below, because this view inlines its edge
+    //   geometry in `_edgeGroup` instead of driving the shared LineDraw (see the class PORT-NOTE).
+    open func updateLayout(_ seriesModel: GraphSeriesModel) {
+        // upstream: `if (!this._active) { return; }` — a step that lands after remove()/dispose() must
+        //   NOT re-materialize symbols into the group remove() just emptied.
+        guard self._active else {
+            return
+        }
+
+        adjustEdge(seriesModel.getGraph(), graphHelper.getNodeGlobalScale(seriesModel))
+
+        self._symbolDraw.updateLayout()
+        self._updateEdgeLayout(seriesModel)
+    }
+
+    // `this._lineDraw.updateLayout()` stand-in: re-derive each live edge element's shape from the edge
+    //   datum's (mutated) layout points. Geometry only — style/label/emphasis are untouched, matching
+    //   LineDraw.updateLayout → Line.updateLayout, which only calls setLinePoints.
+    //   The edge LABEL is re-placed too — upstream's Line re-runs its `beforeUpdate` along-the-edge
+    //   placement every frame, so a moving edge drags its label with it (this port's label is a
+    //   free-standing sibling, so the placement block is factored into `graphPlaceEdgeLabel`).
+    private func _updateEdgeLayout(_ seriesModel: GraphSeriesModel) {
+        let edgeData: SeriesData = seriesModel.getEdgeData()
+        let viewCoord = seriesModel.coordinateSystem as? GraphViewCoordSys
+        func fitPoint(_ p: GraphPoint) -> GraphPoint { self._fitPoint(p, viewCoord) }
+        for (i, edge) in self._edgeEls {
+            guard i < edgeData.count(), let pts = graphEdgePoints(edgeData.getItemLayout(i)) else { continue }
+            let p1 = fitPoint(pts.0)
+            let p2 = fitPoint(pts.1)
+            if !p1.x.isFinite || !p1.y.isFinite || !p2.x.isFinite || !p2.y.isFinite { continue }
+            // PORT-NOTE (deviation): upstream's `Line.updateLayout` → `setLinePoints` does NOT stop
+            //   animators. Here the geometry is written directly, so an in-flight shape tween from the
+            //   previous render's `updateProps` would fight the force iteration frame by frame; drop it
+            //   first. (With force layout `isAnimationEnabled()` is false, so usually there is none.)
+            _ = edge.stopAnimation()
+            _ = edge.setShape("x1", p1.x)
+            _ = edge.setShape("y1", p1.y)
+            _ = edge.setShape("x2", p2.x)
+            _ = edge.setShape("y2", p2.y)
+            let cp = pts.2.map { fitPoint($0) }
+            if edge is BezierCurve {
+                // No control point in the new layout (curveness dropped to 0): collapse the curve onto
+                //   the degenerate straight-line control point (the midpoint) rather than keeping the
+                //   stale one from the previous layout.
+                let c = cp ?? GraphPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+                _ = edge.setShape("cpx1", c.x)
+                _ = edge.setShape("cpy1", c.y)
+            }
+            edge.markRedraw()
+
+            // Re-place this edge's label along the moved edge (upstream Line.beforeUpdate).
+            if let label = self._edgeLabelEls[i] {
+                graphPlaceEdgeLabel(
+                    label, p1: p1, p2: p2, cp: cp,
+                    distanceY: self._edgeLabelDistanceY[i] ?? 5.0
+                )
+            }
+        }
+    }
+
+    // Shared graph-layout → pixel mapping: the node/edge layouts are in the graph's DATA space and the
+    //   View coord maps them onto the pixel view rect (identity when there is no view coord). Used by
+    //   both `render` and `_updateEdgeLayout` so the two cannot drift.
+    fileprivate func _fitPoint(_ p: GraphPoint, _ viewCoord: GraphViewCoordSys?) -> GraphPoint {
+        guard let vc = viewCoord else { return p }
+        let m = vc.dataToPoint([p.x, p.y], nil)
+        return GraphPoint(x: m[0], y: m[1])
+    }
 
     // upstream: remove() {
     //     this._active = false;  clearTimeout(this._layoutTimeout);  this._layouting = false;
@@ -411,13 +545,27 @@ open class GraphView: ChartView {
     //     this._controller && this._controller.disable();
     // }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): _layoutTimeout / _layouting (forceLayout) + RoamController.disable deferred.
+        // upstream: `clearTimeout(this._layoutTimeout); this._layouting = false; this._layoutTimeout = null;`
+        //   — the pending force-layout step is cancelled so a removed view stops iterating.
+        //   PORT-NOTE (deferred): RoamController.disable deferred.
+        self._active = false
+        self._layoutTimeout?.cancel()
+        self._layouting = false
+        self._layoutTimeout = nil
+        // Break the abandoned step closure's self-reference (ARC).
+        self._forceStepBox?.step = nil
+        self._forceStepBox = nil
         //   upstream `this._symbolDraw.remove(); this._lineDraw.remove();` — CLEAR the sub-draws' contents
         //   but keep their groups attached to `_mainGroup` (init_ runs only once, so a later render must
         //   still find them wired). Do NOT `_mainGroup.removeAll()` (that would orphan them permanently).
         self._symbolDraw.remove()
         _ = self._edgeGroup.removeAll()
         self._edgeEls.removeAll()
+        // The edge labels are free-standing children of `_mainGroup` (not of `_edgeGroup`), so they must
+        //   be detached explicitly or they survive the remove() as orphans.
+        for (_, lbl) in self._edgeLabelEls { _ = self._mainGroup.remove(lbl) }
+        self._edgeLabelEls.removeAll()
+        self._edgeLabelDistanceY.removeAll()
     }
 
     // upstream: _getThumbnailInfo / _updateThumbnailWindow / _renderThumbnail
@@ -425,6 +573,123 @@ open class GraphView: ChartView {
 }
 
 // export default GraphView;  -> `open class GraphView` above.
+
+// MARK: - force layout iteration (upstream GraphView.ts:247-268)
+
+extension GraphView {
+
+    // upstream:
+    //   private _startForceLayoutIteration(
+    //       forceLayout: GraphSeriesModel['forceLayout'], api: ExtensionAPI, layoutAnimation?: boolean
+    //   ) {
+    //       const self = this;
+    //       let firstRendered = false;
+    //       (function step() {
+    //           forceLayout.step(function (stopped) {
+    //               self.updateLayout(self._model);
+    //               if (stopped || !firstRendered) {
+    //                   firstRendered = true;
+    //                   self._renderThumbnail(self._model, api, self._symbolDraw, self._lineDraw);
+    //               }
+    //               (self._layouting = !stopped) && (
+    //                   layoutAnimation
+    //                       ? (self._layoutTimeout = setTimeout(step, 16) as any)
+    //                       : step()
+    //               );
+    //           });
+    //       })();
+    //   }
+    //
+    // `forceLayout` is the concrete `ForceLayoutInstance` (forceHelper.swift) the layout stage stored on
+    //   the series (`GraphSeriesModel.forceLayout`, typed `Any?`); the caller does the downcast.
+    // The IIFE `function step()` recursion → a boxed self-referencing closure (`_GraphForceStepBox`),
+    //   Swift's equivalent of a named function expression that an escaping callback re-enters.
+    private func _startForceLayoutIteration(
+        _ forceLayout: ForceLayoutInstance,
+        _ api: ExtensionAPI,
+        _ layoutAnimation: Bool?
+    ) {
+        // PORT SEAM (`setTimeout(step, 16)`): the animated branch needs a LIVE frame host to run the
+        //   main-queue timer. In the headless still-frame harness there is no host and no run loop, so a
+        //   scheduled step would never fire and the frame would show the un-settled FIRST iteration;
+        //   there we must fall back to upstream's OWN non-animated branch (step() until the simulation
+        //   reports stopped), which settles the graph exactly like `layoutAnimation: false` does. That
+        //   replaces the 1500-iteration while-loop compensation that used to live in forceLayout.swift.
+        //
+        //   Detecting "no live host" CANNOT be a one-shot `api.getZr()` probe taken during render:
+        //   `getZr()` resolves `root.__zr`, and the root is attached to a zr by `EChartsView._syncRoot`
+        //   only AFTER `setOption` returns — i.e. AFTER this render (the same trap LinesView documents).
+        //   A render-time probe is therefore false on the FIRST render even on a live host, which would
+        //   make every single-setOption chart take the synchronous branch and never animate. So:
+        //     * re-probe `getZr()` lazily at EACH step (it self-corrects once _syncRoot has run), and
+        //     * before the host exists, fall back to the chart's global `animation` flag — the
+        //       still-frame harness renders with `animation: false`, a live chart keeps the default on.
+        //   Deviation: an explicit `animation: false` on a LIVE host settles the force layout
+        //   synchronously in the first render instead of animating it (the settled result is the same).
+        let animatedBranchAllowed: () -> Bool = { [weak self] in
+            guard let self = self else { return false }
+            if self._api?.getZr() != nil { return true }
+            guard let raw = self._model?.ecModel?.getShallow("animation") else { return true }
+            return graphJsTruthy(raw)
+        }
+
+        let box = _GraphForceStepBox()
+        self._forceStepBox = box
+        var firstRendered = false
+
+        box.step = { [weak self, weak box] in
+            guard let self = self else { return }
+            // Upstream's non-animated branch is `step()` RE-ENTERED from inside the callback; ~510 steps
+            //   of that would nest ~510 closure frames (each also running a full `updateLayout`), so the
+            //   synchronous branch is driven ITERATIVELY here. The scheduled branch still re-enters via
+            //   the work item, exactly like `setTimeout(step, 16)`.
+            var again = true
+            while again {
+                again = false
+                let animated = animatedBranchAllowed() && (layoutAnimation ?? false)
+                forceLayout.step({ stopped in
+                    // Reposition on every frame when something can observe it; in the still-frame
+                    //   (synchronous settle) branch only the LAST frame is ever painted, so skip the
+                    //   ~510 redundant full element repositions and place elements once, at the end.
+                    if (stopped || animated), let model = self._model {
+                        self.updateLayout(model)
+                    }
+                    if stopped || !firstRendered {
+                        firstRendered = true
+                        // self._renderThumbnail(self._model, api, self._symbolDraw, self._lineDraw)
+                        //   PORT-NOTE (deferred): thumbnail requires component/helper/thumbnailBridge.
+                    }
+                    self._layouting = !stopped
+                    if self._layouting {
+                        if animated {
+                            // this._layoutTimeout = setTimeout(step, 16)
+                            let work = DispatchWorkItem { box?.step?() }
+                            self._layoutTimeout = work
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: work)
+                        }
+                        else {
+                            again = true
+                        }
+                    }
+                    else {
+                        // The simulation is settled: drop the self-referencing closure (JS would just let
+                        //   the step function become garbage; ARC needs the cycle broken explicitly).
+                        box?.step = nil
+                        self._forceStepBox = nil
+                    }
+                })
+            }
+        }
+
+        box.step?()
+    }
+}
+
+// Box holding the self-referencing `step` closure (upstream's named function expression `function step()`,
+//   which the escaping `forceLayout.step` callback re-enters). Not an upstream symbol.
+private final class _GraphForceStepBox {
+    var step: (() -> Void)?
+}
 
 // ---- STATIC-port helpers (not upstream functions) --------------------------------------------------
 
@@ -516,7 +781,7 @@ private func graphAddEdgeLabel(
     p2: GraphPoint,
     cp: GraphPoint?,
     edgeStroke: ZRenderKit.ZRColor?
-) -> ZRText? {
+) -> (label: ZRText, distanceY: Double)? {
     // Build the edge label states models. Own option = the link's `label`; parent = the series
     //   `edgeLabel` model (the 'label' → 'edgeLabel' parent redirect, done explicitly here).
     var labelStatesModels: LabelStatesModels = [:]
@@ -548,7 +813,36 @@ private func graphAddEdgeLabel(
     // setLabelStyle sets `ignore = true` when no state has `show: true` (i.e. no visible label).
     if label.ignore { return nil }
 
-    // beforeUpdate placement. midpoint + tangent from the already-fitted endpoints / control point.
+    // distance → [distanceX, distanceY]; only distanceY (dy) is used for 'middle'.
+    var distanceY = 5.0
+    if let arr = normalModel.get("distance") as? [Any], arr.count >= 2 {
+        distanceY = graphToNumber(arr[1])
+    }
+    else if let d = normalModel.get("distance") as? Double {
+        distanceY = d
+    }
+
+    // Use the user-specified align/verticalAlign first, else the computed 'center'/'bottom'.
+    if label.textStyle.align == nil { label.textStyle.align = .center }
+    if label.textStyle.verticalAlign == nil { label.textStyle.verticalAlign = .bottom }
+
+    // beforeUpdate placement (factored out — the force-layout iteration re-runs it every frame).
+    graphPlaceEdgeLabel(label, p1: p1, p2: p2, cp: cp, distanceY: distanceY)
+
+    _ = group.add(label)
+    return (label, distanceY)
+}
+
+// upstream chart/helper/Line.ts `beforeUpdate`: place the label along the edge. Split out of
+//   `graphAddEdgeLabel` so `GraphView._updateEdgeLayout` (the `LineDraw.updateLayout` stand-in the force
+//   iteration drives) can re-place the label on the moved edge every frame, like upstream does.
+private func graphPlaceEdgeLabel(
+    _ label: ZRText,
+    p1: GraphPoint,
+    p2: GraphPoint,
+    cp: GraphPoint?,
+    distanceY: Double
+) {
     let mid: GraphPoint
     if let cp = cp {
         // quadraticAt(t=0.5): 0.25·p1 + 0.5·cp + 0.25·p2
@@ -562,15 +856,6 @@ private func graphAddEdgeLabel(
     let dx = p2.x - p1.x
     let dy0 = p2.y - p1.y
 
-    // distance → [distanceX, distanceY]; only distanceY (dy) is used for 'middle'.
-    var distanceY = 5.0
-    if let arr = normalModel.get("distance") as? [Any], arr.count >= 2 {
-        distanceY = graphToNumber(arr[1])
-    }
-    else if let d = normalModel.get("distance") as? Double {
-        distanceY = d
-    }
-
     // rotation = -atan2(tangent.y, tangent.x); flip by π when the edge points right→left so the text
     //   never renders upside down (upstream `if (toPos[0] < fromPos[0]) rotation = Math.PI + rotation`).
     var rotation = -atan2(dy0, dx)
@@ -583,12 +868,18 @@ private func graphAddEdgeLabel(
     label.rotation = rotation
     label.originX = 0
     label.originY = -dy
-
-    // Use the user-specified align/verticalAlign first, else the computed 'center'/'bottom'.
-    if label.textStyle.align == nil { label.textStyle.align = .center }
-    if label.textStyle.verticalAlign == nil { label.textStyle.verticalAlign = .bottom }
     label.dirty()
+}
 
-    _ = group.add(label)
-    return label
+// JS truthiness for a dynamic option read — the file-private idiom used across this port (see
+//   GraphSeries.swift / forceLayout.swift), needed because `as? Bool` silently drops `1`/`"x"`.
+private func graphJsTruthy(_ v: Any?) -> Bool {
+    guard let v = v else { return false }
+    if v is NSNull { return false }
+    if let b = v as? Bool { return b }
+    if let i = v as? Int { return i != 0 }
+    if let d = v as? Double { return d != 0 && !d.isNaN }
+    if let n = v as? NSNumber { return n.doubleValue != 0 }
+    if let s = v as? String { return !s.isEmpty }
+    return true
 }
