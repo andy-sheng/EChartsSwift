@@ -174,8 +174,13 @@ open class ScatterView: ChartView {
         let pointAt = jitterScatterPoints(seriesModel, data, store, jitterBaseAxis, basePointAt)
 
         // upstream `_updateSymbolDraw`: `isLargeDraw = pipelineContext.large` — for a scatter series
-        //   that is `large: true` and past its `largeThreshold`. The Scheduler pipeline context is not
-        //   ported, so derive it inline here (`large && count >= largeThreshold`).
+        //   that is `large: true` and past its `largeThreshold`.
+        //   PORT-NOTE: `pipelineContext` IS ported and IS computed (Scheduler calls
+        //   `seriesModel.__preparePipelineContext(...)`), but `Scheduler.prepareView` has no caller yet
+        //   (ECharts.update defers it to sub-project C2), so `SeriesModel.pipelineContext` — an
+        //   implicitly-unwrapped `PipelineContext!` — is still nil at render time and reading it would
+        //   TRAP. Derive it inline (`large && count >= largeThreshold`) until prepareView is wired, then
+        //   switch to `seriesModel.pipelineContext.large`.
         let large = (seriesModel.get("large") as? Bool) ?? false
         let largeThreshold = scatterAsInt(seriesModel.get("largeThreshold")) ?? 2000
         let isLargeDraw = large && store.count() >= largeThreshold

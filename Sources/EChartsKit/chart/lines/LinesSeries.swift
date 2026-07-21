@@ -560,8 +560,9 @@ open class LinesSeriesModel: SeriesModel {
                 "trailLength": 0.2
             ] as [String: Any],
 
-            // PORT-NOTE (deferred): `large` / progressive draw path DEFERRED (the large layout buffer is
-            //   produced by linesLayout but its consumer draw is not ported).
+            // `large` IS wired: LinesView derives `isLargeDraw` from `large` + `largeThreshold` and draws
+            //   through chart/helper/LargeLineDraw (the packed `linesPoints` buffer is built in the view,
+            //   since the linesLayout STAGE is not run). Only the PROGRESSIVE half is still deferred.
             "large": false,
             // Available when large is true
             "largeThreshold": 2000.0,
