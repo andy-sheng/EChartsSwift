@@ -92,6 +92,95 @@ final class BarPolarRenderTests: XCTestCase {
         XCTAssertNotNil(image, "CALayerPainter should render the polar-bar scene to a non-nil image")
         #endif
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // TANGENTIAL bars (baseAxis.dim == 'radius': a category radiusAxis + value angleAxis) with
+    // `roundCap: true` → `elementCreatorPolar` picks `SausagePath` (`(!isRadial && roundCap)`).
+    // ---------------------------------------------------------------------------------------------
+
+    private func makeTangentialBarChart(roundCap: Bool) -> ECharts {
+        let ec = ECharts(width: 380, height: 360)
+        ec.setOption([
+            "polar": [String: Any](),
+            "angleAxis": [String: Any](),
+            "radiusAxis": ["type": "category", "data": ["a", "b", "c", "d", "e", "f"]] as [String: Any],
+            "series": [["type": "bar", "coordinateSystem": "polar",
+                        "roundCap": roundCap,
+                        "data": values] as [String: Any]]
+        ])
+        return ec
+    }
+
+    /// Collect every bar element (BarView names each bar element "item") from the root group.
+    private func collectItems(_ root: Group) -> [Path] {
+        var out: [Path] = []
+        _ = root.traverse { el in
+            if let p = el as? Path, p.name == "item" { out.append(p) }
+            return false
+        }
+        return out
+    }
+
+    func testTangentialRoundCapBarRendersSausagePerDatum() {
+        let ec = makeTangentialBarChart(roundCap: true)
+        let items = collectItems(ec.getRoot())
+
+        XCTAssertEqual(items.count, values.count,
+                       "a tangential polar bar with \(values.count) points → \(values.count) elements")
+        guard items.count == values.count else { return }
+
+        for el in items {
+            XCTAssertEqual(el.type, "sausage", "roundCap tangential polar bars use SausagePath")
+            XCTAssertTrue(el is SausagePath, "element should be a SausagePath instance")
+        }
+
+        let shapes = items.compactMap { $0.shape as? SausageShape }
+        XCTAssertEqual(shapes.count, values.count, "every element carries a SausageShape")
+        guard shapes.count == values.count else { return }
+
+        // Geometry comes from layout/barPolar (read back via getLayoutPolar): a shared pole, a shared
+        // baseline startAngle (value 0), a per-category radial band, and a per-value angular sweep.
+        let cx0 = shapes[0].cx, cy0 = shapes[0].cy, start0 = shapes[0].startAngle
+        for s in shapes {
+            XCTAssertEqual(s.cx, cx0, accuracy: 1e-6, "all bars share the polar center x")
+            XCTAssertEqual(s.cy, cy0, accuracy: 1e-6, "all bars share the polar center y")
+            XCTAssertEqual(s.startAngle, start0, accuracy: 1e-6, "all tangential bars start at the value-0 angle")
+            XCTAssertTrue(s.r.isFinite && s.r0.isFinite && s.cx.isFinite && s.cy.isFinite
+                          && s.startAngle.isFinite && s.endAngle.isFinite, "finite sausage geometry")
+            XCTAssertGreaterThan(s.r, s.r0, "each bar occupies a non-degenerate radial band")
+            XCTAssertNotEqual(s.startAngle, s.endAngle, "each bar sweeps a non-zero angle")
+        }
+        // One radial band per radius-axis category.
+        XCTAssertEqual(Set(shapes.map { $0.r0 }).count, values.count, "one radial band per category")
+
+        // Larger value ⇒ larger angular sweep, pairwise.
+        let sweep = shapes.map { abs($0.endAngle - $0.startAngle) }
+        for i in 0..<values.count {
+            for j in 0..<values.count where values[i] < values[j] {
+                XCTAssertLessThan(sweep[i], sweep[j], "value \(values[i]) < \(values[j]) ⇒ shorter sweep")
+            }
+        }
+    }
+
+    func testRoundCapToggleRecreatesElementAsSector() {
+        let ec = makeTangentialBarChart(roundCap: true)
+        let before = collectItems(ec.getRoot()).filter { $0.type == "sausage" }
+        XCTAssertEqual(before.count, values.count, "baseline: every bar is a sausage")
+        guard let firstBefore = before.first else { return }
+
+        // Merge-mode setOption flipping roundCap → `roundCapChanged` in `_renderPolarBars` must remove
+        // the old element and create a fresh `Sector` (there is no sausage→sector tween).
+        ec.setOption(["series": [["type": "bar", "coordinateSystem": "polar",
+                                  "roundCap": false, "data": values] as [String: Any]]])
+
+        let after = collectItems(ec.getRoot()).filter { $0.type == "sector" }
+        XCTAssertEqual(after.count, values.count, "after roundCap:false every bar is a sector")
+        XCTAssertFalse(after.contains(where: { $0 === firstBefore }),
+                       "the element is recreated, not reused")
+        for el in after {
+            XCTAssertTrue(el is Sector, "recreated element should be a Sector instance")
+        }
+    }
 }
 
 #if canImport(QuartzCore) && canImport(CoreGraphics)

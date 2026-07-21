@@ -39,10 +39,13 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
     handler.seriesType = seriesType
 
     // plan: createRenderPlanner(),
-    //   PORT-NOTE (deferred): the `StageHandler.plan` typealias has a NON-optional return here, so the
-    //   planner's "no reset needed" answer cannot be represented (identical deviation to
-    //   candlestickLayout / barGrid). `reset` recomputes each pass, so output is unaffected.
-    _ = createRenderPlanner()
+    //   PORT-TODO: `StageHandlerPlan` now returns `StageHandlerPlanReturn?` (util/types.swift), so the
+    //   planner's nil-for-no-reset answer IS representable — the old "non-optional return" blocker no
+    //   longer exists. What remains is the arity mismatch: wire it with the adapter used in
+    //   chart/lines/linesLayout.swift:48-51 (`let planner = createRenderPlanner();
+    //   handler.plan = { sm, _, _, _ in planner(sm) }`), created ONCE so its makeInner large/progressive
+    //   state persists across calls. Left unwired for now (same as candlestickLayout / candlestickVisual /
+    //   barGrid); `reset` recomputes each pass, so non-progressive output is unaffected.
     handler.plan = nil
 
     handler.reset = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in

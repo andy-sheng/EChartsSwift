@@ -174,8 +174,16 @@ open class ScatterView: ChartView {
         let pointAt = jitterScatterPoints(seriesModel, data, store, jitterBaseAxis, basePointAt)
 
         // upstream `_updateSymbolDraw`: `isLargeDraw = pipelineContext.large` — for a scatter series
-        //   that is `large: true` and past its `largeThreshold`. The Scheduler pipeline context is not
-        //   ported, so derive it inline here (`large && count >= largeThreshold`).
+        //   that is `large: true` and past its `largeThreshold`.
+        // PORT-NOTE (deviation, not a deferral): `seriesModel.pipelineContext` IS populated in this port —
+        //   `ECharts.prepareView` seeds it (ECharts.swift:2192) and the `updateStreamModes` pass
+        //   (ECharts.swift:1891) recomputes the real one via `SeriesModel.__preparePipelineContext` ->
+        //   `modelUtil.preparePipelineContext` before render, exactly as upstream. The predicate is still
+        //   derived inline here only as a pre-existing carry-over; it is kept EQUIVALENT to
+        //   `preparePipelineContext`: `get('large') && count >= largeThreshold`, with the same upstream
+        //   default (`largeThreshold: 2000`, ScatterSeries defaultOption). FOLLOW-UP: collapse to
+        //   `seriesModel.pipelineContext.large` (as CandlestickView.swift:140 already does) so there is one
+        //   predicate; until then any change here must be mirrored in `modelUtil.preparePipelineContext`.
         let large = (seriesModel.get("large") as? Bool) ?? false
         let largeThreshold = scatterAsInt(seriesModel.get("largeThreshold")) ?? 2000
         let isLargeDraw = large && store.count() >= largeThreshold

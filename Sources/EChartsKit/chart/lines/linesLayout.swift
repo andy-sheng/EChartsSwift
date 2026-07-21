@@ -40,14 +40,15 @@ public let linesLayout: StageHandler = {
     handler.seriesType = "lines"
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE (deferred): upstream `plan: createRenderPlanner()`. Left unwired due to the signature
-    //   mismatch of `StageHandler.plan` — `createRenderPlanner()` yields a 1-arg `(SeriesModel) ->
-    //   StageHandlerPlanReturn?` (nil-for-no-reset), but `StageHandlerPlan` is the 4-arg
-    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn` (non-optional return)
-    //   and cannot be assigned without relaxing that typealias (same deviation as candlestickLayout.swift /
-    //   layout/barGrid.swift `handler.plan = nil`).
-    _ = createRenderPlanner()
-    handler.plan = nil
+    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
+    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
+    //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
+    //   and wrapped in an arity adapter that ignores the extra args, which upstream's planner also ignores.
+    let planner = createRenderPlanner()
+    handler.plan = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> StageHandlerPlanReturn? in
+        return planner(seriesModel)
+    }
 
     // reset: function (seriesModel: LinesSeriesModel) { ... }
     handler.reset = { (seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in
@@ -85,10 +86,12 @@ public let linesLayout: StageHandler = {
             var lineCoords: [[Double]] = []
             // if (isLarge) {
             if isLarge {
-                // PORT-NOTE (deferred): the large-mode layout produces the flat `linesPoints` buffer consumed
-                //   only by the large draw path (a `LargeLinesPath`-style consumer), which is not yet ported —
-                //   confirmed no reader of `linesPoints` exists outside this file. Ported here for structural
-                //   fidelity (same deferral pattern as candlestickLayout's largeProgress).
+                // PORT-NOTE: the large-mode layout produces the flat `linesPoints` buffer read by the large
+                //   draw path — `chart/helper/LargeLineDraw.swift` (`updateData` / `incrementalUpdate`, the
+                //   two `data.getLayout("linesPoints")` readers) is ported and reads this exact layout key;
+                //   only its WIRING from `LinesView` is still deferred (see the PORT-TODO on the
+                //   `_lineDraw` declaration in `LinesView.swift`), so the buffer is produced ahead of that
+                //   hookup.
                 // let points;
                 var points: [Double]
                 // const segCount = params.end - params.start;
@@ -119,15 +122,25 @@ public let linesLayout: StageHandler = {
                     let len = seriesModel.getLineCoords(i, &lineCoords)
                     // if (isPolyline) { points[offset++] = len; }
                     if isPolyline {
-                        points[offset] = Double(len); offset += 1
+                        // PORT-NOTE: upstream writes into a `Float32Array`, where an out-of-range store is
+                        //   SILENTLY DROPPED; `[Double]` traps instead. The non-polyline buffer is sized for
+                        //   exactly 2 points per segment (`segCount * 4`), but `getLineCoords` returns the
+                        //   ACTUAL coord count, which is >= 3 for a data item declaring 3+ `coords` with
+                        //   `polyline: false` — so every store is bounds-guarded to reproduce JS's drop.
+                        if offset < points.count { points[offset] = Double(len) }
+                        offset += 1
                     }
                     // for (let k = 0; k < len; k++) {
                     for k in 0..<len {
                         // pt = coordSys.dataToPoint(lineCoords[k], false, pt);
                         pt = coordSys.dataToPoint(lineCoords[k], false)
                         // points[offset++] = pt[0];  points[offset++] = pt[1];
-                        points[offset] = pt[0]; offset += 1
-                        points[offset] = pt[1]; offset += 1
+                        //   (JS reads `pt[0]`/`pt[1]` of a short array as `undefined` -> NaN in the
+                        //   Float32Array; mirrored with a NaN fallback rather than an index trap.)
+                        if offset < points.count { points[offset] = pt.count > 0 ? pt[0] : Double.nan }
+                        offset += 1
+                        if offset < points.count { points[offset] = pt.count > 1 ? pt[1] : Double.nan }
+                        offset += 1
                     }
                 }
 
@@ -154,6 +167,14 @@ public let linesLayout: StageHandler = {
                     }
                     // else {
                     else {
+                        // PORT-NOTE: upstream indexes `lineCoords[0]` / `lineCoords[1]` unconditionally; for
+                        //   a malformed 1-coord datum JS yields `undefined` -> NaN points, while Swift would
+                        //   trap (the scratch is only grown to `len` entries by `getLineCoords`, and starts
+                        //   empty on the first datum). Bail out to the (possibly empty) layout instead.
+                        guard len >= 2 && lineCoords.count >= 2 else {
+                            lineData.setItemLayout(i, pts)
+                            continue
+                        }
                         // pts[0] = coordSys.dataToPoint(lineCoords[0]);
                         pts.append(coordSys.dataToPoint(lineCoords[0], nil))
                         // pts[1] = coordSys.dataToPoint(lineCoords[1]);

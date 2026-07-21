@@ -1537,7 +1537,11 @@ public final class ECharts: EChartsType {
         //   later task realigns to the real upstream PRIORITY and gates that reorder separately). dataZoom's
         //   AxisProxy was already created by prepareStageTasks' getTargetSeries at setOption, so this only
         //   runs its overallReset. Runs BETWEEN coordSysMgr.create (3) and coordSysMgr.update (5), faithful.
-        // updateStreamModes(...) — PORT-NOTE (deferred): skipped (progressive/stream rendering out of scope).
+        // updateStreamModes(...) — NOT skipped (this comment previously said "deferred", which is stale):
+        //   upstream runs it here, this port runs it a few steps later (see the `_scheduler.updateStreamModes`
+        //   loop below, ~line 1891) because it needs the chart VIEWS, which `prepareView` resolves after this
+        //   point. It still lands before the layout stages and `renderSeries`, so every reader of
+        //   `seriesModel.pipelineContext` sees the real progressive/large context.
         _scheduler.performDataProcessorTasks(ecModel)
 
         // (5) coordSysMgr.update — update axis pixel + data extents from the (now processed) series data,
@@ -2217,8 +2221,15 @@ public final class ECharts: EChartsType {
                 _chartViewByModel[ObjectIdentifier(seriesModel)] = chartView
                 // upstream: `scheduler.prepareView(view, model, ...)` builds the series pipeline and sets
                 //   `seriesModel.pipelineContext` (progressive/large flags read by `BarView._updateDrawMode`
-                //   at BarView.swift:221). With the Scheduler unported, set a minimal non-progressive,
-                //   non-large context directly.
+                //   at BarView.swift:221). PORT-NOTE: this assignment is only the INITIAL value — it makes
+                //   the implicitly-unwrapped `pipelineContext` non-nil for every series the moment its view
+                //   is resolved, so any reader is safe. The REAL context is computed right after, by the
+                //   `updateStreamModes` pass in `update()` (see the `_scheduler.updateStreamModes` loop
+                //   above, ~line 1891), which dispatches `seriesModel.__preparePipelineContext(view, pipeline)`
+                //   -> `modelUtil.preparePipelineContext` and overwrites this. That pass runs BEFORE the
+                //   layout stages and `renderSeries`, so `pipelineContext.large` / `.progressiveRender` are
+                //   authoritative by the time `linesLayout` / `barGrid` / any view's large branch reads them.
+                //   Do NOT re-derive a private `large` predicate at a call site — read `pipelineContext.large`.
                 seriesModel.pipelineContext = PipelineContext(progressiveRender: false, large: false, modDataCount: nil)
             }
         }

@@ -480,8 +480,14 @@ open class LinesSeriesModel: SeriesModel {
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }
     open override func preventIncremental() -> Bool {
-        // PORT-NOTE (deferred): `effect` render is ANIMATED and DEFERRED (CONVENTIONS §5). The option flag
-        //   is still read faithfully so the (deferred) incremental/effect pipeline sees the right value.
+        // PORT-NOTE: this is the LinesSeries leg of SYMBOLS.tsv row `core/Scheduler.currentTask+pipelineHooks`
+        //   and it is LIVE, not dormant. `preventIncremental` is a real `open func` slot on the base
+        //   `SeriesModel` CLASS BODY (Series.swift:837) — declared there, not in an extension, so this
+        //   `override` is dynamically dispatched — and `Scheduler.restorePipelines` (Scheduler.swift:343)
+        //   gates `progressiveEnabled: jsTruthy(progressive) && !seriesModel.preventIncremental()` on it,
+        //   which in turn feeds `__preparePipelineContext` -> `pipelineContext.progressiveRender`.
+        //   Only the `effect` RENDER itself is deferred (animated trail, CONVENTIONS §5); the flag read
+        //   below is faithful to upstream `!!this.get(['effect','show'])` and is already consumed.
         return jsTruthy(self.get(["effect", "show"]))
     }
 
