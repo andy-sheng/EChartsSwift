@@ -35,7 +35,10 @@ import ZRenderKit
 //          `GraphNodeItemOption` is a type-only generic — dropped.
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
-//   import { extend } from 'zrender/src/core/util';                  -> `util.extend`.
+//   import { extend } from 'zrender/src/core/util';
+//       -> PORT-NOTE: not realized as `util.extend`. `aspect` is not a field of `BoxLayoutOptionMixin`,
+//          so upstream's `extend(getBoxLayoutParams(), {aspect})` is realized by the inline
+//          `[String: Any]` bag construction in `getViewRect` below (same idiom as geoCreator.swift).
 //   import { injectCoordSysByOption } from '../../core/CoordinateSystem';
 //       -> `injectCoordSysByOption` (core/CoordinateSystemManager.swift). Wiring deferred (needs View).
 //   import { createViewCoordSysSimply } from '../../component/helper/roamHelper';
@@ -265,7 +268,19 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
         // let min: number[] = []; let max: number[] = []; bbox.fromPoints(positions, min, max);
         //   `bbox.fromPoints` is value-returning in the port (out-params dropped, CONVENTIONS §3);
         //   `VectorArray` (SIMD2) mirrors the mutable `min`/`max` slots (indices [0]/[1] used below).
-        var (min, max) = bbox.fromPoints(positions, VectorArray(), VectorArray())
+        //   DEVIATION-GUARD: upstream passes JS *empty arrays*; with no points `fromPoints` leaves them
+        //   empty, so `max[0] - min[0]` is `undefined - undefined` = NaN, `aspect` is NaN and the
+        //   `isNaN(aspect)` view-rect fallback below fires. `VectorArray` is a fixed SIMD2 that would
+        //   read (0, 0) instead (deltas exactly 0 -> ±1 padding -> aspect 1, fallback skipped), so the
+        //   empty case is seeded with NaN to reproduce upstream.
+        var min: VectorArray
+        var max: VectorArray
+        if positions.isEmpty {
+            min = VectorArray(repeating: Double.nan)
+            max = VectorArray(repeating: Double.nan)
+        } else {
+            (min, max) = bbox.fromPoints(positions, VectorArray(), VectorArray())
+        }
 
         // If width or height is 0
         if max[0] - min[0] == 0 {
@@ -315,10 +330,16 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
 
 // upstream `+itemModel.get('x')` unary-plus numeric coercion.
 private func toNumber(_ value: Any?) -> Double {
+    //   JS `+x`: `+undefined` is NaN, but `+null` is 0, `+true` is 1, `+false` is 0 and `+''`
+    //   (or any all-whitespace string) is 0. Absent (`nil`, i.e. `undefined`) stays NaN.
     switch value {
     case let d as Double: return d
     case let i as Int: return Double(i)
-    case let s as String: return Double(s) ?? Double.nan
+    case let b as Bool: return b ? 1 : 0
+    case is NSNull: return 0
+    case let s as String:
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? 0 : (Double(trimmed) ?? Double.nan)
     default: return Double.nan
     }
 }
