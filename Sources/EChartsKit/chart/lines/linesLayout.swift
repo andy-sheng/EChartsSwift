@@ -76,7 +76,10 @@ public let linesLayout: StageHandler = {
         // const isPolyline = seriesModel.get('polyline');
         let isPolyline = jsTruthy(seriesModel.get("polyline"))
         // const isLarge = seriesModel.pipelineContext.large;
-        let isLarge = seriesModel.pipelineContext.large
+        //   `pipelineContext` is an IUO `PipelineContext!` here: optional-chained so this stage matches
+        //   LinesView's equally defensive read (a driver path that skipped updateStreamModes takes the
+        //   non-large path on BOTH sides instead of trapping in the layout stage).
+        let isLarge = seriesModel.pipelineContext?.large ?? false
 
         // return { progress(params, lineData) { ... } };
         var executor = StageHandlerProgressExecutor()
@@ -92,6 +95,14 @@ public let linesLayout: StageHandler = {
                 //   FIXED-SIZE (as upstream's Float32Array) — that is the LAYOUT INVARIANT
                 //   LargeLinesPath.buildPath / findDataIndex rely on (a Swift out-of-bounds read TRAPS where
                 //   upstream's typed array merely yields NaN), so do NOT switch this to appending.
+                //   PORT-NOTE (load-bearing bound guards below): the buffer is sized from `segCount` on the
+                //   assumption of 2 coords per non-polyline item, but `getLineCoords` does NOT clamp `len`,
+                //   so a data item with 3+ coords writes past the end. Upstream's Float32Array SILENTLY
+                //   DROPS an out-of-range write; a Swift `[Double]` subscript TRAPS. The
+                //   `offset < points.count` / `offset + 1 < points.count` checks reproduce the JS
+                //   semantics (clip the overflow, keep the buffer length an exact multiple of 4).
+                //   The `pt.count` checks likewise reproduce `undefined` → NaN for a coordinate system
+                //   that returns a short point.
                 // let points;
                 var points: [Double]
                 // const segCount = params.end - params.start;
@@ -122,15 +133,17 @@ public let linesLayout: StageHandler = {
                     let len = seriesModel.getLineCoords(i, &lineCoords)
                     // if (isPolyline) { points[offset++] = len; }
                     if isPolyline {
-                        points[offset] = Double(len); offset += 1
+                        if offset < points.count { points[offset] = Double(len); offset += 1 }
                     }
                     // for (let k = 0; k < len; k++) {
                     for k in 0..<len {
                         // pt = coordSys.dataToPoint(lineCoords[k], false, pt);
                         pt = coordSys.dataToPoint(lineCoords[k], false)
                         // points[offset++] = pt[0];  points[offset++] = pt[1];
-                        points[offset] = pt[0]; offset += 1
-                        points[offset] = pt[1]; offset += 1
+                        if offset + 1 < points.count {
+                            points[offset] = pt.count > 0 ? pt[0] : Double.nan; offset += 1
+                            points[offset] = pt.count > 1 ? pt[1] : Double.nan; offset += 1
+                        }
                     }
                 }
 

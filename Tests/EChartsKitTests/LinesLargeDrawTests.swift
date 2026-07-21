@@ -77,12 +77,14 @@ final class LinesLargeDrawTests: XCTestCase {
     // An item with a coord count OTHER than 2 must NOT shift the packing: upstream's fixed-size
     // Float32Array silently drops the overflow, keeping segs a multiple of 4. Appending would both
     // mis-pair every later segment and trap in buildPath.
+    // The fixture OVERFLOWS on purpose: 3 items → a 3*4 = 12-slot buffer, but 3 coords each means 18
+    // writes are attempted. Without linesLayout's bound guard this traps
+    // (`ContiguousArrayBuffer.swift: Fatal error: Index out of range`).
     func testNonTwoCoordItemKeepsBufferAligned() {
         let ec = ECharts(width: 400, height: 300)
-        var data = twoPointData(3)
-        // A 3-coord item (legal user data) and a 1-coord item, in non-polyline mode.
-        data[1] = ["coords": [[1.0, 0.0], [1.0, 5.0], [1.0, 10.0]]]
-        data.append(["coords": [[4.0, 4.0]]])
+        let data: [[String: Any]] = (0..<3).map { i in
+            ["coords": [[Double(i), 0.0], [Double(i), 5.0], [Double(i), 10.0]]] as [String: Any]
+        }
 
         ec.setOption(option(data, large: true, polyline: false))
 

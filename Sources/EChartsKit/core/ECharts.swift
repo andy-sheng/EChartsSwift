@@ -2044,10 +2044,14 @@ public final class ECharts: EChartsType {
         // LAYOUT — lines per-item point projection (upstream `registerLayout(linesLayout)`). A
         //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset`→`progress` maps each line's data-space
         //   coords through the cartesian `dataToPoint` (plus the quadratic curveness control point) and
-        //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout. `LinesView.render`
-        //   inlines the same math (like ScatterView/LineView), so the view does not strictly depend on this
-        //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
-        //   (polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout).
+        //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout.
+        //   LOAD-BEARING for LARGE mode: this stage's `isLarge` branch is the SOLE PRODUCER of the packed
+        //   `linesPoints` buffer that `LinesView.render`'s large branch draws through
+        //   chart/helper/LargeLineDraw — remove this call and a `large: true` lines series renders NOTHING.
+        //   Only the NON-large per-item projection is ADDITIONALLY inlined in the view (like
+        //   ScatterView/LineView), so for those modes the stage is redundant-but-faithful.
+        //   Polar is not handled (PORT-NOTE (deferred): `Polar` does not witness `CoordinateSystem` in
+        //   linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a

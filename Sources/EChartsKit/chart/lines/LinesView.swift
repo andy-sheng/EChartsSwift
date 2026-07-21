@@ -87,8 +87,23 @@ open class LinesView: ChartView {
     //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
     //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; geo/polar lines stay
     //   DEFERRED (only Cartesian2D is wired). The (ported) LargeLineDraw IS wired — see below.
-    private let _lineDraw = LineDraw()
+    //   `var` (not `let`) because a draw-MODE flip must DISCARD the instance: upstream `_updateLineDraw`
+    //   does `lineDraw = this._lineDraw = new LineDraw(...)` on every `isLargeDraw` / `isPolyline` change,
+    //   so the first post-flip `updateData` sees `oldLineData == nil` and ENTERS every element fresh.
+    //   Reusing one instance would diff the new data against data captured before the flip and tween the
+    //   elements from a stale state. `_recreateLineDraw()` below reproduces the upstream discard.
+    private var _lineDraw = LineDraw()
     private var _lineDrawAdded = false
+
+    // upstream `_updateLineDraw`: `this._lineDraw = new LineDraw(...)` — detach + throw away the current
+    //   draw (elements AND diff state) and start from a brand-new one. Called at every mode flip
+    //   (normal ↔ large, non-polyline ↔ polyline) and whenever the persisted elements are dropped.
+    private func _recreateLineDraw() {
+        _lineDraw.remove()
+        _ = group.remove(_lineDraw.group)
+        _lineDraw = LineDraw()
+        _lineDrawAdded = false
+    }
 
     // upstream `_updateLineDraw`: `lineDraw = isLargeDraw ? new LargeLineDraw() : new LineDraw(...)` —
     //   the two draws are held in one `_lineDraw` field there (typed `ILineDraw`, which is NOT ported);
@@ -190,9 +205,15 @@ open class LinesView: ChartView {
         //   branch consumes — branches on `seriesModel.pipelineContext.large` too, so producer and
         //   consumer cannot disagree (a `__preparePipelineContext` override, or a differing coercion of
         //   `largeThreshold`, would otherwise feed a large-mode draw from a per-item layout pass).
-        //   Optional-chained because `pipelineContext` is an implicitly-unwrapped `PipelineContext!`
-        //   (nil in any driver path that skips updateStreamModes; there the non-large path is correct,
-        //   since linesLayout would not have packed a buffer either).
+        //   `pipelineContext` is an implicitly-unwrapped `PipelineContext!` that `ECharts.render()`'s
+        //   updateStreamModes pass GUARANTEES to be populated before any view renders; the optional chain
+        //   is belt-and-braces only (and `linesLayout` reads it the same defensive way, so a hypothetical
+        //   nil would take the non-large path on BOTH sides rather than trapping in the layout stage).
+        //   PORT-NOTE (coercion delta vs the JS predicate, inherited from modelUtil.preparePipelineContext,
+        //   which is the shared single source of truth for every series): it reads `large` as `as? Bool`
+        //   (a truthy non-Bool such as `1` does NOT enable large mode) and defaults a missing
+        //   `largeThreshold` to 0 (upstream `dataLen >= undefined` is always FALSE, i.e. never large).
+        //   Unreachable for `lines`, whose series defaults always supply `large: false` / 2000.
         let isLargeDraw = seriesModel.pipelineContext?.large ?? false
 
         if isLargeDraw {
@@ -207,7 +228,7 @@ open class LinesView: ChartView {
             // Only the normal → large TRANSITION drops the LineDraw / persisted Polyline / effect
             //   elements; upstream `_updateLineDraw` likewise re-creates the draw only when the mode
             //   actually flips (cf. ScatterView's `if _largeSymbolDraw == nil || _isLargeDraw != …`).
-            //   `_lineDraw.reset()` (not `.remove()`) also clears its DIFF state, so that a later
+            //   `resetPersistentElements` DISCARDS the LineDraw (not just its elements), so that a later
             //   large → normal flip enters elements fresh, exactly as upstream's brand-new LineDraw does.
             if !_isLargeDraw {
                 self.resetPersistentElements()
@@ -249,12 +270,12 @@ open class LinesView: ChartView {
         }
 
         // Toggle back from large → normal: drop the large path so it can't linger under the reused group,
-        //   and RESET the LineDraw's diff state — upstream builds a brand-new `LineDraw` on the flip, so
-        //   its first `updateData` sees `oldLineData == nil` and enters every element fresh; reusing this
-        //   instance would otherwise diff against (and tween from) the data captured before large mode.
+        //   and DISCARD the LineDraw — upstream builds a brand-new `LineDraw` on the flip, so its first
+        //   `updateData` sees `oldLineData == nil` and enters every element fresh; reusing this instance
+        //   would otherwise diff against (and tween from) the data captured before large mode.
         if _isLargeDraw {
             _largeLineDraw?.remove()
-            _lineDraw.reset()
+            _recreateLineDraw()
             _isLargeDraw = false
         }
 
@@ -337,7 +358,10 @@ open class LinesView: ChartView {
 
         // === Polyline (N-point) — inline persist-and-morph (ECLine models only 2/3-point lines) =======
         //   Clear any LineDraw content from a mode flip, then morph the persisted Polyline elements.
-        if _lineDrawAdded { _lineDraw.remove() }
+        //   DISCARD the draw (not just its elements): upstream `_updateLineDraw` re-creates the LineDraw
+        //   on `isPolyline !== this._isPolyline` exactly as it does on the large flip, so a later
+        //   polyline → non-polyline flip must not diff against the data captured two generations back.
+        if _lineDrawAdded { _recreateLineDraw() }
 
         // Morph iff we already drew the same number of polylines (only values changed); else rebuild.
         let canMorph = !_lineEls.isEmpty && _prevCount == count && _prevIsPolyline == isPolyline
@@ -448,9 +472,9 @@ open class LinesView: ChartView {
 
     // Drop ALL persisted line + effect elements (coord-system change / remove / dispose).
     private func resetPersistentElements() {
-        // `reset()` (not `remove()`): the LineDraw's elements are being dropped, so its DIFF state must go
-        //   with them — upstream reaches this path by constructing a fresh LineDraw.
-        _lineDraw.reset()
+        // DISCARD the LineDraw (not just `remove()` its elements): its DIFF state must go with them —
+        //   upstream reaches this path by constructing a fresh LineDraw.
+        _recreateLineDraw()
         _largeLineDraw?.remove()
         _isLargeDraw = false
         for (_, old) in _lineEls { _ = self.group.remove(old) }
@@ -470,8 +494,7 @@ open class LinesView: ChartView {
         _ = self.group.removeAll()
         // group.removeAll() also detached the LineDraw group — clear its content + the re-add flag so a
         //   later render re-attaches it. Clear the polyline/effect bookkeeping too.
-        _lineDraw.reset()
-        _lineDrawAdded = false
+        _recreateLineDraw()
         // …and likewise the LargeLineDraw (upstream's single `_lineDraw` field holds whichever draw is
         //   active and is nulled out here). Dropping the instance also drops the "added to group" state,
         //   so a later large render re-creates + re-attaches it.
