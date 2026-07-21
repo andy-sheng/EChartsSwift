@@ -373,12 +373,19 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
 // upstream: export function setTooltipConfig(opt: { el, componentModel, itemName, itemTooltipOption?, formatterParamsExtra? }): void
 //   PORT-NOTE: upstream's single options bag is spread to labeled parameters here.
 //   `itemTooltipOption` is `string | CommonTooltipOption<unknown>` -> `Any?`.
+//   PORT-NOTE: `formatterParamsExtra` is `KeyValuePairs<String, Any>`, not `[String: Any]`, because
+//     its key order is load-bearing: the keys are appended to `formatterParams.$vars`, and
+//     `format.formatTpl` maps `$vars` POSITIONALLY onto `TPL_VAR_ALIAS` (`a`/`b`/`c`/...). A Swift
+//     `Dictionary` iterates in hash-seeded (per-process random) order, so `{b}`/`{c}`/`{d}` in a
+//     tooltip formatter string would resolve to an arbitrary extra field on each run. `KeyValuePairs`
+//     is `ExpressibleByDictionaryLiteral`, so call sites keep upstream's object-literal syntax
+//     verbatim while preserving upstream's insertion order.
 public func setTooltipConfig(
     el: Element,
     componentModel: ComponentModel,
     itemName: String,
     itemTooltipOption: Any? = nil,
-    formatterParamsExtra: [String: Any]? = nil
+    formatterParamsExtra: KeyValuePairs<String, Any>? = nil
 ) {
     // const itemTooltipOptionObj = isString(...) ? { formatter: ... } : itemTooltipOption;
     var itemTooltipOptionObj = CommonTooltipOption<Any>()
@@ -406,9 +413,12 @@ public func setTooltipConfig(
 
     // if (formatterParamsExtra) { each(keys(...), key => { if (!hasOwn(formatterParams, key)) {...} }); }
     if let formatterParamsExtra = formatterParamsExtra {
-        util.each(util.keys(formatterParamsExtra)) { key, _ in
+        // PORT-NOTE: upstream's `each(keys(formatterParamsExtra), ...)` walks JS object
+        //   insertion order; iterating the `KeyValuePairs` preserves that order faithfully
+        //   (see the `$vars`/`TPL_VAR_ALIAS` note on the signature above).
+        for (key, value) in formatterParamsExtra {
             if !formatterParamsHasOwn(formatterParams, key) {
-                formatterParams.other[key] = formatterParamsExtra[key]
+                formatterParams.other[key] = value
                 formatterParams.vars.append(key)
             }
         }
