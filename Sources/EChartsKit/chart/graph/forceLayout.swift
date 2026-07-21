@@ -185,7 +185,7 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 }
             }
             // forceInstance.afterStep(function (nodes, edges, stopped) { ... });
-            forceInstance.afterStep { nodes, edges, _ in
+            forceInstance.afterStep { [weak graphSeries] nodes, edges, _ in
                 for i in 0..<nodes.count {
                     if !nodes[i].fixed {
                         let p = nodes[i].p!
@@ -195,6 +195,11 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                     let p = nodes[i].p!
                     preservedPoints[nodeData.getId(i)] = [p[0], p[1]]
                 }
+                // Upstream mutates the SHARED `preservedPoints` object, which `graphSeries.preservedPoints`
+                //   already points at. A Swift dictionary is a value, so publish the updated copy back
+                //   onto the series every step (weakly captured: the series owns the forceInstance that
+                //   owns this closure).
+                graphSeries?.preservedPoints = preservedPoints
                 for i in 0..<edges.count {
                     let e = edges[i]
                     let edge = graph.getEdgeByIndex(i)!
@@ -227,30 +232,21 @@ func graphForceLayout(_ ecModel: GlobalModel) {
             }
             // graphSeries.forceLayout = forceInstance;
             graphSeries.forceLayout = forceInstance
-            // graphSeries.preservedPoints = preservedPoints;  (assigned after the settle loop below —
-            //   the closures mutate the captured `preservedPoints` var by reference during `step()`,
-            //   so the final write picks up every afterStep update. Faithful to upstream, where the
-            //   dict is a JS object shared by reference.)
+            // graphSeries.preservedPoints = preservedPoints;
+            //   Upstream assigns BEFORE the step: `preservedPoints` is a JS object shared BY REFERENCE, so
+            //   every later afterStep mutation is visible through `graphSeries.preservedPoints`. A Swift
+            //   dictionary is a VALUE, so the afterStep closure additionally writes its updated copy back
+            //   onto the series (see the `graphSeries?.preservedPoints = preservedPoints` above) — that
+            //   matters now that most steps run LATER, from GraphView's iteration.
+            graphSeries.preservedPoints = preservedPoints
 
             // Step to get the layout
-            // upstream: `forceInstance.step();` — a SINGLE step. The remaining steps are driven live,
-            //   per animation frame, by GraphView until the force reports `finished` (friction < 0.01).
-            // PORT-NOTE (deferred): the GraphView requestAnimationFrame loop that calls
-            //   `forceInstance.step()` each frame (and eases node symbols toward the new positions) is
-            //   NOT ported — the port renders a single STATIC frame. To make that static frame show a
-            //   settled (spread-out) graph rather than the noisy first step, we run the simulation
-            //   synchronously here until it reports finished, with a hard iteration cap as a safety
-            //   bound. When the live host lands, replace this loop with the single upstream
-            //   `forceInstance.step()` and let the frame loop drive the rest.
-            var iter = 0
-            let maxIter = 1500
-            var finished = false
-            while !finished && iter < maxIter {
-                finished = forceInstance.step()
-                iter += 1
-            }
-
-            graphSeries.preservedPoints = preservedPoints
+            // upstream: `forceInstance.step();` — a SINGLE step. The remaining steps are driven by
+            //   GraphView._startForceLayoutIteration until the force reports `finished` (friction < 0.01).
+            //   (The 1500-iteration synchronous settle that used to stand in here is GONE: the iteration
+            //   is now wired in GraphView, which also owns the still-frame fallback — see its
+            //   `_startForceLayoutIteration` PORT SEAM note.)
+            forceInstance.step()
         }
         else {
             // Remove prev injected forceLayout instance
