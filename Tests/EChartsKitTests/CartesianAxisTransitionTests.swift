@@ -17,6 +17,15 @@ final class CartesianAxisTransitionTests: XCTestCase {
         if let g = el as? Group { for c in g.children() { collect(c, prefix: prefix, into: &out) } }
     }
 
+    /// True when `el` carries an element-level (not style/shape sub-bag) animator with an `x` or `y`
+    /// track — i.e. exactly what `groupTransition` -> `updateProps` installs.
+    private func hasElementPositionAnimator(_ el: Element) -> Bool {
+        el.animators.contains { anim in
+            (anim.targetName ?? "").isEmpty
+                && (anim.getTrack("x") != nil || anim.getTrack("y") != nil)
+        }
+    }
+
     private func option(_ cats: [String], _ data: [Double]) -> [String: Any] {
         [
             "animation": true,
@@ -34,9 +43,12 @@ final class CartesianAxisTransitionTests: XCTestCase {
         var before: [Element] = []
         collect(ec.getRoot(), prefix: "label_", into: &before)
         XCTAssertGreaterThan(before.count, 0, "axis labels should carry an `anid`")
-        // First render has no old group -> groupTransition is a no-op (upstream `if (!g1 || !g2)`).
-        XCTAssertEqual(before.reduce(0) { $0 + $1.animators.count }, 0,
-                       "no axis-label animator on the first render")
+        // First render has no old group -> groupTransition is a no-op (upstream `if (!g1 || !g2)`),
+        // so no element-level x/y animator exists yet. Label animators from OTHER seams (e.g. a
+        // future `initProps` fade-in, or a style/shape sub-bag animator) are permitted — only the
+        // property this test is about is asserted.
+        XCTAssertEqual(before.filter { hasElementPositionAnimator($0) }.count, 0,
+                       "no groupTransition x/y animator on the first render")
 
         // Re-render with more categories and a wider value range: the category labels `label_0/1/2`
         // and the value labels `label_10/20/30` keep their `anid` but land at a new x/y.
@@ -51,7 +63,7 @@ final class CartesianAxisTransitionTests: XCTestCase {
             return before.contains { $0.anid == anid }
         }
         XCTAssertGreaterThan(matched.count, 0, "some labels should carry an `anid` seen in the old group")
-        XCTAssertGreaterThan(matched.reduce(0) { $0 + $1.animators.count }, 0,
+        XCTAssertGreaterThan(matched.filter { hasElementPositionAnimator($0) }.count, 0,
                              "groupTransition should animate re-rendered axis labels matched by `anid`")
     }
 }

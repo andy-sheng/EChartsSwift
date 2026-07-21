@@ -36,9 +36,9 @@ import ZRenderKit
 //     _ api: ExtensionAPI, _ payload: Payload)`, and `open func remove(_ ecModel: GlobalModel,
 //     _ api: ExtensionAPI)`.
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
-//     -> PORT-NOTE (deferred): requires `component/axis/axisSplitHelper` (splitArea colors + inner-store PREREQ), not ported.
-//        `rectCoordAxisBuildSplitArea` (splitArea builder) and `rectCoordAxisHandleRemove` (remove) are
-//        deferred with documented PORT-NOTEs below.
+//     -> PORT-NOTE: `axisSplitHelper` is not ported as a standalone module; `rectCoordAxisBuildSplitArea`
+//        and `rectCoordAxisHandleRemove` are ported inline in this file (see the splitArea builder and
+//        `rectCoordAxisHandleRemove` below).
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> `ExtensionAPI`.
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> `CartesianAxisModel`.
@@ -142,10 +142,12 @@ open class CartesianAxisView: AxisView {
             //   the final value (correct final geometry, instant instead of tweened). Shape-carrying
             //   axis elements (splitLine `line_*`, minorSplitLine `minor_line_*`, splitArea `area_*`,
             //   AxisBuilder's axisLine / ticks) therefore snap.
-            // PORT-TODO: shape transition is discrete — `graphic.getAnimatableProps`
-            //   (util/graphic.swift) must emit `shape` as a scalar `[String: Any]` sub-bag (the
-            //   TreeView `bezierShapeDict` / ParallelView / SankeyView precedent) so `animateToShallow`
-            //   recurses into `ShapeAnimationAccessor`; that needs a key-enumeration hook on
+            // PORT-TODO: shape transition is discrete — the nested `getAnimatableProps` declared
+            //   inside the body of the top-level `groupTransition` (util/graphic.swift, ~line 337;
+            //   there is no file-scope `getAnimatableProps` symbol) must emit `shape` as a scalar
+            //   `[String: Any]` sub-bag (the TreeView `bezierShapeDict` / ParallelView / SankeyView
+            //   precedent) so `animateToShallow` recurses into `ShapeAnimationAccessor`; that needs
+            //   a key-enumeration hook on
             //   `protocol PathShape` (ZRenderKit/Graphic/Path.swift). Provider-side fix, tracked
             //   separately; drop this marker once it lands.
             groupTransition(oldAxisGroup, self._axisGroup, axisModel)
@@ -264,6 +266,11 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
             //   is always true; `anid` is consumed by `groupTransition` (called in `render`) — which
             //   matches this element to its previous-render twin, but transitions its `shape`
             //   discretely (see the PORT-TODO on the `groupTransition` call).
+            //   PORT-NOTE: interpolating a Swift `Double` formats "line_5.0" where upstream JS yields
+            //   "line_5". Harmless: `anid` has a single consumer (`groupTransition`'s elMap lookup)
+            //   and both the old and the new group are built by this same code, so the values are
+            //   symmetric across renders. The same drift applies to `minor_line_*` / `area_*` here
+            //   and to `AxisBuilder`'s ids — fix all of them together or none.
             line.anid = "line_\(tickValue)"
             line.autoBatch = true
             line.silent = true

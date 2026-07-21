@@ -342,6 +342,16 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
             "rotation": el.rotation
         ]
         // if (isPath(el)) { obj.shape = clone(el.shape); }
+        // PORT-TODO: the "shape" entry below is a whole `PathShape` STRUCT, and `animateToShallow`'s
+        //   recursion guard is `util.isObject`, which is false for a struct — so the track is
+        //   classified VALUE_TYPE_UNKOWN / `discrete` and `Animator.start()` sets it straight to the
+        //   final value. Every shape-carrying element therefore SNAPS instead of tweening (cartesian
+        //   axis splitLine `line_*` / minorSplitLine `minor_line_*` / splitArea `area_*` and
+        //   AxisBuilder's axisLine + ticks, while their labels tween via x/y — a visible
+        //   inconsistency vs upstream). Fix: emit `shape` as a scalar `[String: Any]` sub-bag (the
+        //   TreeView `bezierShapeDict` / ParallelView / SankeyView precedent) so `animateToShallow`
+        //   recurses into `ShapeAnimationAccessor`; that needs a key-enumeration hook on
+        //   `protocol PathShape` (ZRenderKit/Graphic/Path.swift).
         if isPath(el), let path = el as? Path, let shape = path.shape {
             obj["shape"] = util.clone(shape)
         }
