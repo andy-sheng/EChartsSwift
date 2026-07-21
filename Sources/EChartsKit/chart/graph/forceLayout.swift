@@ -172,7 +172,12 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 friction: asDoubleOpt(forceModel.get("friction"))
             ))
             // forceInstance.beforeStep(function (nodes, edges) { ... });
-            forceInstance.beforeStep { nodes, _ in
+            //   NOTE (Swift-only): every object reachable from these callbacks is captured WEAKLY.
+            //   The series owns the forceInstance, which owns these closures; `graph` and `nodeData`
+            //   both lead back to the series (SeriesData.hostModel), so a strong capture would retain
+            //   the whole Graph/SeriesData for the life of the chart.
+            forceInstance.beforeStep { [weak graph] nodes, _ in
+                guard let graph = graph else { return }
                 for i in 0..<nodes.count {
                     if nodes[i].fixed {
                         // Write back to layout instance
@@ -185,7 +190,8 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 }
             }
             // forceInstance.afterStep(function (nodes, edges, stopped) { ... });
-            forceInstance.afterStep { [weak graphSeries] nodes, edges, _ in
+            forceInstance.afterStep { [weak graphSeries, weak graph, weak nodeData] nodes, edges, _ in
+                guard let graph = graph, let nodeData = nodeData else { return }
                 for i in 0..<nodes.count {
                     if !nodes[i].fixed {
                         let p = nodes[i].p!
