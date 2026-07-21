@@ -763,9 +763,11 @@ private func graphToNumber(_ v: Any?) -> Double {
 //      defaultText = the edge name (`edgeData.getName(idx)`, e.g. "0 > 1") and inheritColor = the edge
 //      stroke colour — exactly the `setLabelStyle(this, labelStatesModels, { defaultText, inheritColor,
 //      ... })` call. The edge label config lives under `edgeLabel` (not `label`): upstream swaps the
-//      parent lookup via `resolveParentPath` ('label' → 'edgeLabel'). That JS-prototype method swap is a
-//      stub in this port (see GraphSeries PORT-NOTE), so it is reproduced here by passing the series
-//      `edgeLabel` model as the explicit parent to `edgeItemModel.getModel('label', edgeLabelParent)`.
+//      parent lookup via `resolveParentPath` ('label' → 'edgeLabel'). That redirect IS LIVE in this port —
+//      `GraphEdgeLabelItemModel` / `GraphEdgeLabelChildModel` in GraphSeries.swift wrap the edge item model
+//      returned by `getItemModel`, so `edgeItemModel.getModel('label')` resolves its parent to
+//      `seriesModel.getModel(['edgeLabel'])` automatically (and `[state,'label']` to `[state,'edgeLabel']`),
+//      exactly as upstream Line.ts relies on. No explicit parent argument is passed here.
 //   2. `beforeUpdate`: place the label along the edge. For the default `position: 'middle'` the label
 //      sits at the curve midpoint, rotated to the edge tangent (which at the midpoint of both a straight
 //      line and a quadratic curve is simply `normalize(p2 - p1)`), lifted `distance` px above the line
@@ -782,15 +784,14 @@ private func graphAddEdgeLabel(
     cp: GraphPoint?,
     edgeStroke: ZRenderKit.ZRColor?
 ) -> (label: ZRText, distanceY: Double)? {
-    // Build the edge label states models. Own option = the link's `label`; parent = the series
-    //   `edgeLabel` model (the 'label' → 'edgeLabel' parent redirect, done explicitly here).
+    // Build the edge label states models (upstream `getLabelStatesModels(itemModel)`). Own option = the
+    //   link's `label`; the parent resolves through the live 'label' → 'edgeLabel' redirect installed on
+    //   the edge item model by GraphSeries.swift, so no explicit parent is passed (as in Line.ts).
     var labelStatesModels: LabelStatesModels = [:]
-    labelStatesModels[.normal] = edgeItemModel.getModel("label", seriesModel.getModel("edgeLabel"))
+    labelStatesModels[.normal] = edgeItemModel.getModel("label")
     for stateName in states.SPECIAL_STATES {
         guard let st = DisplayState(rawValue: stateName) else { continue }
-        labelStatesModels[st] = edgeItemModel.getModel(
-            [stateName, "label"], seriesModel.getModel([stateName, "edgeLabel"])
-        )
+        labelStatesModels[st] = edgeItemModel.getModel([stateName, "label"])
     }
 
     guard let normalModel = labelStatesModels[.normal] else { return nil }
