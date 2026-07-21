@@ -2038,6 +2038,14 @@ fileprivate func anyStrictEqual(_ a: Any?, _ b: Any?) -> Bool {
     if let x = a as? Bool, let y = b as? Bool {
         return x == y
     }
+    // PORT-NOTE: upstream unions that Swift models as tagged enums (e.g. `cornerRadius:
+    //   number | number[]` -> `CornerRadius`) box to a FRESH AnyObject on every bridge, so the
+    //   identity fallback below would report "changed" for two identical values and defeat
+    //   `animateToShallow`'s unchanged-value filter (an animator per element per update).
+    //   Compare them by value instead.
+    if let x = a as? CornerRadius, let y = b as? CornerRadius {
+        return x == y
+    }
     return (a as AnyObject) === (b as AnyObject)
 }
 

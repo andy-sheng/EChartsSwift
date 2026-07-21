@@ -207,12 +207,21 @@ open class SunburstPiece: Sector {
             // MORPH: a merge-mode value change (or a same-count drill re-root) recomputes this node's
             //   angular span; animate the numeric Sector shape keys (SectorShape.animationSet tweens
             //   cx/cy/r0/r/startAngle/endAngle) so the wedge SWEEPS to its new geometry rather than
-            //   snapping. The non-animated fields (clockwise, cornerRadius) are stamped onto the CURRENT
-            //   shape first (angles preserved) so updateProps only tweens the numeric span, then animate.
+            //   snapping. `clockwise` (Bool) has no keyed accessor on SectorShape, so it is stamped onto
+            //   the CURRENT shape first (angles preserved); `cornerRadius` goes through the prop bag,
+            //   like upstream's whole-`shape` object.
             //   Instant (duration 0) when the series' animation is disabled — same as `attr`.
+            // PORT-TODO: upstream tweens cornerRadius numerically (`number | number[]` is typed
+            //   VALUE_TYPE_NUMBER / VALUE_TYPE_1D_ARRAY by zrender's Track and interpolated across the
+            //   morph). Here `CornerRadius` is a tagged enum, opaque to the Animator, so its Track is
+            //   VALUE_TYPE_UNKOWN/discrete and — because `animateToShallow` builds the animator with
+            //   allowDiscrete = false — `Animator.start()` direct-sets the FINAL value and finishes the
+            //   track immediately (updateProps' `setToFinal: true` already stamps it via `copyValue`
+            //   beforehand). The radius therefore snaps at the START of the tween while the numeric span
+            //   keys sweep; the end state matches. Wire by exposing cornerRadius to the animator as
+            //   [Double] (4 corners) in SectorShape.animationGet/animationSet.
             if var cur = sector.shape as? SectorShape {
                 cur.clockwise = sectorShape.clockwise
-                cur.cornerRadius = sectorShape.cornerRadius
                 _ = sector.setShape(cur)
             }
             updateProps(sector, ["shape": [
@@ -221,7 +230,8 @@ open class SunburstPiece: Sector {
                 "r0": sectorShape.r0,
                 "r": sectorShape.r,
                 "startAngle": sectorShape.startAngle,
-                "endAngle": sectorShape.endAngle
+                "endAngle": sectorShape.endAngle,
+                "cornerRadius": sectorShape.cornerRadius
             ] as [String: Any]], seriesModel, node.dataIndex)
             // saveOldStyle(sector);  — universalTransition style save.
             saveOldStyle(sector)
