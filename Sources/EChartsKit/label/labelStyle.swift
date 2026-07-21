@@ -93,6 +93,76 @@ public struct TextCommonParams {
     }
 }
 
+// upstream: the anonymous object-literal type of `SetLabelStyleOpt.labelFetcher`
+//   (`{ getFormattedLabel: (labelDataIndex, status, dataType?, labelDimIndex?, formatter?,
+//   extendParams?) => string }`, labelStyle.ts:91-105). TS structural typing lets a caller pass
+//   EITHER a model (whose `getFormattedLabel` comes from the `DataFormatMixin` mixin) OR a bespoke
+//   inline object literal that forwards to the model with a FORCED `dataType`
+//   (sankey `'edge'`/`'node'`, chord) or a remapped index (the map SERIES branch). Swift is nominal,
+//   so the object-literal type is named here as a protocol (no verbatim upstream identifier exists —
+//   named after the field) and `DataFormatMixin` is declared to refine it (see
+//   model/mixin/dataFormat.swift), so passing a model keeps working unchanged while the
+//   literal-object callers can inject a closure-backed fetcher (`LabelFetcherFn` below).
+// SCOPE CAVEAT (geo component): upstream's map/geo `labelFetcher` is generic over
+//   `TLabelDataIndex = string` (the region NAME), whereas this requirement — and
+//   `SetLabelStyleOpt.labelDataIndex` — are hard-typed `Double`. So only the map-SERIES branch
+//   (MapView's idx -> fullIndex remap, a numeric index) is expressible via `LabelFetcherFn`; the
+//   geo-component name-keyed query still needs the `labelQuery` widening described in
+//   component/helper/MapDraw.swift (see its PORT-TODO), and still resolves eagerly into
+//   `defaultText` for the normal state only.
+// WITNESS TRAP: the requirement's parameter list is byte-identical to
+//   `DataFormatMixin.getFormattedLabel` — do NOT narrow/relax any parameter, or conformers would
+//   silently fail to witness it (see CONVENTIONS / MEMORY: Swift protocol-witness trap).
+public protocol LabelFetcher {
+    func getFormattedLabel(
+        _ labelDataIndex: Double,
+        _ status: DisplayState?,
+        _ dataType: SeriesDataType?,
+        _ labelDimIndex: Double?,
+        _ formatter: Any?,
+        _ extendParams: GetFormattedLabelExtendParams?
+    ) -> String?
+}
+
+/// PORT: the Swift stand-in for upstream's inline `labelFetcher: { getFormattedLabel(...) {...} }`
+///   object literal — wraps a closure so a view can force `dataType` (sankey `'edge'`/`'node'`) or
+///   pre-resolve the formatter before delegating to the series model.
+///
+/// - Warning: LIFETIME (no upstream analogue — JS has GC, and the upstream literal closes over the
+///   MODEL only, never the view). A `SetLabelStyleOpt.labelFetcher` handed to
+///   `labelStyle.animateLabelValue` is captured by the animator's `during` callback, giving the
+///   retain chain `textEl -> Animator -> during closure -> LabelFetcherFn -> captured values`. That
+///   chain did not exist while the field held a model reference (models outlive elements anyway).
+///   Callers MUST therefore capture only the model, and capture any `ChartView`/`self` weakly
+///   (`[weak self]` / `[unowned view]`), or the view will be kept alive by its own elements.
+public final class LabelFetcherFn: LabelFetcher {
+    public typealias Fn = (
+        _ labelDataIndex: Double,
+        _ status: DisplayState?,
+        _ dataType: SeriesDataType?,
+        _ labelDimIndex: Double?,
+        _ formatter: Any?,
+        _ extendParams: GetFormattedLabelExtendParams?
+    ) -> String?
+
+    private let fn: Fn
+
+    public init(_ fn: @escaping Fn) {
+        self.fn = fn
+    }
+
+    public func getFormattedLabel(
+        _ labelDataIndex: Double,
+        _ status: DisplayState?,
+        _ dataType: SeriesDataType?,
+        _ labelDimIndex: Double?,
+        _ formatter: Any?,
+        _ extendParams: GetFormattedLabelExtendParams?
+    ) -> String? {
+        return fn(labelDataIndex, status, dataType, labelDimIndex, formatter, extendParams)
+    }
+}
+
 // upstream: `interface SetLabelStyleOpt<TLabelDataIndex> extends TextCommonParams { defaultText?,
 //   labelFetcher?, labelDataIndex?, labelDimIndex?, enableTextSetter? }` (labelStyle.ts:81-113).
 // PORT: `extends TextCommonParams` becomes flat field composition (Swift structs don't inherit);
@@ -114,11 +184,12 @@ public struct SetLabelStyleOpt {
     ///   (matching the `formatter` param convention already used by
     ///   `DataFormatMixin.getFormattedLabel`): cast to `String` or to `DefaultTextFn` at the call site.
     public var defaultText: Any?
-    /// upstream `{ getFormattedLabel(...): string }` — a one-method object type. `DataFormatMixin`
-    ///   (model/mixin/dataFormat.swift:41, `AnyObject`-bound) already declares exactly this method
-    ///   with a matching signature, so it is reused directly as the existential type instead of
-    ///   inventing a parallel protocol.
-    public var labelFetcher: DataFormatMixin?
+    /// upstream `{ getFormattedLabel(...): string }` — a one-method object type, modeled by the
+    ///   `LabelFetcher` protocol above. `DataFormatMixin` refines `LabelFetcher`, so every model
+    ///   (`SeriesModel`/`ComponentModel`) is still assignable here directly; views that upstream
+    ///   passes an inline object literal (sankey/chord/map, which force `dataType`) inject a
+    ///   `LabelFetcherFn` instead.
+    public var labelFetcher: LabelFetcher?
     public var labelDataIndex: Double?
     public var labelDimIndex: Double?
     /// Inject a setter of text for the text animation case. (Consumed only by the DEFERRED
@@ -136,7 +207,7 @@ public struct SetLabelStyleOpt {
         autoOverflowArea: Bool? = nil,
         layoutRect: RectLike? = nil,
         defaultText: Any? = nil,
-        labelFetcher: DataFormatMixin? = nil,
+        labelFetcher: LabelFetcher? = nil,
         labelDataIndex: Double? = nil,
         labelDimIndex: Double? = nil,
         enableTextSetter: Bool? = nil
@@ -869,7 +940,8 @@ public enum labelStyle {
         _ dataIndex: Double?,
         _ data: SeriesData,
         _ animatableModel: Model?,
-        _ labelFetcher: DataFormatMixin?
+        // upstream: `labelFetcher: SetLabelStyleOpt<number>['labelFetcher']`
+        _ labelFetcher: LabelFetcher?
     ) {
         let labelInnerStore = labelInner(textEl)
         if labelInnerStore.valueAnimation != true

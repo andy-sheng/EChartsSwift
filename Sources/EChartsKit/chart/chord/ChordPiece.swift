@@ -202,10 +202,8 @@ open class ChordPiece: Sector {
         //     defaultOutsidePosition: 'startArc' });
         //   PORT-NOTE: upstream passes a CUSTOM inline labelFetcher whose getFormattedLabel forces
         //   `dataType: 'node'` and a `retrieve3(formatter, normal formatter, itemModel name)` formatter
-        //   fallback. `DataFormatMixin.getFormattedLabel` is a STATICALLY-dispatched protocol-extension
-        //   method, so a custom fetcher subtype's override would be bypassed by `getLabelText`'s
-        //   existential `labelFetcher.getFormattedLabel(...)` call (the protocol-witness trap). Port the
-        //   observable behaviour instead: pass `seriesModel` as the fetcher (its getFormattedLabel
+        //   fallback. Port the observable behaviour instead: pass `seriesModel` as the fetcher (its
+        //   getFormattedLabel
         //   honours `label.formatter`; the node data is the default data here, so the forced 'node'
         //   dataType resolves to the same SeriesData) and fold upstream's `itemModel.name`
         //   formatter-fallback into `defaultText` — when no formatter yields text the node name (id) is
@@ -214,6 +212,11 @@ open class ChordPiece: Sector {
         //   inheritColor. (`defaultOutsidePosition: 'startArc'` is passed for fidelity but is inert on a
         //   ZRText target — setLabelStyle's `isSetOnText` branch skips createTextConfig — and the outside
         //   position is overridden below by the explicit x/y placement, as upstream also does.)
+        //   FOLLOW-UP: `SetLabelStyleOpt.labelFetcher` is now the `LabelFetcher` protocol (a real,
+        //   dynamically-dispatched requirement witnessed by `DataFormatMixin`), so the faithful form —
+        //   `opt.labelFetcher = LabelFetcherFn { idx, status, _, dimIdx, fmt, ext in
+        //   seriesModel.getFormattedLabel(idx, status, .node, dimIdx, fmt, ext) }` plus the retrieve3
+        //   formatter fallback — IS now expressible; wiring it is owned by the chord consumer lane.
         var opt = SetLabelStyleOpt()
         opt.labelFetcher = seriesModel
         opt.labelDataIndex = Double(node.dataIndex)
