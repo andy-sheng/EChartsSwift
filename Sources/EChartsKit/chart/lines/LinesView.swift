@@ -82,6 +82,9 @@ open class LinesView: ChartView {
     //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
     //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; geo/polar lines stay
     //   DEFERRED (only Cartesian2D is wired), as does WIRING the (ported) LargeLineDraw.
+    // PORT-TODO: wire the (ported) `chart/helper/LargeLineDraw` for `isLarge` mode — the flat
+    //   `linesPoints` layout buffer it consumes (`LargeLineDraw.updateData` / `incrementalUpdate`) is
+    //   already produced by `chart/lines/linesLayout.swift`.
     private let _lineDraw = LineDraw()
     private var _lineDrawAdded = false
 
