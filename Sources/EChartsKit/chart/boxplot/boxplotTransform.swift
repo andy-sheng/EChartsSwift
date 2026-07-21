@@ -17,23 +17,75 @@ private func boxplotToDouble(_ v: Any?) -> Double? {
     }
 }
 
+// upstream:
+//   export interface BoxplotTransformOption extends DataTransformOption {
+//       type: 'boxplot';
+//       config: PrepareBoxplotDataOpt;
+//   }
+// PORT: kept as a Swift struct for the typed/programmatic path; at runtime `params.config` flows from the
+//   dynamic option bag (CONVENTIONS §2) and is consumed as `PrepareBoxplotDataOpt` (or its dictionary form).
+public struct BoxplotTransformOption {
+    public var type: String = "boxplot"
+    public var config: PrepareBoxplotDataOpt
+
+    public init(config: PrepareBoxplotDataOpt) {
+        self.config = config
+    }
+}
+
 // upstream: export const boxplotTransform: ExternalDataTransform<BoxplotTransformOption>
-let boxplotTransform = ExternalDataTransform(
+public let boxplotTransform: ExternalDataTransform = ExternalDataTransform(
     type: "echarts:boxplot",
     transform: { params in
-        // upstream throws if sourceFormat !== SOURCE_FORMAT_ARRAY_ROWS; the built-in getRawData below
-        //   yields array-rows for a raw dataset, so read + coerce it to number[][].
-        let rawAny = try? params.upstream.getRawData()
-        let rawRows = (rawAny as? [[Any]]) ?? (rawAny as? [Any])?.compactMap { $0 as? [Any] } ?? []
-        let raw: [[Double]] = rawRows.map { row in row.compactMap { boxplotToDouble($0) } }
+        let upstream = params.upstream
 
+        // PORT-NOTE: this throw is propagated by applySingleDataTransform -> applyDataTransform up to
+        //   sourceManager.swift, whose catch calls `doThrow(...)` (fatalError) — upstream a bad option
+        //   only rejects that chart with a JS Error. Same convention as the sibling built-in transforms.
+        if upstream.sourceFormat != SOURCE_FORMAT_ARRAY_ROWS {
+            var errMsg = ""
+            if __DEV__ {
+                errMsg = log.makePrintable(
+                    "source data is not applicable for this boxplot transform. Expect number[][]."
+                )
+            }
+            try log.throwError(errMsg)
+        }
+
+        // upstream: `upstream.getRawData() as number[][]` — a pure type-erasing TS cast that neither
+        //   filters nor validates, so the coercion below must preserve ARITY: upstream keeps every
+        //   non-numeric cell (a null / '-' / a string header cell) and simply degrades it to NaN inside
+        //   the arithmetic, it does not drop it. Dropping cells would shift Q1/Q2/Q3; dropping a whole
+        //   all-non-numeric row (getRawData returns `upstream.data` verbatim, header rows included)
+        //   would hand prepareBoxplotData an empty array, which indexes `ascList[0]` unconditionally.
+        let rawAny = try upstream.getRawData()
+        let rawRows: [[Any?]] =
+            (rawAny as? [[Any?]])
+            ?? (rawAny as? [Any])?.compactMap { $0 as? [Any?] }
+            ?? []
+        let raw: [[Double]] = rawRows
+            .map { row in row.map { boxplotToDouble($0) ?? Double.nan } }
+            // PORT-NOTE: a genuinely EMPTY row yields `undefined`/NaN bounds in JS but is an
+            //   index-out-of-range fatal error in Swift, so it is skipped rather than crashing.
+            .filter { !$0.isEmpty }
+
+        // upstream passes `params.config` (typed `PrepareBoxplotDataOpt`) straight through; the erased
+        //   `Any?` config here may already be a `PrepareBoxplotDataOpt` or the raw option dictionary.
         var opt = PrepareBoxplotDataOpt()
-        if let cfg = params.config as? [String: Any] {
-            // boundIQR: number | 'none'
-            if let s = cfg["boundIQR"] as? String { opt.boundIQR = s }
-            else if let n = boxplotToDouble(cfg["boundIQR"]) { opt.boundIQR = n }
-            // itemNameFormatter: string form is portable (the JS-closure form is dropped upstream-side).
-            if let s = cfg["itemNameFormatter"] as? String { opt.itemNameFormatter = s }
+        if let cfg = params.config as? PrepareBoxplotDataOpt {
+            opt = cfg
+            // prepareBoxplotData reads boundIQR as `as? Double`, so an Int-boxed value must be coerced.
+            if let n = boxplotToDouble(opt.boundIQR) { opt.boundIQR = n }
+        }
+        else if let cfg = params.config as? [String: Any] {
+            // boundIQR: number | 'none' — numbers first, so a numeric STRING ("1.5", which JS coerces
+            //   arithmetically) is normalized to a Double; only the literal 'none' stays a String
+            //   (`boxplotToDouble("none")` is nil).
+            if let n = boxplotToDouble(cfg["boundIQR"]) { opt.boundIQR = n }
+            else if let s = cfg["boundIQR"] as? String { opt.boundIQR = s }
+            // itemNameFormatter: string | ((params: { value: number }) => string) — passed through
+            //   erased, exactly as upstream does; prepareBoxplotData does the shape casts itself.
+            opt.itemNameFormatter = cfg["itemNameFormatter"]
         }
 
         let result = prepareBoxplotData(raw, opt)
