@@ -54,6 +54,12 @@ public func installSunburstAction(_ registers: EChartsExtensionInstallRegisters)
     var rootToNodeInfo = ActionInfo(type: ROOT_TO_NODE_ACTION)
     rootToNodeInfo.update = "updateView"
     registerAction(rootToNodeInfo) { payload, ecModel, _ in
+        // upstream mutates the live `payload` object, which `doDispatchAction` then reuses as the emitted
+        //   action event (`eventObj = eventObj || extend({}, batchItem)`). `Payload` is a value type here,
+        //   so the mutation is made on a local copy and handed back as this handler's return value —
+        //   ECharts.swift `e.eventData = actionResult ?? batchItem.other` makes the returned bag win, which
+        //   is the port's faithful channel for the `direction` field.
+        var payload = payload
 
         // ecModel.eachComponent({mainType:'series', subType:'sunburst', query: payload}, handleRootToNode)
         //   Component-query fields (seriesId/seriesIndex/…) live in `payload.other`.
@@ -70,16 +76,20 @@ public func installSunburstAction(_ registers: EChartsExtensionInstallRegisters)
                 // const originViewRoot = model.getViewRoot();
                 // if (originViewRoot) { payload.direction = aboveViewRoot(...) ? 'rollUp' : 'drillDown'; }
                 //   `getViewRoot()` is non-optional in the port (always resolves), so the `if` is implicit.
-                // PORT-NOTE (deferred): `payload.direction` is consumed only by the DEFERRED entrance-animation routing
-                //   (rollUp/drillDown) in SunburstView; `Payload` is a value type here, so the write is a
-                //   no-op for the caller anyway. The `aboveViewRoot` classification is preserved for parity:
-                _ = treeHelper.aboveViewRoot(model.getViewRoot(), targetInfo.node)
+                //   The dynamic `direction` field lives in `payload.other` (same form as the registry's
+                //   treemapRootToNode convention). No view reads it upstream (sunburstAction.ts is the only
+                //   file under chart/sunburst that mentions it), but it IS observable on the emitted
+                //   `sunburstrootttonode` event, so the write is replicated and returned below.
+                payload.other["direction"] = treeHelper.aboveViewRoot(model.getViewRoot(), targetInfo.node)
+                    ? "rollUp" : "drillDown"
                 // model.resetViewRoot(targetInfo.node);
                 model.resetViewRoot(targetInfo.node)
             }
         }
 
-        return nil
+        // upstream returns nothing, so the event is `extend({}, payload)` — i.e. the payload AFTER the
+        //   `direction` write. Returning the mutated bag reproduces that exactly.
+        return payload.other
     }
 
     // registers.registerAction({type: HIGHLIGHT_ACTION, update: 'none'}, handler)  — a DEPRECATED alias
