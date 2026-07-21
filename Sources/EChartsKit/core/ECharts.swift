@@ -777,12 +777,15 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(BoxplotSeriesModel.self)
         registerBoxplotAxisHandlers(_registers)
 
-        // -- chart/sunburst/install.ts (minimal) -- registerSeriesModel(SunburstSeries) +
+        // -- chart/sunburst/install.ts -- registerSeriesModel(SunburstSeries) +
         //   registerChartView(SunburstView) + registerLayout(sunburstLayoutStageHandler) +
-        //   registerVisual(sunburstVisualStageHandler). Sunburst has NO cartesian coord (hierarchical,
-        //   box-like usage like pie); SunburstView reads its per-node sector geometry from the tree
-        //   layout populated by the sunburst layout stage (run in `render`). Its dedicated visual stage
-        //   colors each node (installSunburstAction rollup/highlight is DEFERRED — see sunburstInstall.swift).
+        //   registerVisual(sunburstVisualStageHandler) + installSunburstAction(registers). Sunburst has NO
+        //   cartesian coord (hierarchical, box-like usage like pie); SunburstView reads its per-node sector
+        //   geometry from the tree layout populated by the sunburst layout stage (run in `render`). Its
+        //   dedicated visual stage colors each node (run in performCoordlessSeriesVisualStage, before the
+        //   visualMap encoding). `installSunburstAction` (sunburstRootToNode drill-down/roll-up + the
+        //   deprecated sunburstHighlight/sunburstUnhighlight aliases) is invoked below in the action block —
+        //   see sunburstInstall.swift for the full integration surface.
         ComponentModel.registerClass(SunburstSeriesModel.self)
 
         // -- chart/treemap/install.ts (minimal) -- registerSeriesModel(TreemapSeries) +
@@ -1140,7 +1143,9 @@ public final class ECharts: EChartsType {
         //   update:'updateView'). Clicking a sunburst sector dispatches sunburstRootToNode with the target
         //   node (wired per-piece in SunburstView._bindNodeClick); the handler re-roots the series' viewRoot
         //   (SunburstSeriesModel.resetViewRoot), and the driver's full update() re-runs the sunburst layout
-        //   around the new root (drill-down / roll-up). sunburstHighlight/sunburstUnhighlight DEFERRED.
+        //   around the new root (drill-down / roll-up). The deprecated `sunburstHighlight` /
+        //   `sunburstUnhighlight` aliases are registered too — they resolve the target node and fast-forward
+        //   to the ported `highlight` / `downplay` actions.
         installSunburstAction(ECharts._registers)
 
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
