@@ -99,14 +99,16 @@ public let candlestickLayout: StageHandler = {
 
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. `StageHandlerPlan` now returns
-    //   `StageHandlerPlanReturn?` (util/types.swift), so the planner's nil-for-no-reset answer IS
-    //   representable — the old "non-optional return" blocker no longer exists. What remains is the arity
-    //   mismatch: wire it with the adapter used in chart/lines/linesLayout.swift:48-51
-    //   (`let planner = createRenderPlanner(); handler.plan = { sm, _, _, _ in planner(sm) }`), created
-    //   ONCE so its makeInner state persists. Left unwired (same as layout/barGrid.swift); the `reset`
-    //   stage still recomputes layout each pass, so the non-progressive render is unaffected.
-    handler.plan = nil
+    // plan: createRenderPlanner(),
+    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
+    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
+    //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
+    //   and wrapped in an arity adapter that ignores the extra args, which upstream's planner also ignores.
+    let planner = createRenderPlanner()
+    handler.plan = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> StageHandlerPlanReturn? in
+        return planner(seriesModel)
+    }
 
     handler.reset = { (seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in
         // upstream typed `seriesModel: CandlestickSeriesModel`.
