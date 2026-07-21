@@ -1918,11 +1918,23 @@ public final class ECharts: EChartsType {
         //   Same two stages as bar (bandWidth/offset/size, then each item's rect x/y/width/height), gated on
         //   the 'pictorialBar' series type. PictorialBarView.render reads the per-item rect via
         //   data.getItemLayout to size each symbol to its bar.
-        //   GUARD: only run when a pictorialBar series is actually present. The cross-series bar-grid
-        //   overallReset re-divides the axis band across bar-ish series and rewrites their layout; running
-        //   it a SECOND time (after the plain-bar handler above) corrupts plain bar rects on a chart that
-        //   has no pictorialBar at all. Gating on presence keeps plain bar charts intact while still laying
-        //   out pictorialBar when it is used.
+        //   GUARD (canonical explanation; chart/bar/pictorialBarInstall.swift cites this note): the
+        //   `!getSeriesByType(...).isEmpty` gate is a cheap early-out, NOT a correctness requirement and NOT
+        //   a deviation from upstream. Axis-stat clients are keyed per `seriesModel.subType`, so the
+        //   cross-series `overallReset` only walks `eachAxisOnKey(makeAxisStatKey2("pictorialBar",
+        //   cartesian2d))` and only `setLayout`s the series registered under that same key
+        //   (layout/barGrid.swift `createCrossSeriesLayoutHandler`). With no pictorialBar series that key
+        //   holds zero axes, so the stage is already a no-op; plain bar bandWidth/offset/size are never
+        //   touched either way, and `runSeriesStageHandler` likewise skips every series whose `subType`
+        //   differs from `handler.seriesType`.
+        //   PORT-NOTE (ordering deviation): upstream registers the second stage at
+        //   `PRIORITY.VISUAL.PROGRESSIVE_LAYOUT` so it runs after EVERY overall layout stage ("Do layout
+        //   after other overall layout, which can prepare some information."). This driver has no priority
+        //   buckets and runs both pictorialBar stages back-to-back here, so the overall layouts below
+        //   (pieLayout, funnelLayout, candlestickLayout, boxplotLayout, sunburstLayoutStageHandler,
+        //   treemapLayout) execute AFTER it instead of before. Benign today — pictorialBar only consumes
+        //   bandWidth/offset/size from the cross-series handler immediately above — revisit if any later
+        //   overall stage must prepare information for it.
         if !ecModel.getSeriesByType(SERIES_TYPE_PICTORIAL_BAR).isEmpty {
             ECharts._pictorialBarLayoutHandler.overallReset?(ecModel, api, nil)
             runSeriesStageHandler(ECharts._pictorialBarProgressiveLayoutHandler, ecModel, api)
