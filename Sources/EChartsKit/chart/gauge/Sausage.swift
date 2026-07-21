@@ -19,9 +19,10 @@
 */
 
 // PORT-NOTE (location deviation): upstream lives in `util/shape/sausage.ts` (imported by GaugeView as
-//   `import Sausage from '../../util/shape/sausage'`). It is ported here — alongside its only consumer,
-//   GaugeView — rather than under a util/shape package. If another chart ever needs the round-capped
-//   sector, promote this to a shared ZRenderKit/EChartsKit shape module.
+//   `import Sausage from '../../util/shape/sausage'`). It is ported here — alongside its gauge consumer,
+//   GaugeView — rather than under a util/shape package. It has a second consumer: chart/bar/BarView.swift
+//   uses it for the polar roundCap branch of `elementCreatorPolar`. If further charts need the
+//   round-capped sector, promote this to a shared ZRenderKit/EChartsKit shape module.
 
 import Foundation
 import ZRenderKit
