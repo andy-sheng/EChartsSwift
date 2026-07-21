@@ -27,8 +27,9 @@ import ZRenderKit
 //     → `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Circle` / `graphic.Arc`
 //       / `graphic.Sector` are the ZRenderKit scene-graph shapes (used directly — the sanctioned DRAWING
 //       deviation, cf. RadarComponentView). `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath).
-//       `graphic.groupTransition` (anid-matched transition animation) is deferred (see the PORT-NOTE in
-//       `render`). Note upstream indexes `graphic[shapeType]` with shapeType ∈ {'Circle','Arc'}; the
+//       `graphic.groupTransition` (anid-matched transition animation) → the top-level free function
+//       `groupTransition` in `util/graphic.swift` (called in `render`).
+//       Note upstream indexes `graphic[shapeType]` with shapeType ∈ {'Circle','Arc'}; the
 //       dynamic constructor lookup is replaced by an explicit branch (see the splitLine builder).
 //   import AxisBuilder from './AxisBuilder';                       → `AxisBuilder` (component/axis/AxisBuilder.swift).
 //   import AxisView from './AxisView';                             → `AxisView` (component/axis/AxisView.swift).
@@ -123,10 +124,10 @@ final class RadiusAxisView: AxisView {
         _ = newAxisGroup.add(axisBuilder.group)
 
         // upstream: graphic.groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel);
-        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), NOT ported. It
-        //   matches old/new elements by `anid` and animates the transition (`updateProps`). Deferred with
-        //   the animation seam (CONVENTIONS §5); the freshly-built geometry above is correct without it.
-        _ = oldAxisGroup
+        //   `groupTransition` is a top-level free function in `util/graphic.swift`: it matches old/new
+        //   elements by `anid` (set by AxisBuilder on the axis line, name, ticks and labels) and
+        //   animates the transition via `updateProps`. `oldAxisGroup` is nil on the first render — the callee guards.
+        groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel)
 
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
         for name in selfBuilderAttrs {
