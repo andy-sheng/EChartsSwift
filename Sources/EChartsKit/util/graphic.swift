@@ -342,8 +342,29 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
             "rotation": el.rotation
         ]
         // if (isPath(el)) { obj.shape = clone(el.shape); }
+        //   PORT-NOTE: upstream's `shape` is a plain object, so `attr`'s partial merge and
+        //   `animateToShallow`'s nested-object branch both walk it PER NUMERIC KEY and tween each
+        //   sub-key. Here `shape` is a value-type struct, for which `util.isObject` is false
+        //   (util.swift only reports class/dict/array as objects) — handing the struct over whole
+        //   would collapse the shape into ONE track whose keyframes are un-typed values
+        //   (guessValueType → VALUE_TYPE_UNKOWN → `discrete`), i.e. the element would SNAP to its
+        //   final geometry instead of tweening. That matters for exactly the elements
+        //   `groupTransition` exists to animate: `AxisBuilder` builds the axis line and every tick
+        //   as a `Line` with x/y == 0 and all geometry in `shape` (x1,y1,x2,y2).
+        //   So flatten the shape into its animatable numeric keys (`PathShape.animationGet`, the
+        //   same seam `ShapeAnimationAccessor` drives): `attr(["shape": dict])` takes `Path.attrKV`'s
+        //   partial-merge branch and `animateToShallow` takes its nested-object branch — matching
+        //   upstream. Shapes that expose no keyed fields (no `animationGet` override) fall back to
+        //   the whole-struct clone, preserving the previous behaviour.
         if isPath(el), let path = el as? Path, let shape = path.shape {
-            obj["shape"] = util.clone(shape)
+            var shapeBag: [String: Any] = [:]
+            for child in Mirror(reflecting: shape).children {
+                guard let key = child.label else { continue }
+                if let num = shape.animationGet(key) as? Double {
+                    shapeBag[key] = num
+                }
+            }
+            obj["shape"] = shapeBag.isEmpty ? util.clone(shape) : shapeBag
         }
         return obj
     }

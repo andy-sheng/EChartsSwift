@@ -126,7 +126,10 @@ final class RadiusAxisView: AxisView {
         // upstream: graphic.groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel);
         //   `groupTransition` is a top-level free function in `util/graphic.swift`: it matches old/new
         //   elements by `anid` (set by AxisBuilder on the axis line, name, ticks and labels) and
-        //   animates the transition via `updateProps`. `oldAxisGroup` is nil on the first render — the callee guards.
+        //   animates the transition via `updateProps` (its `getAnimatableProps` flattens `shape` into the
+        //   shape's animatable numeric keys, so the axis line and ticks — `Line`s whose whole geometry
+        //   lives in `shape` — tween instead of snapping; see the PORT-NOTE there).
+        //   `oldAxisGroup` is nil on the first render — the callee guards.
         groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel)
 
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
