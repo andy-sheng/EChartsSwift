@@ -166,15 +166,16 @@ open class SunburstSeriesModel: SeriesModel {
         var params = super.getDataParams(dataIndex, dataType)
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
-        //   With no node there is no path to wrap, so the base params are returned untouched.
-        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
-            return params
-        }
         // params.treePathInfo = wrapTreePathInfo(node, this);
         //   PORT-NOTE: upstream's `<SunburstSeriesNodeItemOption['value']>` only narrows the element
         //   `value` type; the Swift `TreePathInfoItem.value` is `Any?`, so the generic arg has no analogue.
-        params.treePathInfo = treeHelper.wrapTreePathInfo(node, self)
+        //   PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically, but `getNodeByDataIndex`
+        //   indexes `this._nodes[rawIndex]` unchecked and yields `undefined` for an out-of-range index;
+        //   `wrapTreePathInfo(undefined, ...)` then falls straight out of its `while (node)` loop and
+        //   returns `[]`. So upstream ALWAYS assigns an array — never leaves the field absent. Map over
+        //   the Optional node and default to `[]` so formatter callbacks see `[]`, not `nil`.
+        let node: TreeNode? = self.getData().tree?.getNodeByDataIndex(Int(dataIndex))
+        params.treePathInfo = node.map { treeHelper.wrapTreePathInfo($0, self) } ?? []
 
         return params
     }
