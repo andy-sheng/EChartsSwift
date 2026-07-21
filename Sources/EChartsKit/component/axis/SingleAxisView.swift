@@ -30,7 +30,8 @@ import ZRenderKit
 //       RadiusAxisView). `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath).
 //       `graphic.subPixelOptimizeLine` → the file-private value-returning wrapper below (delegates to
 //       `subPixelOptimizeNS.subPixelOptimizeLine`, mirroring CartesianAxisView). `graphic.groupTransition`
-//       (anid-matched transition animation) is deferred (see the PORT-NOTE in `render`).
+//       (anid-matched transition animation) → the ported top-level `groupTransition` free func in
+//       util/graphic.swift (called bare; see `render`).
 //   import * as singleAxisHelper from '../../coord/single/singleAxisHelper';
 //     → PORT-NOTE: `coord/single/singleAxisHelper` is ported (singleAxisHelper.swift). Its
 //       API (free-function module → caseless enum, CONVENTIONS §2): `enum singleAxisHelper { static func
@@ -148,10 +149,10 @@ final class SingleAxisView: AxisView {
         }
 
         // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), not ported. It matches
-        //   old/new elements by `anid` and animates the transition (`updateProps`). Deferred with the
-        //   animation seam (CONVENTIONS §5); the freshly-built geometry above is correct without it.
-        _ = oldAxisGroup
+        //   `graphic.groupTransition` is ported as a top-level free func in util/graphic.swift (bare call,
+        //   matching upstream `graphic.groupTransition(...)`); it no-ops when `oldAxisGroup` is nil (first
+        //   render), mirroring upstream's `if (!g1 || !g2) return`.
+        groupTransition(oldAxisGroup, self._axisGroup, axisModel)
 
         super.render(axisModel, ecModel, api, payload)
     }
