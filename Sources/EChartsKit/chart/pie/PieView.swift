@@ -39,11 +39,10 @@ import ZRenderKit
 //   import labelLayout from './labelLayout';                       -> `pieLabelLayout` (sibling
 //       labelLayout.swift); wired in render() after every sector is built.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> label/labelGuideHelper.swift. BOTH helpers now EXIST there
-//          (`labelGuideHelper.setLabelLineStyle` / `labelGuideHelper.getLabelLineStatesModels`); only
-//          the CALL SITE here is pending, so the leader-line Polyline is still drawn with an inlined
-//          line style in `_updateLabel` (points filled by `pieLabelLayout`). See the
-//          `// PORT-TODO: wire setLabelLineStyle` marker there; do NOT re-derive the helper.
+//       -> label/labelGuideHelper.swift (`labelGuideHelper.setLabelLineStyle` /
+//          `labelGuideHelper.getLabelLineStatesModels`); NOW WIRED in `_updateLabel` (the leader-line
+//          Polyline's per-state style comes from the shared helper; its points are filled by
+//          `pieLabelLayout`).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle.swift (`setLabelStyle`/`getLabelStatesModels`); wired in `_updateLabel`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';
@@ -69,9 +68,8 @@ import ZRenderKit
 //   label / leader-line subsystem (`setLabelStyle` / `getLabelStatesModels` / `setTextGuideLine` +
 //   `pieLabelLayout`), and states / emphasis (`setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //   `ensureState('emphasis')` radius grow).
-// HELPERS PORTED, CALL SITE PENDING: the state-driven `setLabelLineStyle`/`getLabelLineStatesModels`
-//   labelGuideHelper helpers both EXIST now; this view has not been switched over yet, so the
-//   leader-line style stays inlined in `_updateLabel` (see the PORT-TODO there).
+// NOW WIRED (was "helpers ported, call site pending"): the state-driven `setLabelLineStyle` /
+//   `getLabelLineStatesModels` labelGuideHelper pair drives the leader-line style in `_updateLabel`.
 // NOW WIRED (was deferred): the `select`-state `selectedOffset` dx/dy translate (exploded slice) on the
 //   sector + its label + leader line; the focus/blur fan-out (`toggleHoverEmphasis`); the SSR
 //   `scaleX/scaleY` enter branch and the `animationType === 'scale'` r-grow enter (alongside the
@@ -430,23 +428,25 @@ open class PieView: ChartView {
     //   the sector's textContent (the painter renders textContent automatically) and stamps the
     //   sector's textConfig from the label model's `position`/`rotate`/`distance`.
     //
-    // DEFERRED (L1c, unchanged from upstream's own deferral notes above): the leader-line
-    //   (`setTextGuideLine`/`setLabelLineStyle` Polyline) and `labelLayout` collision-avoidance /
-    //   absolute re-placement are NOT ported — text only for now.
-    //
-    // PORT DEVIATION: upstream follows `setLabelStyle` with
-    //   `sector.setTextConfig({ position: null, rotation: null })`, delegating final placement to
-    //   `labelLayout`. Since `labelLayout` is DEFERRED, that reset would leave the label unpositioned;
-    //   we instead KEEP the textConfig `position` (e.g. pie default `'outer'`) that `createTextConfig`
-    //   derived from the label model, so the painter places the label relative to the sector.
+    // The leader line (`setTextGuideLine` + `setLabelLineStyle` Polyline) IS wired below, and
+    //   `pieLabelLayout` (sibling labelLayout.swift — absolute placement, `constrainTextWidth`,
+    //   `avoidOverlap`) IS ported and wired in render() after every sector is built. So final label
+    //   placement is the layout stage's job, exactly as upstream: the textConfig `position` /
+    //   `rotation` that `labelStyle.createTextConfig` stamps here must be RESET below, or the painter
+    //   would re-place the attached text relative to the sector and override the collision-avoided
+    //   `label.x` / `label.y` (which is also where the leader-line points terminate).
     private func _updateLabel(_ sector: Sector, _ seriesModel: PieSeriesModel, _ data: SeriesData, _ idx: Int) {
         let itemModel = data.getItemModel(idx)
+        // const labelLineModel = itemModel.getModel('labelLine');
+        let labelLineModel = itemModel.getModel("labelLine")
 
         // const style = data.getItemVisual(idx, 'style');
         // const visualColor = style && style.fill; const visualOpacity = style && style.opacity;
         let visualStyle = data.getItemVisual(idx, "style") as? [String: Any]
         let visualColor: ColorString? = pieFillToString(visualStyle?["fill"])
-        let visualOpacity = visualStyle?["opacity"] as? Double
+        // Int-vs-Double trap: an item visual `opacity: 0` may be boxed as an Int — `as? Double` alone
+        //   would drop it (both from `retrieve3` below and from `SetLabelStyleOpt.defaultOpacity`).
+        let visualOpacity = pieAsDouble(visualStyle?["opacity"])
 
         // setLabelStyle(sector, getLabelStatesModels(itemModel), { labelFetcher, labelDataIndex,
         //   inheritColor, defaultOpacity, defaultText: getFormattedLabel(idx,'normal') || getName(idx) })
@@ -464,6 +464,13 @@ open class PieView: ChartView {
         )
         labelStyle.setLabelStyle(sector, models, opt)
 
+        // upstream: sector.setTextConfig({ position: null, rotation: null }) — "reset position,
+        //   rotation" so the label uses the absolute x/y `pieLabelLayout` computes.
+        // PORT-NOTE: `Element.setTextConfig` assigns wholesale (a Swift Optional cannot distinguish
+        //   "absent" from "explicitly nil"), which is precisely the reset semantics wanted here; the
+        //   remaining fields are re-stamped by `pieLabelLayout` (`inside`).
+        sector.setTextConfig(ElementTextConfig())
+
         // upstream: `labelText.attr({ z2: 10 })`.
         if let labelText = sector.getTextContent() {
             labelText.z2 = 10
@@ -476,34 +483,48 @@ open class PieView: ChartView {
         //     if (labelPosition !== 'outside' && labelPosition !== 'outer') { sector.removeTextGuideLine(); }
         //     else { let polyline = getTextGuideLine(); if (!polyline) { ...setTextGuideLine... };
         //            setLabelLineStyle(this, getLabelLineStatesModels(itemModel), {...}); }
-        // PORT-TODO: wire setLabelLineStyle. Both helpers are PORTED and available
-        //   (`labelGuideHelper.setLabelLineStyle(sector, labelGuideHelper.getLabelLineStatesModels(
-        //   itemModel), <stroke/opacity defaultStyle>)`); only this call site is pending, and it should
-        //   REPLACE the inline style below rather than sit alongside it.
-        //   Until then the line style is inlined here (mirrors FunnelView): a stroke-only Polyline attached as the
-        //   sector's textGuideLine. Its POINTS are filled later by `pieLabelLayout` (which also flips
-        //   `ignore` for hidden labels). REUSE the existing guide line on a refresh so the reused sector
+        //   The per-state style is now driven by the shared `labelGuideHelper` helpers (the previously
+        //   inlined stroke-only style is GONE — `setLabelLineStyle` owns it, including forcing
+        //   `fill = nil` on the stroke-only Polyline and the `textGuideLineConfig.showAbove` flag).
+        //   NOTE: for pie the `showAbove` flag is inert — `pieLabelLayout` later assigns a brand-new
+        //   `textGuideLineConfig` carrying only `anchor` (faithful to upstream), discarding it.
+        //   The leader line's POINTS are filled later by `pieLabelLayout` (which also flips `ignore`
+        //   for hidden labels). The existing guide line is REUSED on a refresh so the reused sector
         //   keeps its leader-line element identity.
         let labelPosition = itemModel.get(["label", "position"]) as? String
         if labelPosition != "outside" && labelPosition != "outer" {
+            // upstream calls `sector.removeTextGuideLine()` unconditionally; the guard is a no-op
+            //   fast path (removeTextGuideLine is itself nil-safe).
             if sector.getTextGuideLine() != nil {
                 sector.removeTextGuideLine()
             }
         } else {
-            let labelLineModel = itemModel.getModel("labelLine")
-            let line: Polyline
-            if let existing = sector.getTextGuideLine() {
-                line = existing
-            } else {
-                line = Polyline()
-                sector.setTextGuideLine(line)
+            // upstream: let polyline = this.getTextGuideLine();
+            //           if (!polyline) { polyline = new graphic.Polyline(); this.setTextGuideLine(polyline); }
+            if sector.getTextGuideLine() == nil {
+                sector.setTextGuideLine(Polyline())
             }
-            var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
-            if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
-            line.useStyle(lstyle)
-            // A stroke-only leader line must not keep the black default fill.
-            line.pathStyle.fill = nil
-            line.z2 = 10
+
+            // upstream:
+            //   setLabelLineStyle(this, getLabelLineStatesModels(itemModel), {
+            //       // Default use item visual color
+            //       stroke: visualColor,
+            //       opacity: retrieve3(labelLineModel.get(['lineStyle', 'opacity']), visualOpacity, 1)
+            //   });
+            var labelLineDefaultStyle = PathStyleProps()
+            // Default use item visual color. Upstream passes `style.fill` VERBATIM (so a gradient /
+            //   pattern item fill strokes the leader line too) — hence the gradient-aware paint bridge
+            //   rather than the solid-only `pieFillToString`.
+            labelLineDefaultStyle.stroke = zrPaintFromStyleValue(visualStyle?["fill"])
+            // Int-vs-Double trap: `lineStyle.opacity` may be boxed as an Int in the option tree.
+            labelLineDefaultStyle.opacity = util.retrieve3(
+                pieAsDouble(labelLineModel.get(["lineStyle", "opacity"])), visualOpacity, 1
+            )
+            labelGuideHelper.setLabelLineStyle(
+                sector,
+                labelGuideHelper.getLabelLineStatesModels(itemModel),
+                labelLineDefaultStyle
+            )
         }
     }
 }
@@ -524,6 +545,8 @@ private func pieFillToString(_ v: Any?) -> String? {
     if let z = v as? EChartsKit.ZRColor, case let .color(s) = z { return s }
     return nil
 }
+
+// (Int-vs-Double option reads go through the shared `pieAsDouble` in labelLayout.swift.)
 
 // Models upstream `isNaN(shape && shape.startAngle)`: a nil (falsy) shape yields `isNaN(undefined)`
 //   === true; otherwise it is `isNaN(shape.startAngle)`.

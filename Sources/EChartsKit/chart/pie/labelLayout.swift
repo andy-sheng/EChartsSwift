@@ -342,10 +342,10 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
     var cx = 0.0
     var cy = 0.0
     var hasLabelRotate = false
-    let minShowLabelRadian = (labelLayoutAsDouble(seriesModel.get("minShowLabelAngle")) ?? 0) * RADIAN
+    let minShowLabelRadian = (pieAsDouble(seriesModel.get("minShowLabelAngle")) ?? 0) * RADIAN
 
     guard let viewRect = data.getLayout("viewRect") as? BoundingRect else { return }
-    let r = labelLayoutAsDouble(data.getLayout("r")) ?? 0
+    let r = pieAsDouble(data.getLayout("r")) ?? 0
     let viewWidth = viewRect.width
     let viewLeft = viewRect.x
     let viewTop = viewRect.y
@@ -380,10 +380,10 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
         // Use position in normal or emphasis
         let labelPosition = (labelModel.get("position") as? String)
             ?? (itemModel.get(["emphasis", "label", "position"]) as? String)
-        let labelDistance = labelLayoutAsDouble(labelModel.get("distanceToLabelLine")) ?? 0
+        let labelDistance = pieAsDouble(labelModel.get("distanceToLabelLine")) ?? 0
         let labelAlignTo = (labelModel.get("alignTo") as? String) ?? "none"
         let edgeDistance = number.parsePercent(labelModel.get("edgeDistance"), viewWidth)
-        var bleedMargin = labelLayoutAsDouble(labelModel.get("bleedMargin"))
+        var bleedMargin = pieAsDouble(labelModel.get("bleedMargin"))
         if bleedMargin == nil {
             // An arbitrary strategy for small viewRect (pie in calendar / matrix coord sys).
             bleedMargin = Swift.min(viewWidth, viewHeight) > 200 ? 10 : 2
@@ -462,7 +462,7 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
         let PI = Double.pi
         var labelRotate = 0.0
         let rotate = labelModel.get("rotate")
-        if let rotateNum = labelLayoutAsDouble(rotate), !(rotate is String) {
+        if let rotateNum = pieAsDouble(rotate), !(rotate is String) {
             labelRotate = rotateNum * (PI / 180)
         }
         else if labelPosition == "center" {
@@ -505,8 +505,8 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
                 position: labelPosition,
                 len: labelLineLen,
                 len2: labelLineLen2,
-                minTurnAngle: labelLayoutAsDouble(labelLineModel.get("minTurnAngle")) ?? 0,
-                maxSurfaceAngle: labelLayoutAsDouble(labelLineModel.get("maxSurfaceAngle")) ?? 0,
+                minTurnAngle: pieAsDouble(labelLineModel.get("minTurnAngle")) ?? 0,
+                maxSurfaceAngle: pieAsDouble(labelLineModel.get("maxSurfaceAngle")) ?? 0,
                 surfaceNormal: Point(nx, ny),
                 linePoints: linePoints,
                 textAlign: textAlign,
@@ -563,7 +563,14 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
                 labelGuideHelper.limitSurfaceAngle(&linePoints, layout.surfaceNormal, layout.maxSurfaceAngle)
                 layout.linePoints = linePoints
 
-                var lineShape = PolylineShape()
+                // upstream: labelLine.setShape({ points: linePoints }) — a PARTIAL object that
+                //   `extend`s into the existing shape, preserving fields set earlier (notably
+                //   `smooth`, stamped by `labelGuideHelper.setLabelLineStyle`).
+                // PORT-NOTE: Swift's `Path.setShape(_ obj: PathShape)` REPLACES the shape wholesale
+                //   (Path.swift), so a partial-object upstream call must be read-modify-write here or
+                //   `smooth` (and any other previously set field) is silently reset to its default —
+                //   which would make `buildLabelLinePath`'s bezier rounded-corner branch unreachable.
+                var lineShape = (labelLine.shape as? PolylineShape) ?? PolylineShape()
                 lineShape.points = linePoints.map { VectorArray($0[0], $0[1]) }
                 labelLine.setShape(lineShape)
 
@@ -581,8 +588,9 @@ private func sectorTextGuideHost(_ label: ZRText) -> Element? {
     return label.__hostTarget
 }
 
-// Local numeric coercion (defaultOptions box numbers as Int OR Double — see the Int-vs-Double trap).
-private func labelLayoutAsDouble(_ v: Any?) -> Double? {
+// Numeric coercion (defaultOptions box numbers as Int OR Double — see the Int-vs-Double trap).
+//   Module-internal so the sibling pie files (PieView) share ONE copy instead of re-deriving it.
+func pieAsDouble(_ v: Any?) -> Double? {
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
     return nil
