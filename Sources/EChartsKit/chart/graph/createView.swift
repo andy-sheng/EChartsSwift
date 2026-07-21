@@ -273,14 +273,13 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
         //   `isNaN(aspect)` view-rect fallback below fires. `VectorArray` is a fixed SIMD2 that would
         //   read (0, 0) instead (deltas exactly 0 -> ±1 padding -> aspect 1, fallback skipped), so the
         //   empty case is seeded with NaN to reproduce upstream.
-        var min: VectorArray
-        var max: VectorArray
-        if positions.isEmpty {
-            min = VectorArray(repeating: Double.nan)
-            max = VectorArray(repeating: Double.nan)
-        } else {
-            (min, max) = bbox.fromPoints(positions, VectorArray(), VectorArray())
-        }
+        //   (`fromPoints` itself mirrors `if (points.length === 0) return;` by returning the seeds
+        //   unchanged, so seeding is the whole empty-case policy — no second branch here.)
+        var (min, max) = bbox.fromPoints(
+            positions,
+            VectorArray(repeating: Double.nan),
+            VectorArray(repeating: Double.nan)
+        )
 
         // If width or height is 0
         if max[0] - min[0] == 0 {
@@ -328,18 +327,25 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
     return viewList
 }
 
-// upstream `+itemModel.get('x')` unary-plus numeric coercion.
+// upstream `+itemModel.get('x')` unary-plus numeric coercion. Delegates to the canonical JS
+//   `Number(val)` helper `number.numberCoerce` (util/number.swift), which routes strings through
+//   `number.jsNumber` ("Infinity"/"+Infinity"/"-Infinity", 0x/0o/0b radix literals, "" -> 0).
+// NOTE: the sibling `toNumber` in categoryFilter.swift / categoryVisual.swift is a DIFFERENT
+//   coercion (category-index parsing, not unary-plus) — same name, different semantics; do not unify.
+// PORT-NOTE(deviates from PORTING §8 null/undefined collapse): this file DOES depend on the
+//   distinction — `+undefined` is NaN but `+null` is 0. Reachable only when the option carries
+//   `NSNull()` (the codebase's explicit JS-null spelling); an omitted key arrives via
+//   `Model.getShallow` as `nil` and correctly stays NaN.
 private func toNumber(_ value: Any?) -> Double {
-    //   JS `+x`: `+undefined` is NaN, but `+null` is 0, `+true` is 1, `+false` is 0 and `+''`
-    //   (or any all-whitespace string) is 0. Absent (`nil`, i.e. `undefined`) stays NaN.
-    switch value {
-    case let d as Double: return d
-    case let i as Int: return Double(i)
-    case let b as Bool: return b ? 1 : 0
-    case is NSNull: return 0
-    case let s as String:
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? 0 : (Double(trimmed) ?? Double.nan)
-    default: return Double.nan
+    // `number.numberCoerce`'s own comment leaves `+null` to the caller.
+    if value is NSNull { return 0 }
+    // Widening for numeric boxes that `as? Double` / `as? Int` miss (Float, CGFloat, Int8, a
+    //   non-bridging NSNumber); one such node would otherwise be NaN and poison the whole bbox.
+    //   The CFBoolean singletons are excluded so `+true`/`+false` still take the Bool arm.
+    //   SYMBOLS.tsv follow-up: fold this arm into `number.numberCoerce` itself (shared symbol,
+    //   out of this lane's scope) so every dynamic `+x` call site benefits.
+    if let n = value as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) {
+        return n.doubleValue
     }
+    return number.numberCoerce(value)
 }
