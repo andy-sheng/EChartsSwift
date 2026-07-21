@@ -30,7 +30,8 @@ import ZRenderKit
 //   import {RectProps} from 'zrender/src/graphic/shape/Rect';        -> ZRenderKit `RectProps`.
 //   import { Rect, Sector, updateProps, initProps, removeElementWithFadeOut, traverseElements }
 //       from '../../util/graphic';
-//     -> `Rect` is the ZRenderKit shape (graphic re-exports it). `Sector` (polar) is deferred.
+//     -> `Rect` is the ZRenderKit shape (graphic re-exports it). `Sector` (polar) is used by
+//        `elementCreatorPolar` in the polar block at the bottom of this file.
 //        `updateProps` / `initProps` / `removeElementWithFadeOut` now resolve to the real ported
 //        `animation/basicTransition.swift` (module-level, animated). `traverseElements` == `Group.traverse`.
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`.
@@ -70,7 +71,8 @@ import ZRenderKit
 //       from '../../label/sectorLabel';                              -> PORT-NOTE (deferred): requires label/sectorLabel (not ported; polar/label).
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (real since universalTransition landed).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
-//   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> PORT-NOTE: sectorHelper is ported; polar bars deferred in this view.
+//   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> `getSectorCornerRadius`
+//     (chart/helper/sectorHelper.swift); wired in the `isPolar` branch of `updateStyle`.
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
 //   import { SERIES_TYPE_BAR } from '../../layout/barCommon';        -> `SERIES_TYPE_BAR`.
 
@@ -970,8 +972,14 @@ func getLayoutCartesian2D(_ data: SeriesData, _ dataIndex: Int, _ itemModel: Mod
 }
 // PORT-NOTE: `getLayout.polar` lives in the polar block at the bottom of this file (`getLayoutPolar`).
 
-// upstream: function isZeroOnPolar(layout: SectorLayout) { ... }
-// PORT-NOTE (deferred): polar `isZeroOnPolar`; cartesian rect layout has no startAngle/endAngle → always false.
+// upstream: function isZeroOnPolar(layout: SectorLayout) {
+//     return layout.startAngle != null && layout.endAngle != null && layout.startAngle === layout.endAngle;
+//   }
+// PORT-NOTE: `SectorShape.startAngle` / `.endAngle` are non-Optional `Double`s, so the two `!= null`
+//   guards are structurally satisfied (a missing layout is already rejected by `getLayoutPolar`).
+func isZeroOnPolar(_ layout: SectorShape) -> Bool {
+    return layout.startAngle == layout.endAngle
+}
 
 // PORT-NOTE (deferred): `createPolarPositionMapping` (polar/label).
 
@@ -1003,10 +1011,24 @@ func updateStyle(
             _ = rect.setShape(rectShape)
         }
     }
-    else {
-        // PORT-NOTE (deferred): polar cornerRadius (getSectorCornerRadius IS ported in sectorHelper.swift,
-        //   but the sector cornerRadius set is threaded through the whole-shape write in the diff loop, not
-        //   here — none of the ported polar-bar demos set itemStyle.borderRadius).
+    // upstream: else if (!seriesModel.get('roundCap')) {
+    //     const sectorShape = (el as Sector).shape;
+    //     const cornerRadius = getSectorCornerRadius(itemModel.getModel('itemStyle'), sectorShape, true);
+    //     extend(sectorShape, cornerRadius);
+    //     (el as Sector).setShape(sectorShape);
+    //   }
+    // PORT-NOTE: same whole-shape read-modify-write idiom as the cartesian `r` branch above —
+    //   `SectorShape.cornerRadius` has no keyed setter and is NOT part of `sectorShapeAnimShape`, so the
+    //   value survives the subsequent init/updateProps shape animation. `extend(shape, cornerRadius)` is
+    //   the `{cornerRadius, innerCornerRadius}` merge; the Swift helper returns the `cornerRadius`
+    //   (`innerCornerRadius` has no SectorShape counterpart, same as PieView/ChordPiece).
+    else if !((seriesModel.get("roundCap", true) as? Bool) ?? false) {
+        if let sector = el as? Sector, var sectorShape = sector.shape as? SectorShape {
+            if let cornerRadius = getSectorCornerRadius(itemModel.getModel("itemStyle"), sectorShape, true) {
+                sectorShape.cornerRadius = cornerRadius
+            }
+            _ = sector.setShape(sectorShape)
+        }
     }
 
     // upstream: el.useStyle(style)
@@ -1098,8 +1120,26 @@ func updateStyle(
     let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
     states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
     states.setStatesStylesFromModel(el, itemModel)
-    // PORT-NOTE (deferred): upstream's `isZeroOnPolar(layout)` no-fill state fix-up (BarView.ts:1066-1074)
-    //   is polar-only.
+    // upstream (BarView.ts:1066-1074):
+    //   if (isZeroOnPolar(layout as SectorLayout)) {
+    //       el.style.fill = 'none';
+    //       el.style.stroke = 'none';
+    //       each(el.states, (state) => { if (state.style) { state.style.fill = state.style.stroke = 'none'; } });
+    //   }
+    // Polar-only (a cartesian RectLayout has no startAngle/endAngle → isZeroOnPolar is always false),
+    //   so it reads the `polarLayout` side-channel. `'none'` maps to `ZRColor.string("none")`, which
+    //   ZRenderKit's `Path` honours as "no paint" (see `colorIsNone`); state styles are the untyped
+    //   `[String: Any]` bag consumed by `applyElementStates`, so the raw "none" string goes in there.
+    if isPolar, let polarLayout = polarLayout, isZeroOnPolar(polarLayout) {
+        el.pathStyle.fill = .string("none")
+        el.pathStyle.stroke = .string("none")
+        for key in el.states.keys {
+            if let state = el.states[key], state.style != nil {
+                state.style?["fill"] = "none"
+                state.style?["stroke"] = "none"
+            }
+        }
+    }
 }
 
 // In case width or height are too small.
@@ -1372,9 +1412,11 @@ private func styleNum(_ v: Any?) -> Double? {
 //     tangential (radius base) bars are rendered (see `_renderPolarBars`).
 //   * roundCap → honoured: `SausagePath` (upstream util/shape/sausage) is ported and used for tangential
 //     bars exactly as upstream (`(!isRadial && roundCap) ? Sausage : Sector`).
+//   * `getSectorCornerRadius` (helper/sectorHelper) — wired in the `isPolar` branch of `updateStyle`,
+//     behind upstream's `!seriesModel.get('roundCap')` guard.
+//   * `isZeroOnPolar` — the zero-value no-paint fix-up, applied at the end of `updateStyle`.
 //
 // PORT-NOTE (deferred):
-//   * `getSectorCornerRadius` (helper/sectorHelper) — the sector `cornerRadius` shape field.
 //   * sector text rotation / position: `createSectorCalculateTextPosition` +
 //     `createPolarPositionMapping` (label/sectorLabel) are not ported.
 //   * `showBackground` on the polar path.
@@ -1392,6 +1434,24 @@ func isValidLayoutPolar(_ layout: SectorShape) -> Bool {
 //   struct is opaque to `animateToShallow`, so per-field tweens need a `[String: Any]`).
 func sectorShapeAnimShape(_ s: SectorShape) -> [String: Any] {
     ["cx": s.cx, "cy": s.cy, "r0": s.r0, "r": s.r, "startAngle": s.startAngle, "endAngle": s.endAngle]
+}
+
+// PORT-NOTE: local port helper (NOT in upstream). Upstream passes the WHOLE `layout` object to
+//   `initProps`/`updateProps` (`{shape: layout}`), and zrender's `animateTo` steps non-numeric props
+//   straight to their final value — so `clockwise` retargets along with the angles. `sectorShapeAnimShape`
+//   can only carry the tweenable `Double` fields (`animationSet` is keyed on numbers), so the Bool is
+//   written directly by a whole-shape read-modify-write BEFORE the animation is scheduled; the per-key
+//   `animationSet` used by the tween then leaves `clockwise` alone. Without this a reused element keeps a
+//   stale sweep direction when `angleAxis.clockwise`/`inverse` flips on a merge `setOption`.
+func setPolarClockwise(_ el: BarPossiblePath, _ layout: SectorShape) {
+    if var s = el.shape as? SectorShape {
+        s.clockwise = layout.clockwise
+        _ = el.setShape(s)
+    }
+    else if var s = el.shape as? SausageShape {
+        s.clockwise = layout.clockwise
+        _ = el.setShape(s)
+    }
 }
 
 // PORT-NOTE: local port helper (NOT in upstream) — bridges a polar bar's `SectorShape` layout onto the
@@ -1414,10 +1474,12 @@ private func sausageShapeFromSector(_ layout: SectorShape) -> SausageShape {
 // upstream: `elementCreator.polar` (Sector / Sausage path).
 func elementCreatorPolar(
     _ seriesModel: BarSeriesModel,
+    _ data: SeriesData,
     _ newIndex: Int,
     _ layout: SectorShape,
     _ isRadial: Bool,
     _ animationModel: BarSeriesModel?,
+    _ axisModel: AxisBaseModel?,
     _ isUpdate: Bool,
     _ roundCap: Bool
 ) -> BarPossiblePath {
@@ -1430,9 +1492,10 @@ func elementCreatorPolar(
     sector.name = "item"
     // PORT-NOTE: upstream also runs `(isUpdate ? updateProps : initProps)(sector, {shape: animateTarget},
     //   animationModel)` here; the port performs the equivalent whole-shape init/updateProps at the two
-    //   call sites in `_renderPolarBars`, so `newIndex`/`isUpdate` are unused here (kept for signature
-    //   fidelity).
-    _ = (newIndex, isUpdate)
+    //   call sites in `_renderPolarBars`, so `newIndex`/`isUpdate` are unused here. `data`/`axisModel`
+    //   are likewise unused by upstream's polar creator (only cartesian2d reads them); all four are kept
+    //   so both halves of the shared `ElementCreator` interface have the same arity as the TS.
+    _ = (data, newIndex, axisModel, isUpdate)
 
     // upstream:
     //   const positionMap = createPolarPositionMapping(isRadial);
@@ -1501,14 +1564,15 @@ extension BarView {
                 if !data.hasValue(dataIndex) || !isValidLayoutPolar(layout) { return }
 
                 let el = elementCreatorPolar(
-                    seriesModel, dataIndex, layout, isHorizontalOrRadial,
-                    animationModel, false, roundCap
+                    seriesModel, data, dataIndex, layout, isHorizontalOrRadial,
+                    animationModel, baseAxis.model, false, roundCap
                 )
                 // Shared styling: item color + label + emphasis (isPolar = true).
                 updateStyle(
                     el, data, dataIndex, itemModel, RectShape(),
                     seriesModel, isHorizontalOrRadial, true, layout
                 )
+                setPolarClockwise(el, layout)
                 initProps(el, ["shape": sectorShapeAnimShape(layout)], seriesModel, dataIndex)
 
                 data.setItemGraphicEl(dataIndex, el)
@@ -1517,10 +1581,9 @@ extension BarView {
             .update({ newIndex, oldIndex in
                 let itemModel = data.getItemModel(newIndex)
                 var el = oldData?.getItemGraphicEl(oldIndex) as? BarPossiblePath
-                guard let layout = getLayoutPolar(data, newIndex) else {
-                    if let el = el { _ = group.remove(el) }
-                    return
-                }
+                // upstream: `const layout = getLayout[coord.type](data, newIndex, itemModel);
+                //   if (!layout) { return; }` — NO element removal (mirrors `_renderNormal`).
+                guard let layout = getLayoutPolar(data, newIndex) else { return }
                 if !data.hasValue(newIndex) || !isValidLayoutPolar(layout) {
                     if let el = el { _ = group.remove(el) }
                     return
@@ -1544,8 +1607,8 @@ extension BarView {
 
                 if el == nil {
                     el = elementCreatorPolar(
-                        seriesModel, newIndex, layout, isHorizontalOrRadial,
-                        animationModel, true, roundCap
+                        seriesModel, data, newIndex, layout, isHorizontalOrRadial,
+                        animationModel, baseAxis.model, true, roundCap
                     )
                 }
                 else {
@@ -1556,6 +1619,7 @@ extension BarView {
                     el!, data, newIndex, itemModel, RectShape(),
                     seriesModel, isHorizontalOrRadial, true, layout
                 )
+                setPolarClockwise(el!, layout)
                 updateProps(el!, ["shape": sectorShapeAnimShape(layout)], seriesModel, newIndex)
 
                 data.setItemGraphicEl(newIndex, el!)
