@@ -17,7 +17,7 @@ import ZRenderKit
 // upstream imports (all deferred except createSymbol / ChartView / SeriesData / Cartesian2D):
 //   import SymbolDraw from '../helper/SymbolDraw';                 -> SymbolDraw is ported (chart/helper/SymbolDraw.swift); this static view does not use it.
 //   import LargeSymbolDraw from '../helper/LargeSymbolDraw';       -> LargeSymbolDraw is ported (chart/helper/LargeSymbolDraw.swift); this static view does not use it.
-//   import pointsLayout from '../../layout/points';                -> PORT-NOTE (deferred): layout/points.ts not ported; points are computed inline per coord system below.
+//   import pointsLayout from '../../layout/points';                -> `pointsLayout` (layout/points.swift, ported; the stage is run by the driver — its setItemLayout feeds the brush selector — while this view inlines the per-datum placement below).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import { getIncrementalId } from '../../util/model';           -> PORT-NOTE (deferred): incremental/progressive render pipeline not wired for this static view.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';

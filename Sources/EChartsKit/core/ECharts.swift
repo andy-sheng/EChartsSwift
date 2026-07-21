@@ -725,12 +725,13 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(ScatterSeriesModel.self)
 
         // -- chart/effectScatter/install.ts (minimal) -- registerChartView(EffectScatterView) +
-        //   registerSeriesModel(EffectScatterSeries) + registerLayout(layoutPoints('effectScatter')) +
-        //   registerVisual(...). Like scatter, EffectScatterView computes point positions directly from
-        //   `coord.dataToPoint` (inlines pointsLayout), so no cross-series layout registrar is needed for the
-        //   static render. The animated RIPPLE (helper/EffectSymbol) is DEFERRED (CONVENTIONS §5) — the view
-        //   draws only the static base symbols. effectScatterInstall.swift is commented-only (diffable
-        //   surface); actual wiring lives here per the boxplotInstall/parallelInstall convention.
+        //   registerSeriesModel(EffectScatterSeries) + registerLayout(layoutPoints('effectScatter')).
+        //   Like scatter, EffectScatterView computes point positions directly from `coord.dataToPoint`
+        //   (inlines pointsLayout), so no cross-series layout registrar is needed for the render; the
+        //   `pointsLayout("effectScatter")` stage IS run below — its item layout feeds the brush selector.
+        //   The animated RIPPLE is ported (SymbolDraw(EffectSymbol) — chart/helper/EffectSymbolElement.swift).
+        //   effectScatterInstall.swift is commented-only (diffable surface); actual wiring lives here per the
+        //   boxplotInstall/parallelInstall convention.
         ComponentModel.registerClass(EffectScatterSeriesModel.self)
 
         // -- chart/heatmap/install.ts (minimal) -- registerSeriesModel(HeatmapSeriesModel) +
@@ -1315,7 +1316,7 @@ public final class ECharts: EChartsType {
         "pictorialBar": { PictorialBarView() },
         "line": { LineView() },
         "scatter": { ScatterView() },
-        // EffectScatter chart view (static base symbols; ripple DEFERRED). Registered under series subType
+        // EffectScatter chart view (SymbolDraw(EffectSymbol): base symbols + ripple). Registered under series subType
         //   'effectScatter' (upstream chart/effectScatter/install.ts `registerChartView(EffectScatterView)`).
         "effectScatter": { EffectScatterView() },
         // Heatmap chart view (cartesian2d colored-Rect path; geo/calendar/matrix DEFERRED). Registered under

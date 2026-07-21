@@ -29,9 +29,9 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                 -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';               -> SeriesData (data/SeriesData.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//       -> PORT-NOTE: BrushCommonSelectorsForSeries IS ported (component/brush/brushVisual.swift); only the
-//          `brushSelector` override on this model is intentionally not restored yet (brush out of scope for
-//          this milestone — see the deferred override below).
+//       -> BrushCommonSelectorsForSeries IS ported (component/brush/brushVisual.swift); the `brushSelector`
+//          override below is LIVE and reads the item layout written by the `pointsLayout("effectScatter")`
+//          stage via `data.getItemLayout(dataIndex)`.
 //   import { SymbolDrawItemModelOption } from '../helper/baseDraw';
 //       -> type-only (describes the `rippleEffect` option sub-tree); the dynamic option tree is `[String: Any]`.
 
