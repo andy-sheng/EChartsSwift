@@ -37,11 +37,10 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import { ColorString } from '../../util/types';                -> util/types.swift.
 //   import { setLabelLineStyle, getLabelLineStatesModels } from '../../label/labelGuideHelper';
-//       -> PORT-NOTE: BOTH helpers now EXIST in label/labelGuideHelper.swift
-//          (`labelGuideHelper.getLabelLineStatesModels` and `labelGuideHelper.setLabelLineStyle`).
-//          Only the CALL SITE is pending here — the leader polyline is still drawn inline (single
-//          stroke) in funnelUpdateLabel below. See the `// PORT-TODO: wire setLabelLineStyle` marker
-//          there. Do NOT re-derive a second copy of the helper.
+//       -> BOTH helpers live in label/labelGuideHelper.swift
+//          (`labelGuideHelper.getLabelLineStatesModels` / `labelGuideHelper.setLabelLineStyle`) and
+//          ARE wired at the end of funnelUpdateLabel below (they replaced the former inline
+//          single-stroke leader-line drawing). Do NOT re-derive a second copy of the helper.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
 //       -> label/labelStyle IS ported (label/labelStyle.swift); both are wired in funnelUpdateLabel
 //          below, replacing the former inline plain-text reproduction.
@@ -62,9 +61,9 @@ private let opacityAccessPath = ["itemStyle", "opacity"]
 //
 // PORT provenance (deferred subsystems below; a STATIC render faithfully omits them):
 //   - labelLine: `setTextGuideLine`/`getTextGuideLine` (Polyline) + `textGuideLineConfig` (the anchor
-//     turn-point) ARE wired. `setLabelLineStyle` / `getLabelLineStatesModels` (the per-state label-line
-//     styling) are now PORTED in labelGuideHelper.swift; only the call site here is pending, so the
-//     leader polyline is still drawn inline (single stroke) in funnelUpdateLabel for the moment.
+//     turn-point) ARE wired, and so is the per-state label-line styling
+//     (`setLabelLineStyle` / `getLabelLineStatesModels`, labelGuideHelper.swift) at the end of
+//     funnelUpdateLabel.
 //   - Label EMPHASIS / states: `getLabelStatesModels`, `setStatesStylesFromModel`, `toggleHoverEmphasis`,
 //     the `{ normal: {...} }` states arg to `setLabelStyle`, and the label formatter (`labelFetcher`)
 //     ARE now wired (see render() + funnelUpdateLabel below); the plain `defaultText = data.getName(idx)`
@@ -266,12 +265,10 @@ open class FunnelView: ChartView {
 //     - textConfig  = { local, inside, insideStroke, outsideFill } with overrideColor for 'inherit'
 //     - textGuideLineConfig = { anchor: linePoints ? new Point(linePoints[0][0], linePoints[0][1]) : null }
 //       IS wired (below) — the guide-line turn/anchor point.
-// PORT-TODO: wire setLabelLineStyle. `labelGuideHelper.setLabelLineStyle` and
-//   `labelGuideHelper.getLabelLineStatesModels` are BOTH ported and available — only this call site is
-//   still pending, so the leader polyline is drawn inline (single stroke) at the end. Upstream is:
-//     labelGuideHelper.setLabelLineStyle(
-//         polygon, labelGuideHelper.getLabelLineStatesModels(itemModel), <stroke/opacity defaultStyle>)
-//   which should REPLACE the inline single-stroke drawing below (not sit alongside it).
+//     - setLabelLineStyle(polygon, getLabelLineStatesModels(itemModel), { stroke: visualColor })
+//       IS wired (last statement below) — it owns the leader line's per-state ignore/smooth/lineStyle,
+//       the mandatory `fill = null`, `textGuideLineConfig.showAbove` and the smooth-corner buildPath
+//       override, and REPLACED the former inline single-stroke drawing.
 private func funnelUpdateLabel(
     _ polygon: Polygon, _ seriesModel: FunnelSeriesModel, _ data: SeriesData, _ idx: Int,
     _ layout: [String: Any], _ firstCreate: Bool
@@ -279,7 +276,15 @@ private func funnelUpdateLabel(
     let itemModel = data.getItemModel(idx)
     // const labelLine = this.getTextGuideLine();  const labelText = polygon.getTextContent();
     //   (both were created + attached in funnelPieceUpdateData's firstCreate branch.)
-    let labelLine = polygon.getTextGuideLine()
+    //   Upstream dereferences `this.getTextGuideLine()` unguarded (FunnelPiece's constructor always
+    //   creates the Polyline; funnelPieceUpdateData's firstCreate branch does the same). Materialise it
+    //   on demand so the invariant holds unconditionally — otherwise `setLabelLineStyle` (below) would
+    //   create it AFTER the `setShape({points})` below and leave it point-less for a frame.
+    let labelLine: Polyline = polygon.getTextGuideLine() ?? {
+        let line = Polyline()
+        polygon.setTextGuideLine(line)
+        return line
+    }()
     let labelText = polygon.getTextContent() ?? ZRText()
     if polygon.getTextContent() == nil { polygon.setTextContent(labelText) }
 
@@ -330,39 +335,28 @@ private func funnelUpdateLabel(
     textConfig.outsideFill = overrideColor
     polygon.setTextConfig(textConfig)
 
-    // labelLine (leader) — funnelLayout already computed `linePoints`. Upstream attaches it as the
-    //   polygon's textGuideLine (Storage renders it right after the polygon); the label-guide states/anchor
-    //   machinery is deferred, so its shape + stroke are set directly here. The guide line is IGNORED for
-    //   inside labels / labelLine.show === false / missing linePoints (so no stroke is painted).
-    if let labelLine = labelLine {
-        let labelLineModel = itemModel.getModel("labelLine")
-        let isInside = (labelLayout["inside"] as? Bool) ?? false
-        if !isInside,
-           (labelLineModel.get("show") as? Bool) != false,
-           let linePoints = labelLayout["linePoints"] as? [[Double]], linePoints.count >= 2 {
-            labelLine.ignore = false
-            var lineShape = PolylineShape()
-            lineShape.points = linePoints.map { VectorArray($0[0], $0[1]) }
-            _ = labelLine.setShape(lineShape)
-            var lstyle = barStyleFromDict(labelLineModel.getLineStyle())
-            if lstyle.stroke == nil, let vc = visualColor { lstyle.stroke = .string(vc) }
-            labelLine.useStyle(lstyle)
-            labelLine.pathStyle.fill = nil   // class-1 guard: a stroke-only polyline must not keep the black default
-            labelLine.z2 = 10
-        }
-        else {
-            labelLine.ignore = true
-        }
+    // labelLine (leader) — funnelLayout already computed `linePoints`.
+    //   upstream: labelLine.setShape({ points: linePoints });
+    //   Only the POINTS are set here; the ignore/smooth/lineStyle/fill of the leader line belong to
+    //   `setLabelLineStyle` (called at the end of this function, exactly as upstream). `linePoints` is
+    //   undefined for an INSIDE label — upstream then writes `points: undefined`, which clears any
+    //   points a reused piece still carried, so the Optional is assigned through rather than skipped.
+    //   (`setShape(key:value:)` routes through `animationSet`, which cannot store nil — so mutate the
+    //   live PolylineShape and re-set it, preserving `smooth`/`percent`.)
+    let linePoints = labelLayout["linePoints"] as? [[Double]]
+    var lineShape = (labelLine.shape as? PolylineShape) ?? PolylineShape()
+    lineShape.points = linePoints.map { pts in
+        pts.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
     }
+    _ = labelLine.setShape(lineShape)
 
     // polygon.textGuideLineConfig = { anchor: linePoints ? new graphic.Point(linePoints[0][0],
     //   linePoints[0][1]) : null };
     //   Upstream sets the guide-line anchor UNCONDITIONALLY (regardless of inside / labelLine.show) — it is
     //   the label-guide machinery's turn point (the sector/pyramid midpoint the leader connects to). Matches
     //   pie's labelLayout.swift, which stamps the same anchor from linePoints[0].
-    let anchorLinePoints = labelLayout["linePoints"] as? [[Double]]
     var guideConfig = ElementTextGuideLineConfig()
-    if let lp = anchorLinePoints, let first = lp.first, first.count >= 2 {
+    if let lp = linePoints, let first = lp.first, first.count >= 2 {
         guideConfig.anchor = Point(first[0], first[1])
     }
     polygon.textGuideLineConfig = guideConfig
@@ -390,6 +384,27 @@ private func funnelUpdateLabel(
     if let ox = labelLayout["x"] as? Double { labelText.originX = ox }
     if let oy = labelLayout["y"] as? Double { labelText.originY = oy }
     labelText.z2 = 10
+
+    // upstream:
+    //   setLabelLineStyle(polygon, getLabelLineStatesModels(itemModel), {
+    //       // Default use item visual color
+    //       stroke: visualColor
+    //   });
+    var labelLineDefaultStyle = PathStyleProps()
+    // Default use item visual color.
+    //   Upstream passes `style.fill` VERBATIM, so a gradient/pattern item fill strokes the leader line
+    //   too — hence the shared gradient-aware paint bridge (`zrPaintFromStyleValue`) rather than the
+    //   solid-only `funnelVisualFill` (which stays for `overrideColor`, genuinely typed ColorString
+    //   upstream). Without this a gradient item left the leader line with NO stroke at all
+    //   (DEFAULT_PATH_STYLE.stroke == nil and the funnel labelLine default sets only `width`).
+    if let stroke = zrPaintFromStyleValue((visualStyle as? [String: Any])?["fill"]) {
+        labelLineDefaultStyle.stroke = stroke
+    }
+    labelGuideHelper.setLabelLineStyle(
+        polygon,
+        labelGuideHelper.getLabelLineStatesModels(itemModel),
+        labelLineDefaultStyle
+    )
 }
 
 // upstream `const visualColor = style.fill as ColorString`. Extracts the solid-color fill string from
