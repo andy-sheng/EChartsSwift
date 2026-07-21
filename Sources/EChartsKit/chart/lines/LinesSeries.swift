@@ -566,8 +566,10 @@ open class LinesSeriesModel: SeriesModel {
                 "trailLength": 0.2
             ] as [String: Any],
 
-            // PORT-NOTE (deferred): `large` / progressive draw path DEFERRED (the large layout buffer is
-            //   produced by linesLayout but its consumer draw is not ported).
+            // `large` IS wired end-to-end: `large` + `largeThreshold` reach `pipelineContext.large` via
+            //   Scheduler.updateStreamModes → modelUtil.preparePipelineContext; the linesLayout STAGE
+            //   branches on it to pack the `linesPoints` buffer, and LinesView reads the SAME flag to draw
+            //   that buffer through chart/helper/LargeLineDraw. Only the PROGRESSIVE half is still deferred.
             "large": false,
             // Available when large is true
             "largeThreshold": 2000.0,

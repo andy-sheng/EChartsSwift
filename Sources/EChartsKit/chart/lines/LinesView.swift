@@ -35,12 +35,17 @@ import ZRenderKit
 //       (renamed to avoid colliding with the ZRenderKit `Line` SHAPE); driven via LineDraw.
 //   import Polyline from '../helper/Polyline';            -> PORT-NOTE: helper/Polyline NOT ported (inline shape).
 //   import EffectPolyline from '../helper/EffectPolyline';-> PORT-NOTE: ported (in chart/lines/EffectLine.swift); effect wired.
-//   import LargeLineDraw from '../helper/LargeLineDraw';  -> ported as chart/helper/LargeLineDraw.swift;
-//       NOT wired here — the large/progressive path (`_isLargeDraw`) is DEFERRED (see SYMBOLS.tsv row 8;
-//       wiring it into LinesView is a separate follow-up).
-//   import linesLayout from './linesLayout';              -> the per-item dataToPoint + curveness-control-point
-//       math is inlined below (see `render`); the layout STAGE is not run — the view projects coords
-//       itself, exactly as ScatterView inlines pointsLayout and LineView inlines dataToPoint.
+//   import LargeLineDraw from '../helper/LargeLineDraw';  -> ported as chart/helper/LargeLineDraw.swift and
+//       WIRED: `_updateLineDraw`'s `isLargeDraw` branch draws the whole series into ONE `LargeLinesPath`
+//       built from the packed `linesPoints` layout that the `linesLayout` STAGE produces (see the large
+//       branch in `render`). The PROGRESSIVE half (incrementalPrepareUpdate / incrementalUpdate) stays
+//       DEFERRED with the incremental pipeline.
+//   import linesLayout from './linesLayout';              -> the layout STAGE IS run by this driver
+//       (`runSeriesStageHandler(linesLayout, …)` in ECharts.render(), before renderSeries) and is the sole
+//       producer of the LARGE-mode `linesPoints` buffer consumed below. For the NON-large modes the
+//       per-item dataToPoint + curveness-control-point math is ADDITIONALLY inlined in `render` (the same
+//       deviation as ScatterView inlining pointsLayout and LineView inlining dataToPoint) — that inlining
+//       writes only per-ITEM layouts and never touches the `linesPoints` key.
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';
 //       -> PORT-NOTE: createClipPathFromCoordSys is ported; the `clip` option is not wired in this static view (no clip path set).
 //   import ChartView from '../../view/Chart';             -> ChartView (view/Chart.swift).
@@ -73,7 +78,7 @@ open class LinesView: ChartView {
     }
 
     // upstream fields: _lastZlevel / _finished / _lineDraw / _hasEffet / _isPolyline / _isLargeDraw.
-    //   PORT-NOTE (deferred): the large/incremental flags are DEFERRED.
+    //   PORT-NOTE (deferred): the incremental flags (_finished) are DEFERRED; `_isLargeDraw` IS wired.
     private var _data: SeriesData?
 
     // upstream: `this._lineDraw = new LineDraw()` — the straight/curved (non-polyline) lines are now
@@ -81,12 +86,33 @@ open class LinesView: ChartView {
     //   reuses + tweens each ECLine across a merge-mode setOption. Its group is added to `self.group`
     //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
     //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; geo/polar lines stay
-    //   DEFERRED (only Cartesian2D is wired), as does WIRING the (ported) LargeLineDraw.
-    // PORT-TODO: wire the (ported) `chart/helper/LargeLineDraw` for `isLarge` mode — the flat
-    //   `linesPoints` layout buffer it consumes (`LargeLineDraw.updateData` / `incrementalUpdate`) is
-    //   already produced by `chart/lines/linesLayout.swift`.
-    private let _lineDraw = LineDraw()
+    //   DEFERRED (only Cartesian2D is wired). The (ported) LargeLineDraw IS wired — see below.
+    //   `var` (not `let`) because a draw-MODE flip must DISCARD the instance: upstream `_updateLineDraw`
+    //   does `lineDraw = this._lineDraw = new LineDraw(...)` on every `isLargeDraw` / `isPolyline` change,
+    //   so the first post-flip `updateData` sees `oldLineData == nil` and ENTERS every element fresh.
+    //   Reusing one instance would diff the new data against data captured before the flip and tween the
+    //   elements from a stale state. `_recreateLineDraw()` below reproduces the upstream discard.
+    private var _lineDraw = LineDraw()
     private var _lineDrawAdded = false
+
+    // upstream `_updateLineDraw`: `this._lineDraw = new LineDraw(...)` — detach + throw away the current
+    //   draw (elements AND diff state) and start from a brand-new one. Called at every mode flip
+    //   (normal ↔ large, non-polyline ↔ polyline) and whenever the persisted elements are dropped.
+    private func _recreateLineDraw() {
+        _lineDraw.remove()
+        _ = group.remove(_lineDraw.group)
+        _lineDraw = LineDraw()
+        _lineDrawAdded = false
+    }
+
+    // upstream `_updateLineDraw`: `lineDraw = isLargeDraw ? new LargeLineDraw() : new LineDraw(...)` —
+    //   the two draws are held in one `_lineDraw` field there (typed `ILineDraw`, which is NOT ported);
+    //   this port keeps them in two fields and switches on `_isLargeDraw`, exactly as ScatterView holds
+    //   `_symbolDraw` + `_largeSymbolDraw`. Like ScatterView's `_largeSymbolDraw`, it is created LAZILY
+    //   on first entry into large mode (nil ⇒ never added to `self.group`), so the vast majority of
+    //   `lines` series never allocate it or its Group; non-nil doubles as the "already added" flag.
+    private var _largeLineDraw: LargeLineDraw?
+    private var _isLargeDraw = false
 
     // View REUSE for the POLYLINE mode (ECLine can't model an N-point polyline): the per-item Polyline
     //   elements are PERSISTED (keyed by data index) and MORPHED, gated by `_prevCount`/`_prevIsPolyline`.
@@ -168,6 +194,91 @@ open class LinesView: ChartView {
         //   across the whole progress loop; `getLineCoords(i, out)` fills it and returns the point count.
         var lineCoords: [[Double]] = []
 
+        // === LARGE mode → the shared LargeLineDraw (one path for the whole series) ===================
+        //   upstream `_updateLineDraw`: `const isLargeDraw = pipelineContext.large;`.
+        //   SINGLE SOURCE OF TRUTH: read the ported `pipelineContext` rather than re-deriving the
+        //   predicate from raw options. `Scheduler.updateStreamModes` (→ modelUtil.preparePipelineContext,
+        //   which computes `large` from `large` + `largeThreshold`) runs for every series in
+        //   `ECharts.render()` BEFORE the layout stages and `renderSeries`, so the context is populated
+        //   here — the same read BarView (`seriesModel.pipelineContext.large`) and layout/barGrid use.
+        //   This matters beyond tidiness: `linesLayout` — the PRODUCER of the `linesPoints` buffer this
+        //   branch consumes — branches on `seriesModel.pipelineContext.large` too, so producer and
+        //   consumer cannot disagree (a `__preparePipelineContext` override, or a differing coercion of
+        //   `largeThreshold`, would otherwise feed a large-mode draw from a per-item layout pass).
+        //   `pipelineContext` is an implicitly-unwrapped `PipelineContext!` that `ECharts.render()`'s
+        //   updateStreamModes pass GUARANTEES to be populated before any view renders; the optional chain
+        //   is belt-and-braces only (and `linesLayout` reads it the same defensive way, so a hypothetical
+        //   nil would take the non-large path on BOTH sides rather than trapping in the layout stage).
+        //   PORT-NOTE (coercion delta vs the JS predicate, inherited from modelUtil.preparePipelineContext,
+        //   which is the shared single source of truth for every series): it reads `large` as `as? Bool`
+        //   (a truthy non-Bool such as `1` does NOT enable large mode) and defaults a missing
+        //   `largeThreshold` to 0 (upstream `dataLen >= undefined` is always FALSE, i.e. never large).
+        //   Unreachable for `lines`, whose series defaults always supply `large: false` / 2000.
+        let isLargeDraw = seriesModel.pipelineContext?.large ?? false
+
+        if isLargeDraw {
+            // upstream (__DEV__): `if (hasEffect && isLargeDraw) console.warn('Large lines not support
+            //   effect')` — the effect pass is skipped below, same as upstream (LargeLineDraw has no trail).
+            if __DEV__ {
+                if hasEffect {
+                    log.warn("Large lines not support effect")
+                }
+            }
+
+            // Only the normal → large TRANSITION drops the LineDraw / persisted Polyline / effect
+            //   elements; upstream `_updateLineDraw` likewise re-creates the draw only when the mode
+            //   actually flips (cf. ScatterView's `if _largeSymbolDraw == nil || _isLargeDraw != …`).
+            //   `resetPersistentElements` DISCARDS the LineDraw (not just its elements), so that a later
+            //   large → normal flip enters elements fresh, exactly as upstream's brand-new LineDraw does.
+            if !_isLargeDraw {
+                self.resetPersistentElements()
+            }
+
+            // NO PACKING HERE — the packed `linesPoints` buffer is produced by the `linesLayout` STAGE,
+            //   exactly as upstream: `linesLayout`'s large branch allocates the fixed-size
+            //   `Float32Array` (polyline → `[len, x0,y0, …]` per item; otherwise `[x0,y0,x1,y1]` per
+            //   item) and does `lineData.setLayout('linesPoints', points)`. That stage IS run by this
+            //   driver — `runSeriesStageHandler(linesLayout, ecModel, api)` in `ECharts.render()`, full
+            //   range, before `renderSeries` — and it branches on the SAME `pipelineContext.large` read
+            //   above, so whenever this branch is taken the buffer exists and is well-formed (the
+            //   LAYOUT INVARIANT LargeLinesPath.buildPath / findDataIndex rely on). Upstream's LinesView
+            //   likewise packs nothing; it only calls `lineDraw.updateData(data)`.
+            //   (The per-item projection the NON-large branches below inline is a separate, additive
+            //   deviation — it does not touch this key.)
+
+            // upstream `_updateLineDraw`: `lineDraw = new LargeLineDraw()` — created lazily on first
+            //   entry into large mode (the ScatterView `_largeSymbolDraw` precedent), so the
+            //   overwhelming majority of `lines` series never allocate it or its Group.
+            let largeLineDraw: LargeLineDraw
+            if let existing = _largeLineDraw {
+                largeLineDraw = existing
+            }
+            else {
+                largeLineDraw = LargeLineDraw()
+                _largeLineDraw = largeLineDraw
+                _ = group.add(largeLineDraw.group)
+            }
+            // upstream: lineDraw.updateData(data) — reads the packed layout + the series lineStyle/stroke.
+            largeLineDraw.updateData(data)
+
+            _isLargeDraw = true
+            _prevCount = count
+            _prevIsPolyline = isPolyline
+            self._data = data
+            applyClipPath(seriesModel)
+            return
+        }
+
+        // Toggle back from large → normal: drop the large path so it can't linger under the reused group,
+        //   and DISCARD the LineDraw — upstream builds a brand-new `LineDraw` on the flip, so its first
+        //   `updateData` sees `oldLineData == nil` and enters every element fresh; reusing this instance
+        //   would otherwise diff against (and tween from) the data captured before large mode.
+        if _isLargeDraw {
+            _largeLineDraw?.remove()
+            _recreateLineDraw()
+            _isLargeDraw = false
+        }
+
         if !isPolyline {
             // === Straight / curved lines → the shared LineDraw (enter/update/leave DIFF) =============
             //   Project each item's coords to pixels, store them as its item LAYOUT (`[[x1,y1],[x2,y2]]`,
@@ -247,7 +358,10 @@ open class LinesView: ChartView {
 
         // === Polyline (N-point) — inline persist-and-morph (ECLine models only 2/3-point lines) =======
         //   Clear any LineDraw content from a mode flip, then morph the persisted Polyline elements.
-        if _lineDrawAdded { _lineDraw.remove() }
+        //   DISCARD the draw (not just its elements): upstream `_updateLineDraw` re-creates the LineDraw
+        //   on `isPolyline !== this._isPolyline` exactly as it does on the large flip, so a later
+        //   polyline → non-polyline flip must not diff against the data captured two generations back.
+        if _lineDrawAdded { _recreateLineDraw() }
 
         // Morph iff we already drew the same number of polylines (only values changed); else rebuild.
         let canMorph = !_lineEls.isEmpty && _prevCount == count && _prevIsPolyline == isPolyline
@@ -358,7 +472,11 @@ open class LinesView: ChartView {
 
     // Drop ALL persisted line + effect elements (coord-system change / remove / dispose).
     private func resetPersistentElements() {
-        _lineDraw.remove()
+        // DISCARD the LineDraw (not just `remove()` its elements): its DIFF state must go with them —
+        //   upstream reaches this path by constructing a fresh LineDraw.
+        _recreateLineDraw()
+        _largeLineDraw?.remove()
+        _isLargeDraw = false
         for (_, old) in _lineEls { _ = self.group.remove(old) }
         _lineEls.removeAll()
         for s in _effectSymbols { _ = self.group.remove(s) }
@@ -376,8 +494,13 @@ open class LinesView: ChartView {
         _ = self.group.removeAll()
         // group.removeAll() also detached the LineDraw group — clear its content + the re-add flag so a
         //   later render re-attaches it. Clear the polyline/effect bookkeeping too.
-        _lineDraw.remove()
-        _lineDrawAdded = false
+        _recreateLineDraw()
+        // …and likewise the LargeLineDraw (upstream's single `_lineDraw` field holds whichever draw is
+        //   active and is nulled out here). Dropping the instance also drops the "added to group" state,
+        //   so a later large render re-creates + re-attaches it.
+        _largeLineDraw?.remove()
+        _largeLineDraw = nil
+        _isLargeDraw = false
         _lineEls.removeAll()
         _effectSymbols.removeAll()
         _prevCount = -1

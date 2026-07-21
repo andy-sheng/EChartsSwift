@@ -342,29 +342,16 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
             "rotation": el.rotation
         ]
         // if (isPath(el)) { obj.shape = clone(el.shape); }
-        //   PORT-NOTE: upstream's `shape` is a plain object, so `attr`'s partial merge and
-        //   `animateToShallow`'s nested-object branch both walk it PER NUMERIC KEY and tween each
-        //   sub-key. Here `shape` is a value-type struct, for which `util.isObject` is false
-        //   (util.swift only reports class/dict/array as objects) — handing the struct over whole
-        //   would collapse the shape into ONE track whose keyframes are un-typed values
-        //   (guessValueType → VALUE_TYPE_UNKOWN → `discrete`), i.e. the element would SNAP to its
-        //   final geometry instead of tweening. That matters for exactly the elements
-        //   `groupTransition` exists to animate: `AxisBuilder` builds the axis line and every tick
-        //   as a `Line` with x/y == 0 and all geometry in `shape` (x1,y1,x2,y2).
-        //   So flatten the shape into its animatable numeric keys (`PathShape.animationGet`, the
-        //   same seam `ShapeAnimationAccessor` drives): `attr(["shape": dict])` takes `Path.attrKV`'s
-        //   partial-merge branch and `animateToShallow` takes its nested-object branch — matching
-        //   upstream. Shapes that expose no keyed fields (no `animationGet` override) fall back to
-        //   the whole-struct clone, preserving the previous behaviour.
+        //   PORT-NOTE: upstream's `clone(el.shape)` yields a plain object whose keys `animateTo`
+        //     recurses into and tweens one by one. A Swift `PathShape` is a struct, for which
+        //     `util.isObject` is false, so handing the struct itself to `updateProps` would make
+        //     `animateToShallow` treat "shape" as ONE discrete leaf key (VALUE_TYPE_UNKOWN ->
+        //     `track.discrete`, and `animateTo` builds the Animator with `allowDiscrete = false`,
+        //     so it is instantly set and finished — the transition would be a silent no-op).
+        //     `animationProps()` is the shape's per-key `[String: Any]` bag (a value copy, like
+        //     upstream's `clone`), which restores upstream's nested per-key recursion.
         if isPath(el), let path = el as? Path, let shape = path.shape {
-            var shapeBag: [String: Any] = [:]
-            for child in Mirror(reflecting: shape).children {
-                guard let key = child.label else { continue }
-                if let num = shape.animationGet(key) as? Double {
-                    shapeBag[key] = num
-                }
-            }
-            obj["shape"] = shapeBag.isEmpty ? util.clone(shape) : shapeBag
+            obj["shape"] = shape.animationProps()
         }
         return obj
     }
@@ -394,12 +381,19 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
 // upstream: export function setTooltipConfig(opt: { el, componentModel, itemName, itemTooltipOption?, formatterParamsExtra? }): void
 //   PORT-NOTE: upstream's single options bag is spread to labeled parameters here.
 //   `itemTooltipOption` is `string | CommonTooltipOption<unknown>` -> `Any?`.
+//   PORT-NOTE: `formatterParamsExtra` is `KeyValuePairs<String, Any>`, not `[String: Any]`, because
+//     its key order is load-bearing: the keys are appended to `formatterParams.$vars`, and
+//     `format.formatTpl` maps `$vars` POSITIONALLY onto `TPL_VAR_ALIAS` (`a`/`b`/`c`/...). A Swift
+//     `Dictionary` iterates in hash-seeded (per-process random) order, so `{b}`/`{c}`/`{d}` in a
+//     tooltip formatter string would resolve to an arbitrary extra field on each run. `KeyValuePairs`
+//     is `ExpressibleByDictionaryLiteral`, so call sites keep upstream's object-literal syntax
+//     verbatim while preserving upstream's insertion order.
 public func setTooltipConfig(
     el: Element,
     componentModel: ComponentModel,
     itemName: String,
     itemTooltipOption: Any? = nil,
-    formatterParamsExtra: [String: Any]? = nil
+    formatterParamsExtra: KeyValuePairs<String, Any>? = nil
 ) {
     // const itemTooltipOptionObj = isString(...) ? { formatter: ... } : itemTooltipOption;
     var itemTooltipOptionObj = CommonTooltipOption<Any>()
@@ -427,9 +421,12 @@ public func setTooltipConfig(
 
     // if (formatterParamsExtra) { each(keys(...), key => { if (!hasOwn(formatterParams, key)) {...} }); }
     if let formatterParamsExtra = formatterParamsExtra {
-        util.each(util.keys(formatterParamsExtra)) { key, _ in
+        // PORT-NOTE: upstream's `each(keys(formatterParamsExtra), ...)` walks JS object
+        //   insertion order; iterating the `KeyValuePairs` preserves that order faithfully
+        //   (see the `$vars`/`TPL_VAR_ALIAS` note on the signature above).
+        for (key, value) in formatterParamsExtra {
             if !formatterParamsHasOwn(formatterParams, key) {
-                formatterParams.other[key] = formatterParamsExtra[key]
+                formatterParams.other[key] = value
                 formatterParams.vars.append(key)
             }
         }

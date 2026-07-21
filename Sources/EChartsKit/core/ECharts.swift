@@ -777,12 +777,15 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(BoxplotSeriesModel.self)
         registerBoxplotAxisHandlers(_registers)
 
-        // -- chart/sunburst/install.ts (minimal) -- registerSeriesModel(SunburstSeries) +
+        // -- chart/sunburst/install.ts -- registerSeriesModel(SunburstSeries) +
         //   registerChartView(SunburstView) + registerLayout(sunburstLayoutStageHandler) +
-        //   registerVisual(sunburstVisualStageHandler). Sunburst has NO cartesian coord (hierarchical,
-        //   box-like usage like pie); SunburstView reads its per-node sector geometry from the tree
-        //   layout populated by the sunburst layout stage (run in `render`). Its dedicated visual stage
-        //   colors each node (installSunburstAction rollup/highlight is DEFERRED — see sunburstInstall.swift).
+        //   registerVisual(sunburstVisualStageHandler) + installSunburstAction(registers). Sunburst has NO
+        //   cartesian coord (hierarchical, box-like usage like pie); SunburstView reads its per-node sector
+        //   geometry from the tree layout populated by the sunburst layout stage (run in `render`). Its
+        //   dedicated visual stage colors each node (run in performCoordlessSeriesVisualStage, before the
+        //   visualMap encoding). `installSunburstAction` (sunburstRootToNode drill-down/roll-up + the
+        //   deprecated sunburstHighlight/sunburstUnhighlight aliases) is invoked below in the action block —
+        //   see sunburstInstall.swift for the full integration surface.
         ComponentModel.registerClass(SunburstSeriesModel.self)
 
         // -- chart/treemap/install.ts (minimal) -- registerSeriesModel(TreemapSeries) +
@@ -1142,7 +1145,9 @@ public final class ECharts: EChartsType {
         //   update:'updateView'). Clicking a sunburst sector dispatches sunburstRootToNode with the target
         //   node (wired per-piece in SunburstView._bindNodeClick); the handler re-roots the series' viewRoot
         //   (SunburstSeriesModel.resetViewRoot), and the driver's full update() re-runs the sunburst layout
-        //   around the new root (drill-down / roll-up). sunburstHighlight/sunburstUnhighlight DEFERRED.
+        //   around the new root (drill-down / roll-up). The deprecated `sunburstHighlight` /
+        //   `sunburstUnhighlight` aliases are registered too — they resolve the target node and fast-forward
+        //   to the ported `highlight` / `downplay` actions.
         installSunburstAction(ECharts._registers)
 
         // -- component/marker/installMark{Point,Line,Area}.ts (Phase 52) --
@@ -2057,10 +2062,14 @@ public final class ECharts: EChartsType {
         // LAYOUT — lines per-item point projection (upstream `registerLayout(linesLayout)`). A
         //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset`→`progress` maps each line's data-space
         //   coords through the cartesian `dataToPoint` (plus the quadratic curveness control point) and
-        //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout. `LinesView.render`
-        //   inlines the same math (like ScatterView/LineView), so the view does not strictly depend on this
-        //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
-        //   (polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout).
+        //   stores it with `data.setItemLayout(i, pts)`. Same wiring as candlestickLayout.
+        //   LOAD-BEARING for LARGE mode: this stage's `isLarge` branch is the SOLE PRODUCER of the packed
+        //   `linesPoints` buffer that `LinesView.render`'s large branch draws through
+        //   chart/helper/LargeLineDraw — remove this call and a `large: true` lines series renders NOTHING.
+        //   Only the NON-large per-item projection is ADDITIONALLY inlined in the view (like
+        //   ScatterView/LineView), so for those modes the stage is redundant-but-faithful.
+        //   Polar is not handled (PORT-NOTE (deferred): `Polar` does not witness `CoordinateSystem` in
+        //   linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
 
         // VISUAL — lines endpoint symbol visuals (upstream `registerVisual(linesVisual)`). A

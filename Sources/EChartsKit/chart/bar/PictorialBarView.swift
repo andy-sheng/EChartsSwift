@@ -24,8 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util.*` (ZRenderKit).
 //   import * as graphic from '../../util/graphic';                   -> `Group`/`Rect`/`Circle` (ZRenderKit) +
-//       `initProps`/`updateProps` (animation/basicTransition.swift). `graphic.removeElement` (arbitrary-prop
-//       leave animation) is not ported; the remove path uses `removeElementWithFadeOut` (see removeBar).
+//       `initProps`/`updateProps`/`removeElement` (animation/basicTransition.swift).
 //   import { toggleHoverEmphasis } from '../../util/states';         -> `states.toggleHoverEmphasis`.
 //   import {createSymbol, normalizeSymbolOffset} from '../../util/symbol';  -> `symbol.createSymbol` / `symbol.normalizeSymbolOffset`.
 //   import {parsePercent, isNumeric} from '../../util/number';       -> `number.parsePercent` / `number.isNumeric`.
@@ -34,9 +33,8 @@ import ZRenderKit
 //   import ExtensionAPI / SeriesData / GlobalModel / Model / util/types / Cartesian2D / Axis2D    -> ported peers.
 //   import { getDefaultLabel } from '../helper/labelHelper';         -> `labelHelper.getDefaultLabel`.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';  -> `labelStyle.*`.
-//   import ZRImage from 'zrender/src/graphic/Image';                 -> PORT-NOTE (deferred): createSymbol does not
-//       emit images yet (image:// / graphic.makeImage deferred in symbol.swift), so the ZRImage branch in
-//       updateCommon is unreachable and omitted.
+//   import ZRImage from 'zrender/src/graphic/Image';                 -> `ZRenderKit.ZRImage`. `symbol.createSymbol`
+//       emits one for an `image://` symbol (via graphic.makeImage), so the ZRImage branch in updateCommon is live.
 //   import { getECData } from '../../util/innerStore';               -> `innerStore.getECData`.
 //   import { createClipPath } from '../helper/createClipPathFromCoordSys';  -> `createClipPath`.
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> `SERIES_TYPE_PICTORIAL_BAR`.
@@ -67,7 +65,8 @@ private let PB_LAYOUT_ATTRS: [PBLayoutAttr] = [
 private let pbPathForLineWidth = Circle()
 
 // upstream `type ItemModel` monkeypatches getAnimationDelayParams / isAnimationEnabled onto the item model.
-//   The port does not monkeypatch; `pbIsAnimationEnabled` computes the same boolean inline (see getSymbolMeta).
+//   `getAnimationDelayParams` IS assigned (the optional stored closure on `Model`, see pbGetItemModel);
+//   `isAnimationEnabled` is computed inline instead (see getSymbolMeta).
 
 // upstream: interface SymbolMeta { ... }  — the per-bar computed layout bundle. Modeled as a reference
 //   class so the several `prepare*` free functions can fill it incrementally (upstream mutates one object).
@@ -242,8 +241,12 @@ open class PictorialBarView: ChartView {
                 pbUpdateCommon(finalBar, opt, symbolMeta)
             })
             .remove({ dataIndex in
-                if let bar = oldData?.getItemGraphicEl(dataIndex) as? PictorialBarElement {
-                    pbRemoveBar(data, dataIndex, bar.__pictorialSymbolMeta?.animationModel, bar)
+                // upstream: `const bar = oldData.getItemGraphicEl(dataIndex); bar && removeBar(oldData, ...)`
+                //   `dataIndex` here is an OLD-data index, so the removal (including
+                //   `setItemGraphicEl(dataIndex, nil)`) must be applied to `oldData`, not `data`.
+                if let oldData = oldData,
+                   let bar = oldData.getItemGraphicEl(dataIndex) as? PictorialBarElement {
+                    pbRemoveBar(oldData, dataIndex, bar.__pictorialSymbolMeta?.animationModel, bar)
                 }
             })
             .execute()
@@ -664,17 +667,23 @@ private func pbCreateOrUpdateRepeatSymbols(
     for el in bundle.children() {
         guard let path = el as? Displayable else { continue }
         // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
-        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
+        let rec = pictorialAnimInner(path)
+        rec.index = index
+        rec.repeatTimes = repeatTimes
         if index < repeatTimes {
             pbUpdateAttr(path, nil, makeTarget(index), symbolMeta, isUpdate, nil)
         }
         else {
             let captured = path
-            pbUpdateAttr(path, nil, ["scaleX": 0.0, "scaleY": 0.0], symbolMeta, isUpdate, {
-                _ = bundle.remove(captured)
-                // Evict the side-store entry so it shares the path's lifetime (upstream stores the
-                // fields on the path, freed when the path is removed/deallocated).
-                _pictorialAnimStore[ObjectIdentifier(captured)] = nil
+            // PORT-NOTE: weak captures — this closure is retained by an Animator owned by `captured`,
+            //   which is a child of `bundle`, so strong captures would form a retain cycle for the
+            //   lifetime of the shrink animation (leaking if it never completes, e.g. on dispose).
+            pbUpdateAttr(path, nil, ["scaleX": 0.0, "scaleY": 0.0], symbolMeta, isUpdate,
+                         { [weak bundle, weak captured] in
+                guard let captured = captured else { return }
+                _ = bundle?.remove(captured)
+                // (No side-store eviction needed: `pictorialAnimInner` is a WeakMap-backed makeInner
+                //  bag, so the record dies with the path just like upstream's per-path fields.)
             })
         }
         index += 1
@@ -683,7 +692,9 @@ private func pbCreateOrUpdateRepeatSymbols(
     while index < repeatTimes {
         let path = pbCreatePath(symbolMeta)
         // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
-        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
+        let newRec = pictorialAnimInner(path)
+        newRec.index = index
+        newRec.repeatTimes = repeatTimes
         _ = bundle.add(path)
 
         let target = makeTarget(index)
@@ -849,9 +860,17 @@ private func pbRectShapeAnimShape(_ s: RectShape) -> [String: Any] {
 }
 
 // upstream `PictorialSymbol` carries `__pictorialAnimationIndex` / `__pictorialRepeatTimes` stored on
-//   the path. Swift can not add stored props to `Displayable`, so a side-store keyed by identity holds
-//   them (mirrors the layoutHelper HierNode pattern). Read by `getAnimationDelayParams`.
-private var _pictorialAnimStore: [ObjectIdentifier: (index: Int, repeatTimes: Int)] = [:]
+//   the path. Swift can not add stored props to `Displayable`, so a side-store holds them. It uses the
+//   canonical `model.makeInner` bag (CONVENTIONS §8) — a `WeakMap` keyed by object identity — so an
+//   entry shares its path's lifetime exactly as upstream's per-path fields do: no manual eviction on
+//   any removal path, and no chance of a freed address being re-matched by a later allocation.
+//   Read by `getAnimationDelayParams`.
+final class PictorialAnimRecord {
+    var index: Int = 0
+    var repeatTimes: Int = 0
+    init() {}
+}
+private let pictorialAnimInner: (Element) -> PictorialAnimRecord = model.makeInner { PictorialAnimRecord() }
 
 // upstream: function getItemModel(data, dataIndex) — monkeypatches getAnimationDelayParams /
 //   isAnimationEnabled onto the item model. isAnimationEnabled is computed inline in pbGetSymbolMeta;
@@ -863,15 +882,16 @@ private func pbGetItemModel(_ data: SeriesData, _ dataIndex: Int) -> Model {
     //   { index: path.__pictorialAnimationIndex, count: path.__pictorialRepeatTimes }
     //   The order is the same as the z-order, see `symbolRepeatDiretion`.
     // PORT-NOTE: animationModel is also passed to non-symbol elements (the clip path, barRect), which
-    //   are never registered in `_pictorialAnimStore`. Upstream reads the un-set fields off such a path
+    //   are never registered in the anim side store. Upstream reads the un-set fields off such a path
     //   as `undefined` (→ NaN when a function-valued animationDelay reads params.index/count); the port
-    //   substitutes 0/0 here. Divergence only surfaces for a user-supplied function-valued animationDelay
-    //   that reads those params on a non-symbol element; no built-in producer does.
+    //   substitutes 0/0 here (the record's defaults). Divergence only surfaces for a user-supplied
+    //   function-valued animationDelay that reads those params on a non-symbol element; no built-in
+    //   producer does.
     itemModel.getAnimationDelayParams = { path, _ in
-        let params = _pictorialAnimStore[ObjectIdentifier(path)]
+        let params = pictorialAnimInner(path)
         return AnimationDelayCallbackParam(
-            count: Double(params?.repeatTimes ?? 0),
-            index: Double(params?.index ?? 0)
+            count: Double(params.repeatTimes),
+            index: Double(params.index)
         )
     }
     return itemModel
@@ -932,23 +952,55 @@ private func pbUpdateBar(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ symb
 }
 
 // upstream: function removeBar(data, dataIndex, animationModel, bar)
-//   PORT NOTE: upstream fades each symbol path (scale→0) and removes the bar on complete via
-//   `graphic.removeElement`. That arbitrary-prop leave animation is not ported; the shared
-//   `removeElementWithFadeOut` (opacity fade of every descendant, then detach) achieves the same removal.
 private func pbRemoveBar(
-    _ data: SeriesData, _ dataIndex: Int, _ animationModel: Model?, _ bar: PictorialBarElement
+    _ data: SeriesData, _ dataIndex: Int, _ animationModelIn: Model?, _ bar: PictorialBarElement
 ) {
     // Not show text when animating.
-    bar.__pictorialBarRect?.removeTextContent()
-    // Evict side-store entries for this bar's symbol paths (upstream frees the fields with the path).
+    let labelRect = bar.__pictorialBarRect
+    labelRect?.removeTextContent()
+
+    // upstream: `eachPath(bar, path => paths.push(path))` — walks the bundle's children, skipping
+    //   `__pictorialBarRect` — then `bar.__pictorialMainPath && paths.push(bar.__pictorialMainPath)`.
+    //   (The single-symbol main path is itself a bundle child, so it lands in `paths` twice, exactly
+    //   as upstream; the second `removeElement` is a no-op thanks to its `isElementRemoved` guard.)
+    var paths: [Element] = []
     if let bundle = bar.__pictorialBundle {
         for el in bundle.children() {
-            if let path = el as? Displayable {
-                _pictorialAnimStore[ObjectIdentifier(path)] = nil
-            }
+            if el === labelRect { continue }
+            paths.append(el)
         }
     }
-    removeElementWithFadeOut(bar, animationModel, dataIndex)
+    if let mainPath = bar.__pictorialMainPath { paths.append(mainPath) }
+
+    // I do not find proper remove animation for clip yet.
+    var animationModel = animationModelIn
+    if bar.__pictorialClipPath != nil { animationModel = nil }
+
+    // upstream: graphic.removeElement(path, {scaleX: 0, scaleY: 0}, animationModel, dataIndex,
+    //             function () { bar.parent && bar.parent.remove(bar); });
+    for path in paths {
+        // PORT-NOTE: `[weak bar]` — the closure is retained by an Animator owned by `path`, and
+        //   `path` is a descendant of `bar` (bar -> __pictorialBundle -> path), so a strong capture
+        //   is a retain cycle that only breaks when the leave animation completes. Upstream relies
+        //   on GC; under ARC a disposed zr (animation never completing) would leak the subtree.
+        removeElement(path, ["scaleX": 0.0, "scaleY": 0.0], animationModel, dataIndex, { [weak bar] in
+            guard let bar = bar, let parent = bar.parent as? Group else { return }
+            _ = parent.remove(bar)
+        })
+        // (No side-store eviction needed: `pictorialAnimInner` is WeakMap-backed, so a path's record
+        //  is released with the path — matching upstream's per-path fields.)
+    }
+
+    // PORT-DEVIATION (no upstream counterpart, PictorialBarView.ts:833-840): upstream detaches `bar`
+    //   only from inside the per-path `removeElement` completion, so with ZERO paths (symbolRepeat
+    //   resolving to 0 repeats and no main path) it leaks the bar — it stays attached to the view
+    //   group forever once `setItemGraphicEl(dataIndex, nil)` drops the handle. The port detaches it
+    //   immediately (un-animated) in that degenerate case only. Flagged explicitly so a diff-vs-
+    //   upstream audit reads this as an intentional divergence rather than ported code.
+    if paths.isEmpty, let parent = bar.parent as? Group {
+        _ = parent.remove(bar)
+    }
+
     data.setItemGraphicEl(dataIndex, nil)
 }
 
@@ -982,6 +1034,36 @@ private func pbUpdateAttr(
     }
 }
 
+// upstream (inside updateCommon): `zrUtil.extend({image, x, y, width, height}, symbolMeta.style)` —
+//   the image's own geometry, overlaid with the item visual `style` bag. `symbolMeta.style` is the
+//   untyped visual style dict (visual/style.swift); ZRenderKit `ZRImage.useStyle` takes a typed
+//   `ImageStyleProps`, so bridge the keys it actually carries. `fill`/`stroke`/`decal` have no
+//   counterpart on `ImageStyleProps` (an image symbol is not tinted by the item style) — upstream
+//   copies them onto the style object where the image renderer ignores them, so dropping is faithful.
+private func pbImageStyleFromDict(_ base: ImageStyleProps?, _ style: Any?) -> ImageStyleProps {
+    // Upstream builds a FRESH object literal carrying ONLY the five geometry keys plus whatever
+    //   `symbolMeta.style` supplies, and hands it to `useStyle`, which (no STYLE_MAGIC_KEY) routes
+    //   through `createStyle` -> `createObject(DEFAULT_IMAGE_STYLE, obj)`. So every prop absent from
+    //   the new style resets to its default. Mirror that: start from a blank `ImageStyleProps`
+    //   (`zrStyleMagic == false`, so `ZRImage.useStyle` performs the DEFAULT_IMAGE_STYLE merge) and
+    //   forward only the geometry — NOT the element's previous common style, which would otherwise
+    //   stick across re-renders (e.g. an `opacity: 0.5` never resetting to 1).
+    var s = ImageStyleProps()
+    s.image = base?.image
+    s.x = base?.x
+    s.y = base?.y
+    s.width = base?.width
+    s.height = base?.height
+    guard let d = style as? [String: Any] else { return s }
+    if let v = pbDouble(d["opacity"]) { s.opacity = v }
+    if let v = pbDouble(d["shadowBlur"]) { s.shadowBlur = v }
+    if let v = pbDouble(d["shadowOffsetX"]) { s.shadowOffsetX = v }
+    if let v = pbDouble(d["shadowOffsetY"]) { s.shadowOffsetY = v }
+    if let v = d["shadowColor"] as? String { s.shadowColor = v }
+    if let v = d["blend"] as? String { s.blend = v }
+    return s
+}
+
 // upstream: function updateCommon(bar, opt, symbolMeta)
 private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ symbolMeta: PBSymbolMeta) {
     let dataIndex = symbolMeta.dataIndex
@@ -1001,9 +1083,30 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
 
     for el in bar.__pictorialBundle.children() {
         guard let path = el as? Displayable else { continue }
-        // upstream applies `useStyle(symbolMeta.style)` + `strokeNoScale` to every symbol; an image symbol
-        //   (ZRImage) has no fill/stroke/decal — those are no-ops on it, so the style application is Path-only.
-        if let shapePath = path as? Path {
+        // upstream:
+        //   if (path instanceof ZRImage) {
+        //       const pathStyle = path.style;
+        //       path.useStyle(zrUtil.extend({
+        //           image: pathStyle.image, x: pathStyle.x, y: pathStyle.y,
+        //           width: pathStyle.width, height: pathStyle.height
+        //       }, symbolMeta.style));
+        //   } else { path.useStyle(symbolMeta.style); }
+        //   An `image://` symbol IS created now (symbol.createSymbol's image branch → ZRImage), so the
+        //   image branch is live: keep the image + its geometry, overlay the item visual style.
+        if let imagePath = path as? ZRImage {
+            imagePath.useStyle(pbImageStyleFromDict(imagePath.imageStyle, symbolMeta.style))
+            // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis / blur / select state styles set below write the inherited
+            //   `Displayable.style` (CommonStyleProps), but ZRImage renders from its own
+            //   `imageStyle` and `_syncCommonStyle` is one-way (imageStyle -> style). State styles
+            //   applied to a ZRImage are therefore inert (hover opacity on an `image://` pictorial
+            //   symbol is silently dropped). The real fix — syncing the applied state style back
+            //   into `imageStyle`, or a ZRImage override of the state-style apply — belongs in
+            //   ZRenderKit (Sources/ZRenderKit/Graphic/Image.swift) and is out of scope here.
+            //   Tracked as `ZRenderKit/Image.ZRImage.stateStyleSync`: a ZRImage override of the
+            //   state-style apply that mirrors the applied CommonStyleProps subset back into
+            //   `imageStyle` before `dirtyStyle()`. Grep that id for the other end of the gap.
+        }
+        else if let shapePath = path as? Path {
             shapePath.useStyle(barStyleFromDict(symbolMeta.style))
             shapePath.pathStyle.strokeNoScale = true
         }
@@ -1043,7 +1146,9 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
     labelOpt.labelDataIndex = Double(dataIndex)
     labelOpt.defaultText = labelHelper.getDefaultLabel(opt.seriesModel.getData(), Double(dataIndex))
     labelOpt.inheritColor = inheritColorString(styleDict?["fill"])
-    labelOpt.defaultOpacity = styleDict?["opacity"] as? Double
+    // PORT-NOTE: `pbDouble`, not `as? Double` — the visual style can box opacity as an Int, which
+    //   `as? Double` silently drops (upstream passes `symbolMeta.style.opacity` through unconditionally).
+    labelOpt.defaultOpacity = pbDouble(styleDict?["opacity"])
     labelOpt.defaultOutsidePosition = barPositionOutside
     labelStyle.setLabelStyle(barRect, labelStatesModels, labelOpt)
 

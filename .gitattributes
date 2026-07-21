@@ -1,0 +1,2 @@
+# Shared cross-lane registry: keep LF terminators so lane merges see only the changed rows.
+*.tsv text eol=lf

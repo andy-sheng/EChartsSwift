@@ -77,7 +77,10 @@ public let linesLayout: StageHandler = {
         // const isPolyline = seriesModel.get('polyline');
         let isPolyline = jsTruthy(seriesModel.get("polyline"))
         // const isLarge = seriesModel.pipelineContext.large;
-        let isLarge = seriesModel.pipelineContext.large
+        //   `pipelineContext` is an IUO `PipelineContext!` here: optional-chained so this stage matches
+        //   LinesView's equally defensive read (a driver path that skipped updateStreamModes takes the
+        //   non-large path on BOTH sides instead of trapping in the layout stage).
+        let isLarge = seriesModel.pipelineContext?.large ?? false
 
         // return { progress(params, lineData) { ... } };
         var executor = StageHandlerProgressExecutor()
@@ -86,12 +89,21 @@ public let linesLayout: StageHandler = {
             var lineCoords: [[Double]] = []
             // if (isLarge) {
             if isLarge {
-                // PORT-NOTE: the large-mode layout produces the flat `linesPoints` buffer read by the large
-                //   draw path — `chart/helper/LargeLineDraw.swift` (`updateData` / `incrementalUpdate`, the
-                //   two `data.getLayout("linesPoints")` readers) is ported and reads this exact layout key;
-                //   only its WIRING from `LinesView` is still deferred (see the PORT-TODO on the
-                //   `_lineDraw` declaration in `LinesView.swift`), so the buffer is produced ahead of that
-                //   hookup.
+                // This branch is the SOLE PRODUCER of the flat `linesPoints` buffer, and it IS consumed:
+                //   `LinesView.render`'s large branch hands the data to chart/helper/LargeLineDraw.updateData,
+                //   which reads `data.getLayout("linesPoints") as? [Double]`. Both sides gate on the same
+                //   `pipelineContext.large`, so producer and consumer cannot disagree. The buffer is
+                //   FIXED-SIZE (as upstream's Float32Array) — that is the LAYOUT INVARIANT
+                //   LargeLinesPath.buildPath / findDataIndex rely on (a Swift out-of-bounds read TRAPS where
+                //   upstream's typed array merely yields NaN), so do NOT switch this to appending.
+                //   PORT-NOTE (load-bearing bound guards below): the buffer is sized from `segCount` on the
+                //   assumption of 2 coords per non-polyline item, but `getLineCoords` does NOT clamp `len`,
+                //   so a data item with 3+ coords writes past the end. Upstream's Float32Array SILENTLY
+                //   DROPS an out-of-range write; a Swift `[Double]` subscript TRAPS. The
+                //   `offset < points.count` / `offset + 1 < points.count` checks reproduce the JS
+                //   semantics (clip the overflow, keep the buffer length an exact multiple of 4).
+                //   The `pt.count` checks likewise reproduce `undefined` → NaN for a coordinate system
+                //   that returns a short point.
                 // let points;
                 var points: [Double]
                 // const segCount = params.end - params.start;

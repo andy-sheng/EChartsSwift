@@ -400,6 +400,11 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
             // upstream: graphic.setTooltipConfig({ el: textEl, componentModel: angleAxisModel,
             //   itemName: labelItem.formattedLabel, formatterParamsExtra: {
             //     isTruncated: () => textEl.isTruncated, value: labelItem.rawLabel, tickIndex: idx } });
+            // PORT-NOTE: `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
+            //   `Dictionary`) so this literal's key order — isTruncated, value, tickIndex — reaches
+            //   `formatterParams.$vars` exactly as upstream's object literal does. `format.formatTpl`
+            //   aliases `$vars` POSITIONALLY onto `a`/`b`/`c`/..., so an unordered (hash-seeded) walk
+            //   would make `{b}`/`{c}`/`{d}` resolve to an arbitrary extra field on each process run.
             setTooltipConfig(
                 el: textEl,
                 componentModel: angleAxisModel,

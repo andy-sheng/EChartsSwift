@@ -30,7 +30,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> `ExtensionAPI`.
 //   import { TreeNode } from '../../data/Tree';                    -> sibling `TreeNode` / `Tree` (data/Tree.swift).
-//   import { ROOT_TO_NODE_ACTION } from './sunburstAction';        -> sunburstAction.swift (ROOT_TO_NODE_ACTION exists); click-driven dispatch deferred.
+//   import { ROOT_TO_NODE_ACTION } from './sunburstAction';        -> sunburstAction.swift (ROOT_TO_NODE_ACTION); dispatched from `_rootToNode()` below.
 //   import { windowOpen } from '../../util/format';                -> `windowOpen` (util/format.swift); wired in the nodeClick:'link' branch (a documented host-seam no-op natively).
 
 // upstream: interface DrawTreeNode extends TreeNode { parentNode; piece; children }
