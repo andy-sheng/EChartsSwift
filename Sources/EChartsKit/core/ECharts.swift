@@ -839,8 +839,10 @@ public final class ECharts: EChartsType {
         //   (`data.setItemLayout(i, pts)`), same wiring as candlestickLayout. LinesView also inlines the
         //   per-item dataToPoint + curveness control-point math (like ScatterView/LineView), so the layout
         //   stage is run here for fidelity but the view does not depend on it. The effect (moving-dot/trail)
-        //   + large draw path are ANIMATED/DEFERRED; linesVisual (palette stroke) lands with a later phase —
-        //   the shared visual/style stage supplies the lineStyle→stroke color meanwhile. linesInstall.swift
+        //   + large draw path are ANIMATED/DEFERRED. `linesVisual` IS ported and is driven directly in
+        //   `render()` (see the VISUAL comment beside `runSeriesStageHandler(linesVisual, …)` below); it
+        //   writes ONLY fromSymbol/toSymbol/fromSymbolSize/toSymbolSize and NO color, so the lineStyle→
+        //   stroke color still comes from the shared visual/style stage. linesInstall.swift
         //   is commented-only (diffable surface); actual wiring lives here.
         ComponentModel.registerClass(LinesSeriesModel.self)
 
@@ -2056,6 +2058,22 @@ public final class ECharts: EChartsType {
         //   stage, but it is run here for fidelity to the upstream pipeline. Only cartesian2d is handled
         //   (polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
+
+        // VISUAL — lines endpoint symbol visuals (upstream `registerVisual(linesVisual)`). A
+        //   SERIES_STAGE_TASK (seriesType 'lines') whose `reset` normalizes `symbol`/`symbolSize` into
+        //   pairs and stores `fromSymbol`/`toSymbol`/`fromSymbolSize`/`toSymbolSize` as DATA visuals, then
+        //   returns a per-item `dataEach` (only when `data.hasItemOption`) writing the same four as ITEM
+        //   visuals. It writes NO color (the stroke still comes from the shared visual/style stage), so it
+        //   is order-independent w.r.t. performVisualStage; driven here — directly, like candlestickVisual/
+        //   treemapVisual — because `buildVisualHandlers()` (the ported `visualFuncs` registrar array) is
+        //   still empty pending the sub-project C2 visual-routing fix.
+        //   LIVE (not a dormant stage): the four visuals are read on the main render path — LinesView
+        //   drives the straight/curved lines through `_lineDraw` (LinesView.swift:216-220) -> LineDraw ->
+        //   `ECLine`, whose makeSymbol/makeSymbolTypeValue do `getItemVisual(idx, 'fromSymbol'|'toSymbol'|
+        //   'fromSymbolSize'|'toSymbolSize')` (ECLine.swift:69-115). Only the inlined POLYLINE branch
+        //   (LinesView.finishBuildLine) still ignores them. The LinesSeries default `symbol:
+        //   ['none','none']` keeps every default-symbol demo pixel-identical.
+        runSeriesStageHandler(linesVisual, ecModel, api)
 
         // LAYOUT — radar point rings (upstream `registerLayout(radarLayoutStageHandler)`). Radar HAS a
         //   (non-cartesian) coordinate system, already built + updated by `_coordSysMgr.create`/`.update`
