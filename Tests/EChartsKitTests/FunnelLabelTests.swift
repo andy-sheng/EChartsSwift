@@ -65,4 +65,47 @@ final class FunnelLabelTests: XCTestCase {
                            "emphasis label text falls back to the normal (name) text")
         }
     }
+
+    // The leader (label) line now goes through labelGuideHelper.setLabelLineStyle /
+    // getLabelLineStatesModels instead of the former inline single-stroke drawing. A silent revert to
+    // the inline code (or a helper regression such as `fill` re-defaulting to a paint) fails here.
+    func test_label_line_drawn_through_label_guide_helper() {
+        let opt: [String: Any] = [
+            "animation": false,
+            "series": [["type": "funnel",
+                        "label": ["show": true, "position": "outside"],
+                        "labelLine": ["show": true, "length": 20.0],
+                        "data": [["value": 60.0, "name": "a", "itemStyle": ["color": "#ff0000"]],
+                                 ["value": 40.0, "name": "b", "itemStyle": ["color": "#00ff00"]]]]]
+        ]
+        let ec = ECharts(width: 400, height: 400); ec.setOption(opt)
+        let ps = pieces(ec.getRoot())
+        XCTAssertEqual(ps.count, 2, "two funnel pieces")
+
+        let expectedStroke = ["a": "#ff0000", "b": "#00ff00"]
+        for p in ps {
+            guard let line = p.getTextGuideLine() else {
+                return XCTFail("piece polygon must carry a textGuideLine")
+            }
+            // setLabelLineStyle mandates `fill = null` on the guide line (a leader line is stroked only).
+            XCTAssertNil(line.pathStyle.fill, "guide line must have no fill")
+
+            // Default stroke = the item visual fill (upstream `{ stroke: visualColor }`).
+            let name = p.getTextContent()?.textStyle?.text ?? ""
+            if let expected = expectedStroke[name] {
+                guard case let .string(s)? = line.pathStyle.stroke else {
+                    return XCTFail("guide line stroke must default to the item color, got \(String(describing: line.pathStyle.stroke))")
+                }
+                XCTAssertEqual(s.lowercased(), expected, "guide line stroke = item visual color")
+            }
+
+            // points come from labelLayout.linePoints (at least the two leader endpoints).
+            let pts = (line.shape as? PolylineShape)?.points ?? []
+            XCTAssertGreaterThanOrEqual(pts.count, 2, "guide line points set from labelLayout.linePoints")
+
+            // Per-state entries exist ONLY via getLabelLineStatesModels + setLabelLineState.
+            XCTAssertNotNil(line.states[DisplayState.emphasis.rawValue],
+                            "label guide helper must create an emphasis state on the guide line")
+        }
+    }
 }

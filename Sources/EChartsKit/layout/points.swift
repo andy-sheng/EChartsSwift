@@ -44,8 +44,9 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
     //   longer exists. What remains is the arity mismatch: wire it with the adapter used in
     //   chart/lines/linesLayout.swift:48-51 (`let planner = createRenderPlanner();
     //   handler.plan = { sm, _, _, _ in planner(sm) }`), created ONCE so its makeInner large/progressive
-    //   state persists across calls. Left unwired for now (same as candlestickLayout / candlestickVisual /
-    //   barGrid); `reset` recomputes each pass, so non-progressive output is unaffected.
+    //   state persists across calls. Left unwired for now (same as candlestickVisual / barGrid;
+    //   chart/candlestick/candlestickLayout.swift:100-111 IS now wired and is the second exemplar
+    //   alongside linesLayout); `reset` recomputes each pass, so non-progressive output is unaffected.
     handler.plan = nil
 
     handler.reset = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> Any? in
