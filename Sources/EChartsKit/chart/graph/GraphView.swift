@@ -784,15 +784,10 @@ private func graphAddEdgeLabel(
     cp: GraphPoint?,
     edgeStroke: ZRenderKit.ZRColor?
 ) -> (label: ZRText, distanceY: Double)? {
-    // Build the edge label states models (upstream `getLabelStatesModels(itemModel)`). Own option = the
-    //   link's `label`; the parent resolves through the live 'label' → 'edgeLabel' redirect installed on
-    //   the edge item model by GraphSeries.swift, so no explicit parent is passed (as in Line.ts).
-    var labelStatesModels: LabelStatesModels = [:]
-    labelStatesModels[.normal] = edgeItemModel.getModel("label")
-    for stateName in states.SPECIAL_STATES {
-        guard let st = DisplayState(rawValue: stateName) else { continue }
-        labelStatesModels[st] = edgeItemModel.getModel([stateName, "label"])
-    }
+    // upstream Line.ts:252 — `labelStatesModels = getLabelStatesModels(itemModel)`. The default
+    //   labelName "label" is correct: the parent resolves through the live 'label' → 'edgeLabel'
+    //   redirect installed on the edge item model by GraphSeries.swift, so no explicit parent is passed.
+    let labelStatesModels = labelStyle.getLabelStatesModels(edgeItemModel)
 
     guard let normalModel = labelStatesModels[.normal] else { return nil }
 
@@ -801,9 +796,21 @@ private func graphAddEdgeLabel(
     if case let .string(s)? = edgeStroke { inheritColor = s }
 
     var labelOpt = SetLabelStyleOpt()
-    // No labelFetcher: the edge's default label IS its name; a node-indexed fetcher would format the
-    //   NODE at this index with the wrong dataType. defaultText = edge name matches upstream's
-    //   `defaultText: rawVal == null ? lineData.getName(idx) : …` (graph edges carry no value dim).
+    // upstream Line.ts:
+    //   labelFetcher: { getFormattedLabel(dataIndex, stateName) {
+    //       return seriesModel.getFormattedLabel(dataIndex, stateName, lineData.dataType);
+    //   } }
+    // The forced `dataType` is what keeps the fetcher on the EDGE data (a bare model fetcher would
+    //   format the NODE at this index). Without it an `edgeLabel.formatter` was ignored entirely.
+    //   Captures the MODEL only (no view) — see the LabelFetcherFn lifetime warning.
+    let edgeDataType = edgeData.dataType
+    labelOpt.labelFetcher = LabelFetcherFn { dataIndex, status, _, labelDimIndex, formatter, extendParams in
+        return seriesModel.getFormattedLabel(
+            dataIndex, status, edgeDataType, labelDimIndex, formatter, extendParams
+        )
+    }
+    // defaultText = edge name matches upstream's `defaultText: rawVal == null ? lineData.getName(idx)
+    //   : …` (graph edges carry no value dim).
     labelOpt.defaultText = edgeData.getName(idx)
     labelOpt.labelDataIndex = Double(idx)
     labelOpt.inheritColor = inheritColor

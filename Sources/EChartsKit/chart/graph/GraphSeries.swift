@@ -105,6 +105,16 @@ private final class GraphEdgeLabelChildModel: Model {
 //   child model). Swift cannot reassign an instance method by name, so the swap is a Model subclass:
 //   `resolveParentPath` is overridden, and `getModel` re-wraps each produced child into
 //   `GraphEdgeLabelChildModel` (== `oldGetModel.call(...)` then `model.resolveParentPath = ...`).
+// PORT-NOTE (two documented divergences of subclass-vs-own-property, both unreachable today):
+//   1. `Model.clone()` (Model.swift) reconstructs via `type(of: self).init(...)`, so a clone of one of
+//      these wrappers KEEPS the redirect; upstream's `clone()` is `new (this.constructor)(...)` with
+//      `constructor === Model`, and the per-instance `resolveParentPath`/`getModel` assignments are
+//      dropped by the clone. Nothing on the graph/chord paths clones an edge item/child model, so this
+//      is not reachable. If it ever becomes reachable, override `clone()` here to return a plain `Model`.
+//   2. Re-wrapping (rather than mutating in place) is only safe while the incoming model is a BASE
+//      `Model`: if some prior `getItemModel` injection ever returns a `Model` SUBCLASS, this re-wrap
+//      silently downgrades its dynamic type and drops any state it carries. `edgeData` carries exactly
+//      one `getItemModel` injection today, so there is no prior wrapper to lose.
 private final class GraphEdgeLabelItemModel: Model {
     // function resolveParentPath(this: Model, pathArr) { ... redirect label -> edgeLabel ... }
     override func resolveParentPath(_ path: [String]?) -> [String]? {
@@ -118,11 +128,9 @@ private final class GraphEdgeLabelItemModel: Model {
     // }
     override func getModel(_ path: [String]? = nil, _ parentModel: Model? = nil) -> Model {
         let model = super.getModel(path, parentModel)
-        // Upstream MUTATES the produced instance; this port re-wraps it, so any per-instance Model
-        //   state must be carried across or it is silently dropped.
-        let wrapped = GraphEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
-        wrapped.getAnimationDelayParams = model.getAnimationDelayParams
-        return wrapped
+        // `super.getModel` freshly constructs a base `Model` (Model.swift, no clone), so re-wrapping it
+        //   loses nothing — see the divergence PORT-NOTE above.
+        return GraphEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
     }
 }
 
@@ -332,11 +340,9 @@ open class GraphSeriesModel: SeriesModel {
             //     return model;
             // }
             guard let model = args.first as? Model else { return args.first as Any? }
-            // Upstream MUTATES the model in place; the Swift re-wrap carries per-instance Model state
-            //   across so nothing set before this injection is silently dropped.
-            let wrapped = GraphEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
-            wrapped.getAnimationDelayParams = model.getAnimationDelayParams
-            return wrapped
+            // Upstream MUTATES the model in place; Swift re-wraps it instead (see the divergence
+            //   PORT-NOTE on `GraphEdgeLabelItemModel` for why that is equivalent here).
+            return GraphEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
         }
     }
 

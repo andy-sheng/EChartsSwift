@@ -101,11 +101,7 @@ private final class ChordEdgeLabelItemModel: Model {
     // }
     override func getModel(_ path: [String]? = nil, _ parentModel: Model? = nil) -> Model {
         let model = super.getModel(path, parentModel)
-        // Upstream MUTATES the produced instance; this port re-wraps it, so any per-instance Model
-        //   state must be carried across or it is silently dropped.
-        let wrapped = ChordEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
-        wrapped.getAnimationDelayParams = model.getAnimationDelayParams
-        return wrapped
+        return ChordEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
     }
 }
 
@@ -200,11 +196,7 @@ open class ChordSeriesModel: SeriesModel {
             //     return model;
             // }
             guard let model = args.first as? Model else { return args.first as Any? }
-            // Upstream MUTATES the model in place; the Swift re-wrap carries per-instance Model state
-            //   across so nothing set before this injection is silently dropped.
-            let wrapped = ChordEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
-            wrapped.getAnimationDelayParams = model.getAnimationDelayParams
-            return wrapped
+            return ChordEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
         }
     }
 
