@@ -172,12 +172,7 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 friction: asDoubleOpt(forceModel.get("friction"))
             ))
             // forceInstance.beforeStep(function (nodes, edges) { ... });
-            //   NOTE (Swift-only): every object reachable from these callbacks is captured WEAKLY.
-            //   The series owns the forceInstance, which owns these closures; `graph` and `nodeData`
-            //   both lead back to the series (SeriesData.hostModel), so a strong capture would retain
-            //   the whole Graph/SeriesData for the life of the chart.
-            forceInstance.beforeStep { [weak graph] nodes, _ in
-                guard let graph = graph else { return }
+            forceInstance.beforeStep { nodes, _ in
                 for i in 0..<nodes.count {
                     if nodes[i].fixed {
                         // Write back to layout instance
@@ -190,15 +185,16 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 }
             }
             // forceInstance.afterStep(function (nodes, edges, stopped) { ... });
-            forceInstance.afterStep { [weak graphSeries, weak graph, weak nodeData] nodes, edges, _ in
-                guard let graph = graph, let nodeData = nodeData else { return }
+            forceInstance.afterStep { [weak graphSeries] nodes, edges, _ in
                 for i in 0..<nodes.count {
+                    // PORT-NOTE: upstream derefs `nodes[i].p` unconditionally, but `p` is genuinely
+                    //   Optional here (set to nil above when the initial point is missing/NaN), so the
+                    //   node is skipped instead of trapping.
+                    guard let p = nodes[i].p else { continue }
                     if !nodes[i].fixed {
-                        let p = nodes[i].p!
                         graph.getNodeByIndex(i)?.setLayout([p[0], p[1]])
                     }
                     // preservedPoints[nodeData.getId(i)] = nodes[i].p;
-                    let p = nodes[i].p!
                     preservedPoints[nodeData.getId(i)] = [p[0], p[1]]
                 }
                 // Upstream mutates the SHARED `preservedPoints` object, which `graphSeries.preservedPoints`
@@ -208,9 +204,12 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 graphSeries?.preservedPoints = preservedPoints
                 for i in 0..<edges.count {
                     let e = edges[i]
-                    let edge = graph.getEdgeByIndex(i)!
-                    let p1 = e.n1.p!
-                    let p2 = e.n2.p!
+                    // PORT-NOTE: upstream derefs the edge and both endpoint points unconditionally;
+                    //   both are Optional here, so a missing one skips the edge instead of trapping.
+                    guard let edge = graph.getEdgeByIndex(i),
+                          let p1 = e.n1.p,
+                          let p2 = e.n2.p
+                    else { continue }
                     // let points = edge.getLayout(); points = points ? points.slice() : [];
                     // points[0] = points[0] || []; points[1] = points[1] || [];
                     var points = asPointList(edge.getLayout())
