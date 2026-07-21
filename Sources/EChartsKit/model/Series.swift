@@ -815,7 +815,12 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
      * Get progressive rendering count each step
      */
     open func getProgressiveThreshold() -> Double {
-        return (self.get("progressiveThreshold") as? Double) ?? 0
+        // PORT-NOTE: option numbers are boxed as `Int` when written as integer literals
+        // (globalDefault.swift stores `"progressiveThreshold": 3000`), so a plain `as? Double`
+        // returns nil and the threshold would silently collapse to 0 — tripping the progressive
+        // gate at zero elements. Coerce Int/Double/NSNumber alike (same shape as
+        // ScatterSeries.getProgressiveThreshold's `scatterNum`).
+        return seriesOptionNum(self.get("progressiveThreshold")) ?? 0
     }
 
     // upstream (declaration-merged `interface SeriesModel`, Series.ts:82-89):
@@ -1184,6 +1189,18 @@ public struct SeriesAppendDataParams {
     public var data: ArrayLike<Any>
     public init(data: ArrayLike<Any>) {
         self.data = data
+    }
+}
+
+// Coerce a dynamic option value to Double (nil when non-numeric). Not an upstream symbol —
+// option numbers may be boxed as Int, Double or NSNumber, so a bare `as? Double` is unsafe.
+private func seriesOptionNum(_ v: Any?) -> Double? {
+    switch v {
+    case is Bool: return nil
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    default: return nil
     }
 }
 
