@@ -667,7 +667,9 @@ private func pbCreateOrUpdateRepeatSymbols(
     for el in bundle.children() {
         guard let path = el as? Displayable else { continue }
         // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
-        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
+        let rec = pictorialAnimInner(path)
+        rec.index = index
+        rec.repeatTimes = repeatTimes
         if index < repeatTimes {
             pbUpdateAttr(path, nil, makeTarget(index), symbolMeta, isUpdate, nil)
         }
@@ -680,9 +682,8 @@ private func pbCreateOrUpdateRepeatSymbols(
                          { [weak bundle, weak captured] in
                 guard let captured = captured else { return }
                 _ = bundle?.remove(captured)
-                // Evict the side-store entry so it shares the path's lifetime (upstream stores the
-                // fields on the path, freed when the path is removed/deallocated).
-                _pictorialAnimStore[ObjectIdentifier(captured)] = nil
+                // (No side-store eviction needed: `pictorialAnimInner` is a WeakMap-backed makeInner
+                //  bag, so the record dies with the path just like upstream's per-path fields.)
             })
         }
         index += 1
@@ -691,7 +692,9 @@ private func pbCreateOrUpdateRepeatSymbols(
     while index < repeatTimes {
         let path = pbCreatePath(symbolMeta)
         // upstream: path.__pictorialAnimationIndex = index; path.__pictorialRepeatTimes = repeatTimes;
-        _pictorialAnimStore[ObjectIdentifier(path)] = (index: index, repeatTimes: repeatTimes)
+        let newRec = pictorialAnimInner(path)
+        newRec.index = index
+        newRec.repeatTimes = repeatTimes
         _ = bundle.add(path)
 
         let target = makeTarget(index)
@@ -857,9 +860,17 @@ private func pbRectShapeAnimShape(_ s: RectShape) -> [String: Any] {
 }
 
 // upstream `PictorialSymbol` carries `__pictorialAnimationIndex` / `__pictorialRepeatTimes` stored on
-//   the path. Swift can not add stored props to `Displayable`, so a side-store keyed by identity holds
-//   them (mirrors the layoutHelper HierNode pattern). Read by `getAnimationDelayParams`.
-private var _pictorialAnimStore: [ObjectIdentifier: (index: Int, repeatTimes: Int)] = [:]
+//   the path. Swift can not add stored props to `Displayable`, so a side-store holds them. It uses the
+//   canonical `model.makeInner` bag (CONVENTIONS §8) — a `WeakMap` keyed by object identity — so an
+//   entry shares its path's lifetime exactly as upstream's per-path fields do: no manual eviction on
+//   any removal path, and no chance of a freed address being re-matched by a later allocation.
+//   Read by `getAnimationDelayParams`.
+final class PictorialAnimRecord {
+    var index: Int = 0
+    var repeatTimes: Int = 0
+    init() {}
+}
+private let pictorialAnimInner: (Element) -> PictorialAnimRecord = model.makeInner { PictorialAnimRecord() }
 
 // upstream: function getItemModel(data, dataIndex) — monkeypatches getAnimationDelayParams /
 //   isAnimationEnabled onto the item model. isAnimationEnabled is computed inline in pbGetSymbolMeta;
@@ -871,15 +882,16 @@ private func pbGetItemModel(_ data: SeriesData, _ dataIndex: Int) -> Model {
     //   { index: path.__pictorialAnimationIndex, count: path.__pictorialRepeatTimes }
     //   The order is the same as the z-order, see `symbolRepeatDiretion`.
     // PORT-NOTE: animationModel is also passed to non-symbol elements (the clip path, barRect), which
-    //   are never registered in `_pictorialAnimStore`. Upstream reads the un-set fields off such a path
+    //   are never registered in the anim side store. Upstream reads the un-set fields off such a path
     //   as `undefined` (→ NaN when a function-valued animationDelay reads params.index/count); the port
-    //   substitutes 0/0 here. Divergence only surfaces for a user-supplied function-valued animationDelay
-    //   that reads those params on a non-symbol element; no built-in producer does.
+    //   substitutes 0/0 here (the record's defaults). Divergence only surfaces for a user-supplied
+    //   function-valued animationDelay that reads those params on a non-symbol element; no built-in
+    //   producer does.
     itemModel.getAnimationDelayParams = { path, _ in
-        let params = _pictorialAnimStore[ObjectIdentifier(path)]
+        let params = pictorialAnimInner(path)
         return AnimationDelayCallbackParam(
-            count: Double(params?.repeatTimes ?? 0),
-            index: Double(params?.index ?? 0)
+            count: Double(params.repeatTimes),
+            index: Double(params.index)
         )
     }
     return itemModel
@@ -975,15 +987,16 @@ private func pbRemoveBar(
             guard let bar = bar, let parent = bar.parent as? Group else { return }
             _ = parent.remove(bar)
         })
-        // Evict the side-store entry so it shares the path's lifetime (upstream stores the fields on
-        // the path, freed when the path is removed/deallocated). Done AFTER `removeElement`, which
-        // reads them synchronously via `animationModel.getAnimationDelayParams`.
-        _pictorialAnimStore[ObjectIdentifier(path)] = nil
+        // (No side-store eviction needed: `pictorialAnimInner` is WeakMap-backed, so a path's record
+        //  is released with the path — matching upstream's per-path fields.)
     }
 
-    // PORT-NOTE: defends the degenerate case upstream leaks — with no paths (symbolRepeat resolving
-    //   to 0 repeats and no main path) nothing would ever detach `bar` from its parent, leaving an
-    //   unreachable ghost in the view group once `setItemGraphicEl(dataIndex, nil)` drops the handle.
+    // PORT-DEVIATION (no upstream counterpart, PictorialBarView.ts:833-840): upstream detaches `bar`
+    //   only from inside the per-path `removeElement` completion, so with ZERO paths (symbolRepeat
+    //   resolving to 0 repeats and no main path) it leaks the bar — it stays attached to the view
+    //   group forever once `setItemGraphicEl(dataIndex, nil)` drops the handle. The port detaches it
+    //   immediately (un-animated) in that degenerate case only. Flagged explicitly so a diff-vs-
+    //   upstream audit reads this as an intentional divergence rather than ported code.
     if paths.isEmpty, let parent = bar.parent as? Group {
         _ = parent.remove(bar)
     }
@@ -1082,13 +1095,16 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
         //   image branch is live: keep the image + its geometry, overlay the item visual style.
         if let imagePath = path as? ZRImage {
             imagePath.useStyle(pbImageStyleFromDict(imagePath.imageStyle, symbolMeta.style))
-            // PORT-TODO: the emphasis / blur / select state styles set below write the inherited
+            // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis / blur / select state styles set below write the inherited
             //   `Displayable.style` (CommonStyleProps), but ZRImage renders from its own
             //   `imageStyle` and `_syncCommonStyle` is one-way (imageStyle -> style). State styles
             //   applied to a ZRImage are therefore inert (hover opacity on an `image://` pictorial
             //   symbol is silently dropped). The real fix — syncing the applied state style back
             //   into `imageStyle`, or a ZRImage override of the state-style apply — belongs in
             //   ZRenderKit (Sources/ZRenderKit/Graphic/Image.swift) and is out of scope here.
+            //   Tracked as `ZRenderKit/Image.ZRImage.stateStyleSync`: a ZRImage override of the
+            //   state-style apply that mirrors the applied CommonStyleProps subset back into
+            //   `imageStyle` before `dirtyStyle()`. Grep that id for the other end of the gap.
         }
         else if let shapePath = path as? Path {
             shapePath.useStyle(barStyleFromDict(symbolMeta.style))
@@ -1130,7 +1146,9 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
     labelOpt.labelDataIndex = Double(dataIndex)
     labelOpt.defaultText = labelHelper.getDefaultLabel(opt.seriesModel.getData(), Double(dataIndex))
     labelOpt.inheritColor = inheritColorString(styleDict?["fill"])
-    labelOpt.defaultOpacity = styleDict?["opacity"] as? Double
+    // PORT-NOTE: `pbDouble`, not `as? Double` — the visual style can box opacity as an Int, which
+    //   `as? Double` silently drops (upstream passes `symbolMeta.style.opacity` through unconditionally).
+    labelOpt.defaultOpacity = pbDouble(styleDict?["opacity"])
     labelOpt.defaultOutsidePosition = barPositionOutside
     labelStyle.setLabelStyle(barRect, labelStatesModels, labelOpt)
 
