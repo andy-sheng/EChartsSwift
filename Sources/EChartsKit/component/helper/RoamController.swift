@@ -669,12 +669,23 @@ private func isBehaviorSettingAvailable(_ setting: Any?, _ e: ElementEvent) -> B
     if let b = setting as? Bool {
         return b
     }
-    if setting is String {
-        // PORT-NOTE (deferred): requires shiftKey/ctrlKey/altKey on ZRRawEvent for modifier-key gating
-        //   ('ctrl'|'shift'|'alt') — the port's ZRRawEvent carries no
-        //   shiftKey/ctrlKey/altKey, so a string-configured behavior cannot be verified and is treated
-        //   as unavailable. Graph roam uses boolean flags, so this is not exercised there.
-        return false
+    if let key = setting as? String {
+        // upstream: `e.event[setting + 'Key' as 'shiftKey' | 'ctrlKey' | 'altKey']`.
+        //   `e.event` is the underlying ZRRawEvent (see `ElementEvent.event`,
+        //   Sources/ZRenderKit/Element.swift). An unknown/empty string maps to `undefined`
+        //   upstream, i.e. falsy.
+        // PORT-TODO: the UIKit gesture -> ZRRawEvent bridge does not yet populate
+        //   shiftKey/ctrlKey/altKey — nothing in Sources/ writes them, every construction site
+        //   (ZRenderView / EChartsView / EChartsHostView) leaves the `false` default. Until the
+        //   bridge sets them from `UIEvent.modifierFlags`, a string-configured behavior
+        //   ('shift'|'ctrl'|'alt') always evaluates unavailable here.
+        guard let rawEvent = e.event as? ZRRawEvent else { return false }
+        switch key {
+        case "shift": return rawEvent.shiftKey
+        case "ctrl": return rawEvent.ctrlKey
+        case "alt": return rawEvent.altKey
+        default: return false
+        }
     }
     // Non-bool, non-string truthy (e.g. a number) — treat truthy.
     return setting != nil
