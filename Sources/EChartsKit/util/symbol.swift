@@ -380,7 +380,16 @@ public final class SymbolPath: Path, ECSymbol {
     private static func textConfigPositionOpt(_ pos: Any?) -> BuiltinTextPositionOrArray? {
         if let bp = pos as? BuiltinTextPosition { return .position(bp) }
         if let s = pos as? String, let bp = BuiltinTextPosition(rawValue: s) { return .position(bp) }
-        if let arr = pos as? [Double] { return .array(arr.map { NumberOrString.number($0) }) }
+        // upstream `position: (number | string)[]` — percent strings must reach `parsePercent`, so carry
+        //   them through as `.string` instead of dropping the whole array (kept in sync with Element).
+        if let arr = pos as? [Any] {
+            return .array(arr.map { v in
+                if let d = v as? Double { return NumberOrString.number(d) }
+                if let i = v as? Int { return NumberOrString.number(Double(i)) }
+                if let n = v as? NSNumber { return NumberOrString.number(n.doubleValue) }
+                return NumberOrString.string(v as? String ?? "")
+            })
+        }
         return nil
     }
 

@@ -1096,9 +1096,8 @@ private func getRegionModel(_ mapOrGeoModel: MapOrGeoModel, _ regionName: String
 // PORT-NOTE helpers — NOT part of MapDraw.ts upstream. They bridge the dynamic
 // `[String: Any]` itemStyle bag (`Model.getItemStyle()`) onto the typed
 // `PathStyleProps`, reproducing upstream's duck-typed `el.setStyle(styleBag)`
-// MERGE. Mirrors the (private) `geoPathStyleFromDict` / `mapPathStyleFromDict`
-// in GeoView.swift / MapView.swift — delete all three when the `util/graphic`
-// `useStyle` dict bridge lands.
+// MERGE. Mirrors the (private) `mapPathStyleFromDict` in MapView.swift —
+// delete both when the `util/graphic` `useStyle` dict bridge lands.
 // ============================================================================
 
 /// upstream `el.setStyle(normalStyle); el.style.strokeNoScale = true;` for a region element.

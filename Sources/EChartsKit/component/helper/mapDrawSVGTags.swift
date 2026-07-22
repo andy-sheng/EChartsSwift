@@ -21,7 +21,7 @@
 import Foundation
 import ZRenderKit
 
-// The MapDraw._buildSVG tag classifiers (shared by GeoView._buildSVG and MapView._buildSVG). Upstream keeps
+// The MapDraw._buildSVG tag classifiers. Upstream keeps
 //   them as module-level `HashMap<number, SVGNodeTagLower>`; a `Set` of tag names is the same lookup.
 //
 // upstream: OPTION_STYLE_ENABLED_TAGS — only these tags apply `itemStyle` if named in SVG. Other tags like
