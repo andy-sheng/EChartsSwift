@@ -88,22 +88,29 @@ public final class BrushView: ComponentView {
     }
 
     // updateTransform(brushModel, ecModel, api, payload)
-    public func updateTransform(
-        _ brushModel: BrushModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
-    ) {
+    //   PORT-NOTE: must OVERRIDE the base 4-param `ComponentView.updateTransform(_:_:_:_:) -> Bool?`
+    //   that `ECharts.updateTransform()` dispatches through. A narrower `BrushModel` first param (or a
+    //   `Void` return) does NOT witness the hook, so the driver silently took the base `nil` → full
+    //   render path and this body — whose layout must be recomputed mandatorily on a transform-only
+    //   pass, see #11754 — never ran there.
+    public override func updateTransform(
+        _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
+        guard let brushModel = model as? BrushModel else { return nil }
         // PENDING: `updateTransform` is a little tricky, whose layout need
         // to be calculate mandatorily and other stages will not be performed.
         // Take care the correctness of the logic. See #11754 .
         layoutCovers(ecModel)
         self._updateController(brushModel, ecModel, api, payload)
+        // upstream returns void from an IMPLEMENTED hook → `false` (handled in place).
+        return false
     }
 
     // updateVisual(brushModel, ecModel, api, payload)
     public override func updateVisual(
         _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) {
-        guard let brushModel = model as? BrushModel else { return }
-        self.updateTransform(brushModel, ecModel, api, payload)
+        _ = self.updateTransform(model, ecModel, api, payload)
     }
 
     // updateView(brushModel, ecModel, api, payload)

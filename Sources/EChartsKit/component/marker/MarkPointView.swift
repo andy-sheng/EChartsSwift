@@ -119,7 +119,11 @@ open class MarkPointView: MarkerView {
     // updateTransform(markPointModel, ecModel, api)
     //   PORT-NOTE: interaction/transform path (roam / dataZoom). It recomputes layout and calls
     //   `symbolDraw.updateLayout()`; SymbolDraw IS ported, so the per-draw relayout is now fully wired
-    //   below (the method is reached only when a roam/dataZoom transform fires).
+    //   below. It is reached once an action registers `update: "updateTransform"` (the roam helpers
+    //   currently register `update: "update"` instead — see roamHelperGeo.swift:35-39,
+    //   roamHelperGraph.swift:178-187, roamHelperViewGroup.swift:241-250); today only an explicit
+    //   dispatch/test drives `ECharts.updateTransform()` (its only route in is the
+    //   `case "updateTransform"` in doDispatchAction).
     //   It must OVERRIDE the base 4-param `ComponentView.updateTransform(_:_:_:_:) -> Bool?` that the
     //   driver (`ECharts.updateTransform`) calls — the narrower 3-param form declared here previously
     //   did not witness the hook and was never reached (dead code, masked by the base's `nil` → full

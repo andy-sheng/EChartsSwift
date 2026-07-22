@@ -206,8 +206,11 @@ open class EffectScatterView: ChartView {
             progress(StageHandlerProgressParams(start: 0, end: count, count: count), data)
         }
         self._symbolDraw?.updateLayout(createSymbolDrawOpt(seriesModel))
-        // upstream returns void (no `{update: true}`); base modeled as `Bool?` → nil.
-        return nil
+        // upstream returns void from an IMPLEMENTED hook → `false` (handled in place, no re-render).
+        //   `nil` is reserved for "the view has NO hook" (the base), which makes the driver fall back
+        //   to a FULL render — returning it here would re-render on every roam/dataZoom transform
+        //   frame, exactly what upstream's `result && result.update` avoids (echarts.ts:1974-1990).
+        return false
     }
 
     // upstream: _updateGroupTransform(seriesModel) {
