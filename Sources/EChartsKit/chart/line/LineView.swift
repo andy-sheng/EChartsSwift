@@ -1244,10 +1244,18 @@ open class LineView: ChartView {
                 text.animateFrom(["style": ["opacity": 0.0]], fromCfg)
             }
 
-            // PORT-NOTE (deferred, same convention as SankeyView/MapView/Breadcrumb): upstream
-            //   `(symbolPath as ECElement).disableLabelAnimation = true` gates the label-layout stage's
-            //   animation. `disableLabelAnimation` is an `ECElement` protocol field not carried on the
-            //   concrete Path/Group; the label-animation gate is not wired, so this is a no-op here.
+            // upstream: (symbolPath as ECElement).disableLabelAnimation = true;
+            // PORT-TODO: inert twice over, so the write is deliberately not emitted here.
+            //   (a) No concrete scene-graph type conforms to `ECElement` (util/types.swift:256 models the
+            //       TS interface augmentation as a protocol and owns the adoption strategy), so the
+            //       `as? ECElement` cast — the idiom at MapDraw.swift:922 — can never succeed today.
+            //   (b) Nothing reads `disableLabelAnimation`: upstream's only consumer,
+            //       `LabelManager._animateLabels`'s `forceLabelAnimation || (!ignore && !invisible &&
+            //       !disableLabelAnimation && !isElementRemoved(el))` gate (LabelManager.ts:528-540), is
+            //       not ported in label/LabelManager.swift.
+            //   Effect: symbol labels may animate in the label stage where upstream suppresses it.
+            //   Same deferral as SankeyView.swift:490/510, MapView.swift:823, GeoView.swift:631,
+            //   Breadcrumb.swift:254.
             _ = symbolPath
         }
     }
@@ -1275,9 +1283,10 @@ open class LineView: ChartView {
                 let created = ZRText(["z2": 200.0]) // should be higher than item symbol
                 created.ignoreClip = true
                 polyline?.setTextContent(created)
-                // PORT-NOTE (deferred): upstream `(polyline as ECElement).disableLabelAnimation = true`
-                //   — the ECElement label-animation gate is not carried on the concrete Path (see the
-                //   same note in _initSymbolLabelAnimation); no-op here.
+                // upstream: (polyline as ECElement).disableLabelAnimation = true;
+                // PORT-TODO: same two-sided gap as in _initSymbolLabelAnimation above (no concrete type
+                //   conforms to `ECElement`, and `LabelManager._animateLabels` is unported), so the end
+                //   label may animate where upstream suppresses it.
                 self._endLabel = created
                 endLabel = created
             }

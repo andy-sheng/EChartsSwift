@@ -49,9 +49,10 @@ import ZRenderKit
 //   import { ColorString, ECElement } from '../../util/types';        → ColorString(==String); ECElement deferred.
 //   import SeriesData from '../../data/SeriesData';                   → SeriesData.
 //   import Sausage from '../../util/shape/sausage';
-//     → PORT-NOTE (deferred): requires `util/shape/sausage` (round-capped sector), NOT ported. The
-//       `roundCap ? Sausage : Sector` selection falls back to `Sector` (square caps); the band/progress
-//       geometry is otherwise identical.
+//     → `SausagePath` / `SausageShape` (sibling Sausage.swift — location deviation from
+//       util/shape/sausage.ts: co-located with its gauge consumer rather than under util/shape; also
+//       consumed by chart/bar/BarView.swift's polar roundCap branch). The `roundCap ? Sausage : Sector`
+//       selection is wired at both sites here (axisLine bands, progress arcs).
 //   import {createSymbol} from '../../util/symbol';                   → `symbol.createSymbol`.
 //   import ZRImage from 'zrender/src/graphic/Image';
 //     → PORT-NOTE (deferred): ZRImage IS ported (ZRenderKit Graphic/Image.swift); only the
@@ -203,6 +204,21 @@ open class GaugeView: ChartView {
         endAngle = angles[1]
         let angleRangeSpan = endAngle - startAngle
 
+        // PORT-NOTE (faithful, non-obvious upstream behaviour): the axisLine loop below REASSIGNS the
+        //   OUTER `endAngle` on every iteration (`endAngle = startAngle + angleRangeSpan * percent;`,
+        //   GaugeView.ts:134), so after the loop `endAngle` holds the LAST color stop's angle — and that
+        //   mutated value is what upstream hands to `_renderTicks` (TS:184) and `_renderPointer` (TS:195).
+        //   With the default `axisLine.lineStyle.color` (last stop == 1) it equals the full-range end, but
+        //   for e.g. `[[0.3,'#f00'],[0.7,'#0f0']]` the ticks/splitLines/labels and the pointer extent span
+        //   only up to 0.7 of the arc. The loop is skipped entirely when `!showAxis` or the color list is
+        //   empty, in which case upstream leaves `endAngle` at the full-range value.
+        //   The mutation is hoisted here because the loop lives inside the static-reuse cache block below
+        //   (NOT in upstream) while `_renderPointer` runs on every render; the result depends only on
+        //   `showAxis` / `colorList`, never on the cache state, so hoisting is value-identical.
+        if showAxis, let lastStop = colorList.last {
+            endAngle = startAngle + angleRangeSpan * Swift.min(Swift.max(lastStop.0, 0), 1)
+        }
+
         // const getColor = function (percent) { ... }
         let getColor: (Double) -> String = { percent in
             // Less than 0
@@ -252,6 +268,9 @@ open class GaugeView: ChartView {
             while showAxis && i < colorList.count {
                 // Clamp
                 let percent = Swift.min(Swift.max(colorList[i].0, 0), 1)
+                // upstream: `endAngle = startAngle + angleRangeSpan * percent;` — the outer `endAngle` is
+                //   mutated here; its post-loop value is pre-computed above (see the PORT-NOTE), so this
+                //   loop keeps a local alias with the identical per-iteration value.
                 let sectorEnd = startAngle + angleRangeSpan * percent
                 // new MainPath({ shape: {...}, silent: true }) — MainPath is Sausage (roundCap) or Sector.
                 let sector: Path
