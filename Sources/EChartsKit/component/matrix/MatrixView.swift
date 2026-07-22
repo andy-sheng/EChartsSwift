@@ -44,13 +44,15 @@ import ZRenderKit
 //     → `subPixelOptimizeNS.subPixelOptimize`.
 //   import { Group, Text, Rect, Line, XY, setTooltipConfig, expandOrShrinkRect } from '../../util/graphic';
 //     → `Group` / `Rect` / `Line` are the ZRenderKit scene-graph types used directly (the sanctioned DRAWING
-//       deviation, cf. CalendarView / SingleAxisView); `Text` → ZRenderKit `ZRText`. `XY` is the
-//       util/graphic `['x', 'y']` sibling (landed by the matrix-coord phase, imported by MatrixDim).
-//       `setTooltipConfig` (tooltip wiring) is DEFERRED (interaction, CONVENTIONS §5). `expandOrShrinkRect`
+//       deviation, cf. CalendarView / SingleAxisView); `Text` → ZRenderKit `ZRText`. `XY` has NOT landed in
+//       util/graphic.swift yet — it is reproduced as the file-private `XY` constant at the bottom of this file
+//       (see its PORT-NOTE there); delete that and import the shared sibling once it lands.
+//       `setTooltipConfig` → the file-scope `setTooltipConfig(...)` in util/graphic.swift. `expandOrShrinkRect`
 //       (util/graphic.swift) is used only by the deferred text-overflow clip path.
 //   import { clearTmpModel, ListIterator } from '../../util/model';
 //     → `model.clearTmpModel` (util/modelUtil.swift `enum model`) + top-level `ListIterator` (modelUtil.swift).
-//   import { getECData } from '../../util/innerStore';           → DEFERRED (eventData wiring, CONVENTIONS §5).
+//   import { getECData } from '../../util/innerStore';           → `innerStore.getECData` (eventData wiring
+//     is live below; see the `triggerEvent` block in `createMatrixCell`).
 //   import { clone, retrieve2, isFunction, isString } from 'zrender/src/core/util';
 //     → `retrieve2(a, b)` == `a != null ? a : b` (inlined `?? default` on the numeric reads);
 //       `util.isFunction` / `util.isString`; `clone` used only by the deferred clip path.
@@ -395,8 +397,7 @@ private func createMatrixCell(
         ?? ((cellOption != nil && cellOption!["itemStyle"] != nil) ? zrCellDefault.special : zrCellDefault.normal)
     // upstream: const tooltipOptionShow = tooltipOption && tooltipOption.show;
     //   `tooltipOption` is the dynamic `[String: Any]` bag; read `.show` with JS-truthiness. Used below to
-    //   decide the standalone label's `silent`. The full `setTooltipConfig` tooltip wiring stays DEFERRED —
-    //   the shared `util/graphic.setTooltipConfig` helper is not yet ported (interaction, CONVENTIONS §5).
+    //   decide the standalone label's `silent`.
     let tooltipOptionShow = jsTruthy((tooltipOption as? [String: Any])?["show"])
 
     let cellRect = createMatrixRect(shape, _tmpCellItemStyleModel.getItemStyle(), z2)
@@ -467,6 +468,34 @@ private func createMatrixCell(
             _ = group.add(text0)
             cellText = text0
         }
+
+        // upstream: setTooltipConfig({ // At least for text overflow.
+        //     el: cellRect, componentModel: matrixModel, itemName: text, itemTooltipOption: tooltipOption,
+        //     formatterParamsExtra: { xyLocator: xyLocator.slice() } });
+        //   `xyLocator.slice()` is a defensive copy of the caller's array; Swift arrays are value types, so
+        //   passing `xyLocator` is already a copy.
+        //   `itemTooltipOption` is the dynamic `[String: Any]` bag (`matrixModel.getShallow('tooltip', true)`);
+        //   `util/graphic.setTooltipConfig` bridges that bag onto `CommonTooltipOption` so the user's
+        //   `matrix.tooltip` (formatter, backgroundColor, ...) reaches `ecData.tooltipConfig.option.common`
+        //   exactly like upstream's `defaults(..., itemTooltipOptionObj)`.
+        //   PORT-NOTE: upstream types the locator as `MatrixXYLocator[]` (integer locators); this port carries
+        //   it as `[Double]`, and it is appended to `formatterParams.$vars`, hence user-visible through
+        //   `format.formatTpl` aliases — so it is coerced back to `Int` here to avoid rendering `1.0` for `1`.
+        // PORT-TODO: upstream attaches this config to `cellRect` because the label is `cellRect`'s
+        //   textContent ("At least for text overflow."), so hovering the LABEL resolves the host rect's
+        //   ecData. This port draws the label as a standalone `ZRText` added to `group` (see the drawing
+        //   deviation note above), and `cellRect.silent` defaults to true when the cell has no fill — which is
+        //   precisely the text-overflow case — so the overflow tooltip will not resolve from either element.
+        //   Latent today (nothing reads `ecData.tooltipConfig` yet). When TooltipView's tooltipConfig
+        //   resolution lands, also `setTooltipConfig(el: text0, ...)` on the standalone label, or re-parent the
+        //   label as `cellRect`'s textContent (the real upstream shape).
+        setTooltipConfig(
+            el: cellRect,
+            componentModel: matrixModel,
+            itemName: text,
+            itemTooltipOption: tooltipOption,
+            formatterParamsExtra: ["xyLocator": xyLocator.map { Int($0) }]
+        )
     }
 
     // Set silent
