@@ -3351,6 +3351,12 @@ public final class ECharts: EChartsType {
         if _disposed { return }
         _disposed = true
 
+        // upstream hangs its per-chart throttle wrappers on the zr, so they die with it. This port keeps
+        //   them in module-level, zr-keyed stores (see brush/brushVisual.swift), so they must be purged
+        //   explicitly here — upstream's `throttle.clear(obj, fnAttr)` on dispose. Runs BEFORE the display
+        //   list is torn down, while `getZr()` can still resolve through the root group's `__zr`.
+        clearBrushDispatch(getZr())
+
         let api = _api!
         let ecModel = _model
         if let ecModel = ecModel {
@@ -3507,6 +3513,9 @@ final class EChartsExtensionAPI: ExtensionAPI {
     override func getHeight() -> Double { ec.getHeight() }
     // upstream `availableMethods` binds `getZr` to the ec instance. See ExtensionAPI.getZr's PORT SEAM.
     override func getZr() -> ZRenderType? { ec.getZr() }
+    // upstream `availableMethods` binds `isDisposed` to the ec instance. Guards deferred dispatches
+    //   (brush's throttled `doDispatch`) from running against a torn-down driver.
+    override func isDisposed() -> Bool { ec.isDisposed() }
     override func getModel() -> GlobalModel { ec.getModel()! }
     override func getCoordinateSystems() -> [CoordinateSystemMaster] { ec.coordinateSystems() }
     override func getViewOfComponentModel(_ componentModel: ComponentModel) -> ComponentView? {

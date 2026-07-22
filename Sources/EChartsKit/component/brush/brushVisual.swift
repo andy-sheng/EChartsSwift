@@ -28,7 +28,7 @@ import ZRenderKit
 // import BoundingRect from 'zrender/src/core/BoundingRect';
 // import * as visualSolution from '../../visual/visualSolution';
 // import { BrushSelectableArea, makeBrushCommonSelectorForSeries } from './selector';  -> selector.swift
-// import * as throttleUtil from '../../util/throttle';   -> PORT-NOTE (deferred), see `dispatchAction`
+// import * as throttleUtil from '../../util/throttle';   -> util/throttle.swift (createOrUpdate)
 // import BrushTargetManager from '../helper/BrushTargetManager';   -> BrushTargetManager.swift
 // import ParallelSeriesModel from '../../chart/parallel/ParallelSeries';
 // import { createSimpleOverallStageHandler2, initExtentForUnion } from '../../util/model';
@@ -40,7 +40,71 @@ public typealias BrushVisualState = String
 private let STATE_LIST: [String] = ["inBrush", "outOfBrush"]
 // const DISPATCH_METHOD = '__ecBrushSelect';
 // const DISPATCH_FLAG = '__ecInBrushSelectEvent';
-//   -> see the `dispatchAction` PORT-NOTE (no zr-attached throttle in this port).
+//
+// interface BrushGlobalDispatcher extends ZRenderType {
+//     [DISPATCH_FLAG]: boolean;
+//     [DISPATCH_METHOD]: typeof doDispatch;
+// }
+//   PORT-NOTE: upstream stamps the throttled dispatch method and the re-entrancy flag onto the LIVE
+//   ZRender instance (that is the whole point: one throttle window + one guard per chart instance),
+//   so those slots die WITH the zr. Swift cannot add stored properties to `ZRender`, so the slot lives
+//   in a module-level dictionary keyed by `ObjectIdentifier(zr)`. Three hazards that idiom introduces
+//   which upstream does not have, and how they are handled here:
+//     (a) LIFETIME — the slot would otherwise outlive the chart, and the throttle can now fire
+//         ASYNCHRONOUSLY (fixRate/debounce with a non-zero throttleDelay). `BrushDispatchSlot.api` is
+//         therefore `weak`, so a timer landing after teardown finds `nil` and no-ops; `doDispatch`
+//         additionally honours upstream's `api.isDisposed()` guard. NOTHING here retains the chart.
+//     (b) KEY RECYCLING — `ObjectIdentifier` is just an address and IS reused after the zr deallocates,
+//         so a new chart's ZRender can land on a dead chart's key and inherit its throttle window /
+//         pending timer / stale payload. The slot therefore also stores `weak var zr` and every lookup
+//         re-validates identity (`slot.zr === zr`), clearing + evicting a mismatched slot.
+//     (c) PURGE — unlike the render-scoped scratch stores in `util/jitter.swift` (plain value data, reset
+//         per render via `resetJitterStore`) or `chart/tree/layoutHelper.swift`, this entry OUTLIVES a
+//         render pass and so must be purged explicitly: see `clearBrushDispatch(_:)` below, called from
+//         `ECharts.dispose()` — the port's stand-in for upstream's `throttle.clear(obj, fnAttr)` on
+//         remove/dispose (throttle.ts).
+//   All access is main-thread-only (the visual stage and `ThrottledFunction.scheduleExec`'s
+//   `DispatchQueue.main.asyncAfter` both run there); the store is intentionally unsynchronised.
+//
+// upstream calls the throttled method as `fn(api, brushSelected)` — the throttle captures the LATEST
+//   args (`args = cbArgs`) and replays them from `exec()`. This port's `ThrottledFunction` is nullary
+//   (see util/throttle.swift), so the args ride in this same per-zr mutable box, which the wrapped
+//   closure reads at exec time — same "latest args win" semantics.
+private final class BrushDispatchSlot {
+    weak var zr: ZRenderType?
+    weak var api: ExtensionAPI?
+    var brushSelected: [BrushSelectedItem] = []
+    var fn: ThrottledFunction?
+    init(zr: ZRenderType) { self.zr = zr }
+    func clear() {
+        throttleUtil.clear(fn)
+        fn = nil
+        api = nil
+        brushSelected = []
+    }
+}
+private var _dispatchSlotStore: [ObjectIdentifier: BrushDispatchSlot] = [:]
+
+// `zr[DISPATCH_FLAG]` — the re-entrancy guard. Keyed by the API instance (not the zr) so the hosted and
+//   the headless (`api.getZr() == nil`) paths share ONE guard; it is set and cleared synchronously
+//   around `api.dispatchAction`, so the key can never be observed stale/recycled.
+private var _dispatchFlagStore: Set<ObjectIdentifier> = []
+
+/// Purge the per-zr brush-dispatch slot (throttle wrapper + pending timer + payload box).
+///   upstream: `throttleUtil.clear(zr, DISPATCH_METHOD)` semantics on chart teardown — upstream gets this
+///   for free because the slots hang off the zr itself. Called from `ECharts.dispose()`.
+internal func clearBrushDispatch(_ zr: ZRenderType?) {
+    if let zr = zr {
+        let key = ObjectIdentifier(zr)
+        _dispatchSlotStore[key]?.clear()
+        _dispatchSlotStore.removeValue(forKey: key)
+    }
+    // Also sweep entries whose zr has already deallocated (their key is now recyclable).
+    for (k, slot) in _dispatchSlotStore where slot.zr == nil {
+        slot.clear()
+        _dispatchSlotStore.removeValue(forKey: k)
+    }
+}
 
 // interface BrushSelectedItem { brushId; brushIndex; brushName; areas; selected: {seriesId; seriesIndex;
 //     seriesName; dataIndex: number[]}[] }
@@ -399,23 +463,68 @@ private func dispatchAction(
     // FIXME: [INCONSISTENCY_OF_BRUSH_SELECTED_EVENT_IN_UPDATE_TRANSFORM]  (upstream comment retained
     //   verbatim in the .ts; it describes an upstream inconsistency, not a port gap.)
 
-    // const zr = api.getZr() as BrushGlobalDispatcher;
     // if (zr[DISPATCH_FLAG]) { return; }
+    //   PORT SEAM: keyed by the api (see `_dispatchFlagStore`) so the guard is identical on the hosted
+    //   and the headless path — upstream applies it unconditionally.
+    if _dispatchFlagStore.contains(ObjectIdentifier(api)) {
+        return
+    }
+
+    // const zr = api.getZr() as BrushGlobalDispatcher;
+    //   PORT SEAM: `api.getZr()` is Optional here (headless has no host zr — see ExtensionAPI.getZr).
+    //   With no zr there is no instance to key the throttle slot on, so dispatch straight through,
+    //   which is exactly what upstream's `createOrUpdate` does for the default `throttleDelay: 0`.
+    //   (The re-entrancy guard above/inside `doDispatch` still applies — it is keyed by the api.)
+    guard let zr = api.getZr() else {
+        doDispatch(api, brushSelected)
+        return
+    }
+    let zrKey = ObjectIdentifier(zr)
+
     // if (!zr[DISPATCH_METHOD]) { zr[DISPATCH_METHOD] = doDispatch; }
+    //   -> the "origin method" below IS `doDispatch`; `createOrUpdate` seeds it on first use.
+    //   Identity re-validation (see the `_dispatchSlotStore` PORT-NOTE): a slot found under a RECYCLED
+    //   ObjectIdentifier belongs to a dead chart — clear its pending timer and start fresh.
+    let slot: BrushDispatchSlot
+    if let existing = _dispatchSlotStore[zrKey], existing.zr === zr {
+        slot = existing
+    }
+    else {
+        _dispatchSlotStore[zrKey]?.clear()
+        slot = BrushDispatchSlot(zr: zr)
+        _dispatchSlotStore[zrKey] = slot
+    }
+    slot.api = api
+    slot.brushSelected = brushSelected
+    let origin: () -> Void = { [weak slot] in
+        guard let slot = slot, let api = slot.api else { return }
+        doDispatch(api, slot.brushSelected)
+    }
+
     // const fn = throttleUtil.createOrUpdate(zr, DISPATCH_METHOD, throttleDelay, throttleType);
+    //   upstream: `if (rate == null || !throttleType) { return (obj[fnAttr] = originFn); }` — a FALSY
+    //   `throttleType` (undefined OR the empty string) means "unthrottled". `throttleType` is Optional
+    //   here; JS falsiness is replicated by folding "" into nil, and "unthrottled" is expressed by
+    //   passing `rate: nil` (same `nil` return → call the origin directly).
+    let effectiveThrottleType: String? = (throttleType?.isEmpty == false) ? throttleType : nil
+    let parsedThrottleType: ThrottleType? = effectiveThrottleType == nil
+        ? nil
+        : (effectiveThrottleType == "debounce" ? .debounce : .fixRate)
+    let fn = throttleUtil.createOrUpdate(
+        existing: slot.fn,
+        origin: origin,
+        rate: parsedThrottleType == nil ? nil : throttleDelay,
+        throttleType: parsedThrottleType ?? .fixRate
+    )
+    slot.fn = fn
+
     // fn(api, brushSelected);
-    //
-    // PORT-NOTE (deferred): `util/throttle.ts` is not ported, so the throttle wrapper and the
-    //   zr-attached `DISPATCH_FLAG` re-entrancy guard are dropped; `doDispatch` runs synchronously.
-    //   WHY IT IS SAFE: `throttleDelay` defaults to 0 (BrushModel.defaultOption) and upstream's
-    //   `throttleUtil.createOrUpdate(..., 0, ...)` returns the raw function — so for the default
-    //   configuration this IS upstream behavior. The re-entrancy flag guards against `brushSelect`
-    //   re-entering the visual stage, which cannot happen here either: the action is registered with
-    //   `update: 'none'`. USER-VISIBLE CONSEQUENCE: a brush configured with a non-zero `throttleDelay`
-    //   emits `brushselected` on every drag step rather than at most once per delay window (the same
-    //   selection data, just more events).
-    _ = (throttleType, throttleDelay)
-    doDispatch(api, brushSelected)
+    if let fn = fn {
+        fn()
+    }
+    else {
+        origin()
+    }
 }
 
 // function doDispatch(api: ExtensionAPI, brushSelected: BrushSelectedItem[]): void
@@ -425,6 +534,12 @@ private func doDispatch(_ api: ExtensionAPI, _ brushSelected: [BrushSelectedItem
     //     api.dispatchAction({type: 'brushSelect', batch: brushSelected});
     //     zr[DISPATCH_FLAG] = false;
     // }
+    //   This guard is load-bearing here: `dispatchAction` can now schedule the dispatch ASYNCHRONOUSLY
+    //   (fixRate/debounce with a non-zero `throttleDelay`), so a pending timer can land after the chart
+    //   has been disposed.
+    if api.isDisposed() {
+        return
+    }
     //
     // PORT-NOTE: `Payload.batch` is typed `[PayloadItem]?` in this port (util/types.swift) and cannot
     //   carry the brushSelected items; the batch rides in the dynamic `other` bag instead. That IS the
@@ -435,6 +550,12 @@ private func doDispatch(_ api: ExtensionAPI, _ brushSelected: [BrushSelectedItem
     p.other["batch"] = brushSelected.map { $0.toDict() }
     // ADDITIVE: the typed items, so an in-process consumer (a test, a native host) need not re-parse bags.
     p.other["batchItems"] = brushSelected
+
+    // zr[DISPATCH_FLAG] = true; ... zr[DISPATCH_FLAG] = false;  (re-entrancy guard read by dispatchAction;
+    //   keyed by the api so headless — where there is no zr — is guarded identically. See the store note.)
+    let apiKey = ObjectIdentifier(api)
+    _dispatchFlagStore.insert(apiKey)
+    defer { _dispatchFlagStore.remove(apiKey) }
     api.dispatchAction(p)
 }
 
