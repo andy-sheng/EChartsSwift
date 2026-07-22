@@ -396,6 +396,8 @@ public final class ECharts: EChartsType {
     var testModel: GlobalModel? { _model }
     var testChartViews: [ChartView] { _chartsViews }
     var testComponentViews: [ComponentView] { _componentsViews }
+    /// The driver's own ExtensionAPI (so tests drive hooks with the real instance, not a throwaway).
+    var testApi: ExtensionAPI? { _api }
     // Sub-project C: assert the Scheduler pipelines are built on setOption (one per series).
     var testScheduler: Scheduler? { _scheduler }
 
@@ -1661,12 +1663,19 @@ public final class ECharts: EChartsType {
     /// upstream `updateMethods.updateTransform` (echarts.ts:1943): a coordinate-transform-only refresh
     /// (roam / inside-dataZoom pan). Each component/chart view gets its `updateTransform` hook; a view
     /// that returns `false` handled it in place and needs nothing more, otherwise it is re-rendered.
-    /// The base hook returns nil (no transform-only path), so a view without a real implementation
-    /// falls back to a full render — always correct output, matching upstream's "no hook -> dirty".
+    /// The base hook returns nil (NO hook — no transform-only path), so a view without a real
+    /// implementation falls back to a full render, matching upstream's "no hook -> dirty". Tri-state
+    /// contract shared by `ComponentView`/`ChartView`: nil == no hook, false == implemented hook that
+    /// returned upstream `void` (handled in place), true == upstream `{update: true}`.
     public func updateTransform() {
         guard let ecModel = _model else { return }
         let api = _api!
-        let payload = Payload(type: "")
+        // upstream opens with `ecModel.setUpdatePayload(payload)` and hands the REAL dispatch payload to
+        //   every hook (`updateMethods.updateTransform(payload)`). The driver parks the in-flight payload
+        //   on `_payload` in doDispatchAction, so recover it there instead of synthesizing an empty one
+        //   (MarkPoint ignores it, but the MarkLine/MarkArea/Brush hooks read it).
+        let payload = _payload ?? Payload(type: "")
+        ecModel.setUpdatePayload(payload)
         var needRender = false
         for cv in _componentsViews {
             guard let m = cv.__model else { continue }
@@ -1677,6 +1686,11 @@ public final class ECharts: EChartsType {
             if sv.updateTransform(m, ecModel, api, payload) != false { needRender = true }
         }
         if needRender { render(ecModel, api) }
+        // Upstream ALWAYS continues past the loop into `performVisualTasks` + `renderSeries`, so the
+        //   in-place `markRedraw()` work a hook did (e.g. `SymbolDraw.updateLayout()`) always reaches the
+        //   screen. The flush must therefore NOT be conditional on `needRender`: when EVERY view handled
+        //   its transform in place (returning `false`) nothing above repaints. nil zr == headless.
+        getZr()?.refresh()
     }
 
     // ------------------------------------------------------------------------

@@ -326,10 +326,23 @@ public final class MarkAreaView: MarkerView {
     //   via `as?` at use sites (Swift cannot re-type an inherited generic property).
 
     // updateTransform(markAreaModel, ecModel, api)
-    // PORT-NOTE (deferred): optional `ComponentView.updateTransform` hook (transform-only re-layout on
-    //   zoom/pan); the render-pipeline wiring that invokes it is deferred (interaction, CONVENTIONS §5).
-    //   The geometry is ported faithfully.
-    public func updateTransform(_ markAreaModel: MarkAreaModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    // PORT-NOTE: this is the optional `ComponentView.updateTransform` hook (transform-only re-layout on
+    //   zoom/pan), now WIRED — the driver (`ECharts.updateTransform`, core/ECharts.swift) invokes the
+    //   base 4-param hook `updateTransform(_:_:_:_:) -> Bool?`, so this must override it exactly (a
+    //   narrower 3-param method does not override and would never be called). Upstream types the first
+    //   parameter as the concrete `MarkAreaModel` via declaration merging; Swift requires the base
+    //   `ComponentModel` parameter type.
+    //   Return tri-state (see `ComponentView.updateTransform` and `ECharts.updateTransform`):
+    //     `nil`   == the BASE (no hook at all) → the driver falls back to a full render;
+    //     `false` == upstream's `void` from an IMPLEMENTED hook — handled in place, view is NOT pushed
+    //                onto `componentDirtyList` (echarts.ts:1964-1970), so no re-render;
+    //     `true`  == upstream `{update: true}`.
+    //   This hook re-lays out in place, so it returns `false`; returning `nil` would make the driver
+    //   re-render everything and discard the work done here.
+    //   `markAreaModel` is unused upstream as well (the sweep is driven by `ecModel.eachSeries`).
+    public override func updateTransform(
+        _ markAreaModel: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
         ecModel.eachSeries({ seriesModel, _ in
             let maModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markArea") as? MarkAreaModel
             if let maModel = maModel {
@@ -340,15 +353,32 @@ public final class MarkAreaView: MarkerView {
                         return getSingleMarkerEndPoint(areaData, idx, dim, seriesModel, api)
                     }
                     // Layout
-                    areaData.setItemLayout(idx, points)
+                    // areaData.setItemLayout(idx, points);
+                    // PORT-NOTE (deliberate deviation): upstream writes the RAW `points` array here,
+                    //   which silently drops the `{points, allClipped}` shape that renderSeries
+                    //   (MarkAreaView.ts:300) writes and the label/render paths read. JS tolerates the
+                    //   type switch; Swift readers cast to `MarkAreaItemLayout`, so keep the struct
+                    //   contract and preserve the existing `allClipped` flag (which gates label
+                    //   suppression, #12591) instead of replacing the layout value's type.
+                    // PORT-TODO: `allClipped` and graphic-el existence are NOT recomputed on a
+                    //   transform-only pass — a datum that was allClipped (no Polygon created) stays
+                    //   invisible after a roam/pan brings it back into the coord sys, and returning
+                    //   `false` below suppresses the full-render fallback. Upstream
+                    //   (MarkAreaView.ts:251-253) has the same blind spot (and would in fact throw on
+                    //   `el.setShape` with `el === undefined`), so this is faithful-but-latent.
+                    let prev = areaData.getItemLayout(idx) as? MarkAreaItemLayout
+                    areaData.setItemLayout(
+                        idx, MarkAreaItemLayout(points: points, allClipped: prev?.allClipped ?? false))
                     let el = areaData.getItemGraphicEl(idx) as? Polygon
                     // el.setShape('points', points);
-                    // PORT-NOTE: per-key `setShape('points', …)` on a typed shape struct is a no-op in
-                    //   ZRenderKit Path; rebuild the whole PolygonShape to apply the new points (equivalent).
-                    _ = el?.setShape(makeMarkAreaPolygonShape(points))
+                    //   `Path.setShape(key:_:)` routes through `PolygonShape.animationSet`, which
+                    //   handles the "points" key for `[[Double]]` — a literal mirror of upstream.
+                    _ = el?.setShape("points", points)
                 }
             }
         }, self)
+        // Upstream returns void from an implemented hook == "handled in place, do not dirty".
+        return false
     }
 
     // renderSeries(seriesModel, maModel, ecModel, api)
@@ -446,7 +476,9 @@ public final class MarkAreaView: MarkerView {
 
         areaData.diff(inner(polygonGroup).data)
             .add({ idx in
-                let layout = areaData.getItemLayout(idx) as! MarkAreaItemLayout
+                // PORT-NOTE: `as?` + guard (not a force cast) so a foreign layout value degrades to
+                //   "skip this item" instead of trapping (upstream's untyped `layout` cannot trap).
+                guard let layout = areaData.getItemLayout(idx) as? MarkAreaItemLayout else { return }
                 let z2 = areaData.getItemVisual(idx, "z2")
                 if !layout.allClipped {
                     // const polygon = new graphic.Polygon({ z2: retrieve2(z2, 0), shape: { points: layout.points } });
@@ -460,7 +492,7 @@ public final class MarkAreaView: MarkerView {
             })
             .update({ newIdx, oldIdx in
                 var polygon = inner(polygonGroup).data?.getItemGraphicEl(oldIdx) as? Polygon
-                let layout = areaData.getItemLayout(newIdx) as! MarkAreaItemLayout
+                guard let layout = areaData.getItemLayout(newIdx) as? MarkAreaItemLayout else { return }
                 let z2 = areaData.getItemVisual(newIdx, "z2")
                 if !layout.allClipped {
                     if let polygon = polygon {

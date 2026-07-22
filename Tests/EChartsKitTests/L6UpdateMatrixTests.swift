@@ -65,4 +65,79 @@ final class L6UpdateMatrixTests: XCTestCase {
         XCTAssertTrue(store1 === ec.testModel?.getSeries().first?.getData(),
                       "updateVisual must not recreate the DataStore")
     }
+
+    // MarkAreaView implements the transform-only hook. Two things must hold, both regressed silently
+    // before: (a) the hook is DISPATCHED through the 4-param `ComponentView.updateTransform` base
+    // signature (a narrower 3-param method does not override and is never called — the Swift
+    // protocol/override-witness trap), and (b) it reports "handled in place" as `false`, upstream's
+    // void-from-an-implemented-hook (`nil` is the base "no hook" value → full render).
+    // The call below goes through a `ComponentView`-typed reference, so it only reaches MarkAreaView's
+    // body via dynamic dispatch; the item layout it rewrites must stay the typed MarkAreaItemLayout
+    // (a raw `[[Double]]` there would trap the `as?`/reader contract) and must preserve `allClipped`.
+    func testUpdateTransformIsDispatchedAndHandledInPlaceByMarkArea() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption(["xAxis": ["type": "value"], "yAxis": ["type": "value"],
+                      "series": [["type": "line", "data": [[1, 1], [2, 2], [3, 3]],
+                                  "markArea": ["data": [[["xAxis": 1], ["xAxis": 2]]]]]]])
+        guard let maView = ec.testComponentViews.first(where: { $0 is MarkAreaView }) else {
+            return XCTFail("no markArea view")
+        }
+        guard let ecModel = ec.testModel, let seriesModel = ecModel.getSeries().first,
+              let maModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markArea")
+        else { return XCTFail("no markArea model") }
+
+        let areaData = maModel.getData()
+        let layoutBefore = areaData.getItemLayout(0) as? MarkAreaItemLayout
+        XCTAssertNotNil(layoutBefore, "renderSeries writes a typed MarkAreaItemLayout")
+        // Wipe the layout so a no-op (never-dispatched) hook cannot pass by accident; keep a
+        // distinctive allClipped so the preserve-the-flag contract is observable.
+        areaData.setItemLayout(0, MarkAreaItemLayout(points: [], allClipped: true))
+
+        guard let api = ec.testApi else { return XCTFail("no ExtensionAPI") }
+        let handled = maView.updateTransform(maModel, ecModel, api, Payload(type: ""))
+
+        XCTAssertEqual(handled, false, "implemented transform-only hook returns false (upstream void)")
+        guard let layoutAfter = areaData.getItemLayout(0) as? MarkAreaItemLayout else {
+            return XCTFail("updateTransform must keep the typed MarkAreaItemLayout, not a raw array")
+        }
+        XCTAssertEqual(layoutAfter.points.count, 4, "the hook ran and re-laid out the 4 corners")
+        XCTAssertEqual(layoutAfter.points, layoutBefore?.points, "same transform → same pixel corners")
+        XCTAssertTrue(layoutAfter.allClipped, "allClipped preserved (upstream's raw write drops it)")
+    }
+
+    // Same contract as the markArea test above, for MarkPointView: its `updateTransform` used to be a
+    // narrower 3-param method that did NOT override `ComponentView.updateTransform(_:_:_:_:) -> Bool?`,
+    // so the driver never reached it (dead code, masked by the base `nil` → full-render fallback). Guard
+    // both halves: (a) the 4-param base signature really dispatches into MarkPointView's body (the call
+    // goes through a `ComponentView`-typed reference, so only dynamic dispatch can land there), and
+    // (b) it reports "handled in place" as `false`, not the base's "no hook" `nil`.
+    func testUpdateTransformIsDispatchedAndHandledInPlaceByMarkPoint() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption(["xAxis": ["type": "value"], "yAxis": ["type": "value"],
+                      "series": [["type": "line", "data": [[1, 1], [2, 2], [3, 3]],
+                                  "markPoint": ["data": [["type": "max"]]]]]])
+        guard let mpView: ComponentView = ec.testComponentViews.first(where: { $0 is MarkPointView })
+        else { return XCTFail("no markPoint view") }
+        guard let ecModel = ec.testModel, let seriesModel = ecModel.getSeries().first,
+              let mpModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markPoint")
+        else { return XCTFail("no markPoint model") }
+
+        let mpData = mpModel.getData()
+        XCTAssertEqual(mpData.count(), 1, "one max-datum marker")
+        guard let layoutBefore = mpData.getItemLayout(0) as? [Double] else {
+            return XCTFail("renderSeries writes a [Double] pixel layout")
+        }
+        // Corrupt the layout so a never-dispatched (no-op) hook cannot pass by accident.
+        mpData.setItemLayout(0, [-999.0, -999.0])
+
+        guard let api = ec.testApi else { return XCTFail("no ExtensionAPI") }
+        let handled = mpView.updateTransform(mpModel, ecModel, api, Payload(type: ""))
+
+        XCTAssertEqual(handled, false, "implemented transform-only hook returns false (upstream void)")
+        guard let layoutAfter = mpData.getItemLayout(0) as? [Double] else {
+            return XCTFail("updateTransform must recompute the [Double] pixel layout")
+        }
+        XCTAssertEqual(layoutAfter, layoutBefore,
+                       "the 4-param hook really ran: same transform → same max-datum pixel")
+    }
 }

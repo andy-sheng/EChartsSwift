@@ -22,7 +22,7 @@
 import Foundation
 import ZRenderKit
 
-// upstream imports (mapped to this port; interaction-only imports are DEFERRED — see notes below):
+// upstream imports (mapped to this port; only the tooltip-CONTENT imports are DEFERRED — see notes below):
 //   import BoundingRect from 'zrender/src/core/BoundingRect';        -> `BoundingRect`.
 //   import * as matrix from 'zrender/src/core/matrix';               -> `matrix.*`.
 //   import * as graphic from '../../util/graphic';                   -> ZRenderKit scene types + local helpers.
@@ -32,11 +32,16 @@ import ZRenderKit
 //   import {createSymbol, normalizeSymbolOffset, normalizeSymbolSize} from '../../util/symbol';
 //       -> `symbol.createSymbol` / `symbol.normalizeSymbolOffset` / `symbol.normalizeSymbolSize`.
 //   import * as numberUtil from '../../util/number';                 -> `number.*`.
-//   import { merge, each, extend, defaults, retrieve2 } from 'zrender/src/core/util'; -> `util.*`.
+//   import { merge, each, extend, isString, bind, defaults, retrieve2 } from 'zrender/src/core/util';
+//       -> `util.*` (isString → an `as? String` pattern match; bind → Swift closures).
 //   import { createScaleByModel } from '../../coord/axisHelper';     -> `axisHelper.createScaleByModel`.
 //   import { scaleCalcNiceDirectly } from '../../coord/axisNiceTicks'; -> `scaleCalcNiceDirectly`.
-//   The hover/tooltip/drag/play imports (enableHoverEmphasis, getECData, createTooltipMarkup,
-//     makeInner) drive INTERACTION and are DEFERRED (static render only, task scope; cf. TitleView).
+//   import { enableHoverEmphasis } from '../../util/states';         -> `states.enableHoverEmphasis`.
+//   import { makeInner } from '../../util/model';                    -> `model.makeInner`
+//       (util/modelUtil.swift — WeakMap-backed, object-identity keyed; same call shape).
+//   Only the tooltip-CONTENT imports (getECData, createTooltipMarkup) remain DEFERRED — hover
+//     emphasis, click, pointer drag and the play/stop timer ARE ported (see `_renderAxisTick`,
+//     `_renderCurrentPointer`, `_doPlayStop`). (// PORT-TODO markers at the call sites.)
 
 // upstream: class TimelineView extends ComponentView { static type = 'timeline'; }
 //   The thin base — SliderTimelineView extends it. (CONVENTIONS §2: `open class`.)
@@ -67,6 +72,14 @@ private struct LayoutInfo {
     var controlGap: Double
 }
 
+// const labelDataIndexStore = makeInner<{ dataIndex: number }, graphic.Text>();
+//   PORT: `model.makeInner<T, Host>` needs a class payload + a factory (see labelStyle.labelInner /
+//   linkSeriesData for the same shape), so the anonymous `{ dataIndex }` bag becomes this box.
+private final class TimelineLabelInner {
+    var dataIndex: Int = 0
+}
+private let labelDataIndexStore: (ZRText) -> TimelineLabelInner = model.makeInner { TimelineLabelInner() }
+
 // upstream: class SliderTimelineView extends TimelineView
 //   Not further subclassed → `final class` (CONVENTIONS §2).
 public final class SliderTimelineView: TimelineView {
@@ -82,10 +95,6 @@ public final class SliderTimelineView: TimelineView {
     public private(set) var _progressLine: Line?
     public private(set) var _tickSymbols: [Path] = []
     public private(set) var _tickLabels: [ZRText] = []
-    // upstream: `labelDataIndexStore = makeInner<{dataIndex}, graphic.Text>()`. A `Text` has no data
-    //   dimension of its own, so upstream stashes each label's dataIndex on an inner-store slot read
-    //   back by `_updateTicksStatus`. Ported as a parallel array indexed with `_tickLabels`.
-    private var _tickLabelDataIndices: [Int] = []
 
     // upstream stored `api`/`model` (assigned in init + render). Cached here so the click/play handlers
     //   (`_changeTimeline`/`_handlePlayClick`) can dispatch actions and `_updateTicksStatus` can read the
@@ -118,7 +127,6 @@ public final class SliderTimelineView: TimelineView {
         _ = self.group.removeAll()
         self._tickSymbols = []
         self._tickLabels = []
-        self._tickLabelDataIndices = []
         self._currentPointer = nil
         self._progressLine = nil
 
@@ -132,7 +140,8 @@ public final class SliderTimelineView: TimelineView {
             let axis = self._createAxis(layoutInfo, timelineModel)
             self._axis = axis
 
-            // timelineModel.formatTooltip = ...  — DEFERRED (tooltip CONTENT; task: static render).
+            // PORT-TODO: deferred — timelineModel.formatTooltip = ... (tooltip CONTENT:
+            //   createTooltipMarkup not ported).
 
             // each(['AxisLine', 'AxisTick', 'Control', 'CurrentPointer'], name => this['_render'+name](...));
             self._renderAxisLine(layoutInfo, mainGroup, axis, timelineModel)
@@ -154,9 +163,20 @@ public final class SliderTimelineView: TimelineView {
     /**
      * @override
      */
+    // remove() { this._clearTimer(); this.group.removeAll(); }
+    //   Marked `@override` upstream but it overrides nothing: `ComponentView` declares no `remove`
+    //   (only `ChartView` does), so this is unreachable — a dead COMPONENT view is torn down by
+    //   `zr.remove(view.group)` + `view.dispose(...)` (echarts.ts:1757-1758), which clears the timer
+    //   via `dispose` below. Kept as a plain (non-`override`) member for structural parity.
+    public func remove() {
+        self._clearTimer()
+        _ = self.group.removeAll()
+    }
+
+    /**
+     * @override
+     */
     // dispose() { this._clearTimer(); }
-    //   upstream also overrides `remove()` (calls `_clearTimer` + `group.removeAll()`); the base
-    //   `ComponentView` in this port exposes no overridable `remove`, so that override is omitted.
     public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         self._clearTimer()
     }
@@ -482,7 +502,7 @@ public final class SliderTimelineView: TimelineView {
             // enableHoverEmphasis(el);
             states.enableHoverEmphasis(el)
 
-            // tooltip ecData (getECData(el).dataIndex/dataModel) — DEFERRED (tooltip CONTENT).
+            // PORT-TODO: deferred — tooltip ecData (getECData(el).dataIndex/dataModel), tooltip CONTENT.
 
             self._tickSymbols.append(el)
         }
@@ -503,7 +523,6 @@ public final class SliderTimelineView: TimelineView {
         let labels = axis.getViewLabels()
 
         self._tickLabels = []
-        self._tickLabelDataIndices = []
 
         for labelItem in labels {
             // if (labelItem.tick.offInterval) { return; }
@@ -552,7 +571,7 @@ public final class SliderTimelineView: TimelineView {
             states.enableHoverEmphasis(textEl)
 
             // labelDataIndexStore(textEl).dataIndex = dataIndex;
-            self._tickLabelDataIndices.append(dataIndex)
+            labelDataIndexStore(textEl).dataIndex = dataIndex
 
             self._tickLabels.append(textEl)
         }
@@ -801,8 +820,7 @@ public final class SliderTimelineView: TimelineView {
         }
         // for (i) tickLabels[i].toggleState('progress', labelDataIndexStore(tickLabels[i]).dataIndex <= currentIndex);
         for i in 0..<tickLabels.count {
-            let dataIndex = i < self._tickLabelDataIndices.count ? self._tickLabelDataIndices[i] : 0
-            tickLabels[i].toggleState("progress", dataIndex <= currentIndex)
+            tickLabels[i].toggleState("progress", labelDataIndexStore(tickLabels[i]).dataIndex <= currentIndex)
         }
     }
 }

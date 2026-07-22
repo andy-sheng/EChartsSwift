@@ -386,6 +386,12 @@ extension MarkerModel: DataModel {
         _ dataType: SeriesDataType? = nil,
         _ el: Element? = nil
     ) -> CallbackDataParams {
+        // PORT-NOTE: this call MUST bind to the class-body 2-arg `open func getDataParams(_:_:)`
+        //   (line ~327). It is non-recursive only because Swift prefers an exact-arity overload over
+        //   applying a default argument to this 3-arg witness. If that 2-arg entry point is ever
+        //   removed/renamed/given a default that changes its arity, this silently rebinds to itself
+        //   and becomes infinite recursion (stack overflow on the first marker tooltip/click) rather
+        //   than a compile error.
         return self.getDataParams(dataIndex, dataType)
     }
 }

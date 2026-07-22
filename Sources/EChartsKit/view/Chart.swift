@@ -208,11 +208,18 @@ open class ChartView {
      * Update transform directly.
      * Implement it if needed.
      */
-    // upstream return type: `void | {update: true}` — modeled as `Bool?` (nil == void, true == {update:true}).
+    // upstream return type: `void | {update: true}` — modeled as a TRI-STATE `Bool?`, the SAME contract
+    //   as `ComponentView.updateTransform` (see ComponentView.swift), mirroring how upstream
+    //   distinguishes "no hook at all" from "hook returned void" (echarts.ts:1964-1990):
+    //     `nil`   == the view has NO hook (this base implementation) → `ECharts.updateTransform()`
+    //                marks it dirty and falls back to a full render;
+    //     `false` == an IMPLEMENTED hook returning upstream's `void` — handled in place, NOT dirtied;
+    //     `true`  == upstream `{update: true}`.
+    //   So an overriding view that re-lays out in place must return `false`, NOT `nil`.
     open func updateTransform(
         _ seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) -> Bool? {
-        // PORT-NOTE: optional upstream method; base returns nil (void).
+        // PORT-NOTE: optional upstream method; base returns nil (no hook).
         return nil
     }
 

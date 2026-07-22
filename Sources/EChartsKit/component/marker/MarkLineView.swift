@@ -305,7 +305,22 @@ final class MarkLineView: MarkerView {
     //   (Swift generics are invariant, so the map is not re-typed).
 
     // updateTransform(markLineModel, ecModel, api)
-    func updateTransform(_ markLineModel: MarkLineModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    // PORT-NOTE: this is the optional `ComponentView.updateTransform` hook (transform-only re-layout on
+    //   zoom/pan), now WIRED — the driver (`ECharts.updateTransform`, core/ECharts.swift) invokes the
+    //   base 4-param hook `updateTransform(_:_:_:_:) -> Bool?`, so this must override it exactly. The
+    //   narrower 3-param method declared here previously did NOT override it and was never called
+    //   (dead code); output stayed correct only because the base returns `nil` and the driver falls
+    //   back to a full render. Upstream types the first parameter as the concrete `MarkLineModel` via
+    //   declaration merging; Swift requires the base `ComponentModel` parameter type.
+    //   Return tri-state (see `ComponentView.updateTransform` and `ECharts.updateTransform`):
+    //     `nil`   == the BASE (no hook at all) → the driver falls back to a full render;
+    //     `false` == upstream's `void` from an IMPLEMENTED hook — handled in place, view is NOT pushed
+    //                onto `componentDirtyList` (echarts.ts:1964-1970), so no re-render;
+    //     `true`  == upstream `{update: true}`.
+    //   `markLineModel` is unused upstream as well (the sweep is driven by `ecModel.eachSeries`).
+    override func updateTransform(
+        _ markLineModel: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
         ecModel.eachSeries { [self] seriesModel, _ in
             let mlModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markLine") as? MarkLineModel
             if let mlModel = mlModel {
@@ -330,6 +345,9 @@ final class MarkLineView: MarkerView {
                 (self.markerGroupMap.get(seriesModel.id) as? LineDraw)?.updateLayout()
             }
         }
+        // Upstream returns `void` — the hook re-laid out in place, so report "handled, do not
+        // re-render" (`false`); returning `nil` would make the driver discard this work.
+        return false
     }
 
     // renderSeries(seriesModel, mlModel, ecModel, api)
