@@ -25,8 +25,10 @@ import ZRenderKit
 //   import * as textContain from 'zrender/src/contain/text';   -> `text.getBoundingRect` (title-overflow adjust block).
 //   import * as graphic from '../../util/graphic';             -> `createIcon` reproduced via `makePath`
 //     (util/graphic.ts createIcon not ported as a namespace; same seam as ScrollableLegendView /
-//     SliderTimelineView). `graphic.setTooltipConfig` is DEFERRED (interaction).
-//   import { enterEmphasis, leaveEmphasis } from '../../util/states';  -> DEFERRED (emphasis/blur), no-op.
+//     SliderTimelineView). `graphic.setTooltipConfig` is the file-scope `setTooltipConfig`
+//     (util/graphic.swift; ported) — wired at the per-icon tooltip config below.
+//   import { enterEmphasis, leaveEmphasis } from '../../util/states';  -> `states.enterEmphasis` /
+//     `states.leaveEmphasis` (ported; applied per iconStatus below).
 //   import Model from '../../model/Model';                     -> `Model`.
 //   import DataDiffer from '../../data/DataDiffer';            -> DROPPED: the feature DIFF is reduced to a
 //     rebuild-each-render (no view reuse across setOption — same reduction as the other ported views).
@@ -316,6 +318,26 @@ open class ToolboxView: ComponentView {
             textContent.ignore = true
             path.setTextContent(textContent)
 
+            // upstream: graphic.setTooltipConfig({ el: path, componentModel: toolboxModel,
+            //   itemName: iconName, formatterParamsExtra: { title: titlesMap[iconName] } });
+            // PORT-NOTE: `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
+            //   `Dictionary`) so this literal's key order reaches `formatterParams.$vars` exactly as
+            //   upstream's object literal does (`format.formatTpl` aliases `$vars` POSITIONALLY onto
+            //   `a`/`b`/`c`/...).
+            // PORT-NOTE: `titlesMap[iconName]` is `String?` here (upstream's lookup may be `undefined`).
+            //   It is coalesced to `""` rather than boxed into `Any`, because an `Any`-boxed
+            //   `Optional<String>.none` would fail the downstream `as? String` casts (Any-boxing
+            //   unwraps `.some`, so only `.none` survives as a boxed Optional) and interpolate as
+            //   "nil"; upstream's `undefined` formats as empty likewise.
+            setTooltipConfig(
+                el: path,
+                componentModel: toolboxModel,
+                itemName: iconName,
+                formatterParamsExtra: [
+                    "title": titlesMap[iconName] ?? ""
+                ]
+            )
+
             // Hover-title reveal — the port's faithful adaptation of upstream's mouseover
             //   (`textContent.setStyle({fill, backgroundColor}); textContent.ignore = !showTitle;
             //    api.enterEmphasis(this)`) / mouseout (`api.leaveEmphasis(this); textContent.hide()`):
@@ -351,9 +373,6 @@ open class ToolboxView: ComponentView {
             var titleTextConfig = ElementTextConfig()
             titleTextConfig.position = (iconStyleEmphasisModel.get("textPosition") as? String) ?? defaultTextPosition
             path.setTextConfig(titleTextConfig)
-
-            // graphic.setTooltipConfig({ el: path, componentModel: toolboxModel, itemName: iconName, ... });
-            // PORT-NOTE (deferred): tooltip wiring (`graphic.setTooltipConfig`) — requires setTooltipConfig (interaction, unported).
 
             // Mark the icon a highDown dispatcher so a live-host hover (mouseover → enterEmphasisWhenMouseOver)
             //   enters emphasis (recolouring the icon + revealing the title). Replaces upstream's per-icon
