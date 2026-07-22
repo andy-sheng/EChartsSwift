@@ -29,10 +29,11 @@ import ZRenderKit
 //   import * as modelUtil from '../../util/model';                   -> `model.*` (util/modelUtil.swift).
 //   import * as graphicUtil from '../../util/graphic';               -> PORT-NOTE: `util/graphic.ts` NOT
 //     ported as a namespace. `graphicUtil.Group`/`Image`/`Text` are the ZRenderKit `Group`/`ZRImage`/
-//     `ZRText`. `graphicUtil.getShapeClass` (shape registry) and `graphicUtil.setTooltipConfig` are
-//     DEFERRED (see `newEl` / `_updateElements`).
+//     `ZRText`. `graphicUtil.setTooltipConfig` is the file-scope `setTooltipConfig` (util/graphic.swift);
+//     `graphicUtil.getShapeClass` (shape registry) is DEFERRED (see `newEl`).
 //   import * as layoutUtil from '../../util/layout';                 -> `layout.*` (util/layout.swift).
-//     `layout.positionElement` / `layout.LOCATION_PARAMS` are referenced as newDeps (not yet ported).
+//     `layout.positionElement` / `layout.LOCATION_PARAMS` are ported (util/layout.swift) and called
+//     here (see `_relocate` / `setEventData`).
 //   import { parsePercent } from '../../util/number';                -> `number.parsePercent`.
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
 //   import ComponentView from '../../view/Component';                -> `ComponentView` (view/ComponentView.swift).
@@ -44,10 +45,13 @@ import ZRenderKit
 //     GraphicComponentZRPathOption, GraphicComponentGroupOption, GraphicComponentElementOption }
 //     from './GraphicModel';                                        -> sibling GraphicModel.swift.
 //   import { applyLeaveTransition, applyUpdateTransition, isTransitionAll, updateLeaveTo }
-//     from '../../animation/customGraphicTransition';               -> DEFERRED (transition system).
-//   import { updateProps } from '../../animation/basicTransition';  -> DEFERRED (animation system).
+//     from '../../animation/customGraphicTransition';               -> top-level funcs in
+//     animation/customGraphicTransition.swift (same module).
+//   import { updateProps } from '../../animation/basicTransition';  -> file-scope `updateProps`
+//     in animation/basicTransition.swift (same module).
 //   import { applyKeyframeAnimation, stopPreviousKeyframeAnimationAndRestore }
-//     from '../../animation/customGraphicKeyframeAnimation';        -> DEFERRED (keyframe animation).
+//     from '../../animation/customGraphicKeyframeAnimation';        -> top-level funcs in
+//     animation/customGraphicKeyframeAnimation.swift (same module).
 
 // upstream:
 //   const nonShapeGraphicElements = {
@@ -202,7 +206,12 @@ open class GraphicComponentView: ComponentView {
                     if let el = el { stopPreviousKeyframeAnimationAndRestore(el) }
                 }
                 if let el = el {
-                    applyUpdateTransitionStatic(el, elOptionCleaned)
+                    applyUpdateTransition(
+                        el,
+                        elOptionCleaned.option,
+                        graphicModel,
+                        ApplyUpdateTransitionOpts(isInit: isInit)
+                    )
                     updateCommonAttrs(el, elOption, globalZ, globalZLevel)
                 }
             }
@@ -210,12 +219,21 @@ open class GraphicComponentView: ComponentView {
                 removeEl(elExisting, elOption, elMap, graphicModel)
                 let el = createEl(id, targetElParent, elOption.type, elMap)
                 if let el = el {
-                    applyUpdateTransitionStatic(el, elOptionCleaned)
+                    applyUpdateTransition(
+                        el,
+                        elOptionCleaned.option,
+                        graphicModel,
+                        ApplyUpdateTransitionOpts(isInit: true)
+                    )
                     updateCommonAttrs(el, elOption, globalZ, globalZLevel)
                 }
             }
             else if action == "remove" {
-                // PORT-NOTE (deferred): requires leave transition — updateLeaveTo(elExisting, elOption).
+                // upstream: updateLeaveTo(elExisting, elOption);
+                //   PORT-NOTE: upstream force-derefs `elExisting` (which may be undefined); guarded here.
+                if let elExisting = elExisting {
+                    updateLeaveTo(elExisting, elOption.option)
+                }
                 removeEl(elExisting, elOption, elMap, graphicModel)
             }
 
@@ -256,8 +274,14 @@ open class GraphicComponentView: ComponentView {
 
                     if let clipPath = clipPath {
                         el.setClipPath(clipPath)
-                        applyUpdateTransitionStatic(clipPath, GraphicComponentElementOption(clipPathOption))
-                        // PORT-NOTE (deferred): requires keyframe animation — applyKeyframeAnimation(clipPath, clipPathOption.keyframeAnimation, graphicModel).
+                        applyUpdateTransition(
+                            clipPath,
+                            clipPathOption,
+                            graphicModel,
+                            ApplyUpdateTransitionOpts(isInit: isInit)
+                        )
+                        // upstream: applyKeyframeAnimation(clipPath, clipPathOption.keyframeAnimation, graphicModel);
+                        applyKeyframeAnimation(clipPath, clipPathOption["keyframeAnimation"], graphicModel)
                     }
                 }
 
@@ -271,8 +295,19 @@ open class GraphicComponentView: ComponentView {
                 elInner.option = elOption
                 setEventData(el, graphicModel, elOption)
 
-                // PORT-NOTE (deferred): requires graphicUtil.setTooltipConfig — setTooltipConfig({ el,
-                //   componentModel: graphicModel, itemName: el.name, itemTooltipOption: elOption.tooltip }).
+                // upstream: graphicUtil.setTooltipConfig({ el, componentModel: graphicModel,
+                //   itemName: el.name, itemTooltipOption: elOption.tooltip });
+                // PORT-NOTE: the provider (util/graphic.swift) only recognizes a `String` or an
+                //   already-typed `CommonTooltipOption<Any>` for `itemTooltipOption`. The raw
+                //   option-bag form (`tooltip: { formatter: ... }`) is a `[String: Any]` here and is
+                //   currently DROPPED (only name/formatterParams survive); bridging the bag into
+                //   `CommonTooltipOption` is not yet ported.
+                setTooltipConfig(
+                    el: el,
+                    componentModel: graphicModel,
+                    itemName: el.name,
+                    itemTooltipOption: elOption["tooltip"]
+                )
 
                 // upstream: applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel).
                 applyKeyframeAnimation(el, elOption["keyframeAnimation"], graphicModel)
@@ -363,9 +398,8 @@ open class GraphicComponentView: ComponentView {
                     let key = xy[k]
                     let val = layoutPos[key] ?? 0
                     // upstream: if (transition && (isTransitionAll(transition) || zrUtil.indexOf(transition, key) >= 0))
-                    // PORT-NOTE (deferred): requires customGraphicTransition.isTransitionAll → treated as
-                    //   false; the `zrUtil.indexOf(transition, key) >= 0` arm handles the `transition: ['x','y']` case.
-                    if jsTruthy(transition) && transitionIndexOf(transition, key) >= 0 {
+                    if jsTruthy(transition)
+                        && (isTransitionAll(transition) || transitionIndexOf(transition, key) >= 0) {
                         animatePos[key] = val
                     }
                     else {
@@ -373,12 +407,8 @@ open class GraphicComponentView: ComponentView {
                         _ = el.attr(key, val)
                     }
                 }
-                // PORT-NOTE (deferred): updateProps(el, animatePos, graphicModel, 0) — the transition tween
-                //   is a deliberate static-render deviation; the animated x/y are applied directly (no
-                //   tween) so the final geometry is correct.
-                for (key, val) in animatePos {
-                    _ = el.attr(key, val)
-                }
+                // upstream: updateProps(el, animatePos, graphicModel, 0);
+                updateProps(el, animatePos.mapValues { $0 as Any }, graphicModel, 0)
             }
             else {
                 _ = el.attr(layoutPos.mapValues { $0 as Any })
@@ -475,14 +505,25 @@ private func removeEl(
     let existElParent = elExisting?.parent
     if let existElParent = existElParent {
         _ = existElParent
-        if elExisting!.type == "group" {
-            elExisting!.traverse { el in
-                removeEl(el, elOption, elMap, graphicModel)
+        // upstream: elExisting.type === 'group' && elExisting.traverse(el => removeEl(el, ...));
+        //   PORT-NOTE: `Group.traverse` is an OVERLOAD of `Element.traverse` (its closure returns
+        //   `Bool`), so a `Void` closure on a statically-`Element` receiver would bind the empty
+        //   `Element.traverse` base and silently skip the children. Dispatch to `Group` explicitly
+        //   and iterate `children()` (a copy — `applyLeaveTransition` detaches synchronously when
+        //   there is no `leaveToProps`); `removeEl` already recurses into nested groups, which
+        //   reproduces upstream's deep traversal.
+        if elExisting!.type == "group", let g = elExisting as? Group {
+            for child in g.children() {
+                removeEl(child, elOption, elMap, graphicModel)
             }
         }
-        // PORT-NOTE (deferred): requires customGraphicTransition.applyLeaveTransition(elExisting, elOption,
-        //   graphicModel) — leave transition. Static fallback: detach from parent immediately.
-        if let p = elExisting!.parent as? Group {
+        // upstream: applyLeaveTransition(elExisting, elOption, graphicModel);
+        //   PORT-NOTE: upstream force-derefs `graphicModel`; here it is optional (`_clear` passes
+        //   `_lastGraphicModel`, which may be nil), so fall back to an immediate detach in that case.
+        if let graphicModel = graphicModel {
+            applyLeaveTransition(elExisting!, elOption?.option ?? [:], graphicModel)
+        }
+        else if let p = elExisting!.parent as? Group {
             _ = p.remove(elExisting!)
         }
         // elMap.removeKey(inner(elExisting).id);
@@ -592,21 +633,6 @@ private func setEventData(
     }
 }
 
-// ================================================================================================
-// Static-render substitute for `applyUpdateTransition` (animation/customGraphicTransition).
-//
-// PORT-NOTE (deferred): `applyUpdateTransition(el, elOption, animatableModel, {isInit})` (animation/
-//   customGraphicTransition) runs the full enter/update transition: it splits the option into transition
-//   vs non-transition props, animates the transition props (updateProps/updatePropsFromKeyframe), and
-//   applies the rest immediately. The transition/animation half is deferred (customGraphicTransition not
-//   ported). The static substitute below applies the cleaned option
-//   directly (`el.attr`), which is exactly the no-transition-config result — the correct final
-//   geometry/style. `Element.attr` consumes the `[String: Any]` bag (shape/style/x/y/rotation/...).
-// ================================================================================================
-private func applyUpdateTransitionStatic(_ el: Element, _ elOption: GraphicComponentElementOption) {
-    _ = el.attr(elOption.option)
-}
-
 // ---- small JS-semantics shims (per-file, matching the port's convention) ----
 
 // `x || 0` where x is a Double that may be NaN/0 (parsePercent result).
@@ -614,7 +640,7 @@ private func jsOr0(_ v: Double) -> Double {
     return (v.isNaN || v == 0) ? 0 : v
 }
 
-// JS truthiness for the deferred `transition` value.
+// JS truthiness for the `transition` option value (string | string[] | undefined).
 private func jsTruthy(_ v: Any?) -> Bool {
     switch v {
     case nil: return false
@@ -633,7 +659,12 @@ private func transitionIndexOf(_ transition: Any?, _ key: String) -> Double {
         return util.indexOf(arr, key)
     }
     if let s = transition as? String {
-        return s == key ? 0 : -1
+        // zrUtil.indexOf delegates to String.prototype.indexOf for a string `transition`,
+        // i.e. SUBSTRING search (e.g. 'extra'.indexOf('x') === 1), not equality.
+        guard let r = s.range(of: key) else {
+            return -1
+        }
+        return Double(s.distance(from: s.startIndex, to: r.lowerBound))
     }
     return -1
 }
