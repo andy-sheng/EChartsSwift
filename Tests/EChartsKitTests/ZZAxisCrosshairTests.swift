@@ -101,4 +101,46 @@ final class ZZAxisCrosshairTests: XCTestCase {
         XCTAssertNil(crosshairLine(in: view, atX: bx),
                      "moving the pointer off the grid must hide the crosshair Line (status='hide')")
     }
+
+    // Regression for the UPDATE path (`BaseAxisPointer.updatePointerEl`), which the test above never
+    // reaches: the first hover BUILDS the pointer group, every later hover REUSES it and only re-applies
+    // `{shape}` through `updateProps` — which is memoized by `propsEqual` against `_lastProps`. A memo or
+    // shape-merge defect there would freeze the crosshair at the first hovered category while the
+    // appear/hide test stayed green.
+    func testCrosshairFollowsHoverToNextCategory() {
+        let view = makeAxisBarView()
+
+        let series = view.ec.getModel()!.getSeriesByIndex(0)!
+        let data = series.getData()
+        guard let bEl = data.getItemGraphicEl(1) as? Rect,
+              let cEl = data.getItemGraphicEl(2) as? Rect else {
+            XCTFail("bar render must have populated Rect elements for data indices 1 ('B') and 2 ('C')")
+            return
+        }
+        let bShape = bEl.shape as! RectShape
+        let cShape = cEl.shape as! RectShape
+        let bx = bShape.x + bShape.width / 2
+        let cx = cShape.x + cShape.width / 2
+        let gy: Double = 120.0
+
+        _ = view.zr.storage.getDisplayList(true)
+
+        // (1) Hover B — builds the pointer group.
+        view._injectPointerForTest(type: "mousemove", zrX: bx, zrY: gy)
+        XCTAssertNotNil(crosshairLine(in: view, atX: bx), "hovering B must draw the crosshair at B")
+
+        // (2) Hover C — REUSES the group and goes through updatePointerEl; the Line must MOVE to C.
+        view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: gy)
+
+        guard let moved = crosshairLine(in: view, atX: cx) else {
+            let lines = visibleLines(in: view).compactMap { ($0.shape as? LineShape).map {
+                "(\($0.x1),\($0.y1))->(\($0.x2),\($0.y2))" } }
+            XCTFail("hovering category C must move the crosshair to x≈\(cx) (was \(bx)); "
+                    + "visible lines: \(lines)"); return
+        }
+        let ms = moved.shape as! LineShape
+        XCTAssertEqual(ms.x1, cx, accuracy: 1.0, "the reused crosshair must re-apply its shape at C's x")
+        XCTAssertNil(crosshairLine(in: view, atX: bx),
+                     "the crosshair must not remain at B's x-pixel after hovering C")
+    }
 }

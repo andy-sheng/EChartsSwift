@@ -386,19 +386,19 @@ open class BaseAxisPointer: AxisPointer {
     /// @protected
     // upstream: updatePointerEl(group, elOption, updateProps)
     open func updatePointerEl(_ group: Group, _ elOption: AxisPointerElementOptions) {
-        // PORTING.md §12: no force-unwraps of render()-bound state — `updatePointerEl` is `open`, so a
-        //   subclass/host may call it independently of `render`. Upstream curries the model in at render
-        //   time; here we guard it.
-        guard let pointerEl = self._pointerEl,
-              let pointer = elOption.pointer,
-              let axisPointerModel = self._axisPointerModel else { return }
+        guard let pointerEl = self._pointerEl, let pointer = elOption.pointer else { return }
         // upstream: `pointerEl.setStyle(elOption.pointer.style)` (MERGE). There is no
         //   `Path.setStyle(PathStyleProps)` overload in the port; `elOption.pointer.style` is the FULL
         //   style rebuilt every render by `viewHelper.buildElStyle`, so replacing == merging here.
         //   PORT-NOTE: replace == merge here because the style is fully rebuilt every render; a true
         //   partial-merge would only matter if a caller ever supplied a partial style (none do).
         if let style = pointer.style { pointerEl.useStyle(style) }
-        if let shape = pointer.shape {
+        // PORTING.md §12: no force-unwraps of render()-bound state — `updatePointerEl` is `open`, so a
+        //   subclass/host may call it independently of `render`. Upstream curries the model in at render
+        //   time; here we guard it — but ONLY around the shape branch: upstream applies the style
+        //   unconditionally (`pointerEl.setStyle(...)` is not part of the curried closure), so a nil model
+        //   must not swallow the style above.
+        if let shape = pointer.shape, let axisPointerModel = self._axisPointerModel {
             // upstream: `doUpdateProps(pointerEl, {shape})` — the `curry(updateProps, axisPointerModel,
             //   moveAnimation)` closure from `render`. Read the curried captures off self here.
             //   `shape.animationProps()` (NOT the `PathShape` struct itself): upstream's `{shape}` is a
@@ -406,6 +406,13 @@ open class BaseAxisPointer: AxisPointer {
             //   `util.isObject`, so it would be treated as ONE discrete leaf and SNAP instead of tween
             //   (see the `PathShape.animationProps` PORT-NOTE in Path.swift). The non-animated branch is
             //   unaffected: `Path.attrKV("shape", partialDict)` merges the keys into the existing shape.
+            //   PORT-NOTE (coverage): because this is a per-key MERGE, shape fields NOT exposed by the
+            //   shape's `animationGet`/`animationSet` pair are never updated here — a stale value would
+            //   survive a re-render. Safe for the shipped pointers (LineShape x1/y1/x2/y2/percent and
+            //   RectShape x/y/width/height cover everything CartesianAxisPointer builds), but
+            //   `RectShape.animationGet` omits `r` and `SectorShape.animationGet` omits `clockwise` —
+            //   extend those accessors when the rounded-rect / polar ("Sector", see makePointerPath)
+            //   pointers land.
             self.updateProps(axisPointerModel, self._moveAnimation, pointerEl, ["shape": shape.animationProps()])
         }
     }
@@ -459,7 +466,8 @@ open class BaseAxisPointer: AxisPointer {
             return
         }
 
-        let axisPointerModel = self._axisPointerModel!
+        // PORTING.md §12: render()-bound state read as an optional with a guard, not `!`.
+        guard let axisPointerModel = self._axisPointerModel else { return }
         // upstream: const zr = this._api.getZr();  — HOST SEAM: reached via hostAddHandle/hostRemoveHandle.
         var handle = self._handle
         let handleModel = axisPointerModel.getModel("handle")
@@ -597,7 +605,10 @@ open class BaseAxisPointer: AxisPointer {
 
     // upstream: private _onHandleDragMove(dx, dy)
     private func _onHandleDragMove(_ dx: Double, _ dy: Double) {
-        guard let handle = self._handle else {
+        // PORTING.md §12: the render()-bound models are guarded here rather than force-unwrapped below.
+        guard let handle = self._handle,
+              let axisModel = self._axisModel,
+              let axisPointerModel = self._axisPointerModel else {
             return
         }
 
@@ -608,8 +619,8 @@ open class BaseAxisPointer: AxisPointer {
         guard let trans = self.updateHandleTransform(
             handleTransFromEl(handle),
             [dx, dy],
-            self._axisModel!,
-            self._axisPointerModel!
+            axisModel,
+            axisPointerModel
         ) else {
             return
         }
@@ -641,7 +652,9 @@ open class BaseAxisPointer: AxisPointer {
         guard let payloadInfo = self._payloadInfo, let axisModel = self._axisModel else {
             return
         }
-        let axis = axisModel.axis as! Axis
+        // PORTING.md §12: `as!` on a coordinate axis is a latent SIGTRAP if a non-`Axis` axis ever
+        //   reaches the throttled dispatch — guard, mirroring `determineAnimation`.
+        guard let axis = axisModel.axis as? Axis else { return }
         // this._api.dispatchAction({ type: 'updateAxisPointer', x, y, tooltipOption, axesInfo: [{ axisDim, axisIndex }] });
         var payload = Payload(type: "updateAxisPointer")
         payload.other["x"] = payloadInfo.cursorPoint.count > 0 ? payloadInfo.cursorPoint[0] : 0
@@ -659,11 +672,11 @@ open class BaseAxisPointer: AxisPointer {
     // upstream: private _onHandleDragEnd()
     private func _onHandleDragEnd() {
         self._dragging = false
-        guard self._handle != nil else {
+        guard self._handle != nil, let axisPointerModel = self._axisPointerModel else {
             return
         }
 
-        let value = self._axisPointerModel!.get("value")
+        let value = axisPointerModel.get("value")
         // Consider snap or category axis, handle may be not consistent with axisPointer. So move handle
         // to align the exact value position when drag ended.
         self._moveHandleToValue(value)

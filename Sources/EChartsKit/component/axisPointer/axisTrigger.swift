@@ -199,6 +199,14 @@ public func axisTrigger(
     }
 
     // upstream: if (illegalPoint(point)) { point = findPointFromSeries({seriesIndex, dataIndex}, ecModel).point; }
+    // PORT-NOTE (cross-file migration, wave 1 — consumer of `findPointFromSeries`): VERIFIED NO-OP.
+    //   This consumer was already wired to the canonical sibling-file symbol
+    //   (`@discardableResult public func findPointFromSeries(_ finder: FindPointFinder, _ ecModel:
+    //   GlobalModel) -> (point: [Double], el: Element?)`, findPointFromSeries.swift) with the correct
+    //   call shape, so the migration required no code change. `finder.other["seriesIndex"]/["dataIndex"]`
+    //   is the correct read (`struct Payload` has no typed seriesIndex/dataIndex fields), and there is
+    //   exactly one definition of `findPointFromSeries`/`FindPointFinder` in the tree — no shadowed
+    //   consumer-local redefinition. Recorded here so the empty diff is auditable.
     if illegalPoint(point) {
         point = findPointFromSeries(
             FindPointFinder(
