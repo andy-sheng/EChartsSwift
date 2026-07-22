@@ -46,9 +46,30 @@
 // The `handler` MUST forward the passed `dispatchAction` into `axisTrigger` (as `payload.dispatchAction`)
 // so `showTip`/`hideTip` flow through the pend/merge below rather than dispatching directly.
 //
+// PORT-NOTE (cross-file migration, wave 1 — listed consumer of `util/throttle.throttle` /
+// `throttleUtil`, SYMBOLS.tsv row 41): VERIFIED NOT APPLICABLE — no code change.
+//   THROTTLE: none in this file. Verified against upstream 6.1.0 (pinned 20ecdf4) —
+//   `globalListener.ts` imports no `util/throttle` and calls every `record.handler(...)` SYNCHRONOUSLY
+//   inside `useHandler`'s zr listener; the handler fan-out is NOT throttled upstream, so this port
+//   matches it by calling immediately (an earlier PORT-NOTE here claimed the fan-out was throttled
+//   upstream — it is not). SYMBOLS.tsv row 41 lists this file among the 4 consumers of
+//   `util/throttle.throttle`; that entry is a carry-over from that (incorrect) earlier PORT-NOTE and is
+//   VOID — the registry consumer entry for this file should be marked resolved/no-op (n_consumers 4 → 3)
+//   rather than left pending, so a later wave does not re-schedule it.
+//
+//   The axisPointer/tooltip throttling upstream lives in the CONSUMERS of this listener, not here:
+//     - `BaseAxisPointer._updateHandle` (BaseAxisPointer.ts:391) throttles `_doDispatchAxisPointer` at
+//       `handleModel.get('throttle') || 0` with `'fixRate'` (AxisPointerModel.ts:139 defaults
+//       `handle.throttle: 40`) — the HANDLE path ONLY; with no `axisPointer.handle` the dispatch is
+//       unthrottled. WIRED in this port: BaseAxisPointer.swift:568 (`throttleUtil.createOrUpdate`),
+//       :637 (call), :713 (`throttleUtil.clear`).
+//     - `TooltipView._updatePosition` at 50ms `'fixRate'` (upstream TooltipView.ts:59 imports
+//       `{clear, createOrUpdate}`; :212 `createOrUpdate(this, '_updatePosition', 50, 'fixRate')`, cleared
+//       at :215/:1052). STILL DEFERRED in this port — see TooltipView.swift:42; TooltipView.swift:390
+//       calls `_updatePosition(...)` directly with no throttle wrapper.
+//   The throttle utility itself IS fully ported (`util/throttle.swift`, enum `throttleUtil`).
+//
 // DEFERRED:
-//   - THROTTLE (PORT-NOTE, deferred): requires util/throttle; upstream throttles the handler fan-out,
-//     here it is called IMMEDIATELY.
 //   - `env.node` guard (SSR) — native client is browser-like, so it is skipped.
 //
 // import * as zrUtil from 'zrender/src/core/util';   -> Swift stdlib / ZRenderKit
@@ -210,8 +231,15 @@ public enum globalListener {
         else if hideLen > 0 {
             actuallyPayload = pendings.hideTip[hideLen - 1]
         }
-        if let p = actuallyPayload {
+        if var p = actuallyPayload {
             // upstream: actuallyPayload.dispatchAction = null; api.dispatchAction(actuallyPayload);
+            //   Removing the key is equivalent to upstream's `= null` (every read is a truthiness/`if let`
+            //   test). No producer copies `other["dispatchAction"]` into the showTip/hideTip payload today
+            //   (axisTrigger.swift:527-539 builds them fresh), so this is a no-op guard — but it keeps the
+            //   final-stage dispatch from re-entering the pend/merge if a future handler ever forwards the
+            //   incoming payload (which DOES carry it — set at EChartsView.swift:639, read at
+            //   axisTrigger.swift:191).
+            p.other["dispatchAction"] = nil
             globalListenerInner(zr).realDispatch?(p)
         }
     }
