@@ -139,9 +139,13 @@ open class ComponentView: ViewRootGroup {
     // ------------------------------------------------------------------
 
     // upstream (optional): updateTransform?(model, ecModel, api, payload): void | {update: true};
-    //   The `void | {update: true}` return is modeled as `Bool?` (`true` == upstream `{update: true}`,
-    //   `nil` == upstream `void`). Base returns nil (no transform-only path — the driver's
-    //   updateTransform() falls back to a full render for such a view).
+    //   The `void | {update: true}` return is modeled as a TRI-STATE `Bool?`, mirroring how upstream
+    //   distinguishes "no hook at all" from "hook returned void" (echarts.ts:1964-1970):
+    //     `nil`   == the view has NO hook (this base implementation) → `ECharts.updateTransform()`
+    //                pushes it onto the dirty list and falls back to a full render;
+    //     `false` == an IMPLEMENTED hook returning upstream's `void` — handled in place, NOT dirtied;
+    //     `true`  == upstream `{update: true}`.
+    //   So an overriding view that re-lays out in place must return `false`, NOT `nil`.
     open func updateTransform(
         _ model: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
     ) -> Bool? {

@@ -93,8 +93,8 @@ final class L6UpdateMatrixTests: XCTestCase {
         // distinctive allClipped so the preserve-the-flag contract is observable.
         areaData.setItemLayout(0, MarkAreaItemLayout(points: [], allClipped: true))
 
-        let handled = maView.updateTransform(maModel, ecModel, ec.testExtensionAPIForTests,
-                                             Payload(type: ""))
+        guard let api = ec.testApi else { return XCTFail("no ExtensionAPI") }
+        let handled = maView.updateTransform(maModel, ecModel, api, Payload(type: ""))
 
         XCTAssertEqual(handled, false, "implemented transform-only hook returns false (upstream void)")
         guard let layoutAfter = areaData.getItemLayout(0) as? MarkAreaItemLayout else {
@@ -104,9 +104,4 @@ final class L6UpdateMatrixTests: XCTestCase {
         XCTAssertEqual(layoutAfter.points, layoutBefore?.points, "same transform → same pixel corners")
         XCTAssertTrue(layoutAfter.allClipped, "allClipped preserved (upstream's raw write drops it)")
     }
-}
-
-extension ECharts {
-    /// Test-only accessor: a fresh ExtensionAPI bound to this instance (the driver's `_api` is private).
-    var testExtensionAPIForTests: ExtensionAPI { EChartsExtensionAPI(ec: self) }
 }

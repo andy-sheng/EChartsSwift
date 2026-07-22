@@ -396,6 +396,8 @@ public final class ECharts: EChartsType {
     var testModel: GlobalModel? { _model }
     var testChartViews: [ChartView] { _chartsViews }
     var testComponentViews: [ComponentView] { _componentsViews }
+    /// The driver's own ExtensionAPI (so tests drive hooks with the real instance, not a throwaway).
+    var testApi: ExtensionAPI? { _api }
     // Sub-project C: assert the Scheduler pipelines are built on setOption (one per series).
     var testScheduler: Scheduler? { _scheduler }
 

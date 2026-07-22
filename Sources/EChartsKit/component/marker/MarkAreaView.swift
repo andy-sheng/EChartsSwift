@@ -360,6 +360,12 @@ public final class MarkAreaView: MarkerView {
                     //   type switch; Swift readers cast to `MarkAreaItemLayout`, so keep the struct
                     //   contract and preserve the existing `allClipped` flag (which gates label
                     //   suppression, #12591) instead of replacing the layout value's type.
+                    // PORT-TODO: `allClipped` and graphic-el existence are NOT recomputed on a
+                    //   transform-only pass — a datum that was allClipped (no Polygon created) stays
+                    //   invisible after a roam/pan brings it back into the coord sys, and returning
+                    //   `false` below suppresses the full-render fallback. Upstream
+                    //   (MarkAreaView.ts:251-253) has the same blind spot (and would in fact throw on
+                    //   `el.setShape` with `el === undefined`), so this is faithful-but-latent.
                     let prev = areaData.getItemLayout(idx) as? MarkAreaItemLayout
                     areaData.setItemLayout(
                         idx, MarkAreaItemLayout(points: points, allClipped: prev?.allClipped ?? false))

@@ -120,7 +120,15 @@ open class MarkPointView: MarkerView {
     //   PORT-NOTE: interaction/transform path (roam / dataZoom). It recomputes layout and calls
     //   `symbolDraw.updateLayout()`; SymbolDraw IS ported, so the per-draw relayout is now fully wired
     //   below (the method is reached only when a roam/dataZoom transform fires).
-    open func updateTransform(_ markPointModel: MarkPointModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
+    //   It must OVERRIDE the base 4-param `ComponentView.updateTransform(_:_:_:_:) -> Bool?` that the
+    //   driver (`ECharts.updateTransform`) calls — the narrower 3-param form declared here previously
+    //   did not witness the hook and was never reached (dead code, masked by the base's `nil` → full
+    //   render fallback). Return tri-state: `nil` == base/no hook (driver re-renders), `false` ==
+    //   upstream `void` from an implemented hook (handled in place, echarts.ts:1964-1970), `true` ==
+    //   upstream `{update: true}`.
+    open override func updateTransform(
+        _ markPointModel: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
         ecModel.eachSeries { seriesModel, _ in
             let mpModel = MarkerModel.getMarkerModelFromSeries(seriesModel, "markPoint") as? MarkPointModel
             if let mpModel = mpModel {
@@ -132,6 +140,8 @@ open class MarkPointView: MarkerView {
                 (self.markerGroupMap.get(seriesModel.id) as? SymbolDraw)?.updateLayout()
             }
         }
+        // Upstream returns `void` — handled in place, so `false` (no re-render).
+        return false
     }
 
     // renderSeries(seriesModel, mpModel, ecModel, api)
