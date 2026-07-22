@@ -193,18 +193,23 @@ private func buildVisuals(
     _ = util.extend(&visuals, designatedVisual)
     // const designatedVisualItemStyle = seriesModel.designatedVisualItemStyle;
     // PORT-NOTE: `seriesModel.designatedVisualItemStyle` is a scratch bag on TreemapSeriesModel that the
-    //   node itemStyle resolution consults (parent-designated visual). Mutated in place below; it IS
-    //   present on the sibling model as `var designatedVisualItemStyle: [String: Any]` (TreemapSeries.swift).
+    //   node itemStyle resolution consults (parent-designated visual). It is a reference-typed
+    //   `NSMutableDictionary` (TreemapSeries.swift) precisely so the in-place writes below are observed by
+    //   `nodeItemStyleModel.get(visualName)` through `designatedVisualModel`, like upstream's shared object.
+    //   The `let` below is a REFERENCE copy, so the aliasing (and hence upstream's local binding) is kept.
+    //   Assigning Swift-`nil` REMOVES the key where upstream assigns `null`; both read back as "absent"
+    //   (`_doGet` then falls through to the parent model), so the resolution result is identical.
+    let designatedVisualItemStyle = seriesModel.designatedVisualItemStyle
 
     // each(['color', 'colorAlpha', 'colorSaturation'] as const, function (visualName) {
     for visualName in ["color", "colorAlpha", "colorSaturation"] {
         // Priority: thisNode > thisLevel > parentNodeDesignated > seriesModel
         // designatedVisualItemStyle[visualName] = designatedVisual[visualName];
-        seriesModel.designatedVisualItemStyle[visualName] = designatedVisual[visualName]
+        designatedVisualItemStyle[visualName] = designatedVisual[visualName]
         // const val = nodeItemStyleModel.get(visualName);
         let val = nodeItemStyleModel.get(visualName)
         // designatedVisualItemStyle[visualName] = null;
-        seriesModel.designatedVisualItemStyle[visualName] = nil
+        designatedVisualItemStyle[visualName] = nil
 
         // val != null && (visuals[visualName] = val);
         //   JS `!= null` is false for both `null` and `undefined`. The ported option bag represents an
@@ -303,6 +308,12 @@ private func buildVisualMapping(
     // Fallback: the frozen level-0 color range came up empty (see travelTree note), so use the
     //   render-time palette as the color range for this node's children. Only applies when no explicit
     //   color range/visual was configured (the common auto-palette case).
+    // PORT-TODO: non-upstream fallback (no counterpart in treemapVisual.ts) — the real gap is `setDefault`
+    //   capturing the palette BEFORE the global default merge, so level-0's `color` range is empty. Prefer
+    //   fixing `setDefault` to read the palette lazily and deleting this branch (and `visualsHasExplicitColor`
+    //   / the `fallbackPalette` parameter threaded through travelTree) once treemap output is re-validated
+    //   against the ECharts oracle — the visual-priority write-through restored in TreemapSeries may already
+    //   make it redundant.
     if rangeVisual == nil && !fallbackPalette.isEmpty && !visualsHasExplicitColor(visuals) {
         rangeVisual = ["name": "color", "range": fallbackPalette as Any]
     }

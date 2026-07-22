@@ -70,7 +70,24 @@ open class TreemapSeriesModel: SeriesModel {
 
     // designatedVisualItemStyle: TreemapSeriesItemStyleOption;
     //   The dynamic itemStyle bag; set (and shared with `designatedVisualModel`) in `getInitialData`.
-    public var designatedVisualItemStyle: [String: Any] = [:]
+    // PORT-NOTE: upstream relies on this being a LIVE-SHARED object: it is the `itemStyle` of
+    //   `designatedVisualModel`, and every `Model` derived from that model (`getModel`, the node item
+    //   models re-parented onto it) keeps a REFERENCE to it — so `treemapVisual`'s per-node writes here
+    //   are observed by `nodeItemStyleModel.get(visualName)` through the parent chain. That aliasing IS
+    //   the "visual priority" trick documented in `getInitialData` below. A Swift `[String: Any]` is a
+    //   value type: it would be copied into the option bag (and re-copied by every `getModel` snapshot),
+    //   silently dropping the write-through. The bag is therefore a reference-typed `NSMutableDictionary`
+    //   stored directly in the option tree — `Model._doGet`'s `obj as? [String: Any]` bridge reads its
+    //   CURRENT contents at read time, so the copies all observe the same live object, exactly like JS.
+    //   INVARIANT: the bag must never pass through `util.clone` / `Model.clone()`. `util.clone` matches it
+    //   via `source as? [String: Any]` and rebuilds an IMMUTABLE Swift dict, which severs the write-through
+    //   silently (and its `return result as! T` would trap if `T` were statically `NSMutableDictionary`).
+    //   Nothing on the treemap path clones the option tree today; a future clone seam must special-case it.
+    //   NOTE: values read back through the bag are Foundation-BRIDGED (Double→NSNumber, String→NSString,
+    //   non-bridgeable Swift values→`__SwiftValue`). Consumers must therefore keep using tolerant `as?`
+    //   casts on anything resolved through `designatedVisualModel` — never `is` / `type(of:)` identity
+    //   checks (in particular an Int-boxed option value now succeeds `as? Double` through this chain).
+    public var designatedVisualItemStyle: NSMutableDictionary = NSMutableDictionary()
 
     // private _viewRoot: TreeNode;
     private var _viewRoot: TreeNode?
@@ -125,14 +142,13 @@ open class TreemapSeriesModel: SeriesModel {
         //   2. The `Model.prototype.getModel()` will not use any clone-like way.
         // const designatedVisualItemStyle = this.designatedVisualItemStyle = {};
         // const designatedVisualModel = new Model({itemStyle: designatedVisualItemStyle}, this, ecModel);
-        //   Upstream keeps `designatedVisualItemStyle` as a live-shared object so `treemapVisual` can write
-        //   into it and have `designatedVisualModel.get(['itemStyle', ...])` observe the write. The Swift
-        //   option bag is a value type, so this aliasing is lost (POTENTIAL-BUG: treemapVisual has landed and
-        //   DOES write into `seriesModel.designatedVisualItemStyle`, but `designatedVisualModel` captured a COPY
-        //   of the empty dict here, so `designatedVisualModel.get(['itemStyle', ...])` never observes those
-        //   writes — the visual-priority write-through does not take effect through this path).
-        self.designatedVisualItemStyle = [:]
-        let designatedVisualModel = Model(["itemStyle": self.designatedVisualItemStyle], self, ecModel)
+        //   The bag is a reference-typed `NSMutableDictionary` (see the property declaration) and is stored
+        //   AS-IS in the model option, so `designatedVisualModel.get(['itemStyle', ...])` — and every model
+        //   derived from it — observes `treemapVisual`'s later writes, exactly like the shared JS object.
+        //   A fresh instance per `getInitialData` mirrors upstream's `this.designatedVisualItemStyle = {}`.
+        let designatedVisualItemStyle = NSMutableDictionary()
+        self.designatedVisualItemStyle = designatedVisualItemStyle
+        let designatedVisualModel = Model(["itemStyle": designatedVisualItemStyle], self, ecModel)
 
         // levels = option.levels = setDefault(levels, ecModel);
         levels = setDefault(&levels, ecModel)
