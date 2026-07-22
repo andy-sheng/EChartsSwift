@@ -1,6 +1,11 @@
-// Map regions fade in (style.opacity 0→final) when animation is on, and are at final (visible) opacity
-// with no animator when off (the invisible-region guard). Faithful to MapView.createCompoundPath's
-// initProps({style:{opacity}}) fade — the same idiom as FunnelView's piece fade-in.
+// Map regions are rendered at their FINAL (visible) opacity with no entrance animator, whether animation
+// is on or off.
+//
+// HISTORY: MapView's inlined `createCompoundPath` used to do an `initProps({ style: { opacity: 0 } })`
+// fade-in, and this file asserted it. That was a port INVENTION — upstream `component/helper/MapDraw.ts`
+// contains no `initProps` / `updateProps` call at all, so map regions never fade in. The switchover of
+// MapView onto the shared `MapDraw` retired it (see the PORT-NOTE at the top of MapView.swift); the
+// "fades in" case below is inverted to lock the upstream behaviour in.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -53,29 +58,18 @@ final class MapTransitionTests: XCTestCase {
         return nil
     }
 
-    func test_region_fades_in_when_animation_on() {
+    func test_region_does_not_fade_in_when_animation_on() {
         ECharts.registerMap("toy", makeToyGeoJSON())
         let ec = ECharts(width: 520, height: 320)
         ec.setOption(option(true))
         guard let cp = firstRegion(ec.getRoot()) else { return XCTFail("no map region CompoundPath") }
 
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
-        // targeted at "style" and carries an "opacity" leaf track (same idiom as FunnelTransitionTests).
-        guard let animator = cp.animators.first(where: { $0.targetName == "style" }) else {
-            return XCTFail("map region should have a style (opacity) animator when animation on")
-        }
-        guard let track = animator.getTrack("opacity") else {
-            return XCTFail("no opacity track on the style animator")
-        }
-        // Strengthen: step the opacity track directly to prove a real fade delta (invisible at t=0,
-        //   visible at t=1), not merely animator presence.
-        let target = animator.getTarget()
-        track.step(target, 0.0)
-        XCTAssertEqual(cp.pathStyle?.opacity ?? .nan, 0.0, accuracy: 1e-6,
-                       "opacity track at t=0 should be collapsed to 0 (invisible)")
-        track.step(target, 1.0)
+        // Upstream MapDraw has NO initProps: even with animation on, the region is created at its final
+        // opacity and schedules no style (opacity) entrance animator.
+        XCTAssertNil(cp.animators.first(where: { $0.targetName == "style" }),
+                     "upstream map regions have no entrance fade — the initProps fade was a port invention")
         XCTAssertGreaterThan(cp.pathStyle?.opacity ?? 0.0, 0.0,
-                             "opacity track at t=1 should have faded in to a visible opacity")
+                             "region must be at final (visible) opacity immediately, not invisible at t=0")
     }
 
     func test_region_final_opacity_when_animation_off() {
