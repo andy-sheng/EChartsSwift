@@ -30,7 +30,8 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     -> `util/graphic` is NOT ported as a namespace. `graphic.Group` / `graphic.Text` / `graphic.Rect`
 //        are the ZRenderKit scene-graph types `Group` / `ZRText` / `Rect` (used directly).
-//        `graphic.setTooltipConfig` is deferred (interaction — PORT-NOTE in `_createItem`).
+//        `graphic.setTooltipConfig` is the file-scope `setTooltipConfig` (util/graphic.swift; ported),
+//        called from `_createItem` on the hit rect when `tooltip.show` is truthy.
 //   import { enableHoverEmphasis } from '../../util/states';
 //     -> `states.enableHoverEmphasis` (util/states.swift; ported). Wired at both upstream call sites
 //        (`_createSelector` selector label + `_createItem` item group), each with the single-arg form
@@ -610,9 +611,31 @@ open class LegendView: ComponentView {
             "style": barStyleFromDict(["fill": "transparent"])
         ])
 
-        // const tooltipModel = legendItemModel.getModel('tooltip') as Model<...>;
-        // if (tooltipModel.get('show')) { graphic.setTooltipConfig({...}); }
-        // PORT-NOTE (deferred): requires `util/graphic.setTooltipConfig` (not ported) — tooltip wiring, out of static-render scope.
+        // const tooltipModel = legendItemModel.getModel('tooltip') as Model<CommonTooltipOption<...>>;
+        // if (tooltipModel.get('show')) {
+        //     graphic.setTooltipConfig({ el: hitRect, componentModel: legendModel,
+        //         itemName: name, itemTooltipOption: tooltipModel.option });
+        // }
+        let tooltipModel = legendItemModel.getModel("tooltip")
+        if legendJsTruthy(tooltipModel.get("show")) {
+            // PORT-TODO: bridge the raw `[String: Any]` tooltip option bag into
+            //   `CommonTooltipOption<Any>` so `itemTooltipOption` fields are not dropped.
+            //   The provider (`setTooltipConfig` in util/graphic.swift) only recognizes a `String`
+            //   or an already-typed `CommonTooltipOption<Any>`; `tooltipModel.option` is the raw
+            //   option bag here, so the USER-SUPPLIED fields (`formatter`, `valueFormatter`,
+            //   `backgroundColor`, ...) are currently DROPPED and `option.common` stays empty.
+            //   Everything the provider itself sets is still wired: `ecData.componentMainType`,
+            //   `ecData.componentIndex`, and `tooltipConfig.option`'s `content`,
+            //   `encodeHTMLContent` and `formatterParams`. The real fix belongs provider-side
+            //   (a `[String: Any]` arm in `setTooltipConfig`'s `itemTooltipOptionObj` resolution);
+            //   shared gap with GraphicView.swift's call site and MapDraw's.
+            setTooltipConfig(
+                el: hitRect,
+                componentModel: legendModel,
+                itemName: name,
+                itemTooltipOption: tooltipModel.option
+            )
+        }
         _ = itemGroup.add(hitRect)
 
         // itemGroup.eachChild(function (child) { child.silent = true; });
