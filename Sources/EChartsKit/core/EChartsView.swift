@@ -1419,13 +1419,27 @@ public final class EChartsView {
     /// Dispose the live zr (releases the animation clock + input proxy + removes it from the module-global
     /// zrender `instances` registry). The `ec` has no lifecycle.
     public func dispose() {
+        _disposeAxisPointers()
         zr.dispose()
+    }
+
+    /// Tear down the Phase-36 crosshair pointers. The handle listeners registered by
+    /// `BaseAxisPointer._renderHandle` bind the pointer itself as the Eventful ctx (`Eventful.ctx` is a
+    /// STRONG `AnyObject?`), so `_handle` ↔ pointer is a retain cycle that only `clear`/`dispose` breaks —
+    /// nothing else in this view's teardown reaches it, so a view deallocated with a live handle would leak
+    /// the pointer + handle. (Binding ctx `nil` is NOT an alternative fix here: `Element.on` substitutes
+    /// `context ?? self`, which just moves the cycle onto the element.)
+    private func _disposeAxisPointers() {
+        let api = ec.api
+        for (_, p) in _axisPointers { p.dispose(api) }
+        _axisPointers.removeAll()
     }
 
     // Auto-dispose the zr when the view deallocs, so the module-global zrender `instances` registry does
     //   not retain the zr (+ its storage/animation clock) after the view is gone. Reachable only once the
     //   zr↔handler↔eventful↔self cycle is broken (all `_initEvents` listeners bind ctx `nil`, not `self`).
     deinit {
+        _disposeAxisPointers()
         zr.dispose()
     }
 }

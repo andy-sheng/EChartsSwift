@@ -257,8 +257,9 @@ open class BaseAxisPointer: AxisPointer {
         }
         else {
             // upstream: `const doUpdateProps = zrUtil.curry(updateProps, axisPointerModel, moveAnimation)`.
-            //   The `updateProps` closure is `(el, props)`; the `animationModel`/`moveAnimation` capture
-            //   is inert here (no animated slide — see the free `updateProps` PORT-NOTE).
+            //   The curried captures are modeled by the `BaseAxisPointer.updateProps(_:_:_:_:)`
+            //   extension method, which the `updatePointerEl` / `updateLabelEl` overrides call with
+            //   `self._axisPointerModel` / `self._moveAnimation` (see the `updateProps` PORT-NOTE).
             self.updatePointerEl(self.group!, elOption)
             self.updateLabelEl(self.group!, elOption, axisPointerModel)
         }
@@ -392,10 +393,27 @@ open class BaseAxisPointer: AxisPointer {
         //   PORT-NOTE: replace == merge here because the style is fully rebuilt every render; a true
         //   partial-merge would only matter if a caller ever supplied a partial style (none do).
         if let style = pointer.style { pointerEl.useStyle(style) }
-        if let shape = pointer.shape {
+        // PORTING.md §12: no force-unwraps of render()-bound state — `updatePointerEl` is `open`, so a
+        //   subclass/host may call it independently of `render`. Upstream curries the model in at render
+        //   time; here we guard it — but ONLY around the shape branch: upstream applies the style
+        //   unconditionally (`pointerEl.setStyle(...)` is not part of the curried closure), so a nil model
+        //   must not swallow the style above.
+        if let shape = pointer.shape, let axisPointerModel = self._axisPointerModel {
             // upstream: `doUpdateProps(pointerEl, {shape})` — the `curry(updateProps, axisPointerModel,
             //   moveAnimation)` closure from `render`. Read the curried captures off self here.
-            self.updateProps(self._axisPointerModel!, self._moveAnimation, pointerEl, ["shape": shape])
+            //   `shape.animationProps()` (NOT the `PathShape` struct itself): upstream's `{shape}` is a
+            //   plain object that `animateToShallow` recurses into per key; a struct existential is not
+            //   `util.isObject`, so it would be treated as ONE discrete leaf and SNAP instead of tween
+            //   (see the `PathShape.animationProps` PORT-NOTE in Path.swift). The non-animated branch is
+            //   unaffected: `Path.attrKV("shape", partialDict)` merges the keys into the existing shape.
+            //   PORT-NOTE (coverage): because this is a per-key MERGE, shape fields NOT exposed by the
+            //   shape's `animationGet`/`animationSet` pair are never updated here — a stale value would
+            //   survive a re-render. Safe for the shipped pointers (LineShape x1/y1/x2/y2/percent and
+            //   RectShape x/y/width/height cover everything CartesianAxisPointer builds), but
+            //   `RectShape.animationGet` omits `r` and `SectorShape.animationGet` omits `clockwise` —
+            //   extend those accessors when the rounded-rect / polar ("Sector", see makePointerPath)
+            //   pointers land.
+            self.updateProps(axisPointerModel, self._moveAnimation, pointerEl, ["shape": shape.animationProps()])
         }
     }
 
@@ -448,7 +466,8 @@ open class BaseAxisPointer: AxisPointer {
             return
         }
 
-        let axisPointerModel = self._axisPointerModel!
+        // PORTING.md §12: render()-bound state read as an optional with a guard, not `!`.
+        guard let axisPointerModel = self._axisPointerModel else { return }
         // upstream: const zr = this._api.getZr();  — HOST SEAM: reached via hostAddHandle/hostRemoveHandle.
         var handle = self._handle
         let handleModel = axisPointerModel.getModel("handle")
@@ -457,7 +476,10 @@ open class BaseAxisPointer: AxisPointer {
         // upstream: if (!handleModel.get('show') || !status || status === 'hide')
         if !_isTruthy(handleModel.get("show")) || _isFalsy(status) || (status as? String) == "hide" {
             // handle && zr.remove(handle); this._handle = null;
-            if let h = handle { self.hostRemoveHandle?(h) }
+            if let h = handle {
+                self.hostRemoveHandle?(h)
+                self._releaseHandle(h)
+            }
             self._handle = nil
             return
         }
@@ -476,6 +498,11 @@ open class BaseAxisPointer: AxisPointer {
             guard let h = created else { return }
             self._handle = h
             handle = h
+            // A freshly allocated element can reuse a freed element's address, so `ObjectIdentifier`
+            //   could alias a stale `_lastProps` entry and make `propsEqual` skip the very first
+            //   `attr` (leaving the new handle at its default transform). Upstream's `makeInner`
+            //   WeakMap cannot alias; invalidate explicitly here.
+            self._lastProps[ObjectIdentifier(h)] = nil
 
             // upstream passes the event handlers inside the createIcon opt; here they are wired onto the
             //   element after construction (event seam — see createIcon PORT-NOTE):
@@ -549,22 +576,39 @@ open class BaseAxisPointer: AxisPointer {
         self._moveHandleToValue(value, isInit)
     }
 
+    /// Teardown for the draggable handle. Not a distinct upstream method — upstream simply drops the JS
+    ///   reference and lets GC collect both the element and its listeners, and its `makeInner` WeakMap
+    ///   entry dies with the element. In Swift the listeners registered in `_renderHandle` store `self`
+    ///   as the (strongly held) Eventful context while `_handle` retains the element, so the pair must be
+    ///   unwired explicitly; the `_lastProps` memo entry must also go, or a later same-address element
+    ///   would inherit it.
+    private func _releaseHandle(_ handle: Displayable) {
+        _ = handle.off()
+        handle.driftHandler = nil
+        self._lastProps[ObjectIdentifier(handle)] = nil
+    }
+
     // upstream: private _moveHandleToValue(value, isInit?)
     private func _moveHandleToValue(_ value: Any?, _ isInit: Bool = false) {
         guard let handle = self._handle,
-              let trans = self.getHandleTransform(value, self._axisModel!, self._axisPointerModel!) else {
+              let axisModel = self._axisModel,
+              let axisPointerModel = self._axisPointerModel,
+              let trans = self.getHandleTransform(value, axisModel, axisPointerModel) else {
             return
         }
         // upstream: updateProps(this._axisPointerModel, !isInit && this._moveAnimation, this._handle,
         //   getHandleTransProps(this.getHandleTransform(value, ...)));
         //   Animate the handle to its new position unless this is the first render (isInit) — on init it
         //   snaps directly, matching upstream's `!isInit && this._moveAnimation`.
-        self.updateProps(self._axisPointerModel!, !isInit && self._moveAnimation, handle, getHandleTransProps(trans))
+        self.updateProps(axisPointerModel, !isInit && self._moveAnimation, handle, getHandleTransProps(trans))
     }
 
     // upstream: private _onHandleDragMove(dx, dy)
     private func _onHandleDragMove(_ dx: Double, _ dy: Double) {
-        guard let handle = self._handle else {
+        // PORTING.md §12: the render()-bound models are guarded here rather than force-unwrapped below.
+        guard let handle = self._handle,
+              let axisModel = self._axisModel,
+              let axisPointerModel = self._axisPointerModel else {
             return
         }
 
@@ -575,8 +619,8 @@ open class BaseAxisPointer: AxisPointer {
         guard let trans = self.updateHandleTransform(
             handleTransFromEl(handle),
             [dx, dy],
-            self._axisModel!,
-            self._axisPointerModel!
+            axisModel,
+            axisPointerModel
         ) else {
             return
         }
@@ -608,7 +652,9 @@ open class BaseAxisPointer: AxisPointer {
         guard let payloadInfo = self._payloadInfo, let axisModel = self._axisModel else {
             return
         }
-        let axis = axisModel.axis as! Axis
+        // PORTING.md §12: `as!` on a coordinate axis is a latent SIGTRAP if a non-`Axis` axis ever
+        //   reaches the throttled dispatch — guard, mirroring `determineAnimation`.
+        guard let axis = axisModel.axis as? Axis else { return }
         // this._api.dispatchAction({ type: 'updateAxisPointer', x, y, tooltipOption, axesInfo: [{ axisDim, axisIndex }] });
         var payload = Payload(type: "updateAxisPointer")
         payload.other["x"] = payloadInfo.cursorPoint.count > 0 ? payloadInfo.cursorPoint[0] : 0
@@ -626,11 +672,11 @@ open class BaseAxisPointer: AxisPointer {
     // upstream: private _onHandleDragEnd()
     private func _onHandleDragEnd() {
         self._dragging = false
-        guard self._handle != nil else {
+        guard self._handle != nil, let axisPointerModel = self._axisPointerModel else {
             return
         }
 
-        let value = self._axisPointerModel!.get("value")
+        let value = axisPointerModel.get("value")
         // Consider snap or category axis, handle may be not consistent with axisPointer. So move handle
         // to align the exact value position when drag ended.
         self._moveHandleToValue(value)
@@ -651,7 +697,10 @@ open class BaseAxisPointer: AxisPointer {
         if let group = self.group {
             self._lastGraphicKey = nil
             self.hostRemove?(group)
-            if let handle = self._handle { self.hostRemoveHandle?(handle) }
+            if let handle = self._handle {
+                self.hostRemoveHandle?(handle)
+                self._releaseHandle(handle)
+            }
             self.group = nil
             self._handle = nil
             self._pointerEl = nil
@@ -741,9 +790,12 @@ extension BaseAxisPointer {
 //     if (isObject(lastProps) && isObject(newProps)) { each newProps key → recurse; return !!equals; }
 //     else { return lastProps === newProps; }
 // }
-//   Deep-compares the nested prop bags. Scalars compare by value; a non-object/non-scalar value (a fresh
-//   `PathShape` struct) is never the same reference as the stored one, so it returns false — EXACTLY
-//   upstream's `lastProps === newProps` on a freshly-built object literal (forces a re-apply).
+//   Deep-compares the nested prop bags. Every call site passes a per-key `[String: Any]` bag for nested
+//   values (`["shape": shape.animationProps()]`), so `propValueEqual`'s dictionary recursion mirrors
+//   upstream's `isObject(lastProps) && isObject(newProps)` per-key recursion and CAN return true, skipping
+//   the re-apply (and, in the animated branch, avoiding a tween restart on every mouse-move render).
+//   Only genuinely non-comparable values (neither dict, number, string nor bool) fall through to `false`,
+//   matching upstream's `lastProps === newProps` on a freshly-built object (forces a re-apply).
 private func propsEqual(_ lastProps: [String: Any]?, _ newProps: [String: Any]) -> Bool {
     guard let lastProps = lastProps else { return false }
     for (key, item) in newProps {
