@@ -78,6 +78,74 @@ func viewGroupRoamNum(_ v: Any?) -> Double? {
     return nil
 }
 
+// Parse `scaleLimit` ({min?, max?}) to a `ScaleLimit` — upstream `viewInner.zoomLimit`.
+//   (Same shape as geoParseScaleLimit / graphParseScaleLimit, which are private to their own slices; this
+//   one is the slice-level copy the view-group hosts share.)
+func viewGroupParseScaleLimit(_ v: Any?) -> RoamOptionMixin.ScaleLimit? {
+    guard let d = v as? [String: Any] else { return nil }
+    var lim = RoamOptionMixin.ScaleLimit()
+    lim.min = viewGroupRoamNum(d["min"])
+    lim.max = viewGroupRoamNum(d["max"])
+    return lim
+}
+
+// ---------------------------------------------------------------------------------------------------
+// upstream: export function createViewCoordSysSimply(
+//         componentOrSeries: RoamHostComponentOrSeries, api: ExtensionAPI,
+//         x: number, y: number, width: number, height: number,   // VIEW_COORD_SYS DataRect init
+//         viewRect?: RectLike | NullUndefined                    // VIEW_COORD_SYS ViewRect init
+//     ): View {
+//         const viewCoordSys = new View(null, useLegacyViewCoordSysCenterBase(componentOrSeries.ecModel, api));
+//         viewCoordSysSetBoundingRect(viewCoordSys, x, y, width, height);
+//         viewRect
+//             ? viewCoordSysSetViewRect(viewCoordSys, viewRect.x, viewRect.y, viewRect.width, viewRect.height)
+//             : viewCoordSysSetViewRect(viewCoordSys, x, y, width, height);
+//         viewCoordSysSetRoamOptionFromModel(viewCoordSys, componentOrSeries);
+//         return viewCoordSys;
+//     }
+//   (component/helper/roamHelper.ts:186-212)
+//   PORT-NOTE: `RoamHostComponentOrSeries` (component OR series) → `ComponentModel` (SeriesModel's base).
+//   `viewCoordSysSetRoamOptionFromModel` is realized as the port's value-taking `viewCoordSysSetRoamOption`
+//   fed from the host model's `center` / `zoom` / `scaleLimit` shallow options — exactly what upstream's
+//   *FromModel reads.
+// ---------------------------------------------------------------------------------------------------
+public func createViewCoordSysSimply(
+    _ componentOrSeries: ComponentModel,
+    _ api: ExtensionAPI,
+    // VIEW_COORD_SYS DataRect init:
+    _ x: Double,
+    _ y: Double,
+    _ width: Double,
+    _ height: Double,
+    // VIEW_COORD_SYS ViewRect init:
+    // Use DataRect by default, which means DataRect is in pixel space.
+    _ viewRect: RectLike? = nil
+) -> View {
+    let viewCoordSys = View(
+        nil,
+        useLegacyViewCoordSysCenterBase(componentOrSeries.ecModel, api)
+    )
+
+    viewCoordSysSetBoundingRect(viewCoordSys, x, y, width, height)
+
+    if let viewRect = viewRect {
+        viewCoordSysSetViewRect(viewCoordSys, viewRect.x, viewRect.y, viewRect.width, viewRect.height)
+    }
+    else {
+        viewCoordSysSetViewRect(viewCoordSys, x, y, width, height)
+    }
+
+    // viewCoordSysSetRoamOptionFromModel(viewCoordSys, componentOrSeries);
+    viewCoordSysSetRoamOption(
+        viewCoordSys,
+        componentOrSeries.getShallow("center") as? [Any],
+        viewGroupRoamNum(componentOrSeries.getShallow("zoom")),
+        viewGroupParseScaleLimit(componentOrSeries.getShallow("scaleLimit"))
+    )
+
+    return viewCoordSys
+}
+
 // Apply the current roam state to a view group given its base (roam-free) placement. Called at the END of
 //   the view's render(), replacing the deferred `applyViewCoordSysTransToElement`. Composing the roam
 //   transform T (in parent space) with the base placement (baseX, baseY, scale 1):
