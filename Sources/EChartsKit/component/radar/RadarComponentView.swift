@@ -24,6 +24,7 @@
 */
 
 import Foundation
+import CoreGraphics
 import ZRenderKit
 
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
@@ -348,14 +349,40 @@ private func zrColorFromOption(_ v: Any?) -> ZRenderKit.ZRColor? {
                 dict["global"] as? Bool
             ))
         }
-        // Pattern: `{image: <string>, repeat: ...}` (only the string-image arm is ported; the
-        //   ImageLike arm is deferred to the painter seam, cf. ZRenderKit Pattern.swift).
-        if let image = dict["image"] as? String {
+        // Pattern: `{image: <ImageLike | string>, repeat: ..., x, y, rotation, scaleX, scaleY}` —
+        //   both arms of the upstream `image` union are carried by `ImageSource` (a URL/path/
+        //   data-URI string, or an already-decoded native image resolved by the painter).
+        //   Malformed values (NSNull, numbers, nested dicts/arrays) fall through to nil so the
+        //   caller keeps the style default rather than rendering an unresolvable pattern.
+        //   Geometry fields mirror BarView.zrPatternFromDict / RadiusAxisView.radiusPatternFromDict.
+        if let image = dict["image"], let source = patternImageSource(image) {
             let repeatMode = (dict["repeat"] as? String)
                 .flatMap { ImagePatternRepeat(rawValue: $0) } ?? .`repeat`
-            return .pattern(Pattern(.url(image), repeatMode))
+            let pat = Pattern(source, repeatMode)
+            if let x = styleNum(dict["x"]) { pat.x = x }
+            if let y = styleNum(dict["y"]) { pat.y = y }
+            if let r = styleNum(dict["rotation"]) { pat.rotation = r }
+            if let sx = styleNum(dict["scaleX"]) { pat.scaleX = sx }
+            if let sy = styleNum(dict["scaleY"]) { pat.scaleY = sy }
+            return .pattern(pat)
         }
     }
+    return nil
+}
+
+/// Resolve the upstream `image: ImageLike | string` union of a pattern option into an `ImageSource`.
+///   - an already-built `ImageSource` passes through unwrapped (do NOT re-wrap in `.url(...)` —
+///     that would nest an ImageSource inside the String arm; cf. decal.swift's setPatternSource);
+///   - a non-empty String is the URL/path/`data:` URI arm;
+///   - a native image (a CoreFoundation `CGImage`, dispatched on the CFTypeID exactly as
+///     NativePainter's `asCGImage` does) is the `ImageLike` arm;
+///   - anything else (NSNull, numbers, nested option dicts/arrays) is NOT a usable image and
+///     returns nil so the caller leaves the style at its default.
+private func patternImageSource(_ value: Any) -> ImageSource? {
+    if let src = value as? ImageSource { return src }
+    if let s = value as? String { return s.isEmpty ? nil : .url(s) }
+    if value is NSNull || value is NSNumber || value is [String: Any] || value is [Any] { return nil }
+    if CFGetTypeID(value as CFTypeRef) == CGImage.typeID { return .image(value) }
     return nil
 }
 

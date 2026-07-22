@@ -406,6 +406,15 @@ public func setTooltipConfig(
         itemTooltipOptionObj = o
         hasTooltipOptionObj = true
     }
+    // PORT-NOTE: upstream `itemTooltipOption` is already the parsed option object, but in this port most
+    //   callers read it straight off a model (`regionModel.get('tooltip')` in MapDraw,
+    //   `matrixModel.getShallow('tooltip', true)` in MatrixView), so it arrives as the dynamic
+    //   `[String: Any]` option bag. Without this arm the whole per-item tooltip option (formatter,
+    //   backgroundColor, position, ...) would be silently dropped by `defaults(..., itemTooltipOptionObj)`.
+    else if let bag = itemTooltipOption as? [String: Any] {
+        itemTooltipOptionObj = commonTooltipOptionFromOptionBag(bag)
+        hasTooltipOptionObj = true
+    }
 
     let mainType = componentModel.mainType
     let componentIndex = componentModel.componentIndex
@@ -448,6 +457,60 @@ public func setTooltipConfig(
             formatterParams: formatterParams
         )
     )
+}
+
+// PORT-NOTE: NOT an upstream function. Bridges a dynamic `[String: Any]` option bag (what
+//   `model.get('tooltip')` returns in this port) onto the statically-typed `CommonTooltipOption<Any>`
+//   that `ecData.tooltipConfig.option.common` holds, so `setTooltipConfig`'s `itemTooltipOption` keeps
+//   upstream's semantics (`defaults({content, encodeHTMLContent, formatterParams}, itemTooltipOptionObj)`).
+//   Only the statically-declared `CommonTooltipOption` fields are carried; `valueFormatter` is a Swift
+//   closure and cannot be expressed in an option bag, so it is passed through only when the bag already
+//   stores a closure of that exact type.
+private func commonTooltipOptionFromOptionBag(_ bag: [String: Any]) -> CommonTooltipOption<Any> {
+    var o = CommonTooltipOption<Any>()
+    o.show = tooltipBagBool(bag["show"])
+    o.triggerOn = bag["triggerOn"] as? String
+    o.alwaysShowContent = tooltipBagBool(bag["alwaysShowContent"])
+    o.formatter = bag["formatter"]
+    o.valueFormatter = bag["valueFormatter"] as? (Any, Double) -> String
+    o.position = bag["position"]
+    o.confine = tooltipBagBool(bag["confine"])
+    o.align = (bag["align"] as? String).flatMap { HorizontalAlign(rawValue: $0) }
+    o.verticalAlign = (bag["verticalAlign"] as? String).flatMap { VerticalAlign(rawValue: $0) }
+    o.showDelay = tooltipBagNum(bag["showDelay"])
+    o.hideDelay = tooltipBagNum(bag["hideDelay"])
+    o.transitionDuration = tooltipBagNum(bag["transitionDuration"])
+    o.enterable = tooltipBagBool(bag["enterable"])
+    o.displayTransition = tooltipBagBool(bag["displayTransition"])
+    o.backgroundColor = bag["backgroundColor"] as? ColorString
+    o.borderColor = bag["borderColor"] as? ColorString
+    o.borderRadius = tooltipBagNum(bag["borderRadius"])
+    o.borderWidth = tooltipBagNum(bag["borderWidth"])
+    o.shadowBlur = tooltipBagNum(bag["shadowBlur"])
+    o.shadowColor = bag["shadowColor"] as? String
+    o.shadowOffsetX = tooltipBagNum(bag["shadowOffsetX"])
+    o.shadowOffsetY = tooltipBagNum(bag["shadowOffsetY"])
+    o.padding = bag["padding"]
+    o.extraCssText = bag["extraCssText"] as? String
+    o.textStyle = bag["textStyle"] as? [String: Any]
+    return o
+}
+
+// Coerce a dynamic option value to Double, tolerating the Int boxing that `[String: Any]` option
+// literals use (a bare `as? Double` returns nil on an Int — the Int-vs-Double option-read trap).
+private func tooltipBagNum(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.doubleValue }
+    return nil
+}
+
+// Coerce a dynamic option value to Bool. Only an explicit boolean (or the `0`/`1` boxing of one) is
+// honored so that an absent key stays `nil` (upstream `undefined`) rather than becoming `false`.
+private func tooltipBagBool(_ v: Any?) -> Bool? {
+    if let b = v as? Bool { return b }
+    if let n = v as? NSNumber, (n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.boolValue }
+    return nil
 }
 
 // upstream inline `hasOwn(formatterParams, key)` — whether `formatterParams` already carries `key`.
