@@ -108,7 +108,18 @@ private func animateOrSetProps(
     //   ? animatableModel.getAnimationDelayParams(el, dataIndex as number) : null
     let extraDelayParams = model?.getAnimationDelayParams?(el, dataIndex ?? 0)
     let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra, extraDelayParams)
-    if let cfg = cfg, cfg.duration > 0 {
+    // PORT-NOTE (zr-less driver, leave path only): an animator is driven by `zr.animation`; with no zr
+    //   attached nothing ever ticks it, so a leave animation would never finish and its `done` callback
+    //   — the one that actually detaches the element from its group — would never run, leaking removed
+    //   elements into the scene. Headless (oracle/tests) therefore settles the leave synchronously via
+    //   the `attr(props) + cb()` branch below, which is exactly the end state the animation reaches.
+    //   Enter/update are untouched (their animators are harmless if never ticked, and `setToFinal`
+    //   consumers rely on the animator existing).
+    //   Caveat: with no leave animator recorded, `isElementRemoved` cannot detect a second leave on the
+    //   same element headless, so a repeated `removeElement` re-fires `cb`. Every current leave callback
+    //   is idempotent (`Group.remove` of a non-child is a no-op).
+    let settleLeaveWithoutZr = isRemove && el.__zr == nil
+    if let cfg = cfg, cfg.duration > 0, !settleLeaveWithoutZr {
         var ac = ElementAnimateConfig()
         ac.duration = cfg.duration
         ac.delay = cfg.delay
@@ -186,9 +197,15 @@ func updateProps(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
 ///
 /// Module-internal (upstream exports it via util/graphic.ts; every Swift consumer is in EChartsKit).
 func isElementRemoved(_ el: Element) -> Bool {
-    if el.__zr == nil {
-        return true
-    }
+    // PORT-NOTE (zr-less driver): upstream's first check is `if (el.__zr) { return true }` — i.e. an
+    //   element NOT attached to a zr is already gone, so skip its leave animation. Upstream elements
+    //   are always attached, so that branch only ever fires for genuinely-detached elements. This port
+    //   also runs WITHOUT a zr (bare `ECharts` — the headless render/PNG oracle and the unit tests),
+    //   where EVERY element has `__zr == nil`; taking the branch there made `removeElement` a no-op for
+    //   every consumer, so leave callbacks (which detach the element from its group) never fired and
+    //   removed elements lingered in the scene forever. The zr-less case therefore falls THROUGH here
+    //   and is settled synchronously by `animateOrSetProps` (see its `isRemove && el.__zr == nil`
+    //   note), which reaches the same end state and fires `cb`.
     for animator in el.animators {
         if animator.scope == "leave" {
             return true

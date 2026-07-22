@@ -1034,35 +1034,10 @@ private func pbUpdateAttr(
     }
 }
 
-// upstream (inside updateCommon): `zrUtil.extend({image, x, y, width, height}, symbolMeta.style)` —
-//   the image's own geometry, overlaid with the item visual `style` bag. `symbolMeta.style` is the
-//   untyped visual style dict (visual/style.swift); ZRenderKit `ZRImage.useStyle` takes a typed
-//   `ImageStyleProps`, so bridge the keys it actually carries. `fill`/`stroke`/`decal` have no
-//   counterpart on `ImageStyleProps` (an image symbol is not tinted by the item style) — upstream
-//   copies them onto the style object where the image renderer ignores them, so dropping is faithful.
-private func pbImageStyleFromDict(_ base: ImageStyleProps?, _ style: Any?) -> ImageStyleProps {
-    // Upstream builds a FRESH object literal carrying ONLY the five geometry keys plus whatever
-    //   `symbolMeta.style` supplies, and hands it to `useStyle`, which (no STYLE_MAGIC_KEY) routes
-    //   through `createStyle` -> `createObject(DEFAULT_IMAGE_STYLE, obj)`. So every prop absent from
-    //   the new style resets to its default. Mirror that: start from a blank `ImageStyleProps`
-    //   (`zrStyleMagic == false`, so `ZRImage.useStyle` performs the DEFAULT_IMAGE_STYLE merge) and
-    //   forward only the geometry — NOT the element's previous common style, which would otherwise
-    //   stick across re-renders (e.g. an `opacity: 0.5` never resetting to 1).
-    var s = ImageStyleProps()
-    s.image = base?.image
-    s.x = base?.x
-    s.y = base?.y
-    s.width = base?.width
-    s.height = base?.height
-    guard let d = style as? [String: Any] else { return s }
-    if let v = pbDouble(d["opacity"]) { s.opacity = v }
-    if let v = pbDouble(d["shadowBlur"]) { s.shadowBlur = v }
-    if let v = pbDouble(d["shadowOffsetX"]) { s.shadowOffsetX = v }
-    if let v = pbDouble(d["shadowOffsetY"]) { s.shadowOffsetY = v }
-    if let v = d["shadowColor"] as? String { s.shadowColor = v }
-    if let v = d["blend"] as? String { s.blend = v }
-    return s
-}
+// PORT-NOTE: the `extend({image, x, y, width, height}, style)` bridge that used to live here as
+//   `pbImageStyleFromDict` is the SAME upstream expression as Symbol._updateCommon's image branch;
+//   the single definition now lives next to it as `symbolImageStyleFromDict`
+//   (chart/helper/SymbolElement.swift) and is used by both call sites.
 
 // upstream: function updateCommon(bar, opt, symbolMeta)
 private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ symbolMeta: PBSymbolMeta) {
@@ -1094,7 +1069,7 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
         //   An `image://` symbol IS created now (symbol.createSymbol's image branch → ZRImage), so the
         //   image branch is live: keep the image + its geometry, overlay the item visual style.
         if let imagePath = path as? ZRImage {
-            imagePath.useStyle(pbImageStyleFromDict(imagePath.imageStyle, symbolMeta.style))
+            imagePath.useStyle(symbolImageStyleFromDict(imagePath.imageStyle, symbolMeta.style))
             // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis / blur / select state styles set below write the inherited
             //   `Displayable.style` (CommonStyleProps), but ZRImage renders from its own
             //   `imageStyle` and `_syncCommonStyle` is one-way (imageStyle -> style). State styles

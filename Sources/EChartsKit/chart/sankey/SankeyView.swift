@@ -258,10 +258,19 @@ open class SankeyView: ChartView {
 
         // this._updateViewCoordSys(seriesModel, api);
         //   PORT-NOTE: the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
-        //   applyViewCoordSysTransToElement) is not used here (coord/View.swift is ported). The node/edge layout
+        //   applyViewCoordSysTransToElement) is not used here. The node/edge layout
         //   positions are already in the series' local pixel space (set by sankeyLayout), and `_mainGroup`
         //   is placed at `layoutInfo.x/y` above; the roam pan/zoom is applied to the group as a TRANSFORM
         //   at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
+        //   PORT-TODO (blocked, not a stub gap): `applyViewCoordSysTransToElement` IS now ported
+        //   (coord/View.swift:551), but the upstream two-liner here cannot be called until its INPUT
+        //   exists — `seriesModel.coordinateSystem` must be a `View`, produced by
+        //   `roamHelper.createViewCoordSysSimply` (NOT ported; roamHelperViewGroup.swift ports only the
+        //   view-group roam slice) and `SankeySeries.coordinateSystem` is still the inherited `Any?`
+        //   (SankeySeries.swift:61-63 — that note is STALE: it still claims coord/View.ts is "not ported";
+        //   the real blocker is roamHelper.createViewCoordSysSimply). Switching to the coord-sys path also replaces the whole
+        //   view-group roam transform above, so it is an architecture change shared with tree/treemap,
+        //   not a per-call-site wiring fix.
 
         // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
         //   live by EChartsView._setupSankeyRoam (the SankeyView is zr-less); the roam STATE it
@@ -374,25 +383,40 @@ open class SankeyView: ChartView {
             //   node label below. Upstream (SankeyView.ts:223-249):
             //     const defaultEdgeLabelText = `${edgeModel.get('value')}`;
             //     setLabelStyle(curve, getLabelStatesModels(edgeModel, 'edgeLabel'),
-            //       { labelFetcher: { getFormattedLabel(...) { seriesModel.getFormattedLabel(..., 'edge', ...) } },
+            //       { labelFetcher: { getFormattedLabel(dataIndex, stateName, dataType, labelDimIndex,
+            //             formatter, extendParams) {
+            //           return seriesModel.getFormattedLabel(dataIndex, stateName, 'edge', labelDimIndex,
+            //             // ensure edgeLabel formatter is provided
+            //             // to prevent the inheritance from `label.formatter` of the series
+            //             retrieve3(formatter,
+            //               edgeLabelStateModels.normal && edgeLabelStateModels.normal.get('formatter'),
+            //               defaultEdgeLabelText),
+            //             extendParams); } },
             //         labelDataIndex: edge.dataIndex, defaultText: defaultEdgeLabelText });
             //     curve.setTextConfig({ position: 'inside' });
-            // PORT-NOTE: same deviation as the node label — passing `seriesModel` as the
-            //   `SetLabelStyleOpt.labelFetcher` calls `getFormattedLabel` with `dataType == nil` (upstream
-            //   passes 'edge'). For the default edge label (no formatter) this is inert:
-            //   `getFormattedLabel` returns nil and the core falls back to `defaultText`
-            //   (defaultEdgeLabelText), so the resolved text is identical. A formatter-configured edge
-            //   label does resolve the wrong dataType. FOLLOW-UP (consumer lane owns this file):
-            //   `labelFetcher` is now the `LabelFetcher` protocol, so the faithful form
-            //   `edgeLabelOpt.labelFetcher = LabelFetcherFn { idx, status, _, dimIdx, fmt, ext in
-            //   seriesModel.getFormattedLabel(idx, status, .edge, dimIdx, fmt, ext) }` is expressible.
+            // The upstream object-literal fetcher FORCES `dataType: 'edge'`, which is what keeps an
+            //   `edgeLabel.formatter` resolving against the EDGE data (a bare model fetcher would pass
+            //   `dataType == nil` and format the NODE at this index). It is expressed here with the
+            //   closure-backed `LabelFetcherFn` (label/labelStyle.swift) — captures the MODEL only, never
+            //   the view (see the LabelFetcherFn lifetime warning).
             //   The forced 'inside' position is field-merged onto the textConfig `setLabelStyle` created
             //   (upstream's `setTextConfig` extends; this port's assigns wholesale, so mutate-in-place keeps
             //   the other textConfig fields).
             let defaultEdgeLabelText = sankeyStringify(edgeModel.get("value"))
             let edgeLabelModels = labelStyle.getLabelStatesModels(edgeModel, "edgeLabel")
             var edgeLabelOpt = SetLabelStyleOpt()
-            edgeLabelOpt.labelFetcher = seriesModel
+            // `Model.get` returns `ModelOption?` (= Any?), so the optional-chained read is flattened
+            //   with `?? nil` before it feeds retrieve3 (whose T then infers as Any).
+            let edgeLabelNormalFormatter: Any? = edgeLabelModels[.normal]?.get("formatter") ?? nil
+            edgeLabelOpt.labelFetcher = LabelFetcherFn { dataIndex, status, _, labelDimIndex, formatter, extendParams in
+                return seriesModel.getFormattedLabel(
+                    dataIndex, status, .edge, labelDimIndex,
+                    // ensure edgeLabel formatter is provided
+                    // to prevent the inheritance from `label.formatter` of the series
+                    util.retrieve3(formatter, edgeLabelNormalFormatter, defaultEdgeLabelText as Any?),
+                    extendParams
+                )
+            }
             edgeLabelOpt.labelDataIndex = Double(edge.dataIndex)
             edgeLabelOpt.defaultText = defaultEdgeLabelText
             labelStyle.setLabelStyle(curve, edgeLabelModels, edgeLabelOpt)
@@ -491,18 +515,20 @@ open class SankeyView: ChartView {
             // `setLabelStyle` ATTACHES the label as the rect's textContent (setTextContent + textConfig
             //   position — sankey node default 'right') across normal/emphasis/blur/select states, so the
             //   old inline `sankeySetLabel` node call is removed and the shared core owns the label.
-            // PORT-NOTE: passing `seriesModel` as the `SetLabelStyleOpt.labelFetcher` calls
-            //   `getFormattedLabel` with `dataType == nil`; upstream passes 'node'. For the default node
-            //   label (no formatter) this is inert — `getFormattedLabel` returns nil and the core falls
-            //   back to `defaultText` (node.id) — so the resolved text is identical. `inheritColor` is the
-            //   node fill so a color:'inherit' label tracks the node paint.
-            //   FOLLOW-UP (consumer lane owns this file): `labelFetcher` is now the `LabelFetcher`
-            //   protocol, so the faithful forced-dataType form
-            //   `nodeLabelOpt.labelFetcher = LabelFetcherFn { idx, status, _, dimIdx, fmt, ext in
-            //   seriesModel.getFormattedLabel(idx, status, .node, dimIdx, fmt, ext) }` is expressible.
+            // The upstream object-literal fetcher FORCES `dataType: 'node'` (a bare model fetcher passes
+            //   `dataType == nil`, which resolves a `label.formatter` against the wrong data), expressed
+            //   here with the closure-backed `LabelFetcherFn` (label/labelStyle.swift) — captures the MODEL
+            //   only, never the view (see the LabelFetcherFn lifetime warning). `inheritColor` is the node
+            //   fill so a color:'inherit' label tracks the node paint.
             let nodeLabelModels = labelStyle.getLabelStatesModels(itemModel)
             var nodeLabelOpt = SetLabelStyleOpt()
-            nodeLabelOpt.labelFetcher = seriesModel
+            // Upstream's NODE literal takes only `(dataIndex, stateName)` and passes just three arguments —
+            //   labelDimIndex/formatter/extendParams are deliberately left undefined so `getFormattedLabel`
+            //   re-resolves the formatter from the node item model. Mirrored here by dropping (not
+            //   forwarding) those three arguments; forwarding them would be an invented divergence.
+            nodeLabelOpt.labelFetcher = LabelFetcherFn { dataIndex, status, _, _, _, _ in
+                return seriesModel.getFormattedLabel(dataIndex, status, .node, nil, nil, nil)
+            }
             nodeLabelOpt.labelDataIndex = Double(node.dataIndex)
             nodeLabelOpt.defaultText = node.id
             nodeLabelOpt.inheritColor = sankeyColorString(node.getVisual("color"))

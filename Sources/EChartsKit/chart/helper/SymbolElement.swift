@@ -29,7 +29,10 @@ import ZRenderKit
 //   graphic (Group/updateProps/initProps/removeElement) -> ZRenderKit.Group + animation/basicTransition
 //   getECData -> innerStore.getECData; states (enter/leave/toggleHoverEmphasis) -> `states.*`
 //   getDefaultLabel -> labelHelper.getDefaultLabel; setLabelStyle/getLabelStatesModels -> `labelStyle.*`
-//   ZRImage branch DEFERRED (image symbols not created by the port's createSymbol yet).
+//   ZRImage -> ZRenderKit.ZRImage (an `image://` symbol; `symbol.createSymbol` builds one via
+//     ZRenderKit.makeImage, so the child of this Group is `Path | ZRImage` — upstream `ECSymbol`).
+//     Everything that must accept BOTH is typed `Displayable` here; the style pass branches on
+//     `is ZRImage` exactly like upstream's `symbolPath instanceof ZRImage`.
 
 /// upstream: interface SymbolOpts
 public struct SymbolOpts {
@@ -41,6 +44,16 @@ public struct SymbolOpts {
         self.disableAnimation = disableAnimation
         self.useNameLabel = useNameLabel
         self.symbolInnerColor = symbolInnerColor
+    }
+}
+
+/// upstream: the inline `opt?: { fadeLabel: boolean, animation?: AnimationOption }` of `fadeOut`.
+public struct SymbolFadeOutOpt {
+    public var fadeLabel: Bool
+    public var animation: AnimationOption?
+    public init(fadeLabel: Bool = false, animation: AnimationOption? = nil) {
+        self.fadeLabel = fadeLabel
+        self.animation = animation
     }
 }
 
@@ -79,7 +92,10 @@ open class Symbol: Group {
 
         // width/height 2 (not 1) — see upstream #4150 (iOS10/Sierra stroke→rect at size 1).
         let symbolPathEc = symbol.createSymbol(symbolType, -1, -1, 2, 2, nil, keepAspect)
-        guard let symbolPath = symbolPathEc as? Path else { return }
+        // upstream `ECSymbol` = `SymbolPath | SVGPath | ZRImage`; all are Displayables and the props
+        //   set below (z2/culling/scale/drift) live on Element/Displayable, so no Path cast here —
+        //   an `image://` symbol must reach `add()` too.
+        guard let symbolPath = symbolPathEc as? Displayable else { return }
 
         symbolPath.z2 = z2 ?? 100          // retrieve2(z2, 100)
         // Port addition (harmless, non-load-bearing): name the symbol path "item" — matches the
@@ -106,6 +122,15 @@ open class Symbol: Group {
     }
 
     /// Get the symbol path element (the Group's only child).
+    /// PORT-TODO [EChartsKit/SymbolElement.getSymbolPath.ecSymbol]: upstream returns `ECSymbol`
+    ///   (`Path | ZRImage`); this accessor keeps its `Path?` return type because every call site wants
+    ///   the path style/shape, so it yields nil for an `image://` symbol. Consequence: the Element-level
+    ///   consumers (LineView's symbol label fade in/out, circularLayoutHelper's label
+    ///   setTextConfig/emphasis, TreeView) silently skip image symbols. The faithful fix is widening
+    ///   this to `Displayable?` and adding `as? Path` at the few shape/style consumers; that touches
+    ///   four other files (a SYMBOLS.tsv signature change), so it is tracked rather than done here.
+    ///   No regression: before the ZRImage branch was enabled an `image://` symbol produced no child
+    ///   at all, so these call sites already saw nil.
     public func getSymbolPath() -> Path? {
         return self.childAt(0) as? Path
     }
@@ -125,7 +150,7 @@ open class Symbol: Group {
     }
 
     public func setDraggable(_ draggable: Bool, _ hasCursorOption: Bool = false) {
-        guard let symbolPath = self.childAt(0) as? Path else { return }
+        guard let symbolPath = self.childAt(0) as? Displayable else { return }
         symbolPath.draggable = draggable ? .true : .false
         if !hasCursorOption && draggable { symbolPath.cursor = "move" }
     }
@@ -148,7 +173,7 @@ open class Symbol: Group {
             let keepAspect = data.getItemVisual(idx, "symbolKeepAspect") as? Bool
             self._createSymbol(symbolType, data, idx, symbolSize, z2, keepAspect)
         }
-        else if let symbolPath = self.childAt(0) as? Path {
+        else if let symbolPath = self.childAt(0) as? Displayable {
             symbolPath.silent = false
             let target: [String: Any] = ["scaleX": symbolSize[0] / 2, "scaleY": symbolSize[1] / 2]
             if disableAnimation {
@@ -162,18 +187,26 @@ open class Symbol: Group {
 
         self._updateCommon(data, idx, symbolSize, seriesScope, opts)
 
-        if isInit, let symbolPath = self.childAt(0) as? Path {
+        if isInit, let symbolPath = self.childAt(0) as? Displayable {
             if !disableAnimation {
                 // Always fade in (there is a fadeOut when the symbol is removed).
-                let opacity = symbolPath.pathStyle.opacity ?? 1
-                let target: [String: Any] = [
+                var target: [String: Any] = [
                     "scaleX": self._sizeX,
-                    "scaleY": self._sizeY,
-                    "style": ["opacity": opacity] as [String: Any]
+                    "scaleY": self._sizeY
                 ]
+                if let path = symbolPath as? Path {
+                    let opacity = path.pathStyle.opacity ?? 1
+                    target["style"] = ["opacity": opacity] as [String: Any]
+                    path.pathStyle.opacity = 0
+                }
+                // PORT-TODO (ZRImage enter fade): upstream also tweens `style.opacity` 0 -> opacity for
+                //   an image symbol. ZRenderKit animates `style` through `StyleAnimationAccessor`, which
+                //   writes the inherited `Displayable.style` (CommonStyleProps) mirror — the painter reads
+                //   `ZRImage.imageStyle.opacity`, so an animated opacity would never reach the pixels and
+                //   the image would stay at 0 (invisible). Until ZRImage exposes an imageStyle animation
+                //   accessor, image symbols scale in without the opacity tween.
                 symbolPath.scaleX = 0
                 symbolPath.scaleY = 0
-                symbolPath.pathStyle.opacity = 0
                 initProps(symbolPath, target, seriesModel, idx)
             }
         }
@@ -189,7 +222,7 @@ open class Symbol: Group {
         _ data: SeriesData, _ idx: Int, _ symbolSize: [Double],
         _ seriesScope: SymbolDrawSeriesScope? = nil, _ opts: SymbolOpts? = nil
     ) {
-        guard let symbolPath = self.childAt(0) as? Path else { return }
+        guard let symbolPath = self.childAt(0) as? Displayable else { return }
         let seriesModel = data.hostModel as? SeriesModel
 
         var emphasisItemStyle: [String: Any]?
@@ -248,18 +281,37 @@ open class Symbol: Group {
         let symbolStyle = data.getItemVisual(idx, "style") as? [String: Any]
         let visualColor = symbolColorString(symbolStyle?["fill"])
 
-        // ZRImage branch DEFERRED (createSymbol does not produce images yet). Non-image path:
-        symbolPath.useStyle(barStyleFromDict(symbolStyle))
-        // upstream (Symbol.ts:296-297): `symbolPath.style.decal = null;`
-        //   "Disable decal because symbol scale will been applied on the decal."
-        //   FAITHFUL: scatter/symbol series intentionally do NOT texture with a decal (the symbol's
-        //   transform scale would distort the tile) — `barStyleFromDict` bridged style.decal above, so
-        //   this clears it back to match upstream. Do not remove: it is not a deferral.
-        symbolPath.pathStyle.decal = nil
-        if let ec = symbolPath as? ECSymbol, let vc = visualColor {
-            ec.setColor(.string(vc), opts?.symbolInnerColor)
+        // upstream: `if (symbolPath instanceof ZRImage) { ... } else { ... }`
+        if let imagePath = symbolPath as? ZRenderKit.ZRImage {
+            // upstream: useStyle(extend({image, x, y, width, height}, symbolStyle)) — the image's own
+            //   geometry overlaid with the item visual style bag.
+            imagePath.useStyle(symbolImageStyleFromDict(imagePath.imageStyle, symbolStyle))
+            // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis/select/blur state styles
+            //   set below (and `toggleHoverEmphasis`) write the inherited `Displayable.style`
+            //   (CommonStyleProps), but ZRImage renders from its own `imageStyle` and `_syncCommonStyle`
+            //   is one-way (imageStyle -> style), so every state style applied to an image symbol is
+            //   silently inert (hover/select on an `image://` symbol renders no change). Same gap
+            //   PictorialBarView tracks under this id; the fix belongs in
+            //   Sources/ZRenderKit/Graphic/Image.swift (mirror the applied CommonStyleProps subset back
+            //   into `imageStyle` before `dirtyStyle()`).
         }
-        symbolPath.pathStyle.strokeNoScale = true
+        else if let symbolPath = symbolPath as? Path {
+            // upstream branches `__isEmptyBrush` to CLONE symbolStyle before useStyle (an empty symbol
+            //   swaps fill/stroke in place, which would corrupt the shared visual-storage object).
+            //   `barStyleFromDict` already builds a FRESH `PathStyleProps` value on every call, so the
+            //   clone is inherent here and both upstream branches collapse to one.
+            symbolPath.useStyle(barStyleFromDict(symbolStyle))
+            // upstream (Symbol.ts:296-297): `symbolPath.style.decal = null;`
+            //   "Disable decal because symbol scale will been applied on the decal."
+            //   FAITHFUL: scatter/symbol series intentionally do NOT texture with a decal (the symbol's
+            //   transform scale would distort the tile) — `barStyleFromDict` bridged style.decal above, so
+            //   this clears it back to match upstream. Do not remove: it is not a deferral.
+            symbolPath.pathStyle.decal = nil
+            if let ec = symbolPath as? ECSymbol, let vc = visualColor {
+                ec.setColor(.string(vc), opts?.symbolInnerColor)
+            }
+            symbolPath.pathStyle.strokeNoScale = true
+        }
 
         let liftZ = symbolAsDouble(data.getItemVisual(idx, "liftZ"))
         let z2Origin = self._z2
@@ -283,7 +335,8 @@ open class Symbol: Group {
             ? data.getName(idx)
             : labelHelper.getDefaultLabel(data, Double(idx))
         labelOpt.inheritColor = visualColor
-        labelOpt.defaultOpacity = symbolStyle?["opacity"] as? Double
+        // `as? Double` alone would silently drop an Int-boxed opacity (the Int-vs-Double option trap).
+        labelOpt.defaultOpacity = symbolAsDouble(symbolStyle?["opacity"])
         labelStyle.setLabelStyle(symbolPath, labelStatesModels, labelOpt)
 
         self._sizeX = symbolSize[0] / 2
@@ -319,22 +372,50 @@ open class Symbol: Group {
         self.scaleY = scale
     }
 
-    // upstream: fadeOut(cb, seriesModel, opt?) — remove the symbol with a fade.
-    //   PORT NOTE: the port's shared leave helper `removeElementWithFadeOut` fades OPACITY only
-    //   (upstream also animates scaleX/scaleY → 0). The scale-to-0 part is deferred with the broader
-    //   removeElement port; under the current render-reset model the leave path is not reachable
-    //   (SymbolDraw always hits the diff .add branch), so opacity-fade is sufficient for now.
-    public func fadeOut(_ cb: @escaping () -> Void, _ seriesModel: SeriesModel?, _ fadeLabel: Bool = false) {
-        guard let symbolPath = self.childAt(0) as? Path else { cb(); return }
+    // upstream: fadeOut(cb, seriesModel, opt?: {fadeLabel, animation?}) — remove the symbol with a fade.
+    public func fadeOut(_ cb: (() -> Void)? = nil, _ seriesModel: SeriesModel?,
+                        _ opt: SymbolFadeOutOpt? = nil) {
+        guard let symbolPath = self.childAt(0) as? Displayable else { cb?(); return }
+        let dataIndex = innerStore.getECData(self).dataIndex.map { Int($0) } ?? -1
+        let animationOpt = opt?.animation
         // Avoid mistaken hover while fading out.
         self.silent = true
         symbolPath.silent = true
 
-        symbolPath.removeTextContent()
+        // Not show text when animating.
+        if opt?.fadeLabel == true, let textContent = symbolPath.getTextContent() {
+            removeElement(
+                textContent,
+                ["style": ["opacity": 0.0] as [String: Any]],
+                seriesModel,
+                AnimateOrSetPropsOption(
+                    dataIndex: dataIndex,
+                    // weak: this closure is stored as the textContent animator's `done`, and the
+                    //   textContent is owned by symbolPath — a strong capture would retain the whole
+                    //   subtree if the leave animation is ever interrupted (CONVENTIONS §8).
+                    cb: { [weak symbolPath] in symbolPath?.removeTextContent() },
+                    removeOpt: animationOpt
+                )
+            )
+        }
+        else {
+            symbolPath.removeTextContent()
+        }
 
-        let dataIndex = innerStore.getECData(self).dataIndex.map { Int($0) } ?? -1
-        removeElementWithFadeOut(symbolPath, seriesModel, dataIndex)
-        cb()
+        // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: for a ZRImage symbol the `style.opacity`
+        //   half of these leave props is inert (ZRImage renders from `imageStyle`, and only
+        //   Path/Text style animation accessors exist), so an image symbol leaves by scaleX/scaleY -> 0
+        //   only. Same tracked gap as the state styles in `_updateCommon` and the enter fade above.
+        removeElement(
+            symbolPath,
+            [
+                "style": ["opacity": 0.0] as [String: Any],
+                "scaleX": 0.0,
+                "scaleY": 0.0
+            ],
+            seriesModel,
+            AnimateOrSetPropsOption(dataIndex: dataIndex, cb: cb, removeOpt: animationOpt)
+        )
     }
 
     // upstream: static getSymbolSize(data, idx) -> normalizeSymbolSize(...) as [w, h]
@@ -353,6 +434,37 @@ func symbolColorString(_ v: Any?) -> String? {
     if let str = v as? String { return str }
     if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
     return nil
+}
+
+// upstream (Symbol._updateCommon, image branch): `extend({image, x, y, width, height}, symbolStyle)` —
+//   the ZRImage's own geometry overlaid with the item visual `style` bag. `symbolStyle` is the untyped
+//   visual dict (visual/style.swift) while `ZRImage.useStyle` takes a typed `ImageStyleProps`, so bridge
+//   the keys it actually carries. `fill`/`stroke`/`decal` have no counterpart on `ImageStyleProps` (an
+//   image symbol is not tinted by the item style — `ZRImage.setColor` is a no-op); upstream copies them
+//   onto the style object where the image renderer ignores them, so dropping them is faithful.
+//   THE single definition of this bridge: PictorialBarView's `updateCommon` (same upstream expression)
+//   calls it too — its private `pbImageStyleFromDict` copy was deleted in favour of this one.
+func symbolImageStyleFromDict(_ base: ImageStyleProps?, _ style: Any?) -> ImageStyleProps {
+    // Upstream builds a FRESH object literal carrying only the five geometry keys plus whatever
+    //   `symbolStyle` supplies and hands it to `useStyle` (which, lacking STYLE_MAGIC_KEY, routes
+    //   through `createStyle` -> DEFAULT_IMAGE_STYLE merge), so every prop absent from the new style
+    //   resets to its default. Start from a blank `ImageStyleProps` to reproduce that — forwarding only
+    //   the geometry, NOT the element's previous common style (which would otherwise stick across
+    //   re-renders, e.g. an `opacity: 0.5` never resetting to 1).
+    var s = ImageStyleProps()
+    s.image = base?.image
+    s.x = base?.x
+    s.y = base?.y
+    s.width = base?.width
+    s.height = base?.height
+    guard let d = style as? [String: Any] else { return s }
+    if let v = symbolAsDouble(d["opacity"]) { s.opacity = v }
+    if let v = symbolAsDouble(d["shadowBlur"]) { s.shadowBlur = v }
+    if let v = symbolAsDouble(d["shadowOffsetX"]) { s.shadowOffsetX = v }
+    if let v = symbolAsDouble(d["shadowOffsetY"]) { s.shadowOffsetY = v }
+    if let v = d["shadowColor"] as? String { s.shadowColor = v }
+    if let v = d["blend"] as? String { s.blend = v }
+    return s
 }
 
 // Numeric coercion (defaultOptions box numbers as Int OR Double — the Int-vs-Double trap).

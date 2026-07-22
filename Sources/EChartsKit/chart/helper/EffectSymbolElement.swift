@@ -169,8 +169,9 @@ open class EffectSymbol: Symbol {
     // upstream: fadeOut(cb) { cb && cb(); } — EffectSymbol (extends Group upstream) has no base symbol
     //   fade tween, so it just fires the callback immediately. This override replaces Symbol's animated
     //   fadeOut (the call site in SymbolDraw uses this 3-arg signature) so effect symbols remove at once.
-    public override func fadeOut(_ cb: @escaping () -> Void, _ seriesModel: SeriesModel?, _ fadeLabel: Bool = false) {
-        cb()
+    public override func fadeOut(_ cb: (() -> Void)? = nil, _ seriesModel: SeriesModel?,
+                                 _ opt: SymbolFadeOutOpt? = nil) {
+        cb?()
     }
 
     // upstream: updateData(data, idx) {
