@@ -109,10 +109,14 @@ open class HeatmapSeriesModel: SeriesModel {
     //           return coordSysCreator.dimensions[0] === 'lng' && coordSysCreator.dimensions[1] === 'lat';
     //       }
     //   }
-    // `CoordinateSystem.get` is the coord-creator registry (core/CoordinateSystemManager.swift). Consumed by
-    //   the Scheduler progressive gate (Scheduler.swift: `!(seriesModel.preventIncremental && preventIncremental())`),
-    //   same contract as LinesSeries.preventIncremental. Upstream returns undefined (falsy) when the guard
-    //   fails; the Swift `false` is the equivalent truthy value.
+    // `CoordinateSystem.get` is the coord-creator registry (core/CoordinateSystemManager.swift).
+    // PORT-NOTE: `preventIncremental` is a real `open func` slot on the base `SeriesModel` CLASS BODY
+    //   (Series.swift:842), so this `override` is dynamically dispatched. Upstream feature-detects the
+    //   optional method (`upstream: progressive && !(seriesModel.preventIncremental && seriesModel.preventIncremental())`);
+    //   here `Scheduler.restorePipelines` (Scheduler.swift:343) calls it unconditionally
+    //   (`jsTruthy(progressive) && !seriesModel.preventIncremental()`), the base `false` standing in for the
+    //   "absent" branch. Same contract as LinesSeries.preventIncremental. Upstream returns undefined (falsy)
+    //   when the guard fails; the Swift `false` is the equivalent falsy value.
     open override func preventIncremental() -> Bool {
         guard let coordType = self.get("coordinateSystem") as? String,
               let coordSysCreator = CoordinateSystemManager.get(coordType),

@@ -1,10 +1,16 @@
-// Transition-fidelity tail for the MAP chart: MapView now PERSISTS its per-region GeoJSON compound paths
-// and MORPHS their FILL to the new visualMap color on a same-map / same-region-set merge-mode value change
-// (a color tween) instead of `group.removeAll()`-rebuilding and snapping. A map's region GEOMETRY is fixed
-// (from the registered GeoJSON), so only the fill (color STRING) is `updateProps`-morphed — the shape is
-// untouched. Mirrors HeatmapMorphTests. Asserts: (1) a region compound path is IDENTITY-reused across the
-// value change, (2) it schedules a color-tween animator, and (3) a map/region-set change rebuilds without
-// duplication. (The SVG branch is left rebuilding — not exercised here.)
+// Region-rebuild fidelity for the MAP chart.
+//
+// HISTORY: this file used to assert a port-INVENTED L5 feature — MapView kept a name-keyed cache of the
+// per-region GeoJSON compound paths and `updateProps`-tweened their visualMap FILL across a merge-mode
+// value change (`_morphGeoJSON`). When MapView switched over to the shared `MapDraw` (the real upstream
+// owner of the region backdrop), that invention was retired: upstream `MapDraw._buildGeoJSON`
+// (MapDraw.ts:297) does `regionsGroup.removeAll()` and rebuilds EVERY region path on every draw, so the
+// paths are neither identity-reused nor colour-tweened. See the switchover PORT-NOTE at the top of
+// MapView.swift.
+//
+// These tests now assert the upstream semantics: (1) a same-region-set value change REBUILDS the region
+// paths (fresh instances, new fill, no colour-tween animator), and (2)/(3) a map / region-set change
+// rebuilds without duplication. (The SVG branch is left rebuilding — not exercised here.)
 import XCTest
 import ZRenderKit
 @testable import EChartsKit
@@ -78,7 +84,9 @@ final class MapMorphTests: XCTestCase {
         }
     }
 
-    func testRegionFillMorphsOnValueChange() {
+    // Upstream MapDraw rebuilds the whole regions group on every draw — a value change therefore produces
+    // FRESH region paths carrying the new visualMap fill, with no identity reuse and no colour tween.
+    func testRegionRebuildsOnValueChange() {
         ECharts.registerMap("toyMorph", makeToyGeoJSON(["West", "Central", "East"]))
         let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption("toyMorph", [
@@ -97,7 +105,7 @@ final class MapMorphTests: XCTestCase {
         clearAnimators(ec)
         XCTAssertEqual(path1?.animators.count, 0, "animators cleared before the value change")
 
-        // Merge-mode value change: SAME map + SAME regions, DIFFERENT values → the region fill morphs.
+        // Merge-mode value change: SAME map + SAME regions, DIFFERENT values → upstream rebuilds them.
         ec.setOption(["series": [[
             "type": "map", "map": "toyMorph",
             "data": [
@@ -109,13 +117,20 @@ final class MapMorphTests: XCTestCase {
 
         let path2 = regionPath(ec, dataIdx: mapModel(ec)!.getData().indexOfName("West"))
 
-        // (1) The SAME region compound path instance is reused (not rebuilt).
-        XCTAssertNotNil(path2)
-        XCTAssertTrue(path1 === path2, "region compound path reused across the value change (not rebuilt)")
+        // (1) Upstream `regionsGroup.removeAll()` + rebuild ⇒ a FRESH path instance, no identity reuse.
+        XCTAssertNotNil(path2, "the value change re-rendered the West region")
+        XCTAssertFalse(path1 === path2,
+                       "upstream MapDraw._buildGeoJSON rebuilds the regions group — no identity reuse")
 
-        // (2) It schedules a color-tween animator (fill: old visualMap color → new visualMap color).
-        XCTAssertGreaterThan(path2!.animators.count, 0,
-                             "region must schedule a color-morph animator on a same-region-set value change")
+        // (2) The rebuilt path carries the NEW visualMap color, applied directly (no colour tween).
+        let fill2: String? = { if case let .string(s)? = path2?.pathStyle?.fill { return s }; return nil }()
+        XCTAssertNotNil(fill2, "rebuilt region fill is a color STRING")
+        XCTAssertNotEqual(fill1, fill2, "West 20 → 95 must land on a different visualMap color")
+        XCTAssertEqual(path2!.animators.count, 0,
+                       "upstream MapDraw schedules no fill-morph animator (the L5 colour tween was retired)")
+
+        // (3) No duplication: still exactly one path per region after the rebuild.
+        XCTAssertEqual(regionPathCount(ec), 3, "rebuild leaves 3 region paths, no stale duplicates")
     }
 
     func testMapChangeRebuildsWithoutDuplication() {

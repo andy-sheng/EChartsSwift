@@ -35,30 +35,38 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';               -> `zrUtil.defaults` inlined (radarDefaults) / map dropped.
 //   import * as symbolUtil from '../../util/symbol';               -> `symbol` namespace (util/symbol.swift).
 //       DEVIATION: the vertex symbol is built inline with `symbol.createSymbol` (same deviation as
-//       ScatterView / GraphView / TreeView); the `RadarSymbol.__dimIdx` tag + per-symbol enter/update
-//       diff (`updateSymbols`) + emphasis states are DEFERRED.
+//       ScatterView / GraphView / TreeView). The per-symbol emphasis/blur/select state itemStyle IS
+//       applied (styleRadarSymbols). The only remaining deviation is the literal `RadarSymbol.__dimIdx`
+//       tag: symbols are stored untagged in `symbolGroup` in vertex order, so their enumeration index
+//       stands in for `__dimIdx` everywhere upstream reads it.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import RadarSeriesModel, { RadarSeriesDataItemOption, SERIES_TYPE_RADAR } from './RadarSeries';
 //       -> sibling RadarSeries.swift (assumed ported alongside coord/radar + radarLayout).
 //   import ExtensionAPI from '../../core/ExtensionAPI';            -> ExtensionAPI.
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
-//   import { ColorString } from '../../util/types';                -> type-only (label inheritColor; labels DEFERRED).
+//   import { ColorString } from '../../util/types';                -> type-only (the label `inheritColor`,
+//       which IS wired — see styleRadarSymbols).
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel.
 //   import { VectorArray } from 'zrender/src/core/vector';         -> VectorArray (ZRenderKit).
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//       -> label/labelStyle.swift (setLabelStyle + getLabelStatesModels ARE ported). PORT-NOTE (deferred):
-//          the vertex value-label block (upstream RadarView.ts:235-265) remains DEFERRED — it needs the
-//          per-symbol `__dimIdx` tag + a symbolGroup styling loop (neither ported; symbols are drawn
-//          untagged by buildRadarSymbols) to source defaultText via
-//          getStore().get(getDimensionIndex(__dimIdx), idx) and pass it through SetLabelStyleOpt.
-//   import ZRImage from 'zrender/src/graphic/Image';               -> PORT-NOTE: image-symbol branch DEFERRED (inline createSymbol only).
+//       -> label/labelStyle.swift (setLabelStyle + getLabelStatesModels ARE ported) and both ARE WIRED:
+//          the vertex value-label block (upstream RadarView.ts:235-265) is ported in `styleRadarSymbols`
+//          — a symbolGroup styling loop sources defaultText via
+//          getStore().get(getDimensionIndex(i), idx) and passes it through SetLabelStyleOpt together with
+//          labelDataIndex / labelDimIndex / inheritColor / defaultOpacity. The ONE deviation: the
+//          enumeration index `i` stands in for upstream's per-symbol `__dimIdx` tag, because symbols are
+//          stored untagged in `symbolGroup` in vertex order (so index == dimension index).
+//   import ZRImage from 'zrender/src/graphic/Image';               -> ZRenderKit.ZRImage. Wired: an
+//       `image://` symbol comes back from `symbol.createSymbol` as a `ZRImage` (ECSymbol conformer) and
+//       takes the `symbolPath instanceof ZRImage` styling branch in `styleRadarSymbols`.
 //   import { saveOldStyle } from '../../animation/basicTransition'; -> saveOldStyle IS ported
 //       (basicTransition.swift) and IS wired: the data.diff `.update` path calls it on the reused
 //       polyline/polygon before the styling pass restyles (so a color change can tween).
 
 // type RadarSymbol = ReturnType<typeof symbolUtil.createSymbol> & { __dimIdx: number };
-//   PORT-NOTE (deferred): the `__dimIdx` tag is only used by the DEFERRED vertex-label path; symbols are drawn
-//   untagged in the static render.
+//   PORT-NOTE: no literal `__dimIdx` tag is stored — symbols are added to `symbolGroup` untagged, in vertex
+//   order, so the styling loop's enumeration index IS `__dimIdx` (the vertex→dimension index the value-label
+//   lookup needs). The label path itself IS ported (styleRadarSymbols).
 
 // upstream: class RadarView extends ChartView { static readonly type = SERIES_TYPE_RADAR; readonly type = SERIES_TYPE_RADAR; ... }
 open class RadarView: ChartView {
@@ -269,6 +277,14 @@ open class RadarView: ChartView {
             data.getItemVisual(idx, "symbolSize") ?? seriesSymbolSize
         )
         let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
+        // PORT-NOTE (intentional): only `Path` symbols are reuse candidates. An `image://` series yields
+        //   `ZRImage` children, so `existing` is empty, `canMorphSymbols` is false, and the update takes
+        //   the `removeAll()` + rebuild branch — which IS upstream's behaviour (`updateSymbols` "Simply
+        //   rerender all"); the Path morph below is the port's extra optimisation. Consequence to know:
+        //   an image symbol is destroyed/recreated each update, so its vertex position does not tween and
+        //   a still-loading image re-enters `makeImage` (re-running the keepAspect 'center' onload
+        //   recentering in ToolPath.swift). Widen this scan to `as? Displayable` + rewrite
+        //   `imageStyle.x/y/width/height` if image symbols ever need to tween.
         let existing = symbolGroup.childrenRef().compactMap { $0 as? Path }
         let canMorphSymbols = symbolType != "none"
             && existing.count == vertexCount
@@ -360,22 +376,25 @@ open class RadarView: ChartView {
         for i in 0..<count {
             let pt = points[i]
             let el = symbol.createSymbol(symbolType, pt.x - sizeW / 2, pt.y - sizeH / 2, sizeW, sizeH, fill)
-            if let path = el as? Path {
-                path.name = "vertex"
+            // `symbol.createSymbol` returns an `ECSymbol` whose concrete type is a `Path` (SymbolPath /
+            //   SVGPath) OR — for an `image://` symbol — a `ZRImage`. Both are `Displayable`s, so place
+            //   either one (upstream's `symbolPath` is likewise the union `ReturnType<createSymbol>`).
+            if let symbolPath = el as? Displayable {
+                symbolPath.name = "vertex"
                 // upstream: symbolPath.attr({ z2: 100 }) — lift the vertex markers above the radar axis lines.
-                path.z2 = 100
-                path.originX = pt.x
-                path.originY = pt.y
+                symbolPath.z2 = 100
+                symbolPath.originX = pt.x
+                symbolPath.originY = pt.y
                 // upstream createSymbol: `rotation: symbolRotate * Math.PI / 180 || 0` — the symbol rotates
                 //   about its own center (here the vertex point, which is the transform origin).
-                path.rotation = symbolRotate * Double.pi / 180
+                symbolPath.rotation = symbolRotate * Double.pi / 180
                 if animateIn {
                     // upstream Symbol.ts first-create scale-in entrance, centered on the vertex point.
-                    path.scaleX = 0
-                    path.scaleY = 0
-                    initProps(path, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
+                    symbolPath.scaleX = 0
+                    symbolPath.scaleY = 0
+                    initProps(symbolPath, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
                 }
-                _ = symbolGroup.add(path)
+                _ = symbolGroup.add(symbolPath)
             }
         }
     }
@@ -384,25 +403,36 @@ open class RadarView: ChartView {
     //   apply the full itemStyle + palette color + strokeNoScale, the per-state itemStyle clone, and the
     //   value label. The symbols are stored untagged in `symbolGroup` in vertex order, so the enumeration
     //   index IS upstream's `symbolPath.__dimIdx` (the vertex→dimension index for the label value lookup).
-    //   PORT-NOTE (deferred): the `symbolPath instanceof ZRImage` branch (lines 236-244) is not ported —
-    //   buildRadarSymbols only builds `Path` symbols (image:// symbols are dropped at creation).
+    //   The `symbolPath instanceof ZRImage` branch (upstream lines 236-244) IS ported: an `image://`
+    //   symbol keeps its own image style fields (image/x/y/width/height) and only takes the itemStyle
+    //   on top — no setColor / strokeNoScale (a ZRImage has neither fill nor stroke).
     private func styleRadarSymbols(
         _ symbolGroup: Group, _ itemModel: Model, _ data: SeriesData, _ idx: Int,
         _ itemStyle: [String: Any]?, _ color: Any?
     ) {
         let colorString = radarColorString(color)
-        let opacity = itemStyle?["opacity"] as? Double
+        // Int-boxed `opacity: 0` must survive (a bare `as? Double` returns nil and drops it).
+        let opacity = symbolAsDouble(itemStyle?["opacity"])
         for (i, child) in symbolGroup.childrenRef().enumerated() {
-            guard let symbolPath = child as? Path else { continue }
+            guard let symbolPath = child as? Displayable else { continue }
 
-            // symbolPath.useStyle(itemStyle); symbolPath.setColor(color); symbolPath.style.strokeNoScale = true;
-            if let itemStyle = itemStyle {
-                symbolPath.useStyle(barStyleFromDict(itemStyle))
+            if let imageEl = symbolPath as? ZRenderKit.ZRImage {
+                // upstream: const pathStyle = symbolPath.style;
+                //   symbolPath.useStyle(zrUtil.extend({ image: pathStyle.image, x: pathStyle.x,
+                //     y: pathStyle.y, width: pathStyle.width, height: pathStyle.height }, itemStyle));
+                let pathStyle = imageEl.imageStyle
+                imageEl.useStyle(radarImageStyleFrom(pathStyle, itemStyle))
             }
-            if let cs = colorString, let ec = symbolPath as? ECSymbol {
-                ec.setColor(.string(cs), nil)
+            else if let symbolPath = symbolPath as? Path {
+                // symbolPath.useStyle(itemStyle); symbolPath.setColor(color); symbolPath.style.strokeNoScale = true;
+                if let itemStyle = itemStyle {
+                    symbolPath.useStyle(barStyleFromDict(itemStyle))
+                }
+                if let cs = colorString, let ec = symbolPath as? ECSymbol {
+                    ec.setColor(.string(cs), nil)
+                }
+                symbolPath.pathStyle.strokeNoScale = true
             }
-            symbolPath.pathStyle.strokeNoScale = true
 
             // upstream lines 218-221: symbolPath.ensureState(stateName).style = zrUtil.clone(itemStateStyle).
             //   Swift style dicts are value types, so the assignment already copies.
@@ -419,7 +449,9 @@ open class RadarView: ChartView {
             // setLabelStyle(symbolPath, getLabelStatesModels(itemModel), { labelFetcher, labelDataIndex,
             //   labelDimIndex, defaultText, inheritColor, defaultOpacity });
             var opt = SetLabelStyleOpt()
-            opt.labelFetcher = data.hostModel as? DataFormatMixin
+            // `SetLabelStyleOpt.labelFetcher` is typed `LabelFetcher?` (labelStyle.swift); downcast to the
+            //   protocol, not to `DataFormatMixin` — a closure-backed fetcher would otherwise be dropped.
+            opt.labelFetcher = data.hostModel as? LabelFetcher
             opt.labelDataIndex = Double(idx)
             opt.labelDimIndex = Double(i)
             opt.defaultText = defaultText
@@ -466,6 +498,34 @@ private func radarNumberArray(_ v: Any?) -> [Double]? {
     if let p = v as? VectorArray { return [p.x, p.y] }
     if let arr = v as? [Any] { return arr.map { radarToNumber($0) } }
     return nil
+}
+
+// upstream (RadarView.ts:237-243): `zrUtil.extend({ image, x, y, width, height }, itemStyle)` — the
+//   image:// symbol's own image style fields are the base and the resolved itemStyle is layered on top
+//   (so a shared key like `opacity` comes from the itemStyle). `ImageStyleProps` is a typed struct here,
+//   so only its known CommonStyleProps keys can carry over from the itemStyle dict (fill/stroke have no
+//   meaning for a ZRImage and are dropped, as upstream's canvas image draw ignores them anyway).
+private func radarImageStyleFrom(_ imageStyle: ImageStyleProps?, _ itemStyle: [String: Any]?) -> ImageStyleProps {
+    var s = ImageStyleProps()
+    s.image = imageStyle?.image
+    s.x = imageStyle?.x
+    s.y = imageStyle?.y
+    s.width = imageStyle?.width
+    s.height = imageStyle?.height
+    guard let d = itemStyle else { return s }
+    // Numeric option/visual values are routinely Int-boxed (`opacity: 0`, `shadowBlur: 10`), so a bare
+    //   `as? Double` would silently DROP them. Coerce through `symbolAsDouble` — same treatment as the
+    //   sibling port of this exact upstream expression, `pbImageStyleFromDict`
+    //   (Sources/EChartsKit/chart/bar/PictorialBarView.swift), which funnels the same four keys through
+    //   `pbDouble`. Keep the two in sync (same key set, same coercion).
+    if let v = symbolAsDouble(d["opacity"]) { s.opacity = v }
+    if let v = symbolAsDouble(d["shadowBlur"]) { s.shadowBlur = v }
+    if let v = symbolAsDouble(d["shadowOffsetX"]) { s.shadowOffsetX = v }
+    if let v = symbolAsDouble(d["shadowOffsetY"]) { s.shadowOffsetY = v }
+    // `shadowColor` may arrive as a raw String or an EChartsKit `ZRColor.color(String)`.
+    if let v = radarColorString(d["shadowColor"]) { s.shadowColor = v }
+    if let v = d["blend"] as? String { s.blend = v }
+    return s
 }
 
 // The palette color lands under the item visual style as an EChartsKit `ZRColor.color(String)` or a raw

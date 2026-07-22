@@ -23,19 +23,37 @@ import ZRenderKit
 
 // upstream imports (mapped to this port; `→` marks the Swift symbol used):
 //   import * as graphic from '../../util/graphic';
-//     → `Circle`/`Polygon`/`Polyline`/`CompoundPath`/`ZRText` are ZRenderKit shapes. `util/graphic`
-//       (initProps/updateProps/Circle helpers) is ported; this static render builds the shapes directly.
+//     → `Circle` is a ZRenderKit shape; `util/graphic` (initProps/updateProps) is ported.
 //   import MapDraw from '../../component/helper/MapDraw';
-//     → `MapDraw` (component/helper/MapDraw.swift) IS NOW PORTED — roam controller + `_transformGroup`,
-//       GeoJSON + geoSVG builds, the visualMap-encoded region fill + decal, the emphasis/select/blur
-//       states, and the event/tooltip/state triggers — with TWO documented gaps: the `GeoProjection.stream`
+//     → `MapDraw` (component/helper/MapDraw.swift) — roam controller + `_transformGroup`, GeoJSON +
+//       geoSVG builds, the visualMap-encoded region fill + decal, the emphasis/select/blur states, and
+//       the event/tooltip/state triggers — with TWO documented gaps: the `GeoProjection.stream`
 //       clip/resample path (`projectionStream` is nil, `projectPolys` dormant) and the name-keyed geo
 //       `labelFetcher` (replaced by an eager `getFormattedLabel`); see the PORT-TODOs in MapDraw.swift.
-//     → PORT-NOTE (deferred — the SWITCHOVER, not the port): `MapView.render` still uses the STATIC inlined
-//       subset below (`_buildGeoJSON` / `_buildSVG`) rather than a persistent `_mapDraw`. Delegating is a
-//       driver-level change (render lifecycle + roam routing) needing PNG-oracle validation, so it is
-//       intentionally NOT done here; see the identical note in `GeoView.swift`. When it lands, delete the
-//       inlined subset (MapView:176-518, 519-660 and the file-tail PORT-NOTE helpers).
+//     → SWITCHOVER DONE: `MapView.render` now owns a persistent `_mapDraw` and delegates the whole
+//       region backdrop to `MapDraw.draw` (upstream lifecycle: `resetForLabelLayout` on `geoRoam`, the
+//       self-roam short-circuit, `_clearMapDraw` on remove/dispose, `__updateOnOwnRoam`). The previously
+//       inlined static subset (`_buildGeoJSON` / `_buildSVG` / `_morphGeoJSON` / `_resetLabelForRegion`
+//       and their file-tail helpers) is DELETED — it was a duplicate of MapDraw (PORTING §2).
+//
+//       ── BEHAVIOUR CHANGES the switchover deliberately accepts (all in the direction of upstream) ──
+//       (1) REGION FILL MORPH DROPPED. The deleted `_morphGeoJSON` was a port INVENTION (an L5 feature):
+//           it kept a name-keyed cache of the region `CompoundPath`s and `updateProps`-tweened their
+//           visualMap fill across a merge-mode value change. Upstream `MapDraw._buildGeoJSON`
+//           (MapDraw.ts:297) simply does `regionsGroup.removeAll()` and rebuilds every region path, so
+//           regions are neither identity-reused nor colour-tweened. Retired with the switchover;
+//           `MapMorphTests.testRegionFillMorphsOnValueChange` was rewritten to assert the rebuild.
+//       (2) REGION ENTRANCE FADE DROPPED. The deleted `createCompoundPath` did an
+//           `initProps({ style: { opacity: 0 } })` fade-in. Upstream MapDraw.ts contains NO `initProps` /
+//           `updateProps` call at all — map regions appear at their final opacity. Retired with the
+//           switchover; `MapTransitionTests.test_region_fades_in_when_animation_on` was inverted.
+//       (3) REGION LABEL POSITIONING moved to MapDraw's `labelXY` percent-offset form. `_buildGeoJSON`
+//           always passes the region `centerPt` as `labelXY` (MapDraw.ts:368), and
+//           `resetLabelForRegion` then OVERWRITES `el.textConfig.position` with a two-element percent
+//           STRING ARRAY (`['x%','y%']`, MapDraw.ts:742) plus a `layoutRect`. Consequence: an explicit
+//           `label.position: 'top'` no longer reaches `textConfig.position` for a geoJSON REGION (it is
+//           still honoured for the legend-symbol label below, and for SVG regions, which pass
+//           `labelXY == nil`). This is faithful; `MapLabelTests` was updated to the array shape.
 //   import ChartView from '../../view/Chart';                     → `ChartView` (view/Chart.swift).
 //   import MapSeries, { getMainMapSeries, MapDataItemOption, mapSeriesNeedsDrawMap, SERIES_TYPE_MAP }
 //       from './MapSeries';   → assumed sibling `MapSeriesModel` / free functions (see block below).
@@ -43,10 +61,10 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';           → `ExtensionAPI`.
 //   import { Payload, DisplayState, ECElement, RoamPayload } from '../../util/types';  → util/types.swift.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';
-//     → label/labelStyle is ported (label/labelStyle.swift); MapView still inlines a minimal plain-text
-//       reproduction (`_updateSymbolLabel` / `_resetLabelForRegion`), the same deviation as FunnelView/GeoView.
+//     → label/labelStyle is ported (label/labelStyle.swift) and used directly by `_renderSymbolLabel`
+//       (the REGION labels are owned by `MapDraw.resetLabelForRegion`).
 //   import { setStatesFlag, Z2_EMPHASIS_LIFT } from '../../util/states';
-//     → util/states.swift is ported (`setStatesFlag`, `Z2_EMPHASIS_LIFT`). In this static render
+//     → util/states.swift is ported (`setStatesFlag`, `Z2_EMPHASIS_LIFT`). In this view
 //       `Z2_EMPHASIS_LIFT` (== 10) is still inlined as a local constant; the `setStatesFlag` region↔symbol
 //       hover link IS now ported (see `_renderSymbolLabel`, via `getHighDownInner(regionGroup).onHoverStateChange`).
 //
@@ -79,38 +97,7 @@ open class MapView: ChartView {
     }
 
     // upstream: private _mapDraw: MapDraw;
-    // PORT-NOTE (deferred — the SWITCHOVER, not the port): `MapDraw` IS ported
-    //   (Sources/EChartsKit/component/helper/MapDraw.swift). Only this view-level slot is deferred: the
-    //   GeoJSON region backdrop (with data colouring) is still built directly in `_buildGeoJSON` here, so
-    //   the roam controller / SVG map / persistent `_transformGroup` MapDraw owns are not routed to yet.
-
-    // ── Persistent GeoJSON region elements for the COLOR-MORPH path (L5 transition fidelity) ──────────
-    //   A map's region GEOMETRY is fixed (from the registered GeoJSON); a merge-mode value change only
-    //   re-colors each region via the visualMap encoding. So instead of `group.removeAll()`-rebuilding
-    //   (which snaps the recolor), the region compound paths are PERSISTED across renders and their FILL
-    //   is `updateProps`-morphed (as a color STRING, so the Animator's color-tween path runs) toward the
-    //   new visualMap color. `_geoJSONMapName` + the persisted region-name set gate morph-vs-rebuild: a
-    //   map-name change or a different region set (different geometry) rebuilds fresh and resets these.
-    //   Keyed by region NAME; a duplicated `properties.name` shares one region group but can own several
-    //   compound paths, so the path caches are name → [CompoundPath]. (SVG branch is NOT morphed — it
-    //   rebuilds as before, and clears this state so a later SVG→GeoJSON switch can't reuse stale paths.)
-    private var _geoJSONMapName: String? = nil
-    private var _regionGroups: [String: Group] = [:]
-    private var _regionPolyPaths: [String: [CompoundPath]] = [:]
-    private var _regionLinePaths: [String: [CompoundPath]] = [:]
-    // Legend-symbol circles added directly to `self.group` by `_renderSymbols` — tracked so they can be
-    //   cleared on a morph render (where the group is NOT wiped) without touching the region groups.
-    private var _symbolEls: [Element] = []
-
-    // Drop the persistent GeoJSON region state — called whenever a branch wipes the group (host-geo /
-    //   SVG / no-draw / a GeoJSON rebuild) so a later morph can't reuse detached paths.
-    private func _resetGeoJSONState() {
-        self._geoJSONMapName = nil
-        self._regionGroups = [:]
-        self._regionPolyPaths = [:]
-        self._regionLinePaths = [:]
-        self._symbolEls = []
-    }
+    private var _mapDraw: MapDraw?
 
     // upstream: render(mapModel: MapSeries, ecModel: GlobalModel, api: ExtensionAPI, payload: Payload)
     //   The base override is typed `(SeriesModel, ...)`; narrow `model` to `MapSeriesModel` (cf. FunnelView).
@@ -129,584 +116,76 @@ open class MapView: ChartView {
             return
         }
 
+        // upstream: const group = this.group; group.removeAll();
+        //   Only the direct children of the view group are dropped — the persistent `_mapDraw.group`
+        //   (with its `_transformGroup` / region subtree) survives and is re-added below, as upstream.
         let group = self.group
-        // NOTE: the group is NO LONGER wiped up front — the GeoJSON region path MORPHS its fill on a
-        //   merge-mode value change (see `_buildGeoJSON`), so it keeps the persistent region groups. Each
-        //   branch that CANNOT morph (host-geo / SVG / no-draw) wipes the group + resets the morph state
-        //   itself, mirroring HeatmapView (cartesian morphs; other branches removeAll).
+        _ = group.removeAll()
 
         // upstream: if (mapModel.getHostGeoModel()) { return; }
         //   When the series is hosted on a standalone `geo` component, the regions are drawn by `GeoView`
         //   (this view only contributes symbols in that case, which upstream also skips here).
         if mapModel.getHostGeoModel() != nil {
-            _ = group.removeAll()
-            self._resetGeoJSONState()
             return
         }
 
-        // upstream keeps a persistent `_mapDraw` and, on `geoRoam`, calls `mapDraw.resetForLabelLayout()`
-        //   / short-circuits a self-roam. STATIC render: no roam, no persistent MapDraw — the group is
-        //   rebuilt from scratch each render (matching GeoView / FunnelView).
-        // PORT-NOTE (deferred — roam): requires RoamController / transformGroup — the
-        //   `payload.type === 'geoRoam'` self-roam short-circuit and `resetForLabelLayout` are omitted.
+        // upstream: let mapDraw = this._mapDraw;
+        //           if (mapDraw && payload && payload.type === 'geoRoam') { mapDraw.resetForLabelLayout(); }
+        var mapDraw = self._mapDraw
+        if let mapDraw = mapDraw, payload.type == "geoRoam" {
+            mapDraw.resetForLabelLayout()
+        }
 
-        // upstream: if (mapSeriesNeedsDrawMap(mapModel)) { mapDraw.draw(...); } else { this._clearMapDraw(); }
-        //   MapDraw.draw dispatches on `geo.resourceType`: 'geoJSON' → _buildGeoJSON; 'geoSVG' → _buildSVG.
-        if mapSeriesNeedsDrawMap(mapModel) {
-            let geo = mapModel.coordinateSystem as! Geo
-            if geo.resourceType == "geoSVG" {
-                // SVG branch rebuilds as-is (NOT morphed): wipe the group + drop the GeoJSON morph state.
-                _ = group.removeAll()
-                self._resetGeoJSONState()
-                self._buildSVG(mapModel, ecModel, api)
+        // upstream: Not update map if it is a roam action from self.
+        //   if (!(payload && payload.type === 'geoRoam' && payload.componentType === 'series'
+        //         && payload.seriesId === mapModel.id)) { ... } else { mapDraw && group.add(mapDraw.group); }
+        //   PORT-NOTE: the port's `Payload` is a non-Optional struct; the driver passes `Payload(type: "")`
+        //   as the "no payload" sentinel, and dynamic payload fields live in `payload.other`.
+        //   PORT-NOTE (DORMANT BY DESIGN — do not "fix" in isolation): `componentType` / `seriesId` are
+        //   NOT emitted by this port. `roamHelperGeo.swift`'s `geoRoam` dispatch (see its `dispatch(_:)`,
+        //   ~line 147) stamps only `geoRoamHostId` / `geoRoamHostMainType`; nothing in Sources ever sets
+        //   `other["componentType"] = "series"`. So `isSelfRoam` is ALWAYS false today and every roam
+        //   falls into the full `mapDraw.draw` branch below — which is exactly what must happen under the
+        //   port's current routing: roamHelperGeo registers the DEFAULT `update: 'update'` instead of
+        //   upstream's `update: 'updateTransform'` (deviation documented at roamHelperGeo.swift:35-39),
+        //   so `__updateOnOwnRoam` is NEVER dispatched and the full redraw is what actually moves the map.
+        //   Re-keying this guard onto `geoRoamHostMainType`/`geoRoamHostId` (or teaching roamHelperGeo the
+        //   upstream field names) would make the branch fire and FREEZE the map on pan/zoom; it REQUIRES
+        //   the `update: 'updateTransform'` → `__updateOnOwnRoam` routing to land in the same change.
+        //   The upstream spelling is kept verbatim here so that change is a one-line switch.
+        let isSelfRoam = payload.type == "geoRoam"
+            && (payload.other["componentType"] as? String) == "series"
+            && (payload.other["seriesId"] as? String) == mapModel.id
+        if !isSelfRoam {
+            // upstream: if (mapSeriesNeedsDrawMap(mapModel)) { mapDraw = mapDraw || (this._mapDraw = new MapDraw(api));
+            //     group.add(mapDraw.group); mapDraw.draw(mapModel, ecModel, api, this, payload); }
+            //   else { this._clearMapDraw(); }
+            if mapSeriesNeedsDrawMap(mapModel) {
+                if mapDraw == nil {
+                    let created = MapDraw(api)
+                    self._mapDraw = created
+                    mapDraw = created
+                }
+                _ = group.add(mapDraw!.group)
+                // upstream `payload` is nullable and `MapDraw.draw` keys its "no animation" flag off it;
+                //   map the driver's `Payload(type: "")` sentinel back to `nil` so a plain render animates.
+                mapDraw!.draw(mapModel, ecModel, api, self, payload.type.isEmpty ? nil : payload)
             }
             else {
-                // GeoJSON branch MORPHS: it manages its own morph-vs-rebuild + wipe (no up-front removeAll).
-                self._buildGeoJSON(mapModel, ecModel, api)
+                self._clearMapDraw()
             }
         }
         else {
-            // No map to draw → clear everything (symbols may still be added below).
-            _ = group.removeAll()
-            self._resetGeoJSONState()
+            // upstream: mapDraw && group.add(mapDraw.group);
+            if let mapDraw = mapDraw {
+                _ = group.add(mapDraw.group)
+            }
         }
 
         // upstream: mapModel.get('showLegendSymbol') && ecModel.getComponent('legend') && this._renderSymbols(mapModel);
         if mapJsTruthy(mapModel.get("showLegendSymbol")) && ecModel.getComponent("legend") != nil {
             self._renderSymbols(mapModel)
         }
-    }
-
-    // ================================================================================================
-    // Inlined static subset of `MapDraw._buildGeoJSON` (component/helper/MapDraw.ts) — the SERIES-MAP
-    // variant. Identical geometry projection to `GeoView._buildGeoJSON`, but each region is FILLED with
-    // the per-region series data-item colour: `regionModel` comes from `data.getItemModel(dataIdx)` (not
-    // `getRegionModel`), and when the fill is encoded by a visualMap (`isVisualEncodedByVisualMap`) the
-    // region gets `data.getItemVisual(dataIdx, 'style').fill`. Falls back to the region `itemStyle`
-    // (`getFixedItemStyle` → `areaColor`).
-    //
-    // PORT-NOTE (deferred — faithful to a STATIC render; separate upstream subsystems):
-    //   - ROAM: `transformGroup` / `RoamController` / `viewCoordSys` local transform. Here the view
-    //     transform is folded into `Geo.dataToPoint` (no roam), so points land at final pixels directly.
-    //   - `projectionStream` (d3-style clip/resample) / `projectPolys`: only the per-point projection is
-    //     used (inside `dataToPoint`).
-    //   - EMPHASIS/SELECT/BLUR states + event/tooltip/state triggers (`applyOptionStyleForRegion`'s
-    //     `ensureState(...)`, `setDefaultStateProxy`, `resetEventTriggerForRegion` &c.) — deferred. Only
-    //     the NORMAL itemStyle + data fill is drawn.
-    //   - `decal` (`createOrUpdatePatternFromDecal`) — pattern/decal bridge deferred.
-    // ================================================================================================
-    private func _buildGeoJSON(_ mapModel: MapSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
-
-        let geo = mapModel.coordinateSystem as! Geo
-        let data = mapModel.getData()
-        let mapName = geo.map
-
-        // ── COLOR-MORPH decision (L5 transition fidelity) ────────────────────────────────────────────
-        //   A map's region GEOMETRY is fixed; a merge-mode value change only re-colors each region. So if
-        //   the region groups persist AND the map name + region set are unchanged (same geometry), MORPH
-        //   the region fills to the new visualMap color via `updateProps` instead of rebuilding + snapping.
-        var currentNames = Set<String>()
-        for region in geo.regions where region is GeoJSONRegion {
-            currentNames.insert(region.name)
-        }
-        let canMorph = !self._regionGroups.isEmpty
-            && self._geoJSONMapName == mapName
-            && Set(self._regionGroups.keys) == currentNames
-        if canMorph {
-            self._morphGeoJSON(mapModel, api, geo, data)
-            return
-        }
-
-        // REBUILD fresh (first render, map-name change, or region-set change): wipe the group + reset the
-        //   morph state, then (re)build the region groups below and repopulate the persistent path caches.
-        _ = self.group.removeAll()
-        self._resetGeoJSONState()
-        self._geoJSONMapName = mapName
-
-        // upstream: const isVisualEncodedByVisualMap = data && data.getVisual('visualMeta')
-        //     && data.getVisual('visualMeta').length > 0;
-        let visualMeta = data.getVisual("visualMeta")
-        let isVisualEncodedByVisualMap = (visualMeta as? [Any])?.isEmpty == false
-
-        // upstream: geo.dataToPoint applies projection.project then the view transform. Skip nil points.
-        func projectRing(_ ring: [[Double]]) -> [VectorArray] {
-            var out: [VectorArray] = []
-            for p in ring {
-                if let np = geo.dataToPoint(p, false), np.count >= 2 {
-                    out.append(VectorArray(np[0], np[1]))
-                }
-            }
-            return out
-        }
-
-        // upstream: regionsGroupByName / regionsInfoByName caches — reuse a region group (and its cached
-        //   dataIdx + region model) for duplicated `properties.name`.
-        var regionsGroupByName: [String: Group] = [:]
-        var regionInfoByName: [String: (dataIdx: Int, regionModel: Model)] = [:]
-
-        for region in geo.regions {
-            guard let gjRegion = region as? GeoJSONRegion else {
-                continue
-            }
-            let regionName = region.name
-
-            let regionGroup: Group
-            let dataIdx: Int
-            let regionModel: Model
-            if let existing = regionsGroupByName[regionName] {
-                regionGroup = existing
-                let info = regionInfoByName[regionName]!
-                dataIdx = info.dataIdx
-                regionModel = info.regionModel
-            }
-            else {
-                // upstream: regionGroup = new graphic.Group(); regionsGroup.add(regionGroup);
-                regionGroup = Group()
-                _ = self.group.add(regionGroup)
-
-                // upstream: dataIdx = data ? data.indexOfName(regionName) : null;
-                //           regionModel = data.getItemModel(dataIdx)   // (map series, non-geo branch)
-                dataIdx = data.indexOfName(regionName)
-                regionModel = data.getItemModel(dataIdx)
-
-                // upstream: const silent = regionModel.get('silent', true); silent != null && (regionGroup.silent = silent);
-                if let silent = regionModel.get("silent", true), !(silent is NSNull) {
-                    regionGroup.silent = mapJsTruthy(silent)
-                }
-
-                regionsGroupByName[regionName] = regionGroup
-                regionInfoByName[regionName] = (dataIdx, regionModel)
-                // Persist the region group for the color-morph path (keyed by region name).
-                self._regionGroups[regionName] = regionGroup
-            }
-
-            // upstream: const polygonSubpaths = []; const polylineSubpaths = [];
-            var polygonSubpaths: [Path] = []
-            var polylineSubpaths: [Path] = []
-
-            for geometry in gjRegion.geometries {
-                if geometry.type == "polygon", let polyGeo = geometry as? GeoJSONPolygonGeometry {
-                    // upstream: let polys = [geometry.exterior].concat(geometry.interiors || []);
-                    var polys: [[[Double]]] = [polyGeo.exterior]
-                    polys.append(contentsOf: polyGeo.interiors ?? [])
-                    for poly in polys {
-                        var shape = PolygonShape()
-                        shape.points = projectRing(poly)
-                        polygonSubpaths.append(Polygon(["shape": shape as PathShape]))
-                    }
-                }
-                else if let lineGeo = geometry as? GeoJSONLineStringGeometry {
-                    for points in lineGeo.points {
-                        var shape = PolylineShape()
-                        shape.points = projectRing(points)
-                        polylineSubpaths.append(Polyline(["shape": shape as PathShape]))
-                    }
-                }
-            }
-
-            // upstream: const centerPt = transformPoint(region.getCenter(), projection && projection.project);
-            let centerRaw = geo.dataToPoint(gjRegion.getCenter(), false)
-
-            // upstream: createCompoundPath(subpaths, isLine?) — one CompoundPath, styled + labelled.
-            //   Returns the created path plus its resolved solid-fill string (used as the label's
-            //   `inheritColor`), or nil when there are no subpaths.
-            @discardableResult
-            func createCompoundPath(_ subpaths: [Path], _ isLine: Bool) -> (path: CompoundPath, fill: String?)? {
-                if subpaths.isEmpty {
-                    return nil
-                }
-                var cpShape = CompoundPathShape()
-                cpShape.paths = subpaths
-                let compoundPath = CompoundPath(["shape": cpShape as PathShape])
-                compoundPath.culling = true
-                compoundPath.segmentIgnoreThreshold = 1
-                _ = regionGroup.add(compoundPath)
-
-                // upstream: applyOptionStyleForRegion(api, data, isVisualEncodedByVisualMap, compoundPath, dataIdx, regionModel);
-                //   STATIC subset: NORMAL itemStyle + (visualMap) data fill; emphasis/select/blur states DEFERRED.
-                var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
-                // upstream: if (data) { const style = data.getItemVisual(dataIndex, 'style');
-                //     if (isVisualEncodedByVisualMap && style.fill) { normalStyle.fill = style.fill; } }
-                if dataIdx >= 0 {
-                    if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
-                       isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
-                        normalStyle["fill"] = fill
-                    }
-                    // upstream (MapDraw.ts:658-664): `const decal = data.getItemVisual(dataIndex, 'decal');
-                    //   if (decal) { normalStyle.decal = createOrUpdatePatternFromDecal(decal, api); }`.
-                    //   The raw 'decal' visual is the decal OPTION bag (set by visual/style or aria.setDecal);
-                    //   map generates its own Pattern inline (it styles from the region itemStyle, not the
-                    //   data 'style' bag) rather than reading the decalVisual-produced style.decal.
-                    let decal = data.getItemVisual(dataIdx, "decal")
-                    if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
-                        normalStyle["decal"] = pat
-                    }
-                }
-
-                var pathStyle = mapPathStyleFromDict(normalStyle)
-                // upstream: el.style.strokeNoScale = true;
-                pathStyle.strokeNoScale = true
-
-                // upstream: fixLineStyle — for a "line" compound, stroke = stroke || fill; fill = null.
-                if isLine {
-                    if pathStyle.stroke == nil { pathStyle.stroke = pathStyle.fill }
-                    pathStyle.fill = nil
-                }
-
-                // ENTRANCE ANIMATION (opacity fade-in): mirror FunnelView's piece fade — set the
-                //   construction-time opacity to 0, then animate (or, with animation OFF, instantly
-                //   `attr`) toward the FINAL opacity via `initProps`. The partial ["style":["opacity":…]]
-                //   dict merges per-key on BOTH the animate and animation-OFF paths (Path.attrKV), so
-                //   the region always ends at its final (visible) opacity. Without capturing the final
-                //   opacity first the region would stay invisible.
-                let finalOpacity = pathStyle.opacity ?? 1.0
-                pathStyle.opacity = 0
-                compoundPath.useStyle(pathStyle)
-                initProps(
-                    compoundPath,
-                    ["style": ["opacity": finalOpacity] as [String: Any]],
-                    mapModel,
-                    dataIdx
-                )
-
-                // Phase 49 (hover-emphasis): upstream applyOptionStyleForRegion (MapDraw.ts:671-676) stamps
-                //   the emphasis/blur/select itemStyle states on EACH region compound path, then
-                //   setDefaultStateProxy. `states.setStatesStylesFromModel` is the ported equivalent (it
-                //   ensureState('emphasis'/'blur'/'select').style = model.getItemStyle()); the state proxy is
-                //   attached when the region group is toggled a highDown dispatcher below (its child traverse
-                //   covers this path). Upstream (MapDraw.applyOptionStyleForRegion:647-649,671-673) stamps
-                //   the emphasis/select/blur state styles with `getFixedItemStyle` (getItemStyle + areaColor→
-                //   fill fixup), so pass `mapGetFixedItemStyle` as the state-style getter (the getter receives
-                //   `regionModel.getModel([stateName, 'itemStyle'])`, matching upstream's per-state model).
-                states.setStatesStylesFromModel(compoundPath, regionModel, "itemStyle", mapGetFixedItemStyle)
-
-                // The region's resolved solid fill (polygon) or stroke (line) — the label's
-                //   `inheritColor` so `label.color: 'inherit'` picks up the region colour.
-                let fill = isLine
-                    ? mapColorString(normalStyle["stroke"]) ?? mapColorString(normalStyle["fill"])
-                    : mapColorString(normalStyle["fill"])
-                return (compoundPath, fill)
-            }
-
-            // upstream: createCompoundPath(polygonSubpaths); createCompoundPath(polylineSubpaths, true);
-            let polyResult = createCompoundPath(polygonSubpaths, false)
-            let lineResult = createCompoundPath(polylineSubpaths, true)
-
-            // Persist the region's compound path(s) for the color-morph path. A duplicated `properties.name`
-            //   shares the region group but can own several compound paths → append to a per-name list.
-            if let pr = polyResult { self._regionPolyPaths[regionName, default: []].append(pr.path) }
-            if let lr = lineResult { self._regionLinePaths[regionName, default: []].append(lr.path) }
-
-            // upstream: resetLabelForRegion(...) attaches the region-name label as the compound path's
-            //   textContent (via `setLabelStyle`). Prefer the polygon el; fall back to the polyline el.
-            //   `_ = centerRaw` — with the label attached to the el (default position "inside"), the
-            //   painter centres it in the el's bounding rect, so the explicit centroid is no longer used.
-            _ = centerRaw
-            if let target = polyResult ?? lineResult {
-                self._resetLabelForRegion(
-                    mapModel, data, regionModel, regionName, dataIdx, target.fill, target.path
-                )
-            }
-        }
-
-        // upstream (MapDraw.ts:382-396): a SECOND pass over the completed region groups — the children
-        //   (compound paths + label) must all be added before the group is wired as an event/hover trigger.
-        //   `resetEventTriggerForRegion` mounts the region GROUP (not the individual paths) as the data item's
-        //   graphic el, and `resetStateTriggerForRegion` marks the group a highDown dispatcher carrying the
-        //   region's emphasis focus/blurScope. The group (a Group) is the dispatcher so hovering ANY of its
-        //   child paths/label enters emphasis and the state proxy (attached by the child traverse in
-        //   enableHoverEmphasis) restyles every child from the states set in createCompoundPath.
-        //   (resetTooltipForRegion is geo-component-only → not applicable to a map series → skipped.)
-        for (regionName, regionGroup) in regionsGroupByName {
-            let info = regionInfoByName[regionName]!
-
-            // resetEventTriggerForRegion: data && data.setItemGraphicEl(dataIdx, regionGroup).
-            if info.dataIdx >= 0 {
-                data.setItemGraphicEl(info.dataIdx, regionGroup)
-            }
-
-            // resetStateTriggerForRegion: toggleHoverEmphasis(el, focus, blurScope, disabled).
-            //   (highDownSilentOnTouch / geo enableComponentHighDownFeatures are geo-only — DEFERRED.)
-            let emphasisModel = info.regionModel.getModel(["emphasis"])
-            let focus: InnerFocus? = emphasisModel.get("focus")
-            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-            states.toggleHoverEmphasis(regionGroup, focus, blurScope, isDisabled)
-        }
-    }
-
-    // ================================================================================================
-    // COLOR MORPH (L5 transition fidelity) — the merge-mode value-change path for the GeoJSON region
-    // backdrop. Called only when the map name + region set are unchanged (same geometry). For each
-    // PERSISTED region it recomputes the NORMAL style (itemStyle + visualMap-encoded data fill) and
-    // `updateProps`-morphs the region compound path's FILL toward its new visualMap color. The fill is
-    // passed as a color STRING so the Animator's color-tween path runs (a ZRColor struct/enum would
-    // snap). The GEOMETRY is untouched (no shape animation). Labels + emphasis states + the data↔el
-    // binding are re-run (they run each render; re-placing labels is fine).
-    // ================================================================================================
-    private func _morphGeoJSON(_ mapModel: MapSeriesModel, _ api: ExtensionAPI, _ geo: Geo, _ data: SeriesData) {
-        let visualMeta = data.getVisual("visualMeta")
-        let isVisualEncodedByVisualMap = (visualMeta as? [Any])?.isEmpty == false
-
-        for (regionName, regionGroup) in self._regionGroups {
-            // Data changed → re-resolve this region's data index + item model.
-            let dataIdx = data.indexOfName(regionName)
-            let regionModel = data.getItemModel(dataIdx)
-
-            // Resolve the region NORMAL style (itemStyle + visualMap data fill) — same as `_buildGeoJSON`.
-            var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
-            if dataIdx >= 0 {
-                if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
-                   isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
-                    normalStyle["fill"] = fill
-                }
-                let decal = data.getItemVisual(dataIdx, "decal")
-                if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
-                    normalStyle["decal"] = pat
-                }
-            }
-
-            let op = mapToNumber(normalStyle["opacity"]) ?? 1.0
-            let fillStr = mapColorString(normalStyle["fill"])
-            // A "line" compound uses stroke = stroke || fill (fixLineStyle); polygon uses fill.
-            let strokeStr = mapColorString(normalStyle["stroke"]) ?? fillStr
-
-            // ── polygon region path(s): MORPH the FILL (color STRING → Animator color-tween) + opacity ──
-            for poly in self._regionPolyPaths[regionName] ?? [] {
-                // Re-stamp the non-tweened paint keys (stroke/lineWidth/decal) INSTANTLY, PRESERVING the
-                //   current fill/opacity so `updateProps` tweens them (rather than `useStyle` snapping).
-                var s = poly.pathStyle ?? PathStyleProps()
-                if let v = zrPaintFromStyleValue(normalStyle["stroke"]) { s.stroke = v }
-                if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
-                if let pat = normalStyle["decal"] as? ZRenderKit.Pattern { s.decal = pat }
-                s.strokeNoScale = true
-                poly.useStyle(s)
-                var styleProps: [String: Any] = ["opacity": op]
-                if let fillStr = fillStr { styleProps["fill"] = fillStr }
-                // Fill MUST be a STRING here so the Animator's color-tween path runs (mirrors HeatmapView).
-                updateProps(poly, ["style": styleProps], mapModel, dataIdx)
-            }
-            // ── polyline region path(s): MORPH the STROKE (== region color) + opacity ──
-            for line in self._regionLinePaths[regionName] ?? [] {
-                var styleProps: [String: Any] = ["opacity": op]
-                if let strokeStr = strokeStr { styleProps["stroke"] = strokeStr }
-                updateProps(line, ["style": styleProps], mapModel, dataIdx)
-            }
-
-            // Re-run the region-name label (value change may flip its NaN-driven visibility) + re-stamp
-            //   emphasis state styles from the (possibly changed) region model.
-            let inheritColor = fillStr
-            let target: CompoundPath? =
-                self._regionPolyPaths[regionName]?.first ?? self._regionLinePaths[regionName]?.first
-            if let target = target {
-                self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, inheritColor, target)
-            }
-            for poly in self._regionPolyPaths[regionName] ?? [] {
-                states.setStatesStylesFromModel(poly, regionModel, "itemStyle", mapGetFixedItemStyle)
-            }
-            for line in self._regionLinePaths[regionName] ?? [] {
-                states.setStatesStylesFromModel(line, regionModel, "itemStyle", mapGetFixedItemStyle)
-            }
-
-            // Re-bind the data item graphic el + hover-emphasis dispatcher (dataIdx may have shifted).
-            if dataIdx >= 0 {
-                data.setItemGraphicEl(dataIdx, regionGroup)
-            }
-            let emphasisModel = regionModel.getModel(["emphasis"])
-            let focus: InnerFocus? = emphasisModel.get("focus")
-            let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-            let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-            states.toggleHoverEmphasis(regionGroup, focus, blurScope, isDisabled)
-        }
-    }
-
-    // ================================================================================================
-    // Inlined subset of `MapDraw._buildSVG` (component/helper/MapDraw.ts) — the SERIES-MAP variant.
-    //
-    // For a series:"map" on a geoSVG map: fetch the pooled parsed-SVG graphic, copy the geo view's OVERALL
-    // transform (raw-svg-rect → view-rect, WITH roam) onto a wrapper group, then for each NAMED Displayable
-    // apply the region `itemStyle` FILLED by the per-region series data-item colour (the visualMap-encoded
-    // `data.getItemVisual(dataIdx,'style').fill`), stamp emphasis/select/blur states, bind the data item's
-    // graphic el (so tooltip / highlight-by-dataIndex resolve it), draw the region-name label when the value
-    // is NaN, and mark self-named regions as highDown dispatchers (hover-to-highlight).
-    //
-    // Same ROAM handling as GeoView._buildSVG (OVERALL trans on the single wrapper group; re-copied on the
-    // full `update()` a geoRoam triggers). DEFERRED (STATIC): decal, event `eventData`, tooltip config.
-    // ================================================================================================
-    private func _buildSVG(_ mapModel: MapSeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        let geo = mapModel.coordinateSystem as! Geo
-        let mapName = geo.map
-        guard let resource = geoSourceManager.getGeoResource(mapName) as? GeoSVGResource else {
-            return
-        }
-        let data = mapModel.getData()
-
-        // upstream: isVisualEncodedByVisualMap = data && data.getVisual('visualMeta') && ...length > 0
-        let visualMeta = data.getVisual("visualMeta")
-        let isVisualEncodedByVisualMap = (visualMeta as? [Any])?.isEmpty == false
-
-        // upstream: viewCoordSysCopyTrans(this._svgGroup, viewCoordSys, VIEW_COORD_SYS_TRANS_RAW) — the port
-        //   copies OVERALL (== ROAM ∘ RAW) onto the single wrapper group (see GeoView._buildSVG ROAM note).
-        let svgGraphic = resource.useGraphic(self.uid)
-        let svgGroup = Group()
-        _ = viewCoordSysCopyTrans(svgGroup, geo.view, VIEW_COORD_SYS_TRANS_OVERALL)
-        _ = svgGroup.add(svgGraphic.root)
-
-        for namedItem in svgGraphic.named {
-            let regionName = namedItem.name
-            let svgNodeTagLower = namedItem.svgNodeTagLower
-            let el = namedItem.el
-
-            // upstream: dataIdx = data ? data.indexOfName(regionName) : null;
-            //           regionModel = mapOrGeoModel.getRegionModel(regionName);
-            let dataIdx = data.indexOfName(regionName)
-            let regionModel = mapModel.getRegionModel(regionName)
-
-            // OPTION_STYLE_ENABLED tags → itemStyle (+ visualMap data fill). Capture the resolved solid
-            //   fill (the label's `inheritColor` so `label.color: 'inherit'` picks up the region colour).
-            var regionFill: String? = nil
-            if OPTION_STYLE_ENABLED_SVG_TAGS.contains(svgNodeTagLower), let path = el as? Path {
-                regionFill = self._applyOptionStyleForRegionSVG(
-                    path, regionModel, dataIdx, data, isVisualEncodedByVisualMap, api
-                )
-            }
-
-            // upstream: if (el instanceof Displayable) { el.culling = true; }
-            if let disp = el as? Displayable {
-                disp.culling = true
-            }
-
-            // upstream: const silent = regionModel.get('silent', true); silent != null && (el.silent = silent);
-            if let silent = regionModel.get("silent", true), !(silent is NSNull) {
-                el.silent = mapJsTruthy(silent)
-            }
-
-            // upstream: (el as ECElement).z2EmphasisLift = 0;  → ECElement augmentation not ported (DEFERRED).
-
-            // upstream: if (!namedItem.namedFrom) { ...label + event + state trigger... }
-            if namedItem.namedFrom == nil {
-                // upstream: LABEL_HOST_MAP → resetLabelForRegion (map series → data-driven visibility).
-                if LABEL_HOST_SVG_TAGS.contains(svgNodeTagLower) {
-                    self._resetLabelForRegion(mapModel, data, regionModel, regionName, dataIdx, regionFill, el)
-                }
-
-                // upstream: resetEventTriggerForRegion → data.setItemGraphicEl(dataIdx, el).
-                if dataIdx >= 0 {
-                    data.setItemGraphicEl(dataIdx, el)
-                }
-
-                // upstream: STATE_TRIGGER_TAG_MAP → toggleHoverEmphasis(el, focus, blurScope, disabled).
-                //   (enableComponentHighDownFeatures is geo-component-only — not applied for a map series.)
-                if STATE_TRIGGER_SVG_TAGS.contains(svgNodeTagLower) {
-                    let emphasisModel = regionModel.getModel(["emphasis"])
-                    let focus: InnerFocus? = emphasisModel.get("focus")
-                    let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
-                    let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
-                    states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
-                }
-            }
-        }
-
-        _ = self.group.add(svgGroup)
-    }
-
-    // upstream: applyOptionStyleForRegion (MapDraw.ts:617) — the map-series geoSVG NORMAL style (with the
-    //   visualMap-encoded data fill) + emphasis/select/blur state styles for one named Displayable.
-    @discardableResult
-    private func _applyOptionStyleForRegionSVG(
-        _ path: Path, _ regionModel: Model, _ dataIdx: Int, _ data: SeriesData, _ isVisualEncodedByVisualMap: Bool,
-        _ api: ExtensionAPI
-    ) -> String? {
-        var normalStyle = mapGetFixedItemStyle(regionModel.getModel("itemStyle"))
-        // upstream: if (data) { const style = data.getItemVisual(dataIndex, 'style');
-        //     if (isVisualEncodedByVisualMap && style.fill) { normalStyle.fill = style.fill; } }
-        if dataIdx >= 0 {
-            if let style = data.getItemVisual(dataIdx, "style") as? [String: Any],
-               isVisualEncodedByVisualMap, let fill = style["fill"], !(fill is NSNull) {
-                normalStyle["fill"] = fill
-            }
-            // upstream (MapDraw.ts:658-664): the raw 'decal' visual → an inline-generated tiling Pattern.
-            let decal = data.getItemVisual(dataIdx, "decal")
-            if decal != nil, let pat = createOrUpdatePatternFromDecal(decal, api) {
-                normalStyle["decal"] = pat
-            }
-        }
-
-        var s = path.pathStyle ?? PathStyleProps()
-        // MERGE (upstream `el.setStyle(normalStyle)`): overwrite only keys present in normalStyle, so a
-        //   geoSVG shape keeps its authored SVG `fill` when neither region option nor visualMap sets one.
-        if let v = zrPaintFromStyleValue(normalStyle["fill"]) { s.fill = v }
-        if let v = zrPaintFromStyleValue(normalStyle["stroke"]) { s.stroke = v }
-        if let v = mapToNumber(normalStyle["lineWidth"]) { s.lineWidth = v }
-        if let v = mapToNumber(normalStyle["opacity"]) { s.opacity = v }
-        if let v = mapToNumber(normalStyle["fillOpacity"]) { s.fillOpacity = v }
-        if let v = mapToNumber(normalStyle["strokeOpacity"]) { s.strokeOpacity = v }
-        if let pat = normalStyle["decal"] as? ZRenderKit.Pattern { s.decal = pat }
-        // upstream: el.style.strokeNoScale = true;
-        s.strokeNoScale = true
-        path.useStyle(s)
-
-        // upstream: ensureState('emphasis'/'select'/'blur').style = getFixedItemStyle(...); setDefaultStateProxy.
-        //   `mapGetFixedItemStyle` getter applies the areaColor→fill fixup per upstream (MapDraw:647-649).
-        states.setStatesStylesFromModel(path, regionModel, "itemStyle", mapGetFixedItemStyle)
-        states.setDefaultStateProxy(path)
-
-        // The region's resolved solid fill — the label's `inheritColor`.
-        return mapColorString(normalStyle["fill"])
-    }
-
-    // upstream: resetLabelForRegion (map-series subset). The region-name label is drawn when
-    //   (1) the series data value is NaN, or (2) the region has no legend symbol (mapSymbolLayout stamped
-    //   `itemLayout.showLabel`). (Case "geo component" is handled by GeoView, not here.)
-    //
-    // Retrofitted onto the SHARED LABEL CORE (`labelStyle.setLabelStyle`): the label is attached as the
-    //   region compound-path el's `textContent` (via `el.setTextContent` + `el.textConfig`), replacing
-    //   the previous standalone-`ZRText`-at-centroid reproduction. `setLabelStyle` owns text/font/fill/
-    //   position and honours `label.show` (per state) itself — the painter renders `textContent`
-    //   automatically at the configured position (default "inside" → centred in the el's bounding rect).
-    private func _resetLabelForRegion(
-        _ mapModel: MapSeriesModel,
-        _ data: SeriesData,
-        _ regionModel: Model,
-        _ regionName: String,
-        _ dataIdx: Int,
-        _ inheritColor: String?,
-        _ el: Element
-    ) {
-        // upstream: const isDataNaN = data && isNaN(data.get(data.mapDimension('value'), dataIdx) as number);
-        let valueDim = data.mapDimension("value")
-        let rawValue = (dataIdx >= 0 && valueDim != nil) ? data.get(valueDim!, dataIdx) : nil
-        let isDataNaN = (mapToNumber(rawValue) ?? Double.nan).isNaN
-
-        // upstream: const itemLayout = data && data.getItemLayout(dataIdx);
-        let itemLayout = (dataIdx >= 0 ? data.getItemLayout(dataIdx) : nil) as? [String: Any]
-        let showLabel = mapJsTruthy(itemLayout?["showLabel"])
-
-        // upstream: if ((isGeoModel || isDataNaN) || (itemLayout && itemLayout.showLabel)) { ...draw... }
-        //   isGeoModel is false in this (map series) view. When neither condition holds, remove any label.
-        guard isDataNaN || showLabel else {
-            // upstream else-branch: el.removeTextContent(); el.removeTextConfig();
-            el.removeTextContent()
-            el.removeTextConfig()
-            return
-        }
-
-        // upstream: const query = !isGeoModel(...) ? dataIdx : regionName;   (map series → dataIdx)
-        //           if (!data || dataIdx >= 0) { labelFetcher = mapOrGeoModel; }
-        var opt = SetLabelStyleOpt()
-        opt.defaultText = regionName
-        if dataIdx >= 0 {
-            opt.labelFetcher = mapModel
-            opt.labelDataIndex = Double(dataIdx)
-        }
-        // `label.color: 'inherit'` resolves to the region's fill.
-        opt.inheritColor = inheritColor
-
-        // upstream: setLabelStyle(el, getLabelStatesModels(regionModel), { labelFetcher, labelDataIndex,
-        //   defaultText: regionName }, specifiedTextOpt). `setLabelStyle` attaches the label as `el`'s
-        //   textContent (default position "inside" via createTextConfig) and honours per-state `show`.
-        let labelStatesModels = labelStyle.getLabelStatesModels(regionModel)
-        labelStyle.setLabelStyle(el, labelStatesModels, opt)
     }
 
     // upstream: private _renderSymbols(mapModel: MapSeries): void
@@ -718,11 +197,6 @@ open class MapView: ChartView {
         //   `SeriesData` (the IUO-bound-to-`let` trap infers Optional otherwise — see SwiftPM traps memo).
         let originalData: SeriesData = mapModel.originalData
         let group = self.group
-
-        // The group is no longer wiped up front (the GeoJSON regions morph), so the symbol circles from a
-        //   previous render would linger — remove them before re-rendering (region groups are untouched).
-        for el in self._symbolEls { _ = group.remove(el) }
-        self._symbolEls = []
 
         // upstream: originalData.each(originalData.mapDimension('value'), function (value, originalDataIndex) {...})
         guard let valueDim = originalData.mapDimension("value") else {
@@ -771,11 +245,10 @@ open class MapView: ChartView {
 
             // upstream: only the series holding the FIRST value on a region (offset 0) renders the label.
             if offset == 0 {
-                self._renderSymbolLabel(mapModel, originalData, originalDataIndex, circle, point)
+                self._renderSymbolLabel(mapModel, originalData, originalDataIndex, circle)
             }
 
             _ = group.add(circle)
-            self._symbolEls.append(circle)
         }
     }
 
@@ -786,14 +259,19 @@ open class MapView: ChartView {
         _ mapModel: MapSeriesModel,
         _ originalData: SeriesData,
         _ originalDataIndex: Int,
-        _ circle: Circle,
-        _ point: [Double]
+        _ circle: Circle
     ) {
         // upstream: const fullData = getMainMapSeries(mapModel.seriesGroup).getData();
         //           const name = originalData.getName(originalDataIndex);
         //           const fullIndex = fullData.indexOfName(name);
-        // `mapModel.seriesGroup.f` must not be empty here (upstream note), so force-unwrap the main series.
-        let fullData = getMainMapSeries(mapModel.seriesGroup!)!.getData()
+        // PORT-NOTE (PORTING §12): upstream's optimistic typing assumes `mapModel.seriesGroup.f` is
+        //   non-empty here; mirror the assumption with a `guard` rather than a force-unwrap pair, which
+        //   would be a latent SIGTRAP on every `showLegendSymbol` render with a legend present.
+        guard let seriesGroup = mapModel.seriesGroup,
+              let mainSeries = getMainMapSeries(seriesGroup) else {
+            return
+        }
+        let fullData = mainSeries.getData()
         let name = originalData.getName(originalDataIndex)
         let fullIndex = fullData.indexOfName(name)
 
@@ -801,10 +279,10 @@ open class MapView: ChartView {
         //           const labelModel = itemModel.getModel('label');
         let itemModel = originalData.getItemModel(originalDataIndex)
         let labelModel = itemModel.getModel("label")
-        _ = point   // label now positioned relative to the `circle` el, not the raw point.
 
         // upstream: const regionGroup = fullData.getItemGraphicEl(fullIndex);
-        //   The region GROUP built by `_buildGeoJSON`/`_buildSVG` (bound via `data.setItemGraphicEl`).
+        //   The region GROUP built by `MapDraw._buildGeoJSON` / `MapDraw._buildSVG` and bound via
+        //   `resetEventTriggerForRegion` → `data.setItemGraphicEl`.
         let regionGroup = fullData.getItemGraphicEl(fullIndex)
 
         // upstream: setLabelStyle(circle, getLabelStatesModels(itemModel), {
@@ -845,54 +323,57 @@ open class MapView: ChartView {
         }
     }
 
-    // ------------------------------------------------------------------------------------------------
-    // DEFERRED interaction hooks (roam / select / events) — documented no-ops for surface parity.
-    // ------------------------------------------------------------------------------------------------
-
-    // upstream: __updateOnOwnRoam(payload, model, api) { mapDraw.__updateOnOwnRoam(model); }
-    // PORT-NOTE (deferred — roam ROUTING): the transformGroup re-transform EXISTS —
-    //   `MapDraw.__updateOnOwnRoam` (component/helper/MapDraw.swift) + `applyViewCoordSysTransToElement`
-    //   (coord/View.swift). This view simply does not own a persistent `_mapDraw` yet (see the `_mapDraw`
-    //   slot note above), so there is no transformGroup here to re-transform.
+    /**
+     * @implements RoamHostView['__updateOnOwnRoam']
+     */
+    // upstream: __updateOnOwnRoam(payload: RoamPayload, model: MapSeries, api: ExtensionAPI): void
+    //   The performance shortcut the `geoRoam` action calls to re-transform the region `_transformGroup`
+    //   directly (via `MapDraw.__updateOnOwnRoam` → `applyViewCoordSysTransToElement`), with no data /
+    //   visual processing. (roamHelperGeo currently registers the full-`update` deviation, so this is
+    //   reachable only once `update: 'updateTransform'` routing lands — see the note there.)
+    public func __updateOnOwnRoam(
+        _ payload: RoamPayload, _ componentOrSeries: ComponentModel, _ api: ExtensionAPI
+    ) {
+        guard let model = componentOrSeries as? MapSeriesModel else { return }
+        let mapDraw = self._mapDraw
+        if mapSeriesNeedsDrawMap(model), let mapDraw = mapDraw {
+            mapDraw.__updateOnOwnRoam(model)
+        }
+    }
 
     // upstream: remove() { this._clearMapDraw(); this.group.removeAll(); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // Drop the persistent region state alongside wiping the group.
+        self._clearMapDraw()
         _ = self.group.removeAll()
-        self._resetGeoJSONState()
     }
 
     // upstream: dispose() { this._clearMapDraw(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        _ = self.group.removeAll()
-        self._resetGeoJSONState()
+        self._clearMapDraw()
     }
 
     // upstream: private _clearMapDraw() { this._mapDraw && this._mapDraw.remove(); this._mapDraw = null; }
-    // PORT-NOTE (deferred — MapDraw): requires a persistent MapDraw to clear (not ported).
+    private func _clearMapDraw() {
+        self._mapDraw?.remove()
+        self._mapDraw = nil
+    }
 }
+
+// upstream: `class MapView extends ChartView` also `@implements RoamHostView['__updateOnOwnRoam']`
+//   (a structural implement, not a declared `implements`). Declared here as a real conformance so the
+//   roam dispatcher can find it; the signature matches `RoamHostView` EXACTLY (util/types.swift) —
+//   narrowing the model param would silently fail to witness it (MEMORY: protocol-witness trap).
+extension MapView: RoamHostView {}
 
 // export default MapView;  → `open class MapView` above.
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of MapView.ts upstream. `mapGetFixedItemStyle`
-// reproduces MapDraw.getFixedItemStyle; the rest mirror the file-private helpers
-// in GeoView.swift (dynamic-option coercions, the style-bag → PathStyleProps
-// bridge). Delete each when its real sibling lands (util/graphic, util/states)
-// and call it directly.
+// PORT-NOTE helpers — NOT part of MapView.ts upstream: the dynamic-option
+// coercions (`if (x)` truthiness / Int-vs-Double reads) this view still needs.
+// The style-bag → PathStyleProps bridge + `getFixedItemStyle` moved out with the
+// region build (they now live in MapDraw.swift, the real upstream home).
 // ============================================================================
-
-// upstream (MapDraw.ts): function getFixedItemStyle(model) { const itemStyle = model.getItemStyle();
-//   const areaColor = model.get('areaColor'); if (areaColor != null) { itemStyle.fill = areaColor; } return itemStyle; }
-private func mapGetFixedItemStyle(_ model: Model) -> [String: Any] {
-    var itemStyle = model.getItemStyle()
-    let areaColor = model.get("areaColor")
-    if let areaColor = areaColor, !(areaColor is NSNull) {
-        itemStyle["fill"] = areaColor
-    }
-    return itemStyle
-}
 
 /// Coerce a dynamic option / ParsedValue to Double, tolerating Int boxing (CONVENTIONS trap #1).
 private func mapToNumber(_ v: Any?) -> Double? {
@@ -913,42 +394,3 @@ private func mapJsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-NOTE: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic itemStyle bag
-///   ([String: Any]) onto the typed `PathStyleProps`. Same deviation as GeoView.geoPathStyleFromDict;
-///   numbers via `mapToNumber` (Int-drop trap). Delete when the graphic bridge lands.
-private func mapPathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
-    var s = PathStyleProps()
-    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern (ZRColor non-string); only the
-    //   String form (incl. the sentinel 'none') is mapped here — same deviation as GeoView.geoColorString.
-    if let v = zrPaintFromStyleValue(dict["fill"]) { s.fill = v }
-    if let v = zrPaintFromStyleValue(dict["stroke"]) { s.stroke = v }
-    if let v = mapToNumber(dict["lineWidth"]) { s.lineWidth = v }
-    if let v = dict["lineCap"] as? String { s.lineCap = v }
-    if let v = dict["lineJoin"] as? String { s.lineJoin = v }
-    if let v = mapToNumber(dict["miterLimit"]) { s.miterLimit = v }
-    if let v = mapToNumber(dict["opacity"]) { s.opacity = v }
-    if let v = mapToNumber(dict["fillOpacity"]) { s.fillOpacity = v }
-    if let v = mapToNumber(dict["strokeOpacity"]) { s.strokeOpacity = v }
-    if let v = mapToNumber(dict["shadowBlur"]) { s.shadowBlur = v }
-    if let v = dict["shadowColor"] as? String { s.shadowColor = v }
-    if let v = mapToNumber(dict["shadowOffsetX"]) { s.shadowOffsetX = v }
-    if let v = mapToNumber(dict["shadowOffsetY"]) { s.shadowOffsetY = v }
-    if let v = mapToNumber(dict["lineDashOffset"]) { s.lineDashOffset = v }
-    // upstream (MapDraw.applyOptionStyleForRegion): `normalStyle.decal = createOrUpdatePatternFromDecal(...)`.
-    //   The generated tiling `Pattern` is bridged to `pathStyle.decal` so `Path.update()` synthesizes the
-    //   decal element (`_decalEl`) the renderer paints over the region fill (mirrors barStyleFromDict).
-    if let pat = dict["decal"] as? ZRenderKit.Pattern { s.decal = pat }
-    // `lineDash` (number[] | false) → LineDash enum (mirrors CustomView.pathStyleFromDict / AxisBuilder).
-    if let dash = dict["lineDash"] as? [Double] { s.lineDash = .values(dash) }
-    else if let dashi = dict["lineDash"] as? [Int] { s.lineDash = .values(dashi.map { Double($0) }) }
-    else if let b = dict["lineDash"] as? Bool, b == false { s.lineDash = .`false` }
-    return s
-}
-
-/// Bridge a visual/style paint value (raw `String` or EChartsKit `ZRColor`) to a solid color string.
-///   Mirrors GeoView.geoColorString (gradient/pattern out of scope).
-private func mapColorString(_ v: Any?) -> String? {
-    if let str = v as? String { return str }
-    if let zr = v as? EChartsKit.ZRColor, case let .color(str) = zr { return str }
-    return nil
-}

@@ -3,9 +3,11 @@
 // Before the retrofit, `MapView._resetLabelForRegion` drew each region label as a STANDALONE `ZRText`
 // added to the region group — the region compound-path element had NO `textContent`. After the retrofit
 // the label is attached to the region compound-path el via `labelStyle.setLabelStyle`, so the el exposes
-// a `getTextContent()` whose `style.text` is the region name and whose `el.textConfig.position` reflects
-// the (default "inside") label-model position. These tests assert that end-to-end (drive ECharts →
-// walk the scene graph → inspect the CompoundPath's attached label).
+// a `getTextContent()` whose `style.text` is the region name. Since MapView switched over to the shared
+// `MapDraw`, `el.textConfig.position` is the upstream `labelXY` percent-offset ARRAY (the region centroid
+// expressed relative to the el bounding rect) rather than a named position keyword — see
+// MapDraw.resetLabelForRegion / MapDraw.ts:742 and the switchover PORT-NOTE in MapView.swift. These tests
+// assert that end-to-end (drive ECharts → walk the scene graph → inspect the CompoundPath's label).
 import XCTest
 import ZRenderKit
 @testable import EChartsKit
@@ -86,8 +88,12 @@ final class MapLabelTests: XCTestCase {
                        "each region label text is the region (datum) name, got \(texts)")
     }
 
-    // ---- (2) textConfig.position defaults to "inside" for the region label ----
-    func testRegionLabelDefaultPositionInside() {
+    // ---- (2) textConfig.position is the labelXY percent-offset ARRAY for a geoJSON region ----
+    //   `MapDraw._buildGeoJSON` always passes the region `centerPt` as `labelXY` (MapDraw.ts:368), and
+    //   `resetLabelForRegion` then OVERWRITES `el.textConfig.position` with a two-element percent STRING
+    //   array relative to the el bounding rect, plus a `layoutRect` (MapDraw.ts:742). So the region label
+    //   is positioned at the region centroid, NOT by a named position keyword.
+    func testRegionLabelPositionIsCenterPercentArray() {
         ECharts.registerMap("toy", makeToyGeoJSON())
         let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption())
@@ -96,20 +102,33 @@ final class MapLabelTests: XCTestCase {
             guard let cfg = cp.textConfig else {
                 return XCTFail("region CompoundPath must have a textConfig after setLabelStyle")
             }
-            XCTAssertEqual(cfg.position as? String, "inside",
-                           "map region label default position is 'inside'")
+            guard let pos = cfg.position as? [String] else {
+                return XCTFail("region label position must be the labelXY percent array, got \(String(describing: cfg.position))")
+            }
+            XCTAssertEqual(pos.count, 2, "percent position is [x%, y%]")
+            for p in pos {
+                XCTAssertTrue(p.hasSuffix("%"), "each component is a percent string, got \(p)")
+            }
+            XCTAssertNotNil(cfg.layoutRect,
+                            "the percent position is resolved against textConfig.layoutRect (the el rect)")
         }
     }
 
-    // ---- (3) an explicit label.position flows through to el.textConfig.position ----
-    func testRegionLabelExplicitPosition() {
+    // ---- (3) an explicit label.position is IGNORED for a geoJSON region (labelXY wins) ----
+    //   PORT-NOTE: before the MapDraw switchover the inlined `_resetLabelForRegion` let `label.position`
+    //   reach `textConfig.position`. Upstream does not: the `labelXY` percent array unconditionally
+    //   replaces whatever `createTextConfig` derived from the label model. (SVG regions pass
+    //   `labelXY == nil` and therefore DO keep the named position.)
+    func testRegionLabelExplicitPositionOverriddenByLabelXY() {
         ECharts.registerMap("toy", makeToyGeoJSON())
         let ec = ECharts(width: 520, height: 320)
         ec.setOption(makeOption(labelExtra: ["position": "top"]))
 
         for cp in compoundPaths(ec) {
-            XCTAssertEqual(cp.textConfig?.position as? String, "top",
-                           "explicit label.position must reach el.textConfig.position")
+            XCTAssertNil(cp.textConfig?.position as? String,
+                         "label.position must NOT survive as a string — labelXY overwrites it upstream")
+            XCTAssertEqual((cp.textConfig?.position as? [String])?.count, 2,
+                           "region label position stays the labelXY percent array")
         }
     }
 
