@@ -334,7 +334,7 @@ extension ParallelComponentView {
 //   import * as graphic from '../../util/graphic';
 //     → `graphic.Group` is the ZRenderKit `Group`; `graphic.BoundingRect` is ZRenderKit
 //       `BoundingRect` (used only in the deferred brush rect); `graphic.groupTransition` is the
-//       deferred animation helper (see the PORT-NOTE in `render`).
+//       ported top-level free func in `util/graphic.swift` (called bare, see `render`).
 //   import ComponentView from '../../view/Component';                   → `ComponentView`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 → `ExtensionAPI`.
 //   import GlobalModel from '../../model/Global';                       → `GlobalModel`.
@@ -493,10 +493,10 @@ public final class ParallelAxisView: ComponentView {
         self._refreshBrushController(&builderOpt, areaSelectStyle, axisModel, coordSysModel, areaWidth, api)
 
         // upstream: graphic.groupTransition(oldAxisGroup, this._axisGroup, axisModel);
-        // PORT-NOTE (deferred): requires `graphic.groupTransition` (util/graphic.ts), NOT ported — matches
-        //   old/new elements by `anid` and animates the transition (CONVENTIONS §5). The freshly-built
-        //   geometry is correct without it.
-        _ = oldAxisGroup
+        //   PORT-NOTE: `groupTransition` is ported in `util/graphic.swift` as a bare top-level free func
+        //   (the `graphic.` qualifier is dropped). It matches old/new elements by `anid` and animates
+        //   each freshly-built element from its old pose to its new one.
+        groupTransition(oldAxisGroup, self._axisGroup, axisModel)
     }
 
     // upstream:
