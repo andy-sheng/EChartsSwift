@@ -1254,7 +1254,7 @@ open class LineView: ChartView {
             //       !disableLabelAnimation && !isElementRemoved(el))` gate (LabelManager.ts:528-540), is
             //       not ported in label/LabelManager.swift.
             //   Effect: symbol labels may animate in the label stage where upstream suppresses it.
-            //   Same deferral as SankeyView.swift:490/510, MapView.swift:823, GeoView.swift:631,
+            //   Same deferral as SankeyView.swift:490/510, MapView.swift:823, MapDraw.swift:922,
             //   Breadcrumb.swift:254.
             _ = symbolPath
         }

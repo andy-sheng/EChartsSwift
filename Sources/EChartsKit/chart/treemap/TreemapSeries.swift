@@ -242,13 +242,18 @@ open class TreemapSeriesModel: SeriesModel {
         var params = super.getDataParams(dataIndex, dataType)
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
-        //   With no node there is no path to wrap, so the base params are returned untouched.
-        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
-            return params
-        }
+        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically, but
+        //   `getNodeByDataIndex` indexes `this._nodes[rawIndex]` unchecked and yields `undefined` for
+        //   an out-of-range index; `wrapTreePathInfo(undefined, ...)` then falls straight out of its
+        //   `while (node)` loop and returns `[]`. So upstream ALWAYS assigns an array — never leaves
+        //   the field absent. Map over the Optional node and default to `[]` so formatter callbacks
+        //   see `[]`, not `nil` (matches SunburstSeries). `dataIndex.isFinite` guards the
+        //   `Int(Double)` narrowing, which traps on NaN/infinity.
+        let node: TreeNode? = dataIndex.isFinite
+            ? self.getData().tree?.getNodeByDataIndex(Int(dataIndex))
+            : nil
         // params.treeAncestors = wrapTreePathInfo(node, this);
-        params.treeAncestors = treeHelper.wrapTreePathInfo(node, self)
+        params.treeAncestors = node.map { treeHelper.wrapTreePathInfo($0, self) } ?? []
         // compatitable the previous code.
         params.treePathInfo = params.treeAncestors
 

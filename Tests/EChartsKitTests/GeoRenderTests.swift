@@ -47,18 +47,28 @@ final class GeoRenderTests: XCTestCase {
             ] as [String: Any]
         ])
 
-        // Each region's polygon subpaths are wrapped in ONE CompoundPath (GeoView.createCompoundPath).
+        // Each region's polygon subpaths are wrapped in ONE CompoundPath (MapDraw.createCompoundPath).
+        // The region-name label is the compound path's ATTACHED `textContent` (upstream
+        // MapDraw.resetLabelForRegion → setLabelStyle), not a standalone scene child, and `Group.traverse`
+        // does NOT descend into `textContent` — so collect the attached label hosts and assert on their
+        // CONTENT (mere existence would also pass for an empty or emphasis-only label).
         var compoundPaths = 0
-        var texts = 0
+        var labels: [ZRenderKit.ZRText] = []
         _ = ec.getRoot().traverse { el in
             if el is ZRenderKit.CompoundPath { compoundPaths += 1 }
-            else if el is ZRenderKit.ZRText { texts += 1 }
+            if let label = el.getTextContent() { labels.append(label) }
             return false
         }
         XCTAssertGreaterThan(compoundPaths, 0, "geo backdrop → one region-polygon CompoundPath per feature")
         // Three regions → three polygon compound paths (each region has no interior/linestring here).
         XCTAssertEqual(compoundPaths, 3, "one polygon CompoundPath per toy region")
-        XCTAssertGreaterThan(texts, 0, "geo backdrop → region-name label texts (label.show = true)")
+        XCTAssertEqual(labels.count, 3, "one region-name label host per toy region")
+        for name in ["West", "Central", "East"] {
+            XCTAssertTrue(
+                labels.contains { !$0.ignore && $0.textStyle.text == name },
+                "region-name label \"\(name)\" renders in the normal state (label.show = true)"
+            )
+        }
     }
 
     func testGeoDataToPointProjectsAndOrders() {

@@ -166,7 +166,9 @@ open class TreeSeriesModel: SeriesModel {
         // const expandTreeDepth = (expandAndCollapse && option.initialTreeDepth >= 0)
         //     ? option.initialTreeDepth : treeDepth;
         //   JS `option.initialTreeDepth >= 0` is false when it is undefined (`undefined >= 0` -> false).
-        let initialTreeDepth = opt?["initialTreeDepth"] as? Double
+        //   PORT-NOTE: option dictionaries box integer literals as `Int`, so a bare `as? Double` read
+        //   would silently drop a user option of `initialTreeDepth: 2`; coerce Int/Double/NSNumber alike.
+        let initialTreeDepth = asNumberOpt(opt?["initialTreeDepth"])
         let expandTreeDepth: Double
         if jsTruthy(expandAndCollapse), let itd = initialTreeDepth, itd >= 0 {
             expandTreeDepth = itd
@@ -226,7 +228,8 @@ open class TreeSeriesModel: SeriesModel {
         // const realRoot = tree.root.children[0];
         let realRoot = tree.root.children.first
         // let node = tree.getNodeByDataIndex(dataIndex);
-        var node = tree.getNodeByDataIndex(Int(dataIndex))
+        //   `dataIndex.isFinite` guards the `Int(Double)` narrowing, which traps on NaN/infinity.
+        var node = dataIndex.isFinite ? tree.getNodeByDataIndex(Int(dataIndex)) : nil
         // const value = node.getValue();
         let value = node?.getValue()
         // let name = node.name;
@@ -247,13 +250,6 @@ open class TreeSeriesModel: SeriesModel {
     }
 
     // Add tree path to tooltip param
-    // getDataParams(dataIndex) {
-    //     const params = super.getDataParams.apply(this, arguments) as TreeSeriesCallbackDataParams;
-    //     const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-    //     params.treeAncestors = wrapTreePathInfo(node, this);
-    //     params.collapsed = !node.isExpand;
-    //     return params;
-    // }
     open override func getDataParams(
         _ dataIndex: Double,
         _ dataType: SeriesDataType? = nil
@@ -263,8 +259,14 @@ open class TreeSeriesModel: SeriesModel {
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
         // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        //   Deliberate divergence from the sunburst/treemap siblings (which mirror upstream's
+        //   `wrapTreePathInfo(undefined, ...)` -> `[]`): upstream dereferences `node.isExpand` right
+        //   after, so a missing node would throw and there is no upstream-defined value to mirror.
         //   With no node there is no path to wrap, so the base params are returned untouched.
-        guard let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex)) else {
+        //   `dataIndex.isFinite` guards the `Int(Double)` narrowing, which traps on NaN/infinity.
+        guard dataIndex.isFinite,
+              let node = self.getData().tree?.getNodeByDataIndex(Int(dataIndex))
+        else {
             return params
         }
         // params.treeAncestors = wrapTreePathInfo(node, this);
@@ -356,6 +358,15 @@ open class TreeSeriesModel: SeriesModel {
 }
 
 // export default TreeSeriesModel;  -> `open class TreeSeriesModel` above.
+
+// Int|Double coercion for dynamic option numerics (see the polar/geo creators' `asNumberOpt`).
+// Used for `initialTreeDepth`, which the option dict boxes as `Int` for an integer literal.
+private func asNumberOpt(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) { return n.doubleValue }
+    return nil
+}
 
 // Mirrors JavaScript `||`/`&&` truthiness for a dynamic `Any?` value (nil / NSNull / false / 0 / NaN /
 // "" are falsy). Used for `expandAndCollapse` and `!item.collapsed`. File-private per port convention.

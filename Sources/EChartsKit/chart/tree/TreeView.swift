@@ -36,9 +36,12 @@ import ZRenderKit
 //       remove animation + radial label rotation) has no Swift analogue; the edge blur-forward that
 //       `__edge` powers is reproduced via the symbol Path's `onHoverStateChange` hook (see decorateNode).
 //   import {radialCoordinate} from './layoutHelper';               -> `layoutHelper.radialCoordinate` (sibling).
-//   import * as bbox from 'zrender/src/core/bbox';                 -> PORT-NOTE: only used by _updateViewCoordSys (deferred).
+//   import * as bbox from 'zrender/src/core/bbox';                 -> `bbox.fromPoints` (ZRenderKit), used by
+//       _updateViewCoordSys.
 //   import { applyViewCoordSysTransToElement, calcCompensationScaleToPreserveNodeSize,
-//            VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';  -> PORT-NOTE: coord/View NOT ported (roam deferred).
+//            VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';  -> coord/View IS ported (coord/View.swift);
+//       `applyViewCoordSysTransToElement` + `VIEW_COORD_SYS_TRANS_OVERALL` are wired in _updateViewCoordSys.
+//       PORT-NOTE (deferred): calcCompensationScaleToPreserveNodeSize (node/link roam scale) stays deferred.
 //   import RoamController from '../../component/helper/RoamController';   -> RoamController IS ported
 //       (component/helper/RoamController.swift); PORT-NOTE (deferred): roam is not wired into this view.
 //   import {parsePercent} from '../../util/number';                -> `number.parsePercent`.
@@ -60,7 +63,10 @@ import ZRenderKit
 //          `tokens.color.neutral00` (='#fff') are still inlined as their upstream literals below.
 //   import { createIsInSelfByPointerCheckerEl, createViewCoordSysSimply, isRoamPayloadHasZoom,
 //            updateRoamControllerSimply } from '../../component/helper/roamHelper';
-//       -> PORT-NOTE: roamHelper NOT ported (roam deferred).
+//       -> PORT-NOTE: the VIEW-GROUP slice of roamHelper is ported (component/helper/roamHelperViewGroup.swift),
+//          including `createViewCoordSysSimply` (called verbatim by _updateViewCoordSys),
+//          `createIsInSelfByPointerCheckerEl` → `viewGroupRoamPointerRect` and
+//          `updateRoamControllerSimply` → `updateViewGroupRoamControllerSimply`.
 
 // PORT-NOTE: `tokens.color.*` (visual/tokens.ts, ported) — inlined here as the upstream literal values
 //   (neutral99='#000', neutral00='#fff'), semantically equivalent to the token lookup.
@@ -201,13 +207,24 @@ open class TreeView: ChartView {
     //   render). Keeps edge element identity stable across renders (the reset fix for the links).
     private var _edges: [Int: Path] = [:]
 
-    // PORT-NOTE (deferred): private _min/_max/_firstRender — only used by _updateViewCoordSys/roam (deferred).
+    // upstream: private _min: number[];  /  private _max: number[];
+    //   The last computed node bounding box — kept so a collapse-after-roam that degenerates the box to a
+    //   zero width/height falls back to the previous extent (see _updateViewCoordSys).
+    //   (`VectorArray` — the ZRenderKit 2-vector `bbox.fromPoints` writes, upstream `number[]`.)
+    private var _min: VectorArray?
+    private var _max: VectorArray?
+
+    // upstream: private _firstRender: boolean;
+    //   Gates the VIEW_COORD_SYS placement animation: the first render applies the trans synchronously
+    //   (`animatableModel == null`), later renders tween it through `updateProps`.
+    private var _firstRender: Bool = true
 
     // upstream: init(ecModel, api) { this._controller = new RoamController(api.getZr());
     //   this.group.add(this._mainGroup); this._firstRender = true; }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): RoamController + _firstRender (roam) deferred.
+        // PORT-NOTE (deferred): RoamController deferred (see the `_controller` note above).
         _ = self.group.add(self._mainGroup)
+        self._firstRender = true
     }
 
     // upstream: render(seriesModel: TreeSeriesModel, ecModel: GlobalModel, api: ExtensionAPI)
@@ -247,11 +264,17 @@ open class TreeView: ChartView {
         group.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-NOTE (deferred): the upstream `View` VIEW_COORD_SYS placement (bbox + createViewCoordSysSimply +
-        //   applyViewCoordSysTransToElement) is DEFERRED for this view (roam via group transform instead).
-        //   The group position set
-        //   above is the static subset of that placement; the roam pan/zoom is applied to the group as a
-        //   TRANSFORM at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
+        //   The upstream `View` VIEW_COORD_SYS placement: builds the own coord sys over the node bounding box
+        //   (`seriesModel.coordinateSystem`, which `TreeSeries.__ownRoamView()` hands to the roam modules) and
+        //   applies its OVERALL trans to `this.group` via `applyViewCoordSysTransToElement`.
+        //   PORT-NOTE: the ROAM pan/zoom itself is NOT driven through this coord sys in the port — the
+        //   authorized view-group deviation (roamHelperViewGroup.swift) transforms `_mainGroup` directly at
+        //   the END of render (see viewGroupRoamApplyStateToGroup below). To keep the two frames of reference
+        //   from composing, `_updateViewCoordSys` explicitly resets the coord sys' roam option to neutral
+        //   (see the PORT-NOTE there) — dataRect == viewRect, zoom 1 — so the trans applied to `self.group`
+        //   is the identity unconditionally, i.e. placement-neutral; the call exists so the coord sys (and
+        //   its sync-back element) is present and correct for `TreeSeries.__ownRoamView()` / `treeRoam`.
+        self._updateViewCoordSys(seriesModel, api)
 
         // updateRoamControllerSimply(seriesModel, api, this._controller, ...);  — the controller is wired
         //   live by EChartsView._setupTreeRoam (the TreeView is zr-less); the roam STATE it accumulates
@@ -372,7 +395,11 @@ open class TreeView: ChartView {
         //   On first render / roam off, the state is identity → the placement above is left exactly as-is.
         viewGroupRoamApplyStateToGroup(seriesModel, group, baseX, baseY)
 
-        // this._firstRender = false;  — PORT-NOTE (deferred): the enter/roam animation flag stays DEFERRED.
+        // this._firstRender = false;
+        //   PORT-NOTE: the two early `guard` bail-outs above (no `data.tree` / no `layoutInfo` — both
+        //   non-null upstream) skip this on purpose: nothing was placed, so the NEXT render is still the
+        //   first one and must apply the coord-sys trans synchronously rather than tween it.
+        self._firstRender = false
     }
 
     // L3 Roam: the pointer-check element (upstream `createIsInSelfByPointerCheckerEl(this.group)`).
@@ -384,7 +411,95 @@ open class TreeView: ChartView {
     // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — the port re-renders via the full update()
     //   the `treeRoam` action triggers (see roamHelperViewGroup.swift DEVIATION note); no partial path.
 
-    // upstream: private _updateViewCoordSys(seriesModel, api)  — PORT-NOTE (deferred): coord/View + bbox DEFERRED.
+    // upstream: private _updateViewCoordSys(seriesModel: TreeSeriesModel, api: ExtensionAPI) {
+    //     const data = seriesModel.getData();
+    //     const points: number[][] = [];
+    //     data.each(function (idx) {
+    //         const layout = data.getItemLayout(idx);
+    //         if (layout && !isNaN(layout.x) && !isNaN(layout.y)) { points.push([+layout.x, +layout.y]); }
+    //     });
+    //     const min: number[] = []; const max: number[] = [];
+    //     bbox.fromPoints(points, min, max);
+    //     const oldMin = this._min; const oldMax = this._max;
+    //     if (max[0] - min[0] === 0) { min[0] = oldMin ? oldMin[0] : min[0] - 1; max[0] = oldMax ? oldMax[0] : max[0] + 1; }
+    //     if (max[1] - min[1] === 0) { min[1] = oldMin ? oldMin[1] : min[1] - 1; max[1] = oldMax ? oldMax[1] : max[1] + 1; }
+    //     const ownCoordSys = seriesModel.coordinateSystem = createViewCoordSysSimply(
+    //         seriesModel, api, min[0], min[1], max[0] - min[0], max[1] - min[1]);
+    //     applyViewCoordSysTransToElement(this.group, VIEW_COORD_SYS_TRANS_OVERALL, ownCoordSys,
+    //         this._firstRender ? null : seriesModel);
+    //     this._min = min; this._max = max;
+    // }
+    private func _updateViewCoordSys(_ seriesModel: TreeSeriesModel, _ api: ExtensionAPI) {
+        let data = seriesModel.getData()
+        var points: [[Double]] = []
+        // data.each(idx => ...) — the port iterates the data indices directly (same as render above).
+        for idx in 0..<data.count() {
+            // `layout && !isNaN(layout.x) && !isNaN(layout.y)`: the tree layout bag is `{x, y, rawX, rawY}`;
+            //   a missing/NaN coordinate (an unlaid-out / collapsed node) is skipped.
+            guard let layout = data.getItemLayout(idx) as? [String: Any],
+                  let x = layout["x"] as? Double, let y = layout["y"] as? Double,
+                  !x.isNaN, !y.isNaN else {
+                continue
+            }
+            points.append([x, y])
+        }
+        // PORT-NOTE (deviation): upstream passes EMPTY `min`/`max` arrays into `bbox.fromPoints`, so with
+        //   zero laid-out points they stay empty and `max[0] - min[0]` evaluates to NaN — the degenerate-box
+        //   branch below is NOT taken and the coord sys ends up with a NaN dataRect (nothing renders). Swift
+        //   has no NaN-by-missing-index, so the port bails out instead: with no points there is nothing to
+        //   place, and leaving the previous coordinateSystem / `_min` / `_max` untouched is the closest safe
+        //   analogue (it also avoids latching an origin-based ±1 box into `_min`/`_max`).
+        guard !points.isEmpty else { return }
+
+        // bbox.fromPoints(points, min, max) — the Swift port is value-returning (out-params dropped, §10).
+        let (minOut, maxOut) = bbox.fromPoints(points, [0, 0], [0, 0])
+        var min: VectorArray = minOut
+        var max: VectorArray = maxOut
+
+        // If don't Store min max when collapse the root node after roam,
+        // the root node will disappear.
+        let oldMin = self._min
+        let oldMax = self._max
+
+        // If width or height is 0
+        if max[0] - min[0] == 0 {
+            min[0] = oldMin?[0] ?? (min[0] - 1)
+            max[0] = oldMax?[0] ?? (max[0] + 1)
+        }
+        if max[1] - min[1] == 0 {
+            min[1] = oldMin?[1] ?? (min[1] - 1)
+            max[1] = oldMax?[1] ?? (max[1] + 1)
+        }
+
+        // Here we use viewCoordSys just for computing the 'position' and 'scale' of the group,
+        // and 'treeRoam' action.
+        let ownCoordSys = createViewCoordSysSimply(
+            seriesModel, api,
+            min[0], min[1], max[0] - min[0], max[1] - min[1]
+        )
+        // PORT-NOTE (deviation): the roam pan/zoom of this view lives OUTSIDE the coord sys — it is applied
+        //   to `_mainGroup` by viewGroupRoamApplyStateToGroup (roamHelperViewGroup.swift) in zr SCREEN-pixel
+        //   units. `createViewCoordSysSimply` faithfully seeds the coord sys from the series' `center` /
+        //   `zoom` / `scaleLimit` options, which would compose a SECOND (differently-anchored) transform onto
+        //   `self.group` — the parent of `_mainGroup` — making the RoamController's screen-space dx/dy and
+        //   originX/originY disagree with the space they are applied in. So the roam option is reset to
+        //   neutral here (center nil, zoom 1, no limit), which makes the OVERALL trans applied below the
+        //   identity unconditionally and keeps this call placement-neutral.
+        //   PORT-TODO: honour `series.center` / `series.zoom` by seeding ViewGroupRoamState from them once
+        //   (as roamHelperGeo does) rather than through the coord sys.
+        viewCoordSysSetRoamOption(ownCoordSys, nil, 1, nil)
+        seriesModel.coordinateSystem = ownCoordSys
+
+        applyViewCoordSysTransToElement(
+            self.group,
+            VIEW_COORD_SYS_TRANS_OVERALL,
+            ownCoordSys,
+            self._firstRender ? nil : seriesModel
+        )
+
+        self._min = min
+        self._max = max
+    }
 
     // upstream: _updateNodeAndLinkScale(seriesModel)  — PORT-NOTE: setSymbolScale (roam) DEFERRED.
 

@@ -96,7 +96,10 @@ final class MapSVGTests: XCTestCase {
     // The component view is recreated on the full update() a geoRoam triggers, so re-fetch it each read.
     private func svgWrapperX(_ view: EChartsView) -> Double? {
         let geoView = view.ec._componentsViews.compactMap { $0 as? GeoView }.first
-        return (geoView?.group.childAt(0) as? Group)?.x
+        // GeoView delegates to MapDraw: view group → `mapDraw.group` → `_transformGroup`, which is the
+        // element the ROAM transform is applied to (the svg root below it carries only the RAW trans).
+        let mapDrawGroup = geoView?.group.childAt(0) as? Group
+        return (mapDrawGroup?.childAt(0) as? Group)?.x
     }
 
     func test_geoSVG_roamShiftsSvgRootGroup() {
