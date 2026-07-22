@@ -327,7 +327,7 @@ private func packEventData(_ el: Element, _ seriesModel: TreemapSeriesModel, _ i
         "seriesType": "treemap",
         "selfType": "breadcrumb", // Distinguish with click event on treemap node.
         "nodeData": [
-            "dataIndex": itemNode.map { Double($0.dataIndex) } as Any,
+            "dataIndex": itemNode.map { $0.dataIndex } as Any,
             "name": itemNode?.name as Any
         ] as [String: Any]
     ]

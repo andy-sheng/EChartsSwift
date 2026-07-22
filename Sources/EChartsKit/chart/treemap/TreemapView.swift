@@ -31,8 +31,9 @@ import ZRenderKit
 //       -> util/states IS ported (util/states.swift); treemap's states/emphasis/high-down dispatch is
 //          still DEFERRED here. `Z2_EMPHASIS_LIFT` is inlined below as its upstream literal (10).
 //   import DataDiffer from '../../data/DataDiffer';                 -> PORT-NOTE (deferred): DataDiffer IS ported, but treemap's hierarchical dualTravel diff/reuse is deferred; static rebuild used.
-//   import * as helper from '../helper/treeHelper';                 -> treeHelper IS ported (chart/helper/treeHelper.swift);
-//       its retrieveTargetInfo / aboveViewRoot (drill-down/roll-up actions) are still DEFERRED here.
+//   import * as helper from '../helper/treeHelper';                 -> treeHelper IS ported (chart/helper/treeHelper.swift)
+//       and USED: `retrieveTargetInfo` in `render()`, `aboveViewRoot` in `_renderBreadcrumb`'s findTarget
+//       and in treemapAction.swift. Only the `reRoot` descriptor / `_doAnimation` consumers are deferred.
 //   import Breadcrumb from './Breadcrumb';                          -> sibling Breadcrumb.swift.
 //   import RoamController, { RoamEventParams } from '../../component/helper/RoamController';
 //       -> RoamController IS ported (component/helper/RoamController.swift); pan/zoom roam is still DEFERRED here.
@@ -216,10 +217,26 @@ open class TreemapView: ChartView {
             return
         }
         // const isInit = !this._oldTree;  -> consumed by the deferred animation routing.
-        // const thisStorage = this._storage;  -> consumed by the deferred reRoot descriptor.
+        // const thisStorage = this._storage;  -> `self._storage` exists and is LIVE (it is the persistent
+        //   morph storage written by `renderNode`); only its use by the deferred reRoot descriptor below
+        //   is unported.
 
         // Mark new root when action is treemapRootToNode.
-        // const reRoot = ...  -> DEFERRED (drill-down/roll-up actions not ported).
+        // const reRoot = (payloadType === 'treemapRootToNode' && targetInfo && thisStorage)
+        //     ? { rootNodeGroup: thisStorage.nodeGroup[targetInfo.node.getRawIndex()], direction: payload.direction }
+        //     : null;
+        // PORT-TODO (deferred): reRoot descriptor.
+        //   The `treemapRootToNode` action itself IS ported (installTreemapAction, treemapAction.swift):
+        //   dispatching it re-roots the series via `model.resetViewRoot` and this render pass rebuilds from
+        //   the new view root. Only the `reRoot` DESCRIPTOR is deferred. Its `rootNodeGroup` field IS
+        //   available today (`self._storage.nodeGroup[targetInfo.node.getRawIndex()]` — `_storage` is the
+        //   persistent morph storage, matching upstream's `this._storage` at this point). Its `direction`
+        //   field is NOT: it is the dead write noted in treemapAction.swift (`Payload` is a value type, so
+        //   the handler's `direction` stamp never reaches this pass). Since the descriptor's only consumers
+        //   are the deferred `_doAnimation` (upstream TreemapView.ts:214/:378) and the deferred
+        //   `prepareAnimationWhenNoOld` drill-down starting-rect choice (upstream TreemapView.ts:1090),
+        //   constructing it now would be dead state — port it together with `_doAnimation`, threading
+        //   `direction` per the treemapAction.swift PORT-TODO.
 
         // const containerGroup = this._giveContainerGroup(layoutInfo);
         let containerGroup = self._giveContainerGroup(layoutInfo)

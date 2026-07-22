@@ -147,6 +147,14 @@ open class ExtensionAPI {
         return nil
     }
 
+    // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (`isDisposed`). Upstream binds
+    //   `ECharts.prototype.isDisposed`. Consumers guard a DEFERRED (throttled/timer) dispatch with it —
+    //   e.g. brush's `doDispatch` (`if (!api.isDisposed()) {...}`, visualEncoding.ts). Defaults to `false`
+    //   (a bare/headless api has no dispose lifecycle); `EChartsExtensionAPI` forwards to the driver.
+    open func isDisposed() -> Bool {
+        return false
+    }
+
     // PORT-NOTE: part of the `availableMethods` forwarding to `ecInstance` (`getDevicePixelRatio`).
     //   Upstream returns `zr.painter.dpr` (the device pixel ratio). Used by `util/decal`'s tile
     //   rasterization (createOrUpdatePatternFromDecal). Defaults to 1 (the headless/test dpr); the
