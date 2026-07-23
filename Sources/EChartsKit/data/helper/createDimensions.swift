@@ -566,10 +566,9 @@ public enum createDimensions {
         _ fromZero: Bool
     ) -> DimensionName {
         var name = name
-        // map.hasKey(name) -> map.get(name) != nil (shim has no hasKey)
-        if fromZero || map.get(name) != nil {
+        if fromZero || map.hasKey(name) {
             var i = 0
-            while map.get(name + String(i)) != nil {
+            while map.hasKey(name + String(i)) {
                 i += 1
             }
             name += String(i)
