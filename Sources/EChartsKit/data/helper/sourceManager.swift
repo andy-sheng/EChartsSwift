@@ -508,23 +508,18 @@ public func disableTransformOptionMerge(_ datasetModel: DatasetModel) {
         //   see util.setAsPrimitive. Harmless for merge: `util.merge` never recurses into
         //   arrays, so an array transform option is already replaced wholesale rather than
         //   deep-merged. (util.clone does deep-copy it, unlike upstream; see that PORT-TODO.)
-        var tagged = false
+        // PORT-NOTE: upstream performs no diagnostic here — a truthy `transform` of an
+        //   unexpected shape (array, scalar/string shorthand, bridged NSDictionary) is tolerated
+        //   silently. The tag is therefore best-effort: applied when the option is a plain
+        //   `[String: Any]` bag, and otherwise left untagged with no assert/log, matching
+        //   upstream's two-line body exactly (do NOT reintroduce a `__DEV__` assert here — a
+        //   `util.assert` fires `preconditionFailure` and would abort dev builds on shapes
+        //   upstream accepts).
         if var transformBag = transformOption as? [String: Any],
            var optionBag = datasetModel.option as? [String: Any] {
             util.setAsPrimitive(&transformBag)
             optionBag["transform"] = transformBag
             datasetModel.option = optionBag
-            tagged = true
-        }
-        // This symbol exists solely to provide the tag; a silent skip would drop the
-        // merge protection with no diagnostic. An array-valued transform is the one shape
-        // legitimately not taggable (see the PORT-TODO above), so exempt it.
-        if __DEV__ {
-            util.assert(
-                tagged || transformOption is [Any],
-                "disableTransformOptionMerge: could not tag the transform option "
-                    + "(unexpected option shape) — merge protection is not in effect."
-            )
         }
     }
 }
