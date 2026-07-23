@@ -517,7 +517,7 @@ final class VisualMapping {
                 //   `each` — which iterates own properties only — never sees it. A Swift dictionary has no
                 //   hidden slot, so skip the key explicitly to match. The caller's dict still holds the
                 //   entry, so the `type === 'opacity' ? '__alphaForOpacity' : type` lookups still resolve.
-                if type == "__alphaForOpacity" { continue }
+                if type == alphaForOpacityKey { continue }
                 collected.append(type)
             }
             types = collected
