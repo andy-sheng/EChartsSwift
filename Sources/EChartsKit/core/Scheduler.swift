@@ -330,6 +330,13 @@ public final class Scheduler {
             let progressive: Any? = (zr?.painter.type == "canvas") ? seriesModel.getProgressive() : false
             let pipelineId = seriesModel.uid
 
+            // upstream: Math.round(progressive || 700)
+            // `number.numericToNumber` is the single canonical Int/Double/String coercion path (it also
+            //   guards the Int-vs-Double option-read trap where literals like `progressive: 500` box as
+            //   `Int`); it returns NaN for a non-numeric value, hence the explicit `?? 700`-style guard.
+            let progressiveNum = jsTruthy(progressive) ? number.numericToNumber(progressive) : Double.nan
+            let stepValue = floor((progressiveNum.isNaN ? 700 : progressiveNum) + 0.5)
+
             pipelineMap.set(pipelineId, Pipeline(
                 id: pipelineId,
                 head: nil,
@@ -342,8 +349,7 @@ public final class Scheduler {
                 //   the unconditional dynamic call below matches upstream.
                 progressiveEnabled: jsTruthy(progressive) && !seriesModel.preventIncremental(),
                 blockIndex: -1,
-                // upstream: Math.round(progressive || 700)
-                step: floor((jsTruthy(progressive) ? (schedulerNum(progressive) ?? 700) : 700) + 0.5),
+                step: stepValue,
                 count: 0
             ))
 
@@ -824,14 +830,4 @@ private func jsTruthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
-}
-
-// Numeric coercion of an option value (Int or Double) to Double. Not an upstream symbol — guards the
-// Int-vs-Double option-read trap: option literals (e.g. `progressive: 500`) are boxed as `Int`, so a
-// bare `as? Double` returns nil and the configured value is silently dropped.
-private func schedulerNum(_ v: Any?) -> Double? {
-    if let d = v as? Double { return d }
-    if let i = v as? Int { return Double(i) }
-    if let s = v as? String { return Double(s) }
-    return nil
 }
