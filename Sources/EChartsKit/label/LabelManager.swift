@@ -41,7 +41,11 @@ import ZRenderKit
 //   DEFERRED (documented gaps, faithful to the rest of the port):
 //     - `draggable` / drag handlers, `labelLinePoints`, and `processLabelsOverall` (label-line update +
 //        label value/fade animation) — the driver draws a static frame and has no per-frame label
-//        animation loop, and label lines are drawn by each chart view.
+//        animation loop, and label lines are drawn by each chart view. This is where upstream's
+//        `_updateLabelLine` calls `setLabelLineStyle(el, getLabelLineStatesModels(itemModel), defaultStyle)`
+//        (LabelManager.ts:522) — that consumer stays DEFERRED here; the provider
+//        (`labelGuideHelper.setLabelLineStyle`) is nonetheless fully ported and is already wired by the
+//        chart views (FunnelView, PieView) that own their label lines.
 //     - The `dummyTransformable` global-space decomposition of `defaultAttr` — since the driver
 //        renders each label fresh every frame, the label's CURRENT attrs ARE the defaults, so the
 //        "restore default" branches of `updateLayoutConfig` reduce to no-ops and are omitted.
