@@ -112,14 +112,13 @@ final class OptionManager {
                 if let seriesDict = series as? [String: Any],
                    let data = seriesDict["data"],
                    util.isTypedArray(data) {
-                    // setAsPrimitive(series.data) — INTENTIONALLY absent, not deferred.
-                    //   `util.setAsPrimitive` is ported, but it cannot tag this operand and does
-                    //   not need to: `isTypedArray` matches `ContiguousArray<…>`, a VALUE type
-                    //   with no in-band slot and no identity. The effect the tag buys upstream
-                    //   (clone must not traverse/copy the user's typed array) already holds,
-                    //   because `util.clone` matches neither the `[String: Any]` nor the `[Any]`
-                    //   branch for a ContiguousArray and returns it unchanged — verified.
-                    //   The `if` is kept as a structural mirror of the upstream statement.
+                    // setAsPrimitive(series.data) — resolved no-op. The provider `util.setAsPrimitive`
+                    //   is ported (ZRenderKit util), but neither overload accepts this operand and it
+                    //   needs none: `isTypedArray` matches `ContiguousArray<…>`, a VALUE type with no
+                    //   in-band slot and no identity. What the tag buys upstream (clone must not
+                    //   traverse/copy the user's typed array) already holds — `util.clone` matches
+                    //   neither its `[String: Any]` nor `[Any]` branch for a ContiguousArray and
+                    //   returns it unchanged. The `if` is kept as a structural mirror of upstream.
                 }
             }
             let datasetList: [Any] = model.normalizeToArray(ro["dataset"])
@@ -128,9 +127,9 @@ final class OptionManager {
                 if let datasetDict = dataset as? [String: Any],
                    let source = datasetDict["source"],
                    util.isTypedArray(source) {
-                    // setAsPrimitive(dataset.source) — intentionally absent for the same reason
-                    //   as the series note above (typed-array value operand; `util.clone`
-                    //   already passes it through unchanged).
+                    // setAsPrimitive(dataset.source) — resolved no-op for the same reason as the
+                    //   series note above (typed-array value operand; `util.setAsPrimitive` cannot
+                    //   tag it and `util.clone` already passes it through unchanged).
                 }
             }
         }
