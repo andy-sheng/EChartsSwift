@@ -42,13 +42,25 @@ import ZRenderKit
 typealias VisualMappingCollection = [String: [String: VisualMapping]]
 
 // The literal key under which the (upstream-prototype-hidden) __alphaForOpacity mapping is stashed.
-// Must never appear in a `prepareVisualTypes` result — that method is the single place it is filtered out.
-private let alphaForOpacityKey = "__alphaForOpacity"
+// Shared source of truth for the magic key: this is the storage key used when writing the mapping
+// (see `createVisualMappings`), and the SAME constant is referenced by VisualMapping.prepareVisualTypes,
+// which is where the iteration-time filtering (skipping the hidden slot) is enforced centrally.
+let alphaForOpacityKey = "__alphaForOpacity"
 
 // function hasKeys(obj) { for name in obj: if hasOwnProperty(name) return true; }
+//   Upstream returns true for ANY non-empty own-enumerable value: object, array, or string. Mirror that
+//   for the value shapes that actually occur in replacableOptionKeys (e.g. `visualMap.color` is commonly
+//   an array like ['#d94e5d','#eac736']), otherwise an array-valued key would fail to trigger the reset.
 private func hasKeys(_ obj: Any?) -> Bool {
+    guard let obj = obj else { return false }
     if let dict = obj as? [String: Any] {
         return !dict.isEmpty
+    }
+    if let arr = obj as? [Any] {
+        return !arr.isEmpty
+    }
+    if let str = obj as? String {
+        return !str.isEmpty
     }
     return false
 }
