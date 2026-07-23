@@ -484,14 +484,15 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
 
     handler.seriesType = seriesType
 
-    // PORT-TODO: upstream `plan: createRenderPlanner()`. `StageHandlerPlan` now returns
-    //   `StageHandlerPlanReturn?` (util/types.swift), so the planner's nil-for-no-reset answer IS
-    //   representable — the old "non-optional return" blocker no longer exists. What remains is the arity
-    //   mismatch: wire it with the adapter used in chart/lines/linesLayout.swift:48-51
-    //   (`let planner = createRenderPlanner(); handler.plan = { sm, _, _, _ in planner(sm) }`), created
-    //   ONCE so its makeInner large/progressive state persists across calls. Left unwired for now; the
-    //   `reset` stage still recomputes layout each pass, so the non-progressive bar path is unaffected.
-    handler.plan = nil
+    // upstream `plan: createRenderPlanner()`. The planner is created ONCE here (as upstream, so its
+    //   `makeInner` large/progressive state persists across calls) and returns `(SeriesModel) ->
+    //   StageHandlerPlanReturn?`; `StageHandlerPlan` is the 4-arg
+    //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`, so wrap it in an
+    //   arity adapter that ignores the extra args (which upstream's planner also ignores).
+    let planner = createRenderPlanner()
+    handler.plan = { (seriesModel: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload?) -> StageHandlerPlanReturn? in
+        return planner(seriesModel)
+    }
 
     handler.reset = { seriesModel, _, _, _ -> Any? in
         if !cartesianAxisHelper.isCartesian2DInjectedAsDataCoordSys(seriesModel) {
