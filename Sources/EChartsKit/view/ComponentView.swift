@@ -179,11 +179,10 @@ open class ComponentView: ViewRootGroup {
     }
 
     // upstream (optional): focusBlurEnabled?: boolean;
-    // PORT-NOTE (deferred): the focus/blur guard that consults this flag (states.ts:536
-    //   `if (!view || !view.focusBlurEnabled)`) is itself deferred — tracked as a POTENTIAL-BUG in
-    //   util/states.swift. Only GeoView sets it (`focusBlurEnabled = true`, declared locally there),
-    //   so no base declaration is needed until that guard is wired; adding one here would also require
-    //   an `override` on GeoView.
+    //   Modeled as an overridable base member defaulting to `false` (upstream optional-absent is falsy;
+    //   the guard is `if (!view || !view.focusBlurEnabled)`, states.ts:536). Only GeoView opts in
+    //   (overrides to `true`). Consulted by `states.blurComponent`.
+    open var focusBlurEnabled: Bool = false
 
     // upstream: static registerClass: clazzUtil.ClassManager['registerClass'];
     //

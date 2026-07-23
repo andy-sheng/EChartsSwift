@@ -595,13 +595,9 @@ public enum states {
 
         getComponentStates(componentModel).isBlured = true
 
-        // POTENTIAL-BUG (dropped guard): upstream returns early unless `view.focusBlurEnabled`
-        //   (states.ts:536 `if (!view || !view.focusBlurEnabled)`). That flag is only declared on the
-        //   concrete GeoView (=true), not on the base `ComponentView` (see view/ComponentView.swift), so it
-        //   cannot be read polymorphically here. Without the gate this blurs every child of ANY component
-        //   view, whereas upstream only blurs views that opt in (currently just Geo) — an over-blur
-        //   divergence. Fix requires declaring `focusBlurEnabled` on the base ComponentView (not this file).
-        guard let view = api.getViewOfComponentModel(componentModel) else { return }   // viewless → skip
+        // upstream (states.ts:536): `if (!view || !view.focusBlurEnabled) { return; }` — only blur views
+        //   that opt in (base `ComponentView.focusBlurEnabled` defaults false; currently just GeoView=true).
+        guard let view = api.getViewOfComponentModel(componentModel), view.focusBlurEnabled else { return }
         _ = view.group.traverse({ child in singleEnterBlur(child); return false })
     }
 

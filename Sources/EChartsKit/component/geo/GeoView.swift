@@ -66,11 +66,14 @@ public final class GeoView: ComponentView {
     private var _model: GeoModel?
 
     // upstream: focusBlurEnabled = true;
-    // Consulted by the emphasis/blur system (states.ts:536). PORT-NOTE: the base `ComponentView` does not
-    //   declare the seam yet (its deferred PORT-NOTE @ComponentView.swift:177), so this stays a LOCAL var;
-    //   it becomes `override` in the same change that adds `open var focusBlurEnabled` to the base and
-    //   restores the `blurComponent` guard (SYMBOLS.tsv row `view/ComponentView.baseSeams`).
-    public var focusBlurEnabled = true
+    // Consulted by the emphasis/blur system (states.ts:536). Overrides the base `ComponentView`
+    //   default (`open var focusBlurEnabled = false`); Geo is the only view that opts in. A computed
+    //   override (get+set) is required because Swift can't override a settable stored property with a
+    //   stored one; the setter is inert (upstream is a constant `= true` on the class).
+    public override var focusBlurEnabled: Bool {
+        get { true }
+        set {}
+    }
 
     // upstream: init(ecModel: GlobalModel, api: ExtensionAPI) { this._api = api; }
     public override func `init`(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
