@@ -279,7 +279,13 @@ public final class CGRenderer: Renderer {
     private func resolvePatternImage(_ pattern: Pattern) -> CGImage? {
         switch pattern.image {
         case .url(let s):
-            return loadCGImage(s)
+            // Route through the platform `loadImage` seam. NativePainter installs the native backing
+            // (`installNativePlatformAPI`), whose `loadImage` synchronously decodes the string source
+            // via `loadCGImage` and returns the `CGImage` as the opaque `ImageLike` handle. Fall back to
+            // the direct `loadCGImage` decode when the seam is still the nil-returning stub, so pattern
+            // fills do not depend on a `CALayerPainter` having been constructed first (its `init` is what
+            // installs the native backing).
+            return asCGImage(platformApi.loadImage(s, {}, {})) ?? loadCGImage(s)
         case .image(let like):
             return asCGImage(like)
         }
