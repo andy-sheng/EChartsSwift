@@ -249,7 +249,8 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
     guard let style = img.imageStyle else { return }
     if (style.opacity ?? 1) == 0 { return }
     guard let cg = resolveCGImage(img) else {
-        // PORT-NOTE (deferred): image not yet decoded (remote URL via platform.loadImage — renderer seam, CONVENTIONS §9).
+        // PORT-NOTE (deferred): image not yet decoded. A remote-URL source needs the async
+        // `platform.loadImage` → `__image` path (image.ts `createOrUpdateImage`), still unported.
         return
     }
 
@@ -287,15 +288,22 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
 }
 
 /// Resolve a `ZRImage`'s native `CGImage`. Prefers the painter-decoded `__image` handle, then an
-/// inline `.image(CGImage)` source, then a best-effort decode of a `.url` string (file / data URI).
-/// PORT-NOTE (deferred): remote URL loading + async `onload` is the deferred renderer seam (CONVENTIONS §9).
+/// inline `.image(CGImage)` source, then a decode of a `.url` string (file / data URI) via the
+/// `platform.loadImage` seam (CONVENTIONS §9). PORT-NOTE (deferred): remote-URL async loading +
+/// `onload` dispatch onto `__image` is the still-unported image.ts follow-up.
 private func resolveCGImage(_ img: ZRImage) -> CGImage? {
     if let cg = asCGImage(img.__image) { return cg }
     if case .some(.image(let like)) = img.imageStyle.image, let cg = asCGImage(like) {
         return cg
     }
     if case .some(.url(let s)) = img.imageStyle.image {
-        return loadCGImage(s)
+        // Route through the platform `loadImage` seam. NativePainter installs the native backing
+        // (`installNativePlatformAPI`), whose `loadImage` synchronously decodes the string source
+        // via `loadCGImage` and returns the `CGImage` as the opaque `ImageLike` handle. Fall back to
+        // the direct `loadCGImage` decode when the seam is still the nil-returning stub, so the public
+        // `renderScene` snapshot path does not depend on a `CALayerPainter` having been constructed
+        // first (its `init` is what installs the native backing).
+        return asCGImage(platformApi.loadImage(s, {}, {})) ?? loadCGImage(s)
     }
     return nil
 }
@@ -441,6 +449,9 @@ public final class CALayerPainter: Painter {
         // Make the SVG `<pattern>` renderer seam available as soon as a native backend exists, so
         // parseSVG can resolve `url(#patternId)` fills to image-tile Patterns (idempotent).
         installSVGPatternRasterizer()
+        // Back ZRenderKit's `platform.loadImage` seam with the native ImageIO decode so `.url` image
+        // sources resolve through `platformApi.loadImage` (idempotent; CONVENTIONS §9).
+        installNativePlatformAPI()
         self.surfaceSize = size
         self.dpr = dpr ?? defaultDPR()
         self.backgroundColor = backgroundColor
