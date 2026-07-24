@@ -1084,6 +1084,21 @@ open class Path: Displayable {
         self.dirtyStyle()
     }
 
+    /// Merge `obj` into the current style. OVERLOAD of Displayable.setStyle(CommonStyleProps).
+    // upstream: Displayable.setStyle (Displayable.ts:400) — `extend(this.style, obj)`; the
+    //   Path-level style is `PathStyleProps`, so the merge goes through `extendPathStyle` (skips nil
+    //   source fields, preserving already-set target values) rather than a wholesale replace. Consumed
+    //   by tool/path.ts:495 clonePath.
+    @discardableResult
+    public func setStyle(_ obj: PathStyleProps) -> Self {
+        var s = self.pathStyle!
+        extendPathStyle(&s, obj)
+        self.pathStyle = s
+        self._syncCommonStyle()
+        self.dirtyStyle()
+        return self
+    }
+
     // Mirror the CommonStyleProps subset of `pathStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity / blend.
     // PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.

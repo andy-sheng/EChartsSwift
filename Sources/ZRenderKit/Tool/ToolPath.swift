@@ -616,8 +616,14 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
     // path.setStyle(sourcePath.style);
     // PORT-NOTE: upstream `setStyle` MERGES `sourcePath.style` (PathStyleProps) into the fresh
     //   default style. Our rich style lives in `pathStyle`; `useStyle` assigns it (the source style
-    //   is already a created/magic style, so it round-trips by value). Merge-vs-replace edge cases
-    //   on a partially-specified source style are deferred.
+    //   is already a created/magic style, so it round-trips by value). Merge is WRONG here: a fresh
+    //   Path()'s pathStyle.fill defaults to "#000", and extendPathStyle skips nil source fields, so a
+    //   stroke-only source (fill == nil for Line/Polyline/BezierCurve/Arc/Rose/Trochoid) cannot clear
+    //   that default → spurious black fill (the "closed-shape black fill" trap). Upstream's
+    //   extend/Object.assign copies the source's own key fill=null; PathStyleProps cannot represent
+    //   "key present == null" vs "absent", so only a wholesale value-replace reproduces the resolved
+    //   upstream style (including the null fill). The setStyle(PathStyleProps) merge overload exists
+    //   for genuinely-partial callers; clonePath must use replace.
     path.useStyle(sourcePath.pathStyle)
 
     if opts.bakeTransform == true {
