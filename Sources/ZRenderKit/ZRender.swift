@@ -294,11 +294,23 @@ public final class ZRender {
         // upstream: this.painter.refresh({refresh, refreshHover}). The CanvasPainter pulls the
         //   display list from storage internally; natively the painter does not own storage, so
         //   ZRender builds the Storage display list and hands it to the painter (documented seam).
-        if refresh {
+        // DIVERGENCE from upstream: upstream's CanvasPainter.refresh({refresh:false, refreshHover:true})
+        //   paints ONLY the promoted hover list (`_paintHoverList(getDisplayList(false))`) and returns
+        //   WITHOUT re-flushing the normal layers — a hover-layer / hoverLayerThreshold repaint
+        //   optimization. The native painter has NO separate/promoted hover layer: emphasis, blur, and
+        //   select state live directly in the single main display list, so a hover-only refresh must
+        //   repaint that full list for the directly-applied state to become visible. We therefore
+        //   intentionally do NOT reproduce upstream's hover-layer optimization (native repaints the
+        //   whole list on a hover-only frame).
+        // DORMANT: `refreshHover` only reaches here when `_needsRefreshHover` is set, which today
+        //   happens only via the deprecated public refreshHoverImmediately(). The Element#markRedraw
+        //   hover path is gated on `__inHover != 0`, and `__inHover` is never assigned non-zero while
+        //   `shouldUseHoverLayer` remains a KIND_NO stub — so this branch fixes no live bug yet; it is
+        //   defensive wiring for refreshHoverImmediately() until that machinery is un-stubbed.
+        if refresh || refreshHover {
             let displayList = self.storage.getDisplayList(true)
             self.painter.refresh(displayList)
         }
-        // PORT-NOTE: refreshHover → hover-layer painting (Phase 2 hover machinery / painter seam).
         // Avoid trigger zr.refresh in Element#beforeUpdate hook.
         // Hover layer is always refreshed when refreshing normal layers.
         self._needsRefresh = false
