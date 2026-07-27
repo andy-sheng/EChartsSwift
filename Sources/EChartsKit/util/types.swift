@@ -252,7 +252,21 @@ public let COMPONENT_MAIN_TYPE_SERIES = "series"
 
 // upstream: interface ECElement extends Element { ... } — augments the scene-graph class with
 //   optional echarts-internal props. Modeled as a protocol (Swift cannot add stored props to the
-//   `Element` class via an interface). PORT-NOTE: confirm augmentation strategy when consumed.
+//   `Element` class via an interface).
+//
+// PORT-NOTE (AUGMENTATION STRATEGY — SETTLED; this protocol is DECLARATION-ONLY, nothing conforms to
+//   it and nothing should read it). Because no concrete scene-graph type can host these props, every
+//   LIVE `ECElement` prop lives in a per-element side store keyed on `Element`, and there are exactly
+//   TWO of them, split by owner — do not invent a third:
+//     • the HIGH-DOWN half → `states.HighDownInner` / `states.getHighDownInner` (util/states.swift).
+//       Owns `hoverState`, `selected`, `onHoverStateChange`, `z2EmphasisLift`, `z2SelectLift`
+//       (+ upstream's `ExtendedProps` `__highByOuter`/`__highDownSilentOnTouch`/`__highDownDispatcher`,
+//       which is why the store is named for them). `highDownSilentOnTouch` belongs here when it lands.
+//     • EVERYTHING ELSE → `innerStore.ECElementProps` / `innerStore.getECElementProps`
+//       (util/innerStore.swift). Owns `tooltipDisabled` today; `disableLabelAnimation`,
+//       `forceLabelAnimation`, `disableLabelLayout` and `disableMorphing` go THERE when they land.
+//   A prop still listed below with no store entry is simply not consumed yet — add it to the store on
+//   the correct side of that line together with its first reader, never to a new bag.
 public protocol ECElement: AnyObject {
     var highDownSilentOnTouch: Bool? { get set }
     var onHoverStateChange: ((DisplayState) -> Void)? { get set }

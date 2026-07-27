@@ -1280,7 +1280,22 @@ private func doCreateOrUpdateEl(
     }
     let elUnwrapped = el!
 
-    // upstream: morph / tooltipDisabled flags — DEFERRED (morph not ported; ECElement not conformed).
+    // upstream:
+    //   // Need to set morph: false explictly to disable automatically morphing.
+    //   if ((elOption as CustomBaseZRPathOption).morph === false) { (el as ECElement).disableMorphing = true; }
+    //   else if ((el as ECElement).disableMorphing) { (el as ECElement).disableMorphing = false; }
+    //   morph — still DEFERRED (path morphing is not wired into the custom series' transition path).
+    //
+    // upstream: if (elOption.tooltipDisabled) { (el as ECElement).tooltipDisabled = true; }
+    //   NO LONGER DEFERRED. The stale reason ("ECElement not conformed") was only half the story:
+    //   `Element` still does not conform to `ECElement`, but the flag now has a real home — the
+    //   per-element side store `innerStore.getECElementProps` (util/innerStore.swift) — and a real
+    //   READER: `TooltipView._tryShow`'s `findEventDispatcher` walk (upstream TooltipView.ts:483) bails
+    //   out of the tooltip entirely when the hovered element or ANY ancestor carries it. Without this
+    //   assignment `renderItem`'s documented `tooltipDisabled: true` silently did nothing.
+    if (elOption["tooltipDisabled"] as? Bool) == true {
+        innerStore.getECElementProps(elUnwrapped).tooltipDisabled = true
+    }
 
     // Reset the per-render attached-text scratch.
     attachedTxInfoTmp.normal.cfg = nil; attachedTxInfoTmp.normal.conOpt = nil

@@ -81,6 +81,11 @@ public enum states {
     //   augment `Element` directly (`el as ExtendedElement`). `Element` here can not host them, so they
     //   (plus the two-phase flags `hoverState`/`selected` and the `onHoverStateChange` hook and the
     //   z2 lift overrides — all from the `ECElement` interface) live in this per-element bag.
+    //   SCOPE (see the augmentation-strategy PORT-NOTE on `ECElement`, util/types.swift): this bag owns
+    //   the HIGH-DOWN half of `ECElement` ONLY. Its NON-highDown props (`tooltipDisabled` and, when they
+    //   land, `disableLabelAnimation`/`forceLabelAnimation`/`disableLabelLayout`/`disableMorphing`) live
+    //   in `innerStore.ECElementProps` / `innerStore.getECElementProps` (util/innerStore.swift) — do not
+    //   add them here, and do not create a third bag.
     public final class HighDownInner {
         // ExtendedProps
         public var __highByOuter: Int = 0

@@ -93,6 +93,40 @@ public enum innerStore {
     //   `model.makeInner(_:)` API takes a factory closure: `(@escaping () -> T) -> (Host) -> T`.
     public static let getECData: (Element) -> ECData = model.makeInner { ECData() }
 
+    // ------------------------------------------------------------------------
+    // PORT-NOTE (adaptation, NO upstream symbol — nothing to grep for upstream). Upstream augments
+    //   zrender's `Element` IN PLACE (`(el as ECElement).tooltipDisabled = true`, CustomView.ts:1052)
+    //   because TS declaration-merges `interface ECElement extends Element`. In THIS port `ECElement`
+    //   (util/types.swift) is a plain protocol that NO concrete scene-graph type conforms to, so its
+    //   props have to live in a per-element side store — the same idiom `states.getHighDownInner`
+    //   already uses for the high-down half of that same interface.
+    //   Only the props actually READ at runtime are modeled; add more here as they go live (the rest
+    //   are still marked `// upstream: (el as ECElement).<prop>` + DEFERRED at their call sites).
+    //
+    //   WHICH BAG? (the rule, stated once on `ECElement` itself — util/types.swift — and mirrored on
+    //     `states.HighDownInner`; there are exactly TWO bags for the one upstream interface and a third
+    //     must not be invented):
+    //       • high-down props — `hoverState`, `selected`, `onHoverStateChange`, `z2EmphasisLift`,
+    //         `z2SelectLift`, `highDownSilentOnTouch` → `states.getHighDownInner` (util/states.swift),
+    //         which also carries upstream's `ExtendedProps`.
+    //       • EVERYTHING ELSE — `tooltipDisabled` (live, below) and, when they land,
+    //         `disableLabelAnimation` / `forceLabelAnimation` / `disableLabelLayout` /
+    //         `disableMorphing` → HERE.
+    //   PLACEMENT: upstream `util/innerStore.ts` contains only `ECData` + `setCommonECData`, so this
+    //     store is an ADDITION to the file (it is the file that already owns the `makeInner`-on-Element
+    //     idiom); it has no upstream line to diff against — see the rule above instead.
+    // ------------------------------------------------------------------------
+    public final class ECElementProps {
+        /// upstream `ECElement['tooltipDisabled']` — "Force disable triggering tooltip".
+        ///   SET by `doCreateOrUpdateEl` from a custom-series `elOption.tooltipDisabled`
+        ///   (chart/custom/CustomView.swift, upstream CustomView.ts:1051).
+        ///   READ by `TooltipView._tryShow`'s `findEventDispatcher` walk (TooltipView.ts:483): the flag
+        ///   on the hovered element OR on ANY of its ancestors cancels the tooltip entirely.
+        public var tooltipDisabled: Bool?
+        public init() {}
+    }
+    public static let getECElementProps: (Element) -> ECElementProps = model.makeInner { ECElementProps() }
+
     // upstream: `const setCommonECData = (seriesIndex, dataType, dataIdx, el) => {...}`.
     // `el` typed `Element?` to honor the upstream `if (el)` truthiness guard.
     public static func setCommonECData(
