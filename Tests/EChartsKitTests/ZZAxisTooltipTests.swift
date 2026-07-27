@@ -34,7 +34,9 @@ final class ZZAxisTooltipTests: XCTestCase {
         let view = EChartsView(width: 400, height: 300)
         view.setOption([
             // trigger:"axis" — ONE combined tooltip listing every series' value at the hovered x.
-            "tooltip": ["trigger": "axis"] as [String: Any],
+            //   `hideDelay: 0` pins the SYNCHRONOUS teardown this test is about (the default is 100ms;
+            //   that timing is proven separately in ZZTooltipDelayTests).
+            "tooltip": ["trigger": "axis", "hideDelay": 0.0] as [String: Any],
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
             "yAxis": ["type": "value"] as [String: Any],
