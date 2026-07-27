@@ -1144,6 +1144,23 @@ public struct CallbackDataParams {
     public var treePathInfo: [treeHelper.TreePathInfoItem]? = nil
     public var treeAncestors: [treeHelper.TreePathInfoItem]? = nil
     public var collapsed: Bool? = nil
+
+    // PORT-NOTE: upstream declares these on `TooltipCallbackDataParams`
+    //   (`CallbackDataParams & { axisDim?, axisIndex?, axisType?, axisId?, axisValue?, axisValueLabel?,
+    //   marker? }` — component/tooltip/TooltipView.ts:127), the params object handed to a
+    //   `tooltip.formatter` callback on the trigger:'axis' path. Same reason as the tree/treemap/
+    //   sunburst slots above: Swift has no intersection type and a `struct` cannot gain stored
+    //   properties through an `extension`, and the ported tooltip formatter closure is typed
+    //   `(CallbackDataParams) -> String` / `([CallbackDataParams]) -> String` (the established
+    //   closure-in-option idiom — see model/mixin/dataFormat.swift), so the slots live here on the
+    //   base and stay `nil` for every non-axis tooltip. (`marker` is already declared above.)
+    public var axisDim: String? = nil
+    public var axisIndex: Double? = nil
+    public var axisType: String? = nil
+    public var axisId: String? = nil
+    /// upstream: `OrdinalRawValue | number` (a `String` for an ordinal/category axis, `Double` else).
+    public var axisValue: Any? = nil
+    public var axisValueLabel: String? = nil
 }
 // upstream: ParsedValue | ParsedValue[]
 public typealias InterpolatableValue = Any                                // PORT-NOTE: ParsedValue | ParsedValue[]
@@ -1738,9 +1755,36 @@ public struct LabelLayoutOption {
 public typealias LabelLayoutOptionCallback = (LabelLayoutOptionCallbackParams) -> LabelLayoutOption
 
 
+// upstream leaves this callback anonymous, inside `TooltipFormatterCallback<T>` (util/types.ts):
+//   `callback: (cbTicket: string, html: string | HTMLElement | HTMLElement[]) => void`.
+//
+//   PORT-NOTE: the `HTMLElement`/`HTMLElement[]` arms of the html union have no analogue in this
+//     native port (renderMode is FORCED 'richText'; the content host is a `ZRText`, not a DOM node),
+//     so the content is a `String` — richText markup, i.e. `{styleName|text}` tokens.
+//   PORT-NOTE: modeled as a nominal CALLABLE struct rather than the bare function type
+//     `(String, String) -> Void`, because a function-typed PARAMETER is non-escaping by default in
+//     Swift — a user formatter could not store the callback to invoke it LATER, which is the entire
+//     point of the async path. `callAsFunction` keeps the upstream call spelling verbatim:
+//     `callback(asyncTicket, html)`.
+public struct TooltipFormatterAsyncCallback {
+    private let _callback: (String, String) -> Void
+    public init(_ callback: @escaping (_ cbTicket: String, _ html: String) -> Void) {
+        self._callback = callback
+    }
+    public func callAsFunction(_ cbTicket: String, _ html: String) {
+        self._callback(cbTicket, html)
+    }
+}
+
 // upstream: interface TooltipFormatterCallback<T> with sync + async overloads returning
-//   string | HTMLElement | HTMLElement[]. Modeled as a single closure (PORT-NOTE: overloads / return union).
-public typealias TooltipFormatterCallback<T> = (T, String, ((String, Any) -> Void)?) -> Any  // PORT-NOTE
+//   string | HTMLElement | HTMLElement[]:
+//     (params: T, asyncTicket: string, callback: (cbTicket, html) => void) => string | ...
+//   PORT-NOTE: the two TS call signatures collapse to ONE Swift function type (a Swift type alias
+//     cannot carry overloads) and the return union collapses to `String` (see the renderMode
+//     PORT-NOTE above). This is the ONE spelling of the `formatter` option's callable contract:
+//     `TooltipView._callFunctionFormatter` casts the option value to exactly this type, so a
+//     formatter written against this alias IS invoked. Do NOT respell the closure type at call sites.
+public typealias TooltipFormatterCallback<T> = (T, String, TooltipFormatterAsyncCallback) -> String
 
 // upstream: 'inside' | 'top' | 'left' | 'right' | 'bottom'
 public typealias TooltipBuiltinPosition = String                         // PORT-NOTE: literal union
@@ -1788,6 +1832,11 @@ public struct CommonTooltipOption<FormatterParams> {
      */
     public var alwaysShowContent: Bool?
 
+    // PORT-NOTE: the dynamic option slot. A closure value here must be spelled
+    //   `TooltipFormatterCallback<FormatterParams>` (above) — that is the type
+    //   `TooltipView._callFunctionFormatter` casts to. (It additionally accepts the 1-arg
+    //   `(FormatterParams) -> String` spelling, because a JS function is arity-tolerant and a Swift
+    //   closure type is not; see the PORT-NOTE there.)
     public var formatter: Any? // string | TooltipFormatterCallback<FormatterParams>
 
     /**

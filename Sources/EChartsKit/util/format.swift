@@ -421,6 +421,16 @@ public enum format {
         }
     }
 
+    // PORT-NOTE: upstream's `color: ZRColor` parameter is *runtime*-optional — every call site passes a
+    //   possibly-`undefined` value (e.g. `convertToColorString(params.color)`, TooltipView.ts:698) and
+    //   relies on the `isString(color) ? color : … || defaultColor` chain collapsing `undefined` to
+    //   `defaultColor`. Swift's `ZRColor?` does not implicitly convert, so this Optional-accepting
+    //   overload keeps the upstream call spelling verbatim AND keeps the `'transparent'` default owned
+    //   by this one function (callers must not re-spell it).
+    public static func convertToColorString(_ color: ZRColor?, _ defaultColor: ColorString? = nil) -> ColorString {
+        return color.map { convertToColorString($0, defaultColor) } ?? (defaultColor ?? "transparent")
+    }
+
     // upstream: `export { truncateText } from 'zrender/src/graphic/helper/parseText';`
     // PORT-NOTE: zrender `graphic/helper/parseText` is not yet split into a standalone module — its
     //   `truncateText` is ported inside Text.swift (`parseText.truncateText`). This re-export forwards to
