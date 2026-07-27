@@ -856,6 +856,42 @@ func runCLI() -> Bool {
         }
         loadWebAndSnapshot(demo, out: URL(fileURLWithPath: args[2]))
 
+    case "--scene-native":
+        // --scene-native <demo> <out.json> : structural (scene-graph) dump of the native port's
+        //   z-sorted display list. Pair with --scene-web + scripts/scene-diff.py. See SceneDump.swift.
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --scene-native <name> <out.json>\n".utf8)); exit(2)
+        }
+        guard let json = sceneDumpNative(demo) else {
+            FileHandle.standardError.write(Data("scene dump failed\n".utf8)); exit(1)
+        }
+        try? json.write(to: URL(fileURLWithPath: args[2]), atomically: true, encoding: .utf8)
+        print("wrote \(args[2]) (\(json.count) bytes)")
+        exit(0)
+
+    case "--scene-web":
+        // --scene-web <demo> <out.json> : the echarts.js oracle for --scene-native, dumped from the
+        //   SAME page --compare uses (real echarts 6.1.0 in WKWebView), animation forced off.
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]) else {
+            FileHandle.standardError.write(Data("usage: --scene-web <name> <out.json>\n".utf8)); exit(2)
+        }
+        let sapp = NSApplication.shared
+        sapp.setActivationPolicy(.accessory)
+        let swv = WKWebView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        let swin = NSWindow(contentRect: swv.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        swin.contentView = swv; swin.orderFrontRegardless()
+        // --scene-web <demo> <out.json> [probe.js] : the optional 3rd arg replaces the scene dump
+        //   with an arbitrary script, for probing the reference implementation directly.
+        let probeJS = (args.count >= 4 ? (try? String(contentsOfFile: args[3], encoding: .utf8)) : nil) ?? sceneDumpJS
+        let dumper = WebSceneDumper(out: URL(fileURLWithPath: args[2]), js: probeJS)
+        swv.navigationDelegate = dumper
+        guard let spage = echartsHTMLPage(demo, snapshot: true) else {
+            FileHandle.standardError.write(Data("could not build html\n".utf8)); exit(1)
+        }
+        swv.loadHTMLString(spage, baseURL: nil)
+        sapp.run()
+        return true
+
     case "--render-rasterizer":
         // --render-rasterizer <name> <out.png> : headless render of the demo's static frame
         // through the RasterizerPainter translation + the engine's RasterizerCG CPU reference
