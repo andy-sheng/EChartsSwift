@@ -40,9 +40,21 @@
 //     `_updateContentNotChangedOnAxis`, `_keepShow`, `_manuallyAxisShowTip`.
 //   - the HTML content host (`TooltipHTMLContent`) — this port is native, renderMode is FORCED 'richText'
 //   - `transitionDuration` animation + throttled `_updatePosition` (`createOrUpdate`/`clear`)
-//   - the position CALLBACK (closure-in-option) + the STRING position around a graphic element
-//     (needs an `el` bounding rect the slim entry does not thread). The `confine` gate, the array
-//     `[x,y]` / box-layout object position exprs, and `align`/`verticalAlign` ARE ported.
+//   - the `position` option — NO LONGER DEFERRED. Every upstream form is ported in `_updatePosition`:
+//     the CALLBACK (`TooltipPositionCallback`, util/types.swift — a closure IS storable in an option bag
+//     in this port), the STRING keywords 'inside'/'top'/'bottom'/'left'/'right' around the hovered
+//     element (`calcTooltipPosition`, anchored on the `el` now threaded from `e.target` /
+//     `findPointFromSeries`'s `pointInfo.el`), the array `[x,y]`, the box-layout object, `align`/
+//     `verticalAlign` and the `confine` gate. `TryShowParams.positionDefault` ('bottom' on the
+//     action-driven path) is ported too, as upstream's BASE model under the global option
+//     (`buildTooltipModel(..., positionDefault ? {position: positionDefault} : null)`) so an explicit
+//     `position` still wins. Still deferred: the PAYLOAD `position` override
+//     (`TryShowParams.position`) — see the PORT-TODO in `manuallyShowTip`.
+//     CONSTRAINT (Swift, no upstream analogue): a `position` CALLBACK must be stored in the option bag
+//     annotated as `TooltipPositionCallback` — `["position": (cb as TooltipPositionCallback)]`. Swift
+//     cannot dynamically cast between structurally-similar function types, so a closure written with any
+//     other spelling of the same signature fails the `as? TooltipPositionCallback` read in
+//     `_updatePosition` and is silently ignored (see the PORT-NOTE there).
 //   - the `formatter` override of the default markup — NO LONGER DEFERRED: both the STRING formatter
 //     and the FUNCTION formatter (closure-in-option + `asyncTicket`/`_ticket` async callback) are
 //     ported, on BOTH the item and the axis path. See `_showTooltipContent` for the exact closure
@@ -53,10 +65,13 @@
 //     in `EChartsXAxisModel`/`EChartsYAxisModel` (core/ECharts.swift), NOT here — see the PORT-TODO on
 //     `isTimeAxis` in `_showTooltipContent`, and the test that pins both halves
 //     (`ZZTooltipFormatterTests.testStringFormatterTimeAxisPrePassIsDormantOnTheKnownAxisTypeGap`).
-//   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — shown synchronously here
+//   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — NO LONGER DEFERRED: `_showOrMove`
+//     is ported below and every show path (`tryShow`, `_showAxisTooltip`) routes through it, exactly
+//     where upstream does; `hide()` routes through `TooltipRichContent.hideLater(hideDelay)`.
 //   - `findPointFromSeries` (the data-driven showTip position) — NO LONGER DEFERRED: it is wired in
-//     `manuallyShowTip`, which `EChartsView` routes the item-path `showTip` action to. Still deferred
-//     on that path: `target`/`position`/`positionDefault` (see the PORT-NOTE there).
+//     `manuallyShowTip`, which `EChartsView` routes the item-path `showTip` action to. `target` and
+//     `positionDefault` are threaded too; still deferred on that path: `position: payload.position`
+//     (see the PORT-TODO there).
 //
 // ARCHITECTURE (see MEMORY / phase brief):
 //   Upstream `TooltipView` is a `ComponentView` that reaches the live zrender via `api.getZr()`. In THIS
@@ -141,6 +156,11 @@ public final class TooltipView {
     //   hovered something else meanwhile).
     private var _ticket: String = ""
 
+    // upstream: `private _showTimout: number;` (the `setTimeout` id — upstream's typo spelling is kept
+    //   verbatim per PORTING.md §1). Modeled as a `DispatchWorkItem` so it can be cancelled, which is
+    //   the Swift analogue of `clearTimeout` (same substitution `util/throttle.swift` makes).
+    private var _showTimout: DispatchWorkItem?
+
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
     //   model, resolves renderMode, and builds `new TooltipRichContent(api)`. Here the live `zr` is passed
@@ -177,15 +197,28 @@ public final class TooltipView {
     //   - `seriesModel`: the resolved series (upstream `ecModel.getSeriesByIndex(ecData.seriesIndex)`).
     //   - `dataIndex` / `dataType`: upstream `ecData.dataIndex` / `ecData.dataType`.
     //   - `point`     : `[x, y]` in zr coords — upstream `[e.offsetX, e.offsetY]`.
+    //   - `target`    : upstream `TryShowParams['target']` (`e.target`) — the HOVERED element, handed to
+    //                   `_updatePosition` as `el` so the STRING `position` keywords
+    //                   ('inside'/'top'/'bottom'/'left'/'right') can anchor on its bounding rect and the
+    //                   `position` CALLBACK receives a real `rect`. Defaults to the event's own target;
+    //                   an action-driven show passes `findPointFromSeries`'s `pointInfo.el`.
+    //   - `positionDefault`: upstream `TryShowParams['positionDefault']` — 'bottom' for a MANUALLY
+    //                   triggered tooltip (the mouse is not on the el, so upstream anchors the box below
+    //                   it). Applied exactly as upstream does, via `buildTooltipModel`'s
+    //                   `defaultTooltipOption` — the BASE model UNDER the global option, so an explicit
+    //                   `tooltip.position` (or a series-level one) still wins.
     // ------------------------------------------------------------------------
     public func tryShow(
         event: ElementEvent?,
         seriesModel: SeriesModel,
         dataIndex: Double,
         dataType: SeriesDataType? = nil,
-        point: [Double]
+        point: [Double],
+        target: Element? = nil,
+        positionDefault: String? = nil
     ) {
-        _ = event
+        // upstream `_showSeriesItemTooltip` passes `e.target` down as `el`.
+        let el: Element? = target ?? event?.target
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
             return
         }
@@ -195,12 +228,24 @@ public final class TooltipView {
         //   model (TooltipView.ts:680). The per-data-item + coord-system layers are DEFERRED; the series
         //   `tooltip` option (ignoreParent) is layered over the global model so `.get(...)` falls through
         //   to the registered global defaults (show / trigger / textStyle / order / …).
+        //
+        // upstream `buildTooltipModel(cascade, globalTooltipModel, defaultTooltipOption)`
+        //   (TooltipView.ts:1071-1086): when a `defaultTooltipOption` is supplied it becomes the model at
+        //   the BOTTOM of the cascade and the GLOBAL option is re-parented onto it
+        //   (`new Model(globalTooltipModel.option, new Model(defaultTooltipOption, ecModel, ecModel))`),
+        //   i.e. every explicitly-configured layer outranks the default. `positionDefault` is upstream's
+        //   only user of that argument.
+        var baseModel: Model = globalTooltipModel
+        if let positionDefault = positionDefault {
+            let defaultOptionModel = Model(["position": positionDefault], ecModel, ecModel)
+            baseModel = Model(globalTooltipModel.option, defaultOptionModel, ecModel)
+        }
         let tooltipModel: Model
         if let seriesTooltipOpt = seriesModel.get("tooltip", true) as? [String: Any] {
-            tooltipModel = Model(seriesTooltipOpt, globalTooltipModel, ecModel)
+            tooltipModel = Model(seriesTooltipOpt, baseModel, ecModel)
         }
         else {
-            tooltipModel = globalTooltipModel
+            tooltipModel = baseModel
         }
 
         // upstream `_showSeriesItemTooltip` guard (TooltipView.ts:690): trigger must be nil or 'item'.
@@ -252,15 +297,71 @@ public final class TooltipView {
         // upstream: `const asyncTicket = 'item_' + dataModel.name + '_' + dataIndex;` (TooltipView.ts:719)
         let asyncTicket = "item_" + seriesModel.name + "_" + number.jsNumberString(dataIndex)
 
-        _showTooltipContent(
-            tooltipModel: tooltipModel,
-            defaultHtml: html,
-            params: .single(params),
-            asyncTicket: asyncTicket,
-            x: point.count > 0 ? point[0] : 0,
-            y: point.count > 1 ? point[1] : 0,
-            markupStyleCreator: markupStyleCreator
-        )
+        // upstream (TooltipView.ts:721): this._showOrMove(tooltipModel, function () {
+        //   this._showTooltipContent(tooltipModel, markupText, params, asyncTicket, e.offsetX, e.offsetY,
+        //                            e.position, e.target, markupStyleCreator); });
+        let x = point.count > 0 ? point[0] : 0
+        let y = point.count > 1 ? point[1] : 0
+        _showOrMove(tooltipModel) { [weak self] in
+            self?._showTooltipContent(
+                tooltipModel: tooltipModel,
+                defaultHtml: html,
+                params: .single(params),
+                asyncTicket: asyncTicket,
+                x: x,
+                y: y,
+                // upstream: `e.position` — the payload `position` override. Not threaded by the slim
+                //   entry (see the PORT-TODO in `manuallyShowTip`), so `_showTooltipContent` falls back
+                //   to the model's `position`.
+                positionExpr: nil,
+                el: el,
+                markupStyleCreator: markupStyleCreator
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // _showOrMove — ported from upstream `_showOrMove` (TooltipView.ts:517). Every show path funnels its
+    //   "actually put the content on screen" step through here so `tooltip.showDelay` takes effect.
+    //
+    //   PORT-NOTE (adaptation, faithful): browser `setTimeout(cb, delay)` / `clearTimeout(id)` →
+    //     `DispatchQueue.main.asyncAfter` over a cancellable `DispatchWorkItem` — the substitution
+    //     `util/throttle.swift` already makes (upstream delays are MILLISECONDS, hence `/ 1000`).
+    //     Upstream's `cb = bind(cb, this)` has no analogue: a Swift closure already carries its own
+    //     capture, and every call site captures `self` WEAKLY so a fired timer can never resurrect a
+    //     tooltip whose view was disposed/released (see `dispose()`, which also cancels).
+    //     No explicit repaint is needed around the deferred `cb`: `setContent` goes through
+    //     `zr.remove`/`zr.add` and `show()`/`moveTo()` through `Element.markRedraw()`, each of which
+    //     already calls `zr.refresh()` (marks `_needsRefresh` + wakes the animation loop) — the same
+    //     next-frame model as upstream zrender.
+    // ------------------------------------------------------------------------
+    private func _showOrMove(_ tooltipModel: Model, _ cb: @escaping () -> Void) {
+        // showDelay is used in this case: tooltip.enterable is set
+        // as true. User intent to move mouse into tooltip and click
+        // something. `showDelay` makes it easier to enter the content
+        // but tooltip do not move immediately.
+        let delay = asDouble(tooltipModel.get("showDelay")) ?? 0
+        // upstream: clearTimeout(this._showTimout);
+        self._showTimout?.cancel()
+        self._showTimout = nil
+        // upstream: delay > 0 ? (this._showTimout = setTimeout(cb, delay)) : cb();
+        if delay > 0 {
+            let work = DispatchWorkItem { [weak self] in
+                // PORT-NOTE (adaptation): release the slot BEFORE running `cb`. Upstream's `_showTimout`
+                //   is a plain `setTimeout` id (a number), so a fired timer retains nothing; a
+                //   `DispatchWorkItem` retains its closure — and therefore the captured `SeriesModel`,
+                //   params and markup — until the slot is reassigned. Clearing first is safe (a replaced
+                //   item is always `cancel()`ed, so a RUNNING item is by construction the current one)
+                //   and cannot clobber a newer timer `cb` itself might arm.
+                self?._showTimout = nil
+                cb()
+            }
+            self._showTimout = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000.0, execute: work)
+        }
+        else {
+            cb()
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -276,8 +377,9 @@ public final class TooltipView {
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
     //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
-    //     - `_showOrMove` (showDelay) + `_updateContentNotChangedOnAxis` (no-change position-only update) —
-    //       shown synchronously here.
+    //     - `_updateContentNotChangedOnAxis` (the no-change, position-only update branch inside the
+    //       `_showOrMove` callback) — the content is always rebuilt+shown here.
+    //       (`_showOrMove`/showDelay itself is NO LONGER DEFERRED — see the call below.)
     //     - `e.tooltipOption`/`buildTooltipModel([e.tooltipOption], ...)` — the per-dispatch tooltip option
     //       override; the global tooltip model is used directly.
     // ------------------------------------------------------------------------
@@ -392,17 +494,28 @@ public final class TooltipView {
         let blockBreak = renderMode == .richText ? "\n\n" : "<br/>"
         let allMarkupText = markupTextArrLegacy.joined(separator: blockBreak)
 
-        // upstream: this._showOrMove(...) → this._showTooltipContent(...). Slim: shown synchronously.
+        // upstream (TooltipView.ts:637): this._showOrMove(singleTooltipModel, function () { ... }) — the
+        //   `_updateContentNotChangedOnAxis` position-only branch inside that callback is still DEFERRED
+        //   (see the PORT-NOTE above); the `_showTooltipContent` branch is what runs here.
         //   upstream's asyncTicket on this branch is `Math.random() + ''` (TooltipView.ts:648).
-        _showTooltipContent(
-            tooltipModel: singleTooltipModel,
-            defaultHtml: allMarkupText,
-            params: .multiple(cbParamsList),   // axis tooltip lists EVERY series at the hovered value
-            asyncTicket: number.jsNumberString(Double.random(in: 0..<1)),
-            x: x,
-            y: y,
-            markupStyleCreator: markupStyleCreator
-        )
+        //   `positionExpr` is upstream's `const positionExpr = e.position` (the axis payload's position
+        //   override); the ported `DataByCoordSys` payload carries no `position`, so it stays nil and
+        //   `_showTooltipContent` falls back to the model's `position`.
+        //   `el` is nil — upstream's axis branch also passes no element, so a STRING `position` keyword
+        //   ('top'/'left'/…) is inert on the axis path in upstream too (it needs a hovered element).
+        _showOrMove(singleTooltipModel) { [weak self] in
+            self?._showTooltipContent(
+                tooltipModel: singleTooltipModel,
+                defaultHtml: allMarkupText,
+                params: .multiple(cbParamsList),   // axis tooltip lists EVERY series at the hovered value
+                asyncTicket: number.jsNumberString(Double.random(in: 0..<1)),
+                x: x,
+                y: y,
+                positionExpr: nil,
+                el: nil,
+                markupStyleCreator: markupStyleCreator
+            )
+        }
     }
 
     // `axisPointerViewHelper.getValueLabel` (viewHelper.ts:147 — the crosshair VIEW helper is Phase
@@ -425,8 +538,8 @@ public final class TooltipView {
 
     // ------------------------------------------------------------------------
     // _showTooltipContent — upstream (TooltipView.ts:812). The `formatter` (string/function) override
-    //   and the async `_ticket` ARE ported (see below); the `enterable`/showDelay timers are DEFERRED
-    //   (the default markup is shown synchronously).
+    //   and the async `_ticket` ARE ported (see below). Callers reach this only through `_showOrMove`,
+    //   so `tooltip.showDelay` has already been honoured by the time it runs.
     // ------------------------------------------------------------------------
     private func _showTooltipContent(
         tooltipModel: Model,
@@ -435,8 +548,10 @@ public final class TooltipView {
         asyncTicket: String,
         x: Double,
         y: Double,
-        // upstream's `positionExpr` + `el` sit between `y` and `markupStyleCreator`; both are DEFERRED
-        //   (see `_updatePosition`), so the parameter order is otherwise upstream's verbatim.
+        // upstream's `positionExpr` (`e.position`, the per-dispatch override) + `el` (the hovered
+        //   element) sit between `y` and `markupStyleCreator` — the parameter order is upstream's verbatim.
+        positionExpr positionExprIn: Any?,
+        el: Element?,
         markupStyleCreator: TooltipMarkupStyleCreator
     ) {
         // upstream: `// Reset ticket` / `this._ticket = '';` (TooltipView.ts:825)
@@ -546,9 +661,16 @@ public final class TooltipView {
                     guard let self = self else { return }
                     if cbTicket == self._ticket {
                         content.setContent(
-                            asyncHtml, markupStyleCreator, tooltipModel, nearPointColor, nil
+                            asyncHtml, markupStyleCreator, tooltipModel, nearPointColor, positionExprIn
                         )
-                        self._updatePosition(tooltipModel: tooltipModel, x: x, y: y)
+                        self._updatePosition(
+                            tooltipModel: tooltipModel,
+                            positionExpr: positionExprIn,
+                            x: x, y: y,
+                            content: content,
+                            params: params,
+                            el: el
+                        )
                     }
                 }
             ) {
@@ -559,9 +681,16 @@ public final class TooltipView {
             }
         }
 
-        content.setContent(html, markupStyleCreator, tooltipModel, nearPointColor, nil)
+        content.setContent(html, markupStyleCreator, tooltipModel, nearPointColor, positionExprIn)
         content.show()   // rich content: no-arg (upstream html `show(model, color)` args are html-only)
-        _updatePosition(tooltipModel: tooltipModel, x: x, y: y)
+        _updatePosition(
+            tooltipModel: tooltipModel,
+            positionExpr: positionExprIn,
+            x: x, y: y,
+            content: content,
+            params: params,
+            el: el
+        )
     }
 
     // ------------------------------------------------------------------------
@@ -643,40 +772,90 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
-    // _updatePosition — (upstream TooltipView.ts:905). Ports the `position` option: an ARRAY `[x, y]`
-    //   (percent-aware via `parsePercent`), an OBJECT box-layout (`getLayoutRect`), and `align`/
-    //   `verticalAlign` offsets; falls back to the DEFAULT `refixTooltipPosition` (flip to the other
-    //   side of the pointer, gap 20) when no positionExpr; then applies `confineTooltipPosition` gated
-    //   by `shouldTooltipConfine` (true for richText unless `confine:false`).
-    //   DEFERRED: the position CALLBACK (closure-in-option) and the STRING position around a graphic
-    //   element (`calcTooltipPosition`) — the slim entry has no `el` bounding rect to anchor against,
-    //   so a string positionExpr falls through to the default refix.
+    // _updatePosition — (upstream TooltipView.ts:905). Ports the `position` option in every upstream
+    //   form: the CALLBACK (`isFunction`), an ARRAY `[x, y]` (percent-aware via `parsePercent`), an
+    //   OBJECT box-layout (`getLayoutRect`), the STRING keywords 'inside'/'top'/'bottom'/'left'/'right'
+    //   around the hovered graphic element (`calcTooltipPosition`), and `align`/`verticalAlign` offsets;
+    //   falls back to the DEFAULT `refixTooltipPosition` (flip to the other side of the pointer, gap 20)
+    //   when no positionExpr; then applies `confineTooltipPosition` gated by `shouldTooltipConfine`
+    //   (true for richText unless `confine:false`).
+    //
+    //   PORT-NOTE (divergence, faithful): upstream hands the callback `content.el`, typed
+    //     `HTMLDivElement | ZRText` — the HTML host's DIV or the richText host's `ZRText`. This port
+    //     forces renderMode 'richText' (no DOM host), so the third callback argument is ALWAYS the
+    //     `TooltipRichContent`'s `ZRText` (the `TooltipPositionCallback` typealias types it `Any?`,
+    //     matching the upstream union).
+    //   PORT-NOTE (signature reconciliation): upstream's `params` here is the SAME
+    //     `TooltipCallbackDataParams | TooltipCallbackDataParams[]` union the `formatter` receives, so it
+    //     is threaded as the ported `TopLevelFormatterParams` enum (component/tooltip/TooltipModel.swift)
+    //     and unwrapped to the `TooltipPositionCallbackParams` (= `Any`) arm the callback signature names
+    //     — `.single` → one `CallbackDataParams`, `.multiple` → the `[CallbackDataParams]` list, exactly
+    //     what upstream passes on the item / axis paths respectively.
+    //   PORT-NOTE (divergence): upstream's `isObject(positionExpr)` arm receives a plain JS object cast
+    //     to `BoxLayoutOptionMixin`. In this port an option object is an `[String: Any]` bag, so BOTH the
+    //     bag AND the typed `TooltipBoxLayoutOption` (the arm the `TooltipPositionCallback` return union
+    //     names) are accepted; the typed struct is normalized into the bag `getLayoutRect` reads.
+    //   PORT-NOTE (divergence, LANGUAGE constraint — no upstream analogue): upstream's `isFunction(
+    //     positionExpr)` accepts ANY callable. Swift's `as? TooltipPositionCallback` is an EXACT function
+    //     -type cast: a closure written with a structurally-similar but differently-spelled signature
+    //     (`-> [Double]` instead of `-> Any`, a `CallbackDataParams` params slot instead of
+    //     `TooltipPositionCallbackParams`, …) is a DIFFERENT Swift type and fails the cast SILENTLY,
+    //     degrading to the default `refixTooltipPosition` placement. A `position` callback MUST therefore
+    //     be stored annotated: `["position": (cb as TooltipPositionCallback)]` (see the same note on
+    //     `CommonTooltipOption.position`, util/types.swift).
+    //   PORT-NOTE (divergence): upstream's string-keyword branch is gated on the ELEMENT
+    //     (`isString(positionExpr) && el`) because `el.getBoundingRect()` is non-null there. This port's
+    //     `Element.getBoundingRect()` returns `BoundingRect?` and the BASE implementation returns nil
+    //     (Sources/ZRenderKit/Element.swift), so the branch is gated on the RECT instead: a non-nil `el`
+    //     with no bounding rect (a bare `Element`/`Group`-like target) deliberately degrades to the
+    //     default pointer-relative placement rather than anchoring at 0,0.
     // ------------------------------------------------------------------------
-    private func _updatePosition(tooltipModel: Model, x: Double, y: Double) {
+    private func _updatePosition(
+        tooltipModel: Model,
+        positionExpr positionExprIn: Any?,
+        x: Double,   // Mouse x
+        y: Double,   // Mouse y
+        content: TooltipRichContent,
+        params: TopLevelFormatterParams,
+        el: Element? = nil
+    ) {
         let viewWidth = _zr.getWidth() ?? 0
         let viewHeight = _zr.getHeight() ?? 0
 
-        // upstream: `positionExpr = positionExpr || tooltipModel.get('position')`. The payload `position`
-        //   is not threaded in the slim entry, so this reduces to the model's `position`.
-        let positionExpr = tooltipModel.get("position")
+        // upstream: `positionExpr = positionExpr || tooltipModel.get('position')`.
+        var positionExpr = positionExprIn ?? tooltipModel.get("position")
 
-        let contentSize = _tooltipContent.getSize()
+        let contentSize = content.getSize()
         let width = contentSize.count > 0 ? contentSize[0] : 0
         let height = contentSize.count > 1 ? contentSize[1] : 0
         var align = tooltipModel.get("align") as? String
         var vAlign = tooltipModel.get("verticalAlign") as? String
+        // upstream: const rect = el && el.getBoundingRect().clone(); el && rect.applyTransform(el.transform);
+        let rect: BoundingRect? = el?.getBoundingRect()?.clone()
+        if let el = el { rect?.applyTransform(el.transform) }
 
         var px = x
         var py = y
 
-        // PORT-NOTE (deferred): `isFunction(positionExpr)` — the position callback (closure-in-option).
+        // upstream: if (isFunction(positionExpr)) { positionExpr = positionExpr([x, y], params,
+        //     content.el, rect, { viewSize: [...], contentSize: contentSize.slice() }); }
+        //   Callback of position can be an array or a string specify the position.
+        if let positionCb = positionExpr as? TooltipPositionCallback {
+            positionExpr = positionCb(
+                (px, py), positionCallbackParams(params), content.el, rect,
+                TooltipPositionCallbackSize(
+                    contentSize: (width, height),
+                    viewSize: (viewWidth, viewHeight)
+                )
+            )
+        }
 
         if let arr = positionExpr as? [Any] {
             // upstream: x = parsePercent(positionExpr[0], viewWidth); y = parsePercent(positionExpr[1], viewHeight)
             px = number.parsePercent(arr.count > 0 ? arr[0] : nil, viewWidth)
             py = number.parsePercent(arr.count > 1 ? arr[1] : nil, viewHeight)
         }
-        else if let obj = positionExpr as? [String: Any] {
+        else if let obj = boxLayoutOptionBag(positionExpr) {
             // upstream box-layout: seed width/height then `getLayoutRect`. align/vAlign are cleared.
             var boxLayoutPosition = obj
             boxLayoutPosition["width"] = width
@@ -687,7 +866,19 @@ public final class TooltipView {
             px = layoutRect.x
             py = layoutRect.y
             align = nil
+            // When positionExpr is left/top/right/bottom,
+            // align and verticalAlign will not work.
             vAlign = nil
+        }
+        // Specify tooltip position by string 'top' 'bottom' 'left' 'right' around graphic element
+        // upstream: `else if (isString(positionExpr) && el)` — gated on `rect` here, see the PORT-NOTE
+        //   above (`el.getBoundingRect()` is Optional in this port and nil on the Element base).
+        else if let positionStr = positionExpr as? String, let rect = rect {
+            let pos = calcTooltipPosition(
+                positionStr, rect, contentSize, asDouble(tooltipModel.get("borderWidth")) ?? 0
+            )
+            px = pos[0]
+            py = pos[1]
         }
         else {
             // upstream `refixTooltipPosition(x, y, content, viewW, viewH, align ? null : 20, vAlign ? null : 20)`:
@@ -730,15 +921,29 @@ public final class TooltipView {
             py = max(py, 0)
         }
 
-        _tooltipContent.moveTo(px, py)
+        content.moveTo(px, py)
     }
 
     // ------------------------------------------------------------------------
-    // hide / _hide — upstream `_hide` (TooltipView.ts:1034) dispatches `hideTip`; the actual DOM hide is
-    //   `manuallyHideTip` → `tooltipContent.hideLater`. Slim: hide synchronously (no hideDelay timer).
+    // hide / _hide — upstream `_hide` (TooltipView.ts:1034) only DISPATCHES `hideTip`; the actual content
+    //   hide happens one hop later in `manuallyHideTip` (TooltipView.ts:398):
+    //       `if (this._tooltipModel) { tooltipContent.hideLater(this._tooltipModel.get('hideDelay')); }`
+    //   This port has no `update:'tooltip:manuallyHideTip'` view routing (see installTooltipActions'
+    //   PORT-NOTE), so `EChartsView` calls `hide()` for BOTH hops — the `_hide` leave/mouseout leg and
+    //   the `hideTip` action. Hence `hideLater` (i.e. `tooltip.hideDelay`) lives here: the box stays up
+    //   for `hideDelay` ms after the pointer leaves, exactly as upstream, and `isShow()` flips to false
+    //   immediately (upstream `hideLater` sets `_show = false` up front "to avoid invoke hideLater
+    //   multiple times"). A subsequent `TooltipRichContent.show()` cancels the pending hide.
+    //
+    //   A pending DELAYED SHOW is deliberately NOT cancelled here: upstream `_hide`/`manuallyHideTip`
+    //   never touch `_showTimout` (only `_showOrMove`'s own `clearTimeout` does), so a `showDelay` timer
+    //   armed before the pointer left still fires. Faithful — see PORTING.md (fidelity over improvement).
+    //   PORT-NOTE (divergence, small): when `_globalTooltipModel` is nil upstream skips the hide
+    //     entirely (`if (this._tooltipModel)`); here that degrades to an IMMEDIATE hide
+    //     (`hideLater(nil)`) so a model-less view can never strand a visible box.
     // ------------------------------------------------------------------------
     public func hide() {
-        _tooltipContent.hide()
+        _tooltipContent.hideLater(_globalTooltipModel.flatMap { asDouble($0.get("hideDelay")) })
     }
 
     // ------------------------------------------------------------------------
@@ -793,12 +998,14 @@ public final class TooltipView {
             ),
             ecModel
         )
-        // PORT-NOTE (deferred): `pointInfo.el` (upstream's `target`), `position: payload.position` and
-        //   `positionDefault: 'bottom'` are all dropped — `tryShow` has no target/position/positionDefault
-        //   parameter here, so an action-driven tooltip is placed by the same hover-side offset logic in
-        //   `_updatePosition` (upstream deliberately puts a MANUALLY triggered tooltip BELOW the point, and
-        //   honours an explicit `payload.position`). The position-around-a-graphic-element expr is a
-        //   documented deferral of this view — see the SCOPE note above.
+        // `pointInfo.el` (upstream's `target`) IS now threaded into `tryShow` → `_updatePosition`'s `el`,
+        //   so a STRING `position` keyword ('inside'/'top'/'bottom'/'left'/'right') and the `rect`
+        //   argument of a `position` CALLBACK work on the action-driven path too. `positionDefault:
+        //   'bottom'` is threaded as well (see the `tryShow` doc): "When manully trigger, the mouse is not
+        //   on the el, so we'd better to position tooltip on the bottom of the el".
+        // PORT-TODO: `position: payload.position` — the per-dispatch position override
+        //   (`TryShowParams.position`). `tryShow` has no `position` parameter yet, so a `showTip` payload
+        //   carrying its own `position` is ignored and the model's (or the 'bottom' default) is used.
 
         // upstream: `if (cx != null && cy != null)` — show NOTHING when the point could not be resolved.
         //   (No payload-x/y or view-centre fallback: upstream reaches the `payload.x/y` branch only when
@@ -817,11 +1024,17 @@ public final class TooltipView {
             seriesModel: seriesModel,
             dataIndex: dataIndex,
             dataType: nil,
-            point: [px, py]
+            point: [px, py],
+            target: pointInfo.el,       // upstream: `target: pointInfo.el`
+            positionDefault: "bottom"   // upstream: `positionDefault: 'bottom'`
         )
     }
 
     // upstream `manuallyHideTip` (TooltipView.ts:389) — the `update:'tooltip:manuallyHideTip'` target.
+    //   Its content line — `tooltipContent.hideLater(this._tooltipModel.get('hideDelay'))` — is `hide()`
+    //   (see the PORT-NOTEs there). The `_lastX/_lastY/_lastDataByCoordSys/_cbParamsList` reset and the
+    //   `payload.from !== this.uid` re-dispatch of `_hide` have no analogue: this port keeps no
+    //   last-position state and has no per-view action routing.
     public func manuallyHideTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
         _ = (payload, ecModel, api)
         hide()
@@ -835,6 +1048,13 @@ public final class TooltipView {
 
     /// Dispose the hosted content (removes the ZRText from the zr).
     public func dispose() {
+        // A pending `_showOrMove` timer must NOT fire after dispose — it would re-`setContent` and
+        //   re-`zr.add` the box that was just removed. (Upstream's `dispose` does not clear
+        //   `_showTimout` either, but its `_tooltipContent = null` makes the late callback throw
+        //   harmlessly; Swift has no such accident, so cancel explicitly. The callbacks also capture
+        //   `self` weakly, so a released view is doubly safe.)
+        _showTimout?.cancel()
+        _showTimout = nil
         _tooltipContent.dispose()
     }
 
@@ -856,6 +1076,78 @@ private func asDouble(_ v: Any?) -> Double? {
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
     return nil
+}
+
+// upstream `calcTooltipPosition` (TooltipView.ts:1168): place the tooltip box around the hovered
+//   graphic element's (already transformed) bounding `rect` for the STRING `position` keywords.
+//   `position` is `TooltipOption['position']` upstream, narrowed to the builtin keyword string here —
+//   any other string falls through the switch with x/y left at 0, exactly like upstream.
+private func calcTooltipPosition(
+    _ position: TooltipBuiltinPosition,
+    _ rect: RectLike,
+    _ contentSize: [Double],
+    _ borderWidth: Double
+) -> [Double] {
+    let domWidth = contentSize.count > 0 ? contentSize[0] : 0
+    let domHeight = contentSize.count > 1 ? contentSize[1] : 0
+    let offset = ceil(2.0.squareRoot() * borderWidth) + 8   // upstream: Math.ceil(Math.SQRT2 * borderWidth) + 8
+    var x: Double = 0
+    var y: Double = 0
+    let rectWidth = rect.width
+    let rectHeight = rect.height
+    switch position {
+    case "inside":
+        x = rect.x + rectWidth / 2 - domWidth / 2
+        y = rect.y + rectHeight / 2 - domHeight / 2
+    case "top":
+        x = rect.x + rectWidth / 2 - domWidth / 2
+        y = rect.y - domHeight - offset
+    case "bottom":
+        x = rect.x + rectWidth / 2 - domWidth / 2
+        y = rect.y + rectHeight + offset
+    case "left":
+        x = rect.x - domWidth - offset
+        y = rect.y + rectHeight / 2 - domHeight / 2
+    case "right":
+        x = rect.x + rectWidth + offset
+        y = rect.y + rectHeight / 2 - domHeight / 2
+    default:
+        break   // upstream: no default case — x/y stay 0.
+    }
+    return [x, y]
+}
+
+// upstream's `isObject(positionExpr)` arm, adapted: a box-layout `position` is an `[String: Any]` option
+//   bag in this port, but the `TooltipPositionCallback` return union also names the TYPED
+//   `TooltipBoxLayoutOption` (util/types.swift). Normalize both into the bag `layout.getLayoutRect` reads.
+//   Returns nil when `positionExpr` is neither (upstream: the `isObject` test failed).
+// SEE ALSO `boxLayoutParamsToDict(_ p: BoxLayoutOptionMixin)` in component/visualMap/VisualMapView.swift —
+//   the same typed-struct→layout-bag normalization for the OTHER box-layout struct. Do not add a third
+//   copy; if a third consumer appears, hoist both next to `layout.getLayoutRect` (util/layout.swift).
+private func boxLayoutOptionBag(_ positionExpr: Any?) -> [String: Any]? {
+    if let bag = positionExpr as? [String: Any] {
+        return bag
+    }
+    if let opt = positionExpr as? TooltipBoxLayoutOption {
+        var bag: [String: Any] = [:]
+        if let v = opt.top { bag["top"] = v }
+        if let v = opt.left { bag["left"] = v }
+        if let v = opt.right { bag["right"] = v }
+        if let v = opt.bottom { bag["bottom"] = v }
+        return bag
+    }
+    return nil
+}
+
+// Unwrap the ported `TopLevelFormatterParams` enum (upstream's `TooltipCallbackDataParams |
+//   TooltipCallbackDataParams[]` union) into the `TooltipPositionCallbackParams` (= `Any`) arm a
+//   `position` CALLBACK is spelled against: the SINGLE params bag on the item path, the per-series LIST
+//   on the axis path — precisely the value upstream passes as the callback's 2nd argument.
+private func positionCallbackParams(_ params: TopLevelFormatterParams) -> TooltipPositionCallbackParams {
+    switch params {
+    case .single(let one): return one
+    case .multiple(let list): return list
+    }
 }
 
 // upstream `isCenterAlign` (TooltipView.ts:1205).

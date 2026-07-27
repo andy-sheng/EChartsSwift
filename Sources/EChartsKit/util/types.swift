@@ -1848,6 +1848,12 @@ public struct CommonTooltipOption<FormatterParams> {
      * If trigger is 'item'. position can be set to 'inside'/'top'/'left'/'right'/'bottom'.
      * Support to be a callback
      */
+    // PORT-NOTE (Swift constraint, no upstream analogue): the CALLBACK arm must be stored ANNOTATED as
+    //   `TooltipPositionCallback` — e.g. `["position": (cb as TooltipPositionCallback)]`. `TooltipView.
+    //   _updatePosition` reads it back with `as? TooltipPositionCallback`, and a Swift dynamic cast
+    //   between function types is EXACT: a closure spelled with a structurally-similar but different
+    //   signature (`-> [Double]`, a `CallbackDataParams` params slot, …) fails the cast silently and the
+    //   tooltip falls back to the default placement. Upstream's `isFunction` has no such requirement.
     public var position: Any? // (number | string)[] | TooltipBuiltinPosition | TooltipPositionCallback | TooltipBoxLayoutOption
 
     public var confine: Bool?

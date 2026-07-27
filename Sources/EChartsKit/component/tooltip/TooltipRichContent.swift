@@ -48,8 +48,11 @@ public final class TooltipRichContent {
     // upstream: [left, top, ratioX, ratioY]
     private var _styleCoord: [Double] = [0, 0, 0, 0]
 
-    // upstream: private _hideTimeout: number (setTimeout id). Modeled as a DispatchWorkItem.
-    // PORT-NOTE: relies on the main run loop; not exercised headlessly (hideLater(0) hides immediately).
+    // upstream: private _hideTimeout: number (setTimeout id). Modeled as a DispatchWorkItem so
+    //   `clearTimeout` becomes `cancel()`.
+    // PORT-NOTE: fires off the MAIN run loop (the `setTimeout` analogue used by util/throttle.swift).
+    //   `TooltipView.hide()` routes every hide through `hideLater(tooltip.hideDelay)` (default 100ms),
+    //   so this path IS live; `ZZTooltipDelayTests` pumps the run loop to assert the deferred hide lands.
     private var _hideTimeout: DispatchWorkItem?
 
     private var _alwaysShowContent = false
@@ -242,10 +245,16 @@ public final class TooltipRichContent {
                 // Set show false to avoid invoke hideLater multiple times
                 self._show = false
                 let work = DispatchWorkItem { [weak self] in
-                    self?.hide()
+                    guard let self = self else { return }
+                    // Release the slot before hiding: unlike upstream's numeric `setTimeout` id, a fired
+                    //   `DispatchWorkItem` would otherwise be retained until the next `hideLater`.
+                    //   `hide()` -> `el.hide()` -> `markRedraw()` already calls `zr.refresh()`, so the
+                    //   deferred hide is painted on the next frame exactly like upstream zrender.
+                    self._hideTimeout = nil
+                    self.hide()
                 }
                 self._hideTimeout = work
-                // PORT-NOTE: setTimeout -> asyncAfter on the main queue (not driven headlessly).
+                // PORT-NOTE: setTimeout(fn, ms) -> main-queue asyncAfter (ms -> seconds).
                 DispatchQueue.main.asyncAfter(deadline: .now() + time / 1000.0, execute: work)
             }
             else {
@@ -259,6 +268,14 @@ public final class TooltipRichContent {
     }
 
     public func dispose() {
+        // PORT-NOTE (divergence, forced): a pending `hideLater` timer must not outlive dispose (it would
+        //   touch an `el` already removed from the zr), and `_show` must go false so a later
+        //   `TooltipView.hide()` cannot arm a FRESH timer against the torn-down content. Upstream is
+        //   immune by accident — `TooltipView.dispose` nulls `_tooltipContent`, which this port (a `let`
+        //   stored property) cannot do.
+        self._hideTimeout?.cancel()
+        self._hideTimeout = nil
+        self._show = false
         self._zr.remove(self.el)
     }
 }

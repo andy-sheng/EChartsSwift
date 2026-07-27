@@ -31,8 +31,11 @@ final class ZZTooltipHoverTests: XCTestCase {
     private func makeBarView() -> EChartsView {
         let view = EChartsView(width: 400, height: 300)
         view.setOption([
-            // A `tooltip: {}` option so the GLOBAL TooltipModel exists (the merge base for tryShow).
-            "tooltip": [:] as [String: Any],
+            // A `tooltip` option so the GLOBAL TooltipModel exists (the merge base for tryShow).
+            //   `hideDelay: 0` pins the SYNCHRONOUS teardown this test is about: the default
+            //   `hideDelay` is 100ms, which would defer the box's `ignore` flip off this run loop
+            //   (that timing is proven separately in ZZTooltipDelayTests).
+            "tooltip": ["hideDelay": 0.0] as [String: Any],
             "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
             "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
             "yAxis": ["type": "value"] as [String: Any],
