@@ -85,20 +85,71 @@ def cost(a, b):
     return c
 
 
+# Above this bucket size, fall back to pairing by order within the bucket. The greedy pass is O(k^2)
+# and the corpus contains charts with tens of thousands of interchangeable elements (custom-wind: 65k),
+# where an all-pairs match is both intractable and pointless — those elements are homogeneous, so
+# order-pairing inside a (type, text) bucket is the same answer for far less work.
+GREEDY_BUCKET_LIMIT = 60
+
+
 def match(nat, web):
-    """Greedy nearest-neighbour matching. n is small (tens to low hundreds of elements per chart),
-    so an O(n^2 log n) greedy pass is ample and, unlike a zip, is stable under reordering."""
-    pairs = sorted(((cost(a, b), i, j) for i, a in enumerate(nat) for j, b in enumerate(web)),
-                   key=lambda t: t[0])
-    used_n, used_w, out = set(), set(), []
-    for c, i, j in pairs:
-        if c >= 1e9 or i in used_n or j in used_w:
+    """Match elements by content, not by index.
+
+    Bucketed by (normalised type, text) first: that is what makes the match stable under the
+    REORDERING a z/z2 bug causes, while keeping the cost near-linear on large charts. Inside a bucket,
+    small groups get a greedy nearest-neighbour pass on geometry; large homogeneous groups are paired
+    in order."""
+    def key(e):
+        return (ntype(e), text_of(e))
+
+    bn, bw = {}, {}
+    for i, e in enumerate(nat):
+        bn.setdefault(key(e), []).append(i)
+    for j, e in enumerate(web):
+        bw.setdefault(key(e), []).append(j)
+
+    out, used_n, used_w = [], set(), set()
+    for k, ii in bn.items():
+        jj = bw.get(k)
+        if not jj:
             continue
-        used_n.add(i); used_w.add(j); out.append((i, j))
+        if len(ii) <= GREEDY_BUCKET_LIMIT and len(jj) <= GREEDY_BUCKET_LIMIT:
+            cand = sorted(((cost(nat[i], web[j]), i, j) for i in ii for j in jj), key=lambda t: t[0])
+            for c, i, j in cand:
+                if c >= 1e9 or i in used_n or j in used_w:
+                    continue
+                used_n.add(i); used_w.add(j); out.append((i, j))
+        else:
+            for i, j in zip(ii, jj):
+                used_n.add(i); used_w.add(j); out.append((i, j))
     out.sort()
     unmatched_n = [i for i in range(len(nat)) if i not in used_n]
     unmatched_w = [j for j in range(len(web)) if j not in used_w]
     return out, unmatched_n, unmatched_w
+
+
+def count_inversions(seq):
+    """Number of out-of-order pairs in `seq`, via a Fenwick tree. The naive double loop is O(m^2) and
+    the corpus has charts with tens of thousands of matched elements."""
+    if not seq:
+        return 0
+    rank = {v: r for r, v in enumerate(sorted(set(seq)), 1)}
+    n = len(rank)
+    tree = [0] * (n + 1)
+    inv = 0
+    seen = 0
+    for v in seq:
+        r = rank[v]
+        # count already-seen values strictly greater than r
+        i, acc = r, 0
+        while i > 0:
+            acc += tree[i]; i -= i & -i
+        inv += seen - acc
+        seen += 1
+        i = r
+        while i <= n:
+            tree[i] += 1; i += i & -i
+    return inv
 
 
 def diff_bag(name, a, b, tol, out, idx, et):
@@ -129,16 +180,24 @@ def main():
     # PAINT-ORDER: a matched pair whose relative position differs. Reported as inversions against
     # the web order, since the display list IS the paint order.
     order = [j for _, j in pairs]
-    inversions = [(pairs[k][0], pairs[k][1], pairs[k2][0], pairs[k2][1])
-                  for k in range(len(order)) for k2 in range(k + 1, len(order))
-                  if order[k] > order[k2]]
-    print(f'\n=== PAINT-ORDER inversions: {len(inversions)} ===')
+    total_inv = count_inversions(order)
+    # Only the first few need naming, so enumerate lazily instead of materialising every pair.
+    inversions = []
+    for k in range(len(order)):
+        for k2 in range(k + 1, len(order)):
+            if order[k] > order[k2]:
+                inversions.append((pairs[k][0], pairs[k][1], pairs[k2][0], pairs[k2][1]))
+                if len(inversions) >= 12:
+                    break
+        if len(inversions) >= 12:
+            break
+    print(f'\n=== PAINT-ORDER inversions: {total_inv} ===')
     for i1, j1, i2, j2 in inversions[:12]:
         print(f'  native paints [{i1}] {ntype(nat[i1])} «{text_of(nat[i1])}» BEFORE [{i2}] '
               f'{ntype(nat[i2])} «{text_of(nat[i2])}»; real echarts paints them the other way '
               f'(web [{j1}] after [{j2}])')
-    if len(inversions) > 12:
-        print(f'  … {len(inversions) - 12} more')
+    if total_inv > len(inversions):
+        print(f'  … {total_inv - len(inversions)} more')
 
     out = {'DIFF': [], 'NATIVE-ONLY': [], 'WEB-ONLY': []}
     for i, j in pairs:

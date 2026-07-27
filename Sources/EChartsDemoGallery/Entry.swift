@@ -862,7 +862,10 @@ func runCLI() -> Bool {
         guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
             FileHandle.standardError.write(Data("usage: --scene-native <name> <out.json>\n".utf8)); exit(2)
         }
-        guard let json = sceneDumpNative(demo) else {
+        // Optional 3rd arg: a dispatchAction payload as JSON, applied after the initial render.
+        let nAction: [String: Any]? = args.count >= 4
+            ? (try? JSONSerialization.jsonObject(with: Data(args[3].utf8))) as? [String: Any] : nil
+        guard let json = sceneDumpNative(demo, action: nAction) else {
             FileHandle.standardError.write(Data("scene dump failed\n".utf8)); exit(1)
         }
         try? json.write(to: URL(fileURLWithPath: args[2]), atomically: true, encoding: .utf8)
@@ -880,16 +883,113 @@ func runCLI() -> Bool {
         let swv = WKWebView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
         let swin = NSWindow(contentRect: swv.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         swin.contentView = swv; swin.orderFrontRegardless()
-        // --scene-web <demo> <out.json> [probe.js] : the optional 3rd arg replaces the scene dump
-        //   with an arbitrary script, for probing the reference implementation directly.
-        let probeJS = (args.count >= 4 ? (try? String(contentsOfFile: args[3], encoding: .utf8)) : nil) ?? sceneDumpJS
-        let dumper = WebSceneDumper(out: URL(fileURLWithPath: args[2]), js: probeJS)
+        // --scene-web <demo> <out.json> [actionJSON | probe.js]
+        //   3rd arg starting with '{' is a dispatchAction payload (mirrors --scene-native);
+        //   otherwise it is a path to a script that REPLACES the scene dump, for probing the
+        //   reference implementation directly.
+        var probeJS = sceneDumpJS
+        var wAction: String? = nil
+        if args.count >= 4 {
+            if args[3].hasPrefix("{") { wAction = args[3] }
+            else { probeJS = (try? String(contentsOfFile: args[3], encoding: .utf8)) ?? sceneDumpJS }
+        }
+        let dumper = WebSceneDumper(out: URL(fileURLWithPath: args[2]), js: probeJS, actionJSON: wAction)
         swv.navigationDelegate = dumper
         guard let spage = echartsHTMLPage(demo, snapshot: true) else {
             FileHandle.standardError.write(Data("could not build html\n".utf8)); exit(1)
         }
         swv.loadHTMLString(spage, baseURL: nil)
         sapp.run()
+        return true
+
+    case "--scene-manifest":
+        // --scene-manifest <out.json> [maxActionsPerDemo] : derive the user-reachable actions for every
+        //   demo (v1: legend toggles, read off the real ported LegendModel) and write them to a manifest
+        //   that BOTH sweeps consume — so the two implementations always get byte-identical payloads and
+        //   any divergence is necessarily in the response, not the stimulus.
+        guard args.count >= 2 else {
+            FileHandle.standardError.write(Data("usage: --scene-manifest <out.json> [maxPerDemo]\n".utf8)); exit(2)
+        }
+        let maxPer = args.count >= 3 ? (Int(args[2]) ?? 2) : 2
+        var manifest: [String: [[String: Any]]] = [:]
+        var withActions = 0
+        for d in EChartsDemoRegistry.everything where d.nativeSupported {
+            let acts = deriveLegendActions(d, max: maxPer)
+            manifest[d.name] = acts
+            if !acts.isEmpty { withActions += 1 }
+        }
+        let mdata = try! JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
+        try? mdata.write(to: URL(fileURLWithPath: args[1]))
+        let total = manifest.values.reduce(0) { $0 + $1.count }
+        print("manifest: \(manifest.count) demos, \(withActions) with legend actions, \(total) actions total")
+        exit(0)
+
+    case "--scene-sweep-native":
+        // --scene-sweep-native <manifest.json> <outdir> : base + per-action structural dumps, in-process.
+        guard args.count >= 3,
+              let mdata = FileManager.default.contents(atPath: args[1]),
+              let man = (try? JSONSerialization.jsonObject(with: mdata)) as? [String: [[String: Any]]] else {
+            FileHandle.standardError.write(Data("usage: --scene-sweep-native <manifest.json> <outdir>\n".utf8)); exit(2)
+        }
+        let ndir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: ndir, withIntermediateDirectories: true)
+        // RESUMABLE, because a slot can hard-crash the process (fatalError / index-out-of-range are not
+        // catchable in Swift). Each finished slot writes either its dump or a `.skip` marker, so an outer
+        // driver (scripts/scene-sweep.sh) can re-invoke past a crash and the crashing slot is identifiable
+        // as the one slot with neither file. A crash IS a finding — do not paper over it.
+        var nOK = 0, nSkip = 0
+        for d in EChartsDemoRegistry.everything where d.nativeSupported {
+            let acts = man[d.name] ?? []
+            for slot in 0...acts.count {
+                let out = ndir.appendingPathComponent(sweepFileName(d.name, slot: slot, side: "native"))
+                let skip = ndir.appendingPathComponent(sweepFileName(d.name, slot: slot, side: "native") + ".skip")
+                if FileManager.default.fileExists(atPath: out.path)
+                    || FileManager.default.fileExists(atPath: skip.path) { nSkip += 1; continue }
+                // Claim the slot BEFORE running it: if this slot crashes the process, the marker is
+                // already on disk and the next invocation moves past it instead of looping forever.
+                try? "in-progress".write(to: skip, atomically: true, encoding: .utf8)
+                FileHandle.standardError.write(Data("RUN \(d.name)##\(slot)\n".utf8))
+                if let json = sceneDumpNative(d, action: slot == 0 ? nil : acts[slot - 1]) {
+                    try? json.write(to: out, atomically: true, encoding: .utf8)
+                    try? FileManager.default.removeItem(at: skip)
+                    nOK += 1
+                }
+            }
+        }
+        print("sweep-native pass done: \(nOK) new, \(nSkip) already present -> \(ndir.path)")
+        exit(0)
+
+    case "--scene-sweep-web":
+        // --scene-sweep-web <manifest.json> <outdir> : the echarts.js side of the same sweep, one page
+        //   load per (demo, action), sequentially in one process.
+        guard args.count >= 3,
+              let wdata = FileManager.default.contents(atPath: args[1]),
+              let wman = (try? JSONSerialization.jsonObject(with: wdata)) as? [String: [[String: Any]]] else {
+            FileHandle.standardError.write(Data("usage: --scene-sweep-web <manifest.json> <outdir>\n".utf8)); exit(2)
+        }
+        let wdir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: wdir, withIntermediateDirectories: true)
+        var jobs: [SweepJob] = []
+        for d in EChartsDemoRegistry.everything where d.nativeSupported {
+            let acts = wman[d.name] ?? []
+            for slot in 0...acts.count {
+                let aJSON: String? = slot == 0 ? nil : (try? JSONSerialization.data(withJSONObject: acts[slot - 1]))
+                    .flatMap { String(data: $0, encoding: .utf8) }
+                jobs.append(SweepJob(demo: d, actionJSON: aJSON,
+                                     out: wdir.appendingPathComponent(sweepFileName(d.name, slot: slot, side: "web")),
+                                     label: "\(d.name)##\(slot)"))
+            }
+        }
+        print("sweep-web: \(jobs.count) page loads")
+        let wapp2 = NSApplication.shared
+        wapp2.setActivationPolicy(.accessory)
+        let sweepWV = WKWebView(frame: CGRect(x: 0, y: 0, width: 640, height: 420))
+        let sweepWin = NSWindow(contentRect: sweepWV.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        sweepWin.contentView = sweepWV; sweepWin.orderFrontRegardless()
+        let sweeper = WebSweeper(jobs: jobs, wv: sweepWV)
+        sweepWV.navigationDelegate = sweeper
+        sweeper.start()
+        wapp2.run()
         return true
 
     case "--render-rasterizer":

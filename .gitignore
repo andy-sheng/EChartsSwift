@@ -40,3 +40,4 @@ third_party/**/.build/
 
 # Claude Code local config
 .claude/
+__pycache__/

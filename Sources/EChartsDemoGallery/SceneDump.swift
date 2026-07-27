@@ -93,12 +93,22 @@ private func nativeStyleBag(_ el: Displayable) -> [String: Any] {
     return canonBag(el.style)
 }
 
+/// `action` is an optional dispatchAction payload (`{"type":"legendToggleSelect","name":"Email"}`)
+/// applied AFTER the initial render, so the dump captures the post-interaction state. This is how an
+/// interaction bug becomes comparable: the same payload goes to both implementations, and the diff
+/// is of the resulting scene, not of two screenshots taken at whatever moment each settled.
 @MainActor
-func sceneDumpNative(_ demo: EChartsDemo) -> String? {
+func sceneDumpNative(_ demo: EChartsDemo, action: [String: Any]? = nil) -> String? {
     var opt = demo.option
     opt["animation"] = false          // same contract as the web page's `snapshot: true`
     let ec = ECharts(width: demo.width, height: demo.height)
     ec.setOption(opt)
+
+    if let action = action, let type = action["type"] as? String {
+        var payload = Payload(type: type)
+        for (k, v) in action where k != "type" { payload.other[k] = v }
+        ec.dispatchAction(payload)
+    }
 
     // includeIgnore: true — an element the port wrongly marks `ignore` is precisely a bug we want
     // reported, and dropping it here would instead show up as a confusing count mismatch.
@@ -125,6 +135,42 @@ func sceneDumpNative(_ demo: EChartsDemo) -> String? {
     return String(data: data, encoding: .utf8)
 }
 
+// MARK: - Reachable-action derivation
+//
+// The frame-0 scene diff only ever compares the INITIAL render, so a bug that appears only after the
+// user touches something is invisible to it — which is exactly how "click the legend and the data
+// goes wrong" survived a 0.12% pixel score AND a clean structural diff on the same demo.
+//
+// The fix is to make the interaction states part of the default corpus rather than a later phase.
+// Interaction稳态 diffing needs no virtual clock: dispatch the payload, let it settle, compare
+// structure. Only mid-ANIMATION frames need the clock.
+//
+// v1 derives legend actions, because that is the reported failure class and because legend items are
+// exactly the set of user-reachable toggles the chart declares about itself. Derivation runs against
+// the real ported LegendModel (not a re-implementation of legend collection), and the resulting names
+// are written to a manifest that BOTH sweeps consume, so the two sides always receive byte-identical
+// payloads — a divergence is then necessarily in the response, never in the stimulus.
+
+@MainActor
+func deriveLegendActions(_ demo: EChartsDemo, max: Int) -> [[String: Any]] {
+    var opt = demo.option
+    opt["animation"] = false
+    let ec = ECharts(width: demo.width, height: demo.height)
+    ec.setOption(opt)
+    guard let ecModel = ec.getModel() else { return [] }
+
+    var names: [String] = []
+    var seen = Set<String>()
+    for cmpt in ecModel.findComponents(QueryConditionKindA(mainType: "legend")) {
+        guard let legend = cmpt as? LegendModel else { continue }
+        for item in legend.getData() {
+            guard let n = model.convertOptionIdName(item.get("name", true), nil), !n.isEmpty else { continue }
+            if seen.insert(n).inserted { names.append(n) }
+        }
+    }
+    return names.prefix(max).map { ["type": "legendToggleSelect", "name": $0] }
+}
+
 // MARK: - Web dump
 
 /// The mirror image of `sceneDumpNative`, evaluated inside the page that already hosts real
@@ -136,6 +182,7 @@ func sceneDumpNative(_ demo: EChartsDemo) -> String? {
 /// bag artificially sparse against the Swift struct, which materialises all of its fields.
 let sceneDumpJS = """
 (function () {
+  if (window.__SCENE_ACTION__) { myChart.dispatchAction(window.__SCENE_ACTION__); }
   var zr = myChart.getZr();
   var list = zr.storage.getDisplayList(true, true);
   function num(d) {
@@ -193,10 +240,14 @@ let sceneDumpJS = """
 final class WebSceneDumper: NSObject, WKNavigationDelegate {
     let out: URL
     let js: String
-    init(out: URL, js: String = sceneDumpJS) { self.out = out; self.js = js }
+    let actionJSON: String?
+    init(out: URL, js: String = sceneDumpJS, actionJSON: String? = nil) {
+        self.out = out; self.js = js; self.actionJSON = actionJSON
+    }
     func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            wv.evaluateJavaScript(self.js) { result, err in
+            let prelude = self.actionJSON.map { "window.__SCENE_ACTION__ = \($0);\n" } ?? ""
+            wv.evaluateJavaScript(prelude + self.js) { result, err in
                 defer { exit(err == nil ? 0 : 1) }
                 if let err = err {
                     FileHandle.standardError.write(Data("scene dump JS failed: \(err)\n".utf8)); return
@@ -212,4 +263,78 @@ final class WebSceneDumper: NSObject, WKNavigationDelegate {
     func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
         FileHandle.standardError.write(Data("web load failed: \(e)\n".utf8)); exit(1)
     }
+}
+
+// MARK: - Batch sweep (web side)
+
+/// One sweep job: a demo, an optional action, and where its dump goes.
+struct SweepJob {
+    let demo: EChartsDemo
+    let actionJSON: String?     // nil = the base (no-interaction) state
+    let out: URL
+    let label: String
+}
+
+/// Drives the whole corpus through ONE process: load page -> settle -> dump -> next.
+///
+/// A fresh page load per (demo, action) rather than dispatching several actions into one page: the
+/// alternative is to undo each action with its inverse, which assumes the undo is faithful — and on a
+/// port being tested for exactly that kind of fidelity, a bad undo would silently poison every later
+/// variant of the same demo. Reloading costs wall-clock and buys unambiguous results.
+final class WebSweeper: NSObject, WKNavigationDelegate {
+    private let jobs: [SweepJob]
+    private var idx = 0
+    private let wv: WKWebView
+    private var failures: [String] = []
+
+    init(jobs: [SweepJob], wv: WKWebView) { self.jobs = jobs; self.wv = wv }
+
+    func start() { loadCurrent() }
+
+    private func loadCurrent() {
+        guard idx < jobs.count else {
+            print("sweep-web done: \(jobs.count - failures.count)/\(jobs.count) ok, \(failures.count) failed")
+            for f in failures.prefix(20) { print("  FAILED \(f)") }
+            exit(0)
+        }
+        let job = jobs[idx]
+        guard let page = echartsHTMLPage(job.demo, snapshot: true) else {
+            failures.append("\(job.label) (no html)"); idx += 1; loadCurrent(); return
+        }
+        wv.frame = CGRect(x: 0, y: 0, width: job.demo.width, height: job.demo.height)
+        wv.loadHTMLString(page, baseURL: nil)
+    }
+
+    func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
+        let job = jobs[idx]
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            let prelude = job.actionJSON.map { "window.__SCENE_ACTION__ = \($0);\n" } ?? ""
+            wv.evaluateJavaScript(prelude + sceneDumpJS) { result, err in
+                if let json = result as? String {
+                    try? json.write(to: job.out, atomically: true, encoding: .utf8)
+                } else {
+                    self.failures.append("\(job.label): \(err.map { "\($0)" } ?? "non-string result")")
+                }
+                if (self.idx + 1) % 25 == 0 { print("  … \(self.idx + 1)/\(self.jobs.count)") }
+                self.idx += 1
+                self.loadCurrent()
+            }
+        }
+    }
+
+    func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
+        failures.append("\(jobs[idx].label): load \(e)")
+        idx += 1; loadCurrent()
+    }
+
+    func webView(_ wv: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError e: Error) {
+        failures.append("\(jobs[idx].label): provisional \(e)")
+        idx += 1; loadCurrent()
+    }
+}
+
+/// Shared naming so the two sweeps land on filenames the report script can pair up.
+/// slot 0 is the base state; slot N>0 is the Nth derived action.
+func sweepFileName(_ demo: String, slot: Int, side: String) -> String {
+    "\(demo)##\(slot).\(side).json"
 }
