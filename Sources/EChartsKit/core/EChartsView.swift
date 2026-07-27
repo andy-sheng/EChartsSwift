@@ -1275,6 +1275,16 @@ public final class EChartsView {
             _ensureTooltipView()?._showAxisTooltip(list, x: x, y: y)
             zr.refresh()
         case "hideTip":
+            // upstream `manuallyHideTip` early-outs on `payload.from === this.uid` — the tooltip view
+            //   ignores a hideTip that races its OWN `_showComponentItemTooltip` showTip ("If not
+            //   dispatch showTip, tip may be hide triggered by axis.", TooltipView.ts:806). This port's
+            //   axis leg bypasses the ec action bus, so the same protection is the view's
+            //   `_shownAsCmptItem` flag: while a COMPONENT-item tooltip (legend / graphic / toolbox /
+            //   matrix / geo region / …) is the box on screen, the axis leg's per-mousemove hideTip —
+            //   which `axisTrigger` dispatches for every pointer position outside a coordinate system —
+            //   must not tear it down. A real leave still hides it: zr `mouseout` calls `hide()`
+            //   directly (which also clears the flag), as does any axis/series tooltip replacing it.
+            if tooltipView?._shownAsCmptItem == true { return }
             tooltipView?.hide()
             zr.refresh()
         default:
@@ -1310,26 +1320,75 @@ public final class EChartsView {
     //   ECData with a seriesIndex + dataIndex (mirrors upstream `_tryShow`'s dispatcher det), resolve the
     //   `seriesModel`, and drive `TooltipView.tryShow` with the pointer (`e.offsetX/offsetY` are the zr
     //   coords — see Handler.makeEventPacket). No ECData → nothing to show (bail).
+    //
+    //   This walk IS upstream `_tryShow`'s `findEventDispatcher(el, det, true)` det (TooltipView.ts:479):
+    //     if (getECData(target).dataIndex != null)          { seriesDispatcher = target; }
+    //     else if (getECData(target).tooltipConfig != null)  { cmptDispatcher = target; }
+    //   with `if (seriesDispatcher || cmptDispatcher) return;` making the INNERMOST match of EITHER kind
+    //   win — hence one ancestor walk that stops at the first element carrying either. An element with a
+    //   `tooltipConfig` (stamped by `setTooltipConfig`, util/graphic.swift — legend items, graphic
+    //   elements, toolbox icons, geo regions, matrix cells, timeline ticks, axis names/labels) routes to
+    //   `TooltipView._showComponentItemTooltip`; one with a `dataIndex` to `tryShow`.
+    //   PORT-NOTE (deferred, both DORMANT here): upstream's two other det guards have no live analogue —
+    //     `(target as ECElement).tooltipDisabled` (`tooltipDisabled` is not modeled on `Element` in this
+    //     port), and the `ecData.ssrType === 'legend'` early-out, which only matters under `ecModel.ssr`
+    //     (the mode where upstream's LegendView stamps a seriesIndex/dataIndex onto legend children); SSR
+    //     is not ported, so nothing here ever sets `ssrType = .legend`.
     // ------------------------------------------------------------------------
     private func _showTooltipForHover(_ e: ElementEvent) {
         guard let ecModel = ec.getModel() else { return }
+
+        // --- det (upstream `findEventDispatcher(el, det, true)`) --------------------------------------
+        //   Detection is SEPARATE from the action, exactly like upstream: the walk stops at the FIRST
+        //   (innermost) element matching EITHER predicate and records WHICH one matched; only then does
+        //   the caller branch. Merging the two — testing "dataIndex AND a resolvable series AND a
+        //   tooltip view" in the loop — would keep walking past a `dataIndex` element whose series
+        //   cannot be resolved and let an outer `tooltipConfig` ancestor win, which upstream never does.
+        var seriesDispatcher: Element?
+        var cmptDispatcher: Element?
         var cur: Element? = e.target
         while let el = cur {
             let ecData = innerStore.getECData(el)
-            if let dataIndex = ecData.dataIndex, let seriesIndex = ecData.seriesIndex,
-               let seriesModel = ecModel.getSeriesByIndex(seriesIndex),
-               let tooltip = _ensureTooltipView() {
-                tooltip.tryShow(
-                    event: e,
-                    seriesModel: seriesModel,
-                    dataIndex: dataIndex,
-                    dataType: ecData.dataType,
-                    point: [e.offsetX, e.offsetY]
-                )
-                zr.refresh()
+            // Always show item tooltip if mouse is on the element with dataIndex
+            if ecData.dataIndex != nil {
+                seriesDispatcher = el
+                break
+            }
+            // Tooltip provided directly. Like legend.
+            if ecData.tooltipConfig != nil {
+                cmptDispatcher = el
+                break
+            }
+            // upstream: `target = target.__hostTarget || target.parent`.
+            cur = el.__hostTarget ?? (el.parent as? Element)
+        }
+
+        // --- action (upstream `_tryShow`, TooltipView.ts:500-505) -------------------------------------
+        //   `if (seriesDispatcher) {...} else if (cmptDispatcher) {...}` — the series leg wins, and a
+        //   series leg that cannot be driven bails out SILENTLY rather than falling through to the
+        //   component leg (upstream's `_showSeriesItemTooltip` simply returns when its own lookups fail).
+        //   upstream's `else { this._hide(dispatchAction) }` third arm is DEFERRED here: this port's
+        //   hover hide is driven by the zr `mouseout` leg (see `_bindZrListeners`), not from here.
+        if let el = seriesDispatcher {
+            let ecData = innerStore.getECData(el)
+            guard let dataIndex = ecData.dataIndex, let seriesIndex = ecData.seriesIndex,
+                  let seriesModel = ecModel.getSeriesByIndex(seriesIndex),
+                  let tooltip = _ensureTooltipView() else {
                 return
             }
-            cur = el.__hostTarget ?? (el.parent as? Element)
+            tooltip.tryShow(
+                event: e,
+                seriesModel: seriesModel,
+                dataIndex: dataIndex,
+                dataType: ecData.dataType,
+                point: [e.offsetX, e.offsetY]
+            )
+            zr.refresh()
+        }
+        else if let el = cmptDispatcher {
+            guard let tooltip = _ensureTooltipView() else { return }
+            tooltip._showComponentItemTooltip(el: el, point: [e.offsetX, e.offsetY])
+            zr.refresh()
         }
     }
 

@@ -297,11 +297,23 @@ open class GraphicComponentView: ComponentView {
 
                 // upstream: graphicUtil.setTooltipConfig({ el, componentModel: graphicModel,
                 //   itemName: el.name, itemTooltipOption: elOption.tooltip });
-                // PORT-NOTE: the provider (util/graphic.swift) only recognizes a `String` or an
-                //   already-typed `CommonTooltipOption<Any>` for `itemTooltipOption`. The raw
-                //   option-bag form (`tooltip: { formatter: ... }`) is a `[String: Any]` here and is
-                //   currently DROPPED (only name/formatterParams survive); bridging the bag into
-                //   `CommonTooltipOption` is not yet ported.
+                // PORT-NOTE: `elOption["tooltip"]` is the raw `[String: Any]` option-bag form
+                //   (`tooltip: { formatter: ... }`) — or the `String` shorthand. The provider
+                //   (`setTooltipConfig`, util/graphic.swift) accepts BOTH: its `[String: Any]` arm
+                //   bridges the bag through `commonTooltipOptionFromOptionBag`, so `formatter`,
+                //   `backgroundColor`, `position`, ... reach `ecData.tooltipConfig.option.common` and
+                //   from there `TooltipView._showComponentItemTooltip`'s cascade. (This used to say the
+                //   bag was DROPPED wholesale — that stopped being true when the provider grew the bag arm.)
+                // PORT-TODO: the bridge is a WHITELIST, not a pass-through —
+                //   `commonTooltipOptionFromOptionBag` copies only the declared `CommonTooltipOption`
+                //   fields, so any other key in the user's bag is still dropped: `showContent` (read by
+                //   `TooltipView._showTooltipContent` — upstream would suppress the box entirely),
+                //   `order`, `renderMode`, `className`, `appendToBody`, `defaultBorderColor` (read by
+                //   `_getNearestPoint`). `valueFormatter` survives only when the bag already stores a
+                //   closure of that exact function type. This loss is REAL for graphic elements:
+                //   `elOption.tooltip` reaches the cascade only as layer 0 — unlike the legend case there
+                //   is no component-level `tooltip` fallback layer carrying the raw bag. The fix belongs
+                //   provider-side (pass unknown keys through verbatim, so the projection round-trips).
                 setTooltipConfig(
                     el: el,
                     componentModel: graphicModel,

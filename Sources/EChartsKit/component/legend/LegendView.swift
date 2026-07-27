@@ -618,17 +618,24 @@ open class LegendView: ComponentView {
         // }
         let tooltipModel = legendItemModel.getModel("tooltip")
         if legendJsTruthy(tooltipModel.get("show")) {
-            // PORT-TODO: bridge the raw `[String: Any]` tooltip option bag into
-            //   `CommonTooltipOption<Any>` so `itemTooltipOption` fields are not dropped.
-            //   The provider (`setTooltipConfig` in util/graphic.swift) only recognizes a `String`
-            //   or an already-typed `CommonTooltipOption<Any>`; `tooltipModel.option` is the raw
-            //   option bag here, so the USER-SUPPLIED fields (`formatter`, `valueFormatter`,
-            //   `backgroundColor`, ...) are currently DROPPED and `option.common` stays empty.
-            //   Everything the provider itself sets is still wired: `ecData.componentMainType`,
-            //   `ecData.componentIndex`, and `tooltipConfig.option`'s `content`,
-            //   `encodeHTMLContent` and `formatterParams`. The real fix belongs provider-side
-            //   (a `[String: Any]` arm in `setTooltipConfig`'s `itemTooltipOptionObj` resolution);
-            //   shared gap with GraphicView.swift's call site and MapDraw's.
+            // PORT-NOTE: `tooltipModel.option` is the raw `[String: Any]` option bag here (not a typed
+            //   `CommonTooltipOption<Any>`). The provider handles that: `setTooltipConfig`
+            //   (util/graphic.swift) has a `[String: Any]` arm that bridges the bag through
+            //   `commonTooltipOptionFromOptionBag`, so the USER-SUPPLIED fields (`formatter`,
+            //   `backgroundColor`, `position`, ...) DO reach `ecData.tooltipConfig.option.common` and
+            //   from there `TooltipView._showComponentItemTooltip`'s cascade. (This used to claim the
+            //   bag was dropped WHOLESALE — that stopped being true when the provider grew the bag arm.)
+            // PORT-TODO: the bridge is a WHITELIST, not a pass-through —
+            //   `commonTooltipOptionFromOptionBag` carries only the declared `CommonTooltipOption`
+            //   fields, so a bag key outside that set is still dropped from
+            //   `ecData.tooltipConfig.option`: `showContent` (read by
+            //   `TooltipView._showTooltipContent`), `order`, `renderMode`, `className`, `appendToBody`,
+            //   `defaultBorderColor` (read by `_getNearestPoint`). `valueFormatter` survives only when
+            //   the bag already stores a closure of that exact function type. Softer here than at
+            //   GraphicView's call site — `legend.tooltip` ALSO reaches the cascade as the component
+            //   layer (`ecModel.getComponent('legend', i)`, read with the raw bag by `buildTooltipModel`),
+            //   so a dropped key is still resolvable there. The real fix is provider-side: pass unknown
+            //   keys through verbatim so the projection round-trips. Shared with GraphicView + MapDraw.
             setTooltipConfig(
                 el: hitRect,
                 componentModel: legendModel,

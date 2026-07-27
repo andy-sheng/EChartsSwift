@@ -36,8 +36,12 @@
 //
 // DEFERRED (left as PORT-NOTEs, exactly like the brief):
 //   - `trigger:'axis'` — SINCE PORTED via `_showAxisTooltip` (invoked from EChartsView/axisTrigger, not this
-//     item entry). Still deferred within the axis path: `_showComponentItemTooltip`, globalListener,
-//     `_keepShow`, `_manuallyAxisShowTip`.
+//     item entry). Still deferred: globalListener, `_keepShow`, `_manuallyAxisShowTip`.
+//     (`_showComponentItemTooltip` — the COMPONENT-item tooltip, for elements carrying
+//     `ecData.tooltipConfig` instead of a series dataIndex — is NO LONGER DEFERRED: it is ported below
+//     with the real `buildTooltipModel` cascade, and `EChartsView._showTooltipForHover` routes to it
+//     exactly where upstream `_tryShow` falls through to `cmptDispatcher` after `seriesDispatcher`
+//     fails to match (upstream TooltipView.ts:500-505 tests `seriesDispatcher` FIRST).)
 //     (`_updateContentNotChangedOnAxis` — the no-change, position-only update branch — is NO LONGER
 //     DEFERRED: it is ported below with its `_lastDataByCoordSys`/`_cbParamsList` memo, at upstream's
 //     exact call site inside `_showAxisTooltip`'s `_showOrMove` callback. NOTE this makes the branch MORE
@@ -181,6 +185,25 @@ public final class TooltipView {
     // upstream: `private _cbParamsList: TooltipCallbackDataParams[];` (TooltipView.ts:162)
     private var _cbParamsList: [TooltipCallbackDataParams]?
 
+    // PORT-NOTE (adaptation, NO upstream field — the port-local stand-in for upstream's
+    //   `dispatchAction({type: 'showTip', from: this.uid})`). Upstream `_showComponentItemTooltip` ends
+    //   with that dispatch, commented "If not dispatch showTip, tip may be hide triggered by axis." — it
+    //   exists because the component-item leg deliberately does NOT gate on `trigger` ("Do not check
+    //   whether `trigger` is 'none' here"), so it is the one leg exposed to the axis leg's per-mousemove
+    //   `hideTip`. Upstream's globalListener pend/merge stage lets that `showTip` beat the `hideTip`, and
+    //   `manuallyHideTip` additionally early-outs on `payload.from === this.uid`.
+    //   In THIS port the axis leg does not go through the ec action bus: `axisTrigger` dispatches
+    //   `hideTip` whenever nothing resolved (axisTrigger.swift `dispatchTooltipActually`) and
+    //   `EChartsView._realDispatchAxisPointer` turns it straight into `tooltipView.hide()`. Without a
+    //   guard, hovering a legend/graphic/toolbox/matrix item under `tooltip.trigger:'axis'` shows the
+    //   component tooltip on `mouseover` and destroys it on the very next `mousemove` (and no further
+    //   `mouseover` fires while the pointer stays on the same element), i.e. the feature is dead under
+    //   the most common tooltip config. This flag IS the `from: this.uid` early-out: set when the
+    //   component-item box goes up, cleared by every path that legitimately replaces or hides it
+    //   (`tryShow`, `_showAxisTooltip`, `hide()`), and read by `_realDispatchAxisPointer`'s `hideTip`
+    //   arm to skip the hide.
+    public private(set) var _shownAsCmptItem: Bool = false
+
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
     //   model, resolves renderMode, and builds `new TooltipRichContent(api)`. Here the live `zr` is passed
@@ -251,31 +274,28 @@ public final class TooltipView {
         //   guard that lives in `_showSeriesItemTooltip`).
         self._lastDataByCoordSys = nil
         self._cbParamsList = nil
+        // The SERIES-item leg replaces whatever the component-item leg put on screen — drop the
+        //   `from: this.uid` stand-in so the axis leg's `hideTip` is honoured again (see the field).
+        self._shownAsCmptItem = false
 
-        // --- buildTooltipModel (SLIM): series `tooltip` merged OVER the global tooltip model. --------
+        // --- buildTooltipModel (SLIM cascade): series `tooltip` merged OVER the global tooltip model. -
         // upstream cascades [data.getItemModel(dataIndex), seriesModel, coordSys.model] over the global
         //   model (TooltipView.ts:680). The per-data-item + coord-system layers are DEFERRED; the series
-        //   `tooltip` option (ignoreParent) is layered over the global model so `.get(...)` falls through
-        //   to the registered global defaults (show / trigger / textStyle / order / …).
+        //   `tooltip` option (read with ignoreParent by `buildTooltipModel`'s `Model` arm) is layered over
+        //   the global model so `.get(...)` falls through to the registered global defaults (show /
+        //   trigger / textStyle / order / …).
         //
-        // upstream `buildTooltipModel(cascade, globalTooltipModel, defaultTooltipOption)`
-        //   (TooltipView.ts:1071-1086): when a `defaultTooltipOption` is supplied it becomes the model at
-        //   the BOTTOM of the cascade and the GLOBAL option is re-parented onto it
-        //   (`new Model(globalTooltipModel.option, new Model(defaultTooltipOption, ecModel, ecModel))`),
-        //   i.e. every explicitly-configured layer outranks the default. `positionDefault` is upstream's
-        //   only user of that argument.
-        var baseModel: Model = globalTooltipModel
-        if let positionDefault = positionDefault {
-            let defaultOptionModel = Model(["position": positionDefault], ecModel, ecModel)
-            baseModel = Model(globalTooltipModel.option, defaultOptionModel, ecModel)
-        }
-        let tooltipModel: Model
-        if let seriesTooltipOpt = seriesModel.get("tooltip", true) as? [String: Any] {
-            tooltipModel = Model(seriesTooltipOpt, baseModel, ecModel)
-        }
-        else {
-            tooltipModel = baseModel
-        }
+        // The cascade itself now goes through the REAL ported `buildTooltipModel` (file scope, upstream
+        //   TooltipView.ts:1071) rather than an inline expansion of it — one definition per upstream
+        //   symbol (PORTING.md §2); the component-item path builds its 3-layer cascade with the same
+        //   function. `positionDefault` is upstream's only user of its `defaultTooltipOption` argument:
+        //   that option becomes the model at the BOTTOM of the cascade with the GLOBAL option re-parented
+        //   onto it, i.e. every explicitly-configured layer outranks the default.
+        let tooltipModel: Model = buildTooltipModel(
+            [seriesModel],
+            globalTooltipModel,
+            positionDefault.map { ["position": $0] }
+        )
 
         // upstream `_showSeriesItemTooltip` guard (TooltipView.ts:690): trigger must be nil or 'item'.
         let tooltipTrigger = tooltipModel.get("trigger") as? String
@@ -413,6 +433,9 @@ public final class TooltipView {
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
             return
         }
+        // The AXIS leg is about to replace whatever the component-item leg put on screen — drop the
+        //   `from: this.uid` stand-in (see the field) so a later `hideTip` hides this axis box.
+        self._shownAsCmptItem = false
         let renderMode = self._renderMode
         let markupStyleCreator = TooltipMarkupStyleCreator()
         // upstream: buildTooltipModel([e.tooltipOption], globalTooltipModel). Slim: the global model.
@@ -597,6 +620,172 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
+    // _showComponentItemTooltip — ported from upstream (TooltipView.ts:740). The tooltip for a COMPONENT
+    //   item: an element that carries `ecData.tooltipConfig` (stamped by `setTooltipConfig`,
+    //   util/graphic.swift) instead of a series `dataIndex` — legend items, graphic elements, toolbox
+    //   icons, geo/map regions, matrix cells, timeline ticks, axis names/labels. The config's own option
+    //   is cascaded over the owning component's `tooltip` option and the global tooltip model, the
+    //   default content is the config's `content` (the item name), and the `formatter` receives the
+    //   config's `formatterParams` rather than a datum's `CallbackDataParams`.
+    //
+    //   PORT-NOTE (signature): upstream is `private _showComponentItemTooltip(e, el, dispatchAction)`.
+    //     Like `_showAxisTooltip` (same reason — this view is NOT a `ComponentView`; the host
+    //     `EChartsView` owns it and drives the hover, see ARCHITECTURE), it is `public` here and takes
+    //     the pieces of `TryShowParams` this port threads: `el` (upstream's `cmptDispatcher`), the
+    //     pointer `point` (`e.offsetX`/`e.offsetY`) and `positionDefault`. `e.position` (the
+    //     per-dispatch override) is not threaded — the same PORT-TODO as `tryShow`, see `manuallyShowTip`.
+    //   PORT-NOTE (adaptation): upstream ends with `dispatchAction({type: 'showTip', from: this.uid})`
+    //     ("If not dispatch showTip, tip may be hide triggered by axis."). That dispatch is NOT droppable
+    //     here the way `tryShow`'s is: `tryShow` self-gates on `trigger == 'axis'` and returns, whereas
+    //     this leg deliberately does not check `trigger` at all (upstream: "Do not check whether
+    //     `trigger` is 'none' here"), so it is the one leg the axis leg's per-mousemove `hideTip` can
+    //     destroy. This port has no `uid`/`dispatchAction` seam on the view AND its axis leg bypasses the
+    //     ec action bus (`axisTrigger` → `EChartsView._realDispatchAxisPointer` → `tooltipView.hide()`),
+    //     so the guard is expressed as the `_shownAsCmptItem` flag set below — the exact stand-in for
+    //     upstream's `payload.from === this.uid` early-out. See the field for the full rationale.
+    // ------------------------------------------------------------------------
+    public func _showComponentItemTooltip(
+        el: Element,
+        point: [Double],
+        positionDefault: String? = nil
+    ) {
+        guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
+            return
+        }
+
+        // upstream `_tryShow`, the `else if (el)` branch (TooltipView.ts:477): `this._lastDataByCoordSys
+        //   = null; this._cbParamsList = null;` — shared by BOTH the series- and the component-dispatcher
+        //   legs, so it is done here for the same reason `tryShow` does it (this content replaces whatever
+        //   the axis path put on screen; the axis no-change memo must not match against it afterwards).
+        self._lastDataByCoordSys = nil
+        self._cbParamsList = nil
+
+        // upstream: const isHTMLRenderMode = this._renderMode === 'html';
+        let isHTMLRenderMode = self._renderMode == .html
+        // upstream: const ecData = getECData(el); const tooltipConfig = ecData.tooltipConfig;
+        let ecData = innerStore.getECData(el)
+        // upstream reads `ecData.tooltipConfig` unguarded — `_tryShow` only routes here when it is
+        //   non-null (`else if (getECData(target).tooltipConfig != null)`). Guarded here so a direct
+        //   call cannot trap (PORTING.md §12: no optimistic force-unwraps).
+        guard let tooltipConfig = ecData.tooltipConfig else {
+            return
+        }
+        // upstream: let tooltipOpt = tooltipConfig.option || {};
+        //   PORT-NOTE: `ECData.TooltipConfig.option` is non-Optional in this port (`setTooltipConfig`
+        //     always builds one), so the `|| {}` fallback has no analogue.
+        var tooltipOpt = tooltipConfig.option
+        // upstream: let encodeHTMLContent = tooltipOpt.encodeHTMLContent;
+        let encodeHTMLContent = tooltipOpt.encodeHTMLContent
+        // upstream:
+        //   if (isString(tooltipOpt)) {
+        //       const content = tooltipOpt;
+        //       tooltipOpt = { content: content, /* Fixed formatter */ formatter: content };
+        //       encodeHTMLContent = true;   // can't know if the content needs encoding → encode
+        //   }
+        //   PORT-NOTE (divergence, TYPE): no analogue. Upstream's `tooltipConfig.option` is `string |
+        //     ComponentItemTooltipOption`; this port types it as the struct alone, and the string arm is
+        //     already normalized PROVIDER-side — `setTooltipConfig` (util/graphic.swift) turns a `String`
+        //     `itemTooltipOption` into `{formatter: <string>}` and always sets `content: itemName` and
+        //     `encodeHTMLContent: true`. So the shorthand still reaches the same cascade, just one hop
+        //     earlier; nothing is dropped.
+
+        // upstream:
+        //   if (encodeHTMLContent && isHTMLRenderMode && tooltipOpt.content) {
+        //       tooltipOpt = clone(tooltipOpt);      // clone might be unnecessary?
+        //       tooltipOpt.content = encodeHTML(tooltipOpt.content);
+        //   }
+        //   PORT-NOTE (divergence, RENDER MODE): kept verbatim but DORMANT — `_renderMode` is FORCED
+        //     `.richText` in this native port (no DOM host), so `isHTMLRenderMode` is always false and
+        //     the content is never HTML-escaped. That is upstream's own behaviour for renderMode
+        //     'richText' (escaping `<`/`&` would be visible literal text in a `ZRText`), NOT a gap.
+        //     `tooltipOpt` is a Swift struct, so the plain assignment below IS upstream's `clone`.
+        if (encodeHTMLContent ?? false) && isHTMLRenderMode, let content = tooltipOpt.content {
+            tooltipOpt.content = format.encodeHTML(content)
+        }
+
+        // upstream: const tooltipModelCascade = [tooltipOpt] as TooltipModelOptionCascade[];
+        var tooltipModelCascade: [TooltipModelOptionCascade?] = [componentItemTooltipOptionBag(tooltipOpt)]
+        // upstream:
+        //   const cmpt = this._ecModel.getComponent(ecData.componentMainType, ecData.componentIndex);
+        //   if (cmpt) { tooltipModelCascade.push(cmpt as Model<TooltipableOption>); }
+        //   (`buildTooltipModel`'s `Model` arm reads `cmpt.get('tooltip', true)` off it.)
+        if let componentMainType = ecData.componentMainType,
+           let cmpt = ecModel.getComponent(componentMainType, ecData.componentIndex) {
+            tooltipModelCascade.append(cmpt)
+        }
+        // In most cases, component tooltip formatter has different params with series tooltip formatter,
+        // so that they cannot share the same formatter. Since the global tooltip formatter is used for series
+        // by convention, we do not use it as the default formatter for component.
+        // upstream: tooltipModelCascade.push({ formatter: tooltipOpt.content });
+        //   The key is OMITTED when `content` is nil: an `Any`-boxed `Optional.none` would satisfy
+        //   `Model._doGet`'s non-nil test and SHADOW the parent layers, whereas upstream's
+        //   `{formatter: undefined}` falls through to them (PORTING.md §8).
+        var contentFormatterLayer: [String: Any] = [:]
+        if let content = tooltipOpt.content { contentFormatterLayer["formatter"] = content }
+        tooltipModelCascade.append(contentFormatterLayer)
+
+        // upstream:
+        //   const positionDefault = e.positionDefault;
+        //   const subTooltipModel = buildTooltipModel(tooltipModelCascade, this._tooltipModel,
+        //       positionDefault ? { position: positionDefault } : null);
+        let subTooltipModel = buildTooltipModel(
+            tooltipModelCascade,
+            globalTooltipModel,
+            positionDefault.map { ["position": $0] }
+        )
+
+        // upstream: const defaultHtml = subTooltipModel.get('content');
+        let defaultHtml = (subTooltipModel.get("content") as? String) ?? ""
+        // upstream: const asyncTicket = Math.random() + '';
+        let asyncTicket = number.jsNumberString(Double.random(in: 0..<1))
+        // PENDING: this case do not support richText style yet.
+        let markupStyleCreator = TooltipMarkupStyleCreator()
+
+        // Do not check whether `trigger` is 'none' here, because `trigger`
+        // only works on coordinate system. In fact, we have not found case
+        // that requires setting `trigger` nothing on component yet.
+
+        // upstream (TooltipView.ts:790): this._showOrMove(subTooltipModel, function () {
+        //     // Use formatterParams from element defined in component
+        //     // Avoid users modify it.
+        //     const formatterParams = clone(subTooltipModel.get('formatterParams') as any || {});
+        //     this._showTooltipContent(subTooltipModel, defaultHtml, formatterParams, asyncTicket,
+        //         e.offsetX, e.offsetY, e.position, el, markupStyleCreator);
+        // });
+        let x = point.count > 0 ? point[0] : 0
+        let y = point.count > 1 ? point[1] : 0
+        _showOrMove(subTooltipModel) { [weak self] in
+            // `ComponentItemTooltipLabelFormatterParams` is a Swift STRUCT, so reading it out of the
+            //   option bag already copies it — that IS upstream's defensive `clone`. `|| {}` becomes the
+            //   empty-ish params below (upstream's `{}` has no `$vars` either, so `formatTpl`
+            //   substitutes nothing and a function formatter sees empty fields).
+            let formatterParams =
+                (subTooltipModel.get("formatterParams") as? ComponentItemTooltipLabelFormatterParams)
+                ?? ComponentItemTooltipLabelFormatterParams(componentType: "", name: "", vars: [])
+            self?._showTooltipContent(
+                tooltipModel: subTooltipModel,
+                defaultHtml: defaultHtml,
+                params: .component(formatterParams),
+                asyncTicket: asyncTicket,
+                x: x,
+                y: y,
+                // upstream `e.position` — see the signature PORT-TODO above.
+                positionExpr: nil,
+                el: el,
+                markupStyleCreator: markupStyleCreator
+            )
+        }
+
+        // upstream:
+        //   // If not dispatch showTip, tip may be hide triggered by axis.
+        //   dispatchAction({ type: 'showTip', from: this.uid });
+        //   Ported as the flag (see the PORT-NOTE on the signature and on `_shownAsCmptItem`): set
+        //   UNCONDITIONALLY at upstream's exact call site, i.e. even when `_showOrMove` only armed a
+        //   `showDelay` timer — upstream dispatches there too.
+        self._shownAsCmptItem = true
+    }
+
+    // ------------------------------------------------------------------------
     // _showTooltipContent — upstream (TooltipView.ts:812). The `formatter` (string/function) override
     //   and the async `_ticket` ARE ported (see below). Callers reach this only through `_showOrMove`,
     //   so `tooltip.showDelay` has already been honoured by the time it runs.
@@ -688,6 +877,10 @@ public final class TooltipView {
                 switch params {
                 case .single(let one): params0 = one
                 case .multiple(let list): params0 = list.first
+                // A COMPONENT-item tooltip's params are not `CallbackDataParams` and carry no
+                //   `axisType`/`axisValue`, so upstream's `params0.axisType` read is `undefined` there
+                //   and the time-axis pre-pass is skipped — the same result as `nil` here.
+                case .component: params0 = nil
                 }
                 // PORT-TODO: this test is DORMANT in the port. `axisType` is `axisModel.type`
                 //   (component/axisPointer/axisTrigger.swift, faithful to axisTrigger.ts), and upstream's
@@ -791,6 +984,37 @@ public final class TooltipView {
                 self._ticket = asyncTicket
                 return formatter(params)
             }
+        case .component(let params):
+            // The COMPONENT-item path (`_showComponentItemTooltip`): upstream hands the SAME
+            //   `formatter(params, asyncTicket, callback)` call the component's `formatterParams`
+            //   (`{componentType, name, $vars, ...extra}`) instead of a datum's params — see the
+            //   `.component` PORT-NOTE on `TopLevelFormatterParams` (component/tooltip/TooltipModel.swift).
+            //   The Swift closure must therefore be spelled at THAT params type; both arities are
+            //   accepted for the same reason as above.
+            //   PORT-NOTE (Swift constraint): a component formatter reaches here off
+            //     `ECData.TooltipConfig.option.common`, which is a `CommonTooltipOption<Any>` — so the
+            //     type its own PORT-NOTE (`TooltipFormatterCallback<FormatterParams>`, util/types.swift)
+            //     tells a user to spell is `TooltipFormatterCallback<Any>` HERE. Swift dynamic casts
+            //     between function types are EXACT, so BOTH spellings must be accepted or the documented
+            //     one is silently dropped and the user gets the default item-name content instead (the
+            //     same silent-drop the `position` callback PORT-NOTE warns about). The `Any`-spelled arms
+            //     come last so a precisely-typed formatter still wins.
+            if let formatter = formatter as? TooltipFormatterCallback<ComponentItemTooltipLabelFormatterParams> {
+                self._ticket = asyncTicket
+                return formatter(params, asyncTicket, callback)
+            }
+            if let formatter = formatter as? (ComponentItemTooltipLabelFormatterParams) -> String {
+                self._ticket = asyncTicket
+                return formatter(params)
+            }
+            if let formatter = formatter as? TooltipFormatterCallback<Any> {
+                self._ticket = asyncTicket
+                return formatter(params, asyncTicket, callback)
+            }
+            if let formatter = formatter as? (Any) -> String {
+                self._ticket = asyncTicket
+                return formatter(params)
+            }
         }
         return nil
     }
@@ -828,6 +1052,13 @@ public final class TooltipView {
             return borderColor
                 ?? tooltipDataParams.color.map { format.convertToColorString($0) }
                 ?? tooltipDataParams.borderColor
+        case .component:
+            // A COMPONENT-item tooltip's params object is not an array, so upstream falls into the SAME
+            //   `borderColor || params.color || params.borderColor` return — but a
+            //   `ComponentItemTooltipLabelFormatterParams` has neither `color` nor `borderColor`, so the
+            //   result is the model's `borderColor` alone (NOT `defaultBorderColor`, which upstream only
+            //   reaches on the axis/array branch).
+            return borderColor
         }
     }
 
@@ -1144,6 +1375,9 @@ public final class TooltipView {
         //   `_updateContentNotChangedOnAxis` as "unchanged content" on the next axis hover.
         _lastDataByCoordSys = nil
         _cbParamsList = nil
+        // A real hide (mouseout, `manuallyHideTip`, …) also retires the `from: this.uid` stand-in — only
+        //   the axis leg's own `hideTip` is suppressed by it, and that arm never reaches here.
+        _shownAsCmptItem = false
         _tooltipContent.hideLater(_globalTooltipModel.flatMap { asDouble($0.get("hideDelay")) })
     }
 
@@ -1388,6 +1622,118 @@ private func tooltipStrictEquals(_ a: Any?, _ b: Any?) -> Bool {
     return false
 }
 
+// upstream:
+//   type TooltipableOption = { tooltip?: CommonTooltipOption<unknown> };
+//   type TooltipModelOptionCascade = Model<TooltipableOption> | CommonTooltipOption<unknown> | string;
+//   (TooltipView.ts:1063-1067) — an untagged union of a `Model`, a raw tooltip OPTION, or the shorthand
+//   string. In this port an option object IS the `[String: Any]` bag, so the union is carried as `Any`
+//   and discriminated by `as?` exactly where upstream discriminates by `instanceof` / `isString`
+//   (PORTING.md §9: an untagged union normally becomes a tagged enum — here the arms are already
+//   distinguishable at runtime and upstream's own code is a chain of runtime type tests, so the
+//   dynamic form keeps the body byte-comparable).
+private typealias TooltipModelOptionCascade = Any
+
+/**
+ * From top to bottom. (the last one should be globalTooltipModel);
+ */
+// upstream `buildTooltipModel` (TooltipView.ts:1071). Cascades the tooltip option layers into a `Model`
+//   chain whose `.get(...)` resolves from the most specific layer down to the global tooltip option
+//   (and, when `defaultTooltipOption` is given, to that BELOW the global one — its only upstream user is
+//   `positionDefault`, so an explicitly configured `position` at any layer still wins).
+private func buildTooltipModel(
+    _ modelCascade: [TooltipModelOptionCascade?],
+    _ globalTooltipModel: TooltipModel,
+    _ defaultTooltipOption: [String: Any]? = nil
+) -> Model {
+    // Last is always tooltip model.
+    let ecModel = globalTooltipModel.ecModel
+    var resultModel: Model
+
+    if let defaultTooltipOption = defaultTooltipOption {
+        resultModel = Model(defaultTooltipOption, ecModel, ecModel)
+        resultModel = Model(globalTooltipModel.option, resultModel, ecModel)
+    }
+    else {
+        resultModel = globalTooltipModel
+    }
+
+    var i = modelCascade.count - 1
+    while i >= 0 {
+        var tooltipOpt: Any? = modelCascade[i]
+        if tooltipOpt != nil {
+            if let modelOpt = tooltipOpt as? Model {
+                tooltipOpt = modelOpt.get("tooltip", true)
+            }
+            // In each data item tooltip can be simply write:
+            // {
+            //  value: 10,
+            //  tooltip: 'Something you need to know'
+            // }
+            if let stringOpt = tooltipOpt as? String {
+                tooltipOpt = ["formatter": stringOpt]
+            }
+            if let tooltipOpt = tooltipOpt {
+                resultModel = Model(tooltipOpt, resultModel, ecModel)
+            }
+        }
+        i -= 1
+    }
+
+    return resultModel
+}
+
+// PORT-NOTE (adaptation, NOT an upstream function — nothing to grep for upstream). Upstream's
+//   `ecData.tooltipConfig.option` is already a plain JS object, so `buildTooltipModel` can drop it
+//   straight into a `new Model(...)`. In THIS port it is the statically-typed
+//   `ComponentItemTooltipOption<Any>` struct (util/innerStore.swift's `ECData.TooltipConfig`,
+//   util/types.swift), while `Model` reads a `[String: Any]` option bag — so the struct is projected
+//   field-for-field back onto the bag. This is the exact INVERSE of `commonTooltipOptionFromOptionBag`
+//   (util/graphic.swift), which `setTooltipConfig` uses to get INTO the struct; the two must stay in
+//   sync. A `nil` field is OMITTED (not stored as an `Any`-boxed `Optional.none`) so `Model._doGet`
+//   falls through to the parent layer, which is what an absent/`undefined` JS key does.
+private func componentItemTooltipOptionBag(_ opt: ComponentItemTooltipOption<Any>) -> [String: Any] {
+    var bag = commonTooltipOptionBag(opt.common)
+    if let v = opt.content { bag["content"] = v }
+    if let v = opt.encodeHTMLContent { bag["encodeHTMLContent"] = v }
+    // The `formatterParams` STRUCT itself is stored: `_showComponentItemTooltip` reads it back with
+    //   `as? ComponentItemTooltipLabelFormatterParams`. Swift structs are values, so the read IS
+    //   upstream's `clone(...)` ("Avoid users modify it.", TooltipView.ts:792).
+    if let v = opt.formatterParams { bag["formatterParams"] = v }
+    return bag
+}
+
+// The `CommonTooltipOption<T>` half of `componentItemTooltipOptionBag` (same PORT-NOTE). Field order
+//   follows the struct declaration in util/types.swift, which follows upstream's interface.
+private func commonTooltipOptionBag(_ o: CommonTooltipOption<Any>) -> [String: Any] {
+    var bag: [String: Any] = [:]
+    if let v = o.show { bag["show"] = v }
+    if let v = o.triggerOn { bag["triggerOn"] = v }
+    if let v = o.alwaysShowContent { bag["alwaysShowContent"] = v }
+    if let v = o.formatter { bag["formatter"] = v }
+    if let v = o.valueFormatter { bag["valueFormatter"] = v }
+    if let v = o.position { bag["position"] = v }
+    if let v = o.confine { bag["confine"] = v }
+    if let v = o.align { bag["align"] = v.rawValue }
+    if let v = o.verticalAlign { bag["verticalAlign"] = v.rawValue }
+    if let v = o.showDelay { bag["showDelay"] = v }
+    if let v = o.hideDelay { bag["hideDelay"] = v }
+    if let v = o.transitionDuration { bag["transitionDuration"] = v }
+    if let v = o.enterable { bag["enterable"] = v }
+    if let v = o.displayTransition { bag["displayTransition"] = v }
+    if let v = o.backgroundColor { bag["backgroundColor"] = v }
+    if let v = o.borderColor { bag["borderColor"] = v }
+    if let v = o.borderRadius { bag["borderRadius"] = v }
+    if let v = o.borderWidth { bag["borderWidth"] = v }
+    if let v = o.shadowBlur { bag["shadowBlur"] = v }
+    if let v = o.shadowColor { bag["shadowColor"] = v }
+    if let v = o.shadowOffsetX { bag["shadowOffsetX"] = v }
+    if let v = o.shadowOffsetY { bag["shadowOffsetY"] = v }
+    if let v = o.padding { bag["padding"] = v }
+    if let v = o.extraCssText { bag["extraCssText"] = v }
+    if let v = o.textStyle { bag["textStyle"] = v }
+    return bag
+}
+
 // upstream `calcTooltipPosition` (TooltipView.ts:1168): place the tooltip box around the hovered
 //   graphic element's (already transformed) bounding `rect` for the STRING `position` keywords.
 //   `position` is `TooltipOption['position']` upstream, narrowed to the builtin keyword string here —
@@ -1457,6 +1803,9 @@ private func positionCallbackParams(_ params: TopLevelFormatterParams) -> Toolti
     switch params {
     case .single(let one): return one
     case .multiple(let list): return list
+    // The COMPONENT-item path passes its `formatterParams` object through unchanged, exactly as
+    //   upstream does (the same value it hands the `formatter`).
+    case .component(let one): return one
     }
 }
 
@@ -1503,7 +1852,25 @@ private func tplParamFromFormatterParams(_ params: TopLevelFormatterParams) -> A
         return tplParamFromDataParams(params)
     case .multiple(let params):
         return params.map(tplParamFromDataParams)
+    case .component(let params):
+        return tplParamFromComponentItemFormatterParams(params)
     }
+}
+
+// The COMPONENT-item counterpart of `tplParamFromDataParams`: upstream passes the plain
+//   `formatterParams` object (`{componentType, name, $vars, ...formatterParamsExtra}`) straight to
+//   `formatTpl`, which reads `$vars` and looks each listed key up ON THAT OBJECT. The port's typed
+//   struct is flattened back to that bag — `other` FIRST so the declared fields cannot be shadowed by a
+//   stray extra key (upstream's `setTooltipConfig` refuses to overwrite an own key: `if (!hasOwn(
+//   formatterParams, key))`, util/graphic.ts:702).
+private func tplParamFromComponentItemFormatterParams(
+    _ params: ComponentItemTooltipLabelFormatterParams
+) -> [String: Any] {
+    var tplParam: [String: Any] = params.other
+    tplParam["componentType"] = params.componentType
+    tplParam["name"] = params.name
+    tplParam["$vars"] = params.vars
+    return tplParam
 }
 
 // ============================================================================

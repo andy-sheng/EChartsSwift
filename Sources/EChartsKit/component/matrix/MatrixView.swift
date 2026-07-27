@@ -486,9 +486,12 @@ private func createMatrixCell(
         //   ecData. This port draws the label as a standalone `ZRText` added to `group` (see the drawing
         //   deviation note above), and `cellRect.silent` defaults to true when the cell has no fill — which is
         //   precisely the text-overflow case — so the overflow tooltip will not resolve from either element.
-        //   Latent today (nothing reads `ecData.tooltipConfig` yet). When TooltipView's tooltipConfig
-        //   resolution lands, also `setTooltipConfig(el: text0, ...)` on the standalone label, or re-parent the
-        //   label as `cellRect`'s textContent (the real upstream shape).
+        //   NO LONGER LATENT: `TooltipView._showComponentItemTooltip` now READS `ecData.tooltipConfig`
+        //   (routed from `EChartsView._showTooltipForHover`), so the gap would be user-visible — it is
+        //   closed below by stamping the SAME config on the standalone label too. The residual PORT-TODO
+        //   is the drawing deviation itself: re-parenting the label as `cellRect`'s textContent (the real
+        //   upstream shape) would make the second stamp unnecessary, because the label's ecData walk
+        //   (`__hostTarget`) would then reach the host rect.
         setTooltipConfig(
             el: cellRect,
             componentModel: matrixModel,
@@ -496,6 +499,23 @@ private func createMatrixCell(
             itemTooltipOption: tooltipOption,
             formatterParamsExtra: ["xyLocator": xyLocator.map { Int($0) }]
         )
+        // PORT-NOTE (adaptation, no upstream line — it follows from the standalone-label deviation
+        //   above): upstream needs ONE stamp because the label is `cellRect`'s textContent, so
+        //   `findEventDispatcher`'s `__hostTarget` hop lands on the rect. Here the label is a sibling in
+        //   `group`, and `cellRect` is silent by default whenever the cell has no fill — precisely the
+        //   text-overflow case this config exists for ("At least for text overflow.") — so without this
+        //   the tooltip resolves from NEITHER element. The label's own `silent` is already set to
+        //   `!(triggerEvent || tooltipOptionShow)` below, i.e. it IS hoverable when a tooltip is asked
+        //   for. Same arguments as the rect stamp, so both elements produce identical content.
+        if let cellText = cellText {
+            setTooltipConfig(
+                el: cellText,
+                componentModel: matrixModel,
+                itemName: text,
+                itemTooltipOption: tooltipOption,
+                formatterParamsExtra: ["xyLocator": xyLocator.map { Int($0) }]
+            )
+        }
     }
 
     // Set silent

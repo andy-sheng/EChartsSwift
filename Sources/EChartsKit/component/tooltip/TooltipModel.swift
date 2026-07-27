@@ -47,6 +47,19 @@ public typealias AxisPointerOption = [String: Any]
 public enum TopLevelFormatterParams {
     case single(TooltipCallbackDataParams)
     case multiple([TooltipCallbackDataParams])
+    // PORT-NOTE (divergence, LANGUAGE constraint — no upstream TYPE analogue, but upstream BEHAVIOUR):
+    //   the COMPONENT-item tooltip path (`TooltipView._showComponentItemTooltip`, TooltipView.ts:740)
+    //   hands `_showTooltipContent` the element's `ecData.tooltipConfig.option.formatterParams` — a
+    //   `ComponentItemTooltipLabelFormatterParams` (`{componentType, name, $vars, ...extra}`,
+    //   util/types.swift), NOT a `CallbackDataParams` — through an `as any` cast
+    //   (`clone(subTooltipModel.get('formatterParams') as any || {})`, TooltipView.ts:794). TS erases
+    //   that; Swift cannot. Forcing it into `.single` would need a `CallbackDataParams`, whose fixed
+    //   field set would DROP every `formatterParamsExtra` key the component views stamp (toolbox
+    //   `title`, matrix `xyLocator`, axis `value`/`tickIndex`) — and those keys are exactly the
+    //   `$vars` a component `tooltip.formatter` addresses (`{b}`, `{c}`, …). So the union carries the
+    //   third arm upstream's `as any` implies, and every `switch` over it handles a component's
+    //   params the way upstream's JS does at that point.
+    case component(ComponentItemTooltipLabelFormatterParams)
 }
 
 // export interface TooltipOption extends CommonTooltipOption<TopLevelFormatterParams>, ComponentOption
