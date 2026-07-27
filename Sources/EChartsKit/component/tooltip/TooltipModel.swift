@@ -38,8 +38,16 @@ import ZRenderKit
 public typealias AxisPointerOption = [String: Any]
 
 // export type TopLevelFormatterParams = CallbackDataParams | CallbackDataParams[];
-//   -> callback/formatter surface is host-side; modeled as `Any` (single param or array) for now.
-public typealias TopLevelFormatterParams = Any
+//   -> an untagged TS union becomes a TAGGED ENUM (PORTING.md §9). This is the `params` a
+//      `tooltip.formatter` receives, and what `TooltipView._showTooltipContent` threads
+//      (TooltipView.ts:817): `trigger:'item'` hands the formatter ONE params object, `trigger:'axis'`
+//      the LIST of every listed series' params at the hovered axis value.
+//      `TooltipCallbackDataParams` (component/tooltip/TooltipView.swift) is upstream's
+//      `CallbackDataParams & { axisDim?, … }` intersection.
+public enum TopLevelFormatterParams {
+    case single(TooltipCallbackDataParams)
+    case multiple([TooltipCallbackDataParams])
+}
 
 // export interface TooltipOption extends CommonTooltipOption<TopLevelFormatterParams>, ComponentOption
 //   -> the dynamic option bag. `tooltipMarkup` reads it through `Model` / `TooltipModel`; the fields

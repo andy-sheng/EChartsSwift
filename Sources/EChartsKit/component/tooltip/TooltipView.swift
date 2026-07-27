@@ -43,8 +43,16 @@
 //   - the position CALLBACK (closure-in-option) + the STRING position around a graphic element
 //     (needs an `el` bounding rect the slim entry does not thread). The `confine` gate, the array
 //     `[x,y]` / box-layout object position exprs, and `align`/`verticalAlign` ARE ported.
-//   - the FUNCTION `formatter` (closure + async ticket callback). The STRING `formatter` override
-//     of the default markup IS ported (item path).
+//   - the `formatter` override of the default markup — NO LONGER DEFERRED: both the STRING formatter
+//     and the FUNCTION formatter (closure-in-option + `asyncTicket`/`_ticket` async callback) are
+//     ported, on BOTH the item and the axis path. See `_showTooltipContent` for the exact closure
+//     arities a Swift `formatter` may be spelled with.
+//     CAVEAT — the STRING formatter's time-axis `timeFormat` PRE-PASS is ported but DORMANT: its
+//     `params0.axisType.indexOf('time')` gate can never match, because the axis models this port
+//     instantiates report the MAIN type only ("xAxis") where upstream reports "xAxis.time". The gap is
+//     in `EChartsXAxisModel`/`EChartsYAxisModel` (core/ECharts.swift), NOT here — see the PORT-TODO on
+//     `isTimeAxis` in `_showTooltipContent`, and the test that pins both halves
+//     (`ZZTooltipFormatterTests.testStringFormatterTimeAxisPrePassIsDormantOnTheKnownAxisTypeGap`).
 //   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — shown synchronously here
 //   - `findPointFromSeries` (the data-driven showTip position) — NO LONGER DEFERRED: it is wired in
 //     `manuallyShowTip`, which `EChartsView` routes the item-path `showTip` action to. Still deferred
@@ -84,6 +92,26 @@ import Foundation
 import ZRenderKit
 
 // ============================================================================
+// The `formatter` callback contract (upstream types)
+// ============================================================================
+//
+// upstream `type TooltipCallbackDataParams = CallbackDataParams & { axisDim?, axisIndex?, axisType?,
+//   axisId?, axisValue?, axisValueLabel?, marker? }` (TooltipView.ts:127). Swift has no intersection
+//   type and a `struct` cannot gain stored properties in an `extension`, so the extra slots were added
+//   to `CallbackDataParams` itself (util/types.swift — see the PORT-NOTE there) and this alias keeps
+//   upstream's spelling at the call sites.
+public typealias TooltipCallbackDataParams = CallbackDataParams
+
+// The REST of the `formatter` contract is declared at its UPSTREAM home, not here (PORTING.md §2 —
+//   one upstream symbol, one definition):
+//   - `TopLevelFormatterParams` (upstream TooltipModel.ts:34) -> component/tooltip/TooltipModel.swift:
+//     the tagged enum for `TooltipCallbackDataParams | TooltipCallbackDataParams[]`, i.e. the `params`
+//     `_showTooltipContent` threads (ONE for trigger:'item', the LIST for trigger:'axis').
+//   - `TooltipFormatterCallback<T>` and its `callback` parameter (`TooltipFormatterAsyncCallback`)
+//     (upstream util/types.ts) -> util/types.swift: the callable shape a user `formatter` closure must
+//     be spelled with — the one `_callFunctionFormatter` casts to.
+
+// ============================================================================
 // TooltipView (slim)
 // ============================================================================
 public final class TooltipView {
@@ -106,6 +134,12 @@ public final class TooltipView {
 
     // upstream: `private _ecModel: GlobalModel;`
     private weak var _ecModel: GlobalModel?
+
+    // upstream: `private _ticket: string;` (TooltipView.ts:157) — the ASYNC ticket of the tooltip
+    //   currently on screen. A function `formatter` may call its `callback(asyncTicket, html)` LATER;
+    //   the content is only swapped in if the ticket is still the current one (i.e. the user has not
+    //   hovered something else meanwhile).
+    private var _ticket: String = ""
 
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
@@ -178,10 +212,18 @@ public final class TooltipView {
         }
 
         // --- build markup (upstream TooltipView.ts:695-717) -----------------------------------------
+        // upstream: `const params = dataModel.getDataParams(dataIndex, dataType)` (TooltipView.ts:695).
+        //   Threaded into `_showTooltipContent` so a string/function `formatter` can reference the datum.
+        var params = seriesModel.getDataParams(dataIndex, dataType)
         let markupStyleCreator = TooltipMarkupStyleCreator()
-        // PORT-NOTE (deferred): upstream pre-creates `params.marker` from `getDataParams().color` so a
-        //   user `formatter` can reference it. The default markup path builds its own markers, so the
-        //   pre-created marker is only needed once the `formatter` override lands (also deferred).
+        // upstream (TooltipView.ts:698): Pre-create marker style for makers. Users can assemble richText
+        //   text in `formatter` callback and use those markers style.
+        //   `params.marker = markupStyleCreator.makeTooltipMarker('item', convertToColorString(params.color), renderMode)`
+        params.marker = .string(markupStyleCreator.makeTooltipMarker(
+            .item,
+            format.convertToColorString(params.color),
+            self._renderMode
+        ))
 
         let seriesTooltipResult = normalizeTooltipFormatResult(
             seriesModel.formatTooltip(dataIndex, false, dataType)   // Phase 31 — the item content source
@@ -207,20 +249,17 @@ public final class TooltipView {
             return
         }
 
-        // upstream: `const params = dataModel.getDataParams(dataIndex, dataType)` (TooltipView.ts:695).
-        //   Threaded into `_showTooltipContent` so a string `formatter` can reference the datum's vars.
-        //   PORT-NOTE (deferred): `params.marker` pre-creation is only used by the (deferred) function
-        //   formatter; the string formatter substitutes `$vars` only.
-        let params = seriesModel.getDataParams(dataIndex, dataType)
+        // upstream: `const asyncTicket = 'item_' + dataModel.name + '_' + dataIndex;` (TooltipView.ts:719)
+        let asyncTicket = "item_" + seriesModel.name + "_" + number.jsNumberString(dataIndex)
 
         _showTooltipContent(
             tooltipModel: tooltipModel,
-            markupText: html,
-            markupStyleCreator: markupStyleCreator,
-            seriesModel: seriesModel,
-            params: params,
+            defaultHtml: html,
+            params: .single(params),
+            asyncTicket: asyncTicket,
             x: point.count > 0 ? point[0] : 0,
-            y: point.count > 1 ? point[1] : 0
+            y: point.count > 1 ? point[1] : 0,
+            markupStyleCreator: markupStyleCreator
         )
     }
 
@@ -237,7 +276,6 @@ public final class TooltipView {
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
     //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
-    //     - `cbParams`/`getDataParams` marker pre-creation (only needed once a `formatter` override lands).
     //     - `_showOrMove` (showDelay) + `_updateContentNotChangedOnAxis` (no-change position-only update) —
     //       shown synchronously here.
     //     - `e.tooltipOption`/`buildTooltipModel([e.tooltipOption], ...)` — the per-dispatch tooltip option
@@ -251,6 +289,10 @@ public final class TooltipView {
         let markupStyleCreator = TooltipMarkupStyleCreator()
         // upstream: buildTooltipModel([e.tooltipOption], globalTooltipModel). Slim: the global model.
         let singleTooltipModel: Model = globalTooltipModel
+
+        // upstream: `const cbParamsList: TooltipCallbackDataParams[] = [];` (TooltipView.ts:545) — the
+        //   params handed to a `formatter` callback on the axis path (one entry per listed series).
+        var cbParamsList: [TooltipCallbackDataParams] = []
 
         // upstream: const articleMarkup = createTooltipMarkup('section', { blocks: [], noHeader: true });
         let articleMarkup = createTooltipMarkup("section", TooltipMarkupSection(noHeader: true, blocks: []))
@@ -266,7 +308,17 @@ public final class TooltipView {
                 guard let axisModel = axisModel, axisValue != nil, !(axisValue is NSNull) else {
                     continue
                 }
+                // upstream: `const axis = axisModel.axis;` — the BASE `Axis`. `AxisBaseModel.axis` is
+                //   typed `Any` in this port, so it is narrowed twice: `rawAxis` is what upstream calls
+                //   `axis` (and what `axisHelper.getAxisRawValue` takes — coord/axisHelper.swift), while
+                //   the cartesian-only `Axis2D` narrowing is needed by the slim `_axisValueLabel` below.
+                //   The axis path is also reached for polar (angle/radius) and single axes, which are NOT
+                //   `Axis2D` — `cbParams.axisValue` must still be stamped for them.
+                let rawAxis = axisModel.axis as? Axis
                 let axis = axisModel.axis as? Axis2D
+                // upstream: `const axisValueParsed = axis.scale.parse(axisValue);` (TooltipView.ts:558)
+                //   — hoisted to the per-AXIS scope, above the `seriesDataIndices` loop.
+                let axisValueParsed = rawAxis?.scale.parse(axisValue)
 
                 // upstream: axisValueLabel = axisPointerViewHelper.getValueLabel(...). Slim: scale label.
                 let axisValueLabel = _axisValueLabel(axisValue, axis, axisItem.valueLabelPrecision)
@@ -281,6 +333,31 @@ public final class TooltipView {
                 for idxItem in axisItem.seriesDataIndices {
                     guard let series = ecModel.getSeriesByIndex(idxItem.seriesIndex) else { continue }
                     let dataIndex = idxItem.dataIndexInside
+
+                    // upstream (TooltipView.ts:582-601): build this series' callback params and stamp the
+                    //   hovered axis onto them, so a `formatter` callback can read `axisValue(Label)` etc.
+                    var cbParams = series.getDataParams(dataIndex)
+                    // upstream: `if (cbParams.dataIndex < 0) return;`  // Can't find data.
+                    if cbParams.dataIndex < 0 { continue }
+                    cbParams.axisDim = axisItem.axisDim
+                    cbParams.axisIndex = axisItem.axisIndex
+                    cbParams.axisType = axisItem.axisType
+                    cbParams.axisId = axisItem.axisId
+                    // upstream: `axisHelper.getAxisRawValue(axisModel.axis, { value: axisValueParsed })`
+                    if let rawAxis = rawAxis, let axisValueParsed = axisValueParsed {
+                        cbParams.axisValue = axisHelper.getAxisRawValue(
+                            rawAxis, ScaleTick(value: axisValueParsed)
+                        )
+                    }
+                    cbParams.axisValueLabel = axisValueLabel
+                    // upstream: Pre-create marker style for makers. Users can assemble richText text in
+                    //   `formatter` callback and use those markers style.
+                    cbParams.marker = .string(markupStyleCreator.makeTooltipMarker(
+                        .item,
+                        format.convertToColorString(cbParams.color),
+                        renderMode
+                    ))
+
                     // upstream: series.formatTooltip(dataIndex, /*multipleSeries*/ true, null)
                     let seriesTooltipResult = normalizeTooltipFormatResult(
                         series.formatTooltip(dataIndex, true, nil)
@@ -293,6 +370,7 @@ public final class TooltipView {
                     if let text = seriesTooltipResult.text {
                         markupTextArrLegacy.append(text)
                     }
+                    cbParamsList.append(cbParams)   // upstream: cbParamsList.push(cbParams);
                 }
             }
         }
@@ -315,13 +393,15 @@ public final class TooltipView {
         let allMarkupText = markupTextArrLegacy.joined(separator: blockBreak)
 
         // upstream: this._showOrMove(...) → this._showTooltipContent(...). Slim: shown synchronously.
+        //   upstream's asyncTicket on this branch is `Math.random() + ''` (TooltipView.ts:648).
         _showTooltipContent(
             tooltipModel: singleTooltipModel,
-            markupText: allMarkupText,
-            markupStyleCreator: markupStyleCreator,
-            seriesModel: nil,   // axis tooltip has no single series (multiple series listed)
+            defaultHtml: allMarkupText,
+            params: .multiple(cbParamsList),   // axis tooltip lists EVERY series at the hovered value
+            asyncTicket: number.jsNumberString(Double.random(in: 0..<1)),
             x: x,
-            y: y
+            y: y,
+            markupStyleCreator: markupStyleCreator
         )
     }
 
@@ -344,18 +424,24 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
-    // _showTooltipContent — upstream (TooltipView.ts:812). The `formatter` (string/function) override,
-    //   the async ticket, and `enterable` timers are DEFERRED; the default markup is shown synchronously.
+    // _showTooltipContent — upstream (TooltipView.ts:812). The `formatter` (string/function) override
+    //   and the async `_ticket` ARE ported (see below); the `enterable`/showDelay timers are DEFERRED
+    //   (the default markup is shown synchronously).
     // ------------------------------------------------------------------------
     private func _showTooltipContent(
         tooltipModel: Model,
-        markupText: String,
-        markupStyleCreator: TooltipMarkupStyleCreator,
-        seriesModel: SeriesModel?,
-        params: CallbackDataParams? = nil,
+        defaultHtml: String,
+        params: TopLevelFormatterParams,
+        asyncTicket: String,
         x: Double,
-        y: Double
+        y: Double,
+        // upstream's `positionExpr` + `el` sit between `y` and `markupStyleCreator`; both are DEFERRED
+        //   (see `_updatePosition`), so the parameter order is otherwise upstream's verbatim.
+        markupStyleCreator: TooltipMarkupStyleCreator
     ) {
+        // upstream: `// Reset ticket` / `this._ticket = '';` (TooltipView.ts:825)
+        self._ticket = ""
+
         // upstream: `if (!tooltipModel.get('showContent') || !tooltipModel.get('show')) return;`
         let showContent = (tooltipModel.get("showContent") as? Bool) ?? true
         let show = (tooltipModel.get("show") as? Bool) ?? true
@@ -366,28 +452,194 @@ public final class TooltipView {
         let content = self._tooltipContent
         content.setEnterable(tooltipModel.get("enterable") as? Bool)
 
-        // upstream `_getNearestPoint` (item branch): `borderColor || params.color || params.borderColor`.
-        //   PORT-NOTE (deferred): the `params.color`/`params.borderColor` fallback needs the hovered datum's
-        //   getDataParams (now available), but `_showTooltipContent` is not passed the dataIndex — wiring
-        //   it requires threading dataIndex from the caller. Until then: border color from the model,
-        //   else the default border color.
-        let nearPointColor: String? = (tooltipModel.get("borderColor") as? String)
-            ?? (tooltipModel.get("defaultBorderColor", true) as? String)
-        _ = seriesModel
+        // upstream:
+        //   const nearPoint = this._getNearestPoint(
+        //       [x, y], params, tooltipModel.get('trigger'),
+        //       tooltipModel.get('borderColor'), tooltipModel.get('defaultBorderColor', true));
+        //   const nearPointColor = nearPoint.color;
+        let nearPointColor: ColorString? = _getNearestPoint(
+            [x, y],
+            params,
+            tooltipModel.get("trigger") as? String,
+            tooltipModel.get("borderColor") as? String,
+            tooltipModel.get("defaultBorderColor", true) as? String
+        )
 
-        // upstream `formatter` override of the default markup (TooltipView.ts:835-873). The STRING
-        //   formatter is ported: substitute the datum's `$vars` (a/b/c + named) into the template via
-        //   `formatTpl`. The FUNCTION formatter (closure + async ticket callback) and the time-axis
-        //   `timeFormat` pre-pass are DEFERRED (no closure-in-option plumbing / no `timeFormat` port).
+        // upstream `formatter` override of the default markup (TooltipView.ts:835-873).
+        //
+        //   STRING formatter: the time-axis `timeFormat` pre-pass (`timeFormat` == this port's
+        //     `time.format`) followed by `formatTpl`, which substitutes the datum's `$vars` (the
+        //     a/b/c/d/e aliases + the named vars).
+        //
+        //   FUNCTION formatter: upstream's signature is
+        //     `formatter(params, asyncTicket, callback) => string`,
+        //     where `callback(cbTicket, html)` may be invoked LATER (async content). Both the
+        //     synchronous return path and the async ticket path are ported.
+        //     PORT-NOTE: `util.isFunction` is unreliable for Swift closures (no introspectable
+        //       metadata), so "is callable" is resolved STATICALLY by casting the option value to the
+        //       formatter signature — the established closure-in-option idiom (model/mixin/
+        //       dataFormat.swift:197). The CANONICAL shape is the already-ported
+        //       `TooltipFormatterCallback<T>` (util/types.swift) — the type `CommonTooltipOption.formatter`
+        //       documents. A JS function is additionally arity-tolerant while a Swift closure type is
+        //       not, so the 1-arg spelling upstream users most often write is accepted too:
+        //         trigger:'item'  `TooltipFormatterCallback<TooltipCallbackDataParams>`
+        //                         `(TooltipCallbackDataParams) -> String`
+        //         trigger:'axis'  `TooltipFormatterCallback<[TooltipCallbackDataParams]>`
+        //                         `([TooltipCallbackDataParams]) -> String`
+        //       The arity is matched against the params shape actually passed (single for the item
+        //       path, the list for the axis path) — exactly what upstream hands the JS function; an
+        //       array-typed closure is NOT invoked with a synthesized one-element array, and vice versa.
+        //
+        //   PORT-NOTE: upstream's `html: string | HTMLElement | HTMLElement[]` union (and the final
+        //     `else { html = formatter }` arm, which assigns a non-string non-function `formatter` —
+        //     i.e. an `HTMLElement`) has no analogue here: renderMode is FORCED 'richText' and the
+        //     content host is a `ZRText`. A non-string/non-closure `formatter` is therefore ignored
+        //     (the default markup stands) rather than dropped into the box.
         let formatter = tooltipModel.get("formatter")
-        var html = markupText
-        if let formatterStr = formatter as? String, let params = params {
-            html = format.formatTpl(formatterStr, tplParamFromDataParams(params), true)
+        var html = defaultHtml
+        // upstream `if (formatter)` is a JS-truthy test, so an EMPTY-STRING formatter is falsy and the
+        //   default markup stands (PORTING.md §8: string truthiness is replicated explicitly).
+        if let formatter = formatter, (formatter as? String) != "" {
+            if let formatterStr = formatter as? String {
+                // upstream:
+                //   const useUTC = tooltipModel.ecModel.get('useUTC');
+                //   const params0 = isArray(params) ? params[0] : params;
+                //   const isTimeAxis = params0 && params0.axisType && params0.axisType.indexOf('time') >= 0;
+                //   html = formatter;
+                //   if (isTimeAxis) { html = timeFormat(params0.axisValue, html, useUTC); }
+                //   html = formatTpl(html, params, true);
+                let useUTC = (tooltipModel.ecModel?.get("useUTC") as? Bool) ?? false
+                let params0: TooltipCallbackDataParams?
+                switch params {
+                case .single(let one): params0 = one
+                case .multiple(let list): params0 = list.first
+                }
+                // PORT-TODO: this test is DORMANT in the port. `axisType` is `axisModel.type`
+                //   (component/axisPointer/axisTrigger.swift, faithful to axisTrigger.ts), and upstream's
+                //   `ComponentModel.type` is `<mainType>.<subType>` — 'xAxis.time'. But the axis models
+                //   `ECharts.setOption` actually instantiates (`EChartsXAxisModel` / `EChartsYAxisModel`,
+                //   core/ECharts.swift) override `type` to the MAIN type alone ("xAxis"), so
+                //   `indexOf('time') >= 0` can never match and a `{yyyy}`-style template is left
+                //   unformatted on a time axis. The `subType` ("time") IS correct on those models — the
+                //   fix belongs on `EChartsXAxisModel.type`, not here, so the upstream expression is
+                //   kept verbatim. (`coord/axisModelCreator.swift`'s `AxisModel.type` already returns the
+                //   upstream form; it is simply not the class that gets instantiated.)
+                let isTimeAxis = params0?.axisType?.contains("time") ?? false
+                html = formatterStr
+                if isTimeAxis {
+                    // `timeFormat` is upstream's alias of `util/time`'s `format` — ported as `time.format`.
+                    html = time.format(params0?.axisValue, html, useUTC)
+                }
+                html = format.formatTpl(html, tplParamFromFormatterParams(params), true)
+            }
+            else if let formatterResult = _callFunctionFormatter(
+                formatter, params, asyncTicket,
+                // upstream:
+                //   const callback = bind(function (cbTicket, html) {
+                //       if (cbTicket === this._ticket) {
+                //           tooltipContent.setContent(html, markupStyleCreator, tooltipModel,
+                //               nearPointColor, positionExpr);
+                //           this._updatePosition(tooltipModel, positionExpr, x, y, tooltipContent, params, el);
+                //       }
+                //   }, this);
+                TooltipFormatterAsyncCallback { [weak self] cbTicket, asyncHtml in
+                    guard let self = self else { return }
+                    if cbTicket == self._ticket {
+                        content.setContent(
+                            asyncHtml, markupStyleCreator, tooltipModel, nearPointColor, nil
+                        )
+                        self._updatePosition(tooltipModel: tooltipModel, x: x, y: y)
+                    }
+                }
+            ) {
+                // upstream: `this._ticket = asyncTicket;` BEFORE the call, so a `callback` invoked
+                //   synchronously from inside the formatter already sees the current ticket.
+                //   (`_callFunctionFormatter` performs the assignment for the same reason.)
+                html = formatterResult
+            }
         }
 
         content.setContent(html, markupStyleCreator, tooltipModel, nearPointColor, nil)
         content.show()   // rich content: no-arg (upstream html `show(model, color)` args are html-only)
         _updatePosition(tooltipModel: tooltipModel, x: x, y: y)
+    }
+
+    // ------------------------------------------------------------------------
+    // The `isFunction(formatter)` arm of `_showTooltipContent` (TooltipView.ts:856-869), factored out
+    //   so the accepted Swift closure spellings sit in one place. The canonical shape is the ported
+    //   `TooltipFormatterCallback<T>` (util/types.swift), instantiated at the params shape actually
+    //   passed; the 1-arg spelling is accepted alongside it only because a JS function is arity-tolerant
+    //   and a Swift closure type is not. Returns `nil` when the option value is NOT callable at any of
+    //   them (upstream's final `else { html = formatter }` arm).
+    //   `this._ticket = asyncTicket` is assigned BEFORE the invocation, exactly like upstream, so a
+    //   `callback` fired synchronously from inside the formatter already matches the live ticket.
+    // ------------------------------------------------------------------------
+    private func _callFunctionFormatter(
+        _ formatter: Any,
+        _ params: TopLevelFormatterParams,
+        _ asyncTicket: String,
+        _ callback: TooltipFormatterAsyncCallback
+    ) -> String? {
+        switch params {
+        case .single(let params):
+            // upstream: `html = formatter(params, asyncTicket, callback)`
+            if let formatter = formatter as? TooltipFormatterCallback<TooltipCallbackDataParams> {
+                self._ticket = asyncTicket
+                return formatter(params, asyncTicket, callback)
+            }
+            // A 1-arg JS formatter (`params => ...`), the common spelling — arity-tolerant in JS, a
+            //   DISTINCT closure type in Swift, so it needs its own cast.
+            if let formatter = formatter as? (TooltipCallbackDataParams) -> String {
+                self._ticket = asyncTicket
+                return formatter(params)
+            }
+        case .multiple(let params):
+            if let formatter = formatter as? TooltipFormatterCallback<[TooltipCallbackDataParams]> {
+                self._ticket = asyncTicket
+                return formatter(params, asyncTicket, callback)
+            }
+            if let formatter = formatter as? ([TooltipCallbackDataParams]) -> String {
+                self._ticket = asyncTicket
+                return formatter(params)
+            }
+        }
+        return nil
+    }
+
+    // ------------------------------------------------------------------------
+    // _getNearestPoint — upstream (TooltipView.ts:884). The tooltip box's BORDER colour: on the axis
+    //   path (or whenever `params` is the LIST) the model's `borderColor` else `defaultBorderColor`;
+    //   on the item path the hovered datum's OWN colour, so the border matches the hovered series.
+    //   PORT-NOTE: upstream returns the single-field object `{ color }`; a one-field Swift tuple is not
+    //     expressible, so the value itself is returned (the sole call site reads `.color`).
+    //   PORT-NOTE: upstream's `ZRColor` return narrows to `ColorString` here — `TooltipRichContent.
+    //     setContent` takes the border colour as a `String?` (upstream casts it `as string` too), and
+    //     `params.borderColor` is already a `String?` on `CallbackDataParams`.
+    // ------------------------------------------------------------------------
+    private func _getNearestPoint(
+        _ point: [Double],
+        _ tooltipDataParams: TopLevelFormatterParams,
+        _ trigger: String?,
+        _ borderColor: ColorString?,
+        _ defaultBorderColor: ColorString?
+    ) -> ColorString? {
+        _ = point   // upstream declares but does not read `point` either.
+        // upstream: if (trigger === 'axis' || isArray(tooltipDataParams)) return { color: borderColor || defaultBorderColor };
+        if trigger == "axis" {
+            return borderColor ?? defaultBorderColor
+        }
+        switch tooltipDataParams {
+        case .multiple:
+            return borderColor ?? defaultBorderColor
+        case .single(let tooltipDataParams):
+            // upstream: return { color: borderColor || tooltipDataParams.color || tooltipDataParams.borderColor };
+            //   `.color` is a `ZRColor` (a gradient/pattern is legal), so it goes through
+            //   `convertToColorString` — but via `map`, so an ABSENT color still falls through to
+            //   `.borderColor` instead of collapsing to the 'transparent' default.
+            return borderColor
+                ?? tooltipDataParams.color.map { format.convertToColorString($0) }
+                ?? tooltipDataParams.borderColor
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -500,6 +752,9 @@ public final class TooltipView {
     public func manuallyShowTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
         _ = api
         setModelIfNeeded(ecModel)
+
+        // upstream: `// Reset ticket` / `this._ticket = '';` (TooltipView.ts:305)
+        self._ticket = ""
 
         // upstream: `if (payload.seriesIndex != null) { ... }` — no `dataIndex` requirement here.
         guard let seriesIndex = asDouble(payload.other["seriesIndex"]),
@@ -630,7 +885,23 @@ private func tplParamFromDataParams(_ params: CallbackDataParams) -> [String: An
     if let percent = params.percent {
         tplParam["percent"] = percent
     }
+    // NOTE: no `marker` entry — `formatTpl` only ever reads the keys listed under `$vars` (util/
+    //   format.swift), and `getDataParams` sets `$vars = [seriesName, name, value]` (+ `percent` for
+    //   pie/funnel). Upstream's `callbackDataParamsToTplParam` does not carry it either: a `{marker}`
+    //   token in a STRING formatter is left verbatim upstream too.
     return tplParam
+}
+
+// `format.formatTpl` takes upstream's `TplFormatterParam | TplFormatterParam[]` as a dynamic `Any`;
+//   unwrap the params union into the matching shape (one bag for trigger:'item', the list of bags for
+//   trigger:'axis' — upstream substitutes `{a0}`/`{b1}`/… per series from exactly that array).
+private func tplParamFromFormatterParams(_ params: TopLevelFormatterParams) -> Any {
+    switch params {
+    case .single(let params):
+        return tplParamFromDataParams(params)
+    case .multiple(let params):
+        return params.map(tplParamFromDataParams)
+    }
 }
 
 // ============================================================================
