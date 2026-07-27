@@ -37,7 +37,13 @@
 // DEFERRED (left as PORT-NOTEs, exactly like the brief):
 //   - `trigger:'axis'` — SINCE PORTED via `_showAxisTooltip` (invoked from EChartsView/axisTrigger, not this
 //     item entry). Still deferred within the axis path: `_showComponentItemTooltip`, globalListener,
-//     `_updateContentNotChangedOnAxis`, `_keepShow`, `_manuallyAxisShowTip`.
+//     `_keepShow`, `_manuallyAxisShowTip`.
+//     (`_updateContentNotChangedOnAxis` — the no-change, position-only update branch — is NO LONGER
+//     DEFERRED: it is ported below with its `_lastDataByCoordSys`/`_cbParamsList` memo, at upstream's
+//     exact call site inside `_showAxisTooltip`'s `_showOrMove` callback. NOTE this makes the branch MORE
+//     live than upstream, where the per-mousemove `globalListener('itemTooltip')` leg clears the memo
+//     first — a deliberate divergence, documented in full on `_updateContentNotChangedOnAxis`, with the
+//     resulting staleness window closed by `clearAxisTooltipMemo()`.)
 //   - the HTML content host (`TooltipHTMLContent`) — this port is native, renderMode is FORCED 'richText'
 //   - `transitionDuration` animation + throttled `_updatePosition` (`createOrUpdate`/`clear`)
 //   - the `position` option — NO LONGER DEFERRED. Every upstream form is ported in `_updatePosition`:
@@ -161,6 +167,20 @@ public final class TooltipView {
     //   the Swift analogue of `clearTimeout` (same substitution `util/throttle.swift` makes).
     private var _showTimout: DispatchWorkItem?
 
+    // upstream: `private _lastDataByCoordSys: DataByCoordSys[];` (TooltipView.ts:161) — the axis-tooltip
+    //   payload tree the box on screen was built from, and the params list handed to its `formatter`.
+    //   Used ONLY by the trigger:'axis' path (`_updateContentNotChangedOnAxis`), which compares the newly
+    //   built tree against them to decide whether the content can be left alone and only MOVED.
+    //   Every path that invalidates the shown content clears BOTH (the item path in `tryShow`, `hide()`,
+    //   `dispose()`), exactly where upstream does.
+    //   PORT-NOTE (deferred): upstream's `_keepShow` also reads `_lastDataByCoordSys` (to re-show the axis
+    //     tooltip after a refresh, via `manuallyShowTip({x, y, dataByCoordSys})`); `_keepShow` itself is
+    //     still deferred (it needs the `render`-time re-entry this port has no ComponentView for).
+    private var _lastDataByCoordSys: [DataByCoordSys]?
+
+    // upstream: `private _cbParamsList: TooltipCallbackDataParams[];` (TooltipView.ts:162)
+    private var _cbParamsList: [TooltipCallbackDataParams]?
+
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
     //   model, resolves renderMode, and builds `new TooltipRichContent(api)`. Here the live `zr` is passed
@@ -222,6 +242,15 @@ public final class TooltipView {
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
             return
         }
+
+        // upstream `_tryShow`, the `else if (el)` (item) branch (TooltipView.ts:477):
+        //   `this._lastDataByCoordSys = null; this._cbParamsList = null;`
+        //   The item path replaces whatever the axis path put on screen, so the axis no-change memo
+        //   (`_updateContentNotChangedOnAxis`) must not match against it afterwards. Cleared BEFORE the
+        //   trigger guard below, exactly like upstream (which clears in `_tryShow`, one frame above the
+        //   guard that lives in `_showSeriesItemTooltip`).
+        self._lastDataByCoordSys = nil
+        self._cbParamsList = nil
 
         // --- buildTooltipModel (SLIM): series `tooltip` merged OVER the global tooltip model. --------
         // upstream cascades [data.getItemModel(dataIndex), seriesModel, coordSys.model] over the global
@@ -377,9 +406,6 @@ public final class TooltipView {
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
     //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
-    //     - `_updateContentNotChangedOnAxis` (the no-change, position-only update branch inside the
-    //       `_showOrMove` callback) — the content is always rebuilt+shown here.
-    //       (`_showOrMove`/showDelay itself is NO LONGER DEFERRED — see the call below.)
     //     - `e.tooltipOption`/`buildTooltipModel([e.tooltipOption], ...)` — the per-dispatch tooltip option
     //       override; the global tooltip model is used directly.
     // ------------------------------------------------------------------------
@@ -494,27 +520,61 @@ public final class TooltipView {
         let blockBreak = renderMode == .richText ? "\n\n" : "<br/>"
         let allMarkupText = markupTextArrLegacy.joined(separator: blockBreak)
 
-        // upstream (TooltipView.ts:637): this._showOrMove(singleTooltipModel, function () { ... }) — the
-        //   `_updateContentNotChangedOnAxis` position-only branch inside that callback is still DEFERRED
-        //   (see the PORT-NOTE above); the `_showTooltipContent` branch is what runs here.
-        //   upstream's asyncTicket on this branch is `Math.random() + ''` (TooltipView.ts:648).
+        // upstream (TooltipView.ts:637-650):
+        //   this._showOrMove(singleTooltipModel, function () {
+        //       if (this._updateContentNotChangedOnAxis(dataByCoordSys, cbParamsList)) {
+        //           this._updatePosition(singleTooltipModel, positionExpr, point[0], point[1],
+        //                                this._tooltipContent, cbParamsList);
+        //       }
+        //       else {
+        //           this._showTooltipContent(singleTooltipModel, allMarkupText, cbParamsList,
+        //               Math.random() + '', point[0], point[1], positionExpr, null, markupStyleCreator);
+        //       }
+        //   });
+        //   The no-change branch leaves the content element (and its rich-text layout) UNTOUCHED and only
+        //   MOVES the box — the pointer sliding within one category must not rebuild the ZRText.
+        //   upstream's asyncTicket on the rebuild branch is `Math.random() + ''` (TooltipView.ts:648).
         //   `positionExpr` is upstream's `const positionExpr = e.position` (the axis payload's position
         //   override); the ported `DataByCoordSys` payload carries no `position`, so it stays nil and
         //   `_showTooltipContent` falls back to the model's `position`.
         //   `el` is nil — upstream's axis branch also passes no element, so a STRING `position` keyword
         //   ('top'/'left'/…) is inert on the axis path in upstream too (it needs a hovered element).
         _showOrMove(singleTooltipModel) { [weak self] in
-            self?._showTooltipContent(
-                tooltipModel: singleTooltipModel,
-                defaultHtml: allMarkupText,
-                params: .multiple(cbParamsList),   // axis tooltip lists EVERY series at the hovered value
-                asyncTicket: number.jsNumberString(Double.random(in: 0..<1)),
-                x: x,
-                y: y,
-                positionExpr: nil,
-                el: nil,
-                markupStyleCreator: markupStyleCreator
-            )
+            guard let self = self else { return }
+            // (the memo is updated by the call itself, so it must run before the branch is taken)
+            let contentNotChanged = self._updateContentNotChangedOnAxis(dataByCoordSys, cbParamsList)
+            // PORT-NOTE (divergence, safety — no upstream analogue): `&& self._tooltipContent.el != nil`.
+            //   `TooltipRichContent.getSize()` (upstream TooltipRichContent.ts:118) reads `this.el`
+            //   unguarded, and the richText `el` only exists once `setContent` has run. With
+            //   `showContent: false` (or `show: false`) `_showTooltipContent` returns BEFORE building it,
+            //   while `_updateContentNotChangedOnAxis` has already memoized the tree — so the next
+            //   identical hover would take this branch and dereference a nil `el` (a JS TypeError
+            //   upstream; a SIGTRAP here, PORTING.md §12). Falling through to `_showTooltipContent`
+            //   instead reproduces upstream's INTENT exactly: with showContent:false it returns early
+            //   again (nothing shown), and if the box is missing for any other reason it is rebuilt.
+            if contentNotChanged && self._tooltipContent.el != nil {
+                self._updatePosition(
+                    tooltipModel: singleTooltipModel,
+                    positionExpr: nil,
+                    x: x, y: y,
+                    content: self._tooltipContent,
+                    params: .multiple(cbParamsList)
+                    // upstream passes no `el` on this branch either.
+                )
+            }
+            else {
+                self._showTooltipContent(
+                    tooltipModel: singleTooltipModel,
+                    defaultHtml: allMarkupText,
+                    params: .multiple(cbParamsList),   // the axis tooltip lists EVERY series at the value
+                    asyncTicket: number.jsNumberString(Double.random(in: 0..<1)),
+                    x: x,
+                    y: y,
+                    positionExpr: nil,
+                    el: nil,
+                    markupStyleCreator: markupStyleCreator
+                )
+            }
         }
     }
 
@@ -925,6 +985,142 @@ public final class TooltipView {
     }
 
     // ------------------------------------------------------------------------
+    // FIXME
+    // Should we remove this but leave this to user?
+    //
+    // _updateContentNotChangedOnAxis — upstream (TooltipView.ts:983). The trigger:'axis' NO-CHANGE test:
+    //   is the tree just built by `axisTrigger` EQUIVALENT to the one the box on screen was built from?
+    //   If so the caller skips rebuilding the content entirely and only calls `_updatePosition`, so the
+    //   pointer sliding within one category moves the SAME ZRText instead of discarding and re-laying-out
+    //   a new one every mousemove. Also the (only) place that memoizes `_lastDataByCoordSys` /
+    //   `_cbParamsList` — it stores the new tree/params on EVERY call, before returning.
+    //
+    //   Compared, recursively, exactly as upstream does (note it compares `value`/`axisType`/`axisId` but
+    //   NOT `axisDim`/`axisIndex` — kept verbatim; the axis id already identifies the axis) plus, per
+    //   series entry, `seriesIndex`/`dataIndex`; finally the hovered series' `cbParams.data` identity.
+    //
+    //   PORT-NOTE (adaptation): upstream's `arr[i] || {} as T` out-of-range reads become bounds-checked
+    //     Optionals — an absent entry then fails every `===` below exactly like a `{}` placeholder's
+    //     `undefined` fields do. (`contentNotChanged` is only ever ANDed, never re-raised, so upstream's
+    //     `each` — which does not break — and these loops agree on the result regardless of order.)
+    //   PORT-NOTE (adaptation): upstream `lastItem.value === thisItem.value` is JS strict equality over a
+    //     `ScaleDataValue` (`number | string | Date`); `tooltipStrictEquals` below is that same-type-only
+    //     test — the file-local `===` helper idiom `visual/VisualMapping.swift:986` and
+    //     `data/helper/dataValueHelper.swift:422` already use, under a scoped name because this copy
+    //     covers strictly more value kinds than either of those two (see its own note).
+    //   PORT-NOTE (divergence, LANGUAGE constraint): upstream's LAST test is `lastCbParams.data !==
+    //     cbParams.data`, an IDENTITY comparison of the raw data item (`data.getRawDataItem`). A raw item
+    //     is a Swift VALUE in this port (a `Double`, a `[String: Any]` bag, an `[Any]` row), so reference
+    //     identity is unrepresentable for the non-class cases; `tooltipStrictEquals` therefore compares
+    //     them STRUCTURALLY (and by `===` when the item really is a class instance), which preserves
+    //     upstream's intent — "the datum behind this tooltip line changed" — for the shapes this produces.
+    //   PORT-NOTE (DIVERGENCE, wiring — read before trusting this memo): upstream this no-change branch is
+    //     nearly unreachable for real pointer motion. Upstream registers the ITEM leg through
+    //     `globalListener('itemTooltip')`, so `_tryShow` runs on EVERY mousemove, and both of its non-axis
+    //     branches (`else if (el)` TooltipView.ts:477, `else` :511) null `_lastDataByCoordSys` BEFORE the
+    //     pending axis `showTip` is dispatched — hence upstream's own `// FIXME Should we remove this`.
+    //     In THIS port `tryShow` is wired only to zr `mouseover` (element ENTER), so the memo survives a
+    //     mousemove and the branch is genuinely live. That is a deliberate divergence, not parity, and it
+    //     has one observable consequence: while the pointer stays within one axis band, a `tooltip.
+    //     formatter` callback is not re-invoked and content changed by a `setOption` (formatter/textStyle/
+    //     valueFormatter, or data whose `getRawDataItem` is nil on both sides) would stay stale. The
+    //     staleness window is closed from the RENDER side by `clearAxisTooltipMemo()` (see it below),
+    //     which `EChartsView._afterSetOption()` calls on every setOption / post-action re-sync. It must
+    //     NOT be done in `setModel(_:)`: `EChartsView._ensureTooltipView()` calls that immediately before
+    //     every `_showAxisTooltip`, which would kill the feature outright.
+    // ------------------------------------------------------------------------
+    private func _updateContentNotChangedOnAxis(
+        _ dataByCoordSys: [DataByCoordSys],
+        _ cbParamsList: [TooltipCallbackDataParams]
+    ) -> Bool {
+        let lastCoordSys = self._lastDataByCoordSys
+        let lastCbParamsList = self._cbParamsList
+        // upstream: let contentNotChanged = !!lastCoordSys && lastCoordSys.length === dataByCoordSys.length;
+        var contentNotChanged = lastCoordSys != nil
+            && lastCoordSys?.count == dataByCoordSys.count
+
+        // upstream: contentNotChanged && each(lastCoordSys, (lastItemCoordSys, indexCoordSys) => {
+        if contentNotChanged, let lastCoordSys = lastCoordSys {
+            for (indexCoordSys, lastItemCoordSys) in lastCoordSys.enumerated() {
+                let lastDataByAxis = lastItemCoordSys.dataByAxis
+                // upstream: const thisItemCoordSys = dataByCoordSys[indexCoordSys] || {} as DataByCoordSys;
+                let thisDataByAxis = indexCoordSys < dataByCoordSys.count
+                    ? dataByCoordSys[indexCoordSys].dataByAxis
+                    : []
+                contentNotChanged = contentNotChanged && lastDataByAxis.count == thisDataByAxis.count
+
+                // upstream: contentNotChanged && each(lastDataByAxis, (lastItem, indexAxis) => {
+                if contentNotChanged {
+                    for (indexAxis, lastItem) in lastDataByAxis.enumerated() {
+                        // upstream: const thisItem = thisDataByAxis[indexAxis] || {} as DataByAxis;
+                        let thisItem: DataByAxis? = indexAxis < thisDataByAxis.count
+                            ? thisDataByAxis[indexAxis]
+                            : nil
+                        let lastIndices = lastItem.seriesDataIndices
+                        let newIndices = thisItem?.seriesDataIndices ?? []
+
+                        contentNotChanged = contentNotChanged
+                            && tooltipStrictEquals(lastItem.value, thisItem?.value)
+                            && lastItem.axisType == thisItem?.axisType
+                            && lastItem.axisId == thisItem?.axisId
+                            && lastIndices.count == newIndices.count
+
+                        // upstream: contentNotChanged && each(lastIndices, (lastIdxItem, j) => {
+                        if contentNotChanged {
+                            for (j, lastIdxItem) in lastIndices.enumerated() {
+                                let newIdxItem = newIndices[j]   // counts are equal here
+                                contentNotChanged = contentNotChanged
+                                    && lastIdxItem.seriesIndex == newIdxItem.seriesIndex
+                                    && lastIdxItem.dataIndex == newIdxItem.dataIndex
+                            }
+                        }
+
+                        // check is cbParams data value changed
+                        //   (upstream indexes BOTH lists by `seriesIndex`, not by push order — kept
+                        //   verbatim; an out-of-range read is `undefined` there and nil here, and the
+                        //   `if (cbParams && lastCbParams && …)` guard skips it either way.)
+                        if let lastCbParamsList = lastCbParamsList {
+                            for idxItem in lastItem.seriesDataIndices {
+                                // `seriesIndex` is a `Double` (a JS `number`); a plain `Int(_:)` would
+                                //   TRAP on NaN/±inf (PORTING.md §12) where JS just reads `undefined`.
+                                guard let seriesIdx = asIntOrNil(idxItem.seriesIndex) else { continue }
+                                let cbParams = elementAtOrNil(cbParamsList, seriesIdx)
+                                let lastCbParams = elementAtOrNil(lastCbParamsList, seriesIdx)
+                                if let cbParams = cbParams, let lastCbParams = lastCbParams,
+                                   !tooltipStrictEquals(lastCbParams.data, cbParams.data) {
+                                    contentNotChanged = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self._lastDataByCoordSys = dataByCoordSys
+        self._cbParamsList = cbParamsList
+
+        return contentNotChanged
+    }
+
+    // ------------------------------------------------------------------------
+    // clearAxisTooltipMemo — PORT-ONLY (no upstream analogue as a method; upstream nulls the same two
+    //   fields inline). Invalidate the `_updateContentNotChangedOnAxis` memo so the NEXT axis hover
+    //   rebuilds the content instead of only moving the box.
+    //   WHY it exists: upstream's per-mousemove `_tryShow` item leg nulls `_lastDataByCoordSys` on every
+    //   pointer move (TooltipView.ts:477/511), so a re-render can never leave stale content under the
+    //   memo. This port only runs `tryShow` on element ENTER (see `_updateContentNotChangedOnAxis`'s
+    //   wiring PORT-NOTE), so the invalidation has to come from the RENDER side instead:
+    //   `EChartsView._afterSetOption()` calls this after every `setOption` / post-action re-sync.
+    //   Deliberately NOT called from `setModel(_:)` — `EChartsView._ensureTooltipView()` runs that
+    //   immediately before every `_showAxisTooltip`, which would disable the no-change branch entirely.
+    // ------------------------------------------------------------------------
+    public func clearAxisTooltipMemo() {
+        _lastDataByCoordSys = nil
+        _cbParamsList = nil
+    }
+
+    // ------------------------------------------------------------------------
     // hide / _hide — upstream `_hide` (TooltipView.ts:1034) only DISPATCHES `hideTip`; the actual content
     //   hide happens one hop later in `manuallyHideTip` (TooltipView.ts:398):
     //       `if (this._tooltipModel) { tooltipContent.hideLater(this._tooltipModel.get('hideDelay')); }`
@@ -943,6 +1139,11 @@ public final class TooltipView {
     //     (`hideLater(nil)`) so a model-less view can never strand a visible box.
     // ------------------------------------------------------------------------
     public func hide() {
+        // upstream `_hide` (TooltipView.ts:1040) AND `manuallyHideTip` (TooltipView.ts:401) both clear the
+        //   axis no-change memo before hiding — the box that is going away must never be reused by
+        //   `_updateContentNotChangedOnAxis` as "unchanged content" on the next axis hover.
+        _lastDataByCoordSys = nil
+        _cbParamsList = nil
         _tooltipContent.hideLater(_globalTooltipModel.flatMap { asDouble($0.get("hideDelay")) })
     }
 
@@ -1032,9 +1233,10 @@ public final class TooltipView {
 
     // upstream `manuallyHideTip` (TooltipView.ts:389) — the `update:'tooltip:manuallyHideTip'` target.
     //   Its content line — `tooltipContent.hideLater(this._tooltipModel.get('hideDelay'))` — is `hide()`
-    //   (see the PORT-NOTEs there). The `_lastX/_lastY/_lastDataByCoordSys/_cbParamsList` reset and the
-    //   `payload.from !== this.uid` re-dispatch of `_hide` have no analogue: this port keeps no
-    //   last-position state and has no per-view action routing.
+    //   (see the PORT-NOTEs there), which ALSO performs upstream's `_lastDataByCoordSys`/`_cbParamsList`
+    //   reset (it stands in for both hops). The `_lastX/_lastY` reset and the `payload.from !== this.uid`
+    //   re-dispatch of `_hide` have no analogue: this port keeps no last-POSITION state (`_keepShow` is
+    //   deferred) and has no per-view action routing.
     public func manuallyHideTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
         _ = (payload, ecModel, api)
         hide()
@@ -1055,6 +1257,9 @@ public final class TooltipView {
         //   `self` weakly, so a released view is doubly safe.)
         _showTimout?.cancel()
         _showTimout = nil
+        // upstream `dispose` (TooltipView.ts:1058): `this._lastDataByCoordSys = null; this._cbParamsList = null;`
+        _lastDataByCoordSys = nil
+        _cbParamsList = nil
         _tooltipContent.dispose()
     }
 
@@ -1069,13 +1274,118 @@ public final class TooltipView {
 }
 
 // ----------------------------------------------------------------------------
-// asDouble — coerce a JS-number-ish option/payload value (Int or Double) to Double. Mirrors the
-//   Int-vs-Double option-read trap fix (payloads box small ints as `Int`).
+// asDouble — coerce a JS-number-ish option/payload/data value (Int, Double, or a bridged NSNumber) to
+//   Double, and ONLY a number: a non-numeric value (String, Date, collection) and a real BOOLEAN both
+//   yield nil, so a caller can tell "this is a JS number" apart from "this is something else"
+//   (`tooltipStrictEquals` below relies on exactly that). Mirrors the Int-vs-Double option-read trap fix
+//   (payloads box small ints as `Int`); the NSNumber arm covers raw data items arriving from bridged
+//   JSON/plist collections (`SeriesData.getRawDataItem`).
 // ----------------------------------------------------------------------------
 private func asDouble(_ v: Any?) -> Double? {
+    // A real boolean is NOT a number in JS (`typeof true === 'boolean'`), and it has to be rejected
+    //   BEFORE the casts below: Foundation bridges `Bool` to an NSNumber that also casts to Double.
+    if jsBoolOrNil(v) != nil { return nil }
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
+    if let n = v as? NSNumber { return n.doubleValue }
     return nil
+}
+
+// ----------------------------------------------------------------------------
+// asIntOrNil — a NON-TRAPPING `Int(someDouble)`. `AxisTriggerDataIndex.seriesIndex`/`dataIndex` are
+//   `Double` (a JS `number`), and `Int(Double.nan)` / `Int(±.infinity)` / an out-of-Int64-range value is
+//   a runtime SIGTRAP in Swift, not a nil (PORTING.md §12 — do not mirror upstream's optimistic typing
+//   with a construct that can crash). JS would just index with a non-integer key and get `undefined`,
+//   which is what a nil result reproduces at the call site.
+// ----------------------------------------------------------------------------
+private func asIntOrNil(_ v: Double) -> Int? {
+    return Int(exactly: v.rounded())
+}
+
+// ----------------------------------------------------------------------------
+// jsBoolOrNil — is this value a JS BOOLEAN (and which one), as opposed to a number that merely happens
+//   to be 0 or 1? A plain `v as? Bool` cannot answer that: Foundation conditionally bridges an
+//   `NSNumber` holding 0/1 to `Bool`, so a numeric datum coming out of a bridged NSArray/NSDictionary
+//   (JSON / plist-sourced series data — exactly what `getRawDataItem` can hand back) would read as a
+//   boolean and never reach a numeric comparison. The CFBoolean type id is the reliable discriminator.
+// ----------------------------------------------------------------------------
+private func jsBoolOrNil(_ v: Any?) -> Bool? {
+    if let n = v as? NSNumber {
+        return CFGetTypeID(n) == CFBooleanGetTypeID() ? n.boolValue : nil
+    }
+    return v as? Bool
+}
+
+// ----------------------------------------------------------------------------
+// `arr[i]` with a JS out-of-range read (-> `undefined` -> nil). Upstream `_updateContentNotChangedOnAxis`
+//   indexes `cbParamsList` by SERIES INDEX, which may exceed its length; JS yields `undefined` and the
+//   guard below skips the comparison, where Swift would trap.
+// ----------------------------------------------------------------------------
+private func elementAtOrNil<T>(_ arr: [T], _ i: Int) -> T? {
+    return (i >= 0 && i < arr.count) ? arr[i] : nil
+}
+
+// ----------------------------------------------------------------------------
+// tooltipStrictEquals — upstream `a === b` for the value kinds `_updateContentNotChangedOnAxis` compares
+//   (a `ScaleDataValue` axis value: number | string | Date; and a raw data item: number | string | array
+//   | object). Same-type only, exactly like JS (mixed types are never `===`).
+//   PORT-NOTE (divergence, LANGUAGE constraint): JS `===` on two objects is REFERENCE identity. A raw
+//     data item is a Swift VALUE here (an `[Any]` row, a `[String: Any]` bag), for which identity is
+//     unrepresentable, so those arms compare STRUCTURALLY (element/key-wise, recursively). Class
+//     instances still compare by `===`, matching upstream exactly. The structural arms are strictly more
+//     permissive than upstream — i.e. they can only say "unchanged" where upstream (holding the same
+//     stored item, hence the same reference) also says "unchanged".
+//   NAMING (PORTING.md §2): deliberately NOT `jsStrictEquals`. Two file-private helpers of that name
+//     already exist in this module — `visual/VisualMapping.swift:986` (String/number only) and
+//     `data/helper/dataValueHelper.swift:422` (Bool/Double/String only; an Int-boxed number is `false`
+//     there) — and this one must cover strictly more kinds (Int/NSNumber coercion, Date, the structural
+//     collection arms, class identity). A third same-named copy giving DIFFERENT answers is the actual
+//     trap §2 warns about, so the scope is carried in the name instead. (`===` is a JS operator, not an
+//     upstream symbol, so §1 "names = upstream identifiers" does not pin the spelling.) If a canonical
+//     shared `===` helper is ever hoisted into `util/`, this is the most complete of the three bodies.
+// ----------------------------------------------------------------------------
+private func tooltipStrictEquals(_ a: Any?, _ b: Any?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case (nil, _), (_, nil): return false
+    default: break
+    }
+    // string === string
+    if let sa = a as? String { return (b as? String) == sa }
+    if b is String { return false }
+    // boolean === boolean. Tested BEFORE the numeric arm, but via `jsBoolOrNil` (NOT `as? Bool`, which a
+    //   bridged NSNumber holding 0/1 also satisfies — that would divert a numeric datum into this arm).
+    //   Only a boolean-vs-boolean pair is decided here; a boolean vs anything else is `false` in JS
+    //   (`true === 1` is false), and two NON-booleans fall through to the numeric arm untouched.
+    let boolA = jsBoolOrNil(a)
+    let boolB = jsBoolOrNil(b)
+    if boolA != nil || boolB != nil {
+        if let boolA = boolA, let boolB = boolB { return boolA == boolB }
+        return false
+    }
+    // number === number (Int/Double/NSNumber all read as a Double here)
+    if let na = asDouble(a), let nb = asDouble(b) { return na == nb }
+    if asDouble(a) != nil || asDouble(b) != nil { return false }
+    // Date === Date  (a `ScaleDataValue` arm; JS compares Date OBJECTS by reference, but a Swift `Date`
+    //   is a value — same divergence as the collection arms below)
+    if let da = a as? Date { return (b as? Date) == da }
+    // structural arms (see the PORT-NOTE above) — tested BEFORE the class arm so a data item that IS a
+    //   collection (including a bridged NSArray/NSDictionary) compares by content, not by box identity.
+    if let aa = a as? [Any], let bb = b as? [Any] {
+        if aa.count != bb.count { return false }
+        for i in 0..<aa.count where !tooltipStrictEquals(aa[i], bb[i]) { return false }
+        return true
+    }
+    if let ad = a as? [String: Any], let bd = b as? [String: Any] {
+        if ad.count != bd.count { return false }
+        for (k, v) in ad where !tooltipStrictEquals(v, bd[k]) { return false }
+        return true
+    }
+    // object === object → reference identity when both really ARE class instances (upstream verbatim).
+    if let ao = a, let bo = b, type(of: ao) is AnyClass, type(of: bo) is AnyClass {
+        return (ao as AnyObject) === (bo as AnyObject)
+    }
+    return false
 }
 
 // upstream `calcTooltipPosition` (TooltipView.ts:1168): place the tooltip box around the hovered

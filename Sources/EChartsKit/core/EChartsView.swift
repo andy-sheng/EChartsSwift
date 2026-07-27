@@ -232,6 +232,14 @@ public final class EChartsView {
 
     private func _afterSetOption() {
         _syncRoot()
+        // The model was (re)built, so anything the trigger:"axis" tooltip memoized about the content it
+        //   last showed is stale — a new formatter / textStyle / dataset must not be masked by
+        //   `TooltipView._updateContentNotChangedOnAxis` deciding "content unchanged, just move the box".
+        //   Upstream gets this for free: its per-mousemove `_tryShow` item leg nulls `_lastDataByCoordSys`
+        //   on every pointer move (TooltipView.ts:477/511). This port only runs `tryShow` on element
+        //   ENTER, so the invalidation is done here, on the render path. NOT in `_ensureTooltipView()`'s
+        //   `setModel` (that runs immediately before every `_showAxisTooltip` — it would kill the branch).
+        tooltipView?.clearAxisTooltipMemo()
         // L3 Roam: (re)wire the graph RoamController against the freshly-built model (upstream GraphView.render
         //   calls updateRoamControllerSimply every render).
         _setupGraphRoam()
