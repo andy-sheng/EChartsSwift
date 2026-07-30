@@ -1465,16 +1465,30 @@ public final class SeriesData: DataStackSeriesData {
         // Upstream copies each wrapped method FUNCTION by name (methods are instance props in JS). The port
         //   keeps the injections in side stores; carry the value-returning `getItemModel` injections onto
         //   the clone so a cloned tree/sunburst data keeps its per-node level-model parenting.
-        // KNOWN DIVERGENCE: `_wrappedMethodInjections` is NOT copied. Upstream's function copy carries the
-        //   wrap chain itself, so an upstream clone/downSample/map result still fires transferInjection +
-        //   cloneShallowInjection + changeInjection on its OWN subsequent calls; the ported clone fires
-        //   nothing. Nothing re-registers them either (neither `linkAll` nor `linkSingle` calls
-        //   `wrapMethod`). Unreachable on the main path only because `dataTaskReset` (Series.swift) always
-        //   clones from `getRawData()`, i.e. the registered original; `mapDataStatistic.swift`'s
-        //   `series.setData(data.cloneShallow())` on `getData()` is the latent second-order case.
-        //   // PORT-TODO: copy `_wrappedMethodInjections` here if a derived list ever needs re-linking —
-        //   but note the ported injections capture the registered `data` explicitly where upstream rebinds
-        //   `this`, so a naive copy would fire against the original rather than the clone.
+        //
+        // CHANGABLE_METHODS (`filterSelf` / `selectRange`) are carried too — this is what makes legend
+        //   filtering reach a node+edge struct. `legendDataFilter` filters `seriesModel.getData()`, which
+        //   after the data task is a CLONE of the registered original, so without this copy the clone's
+        //   `filterSelf` fired nothing: `linkSeriesData`'s `changeInjection` never ran, `Graph.update()`
+        //   never re-mapped node dataIndex nor filtered `edgeData`, and a chord/graph/sankey chart kept
+        //   drawing ribbons to a node the user had just hidden (and kept its pre-click arc angles).
+        //   Regression: Tests/EChartsKitTests/ZZGraphStructLegendFilterTests.swift.
+        //   Safe to copy because the change injection is RECEIVER-INDEPENDENT: `changeInjection(opt, res)`
+        //   only calls `opt.struct.update()` and never touches the list it was registered on, so firing it
+        //   from a clone is exactly upstream's behaviour. Re-firing is idempotent — `Graph.update()`
+        //   recomputes every dataIndex from scratch.
+        for methodName in source.CHANGABLE_METHODS {
+            if let injections = source._wrappedMethodInjections[methodName] {
+                target._wrappedMethodInjections[methodName, default: []].append(contentsOf: injections)
+            }
+        }
+        // STILL DIVERGENT (deliberately): the TRANSFERABLE_METHODS / `cloneShallow` injections are NOT
+        //   copied. Unlike the change injection, `transferInjection` branches on `isMainData(this)` — and
+        //   the ported closure captures the REGISTERED list where upstream rebinds `this`, so copying it
+        //   would re-link against the original instead of the clone. Reachable only from a clone-of-a-clone
+        //   (`mapDataStatistic.swift`'s `series.setData(data.cloneShallow())` on `getData()`).
+        //   // PORT-TODO: to carry those too, first change `wrapMethod` to pass the receiver into the
+        //   stored closure instead of capturing it.
         target._getItemModelInjections = source._getItemModelInjections
 
         // CLONE_PROPERTIES

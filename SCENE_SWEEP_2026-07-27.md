@@ -78,6 +78,38 @@ official-graph-webkit-dep##2        {"type":"legendToggleSelect","name":"WebGL"}
 
 chord 族的表现与 `official-chord-simple` 已定位的形态一致：节点被过滤掉了，但**边没有被过滤、布局没有重算**——扇区角度与点击前逐位相同。
 
+## 4b. 根因与修复（2026-07-31）
+
+上面第 2 节的 4 个崩溃和第 4 节 chord 族的全部条目**是同一个根因**。
+
+**链路**：`legendDataFilter` → `getData().filterSelf(...)` → 应触发 `linkSeriesData` 的 `changeInjection` → `struct.update()` → `Graph.update()`（`data/Graph.ts:271`）——后者既重映射每个节点的 `dataIndex`，也执行
+`edgeData.filterSelf(edge => edge.node1.dataIndex >= 0 && edge.node2.dataIndex >= 0)`。
+
+**断点**：插桩显示 `legendDataFilter` 拿到的 `SeriesData` 上 `inj=[]`——注入是空的。`Graph.update()` 全程只在建图时触发过一次。
+
+上游 `transferProperties`（`SeriesData.ts:1456-1465`）会把 `source.__wrappedMethods` 里每个名字对应的**包装函数本身**复制到克隆体，所以克隆的 `filterSelf` 仍然带着整条 wrap 链。移植把注入存在旁路表里，而 `transferProperties` 没有复制它——偏偏 `legendDataFilter` 过滤的 `seriesModel.getData()` 在数据任务跑完后**正是一个克隆**。
+
+代码里原有的 KNOWN DIVERGENCE 注释断言这条路径"不可达"，该断言是错的。
+
+**修复**（`data/SeriesData.swift`）：在 `transferProperties` 中复制 CHANGABLE_METHODS（`filterSelf`/`selectRange`）的注入。仅限这两个是因为 `changeInjection` **与接收者无关**（只调 `opt.struct.update()`），复制后行为与上游一致；而 TRANSFERABLE 那组的 `transferInjection` 会分支于 `isMainData(this)`，移植的闭包捕获的是注册时那个 list，照搬会指向错误的对象——故意留着，并在注释里写明了前置条件。
+
+回归测试：`Tests/EChartsKitTests/ZZGraphStructLegendFilterTests.swift`。
+
+**效果**（复用未变的 Web dump，仅重跑原生侧）：
+
+| 指标 | 修复前 | 修复后 |
+|---|---:|---:|
+| 原生硬崩溃 | 4 | **0** |
+| 结构性交互回归 | 18 | **9** |
+| "原生比上游多画元素" | 11 | **3** |
+| 新增回归 | — | **0** |
+| 单元测试 | 810 / 6 基线失败 | 812 / 6 基线失败 |
+
+已消除：chord 全部 8 个 slot、`official-graph-label-overlap##1`，以及两个 graph demo 的崩溃。
+`official-chord-simple##1` 现在 **20/20 完全匹配、零 unmatched**（仅剩已知的标签 z2 绘制顺序问题，基线同样存在）。
+
+**残留的 3 个"多画元素"**（`official-custom-error-scatter##2`、`official-custom-ohlc##1`、`official-data-transform-aggregate##1`）是**另一个根因**：custom 系列 / boxplot 的 renderItem 产物在过滤后没有被回收，与 Graph 结构无关。
+
 ## 5. 局限（必须写清楚，否则数字会被误读）
 
 1. **v1 只覆盖图例开关**。dataZoom、timeline、brush、hover、select 尚未纳入。图例是本次报告的故障类，不是全部交互面。
