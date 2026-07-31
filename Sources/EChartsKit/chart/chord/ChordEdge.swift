@@ -251,10 +251,14 @@ public final class ChordEdge: Path {
             // applyEdgeFill(el, edge, nodeData, lineStyle);
             applyEdgeFill(el, edge, nodeData, lineStyle)
             // graphic.updateProps(el, { shape: shape }, seriesModel, edgeIdx);
-            //   updateProps tweens the ribbon's shape fields (via ChordPathShape.animationGet/Set) when
-            //   series animation is enabled, else instantly sets the target shape (el.attr — equivalent to
-            //   the previous setShape). Passing the full ChordPathShape value under the "shape" key.
-            updateProps(el, ["shape": shape], seriesModel, edgeIdx)
+            //   MUST be the per-key bag, not the ChordPathShape value. Upstream hands `animateToShallow`
+            //   a plain object and it recurses key by key; a Swift struct is not `util.isObject`, so it is
+            //   taken as ONE discrete leaf, set instantly, and no animator is created at all (the rule is
+            //   spelled out on `PathShape.animationProps()`, ZRenderKit/Graphic/Path.swift). Passing the
+            //   struct here is why chord ribbons snapped to their new layout while the node arcs — which
+            //   pass a dict — tweened. `animationProps()` yields exactly the 11 fields
+            //   `animationGet`/`animationSet` above expose.
+            updateProps(el, ["shape": shape.animationProps()], seriesModel, edgeIdx)
         }
 
         // Phase 46: edge emphasis + `focus:'adjacency'` (upstream ChordEdge.updateData). The ribbon is a

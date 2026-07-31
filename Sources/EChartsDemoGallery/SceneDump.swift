@@ -171,6 +171,82 @@ func deriveLegendActions(_ demo: EChartsDemo, max: Int) -> [[String: Any]] {
     return names.prefix(max).map { ["type": "legendToggleSelect", "name": $0] }
 }
 
+// MARK: - Animation probe
+//
+// "Click the legend and nothing animates" is invisible to BOTH existing oracles: the structural diff
+// compares settled states, and the pixel oracle compares one frame. Yet it is a whole bug CLASS in
+// this port — `updateProps(el, ["shape": <a PathShape STRUCT>])` silently creates no animator at all,
+// because a Swift struct is not `util.isObject` and the animator takes it as one discrete leaf
+// (see `PathShape.animationProps()`, ZRenderKit/Graphic/Path.swift). Chord ribbons hit exactly that
+// while the node arcs, which pass a dict, tweened — so the chart half-animated and nobody noticed.
+//
+// The probe asks one question per demo: after an update that DEMONSTRABLY changes the scene, did any
+// element get an animator? "Changed" is established on a separate animation-OFF instance, because on
+// the animated instance the post-update scene still sits at its pre-update values until the clock runs.
+
+struct AnimProbeResult {
+    let demo: String
+    let sceneChanged: Bool
+    let total: Int
+    let animated: Int
+}
+
+/// Compact canonical signature of the settled scene — enough to detect "did this update change anything".
+@MainActor
+private func sceneSignature(_ ec: ECharts) -> String {
+    var parts: [String] = []
+    for el in ec.storage.getDisplayList(true, true) {
+        var s = "\(el.type)|\(canonNum(el.x))|\(canonNum(el.y))|\(canonNum(el.z2))"
+        if let p = el as? Path, let shape = p.shape {
+            for (k, v) in canonBag(shape).sorted(by: { $0.key < $1.key }) { s += "|\(k)=\(v)" }
+        }
+        parts.append(s)
+    }
+    return parts.joined(separator: "\n")
+}
+
+@MainActor
+func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
+    func build(_ animation: Bool) -> ECharts {
+        var opt = demo.option
+        opt["animation"] = animation
+        let ec = ECharts(width: demo.width, height: demo.height)
+        ec.setOption(opt)
+        return ec
+    }
+    func applyUpdate(_ ec: ECharts) {
+        if let action = action, let type = action["type"] as? String {
+            var payload = Payload(type: type)
+            for (k, v) in action where k != "type" { payload.other[k] = v }
+            ec.dispatchAction(payload)
+        } else {
+            // No derived action: re-apply the demo's own option in merge mode, upstream's refresh idiom
+            // (the same stimulus --update-invariant uses).
+            var opt = demo.option
+            opt["animation"] = false
+            ec.setOption(opt, notMerge: false)
+        }
+    }
+
+    // Did the update change the settled scene at all? Decided WITHOUT animation, so the comparison is
+    // between two settled states rather than between a settled state and a mid-flight one.
+    let still = build(false)
+    let before = sceneSignature(still)
+    applyUpdate(still)
+    let changed = sceneSignature(still) != before
+
+    // Now the same update with animation on: how much of the scene is actually tweening?
+    let live = build(true)
+    applyUpdate(live)
+    var total = 0, animated = 0
+    _ = live.getRoot().traverse { el in
+        total += 1
+        if !el.animators.isEmpty { animated += 1 }
+        return false
+    }
+    return AnimProbeResult(demo: demo.name, sceneChanged: changed, total: total, animated: animated)
+}
+
 // MARK: - Web dump
 
 /// The mirror image of `sceneDumpNative`, evaluated inside the page that already hosts real

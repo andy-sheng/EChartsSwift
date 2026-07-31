@@ -959,6 +959,37 @@ func runCLI() -> Bool {
         print("sweep-native pass done: \(nOK) new, \(nSkip) already present -> \(ndir.path)")
         exit(0)
 
+    case "--anim-probe":
+        // --anim-probe <manifest.json> <out.tsv> : per demo, does an update that demonstrably changes
+        //   the scene actually produce animators? Resumable/crash-tolerant like --scene-sweep-native.
+        guard args.count >= 3 else {
+            FileHandle.standardError.write(Data("usage: --anim-probe <manifest.json> <out.tsv>\n".utf8)); exit(2)
+        }
+        let apMan = FileManager.default.contents(atPath: args[1])
+            .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: [[String: Any]]] } ?? [:]
+        let apOut = URL(fileURLWithPath: args[2])
+        var done = Set<String>()
+        if let existing = try? String(contentsOf: apOut, encoding: .utf8) {
+            for line in existing.split(separator: "\n").dropFirst() {
+                if let name = line.split(separator: "\t").first { done.insert(String(name)) }
+            }
+        } else {
+            try? "demo\tsceneChanged\ttotal\tanimated\n".write(to: apOut, atomically: true, encoding: .utf8)
+        }
+        let apHandle = try! FileHandle(forWritingTo: apOut)
+        apHandle.seekToEndOfFile()
+        for d in EChartsDemoRegistry.everything where d.nativeSupported {
+            if done.contains(d.name) { continue }
+            FileHandle.standardError.write(Data("RUN \(d.name)\n".utf8))
+            // Claim before running: a demo that hard-crashes must not be retried forever.
+            apHandle.write(Data("\(d.name)\tCRASHED\t0\t0\n".utf8))
+            let r = animProbe(d, action: apMan[d.name]?.first)
+            apHandle.write(Data("\(d.name)\t\(r.sceneChanged)\t\(r.total)\t\(r.animated)\n".utf8))
+        }
+        try? apHandle.close()
+        print("anim-probe pass done -> \(apOut.path)")
+        exit(0)
+
     case "--scene-sweep-web":
         // --scene-sweep-web <manifest.json> <outdir> : the echarts.js side of the same sweep, one page
         //   load per (demo, action), sequentially in one process.
