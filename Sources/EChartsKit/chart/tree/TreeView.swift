@@ -320,6 +320,11 @@ open class TreeView: ChartView {
             _ = group.add(symbolDraw.group)
         }
         var opt = SymbolDrawUpdateOpt()
+        // Same bag the ctor closure applies, so `useNameLabel` survives the `.update()` diff branch too —
+        //   upstream hands the identical opts to `new SymbolClz(...)` (TreeView.ts:357) and to
+        //   `symbolEl.updateData(...)` (:365). Without it a re-render (e.g. a legend toggle) silently
+        //   relabelled every node with its value, and internal nodes — which have none — lost their label.
+        opt.symbolOpts = SymbolOpts(useNameLabel: true)
         // The node layout is a `{ x, y, rawX, rawY }` bag (treeLayout → setItemLayout); feed SymbolDraw
         //   the group-local `[x, y]` pixel point (nil skips the node — SymbolDraw's symbolNeedsDraw gate).
         opt.getSymbolPoint = { i in

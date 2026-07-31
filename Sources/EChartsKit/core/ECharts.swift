@@ -597,27 +597,40 @@ public final class ECharts: EChartsType {
         var p = 0.0
         func nextPrio() -> Double { p += 100; return p }
 
-        // 1. dataZoom (FILTER). StageHandler with getTargetSeries (the AxisProxy-creation side-effect,
-        //    which now runs at prepareStageTasks/setOption time — safe: AxisProxy reads only models) +
-        //    overallReset (window calc + filter, at performDataProcessorTasks/update time).
-        list.append(_mkHandler(nextPrio(), dataZoomProcessor))
-        // 2. legendFilter — series show/hide (SERIES_FILTER 800). Global overall. MUST run BEFORE
+        // 1. legendFilter — series show/hide (SERIES_FILTER 800). Global overall. MUST run BEFORE
         //    dataStack: upstream orders SERIES_FILTER (800) < DATASTACK (900), and dataStack.ts itself
         //    notes it "Should be executed after series is filtered" — the stack series list changes with
         //    legend selection. If dataStack ran first it would stack EVERY series (incl. a series about
         //    to be legend-hidden), and legendFilter merely dropping it from the render set afterwards
         //    leaves the survivors with a stale stackResult (still stacked over the hidden one) → the
-        //    y-axis never rescales and the chart "doesn't re-layout" on a legend click. (Only legendFilter
-        //    is pulled up to its upstream slot here; the remaining handlers keep their C1 order — the full
-        //    __prio realignment is the separate gated reorder, see the block header + scheduler design doc.)
+        //    y-axis never rescales and the chart "doesn't re-layout" on a legend click. (The remaining
+        //    handlers keep their C1 order — the full __prio realignment is the separate gated reorder,
+        //    see the block header + scheduler design doc.)
         list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in legendFilter(ecModel) }))
-        // 3. dataStack (DATASTACK). Global overall.
+        // 2. dataStack (DATASTACK). Global overall.
         list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in dataStack(ecModel) }))
-        // 4. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
+        // 3. axis-statistics captured processors (AXIS_STATISTICS). Only the overallReset was captured by
         //    EChartsInstallRegisters.registerProcessor, so wrap each as a global overall (no seriesType).
         for cp in ECharts._registers.capturedProcessors {
             list.append(_mkOverallHandler(nextPrio(), { ecModel, _, _ in cp(ecModel) }))
         }
+        // 4. dataZoom (FILTER 1000). StageHandler with getTargetSeries (the AxisProxy-creation side-effect,
+        //    which now runs at prepareStageTasks/setOption time — safe: AxisProxy reads only models) +
+        //    overallReset (window calc + filter, at performDataProcessorTasks/update time).
+        //
+        //    MUST run AFTER legendFilter, and this is load-bearing rather than cosmetic. `AxisProxy.reset`
+        //    is the FIRST caller of `scaleRawExtentInfoCreate(axis, …FROM_DATA_ZOOM)` for every
+        //    dataZoom-controlled axis, and that function early-returns once `scale.rawExtentInfo` exists
+        //    (coord/scaleRawExtentInfo.swift) — so whatever extent it computes is FROZEN for the update;
+        //    the later `Grid.update()` pass cannot correct it. Running it before legendFilter therefore
+        //    unions in the extent of a series the user has just hidden: `isBlank` stays false and the axis
+        //    keeps painting ticks, labels, splitLines and dataZoom range labels for a grid with no series
+        //    left. Upstream's ordering constants encode exactly this dependency — SERIES_FILTER 800 <
+        //    DATASTACK 900 < AXIS_STATISTICS 920 < FILTER 1000 (echarts.ts:157-168, with the comment that
+        //    AXIS_STATISTICS must precede the dataZoom filter because dataZoom consumes its result).
+        //    Found by the interaction sweep: official-custom-error-scatter / custom-ohlc /
+        //    data-transform-aggregate all drew the hidden series' axis furniture after a legend click.
+        list.append(_mkHandler(nextPrio(), dataZoomProcessor))
         // 5. negativeDataFilter (DEFAULT, per-series reset+seriesType).
         for h in ECharts._negativeDataFilters { list.append(_mkHandler(nextPrio(), h)) }
         // 6. dataFilter — data-item legend show/hide (DEFAULT, per-series).

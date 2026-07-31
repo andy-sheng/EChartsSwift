@@ -37,12 +37,24 @@ public struct SymbolDrawUpdateOpt {
     public var isIgnore: ((Int) -> Bool)?
     public var clipShape: SymbolClipShape?
     public var getSymbolPoint: ((Int) -> [Double]?)?
+    /// Per-symbol opts the caller wants applied on BOTH diff branches.
+    ///
+    /// Upstream views own their `SymbolClz` instances and hand the SAME opts bag to `new SymbolClz(...)`
+    /// and to `symbolEl.updateData(...)` (e.g. TreeView.ts:357 and :365 both pass
+    /// `{symbolInnerColor, useNameLabel: true}`). The port routes those views through this shared helper,
+    /// which used to build its own bag for the `.update()` branch — so a flag set only in the ctor
+    /// closure survived the first render and was silently dropped on every re-render. That is how a
+    /// legend click turned every tree node's label from its NAME into its value, and made internal nodes
+    /// (which have no value) render no label at all.
+    public var symbolOpts: SymbolOpts?
     public init(disableAnimation: Bool? = nil, isIgnore: ((Int) -> Bool)? = nil,
-                clipShape: SymbolClipShape? = nil, getSymbolPoint: ((Int) -> [Double]?)? = nil) {
+                clipShape: SymbolClipShape? = nil, getSymbolPoint: ((Int) -> [Double]?)? = nil,
+                symbolOpts: SymbolOpts? = nil) {
         self.disableAnimation = disableAnimation
         self.isIgnore = isIgnore
         self.clipShape = clipShape
         self.getSymbolPoint = getSymbolPoint
+        self.symbolOpts = symbolOpts
     }
 }
 
@@ -148,7 +160,10 @@ public final class SymbolDraw {
         let seriesScope = makeSeriesScope(data)
         self._seriesScope = seriesScope
 
-        let symbolUpdateOpt = SymbolOpts(disableAnimation: disableAnimation)
+        // Start from the caller's per-symbol bag so flags like `useNameLabel` reach the `.update()`
+        // branch too — upstream passes the identical bag to the ctor and to updateData.
+        var symbolUpdateOpt = opt.symbolOpts ?? SymbolOpts()
+        symbolUpdateOpt.disableAnimation = disableAnimation
 
         let getSymbolPoint: (Int) -> [Double]? = opt.getSymbolPoint ?? { idx in
             data.getItemLayout(idx) as? [Double]
