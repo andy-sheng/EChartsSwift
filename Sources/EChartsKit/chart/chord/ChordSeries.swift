@@ -244,7 +244,17 @@ open class ChordSeriesModel: SeriesModel {
             // const nodeData = this.getData();
             let nodeData = self.getData()
             // const edge = nodeData.graph.getEdgeByIndex(dataIndex);
-            let edge = nodeData.graph!.getEdgeByIndex(Int(dataIndex))!
+            //   STALE-INDEX GUARD (not upstream-shaped, deliberately). `getEdgeByIndex` resolves through
+            //   `edgeData.getRawIndex`, which returns -1 for an index past the current count — upstream
+            //   included (DataStore.ts:1286). A ribbon removed by legend filtering stays in the scene
+            //   graph, hit-testable, for the length of its fade-out and still carries its PRE-filter edge
+            //   index, so hovering it during the fade asks for exactly that out-of-range index. Upstream
+            //   then reads `.node1` off `undefined` and the TypeError merely aborts the event handler;
+            //   the ported force-unwrap turned the same situation into a process-killing SIGTRAP
+            //   (PORTING.md §12). Degrade to "no tooltip", which is what upstream effectively renders.
+            guard let edge = nodeData.graph?.getEdgeByIndex(Int(dataIndex)) else {
+                return nil
+            }
             // const sourceName = nodeData.getName(edge.node1.dataIndex);
             let sourceName = nodeData.getName(edge.node1.dataIndex)
             // const targetName = nodeData.getName(edge.node2.dataIndex);

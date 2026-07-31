@@ -385,7 +385,13 @@ open class GraphSeriesModel: SeriesModel {
             let params = self.getDataParams(dataIndex, dataType)
 
             // const edge = nodeData.graph.getEdgeByIndex(dataIndex);
-            let edge = nodeData.graph!.getEdgeByIndex(Int(dataIndex))!
+            //   STALE-INDEX GUARD — same hazard as ChordSeries.formatTooltip (see the longer note there):
+            //   an edge removed by legend filtering lingers, hit-testable, through its fade-out carrying
+            //   its pre-filter index, and `getRawIndex` returns -1 for it. Upstream's TypeError aborts the
+            //   handler; the ported force-unwrap would kill the process (PORTING.md §12).
+            guard let edge = nodeData.graph?.getEdgeByIndex(Int(dataIndex)) else {
+                return nil
+            }
             // const sourceName = nodeData.getName(edge.node1.dataIndex);
             let sourceName = nodeData.getName(edge.node1.dataIndex)
             // const targetName = nodeData.getName(edge.node2.dataIndex);
