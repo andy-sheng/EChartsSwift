@@ -320,7 +320,7 @@ official-multiple-x-axis	true	112	36
 official-area-rainfall	CRASHED	0	0
 official-area-rainfall	true	132	31
 official-area-time-axis	CRASHED	0	0
-official-area-time-axis	false	84	0
+official-area-time-axis	true	84	0
 official-dynamic-data2	CRASHED	0	0
 official-dynamic-data2	false	47	0
 official-line-function	CRASHED	0	0
@@ -350,7 +350,7 @@ official-line-polar	true	225	202
 official-line-polar2	CRASHED	0	0
 official-line-polar2	true	23	0
 official-line-tooltip-touch	CRASHED	0	0
-official-line-tooltip-touch	false	93	18
+official-line-tooltip-touch	true	93	18
 official-line-draggable	CRASHED	0	0
 official-line-draggable	false	114	5
 official-bar-simple	CRASHED	0	0
@@ -400,7 +400,7 @@ official-bar1	true	99	25
 official-mix-line-bar	CRASHED	0	0
 official-mix-line-bar	true	126	36
 official-mix-zoom-on-value	CRASHED	0	0
-official-mix-zoom-on-value	false	143	56
+official-mix-zoom-on-value	true	143	56
 official-multiple-y-axis	CRASHED	0	0
 official-multiple-y-axis	true	137	58
 official-bar-animation-delay	CRASHED	0	0
@@ -408,13 +408,13 @@ official-bar-animation-delay	true	266	200
 official-bar-drilldown	CRASHED	0	0
 official-bar-drilldown	false	30	3
 official-bar-large	CRASHED	0	0
-official-bar-large	true	61	0
+official-bar-large	false	61	0
 official-bar-race	CRASHED	0	0
 official-bar-race	true	27	5
 official-bar-multi-drilldown	CRASHED	0	0
 official-bar-multi-drilldown	false	28	3
 official-bar-race-country	CRASHED	0	0
-official-bar-race-country	true	63	0
+official-bar-race-country	true	63	18
 official-bar-rich-text	CRASHED	0	0
 official-bar-rich-text	true	63	9
 official-dynamic-data	CRASHED	0	0
@@ -494,7 +494,7 @@ official-scatter-symbol-morph	false	207	100
 official-scatter-large	CRASHED	0	0
 official-scatter-large	true	98	13
 official-scatter-nebula	CRASHED	0	0
-official-scatter-nebula	false	102	0
+official-scatter-nebula	true	102	0
 official-scatter-stream-visual	CRASHED	0	0
 official-scatter-stream-visual	false	32414	16174
 official-bubble-gradient	CRASHED	0	0
@@ -546,6 +546,7 @@ official-geo-svg-traffic	false	538	0
 official-lines-airline	CRASHED	0	0
 official-lines-airline	false	443	0
 official-lines-ny	CRASHED	0	0
+official-lines-ny	false	440	0
 official-map-bar-morph	CRASHED	0	0
 official-map-bar-morph	false	123	52
 official-map-HK	CRASHED	0	0
@@ -569,7 +570,7 @@ official-custom-ohlc	true	38	0
 official-candlestick-sh	CRASHED	0	0
 official-candlestick-sh	true	477	186
 official-candlestick-large	CRASHED	0	0
-official-candlestick-large	true	91	0
+official-candlestick-large	false	91	0
 official-candlestick-touch	CRASHED	0	0
 official-candlestick-touch	true	146	34
 official-candlestick-brush	CRASHED	0	0
@@ -615,7 +616,7 @@ official-graph-circular-layout	true	446	390
 official-graph-force-dynamic	CRASHED	0	0
 official-graph-force-dynamic	false	6	0
 official-graph-life-expectancy	CRASHED	0	0
-official-graph-life-expectancy	false	139	0
+official-graph-life-expectancy	true	139	0
 official-graph-webkit-dep	CRASHED	0	0
 official-graph-webkit-dep	true	1520	0
 official-graph-npm	CRASHED	0	0
@@ -659,7 +660,7 @@ official-sunburst-drink	false	115	110
 official-sunburst-book	CRASHED	0	0
 official-sunburst-book	false	69	67
 official-scatter-matrix	CRASHED	0	0
-official-scatter-matrix	false	3377	1488
+official-scatter-matrix	true	3377	1488
 official-parallel-simple	CRASHED	0	0
 official-parallel-simple	false	75	3
 official-parallel-aqi	CRASHED	0	0
@@ -829,7 +830,7 @@ official-dataset-default	true	41	16
 official-dataset-encode1	CRASHED	0	0
 official-dataset-encode1	true	12554	6156
 official-area-simple	CRASHED	0	0
-official-area-simple	true	80	0
+official-area-simple	false	80	0
 official-line-graphic	CRASHED	0	0
 official-line-graphic	false	64	9
 official-graphic-stroke-animation	CRASHED	0	0

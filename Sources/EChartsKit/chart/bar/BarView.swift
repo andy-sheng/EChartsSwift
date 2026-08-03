@@ -909,13 +909,40 @@ func updateRealtimeAnimation(
     _ isUpdate: Bool,
     _ isChangeOrder: Bool
 ) {
-    // upstream splits the layout into an axis-driven target and a series-driven (growth) target and
-    // animates them with different animation models. With the no-animation shims both collapse to
-    // setting the final shape once — so this is equivalent to `el.setShape(layout)`.
-    // PORT-NOTE (deferred): realtimeSort split-target animation (see the realtimeSort block comment).
-    _ = (realtimeSortCfg, seriesAnimationModel, newIndex, isHorizontal, isUpdate, isChangeOrder)
+    // Upstream splits the layout into two targets driven by DIFFERENT animation models: the growth
+    // along the value direction uses the series' model, while the movement along the base axis uses the
+    // AXIS model — that is what makes a bar-race bar slide to its new rank at the axis' tempo while its
+    // length grows at the series' tempo. An earlier note here claimed the split was "equivalent to
+    // el.setShape(layout)"; that was true only while initProps/updateProps were no-op shims. They are
+    // real animations now, so collapsing the two targets meant a realtimeSort chart never animated at
+    // all (official-bar-race-country: 0 animators where upstream has 25).
+    let axisTarget: [String: Any]
+    let seriesTarget: [String: Any]
+    if isHorizontal {
+        axisTarget = ["x": layout.x, "width": layout.width]
+        seriesTarget = ["y": layout.y, "height": layout.height]
+    }
+    else {
+        axisTarget = ["y": layout.y, "height": layout.height]
+        seriesTarget = ["x": layout.x, "width": layout.width]
+    }
+
     if !isChangeOrder {
-        _ = el.setShape(layout)
+        // Keep the original growth animation if only the axis order changed — do not start a new one.
+        if isUpdate {
+            updateProps(el, ["shape": seriesTarget], seriesAnimationModel, newIndex)
+        } else {
+            initProps(el, ["shape": seriesTarget], seriesAnimationModel, newIndex)
+        }
+    }
+
+    // upstream: `const axisAnimationModel = seriesAnimationModel ? realtimeSortCfg.baseAxis.model : null;`
+    //   i.e. a nil series model (animation disabled) also disables the axis leg.
+    let axisAnimationModel: Model? = seriesAnimationModel != nil ? realtimeSortCfg.baseAxis.model : nil
+    if isUpdate {
+        updateProps(el, ["shape": axisTarget], axisAnimationModel, newIndex)
+    } else {
+        initProps(el, ["shape": axisTarget], axisAnimationModel, newIndex)
     }
 }
 

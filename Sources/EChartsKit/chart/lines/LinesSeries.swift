@@ -265,8 +265,12 @@ open class LinesSeriesModel: SeriesModel {
     // getLineCoordsCount(idx: number)
     open func getLineCoordsCount(_ idx: Int) -> Int {
         // if (this._flatCoordsOffset) { return this._flatCoordsOffset[idx * 2 + 1]; }
+        //   Bounds-tolerant for the same reason as `getLineCoords` below: JS reads past the end as
+        //   `undefined` (→ a 0-length line), Swift would trap. Guarded here too so a stale index cannot
+        //   take the process down before it even reaches the coord read.
         if let offsets = self._flatCoordsOffset {
-            return Int(offsets[idx * 2 + 1])
+            let k = idx * 2 + 1
+            return k >= 0 && k < offsets.count ? Int(offsets[k]) : 0
         }
         // else { return this._getCoordsFromItemModel(idx).length; }
         else {
@@ -291,9 +295,20 @@ open class LinesSeriesModel: SeriesModel {
                 if i >= out.count { out.append([0, 0]) }
                 else if out[i].count < 2 { out[i] = [0, 0] }
                 // out[i][0] = this._flatCoords[offset + i * 2];
-                out[i][0] = flat[offset + i * 2]
                 // out[i][1] = this._flatCoords[offset + i * 2 + 1];
-                out[i][1] = flat[offset + i * 2 + 1]
+                //   BOUNDS-TOLERANT READ (not upstream-shaped, deliberately). `_processFlatCoordsArray`
+                //   bakes `startOffset = this._flatCoords.length` into every offset it emits, but
+                //   `mergeOption` then REPLACES `_flatCoords` with the freshly parsed array instead of
+                //   concatenating (LinesSeries.ts:183-184 vs the appendData leg at :195-202, which does
+                //   concat). So re-applying an option whose data is the flat numeric format leaves every
+                //   offset pointing past the end of the array it indexes. That is upstream's own latent
+                //   bug: in JS the read yields `undefined`, the coords become NaN and the lines simply do
+                //   not draw. In Swift the same expression traps and takes the process down
+                //   (PORTING.md §12). Degrade to NaN — the value JS arrives at — so behaviour matches and
+                //   `official-lines-ny` no longer kills the host on a plain re-render.
+                let ix = offset + i * 2
+                out[i][0] = ix >= 0 && ix < flat.count ? flat[ix] : Double.nan
+                out[i][1] = ix >= 0 && ix + 1 < flat.count ? flat[ix + 1] : Double.nan
             }
             return len
         }
