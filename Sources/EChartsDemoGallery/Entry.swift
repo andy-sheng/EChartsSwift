@@ -990,6 +990,51 @@ func runCLI() -> Bool {
         print("anim-probe pass done -> \(apOut.path)")
         exit(0)
 
+    case "--anim-probe-web":
+        // --anim-probe-web <manifest.json> <out.tsv> [onlyList.txt] : the echarts.js side of --anim-probe.
+        //   Without it a native zero is not a verdict — upstream removes a fully-hidden series' view
+        //   group synchronously too (echarts.ts:1756), so zero can be the faithful answer.
+        guard args.count >= 3 else {
+            FileHandle.standardError.write(Data("usage: --anim-probe-web <manifest.json> <out.tsv> [only.txt]\n".utf8)); exit(2)
+        }
+        let awMan = FileManager.default.contents(atPath: args[1])
+            .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: [[String: Any]]] } ?? [:]
+        var only: Set<String>? = nil
+        if args.count >= 4, let txt = try? String(contentsOfFile: args[3], encoding: .utf8) {
+            only = Set(txt.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty })
+        }
+        var awJobs: [SweepJob] = []
+        for d in EChartsDemoRegistry.everything where d.nativeSupported {
+            if let only = only, !only.contains(d.name) { continue }
+            let act = awMan[d.name]?.first
+            let aJSON = act.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+                .flatMap { String(data: $0, encoding: .utf8) }
+            awJobs.append(SweepJob(demo: d, actionJSON: aJSON, out: URL(fileURLWithPath: "/dev/null"), label: d.name))
+        }
+        print("anim-probe-web: \(awJobs.count) page loads")
+        let awApp = NSApplication.shared
+        awApp.setActivationPolicy(.accessory)
+        let awWV = WKWebView(frame: CGRect(x: 0, y: 0, width: 640, height: 420))
+        let awWin = NSWindow(contentRect: awWV.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        awWin.contentView = awWV; awWin.orderFrontRegardless()
+        let awProber = WebAnimProber(jobs: awJobs, wv: awWV, out: URL(fileURLWithPath: args[2]))
+        awWV.navigationDelegate = awProber
+        awProber.start()
+        awApp.run()
+        return true
+
+    case "--anim-probe-one":
+        // --anim-probe-one <demo> [actionJSON] : the verbose single-demo form of --anim-probe, for
+        //   diagnosing WHY a demo reports zero animators (which element classes exist, which tween).
+        guard args.count >= 2, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --anim-probe-one <name> [actionJSON]\n".utf8)); exit(2)
+        }
+        let a1Action: [String: Any]? = args.count >= 3
+            ? (try? JSONSerialization.jsonObject(with: Data(args[2].utf8))) as? [String: Any] : nil
+        animProbeVerbose(demo, action: a1Action)
+        exit(0)
+
     case "--scene-sweep-web":
         // --scene-sweep-web <manifest.json> <outdir> : the echarts.js side of the same sweep, one page
         //   load per (demo, action), sequentially in one process.

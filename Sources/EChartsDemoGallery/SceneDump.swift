@@ -193,7 +193,8 @@ struct AnimProbeResult {
 
 /// Compact canonical signature of the settled scene — enough to detect "did this update change anything".
 @MainActor
-private func sceneSignature(_ ec: ECharts) -> String {
+private func sceneSignature(_ view: EChartsView) -> String {
+    let ec = view.ec
     var parts: [String] = []
     for el in ec.storage.getDisplayList(true, true) {
         var s = "\(el.type)|\(canonNum(el.x))|\(canonNum(el.y))|\(canonNum(el.z2))"
@@ -207,14 +208,21 @@ private func sceneSignature(_ ec: ECharts) -> String {
 
 @MainActor
 func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
-    func build(_ animation: Bool) -> ECharts {
+    // MUST be an EChartsView, not a bare ECharts: `animateOrSetProps` settles a LEAVE synchronously
+    // when `el.__zr == nil` (basicTransition.swift's documented headless adaptation — without a zr
+    // nothing ticks the animator, so its done-callback would never detach the element). A bare
+    // ECharts therefore reports every fade-out as "no animator", which is a property of the harness,
+    // not of the port.
+    func build(_ animation: Bool) -> EChartsView {
         var opt = demo.option
         opt["animation"] = animation
-        let ec = ECharts(width: demo.width, height: demo.height)
-        ec.setOption(opt)
-        return ec
+        let v = EChartsView(width: demo.width, height: demo.height)
+        v.setOption(opt)
+        _ = v.zr.storage.getDisplayList(true)
+        return v
     }
-    func applyUpdate(_ ec: ECharts) {
+    func applyUpdate(_ view: EChartsView, animation: Bool) {
+        let ec = view.ec
         if let action = action, let type = action["type"] as? String {
             var payload = Payload(type: type)
             for (k, v) in action where k != "type" { payload.other[k] = v }
@@ -222,8 +230,14 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
         } else {
             // No derived action: re-apply the demo's own option in merge mode, upstream's refresh idiom
             // (the same stimulus --update-invariant uses).
+            //
+            // The `animation` stamp must MATCH the instance being updated — a merge carrying the demo's
+            // own `animation: true` would otherwise switch the still instance back on. An earlier version
+            // hard-coded `false` in this branch regardless of instance, i.e. it turned animation off and
+            // then asked why nothing animated, reporting all 19 no-action demos (every tree demo among
+            // them) as zero-animator false positives.
             var opt = demo.option
-            opt["animation"] = false
+            opt["animation"] = animation
             ec.setOption(opt, notMerge: false)
         }
     }
@@ -232,19 +246,180 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
     // between two settled states rather than between a settled state and a mid-flight one.
     let still = build(false)
     let before = sceneSignature(still)
-    applyUpdate(still)
+    applyUpdate(still, animation: false)
     let changed = sceneSignature(still) != before
 
     // Now the same update with animation on: how much of the scene is actually tweening?
     let live = build(true)
-    applyUpdate(live)
+    applyUpdate(live, animation: true)
     var total = 0, animated = 0
-    _ = live.getRoot().traverse { el in
+    _ = live.ec.getRoot().traverse { el in
         total += 1
         if !el.animators.isEmpty { animated += 1 }
         return false
     }
     return AnimProbeResult(demo: demo.name, sceneChanged: changed, total: total, animated: animated)
+}
+
+/// Verbose single-demo form of `animProbe`: breaks the scene down by element class so a zero-animator
+/// report can be read as "which parts of this chart are static", and reports whether the stimulus
+/// actually did anything.
+@MainActor
+func animProbeVerbose(_ demo: EChartsDemo, action: [String: Any]?) {
+    // MUST be an EChartsView, not a bare ECharts: `animateOrSetProps` settles a LEAVE synchronously
+    // when `el.__zr == nil` (basicTransition.swift's documented headless adaptation — without a zr
+    // nothing ticks the animator, so its done-callback would never detach the element). A bare
+    // ECharts therefore reports every fade-out as "no animator", which is a property of the harness,
+    // not of the port.
+    func build(_ animation: Bool) -> EChartsView {
+        var opt = demo.option
+        opt["animation"] = animation
+        let v = EChartsView(width: demo.width, height: demo.height)
+        v.setOption(opt)
+        _ = v.zr.storage.getDisplayList(true)
+        return v
+    }
+    func apply(_ view: EChartsView, _ animation: Bool) {
+        let ec = view.ec
+        if let action = action, let type = action["type"] as? String {
+            var payload = Payload(type: type)
+            for (k, v) in action where k != "type" { payload.other[k] = v }
+            ec.dispatchAction(payload)
+        } else {
+            var opt = demo.option
+            opt["animation"] = animation
+            ec.setOption(opt, notMerge: false)
+        }
+    }
+    func breakdown(_ view: EChartsView) -> String {
+        let ec = view.ec
+        var byType: [String: (Int, Int)] = [:]
+        _ = ec.getRoot().traverse { el in
+            let t = String(describing: type(of: el))
+            var e = byType[t] ?? (0, 0); e.0 += 1
+            if !el.animators.isEmpty { e.1 += 1 }
+            byType[t] = e
+            return false
+        }
+        return byType.sorted { $0.key < $1.key }
+            .map { "\($0.key):\($0.value.0)/\($0.value.1)" }.joined(separator: " ")
+    }
+
+    let still = build(false)
+    let before = sceneSignature(still)
+    apply(still, false)
+    let after = sceneSignature(still)
+    print("demo: \(demo.name)")
+    print("action: \(action.map { "\($0)" } ?? "(re-apply option)")")
+    print("sceneChanged: \(after != before)   (signature \(before.count) -> \(after.count) chars)")
+
+    let live = build(true)
+    print("live  before: \(breakdown(live))")
+    apply(live, true)
+    print("live  after : \(breakdown(live))    [class:total/animated]")
+}
+
+// MARK: - Animation probe, web side
+//
+// The native-only probe asks "did anything animate?" — but that is not a verdict on its own, because
+// upstream does NOT animate every update either. When a legend click hides a series entirely,
+// `echarts.ts:1756` removes the whole view group synchronously (`zr.remove(view.group)`) with no fade,
+// so a native zero here is FAITHFUL. Judging the port against an absolute "should animate" would have
+// turned faithful behaviour into a 23-item bug list.
+//
+// So the probe is comparative, like the scene diff: run the same stimulus on real echarts.js and count
+// elements carrying animators there too. Animators are created synchronously inside dispatchAction /
+// setOption on both sides, so sampling immediately after the call is like-for-like without needing a
+// shared clock.
+let animProbeJS = """
+(function () {
+  function count() {
+    var zr = myChart.getZr();
+    var total = 0, animated = 0, byType = {};
+    function walk(el) {
+      total++;
+      var t = el.type || 'el';
+      byType[t] = byType[t] || [0, 0];
+      byType[t][0]++;
+      if (el.animators && el.animators.length) { animated++; byType[t][1]++; }
+      if (el.isGroup) { var c = el.childrenRef(); for (var i = 0; i < c.length; i++) walk(c[i]); }
+    }
+    var roots = zr.storage._roots || [];
+    for (var i = 0; i < roots.length; i++) walk(roots[i]);
+    return { total: total, animated: animated, byType: byType };
+  }
+  var before = count();
+  if (window.__SCENE_ACTION__) {
+    myChart.dispatchAction(window.__SCENE_ACTION__);
+  } else {
+    // Re-apply the chart's OWN current option (upstream's refresh idiom). Using getOption() rather
+    // than a serialized copy of the Swift option: several demo options hold non-JSON Swift values,
+    // and this is also a closer analogue of the native side re-applying `demo.option`.
+    myChart.setOption(myChart.getOption(), false);
+  }
+  var after = count();
+  return JSON.stringify({ before: before, after: after });
+})()
+"""
+
+/// Web side of the animation probe: one page load per demo, action dispatched, animator census taken.
+/// Deliberately NOT the `snapshot: true` page — that one forces `animation: false`, which is exactly
+/// the thing under measurement.
+final class WebAnimProber: NSObject, WKNavigationDelegate {
+    private let jobs: [SweepJob]
+    private var idx = 0
+    private let wv: WKWebView
+    private let out: URL
+    private var rows: [String] = []
+
+    init(jobs: [SweepJob], wv: WKWebView, out: URL) { self.jobs = jobs; self.wv = wv; self.out = out }
+
+    func start() { loadCurrent() }
+
+    private func finish() {
+        try? (["demo\ttotal\tanimated\tbeforeAnimated"] + rows)
+            .joined(separator: "\n").appending("\n")
+            .write(to: out, atomically: true, encoding: .utf8)
+        print("anim-probe-web done: \(rows.count)/\(jobs.count) -> \(out.path)")
+        exit(0)
+    }
+
+    private func loadCurrent() {
+        guard idx < jobs.count else { return finish() }
+        let job = jobs[idx]
+        guard let page = echartsHTMLPage(job.demo, snapshot: false) else {
+            rows.append("\(job.demo.name)\tERR\tERR\tERR"); idx += 1; loadCurrent(); return
+        }
+        wv.frame = CGRect(x: 0, y: 0, width: job.demo.width, height: job.demo.height)
+        wv.loadHTMLString(page, baseURL: nil)
+    }
+
+    func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
+        let job = jobs[idx]
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            var prelude = ""
+            if let a = job.actionJSON { prelude += "window.__SCENE_ACTION__ = \(a);\n" }
+            wv.evaluateJavaScript(prelude + animProbeJS) { result, err in
+                if let json = result as? String,
+                   let obj = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any],
+                   let after = obj["after"] as? [String: Any], let before = obj["before"] as? [String: Any] {
+                    self.rows.append("\(job.demo.name)\t\(after["total"] ?? -1)\t\(after["animated"] ?? -1)\t\(before["animated"] ?? -1)")
+                } else {
+                    self.rows.append("\(job.demo.name)\tERR\tERR\t\(err.map { "\($0)" } ?? "")")
+                }
+                if (self.idx + 1) % 25 == 0 { print("  … \(self.idx + 1)/\(self.jobs.count)") }
+                self.idx += 1
+                self.loadCurrent()
+            }
+        }
+    }
+
+    func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
+        rows.append("\(jobs[idx].demo.name)\tERR\tERR\tload"); idx += 1; loadCurrent()
+    }
+    func webView(_ wv: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError e: Error) {
+        rows.append("\(jobs[idx].demo.name)\tERR\tERR\tprov"); idx += 1; loadCurrent()
+    }
 }
 
 // MARK: - Web dump

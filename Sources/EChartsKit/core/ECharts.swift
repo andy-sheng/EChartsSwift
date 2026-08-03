@@ -2302,8 +2302,32 @@ public final class ECharts: EChartsType {
         i = 0
         while i < _chartsViews.count {
             let v = _chartsViews[i]
-            if !v.__alive {
-                v.remove(ecModel, api)          // upstream renderSeries also calls chart.remove for a dead view
+            // FILTERED-OUT vs GONE. Upstream reaches these two states from two different places and
+            // treats them differently:
+            //   - `prepare()` runs prepareView + the hard sweep at setOption time, BEFORE any data
+            //     processing, so nothing is legend-filtered yet and only a view whose MODEL really
+            //     disappeared is disposed (echarts.ts:1754-1769).
+            //   - `renderSeries` runs AFTER filtering and, for a view left non-alive, calls ONLY
+            //     `chart.remove(ecModel, api)` (echarts.ts:2445-2449) — the animated teardown
+            //     (ScatterView/LineView/… override it to fade their elements out). The view is NOT
+            //     disposed and its group stays in the scene graph so the fade can actually play.
+            // This port runs prepareView + this sweep in one pass INSIDE render(), i.e. after filtering,
+            // so both states arrive here together. Doing the full disposal for both is what made a legend
+            // click snap instead of fade: `v.remove` duly started the fade-out animators and the next two
+            // lines then yanked the group out of the scene graph and disposed the view. Distinguish them
+            // with `isSeriesFiltered` — the model of a legend-hidden series is still in ecModel.
+            let stillModelled = v.__model.map { m in
+                var present = false
+                ecModel.eachRawSeries { s, _ in if s === m { present = true } }
+                return present && ecModel.isSeriesFiltered(m)
+            } ?? false
+            if !v.__alive && stillModelled {
+                // Filtered out, model alive → animated teardown only, exactly upstream's renderSeries leg.
+                v.remove(ecModel, api)
+                i += 1
+            }
+            else if !v.__alive {
+                v.remove(ecModel, api)
                 _ = root.remove(v.group)
                 storage.delRoot(v.group)
                 v.dispose(ecModel, api)
