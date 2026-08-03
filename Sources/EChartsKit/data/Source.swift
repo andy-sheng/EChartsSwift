@@ -425,11 +425,11 @@ private func determineSourceDimensions(
         if dimensionsDefine == nil {
             dimensionsDefine = []
             // upstream: each(data, function (colArr, key) { dimensionsDefine.push(key); });
-            // POTENTIAL-BUG: `util.each` has no dictionary overload; iterate keys directly.
-            //   Upstream iterates in JS object insertion order; Swift `Dictionary` is unordered,
-            //   so the resulting keyed-columns dimension order may diverge from upstream.
+            //   Upstream iterates the object in JS enumeration order; a Swift `Dictionary` is
+            //   per-process-seeded, so the raw key order was run-to-run NONDETERMINISTIC here.
+            //   `jsPropertyKeyOrder` (see objectRowsCollectDimensions) restores the derivable part.
             if let dataDict = data as? [String: Any] {
-                for key in util.keys(dataDict) {
+                for key in jsPropertyKeyOrder(Array(dataDict.keys)) {
                     dimensionsDefine!.append(key)
                 }
             }
@@ -470,9 +470,43 @@ private func objectRowsCollectDimensions(_ data: OptionSourceDataObjectRows) -> 
         if obj != nil { break }
     }
     if let obj = obj {
-        return util.keys(obj) as [DimensionDefinitionLoose]
+        return jsPropertyKeyOrder(Array(obj.keys)) as [DimensionDefinitionLoose]
     }
     return nil
+}
+
+/// Emulate JS own-property enumeration order for keys recovered from a Swift `Dictionary`.
+///
+/// Upstream collects dataset dimensions with `Object.keys`, whose order the spec fixes as: canonical
+/// array-index keys in ASCENDING NUMERIC order first, then string keys in insertion order — verified
+/// against real echarts in the WKWebView oracle: `Object.keys({product:'A', 2016:85, 2015:43})` is
+/// `["2015","2016","product"]`, with `product` LAST despite being written first.
+///
+/// A Swift `Dictionary` uses per-process seeded hashing, so `Array(dict.keys)` is not merely
+/// "possibly different from upstream" — it is different run to run, which made the default `encode`
+/// bind columns nondeterministically (the chart could literally change between launches). This helper
+/// restores what is derivable:
+///   - the numeric portion is EXACTLY upstream's order (it never depended on insertion order);
+///   - the string portion's insertion order is unrecoverable from a `Dictionary` — those keys fall
+///     back to lexicographic order, which is deterministic but CAN diverge from upstream when a row
+///     has 2+ non-numeric keys. The escape hatch is the one upstream also offers: declare
+///     `dataset.dimensions` explicitly and this derivation never runs.
+func jsPropertyKeyOrder(_ keys: [String]) -> [String] {
+    // A canonical array index per the spec: "0", or a non-empty digit string without a leading zero,
+    // within 2^32-1. (Negative / fractional / exponent forms are ordinary string keys.)
+    func arrayIndex(_ k: String) -> UInt32? {
+        if k == "0" { return 0 }
+        guard !k.isEmpty, k.first != "0", k.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let n = UInt32(k), n < UInt32.max else { return nil }
+        return n
+    }
+    var numeric: [(UInt32, String)] = []
+    var rest: [String] = []
+    for k in keys {
+        if let n = arrayIndex(k) { numeric.append((n, k)) } else { rest.append(k) }
+    }
+    numeric.sort { $0.0 < $1.0 }
+    return numeric.map { $0.1 } + rest.sorted()
 }
 
 // Consider dimensions defined like ['A', 'price', 'B', 'price', 'C', 'price'],
