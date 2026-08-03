@@ -6,6 +6,23 @@ import XCTest
 @testable import ZRenderKit
 
 final class ParseTextTests: XCTestCase {
+    // Pin the NO-CANVAS fallback measurer for the duration of this class. These tests assert widths
+    // derived from zrender's ASCII width table (upstream's behaviour when no canvas exists), but they
+    // read the GLOBAL `platformApi` — and NativePainter now installs a Core Text measurer onto that
+    // same global. Both test targets share one xctest process, so without this pin the assertions
+    // would depend on whether a sibling target happened to install it first. Pinning keeps each test
+    // measuring the implementation it was written for.
+    private var _savedApi: PlatformAPI?
+    override func setUp() {
+        super.setUp()
+        _savedApi = platformApi
+        setPlatformAPI(DefaultPlatformAPI())
+    }
+    override func tearDown() {
+        if let api = _savedApi { setPlatformAPI(api) }
+        super.tearDown()
+    }
+
 
     // 12px monospace ⇒ every ASCII char is exactly 12pt wide.
     private let MONO = "12px monospace"

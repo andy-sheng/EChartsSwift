@@ -701,8 +701,25 @@ func makeBaseFont(_ family: String, size: CGFloat) -> CTFont {
     let lower = family.lowercased()
     // Generic families → platform system / standard faces.
     if lower.contains("sans-serif") || lower.isEmpty {
-        return CTFontCreateUIFontForLanguage(.system, size, nil)
-            ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+        // DELIBERATE: the CSS generic `sans-serif` (zrender's DEFAULT_FONT_FAMILY) resolves to
+        // HELVETICA, not the platform UI font — that is what the reference implementation does, and
+        // measured metrics confirm it: at 12px "2015/1/9" advances 46.7109pt under Helvetica, matching
+        // the browser oracle exactly, versus 48.30 under the system font (San Francisco).
+        //
+        // This is a product-level choice, so it is recorded rather than assumed. The system font makes
+        // charts look native but makes every text-driven layout — legend sizing, grid.containLabel,
+        // label truncation, calculateCategoryInterval's tick thinning — land on different values than
+        // the library this is a port OF. Measured over the 709-slot structural sweep against the
+        // previous state: Helvetica nets +1326 badness improvement (39 slots better / 51 worse, and the
+        // regressions are dominated by low-severity paint-order ripples — custom-error-scatter for
+        // instance stays 184/184 elements with zero unmatched — while the wins are real label-set
+        // convergence: grid-multiple 218→44, area-rainfall 122→44). The system font scored net −1928.
+        // The pixel oracle agrees: area-rainfall 22.58%→21.98%, grid-multiple 5.34%→4.63%,
+        // pie-simple 1.62%→1.22%, candlestick-sh-2015 unchanged.
+        //
+        // An embedder that wants the native look should set `textStyle.fontFamily` in the option
+        // rather than changing this generic mapping.
+        return CTFontCreateWithName("Helvetica" as CFString, size, nil)
     }
     if lower.contains("monospace") || lower.contains("mono") {
         return CTFontCreateWithName("Menlo" as CFString, size, nil)

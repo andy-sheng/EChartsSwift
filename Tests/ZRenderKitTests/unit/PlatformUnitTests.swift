@@ -32,6 +32,23 @@ private final class OverridePlatformAPI: PlatformAPI {
 }
 
 final class PlatformUnitTests: XCTestCase {
+    // Pin the NO-CANVAS fallback measurer for the duration of this class. These tests assert widths
+    // derived from zrender's ASCII width table (upstream's behaviour when no canvas exists), but they
+    // read the GLOBAL `platformApi` — and NativePainter now installs a Core Text measurer onto that
+    // same global. Both test targets share one xctest process, so without this pin the assertions
+    // would depend on whether a sibling target happened to install it first. Pinning keeps each test
+    // measuring the implementation it was written for.
+    private var _savedApi: PlatformAPI?
+    override func setUp() {
+        super.setUp()
+        _savedApi = platformApi
+        setPlatformAPI(DefaultPlatformAPI())
+    }
+    override func tearDown() {
+        if let api = _savedApi { setPlatformAPI(api) }
+        super.tearDown()
+    }
+
 
     // upstream: it('Default font should be correct')
     func test_Default_font_should_be_correct() throws {

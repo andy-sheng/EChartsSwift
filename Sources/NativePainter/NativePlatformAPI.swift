@@ -40,6 +40,9 @@ private let _installOnce: Void = {
 /// painter exists.
 public func installNativePlatformAPI() {
     _ = _installOnce
+    // Real font metrics for the `measureText` seam too — see NativeTextMeasure.swift. Kept a separate
+    // installer because the headless paths (oracle/tests) need measurement without a painter.
+    installNativeTextMeasure()
 }
 
 #endif

@@ -794,6 +794,12 @@ func loadWebAndSnapshot(_ demo: EChartsDemo, out: URL) -> Never {
 
 @MainActor
 func runCLI() -> Bool {
+    // Real Core Text metrics for `platform.measureText` before ANY chart is built. The headless
+    // commands (scene-graph oracle, --render*) never construct a CALayerPainter, which is what would
+    // otherwise install the native platform backing — without this they would size every label from
+    // zrender's no-canvas ASCII width table while the painter draws with CTLine.
+    installNativeTextMeasure()
+
     let args = Array(CommandLine.arguments.dropFirst())
     guard let cmd = args.first else { return false }   // no args → GUI
 
