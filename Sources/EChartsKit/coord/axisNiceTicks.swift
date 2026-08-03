@@ -306,11 +306,21 @@ public func scaleCalcNice2(
     let rawExtentResult = adoptScaleRawExtentInfoAndPrepare(scale, model, ecModel, axis, externalDataExtent)
 
     let isIntervalOrTime = helper.isIntervalScale(scale) || helper.isTimeScale(scale)
+    // Int/Double coercion is LOAD-BEARING on all four reads (the [[int-vs-double-option-read-trap]]).
+    // A bare `as? Double` returns nil for an Int-boxed value — and the TIME axis' default
+    // `splitNumber` is the Int literal 6 (axisDefault.swift), so the cast silently dropped it and
+    // calcNice fell back to 10. span/10 bisects the time scaleIntervals one level finer than
+    // upstream's span/6, which let the tick loop descend into the HOUR level: a dataZoom'd time axis
+    // grew 06:00/12:00/18:00 labels + tick lines that real echarts does not draw (wind-barb,
+    // line-tooltip-touch, gantt-flight). Masked on the unzoomed extent by coincidence — the day level
+    // already passed the tick-count break there. Value/log axes never showed it only because the
+    // interval-path fallback (5) happens to equal the value-axis default 5; a USER-supplied Int for
+    // any of the four options was dropped just the same.
     scaleCalcNiceDirectly(scale, ScaleCalcNiceMethodOpt(
-        splitNumber: model.get("splitNumber") as? Double, // Backward compat - not get('xxx', true).
-        minInterval: isIntervalOrTime ? model.get("minInterval") as? Double : nil,
-        maxInterval: isIntervalOrTime ? model.get("maxInterval") as? Double : nil,
-        userInterval: model.get("interval") as? Double, // Backward compat - not get('xxx', true).
+        splitNumber: niceTicksNumOpt(model.get("splitNumber")), // Backward compat - not get('xxx', true).
+        minInterval: isIntervalOrTime ? niceTicksNumOpt(model.get("minInterval")) : nil,
+        maxInterval: isIntervalOrTime ? niceTicksNumOpt(model.get("maxInterval")) : nil,
+        userInterval: niceTicksNumOpt(model.get("interval")), // Backward compat - not get('xxx', true).
         fixMinMax: rawExtentResult.fixMM,
         rawExtentResult: rawExtentResult
     ))
@@ -322,6 +332,16 @@ public func scaleCalcNice2(
     if __DEV__ {
         scale.freeze()
     }
+}
+
+/// Numeric option coercion for the four calcNice reads (splitNumber/minInterval/maxInterval/interval):
+/// defaultOptions box number literals as Int, so `as? Double` alone drops them.
+private func niceTicksNumOpt(_ v: Any?) -> Double? {
+    if let d = v as? Double { return d }
+    if let i = v as? Int { return Double(i) }
+    if let f = v as? CGFloat { return Double(f) }
+    if let n = v as? NSNumber, !(v is Bool) { return n.doubleValue }
+    return nil
 }
 
 public func scaleCalcNiceDirectly(

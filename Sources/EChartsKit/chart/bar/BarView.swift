@@ -376,7 +376,7 @@ open class BarView: ChartView {
             })
             .update({ newIndex, oldIndex in
                 let itemModel = data.getItemModel(newIndex)
-                guard let layout = getLayoutCartesian2D(data, newIndex, itemModel) else {
+                guard var layout = getLayoutCartesian2D(data, newIndex, itemModel) else {
                     return
                 }
 
@@ -411,8 +411,13 @@ open class BarView: ChartView {
 
                 var isClipped = false
                 if needsClip {
-                    var clipLayout = layout
-                    isClipped = clipCartesian2D(coordSysClipArea, &clipLayout)
+                    // upstream (BarView.ts:352): "Clip will modify the layout params" — the clip MUST
+                    // mutate the REAL layout, because updateStyle/setShape/updateRealtimeAnimation/
+                    // updateProps below all consume it. An earlier version clipped a discarded copy, so
+                    // after a dataZoom the surviving bars animated to their UNCLAMPED geometry (base
+                    // extrapolated to value 0, far below the grid) while upstream clamps them to the
+                    // axis window. The `.add` branch always clipped in place; only re-used bars drifted.
+                    isClipped = clipCartesian2D(coordSysClipArea, &layout)
                     if isClipped, let el = el {
                         _ = group.remove(el)
                     }

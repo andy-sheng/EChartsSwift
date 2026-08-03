@@ -241,8 +241,51 @@ public enum number {
         // Avoid range error
         let precision = mathMin(mathMax(0, precision), TO_FIXED_SUPPORTED_PRECISION_MAX)
         // PENDING: 1.005.toFixed(2) is '1.00' rather than '1.01'
-        let str = String(format: "%.\(Int(precision))f", x)
-        return numberCoerce(str)
+        return numberCoerce(toFixedJS(x, Int(precision)))
+    }
+
+    /// JS `Number.prototype.toFixed`, tie behaviour included. `String(format: "%.*f")` is NOT a
+    /// substitute: printf rounds ties to EVEN on the exact binary value, while toFixed rounds ties
+    /// AWAY FROM ZERO — (2308.5).toFixed(0) is "2309", printf gives "2308". AxisProxy rounds the
+    /// dataZoom percent→ordinal-index window through here, so at a *.5 tie the native window ended
+    /// one category earlier than real echarts (grid-multiple: 0.75*(3079-1)=2308.5) and the last
+    /// bar/candle of the window vanished. Non-tie values are untouched — 1.005 is really
+    /// 1.00499999…, so it still yields "1.00" exactly like JS (upstream's own PENDING note above).
+    ///
+    /// Method: print the magnitude with 25 guard digits (a Double's exact expansion, correctly
+    /// rounded far past the decision digit), then round half-UP at `p` by string carry. Above-tie
+    /// and below-tie values agree between half-up and half-even, so only exact ties change.
+    static func toFixedJS(_ x: Double, _ p: Int) -> String {
+        guard x.isFinite else { return jsNumberString(x) }
+        let neg = x < 0
+        let s = String(format: "%.\(p + 25)f", abs(x))
+        let parts = s.split(separator: ".", maxSplits: 1)
+        var intDigits = Array(parts[0].utf8)
+        var frac = parts.count > 1 ? Array(parts[1].utf8) : []
+        let zero = UInt8(ascii: "0")
+        let decision = p < frac.count ? frac[p] : zero
+        frac = Array(frac.prefix(p))
+        if decision >= UInt8(ascii: "5") {
+            // Decimal increment with carry across fraction and integer digits.
+            var i = frac.count - 1
+            var carry = true
+            while carry && i >= 0 {
+                if frac[i] == UInt8(ascii: "9") { frac[i] = zero } else { frac[i] += 1; carry = false }
+                i -= 1
+            }
+            i = intDigits.count - 1
+            while carry && i >= 0 {
+                if intDigits[i] == UInt8(ascii: "9") { intDigits[i] = zero } else { intDigits[i] += 1; carry = false }
+                i -= 1
+            }
+            if carry { intDigits.insert(UInt8(ascii: "1"), at: 0) }
+        }
+        var out = String(decoding: intDigits, as: UTF8.self)
+        if p > 0 { out += "." + String(decoding: frac, as: UTF8.self) }
+        // JS keeps the value's sign even when the rounded digits are all zero — (-0.0004).toFixed(2)
+        // is "-0.00" and (-0.4).toFixed(0) is "-0". Only the literal -0.0 prints unsigned, and `neg`
+        // is already false there (`-0.0 < 0` is false).
+        return neg ? "-" + out : out
     }
 
     public static func round(_ x: String, _ precision: Double) -> Double {
@@ -254,7 +297,7 @@ public enum number {
             return jsNumberString(x)
         }
         let precision = mathMin(mathMax(0, precision), TO_FIXED_SUPPORTED_PRECISION_MAX)
-        return String(format: "%.\(Int(precision))f", x)
+        return toFixedJS(x, Int(precision))   // ties away from zero, like JS toFixed — see toFixedJS.
     }
 
     public static func roundStr(_ x: String, _ precision: Double) -> String {

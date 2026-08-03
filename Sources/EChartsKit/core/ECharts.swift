@@ -1084,8 +1084,13 @@ public final class ECharts: EChartsType {
         //   `update()`; the slider/inside VIEWS + roam/drag are DEFERRED (need a live-view host).
         ComponentModel.registerClass(InsideZoomModel.self)                 // registerComponentModel(InsideZoomModel)
         ComponentModel.registerClass(SliderZoomModel.self)                 // registerComponentModel(SliderZoomModel)
+        ComponentModel.registerClass(SelectZoomModel.self)                 // installDataZoomSelect.ts registerComponentModel(SelectZoomModel)
         ComponentModel.registerSubTypeDefaulter("dataZoom", { _ in "slider" })
         installDataZoomAction(ECharts._registers)                      // registerAction('dataZoom', ...)
+        // toolbox/feature/DataZoom.ts:330 module-scope `registerInternalOptionCreator('dataZoom', …)`:
+        //   injects one invisible `select` dataZoom per referenced axis when `toolbox.feature.dataZoom`
+        //   is set, so index-less dataZoom actions reach the y axis too (see SelectZoomModel.swift).
+        installToolboxDataZoomInternalOptionCreator()
 
         // -- component/tooltip/install.ts -- registerComponentModel(TooltipModel) +
         //   registerComponentView(TooltipView) + ... . Phase 31 ports ONLY the host-independent
