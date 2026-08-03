@@ -159,6 +159,9 @@ func deriveLegendActions(_ demo: EChartsDemo, max: Int) -> [[String: Any]] {
     ec.setOption(opt)
     guard let ecModel = ec.getModel() else { return [] }
 
+    var out: [[String: Any]] = []
+
+    // Legend toggles — the chart's own declaration of what the user can switch off.
     var names: [String] = []
     var seen = Set<String>()
     for cmpt in ecModel.findComponents(QueryConditionKindA(mainType: "legend")) {
@@ -168,7 +171,26 @@ func deriveLegendActions(_ demo: EChartsDemo, max: Int) -> [[String: Any]] {
             if seen.insert(n).inserted { names.append(n) }
         }
     }
-    return names.prefix(max).map { ["type": "legendToggleSelect", "name": $0] }
+    out += names.prefix(max).map { ["type": "legendToggleSelect", "name": $0] }
+
+    // dataZoom — one representative window change. The handler consumes `start`/`end` percentages
+    // (dataZoomAction.swift:45-46) and, with no index in the payload, targets every dataZoom, which is
+    // the same resolution real echarts applies to the identical payload — the comparison stays
+    // like-for-like even where the semantics are subtle.
+    if !ecModel.findComponents(QueryConditionKindA(mainType: "dataZoom")).isEmpty {
+        out.append(["type": "dataZoom", "start": 25.0, "end": 75.0])
+    }
+
+    // timeline — step to the second frame. `timelineChange` runs the heavyweight prepareAndUpdate
+    // path (setOption-per-frame merge), which is exactly the machinery worth sweeping.
+    for cmpt in ecModel.findComponents(QueryConditionKindA(mainType: "timeline")) {
+        guard let tl = cmpt as? TimelineModel else { continue }
+        if tl.getData().count() > 1 {
+            out.append(["type": "timelineChange", "currentIndex": 1.0])
+        }
+        break
+    }
+    return out
 }
 
 // MARK: - Animation probe

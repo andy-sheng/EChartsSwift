@@ -137,3 +137,23 @@ python3 scripts/scene-diff.py /tmp/n.json /tmp/w.json
 ```
 
 `--scene-web <demo> <out> <probe.js>`（第三参不以 `{` 开头时）把 dump 换成任意脚本，用于直接探测参考实现——上游 TS 源码回答不了的问题（"这个 z2=4 是哪来的"）用它一次就能问清楚。
+
+## 7. 语料扩展 · dataZoom + timeline（2026-08-03）
+
+`--scene-manifest` 现在额外推导：有 dataZoom 组件的 demo 追加 `{"type":"dataZoom","start":25,"end":75}`（37 个），timeline ≥2 帧的追加 `{"type":"timelineChange","currentIndex":1}`（4 个）。语料 668 → **709 slot**，双侧各 709/709 成功，**原生零崩溃**。
+
+分诊方法升级：对回归清单里的每个 demo，比较**两次独立页面加载**的 web 基线 dump 是否逐字节一致——不一致即 web 数据随机（假阳性类），机械排除，不再靠人工读 demo 注释。
+
+**结果：28 个结构性回归 = 26 个真候选 + 2 个 web 随机假阳性**（matrix-sparkline、candlestick-large）。真候选头部全是 dataZoom：
+
+```
++570  custom-gantt-flight##1   缩放后双侧爆到 ~1190 元素、73k 逆序对（渐进/order 类）
++201  wind-barb##1             原生 155 vs 133：时间轴缩放后仍画 06:00/12:00/18:00 日内刻度+11 条刻度线，
+                               上游只留日级 —— TimeScale 在缩放 extent 上的刻度间隔选择分歧（已人工确认）
++168  line-tooltip-touch##2    原生 73 vs 53：同类候选（时间轴 + zoom）
++105  scatter-large##3         原生少画（71 vs 80）
++48   candlestick-brush##3     元素数相等、shape 系统性偏移
+...共 19 个 dataZoom / 6 个 legend 残余 / 1 个 timeline
+```
+
+**下一步**：wind-barb 已定性为 TimeScale 刻度算法分歧，是 dataZoom 类的第一个具名根因；其余按簇（time-axis zoom / candlestick zoom / custom zoom）进入诊断 workflow。
