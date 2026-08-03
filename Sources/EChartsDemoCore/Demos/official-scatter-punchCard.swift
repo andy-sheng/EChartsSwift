@@ -7,12 +7,15 @@
 //     the x labels collide.
 //   - webOptionJS is the example verbatim except: the TS annotation in `function (params: any)` is
 //     dropped (a classic script cannot parse it) and the trailing `export {};` is removed.
-//   - NATIVE pane omits the three JS closures the Swift option cannot carry (symbolSize, tooltip
-//     formatter, animationDelay) — see the PORT-NOTEs. Consequence: every native bubble draws at the
-//     default symbol size instead of `count * 2`, so the bubble-size encoding — the whole point of the
-//     chart — is absent from the native pane. That gap is real and is what the diff is for.
+//   - `symbolSize` is carried as a native Swift closure (`SymbolSizeCallback`) mirroring the JS
+//     `val => val[2] * 2` — symbolVisual.seriesSymbolTask evaluates function-valued symbol props per
+//     datum, so the bubble-size encoding matches the web pane.
+//   - NATIVE pane still omits the two JS closures with no native carrier (tooltip formatter,
+//     animationDelay) — see the PORT-NOTEs. Neither affects the static frame.
 //   - The `data` literal is pre-mapped in Swift ([day, hour, count] → [hour, day, count]) exactly as
 //     the example's `.map` does at load time; the web pane still runs the original `.map`.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_punchcard = EChartsDemo(
         name: "official-scatter-punchCard", category: "scatter",
@@ -136,14 +139,22 @@ option = {
                 [
                     "name": "Punch Card",
                     "type": "scatter",
-                    // PORT-NOTE: symbolSize omitted — JS closure `val => val[2] * 2`, i.e. the bubble
-                    // diameter is twice the commit count. Native bubbles fall back to the default size.
+                    // JS `symbolSize: val => val[2] * 2` — bubble diameter is twice the commit count.
+                    "symbolSize": punchCardSymbolSize,
                     "data": punchCardData
                     // PORT-NOTE: animationDelay omitted — JS closure `idx => idx * 5`, staggering the
                     // entry animation per point. The gallery snapshots one static frame anyway.
                 ] as [String: Any]
             ]
         ])
+}
+
+// JS `symbolSize: function (val) { return val[2] * 2; }` — sized off the raw datum's third slot.
+private let punchCardSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row = rawValue as? [Any] ?? []
+    let count = (row.count > 2 ? row[2] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return count * 2
 }
 
 private let punchCardHours: [String] = [
