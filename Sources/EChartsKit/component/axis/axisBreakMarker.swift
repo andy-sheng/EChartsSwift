@@ -34,7 +34,14 @@ import ZRenderKit
 
 // Geometry of one zigzag glyph, in axis-local space (x = coord along the axis, y = perpendicular).
 private let AXIS_BREAK_MARKER_HALF_WIDTH: Double = 5
-private let AXIS_BREAK_MARKER_AMPLITUDE: Double = 4
+let AXIS_BREAK_MARKER_AMPLITUDE: Double = 4
+
+func axisBreakStyleNumber(_ value: Any?) -> Double? {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber { return value.doubleValue }
+    return nil
+}
 
 /// Build a zigzag break-marker glyph for every parsed break of `axis.scale`, positioned at the
 /// mid-point (in pixel coord) between the break's `vmin`/`vmax`. Each glyph is added to `group` and
@@ -49,10 +56,13 @@ func buildAxisBreakMarker(
     _ axis: Axis,
     _ group: Group,
     _ transformMatrix: MatrixArray?,
-    _ lineStyle: PathStyleProps
+    _ lineStyle: PathStyleProps,
+    _ amplitude: Double = AXIS_BREAK_MARKER_AMPLITUDE
 ) -> [Polyline] {
     let scale = axis.scale
-    if !hasBreaks(scale) {
+    // `zigzagAmplitude: 0` is the public way to request a flat break edge. In that mode ECharts
+    // does not leave a separate zigzag glyph on the axis line either (intraday-breaks-2).
+    if !hasBreaks(scale) || amplitude <= 0 {
         return []
     }
 
@@ -70,7 +80,7 @@ func buildAxisBreakMarker(
         let mid = (cMin + cMax) / 2
 
         let hw = AXIS_BREAK_MARKER_HALF_WIDTH
-        let amp = AXIS_BREAK_MARKER_AMPLITUDE
+        let amp = amplitude
         // Zigzag centered on the axis line (perpendicular oscillation), in axis-local coords.
         var localPoints: [VectorArray] = [
             VectorArray(mid - hw, 0),

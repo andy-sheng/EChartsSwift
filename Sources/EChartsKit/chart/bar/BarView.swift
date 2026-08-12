@@ -1013,7 +1013,60 @@ func isZeroOnPolar(_ layout: SectorShape) -> Bool {
     return layout.startAngle == layout.endAngle
 }
 
-// PORT-NOTE (deferred): `createPolarPositionMapping` (polar/label).
+// Upstream `createPolarPositionMapping`: the generic start/end names refer to the radial arcs when
+// the category axis is angular, and to the start/end angles when the category axis is radial.
+private func mapPolarBarLabelPosition(_ position: String, _ isRadial: Bool) -> String {
+    switch position {
+    case "start", "insideStart", "end", "insideEnd":
+        return position + (isRadial ? "Arc" : "Angle")
+    default:
+        return position
+    }
+}
+
+// Upstream `setSectorTextRotation`. Polar bar labels default to automatic rotation even when the
+// user does not specify `label.rotate`; cartesian labels keep the normal zero-rotation default.
+private func setPolarBarLabelRotation(
+    _ el: BarPossiblePath,
+    _ layout: SectorShape,
+    _ position: String,
+    _ isRadial: Bool,
+    _ explicitRotate: Any?
+) {
+    var config = el.textConfig ?? ElementTextConfig()
+    config.inside = position == "middle" ? true : nil
+
+    if let degrees = styleNum(explicitRotate) {
+        config.rotation = degrees * Double.pi / 180
+        el.setTextConfig(config)
+        return
+    }
+
+    let startAngle = layout.clockwise ? layout.startAngle : layout.endAngle
+    let endAngle = layout.clockwise ? layout.endAngle : layout.startAngle
+    let middleAngle = (startAngle + endAngle) / 2
+    let mapped = mapPolarBarLabelPosition(position, isRadial)
+    let anchorAngle: Double
+    switch mapped {
+    case "startArc", "insideStartArc", "middle", "insideEndArc", "endArc":
+        anchorAngle = middleAngle
+    case "startAngle", "insideStartAngle":
+        anchorAngle = startAngle
+    case "endAngle", "insideEndAngle":
+        anchorAngle = endAngle
+    default:
+        config.rotation = 0
+        el.setTextConfig(config)
+        return
+    }
+
+    var rotation = Double.pi * 1.5 - anchorAngle
+    if mapped == "middle", rotation > Double.pi / 2, rotation < Double.pi * 1.5 {
+        rotation -= Double.pi
+    }
+    config.rotation = rotation
+    el.setTextConfig(config)
+}
 
 func updateStyle(
     _ el: BarPossiblePath,
@@ -1124,11 +1177,20 @@ func updateStyle(
     labelOpt.defaultOutsidePosition = labelPositionOutside
     labelStyle.setLabelStyle(el, labelStatesModels, labelOpt)
 
-    // upstream: const label = el.getTextContent();
-    //   if (isPolar && label) { … setSectorTextRotation(…) }   // PORT-NOTE (deferred): the polar sector
-    //     text-rotation subsystem (setSectorTextRotation / createSectorCalculateTextPosition) is not
-    //     ported (label/sectorLabel).
     let label = el.getTextContent()
+    if isPolar, label != nil, let polarLayout {
+        let rawPosition = itemModel.get(["label", "position"])
+        let position = (rawPosition as? String) == "outside"
+            ? labelPositionOutside
+            : ((rawPosition as? String) ?? "inside")
+        setPolarBarLabelRotation(
+            el,
+            polarLayout,
+            position,
+            isHorizontalOrRadial,
+            itemModel.get(["label", "rotate"])
+        )
+    }
     // upstream (BarView.ts:1055): snapshot the value + interpolated-text getter on the attached label so
     //   the label number ROLLS UP from its previous value to the new one (gated on `label.valueAnimation`,
     //   default false; the actual per-frame roll is driven by the label animation stage). `setLabelStyle`
@@ -1503,6 +1565,106 @@ private func sausageShapeFromSector(_ layout: SectorShape) -> SausageShape {
     return s
 }
 
+private func currentPolarBarShape(_ sector: Path) -> SectorShape? {
+    if let shape = sector.shape as? SectorShape { return shape }
+    if let shape = sector.shape as? SausageShape {
+        var result = SectorShape()
+        result.cx = shape.cx; result.cy = shape.cy
+        result.r0 = shape.r0; result.r = shape.r
+        result.startAngle = shape.startAngle; result.endAngle = shape.endAngle
+        result.clockwise = shape.clockwise
+        return result
+    }
+    return nil
+}
+
+private func installPolarBarTextPosition(_ sector: Path, _ isRadial: Bool, _ isRoundCap: Bool) {
+    sector.calculateTextPosition = { [unowned sector] out, config, rect in
+        guard let position = config.position as? String,
+              let shape = currentPolarBarShape(sector) else {
+            var opts = CalculateTextPositionOpts()
+            opts.position = (config.position as? String).flatMap(BuiltinTextPosition.init(rawValue:)).map {
+                .position($0)
+            }
+            opts.distance = config.distance
+            return ZRenderKit.text.calculateTextPosition(out, opts, rect)
+        }
+
+        let mapped = mapPolarBarLabelPosition(position, isRadial)
+        let distance = config.distance ?? 5
+        let middleR = (shape.r + shape.r0) / 2
+        let middleAngle = (shape.startAngle + shape.endAngle) / 2
+        let extraDistance = isRoundCap ? abs(shape.r - shape.r0) / 2 : 0
+        var x = shape.cx + shape.r * cos(shape.startAngle)
+        var y = shape.cy + shape.r * sin(shape.startAngle)
+        var align: TextAlign = .left
+        var verticalAlign: TextVerticalAlign = .top
+
+        func angleDX(_ angle: Double, _ distance: Double, _ isEnd: Bool) -> Double {
+            distance * sin(angle) * (isEnd ? -1 : 1)
+        }
+        func angleDY(_ angle: Double, _ distance: Double, _ isEnd: Bool) -> Double {
+            distance * cos(angle) * (isEnd ? 1 : -1)
+        }
+
+        switch mapped {
+        case "startArc":
+            x = shape.cx + (shape.r0 - distance) * cos(middleAngle)
+            y = shape.cy + (shape.r0 - distance) * sin(middleAngle)
+            align = .center; verticalAlign = .top
+        case "insideStartArc":
+            x = shape.cx + (shape.r0 + distance) * cos(middleAngle)
+            y = shape.cy + (shape.r0 + distance) * sin(middleAngle)
+            align = .center; verticalAlign = .bottom
+        case "startAngle":
+            x = shape.cx + middleR * cos(shape.startAngle)
+                + angleDX(shape.startAngle, distance + extraDistance, false)
+            y = shape.cy + middleR * sin(shape.startAngle)
+                + angleDY(shape.startAngle, distance + extraDistance, false)
+            align = .right; verticalAlign = .middle
+        case "insideStartAngle":
+            x = shape.cx + middleR * cos(shape.startAngle)
+                + angleDX(shape.startAngle, -distance + extraDistance, false)
+            y = shape.cy + middleR * sin(shape.startAngle)
+                + angleDY(shape.startAngle, -distance + extraDistance, false)
+            align = .left; verticalAlign = .middle
+        case "middle":
+            x = shape.cx + middleR * cos(middleAngle)
+            y = shape.cy + middleR * sin(middleAngle)
+            align = .center; verticalAlign = .middle
+        case "endArc":
+            x = shape.cx + (shape.r + distance) * cos(middleAngle)
+            y = shape.cy + (shape.r + distance) * sin(middleAngle)
+            align = .center; verticalAlign = .bottom
+        case "insideEndArc":
+            x = shape.cx + (shape.r - distance) * cos(middleAngle)
+            y = shape.cy + (shape.r - distance) * sin(middleAngle)
+            align = .center; verticalAlign = .top
+        case "endAngle":
+            x = shape.cx + middleR * cos(shape.endAngle)
+                + angleDX(shape.endAngle, distance + extraDistance, true)
+            y = shape.cy + middleR * sin(shape.endAngle)
+                + angleDY(shape.endAngle, distance + extraDistance, true)
+            align = .left; verticalAlign = .middle
+        case "insideEndAngle":
+            x = shape.cx + middleR * cos(shape.endAngle)
+                + angleDX(shape.endAngle, -distance + extraDistance, true)
+            y = shape.cy + middleR * sin(shape.endAngle)
+                + angleDY(shape.endAngle, -distance + extraDistance, true)
+            align = .right; verticalAlign = .middle
+        default:
+            var opts = CalculateTextPositionOpts()
+            opts.position = BuiltinTextPosition(rawValue: position).map { .position($0) }
+            opts.distance = config.distance
+            return ZRenderKit.text.calculateTextPosition(out, opts, rect)
+        }
+
+        out.x = x; out.y = y
+        out.align = align; out.verticalAlign = verticalAlign
+        return out
+    }
+}
+
 // upstream: `elementCreator.polar` (Sector / Sausage path).
 func elementCreatorPolar(
     _ seriesModel: BarSeriesModel,
@@ -1522,6 +1684,7 @@ func elementCreatorPolar(
         ? SausagePath(["shape": sausageShapeFromSector(layout) as PathShape, "z2": Double(1)])
         : Sector(["shape": layout as PathShape, "z2": Double(1)])
     sector.name = "item"
+    installPolarBarTextPosition(sector, isRadial, isRoundCap)
     // PORT-NOTE: upstream also runs `(isUpdate ? updateProps : initProps)(sector, {shape: animateTarget},
     //   animationModel)` here; the port performs the equivalent whole-shape init/updateProps at the two
     //   call sites in `_renderPolarBars`, so `newIndex`/`isUpdate` are unused here. `data`/`axisModel`

@@ -1819,7 +1819,15 @@ public final class ECharts: EChartsType {
                                        _ payload: Payload? = nil) {
         guard let reset = handler.reset else { return }
         let stagePayload = payload ?? _payload
-        ecModel.eachSeries { seriesModel, _ in
+        let visitSeries: (@escaping (SeriesModel, Double) -> Void) -> Void = { visit in
+            if handler.performRawSeries == true {
+                ecModel.eachRawSeries(visit)
+            }
+            else {
+                ecModel.eachSeries(visit)
+            }
+        }
+        visitSeries { seriesModel, _ in
             // seriesType gate (handler.seriesType) — only run for matching series.
             if let st = handler.seriesType, seriesModel.subType != st {
                 return
@@ -1938,8 +1946,6 @@ public final class ECharts: EChartsType {
             }
         }
 
-        renderComponents(ecModel, api)
-
         // LAYOUT — bar cross-series layout (sets bandWidth/offset/size on each series' data layout).
         //   Depends on the axis statistics computed in stage (4).
         ECharts._barLayoutHandler.overallReset?(ecModel, api, nil)
@@ -1949,6 +1955,11 @@ public final class ECharts: EChartsType {
         //   `runSeriesStageHandler` used for the visual stages (the `next`-iterator fix above makes its
         //   `progress` executor actually iterate the data). `BarView.getLayoutCartesian2D` consumes it.
         runSeriesStageHandler(ECharts._barProgressiveLayoutHandler, ecModel, api)
+
+        // Component views include markPoint. Render them only after bar layout has published the
+        // per-series offset/size; grouped-bar marker anchors otherwise fall back to the category
+        // centre and land on the middle bar instead of their host series.
+        renderComponents(ecModel, api)
 
         // LAYOUT — polar bar sector layout (upstream `registerLayout(barLayoutPolarStageHandler)`). An
         //   OVERALL stage: for each polar axis carrying bar series it computes bar width/offset sharing +
@@ -2461,6 +2472,8 @@ public final class ECharts: EChartsType {
     private func doUpdateZ(
         _ el: Element, _ z: Double, _ zlevel: Double, _ maxZ2In: Double, _ liftLabelZ2: Bool
     ) -> Double {
+        // upstream `traverseUpdateZ` leaves intentionally lifted extended-element subtrees alone.
+        if el.ignoreModelZ { return maxZ2In }
         var maxZ2 = maxZ2In
 
         // Group may also have textContent.

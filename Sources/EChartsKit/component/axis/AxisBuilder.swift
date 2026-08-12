@@ -780,7 +780,15 @@ let builders: [String: AxisElementsBuilder] = [
         //   each break position on the axis line. Upstream's full break-area zigzag rendering is
         //   deferred (see axisBreakMarker.swift); this is the CORE marker. Non-broken axes are
         //   unaffected (buildAxisBreakMarker early-returns when the scale has no breaks).
-        buildAxisBreakMarker(axisModel.axis as! Axis, group, transformGroup.transform, lineStyle)
+        let breakMarkerAmplitude = axisBreakStyleNumber(axisModel.get(["breakArea", "zigzagAmplitude"]))
+            ?? AXIS_BREAK_MARKER_AMPLITUDE
+        buildAxisBreakMarker(
+            axisModel.axis as! Axis,
+            group,
+            transformGroup.transform,
+            lineStyle,
+            breakMarkerAmplitude
+        )
 
         // upstream: let arrows = axisModel.get(['axisLine', 'symbol']); if (arrows != null) { ... createSymbol ... }
         let arrowsRaw = axisModel.get(["axisLine", "symbol"])
@@ -918,7 +926,7 @@ let builders: [String: AxisElementsBuilder] = [
         let nameLocation = cfg.nameLocation
         let nameDirection = cfg.nameDirection
         let textStyleModel = axisModel.getModel("nameTextStyle")
-        let gap = (axisModel.get("nameGap") as? Double) ?? 0
+        let gap = axisOptionDouble(axisModel.get("nameGap")) ?? 0
 
         let axis = axisModel.axis as! Axis
         let extent = axis.getExtent()
@@ -1468,7 +1476,7 @@ func buildAxisMajorTicks(
     }
 
     let lineStyleModel = tickModel.getModel("lineStyle")
-    let tickEndCoord = cfg.tickDirection * ((tickModel.get("length") as? Double) ?? 0)
+    let tickEndCoord = cfg.tickDirection * (axisOptionDouble(tickModel.get("length")) ?? 0)
 
     let ticksCoords = axis.getTicksCoords()
 
@@ -1508,7 +1516,7 @@ func buildAxisMinorTicks(
     }
 
     let lineStyleModel = minorTickModel.getModel("lineStyle")
-    let tickEndCoord = tickDirection * ((minorTickModel.get("length") as? Double) ?? 0)
+    let tickEndCoord = tickDirection * (axisOptionDouble(minorTickModel.get("length")) ?? 0)
 
     // upstream: defaults(lineStyleModel.getLineStyle(), defaults(axisModel.getModel('axisTick').getLineStyle(),
     //   { stroke: axisModel.get(['axisLine','lineStyle','color']) }))
@@ -1741,7 +1749,10 @@ func updateAxisLabelChangableProps(
     _ labelLayoutList: [LabelLayoutData]?,
     _ transformGroup: Group
 ) {
-    let labelMargin = (axisModel.get(["axisLabel", "margin"]) as? Double) ?? 0
+    // Dynamic option numbers may be boxed as either Int or Double. The default axis option uses
+    // the integer literal `margin: 8`, so a Double-only cast silently collapsed the default margin
+    // to zero and placed every cartesian axis label directly against its axis line.
+    let labelMargin = axisOptionDouble(axisModel.get(["axisLabel", "margin"])) ?? 0
     util.each(labelLayoutList, { layout, _ in
         guard let geometry = labelLayoutHelper.ensureLabelLayoutWithGeometry(layout) else {
             return
@@ -1808,6 +1819,18 @@ private func truthy(_ v: Any?) -> Bool {
     if let i = v as? Int { return i != 0 }
     if let s = v as? String { return !s.isEmpty }
     return true
+}
+
+/// Numeric coercion for values read from the dynamic option bag.
+///
+/// Swift preserves the concrete type of numeric literals stored in `[String: Any]`, unlike
+/// JavaScript's single Number type. Accept the representations produced by defaults, callers and
+/// JSON deserialization so layout values do not disappear solely because of their boxing.
+private func axisOptionDouble(_ value: Any?) -> Double? {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber { return value.doubleValue }
+    return nil
 }
 
 /// Build the ZRenderKit `LineShape` (graphic shape) from x1/y1/x2/y2.

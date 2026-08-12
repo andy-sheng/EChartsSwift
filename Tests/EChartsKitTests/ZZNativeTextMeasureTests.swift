@@ -38,6 +38,14 @@ final class ZZNativeTextMeasureTests: XCTestCase {
         XCTAssertGreaterThan(platformApi.measureText("abc", "totally bogus").width, 0)
     }
 
+    func testUnavailableNamedFamilyUsesBrowserDefaultSerifFallback() {
+        let text = "xAxis represents temperature in °C"
+        let missing = platformApi.measureText(text, "14px Microsoft YaHei").width
+        let browserFallback = platformApi.measureText(text, "14px Times New Roman").width
+        XCTAssertEqual(missing, browserFallback, accuracy: 0.01,
+                       "a missing sole named CSS family must fall back like WebKit, not Core Text's Helvetica substitution")
+    }
+
     func testCjkFallsBackToAFontThatHasTheGlyphs() {
         // Helvetica carries no CJK glyphs, so Core Text substitutes; a full-width char advances one em.
         // That happens to equal the ASCII table's per-char fontSize guess, so this asserts the

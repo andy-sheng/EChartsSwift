@@ -31,7 +31,7 @@ import AppKit
 /// as the final tiebreak (Swift's `sort` is not guaranteed stable).
 public func flattenDisplayList(_ root: Element) -> [Displayable] {
     var collected: [Displayable] = []
-    func walk(_ el: Element) {
+    func walk(_ el: Element, _ parentClipPaths: [Path]? = nil) {
         if el.ignore { return }
         // Mirror Storage._updateAndAddDisplayable: run the per-element update hooks before descending.
         // This is load-bearing for `ZRText`, whose `update()` (→ `_updateSubTexts`) BUILDS its `TSpan`
@@ -41,6 +41,25 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         el.beforeUpdate()
         el.update()
         el.afterUpdate()
+
+        // `renderToImage` bypasses ZRender `Storage`, but inherited clipping is normally resolved by
+        // `Storage._updateAndAddDisplayable` into each leaf's `__clipPaths`. Rebuild the same chain here
+        // so a clip attached to a Group (for example LineView's cartesian clip rect) reaches all of its
+        // drawable descendants. Falling back to `leaf.getClipPath()` in the painter is insufficient:
+        // children do not own their parent's clip path.
+        var clipPaths = (el.ignoreClip ? nil : parentClipPaths) ?? []
+        if !el.ignoreClip {
+            var currentClipPath = el.getClipPath()
+            var parentClipPath: Element = el
+            while let clipPath = currentClipPath {
+                clipPath.parent = parentClipPath
+                clipPath.updateTransform()
+                clipPaths.append(clipPath)
+                parentClipPath = clipPath
+                currentClipPath = clipPath.getClipPath()
+            }
+        }
+        let resolvedClipPaths: [Path]? = clipPaths.isEmpty ? nil : clipPaths
         // Duck-type the container check exactly like Storage (shared `activeChildrenRef()`): descend
         // into Group, ZRText (→ TSpan children), AND a combine-morphing Path (→ its sub-paths). The
         // previous `el.isGroup` check was narrower than upstream's `(el as GroupLike).childrenRef` — it
@@ -48,10 +67,11 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         // `render`, `renderComposite`, `renderToImage`) dropped them.
         if let children = el.activeChildrenRef() {
             for i in 0..<children.count {
-                walk(children[i])
+                walk(children[i], resolvedClipPaths)
             }
         }
         else if let d = el as? Displayable {
+            d.__clipPaths = resolvedClipPaths
             collected.append(d)
         }
         // Decal element (`style.decal`) — Storage._updateAndAddDisplayable adds a Path's synthesized
@@ -59,7 +79,7 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         // repeating decal texture paints clipped to the same shape, over the fill. This Storage-bypassing
         // route must mirror that or decals never render via renderToImage/render.
         if let decalEl = (el as? Path)?.getDecalElement(), !decalEl.ignore {
-            walk(decalEl)
+            walk(decalEl, resolvedClipPaths)
         }
         // Attached leader line (`setTextGuideLine`) — Storage._updateAndAddDisplayable adds the host's
         // textGuideLine to the display list right BEFORE its textContent (so the line paints under the
@@ -67,7 +87,7 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         // Without this, pie / (future) labelLine leader lines are silently dropped even though their
         // geometry, stroke and `ignore` are all correct.
         if let guideEl = el.getTextGuideLine(), !guideEl.ignore {
-            walk(guideEl)
+            walk(guideEl, resolvedClipPaths)
         }
         // Attached text content (`setTextContent` + `textConfig`) — its transform was just computed by
         // `el.update()` → `updateInnerText`. zrender's Storage._updateAndAddDisplayable adds the host's
@@ -84,7 +104,7 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
                 textEl.z = host.z
                 textEl.z2 = host.z2
             }
-            walk(textEl)
+            walk(textEl, resolvedClipPaths)
         }
     }
     walk(root)

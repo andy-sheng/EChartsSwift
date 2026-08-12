@@ -168,6 +168,11 @@ extension DataFormatMixin {
         if let seriesSelf = self as? SeriesModel {
             params = seriesSelf.getDataParams(dataIndex, dataType)
         }
+        else if let markerSelf = self as? MarkerModel {
+            // MarkerModel enriches the base params with its host series identity. Without this
+            // virtual route markPoint templates such as `{a}` receive an undefined seriesName.
+            params = markerSelf.getDataParams(dataIndex, dataType)
+        }
         else {
             params = self.getDataParams(dataIndex, dataType)
         }

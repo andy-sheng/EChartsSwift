@@ -27,6 +27,7 @@
 //     ('{a|{a}\n}{b|{b} }{c|{c}}'), not a closure, so the max/min callout cards are fully expressible
 //     and both panes carry them.
 import Foundation
+import EChartsKit
 
 // The three weather icons, vendored from the official asset tree and inlined as data URIs (the pane
 // cannot reach the filesystem). Read once from the repo asset; a read failure yields "".
@@ -39,6 +40,11 @@ private func barRichTextIconURI(_ file: String) -> String {
 private let barRichTextSunnyIcon = barRichTextIconURI("sunny_128.png")
 private let barRichTextCloudyIcon = barRichTextIconURI("cloudy_128.png")
 private let barRichTextShowersIcon = barRichTextIconURI("showers_128.png")
+
+private let barRichTextAxisFormatter: AxisLabelCategoryFormatter = { rawValue, _, _ in
+    let value = String(describing: rawValue)
+    return "{\(value)| }\n{value|\(value)}"
+}
 
 extension EChartsDemoRegistry {
     static let official_bar_rich_text = EChartsDemo(
@@ -226,14 +232,7 @@ option = {
                 "inverse": true,
                 "data": ["Sunny", "Cloudy", "Showers"],
                 "axisLabel": [
-                    // PORT-NOTE: axisLabel.formatter omitted — the JS closure wrapped each category name
-                    // in rich tags: `value => '{' + value + '| }\n{value|' + value + '}'`, i.e. an empty
-                    // first line styled by the same-named rich block (which paints the weather icon as its
-                    // backgroundColor image) above a second line carrying the name in the `value` style.
-                    // Without it the native y-axis shows the bare category names and the `rich` blocks
-                    // below — kept verbatim, they are pure data — never get referenced. (Even tagged, the
-                    // icons would not paint: labelStyle._coerceTextBackgroundColor drops the `{image:}`
-                    // object form. See the header.)
+                    "formatter": (barRichTextAxisFormatter as AxisLabelCategoryFormatter),
                     "margin": 20.0,
                     "rich": barRichTextAxisLabelRich
                 ] as [String: Any]
@@ -292,16 +291,19 @@ private let barRichTextAxisLabelRich: [String: Any] = [
         "align": "center"
     ] as [String: Any],
     "Sunny": [
+        "width": 40.0,
         "height": 40.0,
         "align": "center",
         "backgroundColor": ["image": barRichTextSunnyIcon] as [String: Any]
     ] as [String: Any],
     "Cloudy": [
+        "width": 40.0,
         "height": 40.0,
         "align": "center",
         "backgroundColor": ["image": barRichTextCloudyIcon] as [String: Any]
     ] as [String: Any],
     "Showers": [
+        "width": 40.0,
         "height": 40.0,
         "align": "center",
         "backgroundColor": ["image": barRichTextShowersIcon] as [String: Any]

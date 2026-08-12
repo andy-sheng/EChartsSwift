@@ -869,6 +869,30 @@ open class SliderZoomView: ComponentView {
             }
         }
 
+        // Cartesian axis models in the current port do not yet retain the model-level `grid`
+        // referring link, so `collectReferCoordSysModelInfo` can be empty even though the live Axis2D
+        // already has its Grid back-pointer. Resolve through the representative AxisProxy (the same
+        // fallback used by inside-dataZoom interaction) before falling back to the generic 60% rect.
+        let axisModel = self.dataZoomModel.getFirstTargetAxisModel()
+            ?? self.dataZoomModel.findRepresentativeAxisProxy()?.getAxisModel()
+        if let axis = axisModel?.axis as? Axis2D, let grid = axis.grid {
+            // Slider views are rendered before the port's final Grid.resize pass. At this point
+            // `grid.getRect()` can still be the provisional 60%-viewport rect. Resolve the target
+            // grid's box option directly so the slider does not permanently snapshot that stale size.
+            let gridModel = grid.gridModel
+            let layoutRef = layout.createBoxLayoutReference(gridModel, self.api)
+            rect = layout.getLayoutRect(gridModel.getBoxLayoutParams(), layoutRef.refContainer)
+        }
+
+        // During the first component render the target-axis map can still be unavailable. A slider
+        // without an explicit size conventionally aligns to the first cartesian grid, which is also
+        // strictly more accurate than the legacy viewport-centered 60% fallback.
+        if rect == nil,
+           let gridModel = self.ecModel.getComponent("grid", 0) as? GridModel {
+            let layoutRef = layout.createBoxLayoutReference(gridModel, self.api)
+            rect = layout.getLayoutRect(gridModel.getBoxLayoutParams(), layoutRef.refContainer)
+        }
+
         if rect == nil {
             let width = self.api.getWidth()
             let height = self.api.getHeight()

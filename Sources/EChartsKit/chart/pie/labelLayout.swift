@@ -542,7 +542,13 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
         let labelLine = layout.labelLine
         let notShowLabel = label.x.isNaN || label.y.isNaN
         if let ta = layout.textAlign {
-            label.textStyle.align = ta
+            if label.textStyle.align != ta {
+                label.textStyle.align = ta
+                // The text may already have materialized TSpan children during the earlier geometry
+                // measurement. Mark it dirty so a left-side outer label rebuilds those children with
+                // `.right` alignment instead of keeping the default `.left` and growing into the pie.
+                label.dirtyStyle()
+            }
         }
         if notShowLabel {
             setNotShow(label.states)

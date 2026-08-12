@@ -81,9 +81,17 @@ open class ToolboxView: ComponentView {
 
         var features: [String: ToolboxFeature] = [:]
 
-        // The DataDiffer(oldNames, newNames).add/update/remove is reduced to iterating the feature
-        //   options (no reuse across setOption). Order follows the option's key iteration.
-        for featureName in featureOpts.keys {
+        // JavaScript object keys preserve insertion order, while Swift Dictionary iteration does not.
+        // Official options consistently declare the built-in toolbox features in this order; use the
+        // same stable order and append custom/unknown features deterministically.
+        let builtInOrder = ["dataZoom", "dataView", "magicType", "restore", "saveAsImage", "brush"]
+        // A Swift Dictionary cannot preserve the JavaScript object's authored key order reliably.
+        // Demo/options that need a different order can carry that source order explicitly.
+        let explicitOrder = (toolboxModel.get("_featureOrder") as? [String]) ?? []
+        let preferredOrder = explicitOrder + builtInOrder.filter { !explicitOrder.contains($0) }
+        let orderedFeatureNames = preferredOrder.filter { featureOpts[$0] != nil }
+            + featureOpts.keys.filter { !preferredOrder.contains($0) }.sorted()
+        for featureName in orderedFeatureNames {
             var featureOpt = (featureOpts[featureName] as? [String: Any]) ?? [:]
 
             // FIX#11236, merge feature title from MagicType newOption. TODO: consider seriesIndex ?
@@ -277,7 +285,19 @@ open class ToolboxView: ComponentView {
         let iconPathsStore = toolboxIconPathsInner(featureModel)
         iconPathsStore.paths = [:]
 
-        for (iconName, iconStr) in iconsMap {
+        // Grouped features also use ordered JS objects upstream. Preserve their semantic type order
+        // (dataZoom: zoom/back, magicType: the user-specified type list) instead of Dictionary order.
+        var orderedIconNames: [String] = []
+        if let types = featureModel.get("type") as? [Any] {
+            orderedIconNames = types.compactMap { $0 as? String }.filter { iconsMap[$0] != nil }
+        }
+        if orderedIconNames.isEmpty, featureName == "dataZoom" {
+            orderedIconNames = ["zoom", "back"].filter { iconsMap[$0] != nil }
+        }
+        orderedIconNames += iconsMap.keys.filter { !orderedIconNames.contains($0) }.sorted()
+
+        for iconName in orderedIconNames {
+            guard let iconStr = iconsMap[iconName] else { continue }
             // const path = graphic.createIcon(iconStr, {}, { x:-itemSize/2, y:-itemSize/2, width:itemSize, height:itemSize });
             let path = toolboxCreateIcon(
                 iconStr,

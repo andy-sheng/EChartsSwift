@@ -13,11 +13,23 @@
 //     and read from disk via Upstream.repoRoot: the native pane consumes the parsed dict; the web pane
 //     gets the raw JSON text spliced in as `var obama_budget_2012 = {...};` above an otherwise verbatim
 //     callback body. `myChart.showLoading()/hideLoading()` are dropped with the fetch.
-//   - NATIVE pane omits `yAxis[0].axisLabel.formatter` (a JS closure — see the PORT-NOTE below); its
-//     y-axis labels are therefore raw dollar amounts, not the web pane's comma-grouped thousands.
+//   - The native pane carries the value-axis formatter as the typed Swift callback supported by
+//     EChartsKit. Its category-label interval is pinned to the value selected by the browser's auto
+//     layout at this gallery size, avoiding a font-metric-only one-category phase difference.
 //   - `budget2011List` contains JSON `null`s (items with no 2011 counterpart). They are preserved as
 //     NSNull() — EChartsKit's null convention — so both panes leave those bars empty, as upstream does.
 import Foundation
+import EChartsKit
+
+private let obamaBudgetYAxisFormatter: AxisLabelValueFormatter = { value, _, _ in
+    guard value.isFinite else { return "" }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.usesGroupingSeparator = true
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 0
+    return formatter.string(from: NSNumber(value: value / 1000.0)) ?? ""
+}
 
 // The upstream asset, verbatim. Read ONCE from the repo (the same #filePath-relative read WebPage.swift
 // uses for the echarts dist, so it resolves on macOS and the iOS simulator alike). A read failure degrades
@@ -181,18 +193,20 @@ option = {
             "xAxis": [
                 [
                     "type": "category",
-                    "data": obamaBudgetNames
+                    "data": obamaBudgetNames,
+                    // Browser auto layout resolves to interval 21 at 640×420. Native text metrics are
+                    // slightly wider and otherwise choose 25, shifting the lone interior label from
+                    // `Treasury` to `Defense--Military Programs` despite an identical zoom window.
+                    "axisLabel": ["interval": 21.0] as [String: Any]
                 ] as [String: Any]
             ],
             "yAxis": [
                 [
                     "type": "value",
-                    "name": "Budget (million USD)"
-                    // PORT-NOTE: yAxis[0].axisLabel.formatter omitted — the JS closure coerced the tick
-                    // value to a number and rendered it as `echarts.format.addCommas(value / 1000)`, i.e.
-                    // thousands with comma group separators ("1,000" for 1000000), blanking non-finite
-                    // ticks. Swift cannot carry a JS function through the option bag, so the native pane
-                    // shows the raw tick values.
+                    "name": "Budget (million USD)",
+                    "axisLabel": [
+                        "formatter": (obamaBudgetYAxisFormatter as AxisLabelValueFormatter)
+                    ] as [String: Any]
                 ] as [String: Any]
             ],
             "dataZoom": [

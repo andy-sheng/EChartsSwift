@@ -53,7 +53,11 @@ func layOutGridByContainLabel(_ axesList: [Axis2D], _ gridRect: LayoutRect) {
             if let labelUnionRect = axisHelper.estimateLabelUnionRect(axis) {
                 // upstream: const dim = axis.isHorizontal() ? 'height' : 'width';
                 let dimSizeBase = axis.isHorizontal() ? labelUnionRect.height : labelUnionRect.width
-                let margin = (axis.model.get(["axisLabel", "margin"]) as? Double) ?? 0
+                let rawMargin = axis.model.get(["axisLabel", "margin"])
+                let margin = (rawMargin as? Double)
+                    ?? (rawMargin as? Int).map(Double.init)
+                    ?? (rawMargin as? NSNumber)?.doubleValue
+                    ?? 0
                 let dimSize = dimSizeBase + margin
                 switch axis.position {
                 case "top":

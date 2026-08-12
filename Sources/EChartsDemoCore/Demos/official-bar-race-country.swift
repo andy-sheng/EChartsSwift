@@ -100,6 +100,12 @@ private func barRaceCountryRows(year: Double) -> [[Any]] {
 /// `dataset.source` — the start year's rows, set once and never touched again (upstream's updates go to
 /// `series[0].data`, which takes precedence over the dataset).
 private let barRaceCountryStartRows: [[Any]] = barRaceCountryRows(year: barRaceCountryStartYear)
+private let barRaceCountrySortedStartRows: [[Any]] = barRaceCountryStartRows.sorted {
+    (($0.first as? Double) ?? 0) > (($1.first as? Double) ?? 0)
+}
+private let barRaceCountrySortedStartCategories: [String] = barRaceCountrySortedStartRows.compactMap {
+    $0.count > 3 ? $0[3] as? String : nil
+}
 
 // ---------------------------------------------------------------------------
 // The three JS closures the earlier port dropped, now native (the framework supports them):
@@ -233,6 +239,7 @@ private func barRaceCountryOption(seriesData: [[Any]]?, year: Double) -> [String
         ] as [String: Any],
         "yAxis": [
             "type": "category",
+            "data": barRaceCountrySortedStartCategories,
             "inverse": true,
             "max": 10.0,
             "axisLabel": [
@@ -336,6 +343,9 @@ function getFlag(countryName) {
 }
 let startIndex = 10;
 let startYear = years[startIndex];
+const startSource = data.slice(1).filter(function (d) {
+  return d[4] === startYear;
+}).sort(function (a, b) { return b[0] - a[0]; });
 
 option = {
   grid: {
@@ -353,12 +363,11 @@ option = {
     }
   },
   dataset: {
-    source: data.slice(1).filter(function (d) {
-      return d[4] === startYear;
-    })
+    source: startSource
   },
   yAxis: {
     type: 'category',
+    data: startSource.map(function (d) { return d[3]; }),
     inverse: true,
     max: 10,
     axisLabel: {
@@ -425,12 +434,14 @@ option = {
 // console.log(option);
 myChart.setOption(option);
 
-for (let i = startIndex; i < years.length - 1; ++i) {
-  (function (i) {
-    setTimeout(function () {
-      updateYear(years[i + 1]);
-    }, (i - startIndex) * updateFrequency);
-  })(i);
+if (!__snapshot) {
+  for (let i = startIndex; i < years.length - 1; ++i) {
+    (function (i) {
+      setTimeout(function () {
+        updateYear(years[i + 1]);
+      }, (i - startIndex) * updateFrequency);
+    })(i);
+  }
 }
 
 function updateYear(year) {
@@ -462,5 +473,5 @@ function updateYear(year) {
                 }
             }
         },
-        option: barRaceCountryOption(seriesData: nil, year: barRaceCountryStartYear))
+        option: barRaceCountryOption(seriesData: barRaceCountrySortedStartRows, year: barRaceCountryStartYear))
 }

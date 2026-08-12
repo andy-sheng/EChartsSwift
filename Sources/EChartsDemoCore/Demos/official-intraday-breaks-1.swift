@@ -16,8 +16,23 @@
 //   - `NaN` → `null` in the inlined data. JSON cannot carry NaN; echarts treats a null value the same
 //     (an empty point that breaks the line), which is all the upstream `NaN` is there for.
 //   - The now-unused `roundTime` / `BREAK_GAP` vars (only ever read by `generateData`) are dropped.
-//   - Native pane: xAxis.axisLabel.formatter omitted (JS closure) — see PORT-NOTE.
 import Foundation
+import EChartsKit
+
+// Swift counterpart of the official formatter. `extra.break` is populated for the two labels that
+// border a collapsed overnight interval; those labels add the UTC day on a weak second line.
+private let intradayBreaks1AxisLabelFormatter: AxisLabelTimeFormatter = { timestamp, _, extra in
+    let date = Date(timeIntervalSince1970: timestamp / 1000)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let parts = calendar.dateComponents([.day, .hour, .minute], from: date)
+    let hh = String(format: "%02d", parts.hour ?? 0)
+    let mm = String(format: "%02d", parts.minute ?? 0)
+    let time = "\(hh):\(mm)"
+    guard extra.break != nil else { return time }
+    let dd = String(format: "%02d", parts.day ?? 0)
+    return "\(time)\n{weak|\(dd)d}"
+}
 
 extension EChartsDemoRegistry {
     static let official_intraday_breaks_1 = EChartsDemo(
@@ -133,11 +148,7 @@ option = {
                     "axisLabel": [
                         "showMinLabel": true,
                         "showMaxLabel": true,
-                        // PORT-NOTE: xAxis.axisLabel.formatter omitted — the JS closure formatted every
-                        // tick as '{HH}:{mm}', except a tick sitting on a break (`opt.break`), which also
-                        // got a second line '{weak|{dd}d}' with the day-of-month in grey. Without it the
-                        // native pane falls back to the built-in time formatter, and the `rich.weak` style
-                        // below is inert (nothing emits a {weak|...} tag).
+                        "formatter": (intradayBreaks1AxisLabelFormatter as AxisLabelTimeFormatter),
                         "rich": [
                             "weak": [
                                 "color": "#999"

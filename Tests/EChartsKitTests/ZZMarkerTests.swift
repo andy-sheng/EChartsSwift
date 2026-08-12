@@ -84,6 +84,15 @@ final class ZZMarkerTests: XCTestCase {
         XCTAssertGreaterThan(xSpan, 100.0, "the markLine spans across the grid width")
     }
 
+    func testCoordinateMarkLineHasUnwrappedValueLabel() {
+        let view = makeChart(["data": [["yAxis": 8.0] as [String: Any]]])
+        let texts = labelTexts(view)
+        XCTAssertTrue(texts.contains("8"),
+                      "a fixed yAxis markLine must show its numeric value; got \(texts)")
+        XCTAssertFalse(texts.contains { $0.contains("Optional(") },
+                       "dynamic option values must not leak Swift Optional syntax into labels")
+    }
+
     // ---- a STATISTIC markLine (type:'average') renders at the computed average value ----
     func testAverageMarkLineRenders() {
         // data [5,9,7,12,6] → average = 7.8. Line pixel y ≈ 20 + (1 - 7.8/20)*240 ≈ 166.4.
@@ -114,6 +123,25 @@ final class ZZMarkerTests: XCTestCase {
                       "the average markLine default label shows the rounded value 7.8; got \(texts)")
     }
 
+    func testAverageMarkLineRoundsDecimalTieLikeJavaScriptToFixed() {
+        let view = EChartsView(width: 460, height: 300)
+        let values: [Double] = [
+            2.0, 4.9, 7.0, 23.2, 25.6, 76.7,
+            135.6, 162.2, 32.6, 20.0, 6.4, 3.3
+        ] // mean = 41.625; JS `(41.625).toFixed(2)` -> "41.63".
+        view.setOption([
+            "xAxis": ["type": "category", "data": values.indices.map(String.init)] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "type": "bar", "data": values,
+                "markLine": ["data": [["type": "average"] as [String: Any]] as [Any]]
+            ] as [String: Any]]
+        ])
+        let texts = labelTexts(view)
+        XCTAssertTrue(texts.contains("41.63"), "decimal ties must round like JS toFixed; got \(texts)")
+        XCTAssertFalse(texts.contains("41.62"))
+    }
+
     // ---- an average markLine draws its two end symbols (default symbol: ['circle','arrow']) ----
     func testMarkLineEndSymbolsRender() {
         let view = makeChart(["data": [["type": "average"] as [String: Any]]])
@@ -121,6 +149,32 @@ final class ZZMarkerTests: XCTestCase {
         let toCount = allElements(view).filter { ($0 as? Path)?.name == "to" }.count
         XCTAssertEqual(fromCount, 1, "a markLine draws one 'from' end symbol (circle)")
         XCTAssertEqual(toCount, 1, "a markLine draws one 'to' end symbol (arrow)")
+    }
+
+    func testPairedStatisticMarkLineRenders() {
+        let view = makeChart(["data": [[
+            ["symbol": "none", "x": "90%", "yAxis": "max"] as [String: Any],
+            [
+                "symbol": "circle",
+                "label": ["position": "start", "formatter": "Max"] as [String: Any],
+                "type": "max"
+            ] as [String: Any]
+        ] as [Any]]])
+        let bodies = markLineBodies(view)
+        XCTAssertEqual(bodies.count, 1,
+                       "a two-endpoint pair mixing pixel x and a max statistic must render one markLine")
+        if let shape = bodies.first?.shape as? LineShape {
+            XCTAssertTrue(shape.x1.isFinite && shape.y1.isFinite && shape.x2.isFinite && shape.y2.isFinite,
+                          "paired markLine endpoints must resolve to finite screen coordinates")
+        }
+        let series = view.ec.getModel()?.getSeriesByIndex(0)
+        let lineModel = series.flatMap { MarkerModel.getMarkerModelFromSeries($0, "markLine") }
+        let rawLineItem = lineModel?.getData().getRawDataItem(0)
+        XCTAssertEqual(lineModel?.getData().getItemModel(0).get(["label", "formatter"]) as? String, "Max",
+                       "the merged line-data item must retain the endpoint label formatter; raw=\(String(describing: rawLineItem))")
+        let texts = labelTexts(view)
+        XCTAssertTrue(texts.contains("Max"),
+                      "the paired endpoint's label formatter must survive normalization; got \(texts)")
     }
 
     // ================= markArea =================
@@ -161,6 +215,16 @@ final class ZZMarkerTests: XCTestCase {
         XCTAssertEqual(maxY, 164.0, accuracy: 12.0, "rect bottom edge sits at the pixel for value 8")
         XCTAssertEqual(minX, 50.0, accuracy: 8.0, "rect spans from the grid left")
         XCTAssertEqual(maxX, 430.0, accuracy: 8.0, "rect spans to the grid right")
+    }
+
+    func testMarkAreaShowsStartItemName() {
+        let view = makeAreaChart(["data": [[
+            ["name": "Morning Peak", "xAxis": "B"] as [String: Any],
+            ["xAxis": "D"] as [String: Any]
+        ] as [[String: Any]]]])
+
+        XCTAssertTrue(labelTexts(view).contains("Morning Peak"),
+                      "markArea's default visible label must use the merged area's name")
     }
 
     // ================= markPoint =================

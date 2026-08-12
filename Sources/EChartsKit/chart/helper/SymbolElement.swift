@@ -223,7 +223,11 @@ open class Symbol: Group {
         _ seriesScope: SymbolDrawSeriesScope? = nil, _ opts: SymbolOpts? = nil
     ) {
         guard let symbolPath = self.childAt(0) as? Displayable else { return }
-        let seriesModel = data.hostModel as? SeriesModel
+        // Marker data is hosted by MarkerModel rather than SeriesModel. Both models implement
+        // DataFormatMixin/LabelFetcher, and markPoint rich formatter templates need the marker
+        // model's name/value/series parameters. Keep SeriesModel for animation, but use the
+        // structurally correct label fetcher for label formatting.
+        let labelFetcher = data.hostModel as? LabelFetcher
 
         var emphasisItemStyle: [String: Any]?
         var blurItemStyle: [String: Any]?
@@ -329,7 +333,7 @@ open class Symbol: Group {
         let useNameLabel = opts?.useNameLabel ?? false
 
         var labelOpt = SetLabelStyleOpt()
-        labelOpt.labelFetcher = seriesModel
+        labelOpt.labelFetcher = labelFetcher
         labelOpt.labelDataIndex = Double(idx)
         labelOpt.defaultText = useNameLabel
             ? data.getName(idx)

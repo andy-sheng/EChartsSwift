@@ -123,8 +123,22 @@ open class LineSeriesModel: SeriesModel {
         // Horizontal line spanning the swatch, vertically centered.
         let line = symbol.createSymbol("line", 0, opt.itemHeight / 2, opt.itemWidth, 0, nil, false)
         if let linePath = line as? Path {
-            linePath.pathStyle.stroke = colorZR
-            linePath.pathStyle.lineWidth = 2
+            linePath.useStyle(barStyleFromDict(opt.lineStyle))
+            if linePath.pathStyle.stroke == nil {
+                linePath.pathStyle.stroke = colorZR
+            }
+            // LegendView resolves its default `lineStyle.width:'auto'` from the series' cached
+            // `legendLineStyle` visual. That visual is not populated by this port yet, so the resolved
+            // width arrives here as zero even for an ordinary visible line. Recover the upstream result
+            // from the series model: an explicitly zero-width series (pure area band) keeps no bar;
+            // every positive/default series gets the normal 2 px legend bar when auto resolved to zero.
+            let seriesLineWidth = self.getModel("lineStyle").getLineStyle()["lineWidth"] as? Double
+            if seriesLineWidth == 0 {
+                linePath.pathStyle.lineWidth = 0
+            }
+            else if (linePath.pathStyle.lineWidth ?? 0) <= 0 {
+                linePath.pathStyle.lineWidth = 2
+            }
             linePath.pathStyle.fill = nil
             _ = group.add(linePath)
         }

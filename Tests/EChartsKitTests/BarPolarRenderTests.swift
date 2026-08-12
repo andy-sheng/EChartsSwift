@@ -181,6 +181,55 @@ final class BarPolarRenderTests: XCTestCase {
             XCTAssertTrue(el is Sector, "recreated element should be a Sector instance")
         }
     }
+
+    func testRadialPolarBarMiddleLabelsUseAutomaticSectorRotation() {
+        let ec = ECharts(width: 640, height: 420)
+        ec.setOption([
+            "polar": ["radius": [30.0, "80%"] as [Any]] as [String: Any],
+            "radiusAxis": ["max": 4.0] as [String: Any],
+            "angleAxis": [
+                "type": "category", "data": ["a", "b", "c", "d"], "startAngle": 75.0
+            ] as [String: Any],
+            "series": [[
+                "type": "bar", "coordinateSystem": "polar", "data": [2.0, 1.2, 2.4, 3.6],
+                "label": ["show": true, "position": "middle", "formatter": "{b}: {c}"] as [String: Any]
+            ] as [String: Any]],
+            "animation": false
+        ])
+
+        let sectors = collectSectors(ec.getRoot())
+        XCTAssertEqual(sectors.count, 4)
+        let rotations = sectors.compactMap { $0.textConfig?.rotation }
+        XCTAssertEqual(rotations.count, 4, "every visible polar bar label receives auto rotation")
+        XCTAssertTrue(rotations.contains { abs($0) > 0.1 }, "polar labels must not all remain horizontal")
+        XCTAssertGreaterThan(Set(rotations.map { ($0 * 1_000).rounded() }).count, 2,
+                             "rotation follows each sector's own anchor angle")
+    }
+
+    func testTangentialPolarBarMiddleLabelsUseEachRingMidpoint() {
+        let ec = ECharts(width: 640, height: 420)
+        ec.setOption([
+            "polar": ["radius": [30.0, "80%"] as [Any]] as [String: Any],
+            "angleAxis": ["max": 4.0, "startAngle": 75.0] as [String: Any],
+            "radiusAxis": ["type": "category", "data": ["a", "b", "c", "d"]] as [String: Any],
+            "series": [[
+                "type": "bar", "coordinateSystem": "polar", "data": [2.0, 1.2, 2.4, 3.6],
+                "label": ["show": true, "position": "middle", "formatter": "{b}: {c}"] as [String: Any]
+            ] as [String: Any]],
+            "animation": false
+        ])
+
+        let sectors = collectSectors(ec.getRoot())
+        XCTAssertEqual(sectors.count, 4)
+        _ = ec.getStorage().getDisplayList(true)
+        let labelPoints = sectors.compactMap { sector -> String? in
+            guard let t = sector.getTextContent()?.innerTransformable else { return nil }
+            return "\((t.x * 10).rounded())|\((t.y * 10).rounded())"
+        }
+        XCTAssertEqual(labelPoints.count, 4)
+        XCTAssertEqual(Set(labelPoints).count, 4,
+                       "each tangential ring label must use its own sector midpoint, not one shared bbox point")
+    }
 }
 
 #if canImport(QuartzCore) && canImport(CoreGraphics)

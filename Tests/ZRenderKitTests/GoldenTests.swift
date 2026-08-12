@@ -442,14 +442,12 @@ final class CALayerPainterSmokeTests: XCTestCase {
         var fill = PathStyleProps(); fill.fill = .string("red"); cell.useStyle(fill)
         _ = g2.add(cell)
 
-        // Populate each element's __clipPaths chain exactly as the live ZRender path does.
-        let storage = Storage()
-        storage.addRoot(g1)
-        _ = storage.getDisplayList(true)
+        // The snapshot route bypasses live ZRender Storage, so `flattenDisplayList` itself must
+        // propagate both parent clips to the leaf before the painter draws it.
+        XCTAssertNil(cell.__clipPaths)
+        let img = try XCTUnwrap(renderToImage(group: g1, size: CGSize(width: 200, height: 200), dpr: 1))
         XCTAssertEqual(cell.__clipPaths?.count, 2,
                        "leaf should inherit BOTH parent group clips (rect ∩ circle)")
-
-        let img = try XCTUnwrap(renderToImage(group: g1, size: CGSize(width: 200, height: 200), dpr: 1))
 
         // (50,100): inside rect (x<100) AND inside circle (dist 50<80) → painted red.
         let inside = try pixelRGBA(img, 50, 100)

@@ -359,10 +359,103 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
         //       axisBreakHelper.rectCoordBuildBreakAxis(
         //           axisGroup, axisView, axisModel, gridModel.coordinateSystem.getRect(), api);
         //   }
-        // PORT-NOTE (deferred): requires `component/axis/axisBreakHelper` (the axis-break feature), not ported;
-        //   `getAxisBreakHelper()` returns nil, so this builder is a no-op (matches upstream when the
-        //   feature is not `use()`-d). Deferred per the bar+axis milestone scope.
-        _ = (axisView, axisGroup, axisModel, gridModel, api)
+        // Cartesian break-area pass. This mirrors axisBreakHelperImpl's two irregular zigzag borders
+        // plus the polygon between them. At a zero-gap break only the first border is drawn, which is
+        // also the straight plot-spanning line used by the intraday demos when zigzagAmplitude is zero.
+        _ = (axisView, api)
+        let axis = axisModel.axis as! Axis2D
+        guard hasBreaks(axis.scale) else { return }
+        let breakAreaModel = axisModel.getModel("breakArea")
+        guard (breakAreaModel.get("show") as? Bool) != false else { return }
+
+        let styleDict = breakAreaModel.getModel("itemStyle").getItemStyle()
+        let itemStyle = lineStylePropsFromDict(styleDict)
+        var borderStyle = itemStyle
+        borderStyle.fill = nil
+
+        let amplitude = styleNum(breakAreaModel.get("zigzagAmplitude")) ?? 4
+        let minSpan = max(2, styleNum(breakAreaModel.get("zigzagMinSpan")) ?? 0)
+        let maxSpan = max(minSpan, styleNum(breakAreaModel.get("zigzagMaxSpan")) ?? 0)
+        let zigzagZ = styleNum(breakAreaModel.get("zigzagZ")) ?? 100
+
+        let gridRect = (gridModel.coordinateSystem as! Grid).getRect()
+        let breakAreaGroup = Group(["ignoreModelZ": true])
+        _ = axisGroup.add(breakAreaGroup)
+        for brk in getBreaksUnsafe(axis.scale) {
+            var startCoord = axis.toGlobalCoord(axis.dataToCoord(brk.vmin, true))
+            var endCoord = axis.toGlobalCoord(axis.dataToCoord(brk.vmax, true))
+            if endCoord < startCoord { swap(&startCoord, &endCoord) }
+
+            let traverseStart = axis.isHorizontal() ? gridRect.y : gridRect.x
+            let traverseEnd = axis.isHorizontal()
+                ? gridRect.y + gridRect.height
+                : gridRect.x + gridRect.width
+            var pointsA: [VectorArray] = []
+            var pointsB: [VectorArray] = []
+            var current = traverseStart
+            var swapSide = true
+            var randomState = UInt64(brk.vmin.bitPattern ^ brk.vmax.bitPattern) | 1
+
+            while true {
+                let first = pointsA.isEmpty
+                let last = current >= traverseEnd
+                if last { current = traverseEnd }
+
+                var a = startCoord
+                var b = endCoord
+                if !first && !last {
+                    let offset = swapSide ? -amplitude : amplitude
+                    a += offset
+                    b += offset
+                }
+                if axis.isHorizontal() {
+                    pointsA.append(VectorArray(a, current))
+                    pointsB.append(VectorArray(b, current))
+                }
+                else {
+                    pointsA.append(VectorArray(current, a))
+                    pointsB.append(VectorArray(current, b))
+                }
+                if last { break }
+
+                // Upstream caches Math.random() values so the irregular outline remains stable.
+                // Use a deterministic LCG here for the same visual character and stable snapshots.
+                randomState = randomState &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                let unit = Double(randomState >> 11) / Double(UInt64.max >> 11)
+                current += minSpan + unit * (maxSpan - minSpan)
+                swapSide.toggle()
+            }
+
+            let suffix = "\(brk.vmin)_\(brk.vmax)"
+            func addBorder(_ points: [VectorArray], _ name: String) {
+                var shape = PolylineShape()
+                shape.points = points
+                let line = Polyline(["shape": shape as PathShape, "style": borderStyle])
+                line.anid = "break_\(name)_\(suffix)"
+                line.silent = true
+                line.z = zigzagZ
+                // Axis component z propagation resets descendant `z` later in the render pass.
+                // Keep the upstream zigzagZ ordering in z2 as well so both borders stay above bars.
+                line.z2 = zigzagZ + 1
+                _ = breakAreaGroup.add(line)
+            }
+
+            addBorder(pointsA, "a")
+            if brk.gapReal != 0 {
+                addBorder(pointsB, "b")
+                var polygonShape = PolygonShape()
+                polygonShape.points = pointsA + pointsB.reversed()
+                var polygonStyle = PathStyleProps()
+                polygonStyle.fill = itemStyle.fill
+                polygonStyle.opacity = itemStyle.opacity
+                let polygon = Polygon(["shape": polygonShape as PathShape, "style": polygonStyle])
+                polygon.anid = "break_c_\(suffix)"
+                polygon.silent = true
+                polygon.z = zigzagZ
+                polygon.z2 = zigzagZ
+                _ = breakAreaGroup.add(polygon)
+            }
+        }
     }
 ]
 
@@ -423,6 +516,7 @@ private func subPixelOptimizeLine(_ shape: LineShape, _ lineWidth: Double?) -> L
 //   (`number | number[]`) is not bridged yet (see LineDash). Same deviation as BarView.barStyleFromDict.
 private func lineStylePropsFromDict(_ style: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
+    if let v = style["fill"] as? String { s.fill = .string(v) }
     if let v = style["stroke"] as? String { s.stroke = .string(v) }
     if let v = style["lineWidth"] as? Double { s.lineWidth = v }
     if let v = style["opacity"] as? Double { s.opacity = v }

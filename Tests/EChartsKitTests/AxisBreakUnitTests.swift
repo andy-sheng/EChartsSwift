@@ -162,4 +162,79 @@ final class AxisBreakUnitTests: XCTestCase {
         }
         XCTAssertTrue(markerFound, "a value axis with `breaks` must render a break-marker glyph end-to-end")
     }
+
+    func testTimeAxisFormatterClosureSurvivesOptionMergeAndIsInvoked() {
+        var calls = 0
+        let formatter: AxisLabelTimeFormatter = { value, _, extra in
+            calls += 1
+            return extra.break == nil ? "plain-\(Int(value))" : "broken-\(Int(value))"
+        }
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "useUTC": true,
+            "xAxis": [
+                "type": "time",
+                "axisLabel": ["formatter": formatter as AxisLabelTimeFormatter] as [String: Any],
+                "breaks": [["start": 2_000.0, "end": 3_000.0, "gap": 10.0] as [String: Any]]
+            ] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "line", "data": [[1_000.0, 1.0], [4_000.0, 2.0]]] as [String: Any]]
+        ])
+
+        let xAxis = ec.getModel()?.getComponent("xAxis")
+        let stored = xAxis?.getModel("axisLabel").get("formatter")
+        XCTAssertTrue(util.isFunction(stored), "time formatter must remain a function after option merge")
+        XCTAssertNotNil(stored as? AxisLabelTimeFormatter, "stored formatter must keep its exact closure type")
+        XCTAssertGreaterThan(calls, 0, "rendering the time axis must invoke its formatter closure")
+        let renderCalls = calls
+        _ = (stored as? AxisLabelTimeFormatter)?(1_000, 0, TimeAxisLabelFormatterExtraParams(time: nil, level: 0))
+        XCTAssertEqual(calls, renderCalls + 1, "stored formatter remains callable")
+        calls = 0
+        guard let axisModel = xAxis as? AxisBaseModel, let axis = axisModel.axis as? Axis else {
+            return XCTFail("xAxis model must expose its rendered Axis")
+        }
+        XCTAssertEqual(axis.type, "time")
+        let axisStored = axis.getLabelModel().get("formatter")
+        XCTAssertTrue(util.isFunction(axisStored), "rendered Axis must see the formatter on its model")
+        XCTAssertNotNil(axisStored as? AxisLabelTimeFormatter)
+        _ = axisHelper.makeLabelFormatter(axis)(ScaleTick(value: 1_000), 0)
+        XCTAssertEqual(calls, 1, "AxisHelper must invoke the time formatter for a label")
+    }
+
+    func testCartesianBreakAreaDrawsZigzagBordersAndFill() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "xAxis": [
+                "type": "value",
+                "breaks": [["start": 40.0, "end": 60.0, "gap": 10.0] as [String: Any]]
+            ] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "line", "data": [[0.0, 1.0], [100.0, 2.0]]] as [String: Any]]
+        ])
+        var borders: [Polyline] = []
+        var fill: ZRenderKit.Polygon?
+        _ = ec.getRoot().traverse { el in
+            if let line = el as? Polyline,
+               line.anid?.hasPrefix("break_a_") == true || line.anid?.hasPrefix("break_b_") == true {
+                borders.append(line)
+            }
+            if let polygon = el as? ZRenderKit.Polygon, polygon.anid?.hasPrefix("break_c_") == true { fill = polygon }
+            return false
+        }
+        XCTAssertEqual(borders.count, 2, "a nonzero break gap has two facing zigzag borders")
+        XCTAssertNotNil(fill, "the area between nonzero-gap borders must be filled")
+        if let points = (borders.first?.shape as? PolylineShape)?.points {
+            XCTAssertGreaterThan(points.count, 2, "the break border must contain zigzag vertices")
+            XCTAssertGreaterThan(abs((points.last?.y ?? 0) - (points.first?.y ?? 0)), 100, "an x-axis break border spans the plot height")
+        }
+        XCTAssertNotNil(borders.first?.pathStyle.lineDash, "default break border is dashed")
+        XCTAssertNotNil(fill?.pathStyle.fill, "default break area has a fill color")
+    }
+
+    func testZeroZigzagAmplitudeSuppressesAxisBreakMarker() {
+        let axis = Axis("x", makeBrokenIntervalScale(), [0, 400])
+        let group = Group()
+        let markers = buildAxisBreakMarker(axis, group, nil, PathStyleProps(), 0)
+        XCTAssertTrue(markers.isEmpty, "a flat break edge must not leave a zigzag axis glyph")
+    }
 }

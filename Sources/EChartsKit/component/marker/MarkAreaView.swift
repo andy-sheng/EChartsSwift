@@ -548,10 +548,24 @@ public final class MarkAreaView: MarkerView {
             // setLabelStyle(polygon, getLabelStatesModels(itemModel), { labelFetcher: maModel,
             //     labelDataIndex: idx, defaultText: areaData.getName(idx) || '',
             //     inheritColor: isString(style.fill) ? colorUtil.modifyAlpha(style.fill, 1) : tokens.color.neutral99 });
-            // PORT-NOTE (deferred): only the `setLabelStyle(...)` half above stays deferred —
-            //   `label/labelStyle` (setLabelStyle/getLabelStatesModels) and `visual/tokens` (neutral99)
-            //   ARE ported, but the `labelFetcher: maModel` / `inheritColor` wiring is a separate
-            //   follow-up. The host-model tagging below is NOT deferred (see next line).
+            let styleDict = style as? [String: Any]
+            let inheritColor: String
+            if let fill = styleDict?["fill"] as? String {
+                inheritColor = ZRenderKit.color.modifyAlpha(fill, 1) ?? fill
+            }
+            else {
+                inheritColor = tokens.color.neutral99
+            }
+            var labelOpt = SetLabelStyleOpt()
+            labelOpt.labelFetcher = maModel
+            labelOpt.labelDataIndex = Double(idx)
+            labelOpt.defaultText = areaData.getName(idx)
+            labelOpt.inheritColor = inheritColor
+            labelStyle.setLabelStyle(
+                polygon,
+                labelStyle.getLabelStatesModels(itemModel),
+                labelOpt
+            )
 
             // getECData(polygon).dataModel = maModel;
             // PORT-NOTE: `MarkAreaModel` conforms to `DataModel` (inherited from `MarkerModel`, see

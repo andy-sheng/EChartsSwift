@@ -110,4 +110,28 @@ final class PieLabelLayoutTests: XCTestCase {
         check(rects.filter { $0.x + $0.width / 2 < 250 })
         check(rects.filter { $0.x + $0.width / 2 >= 250 })
     }
+
+    func testLeftOuterLabelRebuildsTSpanWithRightAlignment() {
+        let ec = ECharts(width: 640, height: 420)
+        ec.setOption([
+            "series": [[
+                "type": "pie",
+                "radius": "30%",
+                "center": ["50%", "25%"],
+                "label": ["formatter": "{b}: {c} ({d}%)"] as [String: Any],
+                "data": [
+                    ["name": "Milk Tea", "value": 56.5] as [String: Any],
+                    ["name": "Matcha Latte", "value": 51.1] as [String: Any],
+                    ["name": "Cheese Cocoa", "value": 40.1] as [String: Any],
+                    ["name": "Walnut Brownie", "value": 25.2] as [String: Any]
+                ]
+            ] as [String: Any]]
+        ])
+
+        let cheeseTSpan = ec.getStorage().getDisplayList(true).compactMap { $0 as? TSpan }.first {
+            $0.tspanStyle.text?.contains("Cheese Cocoa") == true
+        }
+        XCTAssertEqual(cheeseTSpan?.tspanStyle.textAlign, "right",
+                       "a left-side outer label must extend away from the pie")
+    }
 }

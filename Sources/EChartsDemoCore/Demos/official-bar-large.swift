@@ -11,10 +11,9 @@
 //      SyntaxError in a classic script and would blank the whole page). `echarts.format.addCommas`
 //      and `echarts.format.formatTime` stay as-is: both are real echarts API, still exported by the
 //      6.1.0 dist the pane loads.
-//   2. The data is RANDOM (`Math.random()`) and regenerated on every load — upstream ships no fixed
-//      dataset, so the two panes CANNOT show identical bars by construction. The native pane runs
-//      the SAME recurrence off a SEEDED PRNG so at least its frame is stable across runs and
-//      diffable against itself. Compare the panes for shape/scale/axes/dataZoom, not per-bar values.
+//   2. The upstream data is RANDOM (`Math.random()`) and regenerated on every load. The gallery pins
+//      both panes to the same seeded 32-bit LCG, keeping the original recurrence and call order while
+//      making the 500,000 bars and their dataZoom shadow directly comparable.
 //   3. Upstream pushes `next(i).toFixed(2)` — numeric STRINGS ("3288.00"). `next()` is always
 //      integer-valued (`Math.max(0, Math.round(...) + 3000)`), so the native pane carries plain
 //      Doubles: the same numbers, minus a string round-trip the Swift option bag has no reason to
@@ -39,18 +38,14 @@ import Foundation
 
 private let barLargeDataCount = 500_000
 
-/// Upstream drives everything off `Math.random()`; a gallery frame must be reproducible, so the
-/// native pane runs the identical recurrence on a seeded xorshift64* stream (see DEVIATION 2).
+/// Seeded 32-bit LCG shared bit-for-bit with `rnd()` in the web pane.
 private struct BarLargeRandom {
-    private var state: UInt64
-    init(seed: UInt64) { self.state = seed }
+    private var state: UInt32
+    init(seed: UInt32) { self.state = seed }
     /// The `Math.random()` contract: a Double in [0, 1).
     mutating func next01() -> Double {
-        state ^= state >> 12
-        state ^= state << 25
-        state ^= state >> 27
-        let x = state &* 2_685_821_657_736_338_717
-        return Double(x >> 11) * (1.0 / 9_007_199_254_740_992.0)   // 53-bit mantissa, like V8
+        state = state &* 1_664_525 &+ 1_013_904_223
+        return Double(state) / 4_294_967_296.0
     }
 }
 
@@ -62,7 +57,7 @@ private struct BarLargeRandom {
 /// no month/year boundary is crossed, which lets this be integer arithmetic instead of 500k Calendar
 /// round-trips.
 private let barLargeGenerated: (categories: [String], values: [Double]) = {
-    var rng = BarLargeRandom(seed: 0x9E37_79B9_7F4A_7C15)
+    var rng = BarLargeRandom(seed: 0x1234_5678)
     var baseValue = rng.next01() * 1000
     var smallBaseValue = 0.0   // JS `let smallBaseValue;` — never read before idx 0 assigns it.
 
@@ -107,6 +102,12 @@ extension EChartsDemoRegistry {
         nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
+let barLargeRngState = 0x12345678 >>> 0;
+function barLargeRnd() {
+  barLargeRngState = (Math.imul(barLargeRngState, 1664525) + 1013904223) >>> 0;
+  return barLargeRngState / 4294967296;
+}
+
 const dataCount = 5e5;
 const data = generateData(dataCount);
 
@@ -162,22 +163,24 @@ option = {
       type: 'bar',
       data: data.valueData,
       // Set `large` for large data amount
-      large: true
+      large: true,
+      // Snapshot harness: finish the full large path synchronously before capture.
+      progressive: 0
     }
   ]
 };
 
 function generateData(count) {
-  let baseValue = Math.random() * 1000;
+  let baseValue = barLargeRnd() * 1000;
   let time = +new Date(2011, 0, 1);
   let smallBaseValue;
 
   function next(idx) {
     smallBaseValue =
       idx % 30 === 0
-        ? Math.random() * 700
-        : smallBaseValue + Math.random() * 500 - 250;
-    baseValue += Math.random() * 20 - 10;
+        ? barLargeRnd() * 700
+        : smallBaseValue + barLargeRnd() * 500 - 250;
+    baseValue += barLargeRnd() * 20 - 10;
     return Math.max(0, Math.round(baseValue + smallBaseValue) + 3000);
   }
 
@@ -246,7 +249,8 @@ function generateData(count) {
                     "type": "bar",
                     "data": barLargeValueData,
                     // Set `large` for large data amount
-                    "large": true
+                    "large": true,
+                    "progressive": 0.0
                 ] as [String: Any]
             ]
         ])

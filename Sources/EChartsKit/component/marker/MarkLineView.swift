@@ -97,7 +97,15 @@ private func markLineTransform(
 
             if itemMpo.yAxis != nil || itemMpo.xAxis != nil {
                 valueAxis = coordSys?.getAxis(itemMpo.yAxis != nil ? "y" : "x")
-                value = util.retrieve(itemMpo.yAxis, itemMpo.xAxis)
+                // `util.retrieve<T>` becomes a nested Optional when `T == Any?`; assigning that result
+                // to `Any?` boxes the inner Optional and later string interpolation renders labels such
+                // as `Optional(50.0)`. Select explicitly so the concrete numeric value is preserved.
+                if let yAxisValue = itemMpo.yAxis {
+                    value = yAxisValue
+                }
+                else {
+                    value = itemMpo.xAxis
+                }
             }
             else {
                 let axisInfo = markerHelper.getAxisInfo(itemMpo, data, coordSys!, seriesModel)
@@ -151,7 +159,17 @@ private func markLineTransform(
     }
     else {
         // item is the 2D pair [start, end]
-        itemArray = ((item as? [Any?]) ?? []).map { markerPositionOption(from: $0) }
+        let rawPair: [Any?]
+        if let pair = item as? [Any?] {
+            rawPair = pair
+        }
+        else if let pair = item as? [Any] {
+            rawPair = pair.map { Optional($0) }
+        }
+        else {
+            rawPair = []
+        }
+        itemArray = rawPair.map { markerPositionOption(from: $0) }
     }
 
     // JS `itemArray[i]` is `undefined` when absent (invalid data => `[]`); replicate via bounds check.
@@ -570,23 +588,23 @@ private func createList(
     // Bridge the marker getter (item: MarkerPositionOption) to the store's `DimValueGetter`
     //   (dataItem: Any?, property, dataIndex, dimIndex). See markerHelper.swift.
     let dimValueGetter: DimValueGetter = { _, dataItem, property, dataIndex, dimIndex in
-        let item = (dataItem as? MarkerPositionOption) ?? MarkerPositionOption()
+        let item = markerPositionOption(from: dataItem) ?? MarkerPositionOption()
         return markerGetter(item, property ?? "", Double(dataIndex), dimIndex)
     }
 
     fromData.initData(
-        util.map(optData) { item, _ in (item.count > 0 ? item[0] : nil) as Any },
+        util.map(optData) { item, _ in markerPositionBag(item.count > 0 ? item[0] : nil) as Any },
         nil,
         dimValueGetter
     )
     toData.initData(
-        util.map(optData) { item, _ in (item.count > 1 ? item[1] : nil) as Any },
+        util.map(optData) { item, _ in markerPositionBag(item.count > 1 ? item[1] : nil) as Any },
         nil,
         dimValueGetter
     )
-    lineData.initData(
-        util.map(optData) { item, _ in (item.count > 2 ? item[2] : nil) as Any }
-    )
+    lineData.initData(util.map(optData) { item, _ in
+        markerPositionBag(item.count > 2 ? item[2] : nil) as Any
+    })
     lineData.hasItemOption = true
 
     // Stash the resolved line VALUE (the merged item[2].value) as an item visual so the LineDraw
@@ -613,6 +631,7 @@ private func markerPositionOption(from raw: Any?) -> MarkerPositionOption? {
     if let existing = raw as? MarkerPositionOption { return existing }
     var m = MarkerPositionOption()
     guard let d = raw as? [String: Any] else { return m }
+    m.rawOption = d
     m.x = d["x"]
     m.y = d["y"]
     m.relativeTo = d["relativeTo"] as? String
@@ -633,6 +652,11 @@ private func markerPositionOption(from raw: Any?) -> MarkerPositionOption? {
 //   field fill (MarkerPositionOption fields are scalars/arrays).
 private func mergePositionOption(_ target: inout MarkerPositionOption, _ source: MarkerPositionOption?) {
     guard let source = source else { return }
+    if let sourceRaw = source.rawOption {
+        var raw = target.rawOption ?? [:]
+        mergeRawOption(&raw, sourceRaw)
+        target.rawOption = raw
+    }
     if target.x == nil { target.x = source.x }
     if target.y == nil { target.y = source.y }
     if target.relativeTo == nil { target.relativeTo = source.relativeTo }
@@ -645,6 +669,42 @@ private func mergePositionOption(_ target: inout MarkerPositionOption, _ source:
     if target.valueIndex == nil { target.valueIndex = source.valueIndex }
     if target.valueDim == nil { target.valueDim = source.valueDim }
     if target.value == nil { target.value = source.value }
+}
+
+// zrender `merge(target, source, false)` recursively fills object fields. MarkerModel's
+// `fillLabel` gives the first endpoint an empty `label` bag, so a shallow merge would treat that
+// bag as final and discard the second endpoint's `label.formatter` / `label.position`.
+private func mergeRawOption(_ target: inout [String: Any], _ source: [String: Any]) {
+    for (key, sourceValue) in source {
+        if var targetDict = target[key] as? [String: Any],
+           let sourceDict = sourceValue as? [String: Any] {
+            mergeRawOption(&targetDict, sourceDict)
+            target[key] = targetDict
+        }
+        else if target[key] == nil {
+            target[key] = sourceValue
+        }
+    }
+}
+
+// Preserve each endpoint's original symbol/label/style options while exposing the normalized
+// coordinate/value fields to SeriesData's item model and dimension getter.
+private func markerPositionBag(_ item: MarkerPositionOption?) -> [String: Any] {
+    guard let item else { return [:] }
+    var bag = item.rawOption ?? [:]
+    if let value = item.x { bag["x"] = value }
+    if let value = item.y { bag["y"] = value }
+    if let value = item.relativeTo { bag["relativeTo"] = value }
+    if let value = item.coord { bag["coord"] = value }
+    if let value = item.xAxis { bag["xAxis"] = value }
+    if let value = item.yAxis { bag["yAxis"] = value }
+    if let value = item.radiusAxis { bag["radiusAxis"] = value }
+    if let value = item.angleAxis { bag["angleAxis"] = value }
+    if let value = item.type { bag["type"] = value.rawValue }
+    if let value = item.valueIndex { bag["valueIndex"] = value }
+    if let value = item.valueDim { bag["valueDim"] = value }
+    if let value = item.value { bag["value"] = value }
+    return bag
 }
 
 // util.retrieve2 replicated for `Any?` (`value0 != null ? value0 : value1`).
@@ -664,8 +724,8 @@ private func getVisualFromData(_ data: SeriesData, _ key: String) -> Any? {
 // JS `+(x.toFixed(precision))` — format to `precision` decimals then reparse to a number.
 private func toFixedNumber(_ x: Double, _ precision: Int) -> Double {
     if x.isNaN || x.isInfinite { return x }
-    let str = String(format: "%.\(Swift.max(0, precision))f", x)
-    return Double(str) ?? x
+    let factor = pow(10.0, Double(Swift.max(0, precision)))
+    return (x * factor).rounded(.toNearestOrAwayFromZero) / factor
 }
 
 // Coerce a dynamic value to Double for numeric comparisons (nil if non-numeric).

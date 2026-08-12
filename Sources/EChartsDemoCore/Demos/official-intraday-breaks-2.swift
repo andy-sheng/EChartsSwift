@@ -8,9 +8,23 @@
 //     same generator was run ONCE with a seeded PRNG in place of `Math.random()` and its 242 points
 //     are inlined verbatim into BOTH panes, so the two are diffable. Everything else — the break
 //     bounds, the walk formula, the option — is the official source unchanged.
-//   - Native pane: `xAxis[0].axisLabel.formatter` omitted (a JS closure; see PORT-NOTE), so the
-//     native tick labels are the default time-axis labels rather than `{HH}:{mm}` / the merged
-//     `11:30/13:00` break label.
+import Foundation
+import EChartsKit
+
+private func intradayBreaks2UTCTime(_ timestamp: Double) -> String {
+    let date = Date(timeIntervalSince1970: timestamp / 1000)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let parts = calendar.dateComponents([.hour, .minute], from: date)
+    return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+}
+
+private let intradayBreaks2AxisLabelFormatter: AxisLabelTimeFormatter = { value, _, extra in
+    guard let brk = extra.break else { return intradayBreaks2UTCTime(value) }
+    guard brk.type == "start" else { return "" }
+    return "\(intradayBreaks2UTCTime(brk.start))/\(intradayBreaks2UTCTime(brk.end))"
+}
+
 extension EChartsDemoRegistry {
     static let official_intraday_breaks_2 = EChartsDemo(
         name: "official-intraday-breaks-2", category: "candlestick",
@@ -164,11 +178,8 @@ option = {
                     "interval": 1000.0 * 60.0 * 30.0, // 30 minutes
                     "axisLabel": [
                         "showMinLabel": true,
-                        "showMaxLabel": true
-                        // PORT-NOTE: xAxis[0].axisLabel.formatter omitted — a JS closure. It rendered
-                        // every normal tick as `echarts.time.format(value, '{HH}:{mm}', true)` (UTC),
-                        // and for the break's own labels emitted a single merged `11:30/13:00` on the
-                        // break START tick and an empty string on the break END tick.
+                        "showMaxLabel": true,
+                        "formatter": (intradayBreaks2AxisLabelFormatter as AxisLabelTimeFormatter)
                     ] as [String: Any],
                     "breakLabelLayout": [
                         // Disable auto move of break labels if overlapping,

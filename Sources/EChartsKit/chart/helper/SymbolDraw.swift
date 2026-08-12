@@ -31,6 +31,14 @@ public protocol SymbolClipShape {
     func contain(_ x: Double, _ y: Double) -> Bool
 }
 
+// The coordinate-system clip areas already expose the exact containment contract
+// SymbolDraw needs.  Make the concrete area types conform so callers such as
+// LineView can pass their clip area through instead of silently losing it at an
+// `as? SymbolClipShape` cast.  Without this witness, line symbols outside a
+// category/value axis remained visible even though the polyline itself was clipped.
+extension BoundingRect: SymbolClipShape {}
+extension PolarArea: SymbolClipShape {}
+
 /// upstream: SymbolDrawUpdateOpt (subset — the fields SymbolDraw consumes).
 public struct SymbolDrawUpdateOpt {
     public var disableAnimation: Bool?

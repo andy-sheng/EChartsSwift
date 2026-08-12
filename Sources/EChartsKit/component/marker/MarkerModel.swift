@@ -71,6 +71,9 @@ public enum MarkerStatisticType: String {
 //   array items in the user option are `[String: Any]` dicts converted to this struct by the
 //   per-type views (dependent stage) before being handed to `markerHelper.dataTransform`.
 public struct MarkerPositionOption {
+    // Full source option bag. The typed fields drive coordinate calculations, while marker views
+    // need the original per-end symbol/label/style options when constructing item models.
+    public var rawOption: [String: Any]?
     // Priority: x/y > coord(xAxis, yAxis) > type
 
     // Absolute position, px or percent string

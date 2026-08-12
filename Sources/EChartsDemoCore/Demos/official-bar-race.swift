@@ -13,11 +13,9 @@
 // (see EChartsDemoChart), passing `notMerge: false` because upstream's tick is a merge — the axes, label,
 // legend and animation settings from the initial option must survive it.
 //
-// A NOTE FOR ANYONE DIFFING THE HEADLESS PNGs: they are one step apart, and that is the harness, not the
-// port. The snapshot harness neuters `setInterval` but leaves `setTimeout` real (echarts schedules its own
-// internal work on it), so the web PNG has already run the `setTimeout(run, 0)` step and shows seed + one
-// bump. The native still-frame never calls `drive` at all (a PNG has no timeline), so it shows the bare
-// seed. Live, in the gallery, both panes run the same 3s cadence. Compare the LIVE panes.
+// The headless PNG path compares the deterministic sorted seed frame. The live gallery still drives the
+// upstream 0ms kick and 3s cadence through `drive`; the web pane only schedules those timers when the
+// snapshot harness has not set `__snapshot`.
 //
 // DEVIATIONS from the official source:
 //  - THE SEED DATA IS PINNED, and the SAME five values feed BOTH panes (inlined into webOptionJS as a JS
@@ -60,6 +58,11 @@ private func barRaceStep(_ data: inout [Double]) {
     }
 }
 
+private let barRaceCategories = ["A", "B", "C", "D", "E"]
+private func barRacePairs(_ values: [Double]) -> [[Any]] {
+    zip(values, barRaceCategories).map { [$0.0, $0.1] }
+}
+
 extension EChartsDemoRegistry {
     static let official_bar_race = EChartsDemo(
         name: "official-bar-race", category: "bar",
@@ -72,6 +75,10 @@ extension EChartsDemoRegistry {
 // pinned array the native pane starts from is inlined here instead, so frame 0 is diffable. Everything below
 // — including `run()`, which keeps rolling fresh random values — is the official source.
 const data = \#(barRaceDataJS);
+const categories = ['A', 'B', 'C', 'D', 'E'];
+function pairedData() {
+  return data.map(function (value, index) { return [value, categories[index]]; });
+}
 
 option = {
   xAxis: {
@@ -79,7 +86,7 @@ option = {
   },
   yAxis: {
     type: 'category',
-    data: ['A', 'B', 'C', 'D', 'E'],
+    data: ['C', 'E', 'A', 'D', 'B'],
     inverse: true,
     animationDuration: 300,
     animationDurationUpdate: 300,
@@ -90,7 +97,7 @@ option = {
       realtimeSort: true,
       name: 'X',
       type: 'bar',
-      data: data,
+      data: pairedData(),
       label: {
         show: true,
         position: 'right',
@@ -119,18 +126,20 @@ function run() {
     series: [
       {
         type: 'bar',
-        data
+        data: pairedData()
       }
     ]
   });
 }
 
-setTimeout(function () {
-  run();
-}, 0);
-setInterval(function () {
-  run();
-}, 3000);
+if (!__snapshot) {
+  setTimeout(function () {
+    run();
+  }, 0);
+  setInterval(function () {
+    run();
+  }, 3000);
+}
 """#,
         // The native pane's half of the same timeline. One `run` closure is driven by BOTH schedulers — the
         // `setTimeout(…, 0)` kick and the 3s `setInterval` — so they share the one mutable `data`, exactly as
@@ -141,7 +150,7 @@ setInterval(function () {
                 barRaceStep(&data)
                 // `myChart.setOption({ series: [{ type: 'bar', data }] })` — a MERGE: only the series data is
                 // re-sent, everything the initial option set up stays.
-                chart.setOption(["series": [["type": "bar", "data": data] as [String: Any]]],
+                chart.setOption(["series": [["type": "bar", "data": barRacePairs(data)] as [String: Any]]],
                                 notMerge: false)
             }
             chart.after(0, run)   // setTimeout(function () { run(); }, 0)
@@ -153,7 +162,7 @@ setInterval(function () {
             ] as [String: Any],
             "yAxis": [
                 "type": "category",
-                "data": ["A", "B", "C", "D", "E"],
+                "data": ["C", "E", "A", "D", "B"],
                 "inverse": true,
                 "animationDuration": 300.0,
                 "animationDurationUpdate": 300.0,
@@ -164,7 +173,7 @@ setInterval(function () {
                     "realtimeSort": true,
                     "name": "X",
                     "type": "bar",
-                    "data": barRaceData,
+                    "data": barRacePairs(barRaceData),
                     "label": [
                         "show": true,
                         "position": "right",

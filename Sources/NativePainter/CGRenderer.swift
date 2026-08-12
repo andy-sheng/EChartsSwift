@@ -727,10 +727,19 @@ func makeBaseFont(_ family: String, size: CGFloat) -> CTFont {
     if lower.contains("serif") {
         return CTFontCreateWithName("Times New Roman" as CFString, size, nil)
     }
-    // Named family (strip quotes / take the first comma-separated candidate).
+    // Named family (strip quotes / take the first comma-separated candidate). Core Text silently
+    // substitutes Helvetica when a requested face is unavailable. CSS canvas does not: a valid font
+    // shorthand whose sole named family is missing falls through to the browser's default serif face.
+    // Detect Core Text's substitution and use Times New Roman, matching WebKit's canvas fallback.
     let first = family.split(separator: ",").first.map(String.init) ?? family
     let name = first.trimmingCharacters(in: CharacterSet(charactersIn: " '\""))
-    return CTFontCreateWithName(name as CFString, size, nil)
+    let requested = CTFontCreateWithName(name as CFString, size, nil)
+    let resolvedFamily = (CTFontCopyFamilyName(requested) as String).lowercased()
+    let requestedName = name.lowercased()
+    if !resolvedFamily.contains(requestedName) && !requestedName.contains(resolvedFamily) {
+        return CTFontCreateWithName("Times New Roman" as CFString, size, nil)
+    }
+    return requested
 }
 
 /// Parse a CSS font shorthand ("[style] [variant] [weight] <size>px [/lh] <family>") into the

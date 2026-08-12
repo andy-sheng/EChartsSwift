@@ -303,6 +303,10 @@ open class Element: Transformable, AnimationTarget {
     /// Whether to respond to mouse events.
     public var silent: Bool = false
 
+    /// ECharts extended-element flag: keep this element/subtree's authored z values when a component
+    /// model propagates its own z. Used by axis-break overlays and other intentionally lifted graphics.
+    public var ignoreModelZ: Bool = false
+
     /// When this element has `__hostTarget` (e.g., this is a `textContent`), whether
     /// its silent is controlled by that host silent.
     public var ignoreHostSilent: Bool = false
@@ -522,7 +526,13 @@ open class Element: Transformable, AnimationTarget {
             var opts = CalculateTextPositionOpts()
             opts.position = _textConfigPositionOpt(textConfig.position)
             opts.distance = textConfig.distance
-            let res = ZRenderKit.text.calculateTextPosition(nil, opts, layoutRect)
+            let res: TextPositionCalculationResult
+            if let calculateTextPosition = self.calculateTextPosition {
+                res = calculateTextPosition(TextPositionCalculationResult(), textConfig, layoutRect)
+            }
+            else {
+                res = ZRenderKit.text.calculateTextPosition(nil, opts, layoutRect)
+            }
 
             innerTransformable.x = res.x
             innerTransformable.y = res.y
@@ -740,6 +750,7 @@ open class Element: Transformable, AnimationTarget {
         case "name": if let v = value as? String { self.name = v }
         case "ignore": if let v = value as? Bool { self.ignore = v }
         case "silent": if let v = value as? Bool { self.silent = v }
+        case "ignoreModelZ": if let v = value as? Bool { self.ignoreModelZ = v }
         case "ignoreHostSilent": if let v = value as? Bool { self.ignoreHostSilent = v }
         case "isGroup": if let v = value as? Bool { self.isGroup = v }
         case "ignoreClip": if let v = value as? Bool { self.ignoreClip = v }
@@ -795,6 +806,7 @@ open class Element: Transformable, AnimationTarget {
         case "name": return self.name
         case "ignore": return self.ignore
         case "silent": return self.silent
+        case "ignoreModelZ": return self.ignoreModelZ
         case "ignoreHostSilent": return self.ignoreHostSilent
         case "isGroup": return self.isGroup
         case "ignoreClip": return self.ignoreClip

@@ -956,16 +956,6 @@ public func registerLegacyGridContainLabelImpl(_ impl: @escaping LegacyLayOutGri
     legacyLayOutGridByContainLabel = impl
 }
 
-// ============================================================================
-// PORT-NOTE (component/axis AxisBuilder label-overlap path):
-//   `AxisBuilderSharedContext` / `AxisBuilder` (component/axis/AxisBuilder.swift), `expandOrShrinkRect` / `XY`
-//   / `WH` (util/graphic.swift), and the `*CommonPartBuilder` helpers (cartesianAxisHelper.swift) are ported.
-//   `createAxisBiulders` / `createOrUpdateAxesView` build the real axis elements, and the grid-specific
-//   `resolveAxisNameOverlapForGrid` name-overlap resolver is wired. Still DEFERRED: the
-//   `layOutGridByOuterBounds` outerBounds-shrink; it threads the shared context as an opaque `Any?`
-//   while stubbed so the `resize` control flow stays structurally faithful.
-// ============================================================================
-
 // Return noPxChange.
 // upstream: layOutGridByOuterBounds(outerBoundsRect, outerBoundsContain, outerBoundsClamp, gridRect, axesMap,
 //   axisBuilderSharedCtx: AxisBuilderSharedContext, layoutRef: BoxLayoutReferenceResult): boolean
@@ -975,16 +965,77 @@ func layOutGridByOuterBounds(
     _ outerBoundsClamp: [Double]?,
     _ gridRect: LayoutRect,
     _ axesMap: AxesMap,
-    _ axisBuilderSharedCtx: Any?,  // PORT-NOTE: real type is AxisBuilderSharedContext (component/axis); kept Any? while layOutGridByOuterBounds is stubbed
+    _ axisBuilderSharedCtx: AxisBuilderSharedContext,
     _ layoutRef: BoxLayoutReferenceResult
 ) -> Bool {
-    // PORT-NOTE (deferred): full outerBounds shrink (createOrUpdateAxesView estimate +
-    //   fillLabelNameOverflowOnOneDimension + fillMarginOnOneDimension + expandOrShrinkRect +
-    //   updateAllAxisExtentTransByGridRect) requires `fillLabelNameOverflowOnOneDimension` and
-    //   `fillMarginOnOneDimension` (util/graphic), which are NOT ported yet (expandOrShrinkRect and
-    //   updateAllAxisExtentTransByGridRect exist). Stubbed: report no pixel change.
-    _ = (outerBoundsRect, outerBoundsContain, outerBoundsClamp, gridRect, axesMap, axisBuilderSharedCtx, layoutRef)
-    return true
+    // Build an estimation pass first. Its label/name geometry is then used to compute how much the
+    // cartesian rect must move or shrink to stay inside outerBounds, matching Grid.ts.
+    createOrUpdateAxesView(
+        gridRect, axesMap, AxisTickLabelComputingKind.estimate,
+        outerBoundsContain, false, layoutRef
+    )
+
+    // [top, right, bottom, left]
+    var margin = [0.0, 0.0, 0.0, 0.0]
+
+    func rectValue(_ rect: BoundingRect, _ xyIdx: Int) -> (start: Double, size: Double) {
+        xyIdx == 0 ? (rect.x, rect.width) : (rect.y, rect.height)
+    }
+
+    func applyProportion(_ overflow: Double, _ proportion: Double) -> Double {
+        if overflow > 0, !proportion.isNaN, proportion > 1e-4 {
+            return overflow / proportion
+        }
+        return overflow
+    }
+
+    func fillMarginOnOneDimension(_ itemRect: BoundingRect, _ xyIdx: Int, _ proportion: Double) {
+        let outer = rectValue(outerBoundsRect, xyIdx)
+        let item = rectValue(itemRect, xyIdx)
+        var overflow1 = outer.start - item.start
+        var overflow2 = item.start + item.size - (outer.start + outer.size)
+        overflow1 = applyProportion(overflow1, 1 - proportion)
+        overflow2 = applyProportion(overflow2, proportion)
+        let minIdx = XY_TO_MARGIN_IDX[xyIdx][0]
+        let maxIdx = XY_TO_MARGIN_IDX[xyIdx][1]
+        margin[minIdx] = Swift.max(margin[minIdx], overflow1)
+        margin[maxIdx] = Swift.max(margin[maxIdx], overflow2)
+    }
+
+    func fillLabelNameOverflowOnOneDimension(_ xyIdx: Int) {
+        let axisMap = xyIdx == 0 ? axesMap.x : axesMap.y
+        axisMap.each { axis, _ in
+            guard axisHelper.shouldAxisShow(axis.model) else { return }
+            let record = axisBuilderSharedCtx.ensureRecord(axis.model)
+            if let labelInfoList = record.labelInfoList {
+                for labelInfo in labelInfoList {
+                    let tick = getLabelInner(labelInfo.label).labelInfo.tick
+                    var proportion = axis.scale.normalize(
+                        axisHelper.getTickValueOutermost(axis.scale, tick)
+                    )
+                    if xyIdx == 1 { proportion = 1 - proportion }
+                    fillMarginOnOneDimension(labelInfo.rect, xyIdx, proportion)
+                    fillMarginOnOneDimension(labelInfo.rect, 1 - xyIdx, Double.nan)
+                }
+            }
+            if let nameLayout = record.nameLayout {
+                let proportion = axisHelper.isNameLocationCenter(record.nameLocation) ? 0.5 : Double.nan
+                fillMarginOnOneDimension(nameLayout.rect, xyIdx, proportion)
+                fillMarginOnOneDimension(nameLayout.rect, 1 - xyIdx, Double.nan)
+            }
+        }
+    }
+
+    fillLabelNameOverflowOnOneDimension(0)
+    fillLabelNameOverflowOnOneDimension(1)
+    // Blank axes provide no label geometry, so the grid rect itself remains the final safety bound.
+    fillMarginOnOneDimension(gridRect, 0, Double.nan)
+    fillMarginOnOneDimension(gridRect, 1, Double.nan)
+
+    let noPxChange = !margin.contains { $0 > 0 }
+    expandOrShrinkRect(gridRect, margin, true, true, outerBoundsClamp)
+    updateAllAxisExtentTransByGridRect(axesMap, gridRect)
+    return noPxChange
 }
 
 // upstream: createAxisBiulders(gridRect, cartesians, axesMap, optionContainLabel, api): AxisBuilderSharedContext
@@ -994,7 +1045,7 @@ func createAxisBiulders(
     _ axesMap: AxesMap,
     _ optionContainLabel: Any?,  // upstream: GridOption['containLabel']
     _ api: ExtensionAPI
-) -> Any? {  // upstream returns AxisBuilderSharedContext; typed `Any?` so callers (layOutGridByOuterBounds) stay loose.
+) -> AxisBuilderSharedContext {
     // upstream: const axisBuilderSharedCtx = new AxisBuilderSharedContext(resolveAxisNameOverlapForGrid);
     let axisBuilderSharedCtx = AxisBuilderSharedContext(resolveAxisNameOverlapForGrid)
     // See `AxisBaseOptionCommon['nameMoveOverlap']`: default is `!containLabel`.

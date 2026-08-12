@@ -11,12 +11,11 @@
 //     at assets/data/confidence-band.json and read via Upstream.repoRoot: the web pane gets the raw JSON
 //     text spliced in as `var data = ...` (the callback BODY is otherwise verbatim), the native pane gets
 //     it parsed into typed arrays. `myChart.showLoading()/hideLoading()` and the `$.get` wrapper are gone.
-//   - NATIVE PANE: the four formatter closures (tooltip + the two axisLabels + the y axisPointer label)
-//     cannot be expressed in a Swift option, so they are omitted — see the PORT-NOTE lines. Consequence:
-//     the native axes label the RAW shifted values (value + base) rather than `(v - base) * 100 + '%'`,
-//     and the x-axis prints full ISO dates instead of the M-D short form for all but the first tick.
-//     The GEOMETRY (band, stack, line) is identical; only the tick/tooltip TEXT differs.
+//   - NATIVE PANE: the two axis-label formatters and y-axis-pointer formatter are represented by the
+//     equivalent Swift callback types. The tooltip formatter remains omitted because it is not part of
+//     the static comparison path.
 import Foundation
+import EChartsKit
 
 // The 91 daily points of the MetricsGraphics.js confidence-band sample. Parsed ONCE from the repo asset;
 // a parse failure degrades to no data (the pane renders empty axes rather than crashing).
@@ -52,6 +51,24 @@ private let confidenceBandDates: [String] = confidenceBandPoints.map { $0.date }
 private let confidenceBandLower: [Double] = confidenceBandPoints.map { $0.l + confidenceBandBase }
 private let confidenceBandSpan: [Double] = confidenceBandPoints.map { $0.u - $0.l }
 private let confidenceBandValues: [Double] = confidenceBandPoints.map { $0.value + confidenceBandBase }
+
+private let confidenceBandXAxisFormatter: AxisLabelCategoryFormatter = { rawValue, idx, _ in
+    let value = rawValue as? String ?? "\(rawValue)"
+    guard idx != 0 else { return value }
+    let parts = value.split(separator: "-")
+    guard parts.count >= 3,
+          let month = Int(parts[1]), let day = Int(parts[2]) else { return value }
+    return "\(month)-\(day)"
+}
+
+private let confidenceBandYAxisFormatter: AxisLabelValueFormatter = { value, _, _ in
+    "\(Int(((value - confidenceBandBase) * 100).rounded()))%"
+}
+
+private let confidenceBandYAxisPointerFormatter: ([String: Any]) -> String = { params in
+    let value = (params["value"] as? Double) ?? 0
+    return String(format: "%.1f%%", (value - confidenceBandBase) * 100)
+}
 
 extension EChartsDemoRegistry {
     static let official_confidence_band = EChartsDemo(
@@ -208,16 +225,21 @@ option = {
             "xAxis": [
                 "type": "category",
                 "data": confidenceBandDates,
+                "axisLabel": [
+                    "formatter": confidenceBandXAxisFormatter as AxisLabelCategoryFormatter
+                ] as [String: Any],
                 "boundaryGap": false
-                // PORT-NOTE: xAxis.axisLabel.formatter omitted — the JS closure printed the first tick
-                // as the full ISO date and every other tick as `M-D` (new Date(value), month+1 + '-' + day).
             ] as [String: Any],
             "yAxis": [
+                "axisLabel": [
+                    "formatter": confidenceBandYAxisFormatter as AxisLabelValueFormatter
+                ] as [String: Any],
+                "axisPointer": [
+                    "label": [
+                        "formatter": confidenceBandYAxisPointerFormatter as ([String: Any]) -> String
+                    ] as [String: Any]
+                ] as [String: Any],
                 "splitNumber": 3.0
-                // PORT-NOTE: yAxis.axisLabel.formatter omitted — the JS closure un-shifted each tick and
-                // rendered it as a percentage: `(val - base) * 100 + '%'`.
-                // PORT-NOTE: yAxis.axisPointer.label.formatter omitted — same un-shift, one decimal:
-                // `((params.value - base) * 100).toFixed(1) + '%'`.
             ] as [String: Any],
             "series": [
                 [

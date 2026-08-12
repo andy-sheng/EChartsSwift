@@ -16,6 +16,13 @@
 //     output (per-province {name, value} items + the per-year industry sums the pie eats) at file scope.
 //   - PORT-NOTEs below: the three JS closures (timeline label formatter, the 2011 item's tooltip
 //     formatter, the grid axisPointer label formatter) cannot cross into the Swift option.
+import EChartsKit
+
+private let financeTimelineLabelFormatter: AxisLabelCategoryFormatter = { rawValue, _, _ in
+    let text = rawValue as? String ?? String(describing: rawValue)
+    return String(text.prefix(4))
+}
+
 extension EChartsDemoRegistry {
     static let official_mix_timeline_finance = EChartsDemo(
         name: "official-mix-timeline-finance", category: "bar",
@@ -473,9 +480,10 @@ option.baseOption.animation = false;
                     // DEVIATION: official `autoPlay: true` — one static frame, so the playhead stays at index 0 (2002).
                     "autoPlay": false,
                     "playInterval": 1000.0,
-                    "data": financeTimelineData
-                    // PORT-NOTE: timeline.label.formatter omitted — JS closure `s => new Date(s).getFullYear()`,
-                    //   i.e. each tick reads "2002" rather than the raw value "2002-01-01".
+                    "data": financeTimelineData,
+                    "label": [
+                        "formatter": (financeTimelineLabelFormatter as AxisLabelCategoryFormatter)
+                    ] as [String: Any]
                 ] as [String: Any],
                 "title": ["subtext": "数据来自国家统计局"] as [String: Any],
                 "tooltip": [:] as [String: Any],

@@ -23,6 +23,39 @@ import Foundation
 import ZRenderKit
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
+// feature/DataView.ts — on-canvas feature shell
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// The browser implementation opens an editable DOM table. Native hosts do not have that DOM
+// overlay, but the feature itself (icon, title and layout slot) is still part of the canvas UI.
+open class ToolboxDataViewFeature: ToolboxFeature {
+    open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
+        PortStub.hit("toolboxFeatures.DataView",
+                     "native host has no data-view table overlay; the toolbox icon is display-only")
+    }
+
+    public static func getDefaultOption(_ ecModel: GlobalModel) -> [String: Any] {
+        var opt: [String: Any] = [
+            "show": true,
+            "readOnly": false,
+            "icon": "M17.5,17.3H33 M17.5,17.3H33 M45.4,29.5h-28 M11.5,2v56H51V14.8L38.4,2H11.5z M38.4,2.2v12.7H51 M45.4,41.7h-28",
+            "backgroundColor": tokens.color.background,
+            "textColor": tokens.color.primary,
+            "textareaColor": tokens.color.background,
+            "textareaBorderColor": tokens.color.border,
+            "buttonColor": tokens.color.accent50,
+            "buttonTextColor": tokens.color.neutral00
+        ]
+        if let title = ecModel.getLocaleModel().get(["toolbox", "dataView", "title"]) {
+            opt["title"] = title
+        }
+        if let lang = ecModel.getLocaleModel().get(["toolbox", "dataView", "lang"]) {
+            opt["lang"] = lang
+        }
+        return opt
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
 // feature/SaveAsImage.ts — class SaveAsImage extends ToolboxFeature
 // ════════════════════════════════════════════════════════════════════════════════════════════
 open class ToolboxSaveAsImageFeature: ToolboxFeature {
@@ -336,8 +369,7 @@ open class ToolboxDataZoomFeature: ToolboxFeature {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// component/toolbox/install.ts — `registerFeature('saveAsImage'|'magicType'|'dataZoom'|'restore', ...)`.
-//   (`dataView` — the HTML-overlay table editor — is DEFERRED: a host-dependent DOM feature.)
+// component/toolbox/install.ts — built-in feature registrations.
 // ════════════════════════════════════════════════════════════════════════════════════════════
 public func registerToolboxFeatures() {
     registerFeature("saveAsImage", ToolboxFeatureRegistration(
@@ -356,5 +388,8 @@ public func registerToolboxFeatures() {
         create: { ToolboxRestoreFeature() },
         getDefaultOption: { ToolboxRestoreFeature.getDefaultOption($0) }
     ))
-    // PORT-NOTE: registerFeature('dataView', DataView) — DEFERRED (HTML overlay editor, host-dependent).
+    registerFeature("dataView", ToolboxFeatureRegistration(
+        create: { ToolboxDataViewFeature() },
+        getDefaultOption: { ToolboxDataViewFeature.getDefaultOption($0) }
+    ))
 }

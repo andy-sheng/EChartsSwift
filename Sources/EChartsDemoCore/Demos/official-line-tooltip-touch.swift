@@ -16,8 +16,8 @@
 //   - `tooltip.position` is a JS closure and is dropped from the native option (see PORT-NOTE); with
 //     `triggerOn: 'none'` the tooltip only ever appears via the axisPointer handle, which a static
 //     snapshot never shows. The reference pane keeps it.
-//   - `xAxis.axisPointer.label.formatter` is a JS closure (`echarts.format.formatTime`) and is dropped from
-//     the native option (see PORT-NOTE); the label still shows, with echarts' default time formatting.
+//   - `xAxis.axisPointer.label.formatter` is represented natively by the equivalent Swift closure;
+//     axisPointer's formatter bridge accepts `([String: Any]) -> String`.
 //   - `new echarts.graphic.LinearGradient(0, 0, 0, 1, [...])` is kept verbatim in the reference pane and
 //     spelled as the equivalent plain object (`{type:'linear', x:0, y:0, x2:0, y2:1, colorStops:[...]}`) in
 //     the native option — echarts accepts both.
@@ -27,6 +27,7 @@
 //     the trailing `export {};` are stripped (both are SyntaxErrors in the reference pane's classic script).
 //   - the rest of the option is verbatim.
 import Foundation
+import EChartsKit
 
 // The two 9-row [dayStr, value] series upstream's loop would have produced, made deterministic (see the
 // file header). Values are integers because upstream `Math.round`s each step.
@@ -231,9 +232,9 @@ option = {
                     ] as [String: Any],
                     "label": [
                         "show": true,
-                        // PORT-NOTE: label.formatter omitted — JS closure
-                        // `echarts.format.formatTime('yyyy-MM-dd', params.value)`, which renders the pointer's
-                        // timestamp as e.g. `2016-10-07`. Without it the default time label formatting applies.
+                        "formatter": { (params: [String: Any]) -> String in
+                            format.formatTime("yyyy-MM-dd", params["value"])
+                        } as ([String: Any]) -> String,
                         "backgroundColor": "#7581BD"
                     ] as [String: Any],
                     "handle": [

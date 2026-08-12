@@ -8,10 +8,11 @@
 //     `echarts.BarSeriesOption[]`, `params: any`) and the trailing `export {};` are stripped so it
 //     runs as a classic script. Everything else — rawData, the total/normalize loops, the series
 //     .map() and the label formatter — is verbatim.
-//   - native pane: `label.formatter` is a JS closure and cannot cross into the Swift option, so the
-//     native labels show the raw normalized fraction (0.062) where the web pane shows '6.2%'. The
-//     series array itself is built in Swift from the same rawData with the same normalization, so
-//     the geometry is equivalent.
+//   - native pane: the JavaScript label closure is expressed as the equivalent typed Swift callback.
+//     The series array itself is built in Swift from the same rawData with the same normalization.
+import Foundation
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_bar_stack_normalization = EChartsDemo(
         name: "official-bar-stack-normalization", category: "bar",
@@ -106,6 +107,21 @@ private let barStackNormalizationNames: [String] = [
     "Direct", "Mail Ad", "Affiliate Ad", "Video Ad", "Search Engine"
 ]
 
+/// Equivalent of `Math.round(params.value * 1000) / 10 + '%'` from the official example.
+private let barStackNormalizationLabelFormatter: (CallbackDataParams) -> String = { params in
+    let value: Double
+    if let double = params.value as? Double { value = double }
+    else if let int = params.value as? Int { value = Double(int) }
+    else if let number = params.value as? NSNumber { value = number.doubleValue }
+    else { return "" }
+
+    let percent = (value * 1_000).rounded() / 10
+    if percent.rounded() == percent {
+        return "\(Int(percent))%"
+    }
+    return "\(percent)%"
+}
+
 /// One stacked `bar` series per name, data normalized by its column total (0 when the total is <= 0).
 private let barStackNormalizationSeries: [[String: Any]] = barStackNormalizationNames.enumerated().map { sid, name in
     let normalized: [Double] = barStackNormalizationRawData[sid].enumerated().map { did, d in
@@ -118,9 +134,8 @@ private let barStackNormalizationSeries: [[String: Any]] = barStackNormalization
         "stack": "total",
         "barWidth": "60%",
         "label": [
-            "show": true
-            // PORT-NOTE: label.formatter omitted — the JS closure rendered the normalized value as a
-            // percentage: `Math.round(params.value * 1000) / 10 + '%'` (0.0621 → '6.2%').
+            "show": true,
+            "formatter": barStackNormalizationLabelFormatter
         ] as [String: Any],
         "data": normalized
     ] as [String: Any]

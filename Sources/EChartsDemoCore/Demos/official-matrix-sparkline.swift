@@ -8,12 +8,9 @@
 //
 // DEVIATIONS from the official source:
 //   - THE DATA IS RANDOM UPSTREAM. `generateFakeSeriesData` walks a random walk off `Math.random()`,
-//     so the example draws different sparklines on every load and the two panes can NEVER match
-//     pixel-for-pixel. The web pane keeps that generator VERBATIM (it is the example). The Swift
-//     option reproduces the SAME algorithm — same 365-point weekly walk, same ±50 delta, same
-//     sign-flipping turn points, same '{yyyy}-{MM}-{dd}' category labels off 2025-05-05 — but off a
-//     seeded xorshift PRNG (`MatrixSparklineRNG`), so the native pane is at least deterministic
-//     across runs. Compare the two panes for LAYOUT and AXIS behaviour, not for the curves.
+//     so independently loading the two panes would make visual comparison meaningless. Both panes
+//     therefore use the same per-cell seeded xorshift64* stream. The walk itself is unchanged: 365
+//     weekly points, ±50 delta, sign-flipping turn points and the same date labels.
 //   - JS `Math.round` / `Number.toFixed(0)` tie-breaking (toward +inf) is not reproduced exactly;
 //     `.rounded()` (ties away from zero) is used. Noise-level on random data.
 //   - The source builds `grid`/`xAxis`/`yAxis`/`series` by pushing inside `eachMatrixCell(...)`; the
@@ -331,23 +328,32 @@ function eachMatrixCell(cb) {
   });
 }
 function generateFakeSeriesData(dayCount, xidx, yidx) {
+  // Match MatrixSparklineRNG exactly. BigInt.asUintN reproduces UInt64 overflow after every step.
+  let rngState = BigInt(1234567 + xidx * 977 + yidx * 31) | 1n;
+  function seededRandom() {
+    rngState = BigInt.asUintN(64, rngState ^ (rngState >> 12n));
+    rngState = BigInt.asUintN(64, rngState ^ (rngState << 25n));
+    rngState = BigInt.asUintN(64, rngState ^ (rngState >> 27n));
+    const value = BigInt.asUintN(64, rngState * 2685821657736338717n);
+    return Number(value >> 11n) / 9007199254740992;
+  }
   const dayStart = new Date('2025-05-05T00:00:00.000Z'); // Monday
   dayStart.setDate(xidx + 5);
   const timeStart = dayStart.getTime();
   const sevenDay = 7 * 1000 * 3600 * 24;
   const cellData = [];
-  let lastVal = +(Math.random() * 300).toFixed(0);
+  let lastVal = +(seededRandom() * 300).toFixed(0);
   let turnCount = null;
   let sign = -1;
   for (let idx = 0; idx < dayCount; idx++) {
     if (turnCount == null || idx >= turnCount) {
       turnCount =
-        idx + Math.round((dayCount / 4) * ((Math.random() - 0.5) * 0.1));
+        idx + Math.round((dayCount / 4) * ((seededRandom() - 0.5) * 0.1));
       sign = -sign;
     }
     const deltaMag = 50;
     const delta = +(
-      Math.random() * deltaMag -
+      seededRandom() * deltaMag -
       deltaMag / 2 +
       (sign * deltaMag) / 3
     ).toFixed(0);

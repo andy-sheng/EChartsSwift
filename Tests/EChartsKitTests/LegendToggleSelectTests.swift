@@ -120,4 +120,54 @@ final class LegendToggleSelectTests: XCTestCase {
         }
         XCTAssertEqual(hex.lowercased(), grey, "unselected scatter legend icon must be the grey inactiveColor")
     }
+
+    func testLineLegendIconHonorsZeroLineWidth() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "legend": ["data": ["Area"]] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A", "B"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "name": "Area", "type": "line", "data": [1.0, 2.0],
+                "lineStyle": ["width": 0.0] as [String: Any],
+                "areaStyle": [:] as [String: Any]
+            ] as [String: Any]]
+        ])
+        guard let series = ec.getModel()?.getSeriesByIndex(0) as? LineSeriesModel else {
+            return XCTFail("expected a line series")
+        }
+        let params = LegendIconParams(
+            itemWidth: 25, itemHeight: 14, icon: "emptyCircle", iconRotate: 0,
+            itemStyle: ["fill": "#5470c6"],
+            lineStyle: ["stroke": "#5470c6", "lineWidth": 0.0],
+            symbolKeepAspect: nil
+        )
+        guard let group = series.getLegendIcon(params) as? Group,
+              let line = group.childAt(0) as? Path else {
+            return XCTFail("line legend icon must contain its line path")
+        }
+        XCTAssertEqual(line.pathStyle.lineWidth, 0,
+                       "an area-only line series with lineStyle.width:0 must not show legend side bars")
+    }
+
+    func testLineLegendIconRecoversAutoWidthForVisibleSeriesLine() {
+        let ec = makeTwoSeriesWithLegend()
+        guard let series = ec.getModel()?.getSeriesByIndex(0) as? LineSeriesModel else {
+            return XCTFail("expected a line series")
+        }
+        // LegendView currently receives no `legendLineStyle` visual and therefore resolves the
+        // default auto width to zero. A normal positive-width series must still draw the side bars.
+        let params = LegendIconParams(
+            itemWidth: 25, itemHeight: 14, icon: "emptyCircle", iconRotate: 0,
+            itemStyle: ["fill": "#5470c6"],
+            lineStyle: ["stroke": "#5470c6", "lineWidth": 0.0],
+            symbolKeepAspect: nil
+        )
+        guard let group = series.getLegendIcon(params) as? Group,
+              let line = group.childAt(0) as? Path else {
+            return XCTFail("line legend icon must contain its line path")
+        }
+        XCTAssertEqual(line.pathStyle.lineWidth, 2,
+                       "auto legend width for a visible line series must render the normal side bars")
+    }
 }

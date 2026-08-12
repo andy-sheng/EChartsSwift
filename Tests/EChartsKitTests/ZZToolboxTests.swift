@@ -79,6 +79,7 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertNotNil(getFeature("magicType"), "magicType feature must be registered")
         XCTAssertNotNil(getFeature("saveAsImage"), "saveAsImage feature must be registered")
         XCTAssertNotNil(getFeature("dataZoom"), "dataZoom feature must be registered")
+        XCTAssertNotNil(getFeature("dataView"), "dataView feature must be registered so its canvas icon renders")
 
         // Count the makePath icon paths (SVGPath) in the rendered display list. Icons are the only
         //   SVGPath elements in a plain bar/line + toolbox chart (axes emit Line/Rect, the toolbox
@@ -90,6 +91,94 @@ final class ZZToolboxTests: XCTestCase {
         }
         XCTAssertEqual(iconCount, 3,
                        "toolbox should render 3 feature icons (magicType line+bar, restore), got \(iconCount)")
+    }
+
+    func testDataViewFeatureRendersItsDocumentIcon() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "toolbox": ["feature": ["dataView": ["show": true] as [String: Any]] as [String: Any]] as [String: Any]
+        ])
+        guard let toolbox = view.ec._componentsViews.compactMap({ $0 as? ToolboxView }).first else {
+            return XCTFail("expected toolbox view")
+        }
+        XCTAssertNotNil(toolbox._features["dataView"] as? ToolboxDataViewFeature)
+        XCTAssertEqual(toolbox.group.children().filter { $0 is SVGPath }.count, 1,
+                       "dataView contributes its document icon even when the native DOM editor is unavailable")
+    }
+
+    func testExplicitRightClearsDefaultLeftAndKeepsHorizontalLayout() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "toolbox": [
+                "right": 10.0,
+                "feature": [
+                    "restore": [String: Any](),
+                    "saveAsImage": [String: Any]()
+                ] as [String: Any]
+            ] as [String: Any]
+        ])
+
+        guard let toolbox = view.ec._componentsViews.compactMap({ $0 as? ToolboxView }).first else {
+            return XCTFail("expected toolbox view")
+        }
+        let icons = toolbox.group.children().compactMap { $0 as? SVGPath }
+        XCTAssertEqual(icons.count, 2)
+        XCTAssertGreaterThan(toolbox.group.x, view.ec.getWidth() / 2,
+                             "right:10 must position the toolbox on the right")
+        XCTAssertEqual(icons[0].y, icons[1].y, accuracy: 1e-9,
+                       "the default horizontal toolbox must keep icons on one row")
+        XCTAssertNotEqual(icons[0].x, icons[1].x,
+                          "horizontal toolbox icons must advance along x")
+    }
+
+    func testBuiltInFeatureAndGroupedIconOrderIsStable() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "toolbox": [
+                "feature": [
+                    "saveAsImage": [String: Any](),
+                    "restore": [String: Any](),
+                    "dataZoom": ["yAxisIndex": "none"] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        ])
+        guard let toolbox = view.ec._componentsViews.compactMap({ $0 as? ToolboxView }).first,
+              let dzTitle = toolbox._features["dataZoom"]?.model.get("title") as? [String: Any],
+              let zoomTitle = dzTitle["zoom"] as? String,
+              let backTitle = dzTitle["back"] as? String,
+              let restoreTitle = toolbox._features["restore"]?.model.get("title") as? String,
+              let saveTitle = toolbox._features["saveAsImage"]?.model.get("title") as? String else {
+            return XCTFail("expected built-in toolbox feature titles")
+        }
+        let renderedTitles = toolbox.group.children().compactMap { child -> String? in
+            guard child is SVGPath else { return nil }
+            return child.getTextContent()?.textStyle?.text
+        }
+        XCTAssertEqual(renderedTitles, [zoomTitle, backTitle, restoreTitle, saveTitle],
+                       "Dictionary iteration must not scramble official toolbox icon order")
+    }
+
+    func testExplicitFeatureOrderPreservesSourceObjectOrder() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "toolbox": [
+                "_featureOrder": ["magicType", "dataView"],
+                "feature": [
+                    "dataView": [String: Any](),
+                    "magicType": ["type": ["stack"]] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        ])
+        guard let toolbox = view.ec._componentsViews.compactMap({ $0 as? ToolboxView }).first else {
+            return XCTFail("expected toolbox view")
+        }
+        let titles = toolbox.group.children().compactMap { child -> String? in
+            guard child is SVGPath else { return nil }
+            return child.getTextContent()?.textStyle?.text
+        }
+        XCTAssertEqual(titles.count, 2)
+        XCTAssertEqual(titles.first, (toolbox._features["magicType"]?.model.get("title") as? [String: Any])?["stack"] as? String)
+        XCTAssertEqual(titles.last, toolbox._features["dataView"]?.model.get("title") as? String)
     }
 
     // ---- (1d) each icon carries a hidden title text content (revealed on hover) ----

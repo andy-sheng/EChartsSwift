@@ -665,6 +665,13 @@ private func eclineColorString(_ v: Any?) -> String? {
 // The line's raw value for the default label. A real SeriesModel host formats via getRawValue; the
 //   markLine host (MarkerModel) can't — it stashes the merged value under the `__labelValue` visual.
 private func eclineRawValue(_ hostModel: Model?, _ lineData: SeriesData, _ idx: Int) -> Any? {
+    // MarkerModel now conforms to DataFormatMixin, but this port's lineData stores a typed
+    // MarkerPositionOption as its raw item. The generic mixin therefore returns the whole struct,
+    // whereas upstream's normalized line item exposes its scalar `value`. MarkLineView stashes that
+    // resolved scalar explicitly; prefer it for marker hosts.
+    if hostModel is MarkerModel {
+        return lineData.getItemVisual(idx, "__labelValue")
+    }
     if let series = hostModel as? DataFormatMixin {
         let v = series.getRawValue(Double(idx), lineData.dataType)
         if v != nil { return v }

@@ -64,4 +64,22 @@ final class LineDenseSymbolTests: XCTestCase {
         ])
         XCTAssertEqual(symbolCount(ec), n, "showAllSymbol:true keeps a Symbol per datum even when dense")
     }
+
+    // A category axis may intentionally declare fewer categories than the series contains
+    // (official-mix-line-bar does this). The polyline is clipped to the grid and its symbols must
+    // obey the same clip area; otherwise the first overflow datum appears as a stray circle.
+    func testCategoryOverflowSymbolsAreClipped() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "category", "data": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]] as [String: Any],
+            "yAxis": ["type": "value", "min": 0.0, "max": 25.0] as [String: Any],
+            "series": [[
+                "type": "line",
+                "showAllSymbol": true,
+                "data": [2.0, 2.2, 3.3, 4.5, 6.3, 10.2, 20.3, 23.4, 23.0, 16.5, 12.0, 6.2]
+            ] as [String: Any]]
+        ])
+        XCTAssertEqual(symbolCount(ec), 7, "only symbols inside the seven-category grid are drawn")
+    }
 }

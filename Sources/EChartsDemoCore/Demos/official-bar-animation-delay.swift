@@ -98,6 +98,7 @@ option = {
                 "data": ["bar", "bar2"]
             ] as [String: Any],
             "toolbox": [
+                "_featureOrder": ["magicType", "dataView", "saveAsImage"],
                 "feature": [
                     "magicType": ["type": ["stack"]] as [String: Any],
                     "dataView": [:] as [String: Any],

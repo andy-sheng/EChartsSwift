@@ -83,11 +83,36 @@ public final class TimelineAxis: Axis {
             // makeCategoryLabelsActually: optionLabelInterval = getOptionCategoryInterval(labelModel).
             let optionLabelInterval = axisHelper.getOptionCategoryInterval(self.getLabelModel())
             let categoryIntervalCb = optionLabelInterval as? CategoryTickLabelSplitIntervalCb
-            // optionLabelInterval === 'auto' → base-model machinery (unavailable here) → 0 (all ticks);
-            //   otherwise the explicit numeric interval. A callback passes 0 (filtered per-tick below).
-            let numericLabelInterval: Double = categoryIntervalCb != nil
-                ? 0
-                : ((optionLabelInterval as? Double) ?? 0)
+            // TimelineAxis cannot use the generic category-axis cache because its model is a
+            // TimelineModel rather than AxisBaseModel. Still perform the same width/spacing
+            // calculation for `auto`, without that cache, so dense year labels are thinned exactly
+            // like the web implementation instead of all being rendered on top of one another.
+            let numericLabelInterval: Double
+            if categoryIntervalCb != nil {
+                numericLabelInterval = 0
+            }
+            else if (optionLabelInterval as? String) == "auto" {
+                let extent = ordinalScale.getExtent()
+                let unitSpan = abs(self.dataToCoord(extent[0] + 1) - self.dataToCoord(extent[0]))
+                var maxWidth = 7.0
+                if unitSpan > 0 {
+                    var value = extent[0]
+                    while value <= extent[1] {
+                        let formatted = labelFormatter(ScaleTick(value: value), nil)
+                        let rect = text.getBoundingRect(
+                            formatted, self.getLabelModel().getFont(), .center, .top
+                        )
+                        maxWidth = Swift.max(maxWidth, rect.width * 1.3)
+                        value += 1
+                    }
+                }
+                numericLabelInterval = unitSpan > 0
+                    ? Swift.max(0, floor(maxWidth / unitSpan))
+                    : 0
+            }
+            else {
+                numericLabelInterval = (optionLabelInterval as? Double) ?? 0
+            }
 
             // makeTicksLabelsByCategoryIntervalNumOrCb (onlyTick: false).
             var result: [AxisLabelInfoDetermined] = []

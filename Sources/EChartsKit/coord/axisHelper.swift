@@ -148,7 +148,25 @@ public enum axisHelper {
             //   every ported conformer (axisModelCreator's generated model) implements `getOrdinalMeta`, so
             //   the `getOrdinalMeta()` arm is always the correct one; the `getCategories()`-only fallback
             //   describes a shape no ported model exhibits. Non-conformers yield `nil` (the empty case).
-            let ordinalMeta: Any? = (model as? AxisModelExtendedInCreator)?.getOrdinalMeta()
+            let ordinalMeta: Any?
+            if let axisModel = model as? AxisModelExtendedInCreator {
+                ordinalMeta = axisModel.getOrdinalMeta()
+            }
+            else if let timelineModel = model as? TimelineModel,
+                    let categories = timelineModel.getCategories() {
+                // TimelineModel exposes the upstream `getCategories()` fallback but is not an
+                // AxisBaseModel, so it cannot adopt AxisModelExtendedInCreator nominally. Preserve
+                // that duck-typed fallback explicitly; otherwise an empty OrdinalMeta makes every
+                // timeline category label format from an empty string.
+                ordinalMeta = OrdinalMeta(
+                    categories: categories.map { $0 as OrdinalRawValue },
+                    needCollect: false,
+                    deduplication: true
+                )
+            }
+            else {
+                ordinalMeta = nil
+            }
             return OrdinalScale(OrdinalScaleSetting(
                 ordinalMeta: ordinalMeta,
                 // `model.initExtentForUnion()` — the `model` param (a `Model` instance) shadows the
@@ -227,7 +245,11 @@ public enum axisHelper {
         let labelFormatter = axis.getLabelModel().get("formatter")
 
         if axis.type == "time" {
-            let parsed = time.parseTimeAxisLabelFormatter(labelFormatter as TimeAxisLabelFormatterOption)
+            // `Model.get` returns `Any?`. Casting that optional directly to the `Any` formatter alias
+            // boxes it as `Optional<Any>`; dictionary casts happen to unwrap, but `isFunction` then sees
+            // the Optional type instead of the closure and silently falls back to the default formatter.
+            // Coalesce first so a Swift `AxisLabelTimeFormatter` reaches the function branch intact.
+            let parsed = time.parseTimeAxisLabelFormatter(labelFormatter ?? [:] as [String: Any])
             return { tick, idx in
                 // PORT-NOTE: upstream `idx: number`; the returned type widens to `idx?` — time axis
                 //   always receives an index, so `nil` falls back to `0`.

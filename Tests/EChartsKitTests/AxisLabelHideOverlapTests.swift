@@ -113,4 +113,144 @@ final class AxisLabelHideOverlapTests: XCTestCase {
         XCTAssertEqual(labels.filter { $0.ignore }.count, 0,
                        "a sparse axis has no overlap, so hideOverlap hides nothing")
     }
+
+    func testDefaultIntegerMarginMatchesExplicitDoubleMargin() {
+        func option(margin: Double?) -> [String: Any] {
+            var axisLabel: [String: Any] = ["interval": 0]
+            if let margin { axisLabel["margin"] = margin }
+            return [
+                "grid": ["left": 40.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+                "xAxis": [
+                    "type": "category",
+                    "data": ["A", "B", "C", "D"],
+                    "axisLabel": axisLabel
+                ] as [String: Any],
+                "yAxis": ["type": "value"] as [String: Any],
+                "series": [["type": "bar", "data": [10.0, 20.0, 30.0, 40.0]] as [String: Any]]
+            ]
+        }
+
+        func categoryLabelYs(margin: Double?) -> [Double] {
+            let ec = ECharts(width: 400, height: 300)
+            ec.setOption(option(margin: margin))
+            let categories = Set(["A", "B", "C", "D"])
+            return collectAxisLabels(ec.getRoot()) { categories.contains($0) }
+                .sorted { ($0.textStyle.text ?? "") < ($1.textStyle.text ?? "") }
+                .map(\.y)
+        }
+
+        let defaultMarginYs = categoryLabelYs(margin: nil) // axisDefault stores `margin` as Int(8).
+        let explicitEightYs = categoryLabelYs(margin: 8.0)
+        let explicitZeroYs = categoryLabelYs(margin: 0.0)
+
+        XCTAssertEqual(defaultMarginYs.count, 4)
+        XCTAssertEqual(defaultMarginYs, explicitEightYs,
+                       "the default Int(8) margin must lay out identically to explicit Double(8)")
+        for (defaultY, zeroY) in zip(defaultMarginYs, explicitZeroYs) {
+            XCTAssertEqual(defaultY - zeroY, 8.0, accuracy: 1e-9,
+                           "bottom-axis labels must sit eight points outside the axis by default")
+        }
+    }
+
+    func testContainLabelUsesDefaultIntegerMargin() {
+        func gridRect(margin: Double?) -> BoundingRect {
+            var axisLabel: [String: Any] = [:]
+            if let margin { axisLabel["margin"] = margin }
+            let ec = ECharts(width: 400, height: 300)
+            ec.setOption([
+                "grid": [
+                    "left": 20.0, "top": 20.0, "right": 20.0, "bottom": 20.0,
+                    "containLabel": true
+                ] as [String: Any],
+                "xAxis": ["type": "category", "data": ["A", "B", "C"], "axisLabel": axisLabel] as [String: Any],
+                "yAxis": ["type": "value", "axisLabel": axisLabel] as [String: Any],
+                "series": [["type": "bar", "data": [10.0, 20.0, 30.0]] as [String: Any]]
+            ])
+            return ((ec.getModel()?.getComponent("grid", 0) as? GridModel)?.coordinateSystem as! Grid).getRect()
+        }
+
+        let defaultRect = gridRect(margin: nil) // axisDefault stores `margin` as Int(8).
+        let explicitRect = gridRect(margin: 8.0)
+        XCTAssertEqual(defaultRect.x, explicitRect.x, accuracy: 1e-9)
+        XCTAssertEqual(defaultRect.y, explicitRect.y, accuracy: 1e-9)
+        XCTAssertEqual(defaultRect.width, explicitRect.width, accuracy: 1e-9)
+        XCTAssertEqual(defaultRect.height, explicitRect.height, accuracy: 1e-9)
+    }
+
+    func testDefaultIntegerTickLengthMatchesExplicitDoubleLength() {
+        func tickLengths(length: Double?) -> [Double] {
+            var axisTick: [String: Any] = ["show": true]
+            if let length { axisTick["length"] = length }
+            let ec = ECharts(width: 400, height: 300)
+            ec.setOption([
+                "grid": ["left": 40.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+                "xAxis": [
+                    "type": "category",
+                    "data": ["A", "B", "C", "D"],
+                    "axisTick": axisTick
+                ] as [String: Any],
+                "yAxis": ["type": "value"] as [String: Any],
+                "series": [["type": "bar", "data": [10.0, 20.0, 30.0, 40.0]] as [String: Any]]
+            ])
+
+            var result: [Double] = []
+            _ = ec.getRoot().traverse { el in
+                if let line = el as? Line,
+                   let anid = line.anid, anid.hasPrefix("ticks_"),
+                   let shape = line.shape as? LineShape {
+                    result.append(hypot(shape.x2 - shape.x1, shape.y2 - shape.y1))
+                }
+                return false
+            }
+            return result.sorted()
+        }
+
+        let defaultLengths = tickLengths(length: nil) // axisDefault stores `length` as Int(5).
+        let explicitLengths = tickLengths(length: 5.0)
+        XCTAssertFalse(defaultLengths.isEmpty)
+        XCTAssertEqual(defaultLengths, explicitLengths)
+        XCTAssertTrue(defaultLengths.allSatisfy { abs($0 - 5.0) < 1e-9 },
+                      "default major ticks must extend five points from the axis")
+    }
+
+    func testDefaultIntegerNameGapMatchesExplicitDoubleGap() {
+        func axisNamePositions(gap: Double?) -> [String: (Double, Double)] {
+            var xAxis: [String: Any] = ["type": "value", "name": "x"]
+            var yAxis: [String: Any] = ["type": "value", "name": "y"]
+            if let gap {
+                xAxis["nameGap"] = gap
+                yAxis["nameGap"] = gap
+            }
+            let ec = ECharts(width: 400, height: 300)
+            ec.setOption([
+                "grid": ["left": 40.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+                "xAxis": xAxis,
+                "yAxis": yAxis,
+                "series": [["type": "line", "data": [[0.0, 0.0], [1.0, 1.0]]] as [String: Any]]
+            ])
+
+            var result: [String: (Double, Double)] = [:]
+            _ = ec.getRoot().traverse { el in
+                if let text = el as? ZRText, text.anid == "name",
+                   let value = text.textStyle.text {
+                    result[value] = (text.x, text.y)
+                }
+                return false
+            }
+            return result
+        }
+
+        let defaultPositions = axisNamePositions(gap: nil) // axisDefault stores `nameGap` as Int(15).
+        let explicitPositions = axisNamePositions(gap: 15.0)
+        XCTAssertEqual(defaultPositions.count, 2)
+        guard let defaultX = defaultPositions["x"], let explicitX = explicitPositions["x"],
+              let defaultY = defaultPositions["y"], let explicitY = explicitPositions["y"] else {
+            XCTFail("both value axes must render their end names")
+            return
+        }
+        XCTAssertEqual(defaultX.0, explicitX.0, accuracy: 1e-9)
+        XCTAssertEqual(defaultX.1, explicitX.1, accuracy: 1e-9)
+        XCTAssertEqual(defaultY.0, explicitY.0, accuracy: 1e-9)
+        XCTAssertEqual(defaultY.1, explicitY.1, accuracy: 1e-9)
+    }
 }

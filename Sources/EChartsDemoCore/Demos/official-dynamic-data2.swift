@@ -228,6 +228,14 @@ private let dynamicData2Option: [String: Any] = [
     ] as [String: Any],
     "xAxis": [
         "type": "time",
+        "axisLabel": [
+            // The reference WKWebView uses zh-CN, while the DOM-less native core defaults to EN.
+            // Match its visible quarter labels and preserve ECharts' emphasized primary-year level.
+            "formatter": [
+                "year": ["{yyyy}", "{primary|{yyyy}}"],
+                "month": ["{M}月", "{primary|{yyyy}}"]
+            ] as [String: Any]
+        ] as [String: Any],
         "splitLine": [
             "show": false
         ] as [String: Any]

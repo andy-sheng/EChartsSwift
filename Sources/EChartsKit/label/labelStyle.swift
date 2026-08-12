@@ -1102,6 +1102,13 @@ private func _coerceTextAlign(_ v: Any?) -> TextAlign? {
 private func _coerceTextBackgroundColor(_ v: Any?) -> TextBackgroundColor? {
     if let x = v as? TextBackgroundColor { return x }
     if let s = v as? String { return .string(s) }
+    // Upstream also accepts `{ image: ImageLike | string }`. Option dictionaries are the
+    // natural Swift representation of that object form, so preserve URL/data-URI image sources
+    // instead of silently dropping rich-text image backgrounds.
+    if let dict = v as? [String: Any], let image = dict["image"] {
+        if let source = image as? ImageSource { return .image(source) }
+        if let url = image as? String { return .image(.url(url)) }
+    }
     return nil
 }
 

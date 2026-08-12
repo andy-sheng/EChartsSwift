@@ -650,6 +650,22 @@ public enum layout {
         if let mode = layoutMode as? ComponentLayoutMode {
             return mode
         }
+        // Most component ports preserve the upstream object literal as `[String: Any]`, for example
+        // `{type:'box', ignoreSize:true}` on title/toolbox/visualMap. Treating only the typed struct as
+        // an object silently disabled the layout merge for all of those components. Consequently an
+        // explicit `right` could coexist with the default `left`, making right-aligned components stay
+        // on the left and constraining horizontal toolboxes to a negative width (one icon per row).
+        if let dict = layoutMode as? [String: Any] {
+            var mode = ComponentLayoutMode()
+            mode.type = (dict["type"] as? String) ?? "box"
+            if let ignoreSize = dict["ignoreSize"] as? Bool {
+                mode.ignoreSize = ignoreSize
+            }
+            else if let ignoreSize = dict["ignoreSize"] as? [Bool] {
+                mode.ignoreSize = ignoreSize
+            }
+            return mode
+        }
         if let s = layoutMode as? String, !s.isEmpty {
             var m = ComponentLayoutMode()
             m.type = s

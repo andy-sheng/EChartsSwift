@@ -108,6 +108,8 @@ option = {
                 "xAxisIndex": 0.0
             ] as [String: Any],
             "toolbox": [
+                // Preserve the JS feature object's authored order; Swift Dictionary iteration is unordered.
+                "_featureOrder": ["magicType", "dataView"],
                 "feature": [
                     "magicType": [
                         "type": ["stack"]

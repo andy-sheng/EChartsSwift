@@ -47,6 +47,11 @@ final class ZZSliderZoomTests: XCTestCase {
         // The percent window the slider is showing must be ~[20, 60].
         XCTAssertEqual(s._range[0], 20, accuracy: 1.0, "slider window start ~20% — got \(s._range)")
         XCTAssertEqual(s._range[1], 60, accuracy: 1.0, "slider window end ~60% — got \(s._range)")
+        let gridWidth = ((view.ec.getModel()?.getComponent("grid", 0) as? GridModel)?
+            .coordinateSystem as? Grid)?.getRect().width
+        XCTAssertNotNil(gridWidth)
+        XCTAssertEqual(s._size[0], gridWidth ?? -1, accuracy: 1.0,
+                       "an auto-positioned cartesian slider must align to the target grid width")
     }
 
     // ---- (2) dragging the right handle changes the window (the drift callback the Handler fires) ----

@@ -17,9 +17,10 @@
 //   - webOptionJS drops the TypeScript-only bits that a classic <script> cannot parse: the
 //     `: number[]` / `: echarts.BarSeriesOption[]` / `(params: any)` annotations and the trailing
 //     `export {};`. Everything else — the loops, the map, the label formatter — is verbatim.
-//   - the native pane omits `series[].label.formatter` (a JS closure; see PORT-NOTE below). The
-//     `graphic` polygons are plain data, not JS-built elements, so the native pane DOES carry them.
+//   - the native pane expresses `series[].label.formatter` as the equivalent typed Swift callback.
+//     The `graphic` polygons are plain data, not JS-built elements, so the native pane carries them.
 import Foundation
+import EChartsKit
 
 // There should not be negative values in rawData.
 private let barStackNormRawData: [[Double]] = [
@@ -31,6 +32,16 @@ private let barStackNormRawData: [[Double]] = [
 ]
 
 private let barStackNormSeriesNames = ["Direct", "Mail Ad", "Affiliate Ad", "Video Ad", "Search Engine"]
+
+private let barStackNormLabelFormatter: (CallbackDataParams) -> String = { params in
+    let value: Double
+    if let double = params.value as? Double { value = double }
+    else if let int = params.value as? Int { value = Double(int) }
+    else if let number = params.value as? NSNumber { value = number.doubleValue }
+    else { return "" }
+    let percent = (value * 1_000).rounded() / 10
+    return percent.rounded() == percent ? "\(Int(percent))%" : "\(percent)%"
+}
 
 // Column totals — the normalization denominators.
 private let barStackNormTotalData: [Double] = {
@@ -64,12 +75,10 @@ private let barStackNormSeries: [[String: Any]] = {
             "type": "bar",
             "stack": "total",
             "barWidth": "60%",
-            // PORT-NOTE: label.formatter omitted — the JS closure
-            //   (params) => Math.round(params.value * 1000) / 10 + '%'
-            // renders each normalized fraction as a one-decimal percentage ("18.7%"). Swift cannot
-            // carry a closure through the option dict, so the native pane's labels show the raw
-            // fraction (0.187…) instead. `label.show` is kept so the labels are still laid out.
-            "label": ["show": true] as [String: Any],
+            "label": [
+                "show": true,
+                "formatter": barStackNormLabelFormatter
+            ] as [String: Any],
             "data": data
         ] as [String: Any])
     }

@@ -9,13 +9,39 @@
 //    `: Record<string, number>`, the `!` non-null assertion on getContext) and the trailing
 //    `export {};` are stripped — they are SyntaxErrors in the page's classic script. Everything
 //    else, including the whole document.createElement('canvas') watermark block, is verbatim.
-//  - native pane: `backgroundColor` is omitted. It is a zrender pattern whose `image` is a live
-//    <canvas> element painted by 2D-context calls (translate/rotate/fillText) — a DOM object the
-//    Swift option literal cannot carry, so the native pane renders on the default background and
-//    shows no watermark. Every other component (3 titles, 2 grids, 4 bar series, 2 pies) is ported.
+//  - native pane: the browser's live-canvas pattern is represented by an equivalent grid of
+//    low-z `graphic` text elements. Native pattern images require a decodable raster image, while
+//    the official example supplies a DOM canvas; the explicit text grid preserves the same 100pt
+//    tile spacing, -45° rotation, font size, opacity and placement without a browser object.
 //  - the JS `Object.keys(...).map/reduce` expressions that build the series data and the title
 //    subtexts are evaluated ahead of time into the Swift literals below (same values, same key
 //    order); the `.replace('.js', '')` pie names are likewise pre-applied.
+private let watermarkGraphicElements: [[String: Any]] = {
+    var elements: [[String: Any]] = []
+    for row in 0..<5 {
+        for column in 0..<8 {
+            elements.append([
+                "type": "text",
+                "x": 50.0 + Double(column) * 100.0,
+                "y": 50.0 + Double(row) * 100.0,
+                "rotation": -Double.pi / 4.0,
+                "z": -100.0,
+                "silent": true,
+                "style": [
+                    "text": "ECHARTS",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "align": "center",
+                    "verticalAlign": "middle",
+                    "font": "20px Microsoft Yahei",
+                    "fill": "rgba(0,0,0,0.08)"
+                ] as [String: Any]
+            ])
+        }
+    }
+    return elements
+}()
+
 extension EChartsDemoRegistry {
     static let official_watermark = EChartsDemo(
         name: "official-watermark", category: "bar",
@@ -261,9 +287,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: backgroundColor omitted — a zrender pattern whose `image` is a live <canvas>
-            // element (100x100, "ECHARTS" drawn at alpha 0.08 rotated -45°, repeat) built with 2D-context
-            // calls. The Swift option cannot carry a DOM canvas, so the native pane has no watermark.
+            "graphic": watermarkGraphicElements,
             "tooltip": [:] as [String: Any],
             "title": [
                 [

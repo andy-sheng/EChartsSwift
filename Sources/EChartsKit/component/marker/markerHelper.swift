@@ -121,16 +121,13 @@ public enum markerHelper {
         return (coordArr, coordArrValue)
     }
 
-    // JS `+(x.toFixed(precision))` — format to `precision` decimals then reparse to a number.
-    // POTENTIAL-BUG (SEMANTIC_RISK): JS `Number.prototype.toFixed` rounding (half-away-from-zero on the
-    //   decimal string) is approximated by `%.*f` formatting (which rounds half-to-even in some locales).
-    //   A tie at the rounding digit can diverge by one ULP; affects only marker coordinate precision, rare.
+    // JS `+(x.toFixed(precision))` — round to `precision` decimals then keep it numeric.
     private static func toFixedNumber(_ x: Double, _ precision: Int) -> Double {
         if x.isNaN || x.isInfinite {
             return x
         }
-        let str = String(format: "%.\(precision)f", x)
-        return Double(str) ?? x
+        let factor = pow(10.0, Double(Swift.max(0, precision)))
+        return (x * factor).rounded(.toNearestOrAwayFromZero) / factor
     }
 
     // TODO Specified percent
