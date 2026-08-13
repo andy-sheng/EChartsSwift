@@ -53,6 +53,14 @@ public enum graphHelper {
         if let view = coordSys as? View {
             return calcCompensationScaleToPreserveNodeSize(view, seriesModel)
         }
+        // GraphViewCoordSys is the port's lightweight `View` stand-in. It still maps data space to
+        // pixels, so circular layout needs the same node-size compensation as the upstream View;
+        // returning 1 here treated pixel symbol sizes as data units and shifted every node angle.
+        if let view = coordSys as? GraphViewCoordSys {
+            let nodeScaleRatio = jsNumOrOne(seriesModel.getShallow("nodeScaleRatio", true))
+            let denom = (view.overallScaleX != 0 && !view.overallScaleX.isNaN) ? view.overallScaleX : 1
+            return ((view.roamZoom - 1) * nodeScaleRatio + 1) / denom
+        }
         return 1
     }
 

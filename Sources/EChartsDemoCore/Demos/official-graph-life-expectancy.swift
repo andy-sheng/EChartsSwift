@@ -214,7 +214,12 @@ myChart.setOption(option);
                 "dimension": 1.0
             ] as [String: Any],
             "legend": [
-                "data": graphLifeExpectancyCounties,
+                // A graph series inherits its circular node symbol as the legend marker. Spell that
+                // item metadata explicitly in the native option until Graph's series-level legend
+                // visual is shared with the browser implementation.
+                "data": graphLifeExpectancyCounties.map {
+                    ["name": $0, "icon": "circle"] as [String: Any]
+                },
                 "selectedMode": "single",
                 "right": 100.0
             ] as [String: Any],

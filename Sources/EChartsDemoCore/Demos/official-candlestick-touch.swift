@@ -9,11 +9,19 @@
 //     trailing `export {};` dropped (a bare export is a SyntaxError in a classic script).
 //   - `rawData` is kept verbatim even though the official option never reads it (only `dates`,
 //     `data` and `volumes` are used).
-//   - Native pane: `tooltip.position` and `xAxis[0].axisLabel.formatter` are JS closures and are
-//     omitted (see the PORT-NOTEs); `calculateMA` is reimplemented in Swift, producing the same
-//     `toFixed(2)` strings and the same '-' placeholders for the first `dayCount` points.
+//   - Native pane: `xAxis[0].axisLabel.formatter` uses the native category-axis callback seam;
+//     `tooltip.position` remains omitted. `calculateMA` is reimplemented in Swift, producing the
+//     same `toFixed(2)` strings and the same '-' placeholders for the first `dayCount` points.
 //   - The chart is static in both panes (`animation: false` is already the example's own setting);
 //     the axisPointer/tooltip are only reachable by touch, so the snapshot shows the resting frame.
+import EChartsKit
+
+private let candlestickTouchDateFormatter: AxisLabelCategoryFormatter = { rawValue, _, _ in
+    let value = String(describing: rawValue)
+    guard value.count >= 5 else { return value }
+    return String(value.suffix(5))
+}
+
 extension EChartsDemoRegistry {
     static let official_candlestick_touch = EChartsDemo(
         name: "official-candlestick-touch", category: "candlestick",
@@ -347,8 +355,9 @@ option = {
                     "data": candlestickTouchDates,
                     "boundaryGap": false,
                     "axisLine": ["lineStyle": ["color": "#777"] as [String: Any]] as [String: Any],
-                    // PORT-NOTE: xAxis[0].axisLabel.formatter omitted — a JS closure calling
-                    // echarts.format.formatTime('MM-dd', value) to shorten each date label.
+                    "axisLabel": [
+                        "formatter": candlestickTouchDateFormatter as AxisLabelCategoryFormatter
+                    ] as [String: Any],
                     "min": "dataMin",
                     "max": "dataMax",
                     "axisPointer": ["show": true] as [String: Any]

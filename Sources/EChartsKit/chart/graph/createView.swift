@@ -134,6 +134,10 @@ public final class GraphViewCoordSys: CoordinateSystem {
         return (sx, sy, tx, ty)
     }
 
+    /// Scale of the current data-space → pixel-space transform. Graph circular layout uses its
+    /// reciprocal to keep pixel-sized node symbols correctly spaced while laying out in data space.
+    public var overallScaleX: Double { overallTransform().sx }
+
     // upstream coord/View.ts: `getBoundingRect()` returns "a rect in DATA space" (the node bounding box
     //   `dataToPoint` maps onto the pixel view rect), NOT the pixel view rect. The circular/force layout
     //   stages compute cx/cy/r from `coordSys.getBoundingRect()` and lay nodes out in that space; GraphView

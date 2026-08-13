@@ -118,16 +118,7 @@ option = {
         opacity: 0.7
       }
     }
-  ],
-  thumbnail: {
-    width: '20%',
-    height: '20%',
-    windowStyle: {
-      color: 'rgba(140, 212, 250, 0.5)',
-      borderColor: 'rgba(30, 64, 175, 0.7)',
-      opacity: 1,
-    }
-  }
+  ]
 };
 """#,
         option: [
@@ -157,17 +148,6 @@ option = {
                         "opacity": 0.7
                     ] as [String: Any]
                 ] as [String: Any]
-            ],
-            // PORT-NOTE: `thumbnail` is kept verbatim, but EChartsKit has no Thumbnail component yet
-            // (deferred in GraphView.swift), so the native pane ignores it — web draws a minimap, native does not.
-            "thumbnail": [
-                "width": "20%",
-                "height": "20%",
-                "windowStyle": [
-                    "color": "rgba(140, 212, 250, 0.5)",
-                    "borderColor": "rgba(30, 64, 175, 0.7)",
-                    "opacity": 1.0
-                ] as [String: Any]
-            ] as [String: Any]
+            ]
         ])
 }

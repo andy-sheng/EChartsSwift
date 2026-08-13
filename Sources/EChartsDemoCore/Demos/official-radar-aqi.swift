@@ -234,7 +234,11 @@ option = {
             ] as [String: Any],
             "legend": [
                 "bottom": 5.0,
-                "data": ["Beijing", "Shanghai", "Guangzhou"],
+                "data": [
+                    "Beijing",
+                    ["name": "Shanghai", "icon": "none"] as [String: Any],
+                    ["name": "Guangzhou", "icon": "none"] as [String: Any]
+                ] as [Any],
                 "itemGap": 20.0,
                 "textStyle": [
                     "color": "#fff",

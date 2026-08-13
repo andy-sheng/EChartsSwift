@@ -11,8 +11,11 @@
 //   - native option: the raw rows are pre-split at file scope (`shIndexCategoryData` /
 //     `shIndexValues`) exactly as JS `splitData` does, and `shIndexMA(_:)` reproduces `calculateMA`
 //     (leading '-' placeholders included). Same numbers, computed in Swift.
-//   - native option: markPoint's label.formatter and tooltip.formatter are JS closures and are
-//     omitted (see PORT-NOTEs); the mark points still render, with default labels.
+//   - native option: markPoint's label.formatter is expressed with the native
+//     `CallbackDataParams` closure seam; tooltip.formatter remains omitted.
+import Foundation
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_candlestick_sh = EChartsDemo(
         name: "official-candlestick-sh", category: "candlestick",
@@ -391,8 +394,25 @@ option = {
                         "borderColor0": shIndexDownBorderColor
                     ] as [String: Any],
                     "markPoint": [
-                        // PORT-NOTE: markPoint.label.formatter omitted — JS closure returning
-                        // `Math.round(param.value) + ''` (the mark's value, rounded to an integer).
+                        "label": [
+                            "formatter": { (param: CallbackDataParams) -> String in
+                                let value: Double?
+                                switch param.value {
+                                case let number as Double:
+                                    value = number
+                                case let number as Int:
+                                    value = Double(number)
+                                case let number as NSNumber:
+                                    value = number.doubleValue
+                                default:
+                                    value = nil
+                                }
+                                guard let value else { return "" }
+                                // Values in this dataset are positive. This is the exact result of
+                                // the reference pane's `Math.round(param.value) + ''` formatter.
+                                return String(Int(Foundation.floor(value + 0.5)))
+                            } as (CallbackDataParams) -> String
+                        ] as [String: Any],
                         "data": [
                             [
                                 "name": "Mark",

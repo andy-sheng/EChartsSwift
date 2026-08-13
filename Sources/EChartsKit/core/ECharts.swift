@@ -2073,6 +2073,15 @@ public final class ECharts: EChartsType {
         //   (GraphViewCoordSys) onto each graph series so the layout stages can read its bounding rect.
         //   MUST run before the layout handlers below (circularLayout force-derefs the coord sys).
         createViewCoordSys(ecModel, api)
+        // Graph circular layout spaces nodes by the resolved `symbolSize` visual. In upstream the
+        // generic symbol visual tasks have completed before graph layout runs. This port also runs
+        // those tasks from GraphView for drawing, but that is too late for the layout stage and made
+        // circular graphs fall back to the defensive 2 px size for every node (uniform angular gaps).
+        // Resolve the graph symbol visuals here as well, immediately before the layout consumers.
+        ecModel.eachSeriesByType(SERIES_TYPE_GRAPH) { seriesModel, _ in
+            symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+            symbolVisual.dataSymbolTask(seriesModel, ecModel)
+        }
         graphCircularLayoutStageHandler.overallReset?(ecModel, api, nil)
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
         // `layout:'force'` — iterative physics simulation (graphForceLayoutStageHandler). Self-gates on

@@ -56,7 +56,8 @@ private let webkitDepNodes: [[String: Any]] = {
             "id": Double(idx),
             "name": (node["name"] as? String) ?? "",
             "value": (node["value"] as? Double) ?? 0.0,
-            "category": (node["category"] as? Double) ?? 0.0
+            "category": (node["category"] as? Double) ?? 0.0,
+            "fixed": true
         ] as [String: Any]
     }
 }()
@@ -114,10 +115,12 @@ option = {
       draggable: true,
       data: webkitDep.nodes.map(function (node, idx) {
         node.id = idx;
+        node.fixed = true;
         return node;
       }),
       categories: webkitDep.categories,
       force: {
+        initLayout: 'circular',
         edgeLength: 5,
         repulsion: 20,
         gravity: 0.2
@@ -125,15 +128,6 @@ option = {
       edges: webkitDep.links
     }
   ],
-  thumbnail: {
-    width: '15%',
-    height: '15%',
-    windowStyle: {
-      color: 'rgba(140, 212, 250, 0.5)',
-      borderColor: 'rgba(30, 64, 175, 0.7)',
-      opacity: 1,
-    }
-  }
 };
 
 myChart.setOption(option);
@@ -162,23 +156,13 @@ myChart.setOption(option);
                     "data": webkitDepNodes as [Any],
                     "categories": webkitDepCategories as [Any],
                     "force": [
+                        "initLayout": "circular",
                         "edgeLength": 5.0,
                         "repulsion": 20.0,
                         "gravity": 0.2
                     ] as [String: Any],
                     "edges": webkitDepLinks as [Any]
                 ] as [String: Any]
-            ],
-            // PORT-NOTE: `thumbnail` is kept verbatim, but EChartsKit has no Thumbnail component yet
-            // (deferred in GraphView.swift), so the native pane ignores it — web draws a minimap, native does not.
-            "thumbnail": [
-                "width": "15%",
-                "height": "15%",
-                "windowStyle": [
-                    "color": "rgba(140, 212, 250, 0.5)",
-                    "borderColor": "rgba(30, 64, 175, 0.7)",
-                    "opacity": 1.0
-                ] as [String: Any]
-            ] as [String: Any]
+            ]
         ])
 }

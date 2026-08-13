@@ -155,12 +155,16 @@ option = {
             "calendar": [
                 [
                     "orient": "vertical",
-                    "range": "2015"
+                    "range": "2015",
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                    "dayLabel": ["nameMap": "ZH"] as [String: Any]
                 ] as [String: Any],
                 [
                     "left": 300.0,
                     "orient": "vertical",
-                    "range": "2016"
+                    "range": "2016",
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                    "dayLabel": ["nameMap": "ZH"] as [String: Any]
                 ] as [String: Any],
                 [
                     "left": 520.0,
@@ -168,8 +172,10 @@ option = {
                     "bottom": 10.0,
                     "orient": "vertical",
                     "range": "2017",
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
                     "dayLabel": [
-                        "margin": 5.0
+                        "margin": 5.0,
+                        "nameMap": "ZH"
                     ] as [String: Any]
                 ] as [String: Any]
             ],

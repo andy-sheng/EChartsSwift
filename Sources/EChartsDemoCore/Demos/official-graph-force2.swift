@@ -75,7 +75,8 @@ option = {
       width: '25%',
       height: '25%',
       force: {
-        // initLayout: 'circular'
+        initLayout: 'circular',
+        layoutAnimation: false,
         // gravity: 0
         repulsion: 60,
         edgeLength: 2
@@ -115,6 +116,8 @@ private let graphForce2Series: [[String: Any]] = (0..<16).map { idx -> [String: 
         "width": "25%",
         "height": "25%",
         "force": [
+            "initLayout": "circular",
+            "layoutAnimation": false,
             "repulsion": 60.0,
             "edgeLength": 2.0
         ] as [String: Any],

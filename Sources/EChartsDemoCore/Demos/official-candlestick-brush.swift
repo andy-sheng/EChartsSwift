@@ -331,7 +331,15 @@ option = {
             "legend": [
                 "bottom": 10.0,
                 "left": "center",
-                "data": ["Dow-Jones index", "MA5", "MA10", "MA20", "MA30"]
+                "data": [
+                    [
+                        "name": "Dow-Jones index",
+                        // The reference icon has no visible outline when the series border is
+                        // explicitly undefined; suppress the inherited Native default border.
+                        "itemStyle": ["borderWidth": 0.0] as [String: Any]
+                    ] as [String: Any],
+                    "MA5", "MA10", "MA20", "MA30"
+                ] as [Any]
             ] as [String: Any],
             "tooltip": [
                 "trigger": "axis",

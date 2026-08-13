@@ -1896,25 +1896,17 @@ func createTextStyle(
     verticalAlign: TextVerticalAlign? = nil
 ) -> TextStyleProps {
     var style = TextStyleProps()
+    // Axis labels and names accept the same text-box properties as normal labels. Reuse the
+    // complete builder so padding/background/border/shadow and rich tokens are not discarded.
+    labelStyle.setTextStyleCommon(&style, textStyleModel)
     style.text = text
     style.font = font ?? textStyleModel.getFont()
-    style.fill = fill
-    style.align = align
-    style.verticalAlign = verticalAlign
+    if let fill = fill { style.fill = fill }
+    if let align = align { style.align = align }
+    if let verticalAlign = verticalAlign { style.verticalAlign = verticalAlign }
     style.overflow = overflow
     style.width = width   // TextStyleProps.width is narrowed to Double? in this port
     style.ellipsis = ellipsis
-    // Rich-text token styles (e.g. `axisLabel.rich`). This convenience shim otherwise drops `rich`, so a
-    //   `{tag|…}` formatter (the bar-race flag emoji: `value + '{flag|' + emoji + '}'`) rendered its
-    //   markup LITERALLY. Reuse the fully-ported rich builder (`LabelStyle.setTextStyleCommon` →
-    //   getRichItemNames + setTokenTextStyle) on a throwaway probe and copy just `.rich` across, so the
-    //   `{flag|…}` tag parses into the `rich.flag` style. Gated on `rich` being present, so a plain
-    //   axisLabel keeps the untouched plain-text fast path (probe.rich stays nil → style.rich stays nil).
-    if textStyleModel.get("rich") != nil {
-        var probe = TextStyleProps()
-        labelStyle.setTextStyleCommon(&probe, textStyleModel)
-        style.rich = probe.rich
-    }
     return style
 }
 

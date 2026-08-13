@@ -116,6 +116,10 @@ option = {
                 "right": 30.0,
                 "cellSize": ["auto", 13.0] as [Any],
                 "range": "2016",
+                // The reference page resolves the default locale to Chinese. Pin it explicitly on
+                // native so month/day labels do not inherit the process locale.
+                "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                "dayLabel": ["nameMap": "ZH"] as [String: Any],
                 "itemStyle": [
                     "borderWidth": 0.5
                 ] as [String: Any],

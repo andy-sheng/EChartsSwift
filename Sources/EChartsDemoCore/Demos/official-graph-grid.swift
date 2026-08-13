@@ -52,9 +52,7 @@ extension EChartsDemoRegistry {
         collection: .official,
         webOptionJS: #"""
 const axisData = ['Mon', 'Tue', 'Wed', 'Very Loooong Thu', 'Fri', 'Sat', 'Sun'];
-const data = axisData.map(function (item, i) {
-  return Math.round(Math.random() * 1000 * (i + 1));
-});
+const data = [612, 1385, 2074, 1108, 4318, 2593, 6157];
 const links = data.map(function (item, i) {
   return {
     source: i,
@@ -119,7 +117,9 @@ option = {
                     ] as [String: Any],
                     "edgeSymbol": ["circle", "arrow"],
                     "edgeSymbolSize": [4.0, 10.0],
-                    "data": graphGridData,
+                    "data": zip(graphGridAxisData, graphGridData).map { name, value in
+                        ["name": name, "value": value] as [String: Any]
+                    },
                     "links": graphGridLinks,
                     "lineStyle": [
                         "color": "#2f4554"

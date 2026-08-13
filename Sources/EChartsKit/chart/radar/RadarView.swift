@@ -88,6 +88,11 @@ open class RadarView: ChartView {
         // upstream typed `seriesModel: RadarSeriesModel`; the base override is typed `SeriesModel`.
         let seriesModel = seriesModelBase as! RadarSeriesModel
 
+        // Radar vertex rendering reads symbol properties from data visuals. Populate both the
+        // series-level defaults and per-data-item overrides before building the vertex groups.
+        symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+        symbolVisual.dataSymbolTask(seriesModel, ecModel)
+
         // const polar = seriesModel.coordinateSystem;  — the radar coord, read for the collapse-to-center
         //   entrance (`getInitialPoints`). The final vertex positions come from `data.getItemLayout(idx)`.
         let group = self.group

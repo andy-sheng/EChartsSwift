@@ -515,7 +515,10 @@ open class Element: Transformable, AnimationTarget {
             else if let br = self.getBoundingRect() {
                 lr.copy(br)
             }
-            if !isLocal, let t = self.transform {
+            // Attached labels are collected as separate display-list elements. Resolve the host's full
+            // ancestor chain here; reading the cached transform can be stale/nil when a symbol group was
+            // positioned after its child path last updated (graph nodes then stacked labels at 0,0).
+            if !isLocal, let t = self.getComputedTransform() {
                 lr.applyTransform(t)
             }
             layoutRect = lr

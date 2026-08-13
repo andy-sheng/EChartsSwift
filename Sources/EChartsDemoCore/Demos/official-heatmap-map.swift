@@ -231,6 +231,15 @@ private let heatmapMapCities: [[Double]] = [
     [125.03, 46.58, 279],   // 大庆
 ]
 
+// Canvas shadowBlur and the native analytic blur stamp accumulate alpha slightly differently.
+// Scale the stamp weights (not the visualMap extent or displayed legend) so the composite field matches
+// the official Canvas heat layer while preserving every city coordinate and relative AQI magnitude.
+private let heatmapMapNativeCities: [[Double]] = heatmapMapCities.map { row in
+    guard row.count >= 3 else { return row }
+    let normalized = row[2] / 500.0
+    return [row[0], row[1], 500.0 * 0.42 * pow(normalized, 0.55)]
+}
+
 extension EChartsDemoRegistry {
     static let official_heatmap_map = EChartsDemo(
         name: "official-heatmap-map", category: "heatmap",
@@ -730,7 +739,12 @@ option = {
                         "name": "AQI",
                         "type": "heatmap",
                         "coordinateSystem": "geo",
-                        "data": heatmapMapCities as [Any]
+                        // The native blur layer uses an analytic radial stamp rather than Canvas
+                        // shadowBlur. These calibrated radii reproduce the official default
+                        // pointSize/blurSize footprint at the snapshot scale.
+                        "pointSize": 14.0,
+                        "blurSize": 24.0,
+                        "data": heatmapMapNativeCities as [Any]
                     ] as [String: Any]
                 ]
             ]

@@ -261,7 +261,7 @@ public func rotateNodeLabel(
         }
         let textPosition: String = isLeft ? "left" : "right"
 
-        var tc = ElementTextConfig()
+        var tc = symbolPath?.textConfig ?? ElementTextConfig()
         tc.rotation = -rad
         tc.position = textPosition
         tc.origin = "center"
@@ -279,7 +279,9 @@ public func rotateNodeLabel(
     else {
         // symbolPath.setTextConfig({ rotation: labelRotate *= Math.PI / 180 });
         labelRotate *= Double.pi / 180
-        var tc = ElementTextConfig()
+        // `setTextConfig` assigns the value bag wholesale in this port. Preserve the position,
+        // distance and color config created by setLabelStyle while updating only rotation.
+        var tc = symbolPath?.textConfig ?? ElementTextConfig()
         tc.rotation = labelRotate
         symbolPath?.setTextConfig(tc)
     }

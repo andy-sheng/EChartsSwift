@@ -11,20 +11,16 @@
 //      script, not TS) and the trailing `export {};` is dropped (a bare export is a SyntaxError in a
 //      classic script and would blank the whole page). `echarts.format.addCommas` and
 //      `echarts.format.formatTime` stay: both are real echarts API, still exported by the 6.1.0 dist
-//      the pane loads. The web pane keeps the full `dataCount = 2e5`.
-//   2. The data is RANDOM (`Math.random()`, regenerated on every load) — upstream ships no fixed
-//      dataset, so the two panes CANNOT show identical bars by construction. The native pane runs the
-//      same recurrence off a SEEDED xorshift so its frame is at least stable across runs. Compare the
-//      panes for layout / axis behaviour / dataZoom / up-down coloring, not per-bar values.
-//   3. The NATIVE row count is reduced 2e5 -> 2e4 (still ~33x past the candlestick `largeThreshold`
+//      the pane loads.
+//   2. The upstream data is RANDOM (`Math.random()`, regenerated on every load), which makes a
+//      reference↔native visual comparison meaningless. Both panes therefore run the same seeded
+//      xorshift64* stream and the same OHLC recurrence.
+//   3. The row count in BOTH panes is reduced 2e5 -> 2e4 (still ~33x past the candlestick `largeThreshold`
 //      of 600, so the large path is what renders). 200k rows x 7 boxed dimensions through the Swift
 //      option/SourceManager path costs minutes in the headless render sweep for no extra signal — the
-//      dense band reads the same. `title.text` follows the reduced count ("Data Amount: 20,000")
-//      rather than "Data Amount: 200,000".
-//   4. Upstream's generator calls `boxVals.sort()` with NO comparator — JS's default sort is
-//      LEXICOGRAPHIC, so it only happens to order these numerically because all four values sit
-//      within `dayRange` (12) of the same `baseValue`. The Swift mirror sorts numerically, which is
-//      what the example means (boxVals[0] = lowest, boxVals[3] = highest).
+//      dense band reads the same. `title.text` follows the reduced count ("Data Amount: 20,000").
+//   4. Upstream's generator calls `boxVals.sort()` with no comparator. Both panes use numeric sort,
+//      which is what the OHLC example intends (boxVals[0] = lowest, boxVals[3] = highest).
 //   5. `toolbox` and `dataZoom` are interactive; the gallery snapshots ONE static frame, so both panes
 //      show them in their initial state (the dataZoom window at start: 10, end: 100).
 //   6. Canvas bumped to 800x560 (from the gallery default 640x420): the example hard-codes
@@ -136,7 +132,7 @@ const upBorderColor = '#8A0000';
 const downColor = '#00da3c';
 const downBorderColor = '#008F28';
 
-const dataCount = 2e5;
+const dataCount = 2e4;
 const data = generateOHLC(dataCount);
 
 option = {
@@ -276,26 +272,40 @@ option = {
 function generateOHLC(count) {
   let data = [];
 
+  // Deterministic counterpart of `CandlestickLargeRandom` in the Native option.
+  let randomState = 0x9E3779B97F4A7C15n;
+  const uint64Mask = (1n << 64n) - 1n;
+  function random01() {
+    randomState ^= randomState >> 12n;
+    randomState &= uint64Mask;
+    randomState ^= (randomState << 25n) & uint64Mask;
+    randomState &= uint64Mask;
+    randomState ^= randomState >> 27n;
+    randomState &= uint64Mask;
+    const x = (randomState * 2685821657736338717n) & uint64Mask;
+    return Number(x >> 11n) / 9007199254740992;
+  }
+
   let xValue = +new Date(2011, 0, 1);
   let minute = 60 * 1000;
-  let baseValue = Math.random() * 12000;
+  let baseValue = random01() * 12000;
   let boxVals = new Array(4);
   let dayRange = 12;
 
   for (let i = 0; i < count; i++) {
-    baseValue = baseValue + Math.random() * 20 - 10;
+    baseValue = baseValue + random01() * 20 - 10;
 
     for (let j = 0; j < 4; j++) {
-      boxVals[j] = (Math.random() - 0.5) * dayRange + baseValue;
+      boxVals[j] = (random01() - 0.5) * dayRange + baseValue;
     }
-    boxVals.sort();
+    boxVals.sort((a, b) => a - b);
 
-    let openIdx = Math.round(Math.random() * 3);
-    let closeIdx = Math.round(Math.random() * 2);
+    let openIdx = Math.round(random01() * 3);
+    let closeIdx = Math.round(random01() * 2);
     if (closeIdx === openIdx) {
       closeIdx++;
     }
-    let volumn = boxVals[3] * (1000 + Math.random() * 500);
+    let volumn = boxVals[3] * (1000 + random01() * 500);
 
     // ['open', 'close', 'lowest', 'highest', 'volumn']
     // [1, 4, 3, 2]

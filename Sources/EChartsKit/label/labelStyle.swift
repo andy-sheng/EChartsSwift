@@ -514,7 +514,26 @@ public enum labelStyle {
         let labelDistanceFallback: Double? = (isNotNormal ?? false) ? nil : 5
         let labelDistance = _num(textStyleModel.getShallow("distance")) ?? labelDistanceFallback
         let labelOffset = _doubleArray(textStyleModel.getShallow("offset"))
-        var labelPosition: Any? = textStyleModel.getShallow("position") ?? ((isNotNormal ?? false) ? nil : "inside")
+        let rawLabelPosition = textStyleModel.getShallow("position")
+        // The dynamic option tree represents an explicit JS null as NSNull. Upstream's default label
+        // model still falls back to "inside" for the normal state; treating NSNull as a real position
+        // left textConfig.position non-nil-but-unusable and stacked attached labels at the origin.
+        var labelPosition: Any?
+        let hasUsableLabelPosition = rawLabelPosition is String
+            || rawLabelPosition is [Any]
+            || rawLabelPosition is [Double]
+            || rawLabelPosition is [String]
+        if !hasUsableLabelPosition {
+            if isNotNormal == true {
+                labelPosition = nil
+            }
+            else {
+                labelPosition = "inside"
+            }
+        }
+        else {
+            labelPosition = rawLabelPosition
+        }
         // 'outside' is not a valid zr textPosition value, but used in bar series, and magic type
         // should be considered.
         if let s = labelPosition as? String, s == "outside" {

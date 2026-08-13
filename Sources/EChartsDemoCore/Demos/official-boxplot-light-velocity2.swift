@@ -13,9 +13,8 @@
 //     (a `: any` in a classic <script> is a SyntaxError), and the trailing `export {};` is dropped. The 5×20
 //     sample matrix is already inline upstream, so nothing had to be fetched or spliced in. Otherwise verbatim;
 //     the example is static (no setInterval / re-setOption), so the single rendered frame IS the example.
-//   - option (native): `dataset[1].transform.config` is dropped — its only key, `itemNameFormatter`, is a JS
-//     CLOSURE here (the sibling example uses the template STRING 'expr {value}', which ports fine; this one
-//     does not). See the PORT-NOTE at the drop site.
+//   - option (native): the JS `itemNameFormatter(params)` callback is represented by the native boxplot
+//     transform callback `(Double) -> String`; both produce the same `expr <index>` item names.
 //
 // nativeSupported: TRUE — same wiring as `official-boxplot-light-velocity`: the `boxplot` SERIES
 // (BoxplotSeriesModel + BoxplotView + boxplotLayout + registerBoxplotAxisHandlers, all wired in
@@ -36,6 +35,10 @@ private let lightVelocity2Source: [[Double]] = [
     [890, 810, 810, 820, 800, 770, 760, 740, 750, 760, 910, 920, 890, 860, 880, 720, 840, 850, 850, 780],
     [890, 840, 780, 810, 760, 810, 790, 810, 820, 850, 870, 870, 810, 740, 810, 940, 950, 800, 810, 870]
 ]
+
+private let lightVelocity2ItemNameFormatter: (Double) -> String = { value in
+    "expr \(Int(value))"
+}
 
 extension EChartsDemoRegistry {
     static let official_boxplot_light_velocity2 = EChartsDemo(
@@ -156,14 +159,10 @@ option = {
                 // [1] the built-in boxplot transform: result 0 = the boxes, result 1 = the outliers.
                 [
                     "transform": [
-                        "type": "boxplot"
-                        // PORT-NOTE: transform.config omitted — its sole key `itemNameFormatter` is the JS
-                        // closure `function (params) { return 'expr ' + params.value; }`, which names box i
-                        // "expr <i>". Swift cannot carry a closure through the option dict. With no formatter,
-                        // `prepareBoxplotData` falls back to the bare index, so the category axis reads
-                        // "0".."4" instead of "expr 0".."expr 4" — labels only; the box/outlier geometry is
-                        // unaffected. (The sibling light-velocity example passes the template STRING
-                        // 'expr {value}' instead, which ports verbatim.)
+                        "type": "boxplot",
+                        "config": [
+                            "itemNameFormatter": lightVelocity2ItemNameFormatter as (Double) -> String
+                        ] as [String: Any]
                     ] as [String: Any]
                 ] as [String: Any],
                 // [2] the transform's SECOND result (the outliers), consumed by the scatter series.

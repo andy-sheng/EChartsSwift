@@ -180,10 +180,10 @@ option = {
                 ] as [String: Any],
                 "dayLabel": [
                     "firstDay": 1.0,
-                    "nameMap": "cn"
+                    "nameMap": "ZH"
                 ] as [String: Any],
                 "monthLabel": [
-                    "nameMap": "cn",
+                    "nameMap": "ZH",
                     "margin": 15.0,
                     "fontSize": 20.0,
                     "color": "#999"

@@ -61,17 +61,18 @@ private let dtAggregateRawJSON: String = {
 }()
 
 // The SAME asset, parsed, for the native pane: a header row
-// (`['Income', 'Life Expectancy', 'Population', 'Country', 'Year']`) + 1539 data rows.
-//
-// NOTE: the rows are used EXACTLY as JSONSerialization produces them (NSNumber), deliberately NOT
-// normalized to Swift `Double`. `Country` is the category dimension and `Year` is used as a label /
-// itemName, and Ordinal.getLabel stringifies a category by interpolation — an NSNumber holding 1950
-// interpolates as "1950" (JS-like), whereas a Swift `Double` would interpolate as "1950.0". NSNumber still
-// bridges to Double for the numeric dimensions (`Income`) and for the filter's `isNumber` fast path.
+// (`['Income', 'Life Expectancy', 'Population', 'Country', 'Year']`) + 1539 data rows. Normalize JSON
+// numbers to the port's canonical `Double` representation so the built-in numeric filter takes the same
+// fast path as JavaScript (`Year >= 1950`) before aggregation.
 private let dtAggregateRows: [[Any]] = {
     guard let data = dtAggregateRawJSON.data(using: .utf8),
           let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[Any]] else { return [] }
-    return rows
+    return rows.map { row in
+        row.map { value in
+            if let number = value as? NSNumber { return number.doubleValue }
+            return value
+        }
+    }
 }()
 
 // `income_aggregate`'s first transform: the five-number summary of `Income` per `Country`.
