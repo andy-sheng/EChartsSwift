@@ -12,12 +12,7 @@
 //     showers}_128.png via Upstream.repoRoot) and inlined as `data:image/png;base64,...` URIs — same
 //     bytes, same three images, spliced into BOTH panes' options. Nothing else changed; the option is
 //     otherwise verbatim.
-//   - nativeSupported: false. EChartsKit/ZRenderKit resolve `rich` styles (labelStyle.swift) and a plain
-//     string `backgroundColor`, but the IMAGE form of a rich token's backgroundColor is an explicit
-//     deferred seam in the text layout engine (ZRenderKit/Graphic/Text.swift:2154, "PORT-NOTE (deferred):
-//     the `backgroundColor.image` → token-width-from-image-size branch"), so the icon rows of the CityE
-//     card cannot lay out natively yet. The `option` below is still the full port, ready for when that
-//     branch lands.
+//   - Rich token image backgrounds are carried as data URIs and rendered by the native image seam.
 //
 // PORT-NOTE (native option completeness): NOTHING is dropped from the Swift `option`. This example has
 // no JS-function-valued keys at all — both formatters (`tooltip.formatter` and the CityE
@@ -139,7 +134,7 @@ extension EChartsDemoRegistry {
         name: "official-pie-rich-text", category: "rich",
         summary: "富文本标签 — Pie Special Label",
         width: 640, height: 420,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const weatherIcons = {

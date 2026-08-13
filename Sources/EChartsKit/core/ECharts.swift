@@ -1417,6 +1417,9 @@ public final class ECharts: EChartsType {
         //   series' `polarIndex` → `radarIndex`. Mutates option.polar/option.radar/option.series in place
         //   (inout write-back, value-type semantics, per the candlestick preprocessor precedent).
         radarBackwardCompat(&opt)
+        // Pie/gauge portion of the global backward-compat preprocessor: migrate the deprecated
+        // edge-aligned label `margin` to `edgeDistance` before PieSeries defaults supply 25%.
+        pieBackwardCompat(&opt)
         // Preprocessor from coord/parallel/install.ts (registerPreprocessor(parallelPreprocessor)):
         //   create the `parallelAxis` components from `parallel.parallelAxisDefault` when absent, and merge
         //   the per-axis option from the parallel component. Mutates option.parallel/option.parallelAxis in

@@ -95,15 +95,9 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
         // (the child list), so walk it explicitly. Without this, every label attached via setTextContent
         // (sankey / treemap / tree / sunburst / graph node labels, etc.) is silently dropped.
         if let textEl = el.getTextContent(), !textEl.ignore {
-            // zrender parity (Storage._updateAndAddDisplayable): the attached text inherits its host's
-            // z-ordering (zlevel/z/z2) so the global (zlevel,z,z2) sort keeps the label immediately after
-            // (i.e. painted OVER) its host. Without this the label defaults to z2 == 0 and is drawn under
-            // any host whose z2 > 0 (e.g. treemap tiles use depth-based z2), hiding it behind its own tile.
-            if let host = el as? Displayable {
-                textEl.zlevel = host.zlevel
-                textEl.z = host.z
-                textEl.z2 = host.z2
-            }
+            // Mirror zrender Storage: preserve the attached text's authored z/z2/zlevel. The chart
+            // pipeline has already assigned them; copying the host's z2 here erases intentional label
+            // lifts and lets later sibling shapes paint over labels at sector boundaries.
             walk(textEl, resolvedClipPaths)
         }
     }

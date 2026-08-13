@@ -714,19 +714,35 @@ final class WebSnapper: NSObject, WKNavigationDelegate {
     let out: URL
     init(out: URL) { self.out = out }
     func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
-        // Give ECharts a tick to lay out + paint before snapshotting.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            let cfg = WKSnapshotConfiguration(); cfg.rect = wv.bounds
-            wv.takeSnapshot(with: cfg) { image, _ in
-                defer { exit(0) }
-                guard let image = image,
-                      let tiff = image.tiffRepresentation,
-                      let rep = NSBitmapImageRep(data: tiff),
-                      let png = rep.representation(using: .png, properties: [:]) else {
-                    FileHandle.standardError.write(Data("snapshot failed\n".utf8)); return
+        // Give ECharts a tick to lay out + paint. A demo with async local assets can explicitly hold
+        // the snapshot by setting `window.__echartsSnapshotReady = false`; poll that opt-in marker
+        // instead of capturing a timing-dependent intermediate frame.
+        waitUntilReady(wv, attempt: 0)
+    }
+    private func waitUntilReady(_ wv: WKWebView, attempt: Int) {
+        let delay = attempt == 0 ? 0.4 : 0.1
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            wv.evaluateJavaScript("window.__echartsSnapshotReady !== false") { value, _ in
+                let ready = (value as? Bool) ?? true
+                if !ready && attempt < 30 {
+                    self.waitUntilReady(wv, attempt: attempt + 1)
+                    return
                 }
-                try? png.write(to: self.out); print("wrote \(self.out.path)")
+                self.takeSnapshot(wv)
             }
+        }
+    }
+    private func takeSnapshot(_ wv: WKWebView) {
+        let cfg = WKSnapshotConfiguration(); cfg.rect = wv.bounds
+        wv.takeSnapshot(with: cfg) { image, _ in
+            defer { exit(0) }
+            guard let image = image,
+                  let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else {
+                FileHandle.standardError.write(Data("snapshot failed\n".utf8)); return
+            }
+            try? png.write(to: self.out); print("wrote \(self.out.path)")
         }
     }
     func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {

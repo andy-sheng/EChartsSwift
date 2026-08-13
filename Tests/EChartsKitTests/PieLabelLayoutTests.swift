@@ -11,6 +11,39 @@ import ZRenderKit
 final class PieLabelLayoutTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(PieSeriesModel.self) }
 
+    func testBackwardCompatMigratesEdgeMarginBeforeDefaults() {
+        var option: ECUnitOption = [
+            "series": [
+                [
+                    "type": "pie",
+                    "label": ["alignTo": "edge", "margin": 20.0],
+                    "data": [
+                        ["value": 1.0, "alignTo": "edge", "margin": 12.0],
+                        ["value": 2.0]
+                    ]
+                ] as [String: Any],
+                [
+                    "type": "pie",
+                    "label": ["alignTo": "edge", "margin": 30.0, "edgeDistance": 8.0]
+                ] as [String: Any]
+            ] as [Any]
+        ]
+
+        pieBackwardCompat(&option)
+
+        let series = option["series"] as! [Any]
+        let first = series[0] as! [String: Any]
+        let firstLabel = first["label"] as! [String: Any]
+        XCTAssertEqual(firstLabel["edgeDistance"] as? Double, 20.0)
+        let firstData = first["data"] as! [Any]
+        XCTAssertEqual((firstData[0] as! [String: Any])["edgeDistance"] as? Double, 12.0)
+
+        // An explicitly supplied replacement always wins over the deprecated alias.
+        let second = series[1] as! [String: Any]
+        let secondLabel = second["label"] as! [String: Any]
+        XCTAssertEqual(secondLabel["edgeDistance"] as? Double, 8.0)
+    }
+
     // Minimal ShiftLayoutItem: a rect + a backing ZRText whose y is shifted alongside.
     private final class Item: labelLayoutHelper.ShiftLayoutItem {
         let rect: BoundingRect

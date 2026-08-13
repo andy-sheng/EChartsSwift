@@ -9,10 +9,11 @@
 //     (a bare `as` cast is a SyntaxError in a classic script). The closure is otherwise verbatim, and
 //     still reads the page's `myChart` global — WebPage.swift names the instance `myChart` too.
 //   - Trailing `export {};` dropped (SyntaxError in a classic script).
-//   - NATIVE pane: `series[].labelLayout` is a JS closure and cannot be expressed in the Swift
-//     option, so it is omitted there. The pies still render; only the label-line end-point nudge
-//     (the point of the example) is missing from the native pane — that is the diff we want to see.
+//   - NATIVE pane expresses `series[].labelLayout` as `LabelLayoutOptionCallback`, preserving the
+//     official example's label-line end-point nudge.
 //   - Canvas bumped to 640x560: three pies stacked at 33.33% each need the vertical room.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_pie_labelline_adjust = EChartsDemo(
         name: "official-pie-labelLine-adjust", category: "pie",
@@ -158,6 +159,18 @@ private let pieLabelLineAdjustTops: [String] = ["0%", "33.3%", "66.6%"]
 // The JS `datas.map(function (data, idx) { ... })`, unrolled.
 private let pieLabelLineAdjustSeries: [[String: Any]] = {
     var series: [[String: Any]] = []
+    let labelLayout: LabelLayoutOptionCallback = { params in
+        var option = LabelLayoutOption()
+        guard var points = params.labelLinePoints, points.count >= 3 else { return option }
+
+        let isLeft = params.labelRect.x < 640.0 / 2.0
+        points[2][0] = isLeft
+            ? params.labelRect.x
+            : params.labelRect.x + params.labelRect.width
+        option.labelLinePoints = points
+        return option
+    }
+
     for (idx, data) in pieLabelLineAdjustDatas.enumerated() {
         let label: [String: Any] = [
             "alignTo": "edge",
@@ -189,9 +202,7 @@ private let pieLabelLineAdjustSeries: [[String: Any]] = {
                 "length2": 0.0,
                 "maxSurfaceAngle": 80.0
             ] as [String: Any],
-            // PORT-NOTE: labelLayout omitted — the JS closure moved each label line's end point
-            // (labelLinePoints[2][0]) to the label rect's inner edge: its left edge for labels in the
-            // chart's left half, its right edge for labels in the right half. Not expressible in Swift.
+            "labelLayout": labelLayout,
             "data": data
         ]
         series.append(one)

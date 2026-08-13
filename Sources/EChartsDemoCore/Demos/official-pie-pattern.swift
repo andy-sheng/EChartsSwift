@@ -10,10 +10,11 @@
 //     ROOT_PATH). They are kept byte-for-byte, hoisted into two Swift constants (`piePatternJPEGURI`,
 //     `bgPatternPNGURI`) and spliced back into webOptionJS — the same values, declared once instead of
 //     twice. The trailing `export {};` is dropped (a bare export is a SyntaxError in a classic script).
-//   - The official source wraps each URI in `new Image()` and hands the ELEMENT to the pattern object
-//     (`{ image: piePatternImg, repeat: 'repeat' }`). webOptionJS keeps that verbatim; the Swift option
-//     cannot hold a DOM Image, so it passes the data-URI STRING instead — `{ image: "data:image/...",
-//     repeat: "repeat" }`, which is the other arm of zrender's `ImagePatternObject.image` union.
+//   - The official source wraps each URI in `new Image()` and immediately applies the option. In a
+//     headless WKWebView those detached images are not part of document load and can still be empty
+//     when zrender first creates its canvas patterns, producing a timing-dependent black frame. The
+//     web pane now waits for both data-URI images to load before applying the official option, and
+//     exposes the page's opt-in snapshot-ready flag. Image bytes and the rendered option are unchanged.
 //   - No timers, no closures, no data fetch in this example — everything else is carried over as-is.
 //
 // NATIVE PANE: left ON (the pie itself — geometry, labels, labelLine, border, opacity, single-select —
@@ -59,9 +60,20 @@ const piePatternSrc = '\#(piePatternJPEGURI)';
 const bgPatternSrc = '\#(bgPatternPNGURI)';
 
 const piePatternImg = new Image();
-piePatternImg.src = piePatternSrc;
 const bgPatternImg = new Image();
-bgPatternImg.src = bgPatternSrc;
+window.__echartsSnapshotReady = false;
+const patternImagesReady = Promise.all([
+  new Promise((resolve, reject) => {
+    piePatternImg.onload = resolve;
+    piePatternImg.onerror = reject;
+    piePatternImg.src = piePatternSrc;
+  }),
+  new Promise((resolve, reject) => {
+    bgPatternImg.onload = resolve;
+    bgPatternImg.onerror = reject;
+    bgPatternImg.src = bgPatternSrc;
+  })
+]);
 
 option = {
   backgroundColor: {
@@ -110,6 +122,18 @@ option = {
     }
   ]
 };
+
+// Mark the example as self-applied so the editor-compatible harness does not race the image loads.
+myChart.setOption({ animation: false });
+patternImagesReady.then(() => {
+  myChart.setOption(option, true);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    window.__echartsSnapshotReady = true;
+  }));
+}).catch((error) => {
+  console.error('pie-pattern image load failed', error);
+  window.__echartsSnapshotReady = true;
+});
 """#,
         option: [
             // `image` is the data-URI string here, not a DOM Image (see the header DEVIATIONS).

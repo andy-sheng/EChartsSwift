@@ -458,7 +458,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_line_graphic,                           // graphic   (native N/A)
         EChartsDemoRegistry.official_graphic_stroke_animation,               // graphic   (native N/A)
         EChartsDemoRegistry.official_graphic_loading,                        // graphic
-        EChartsDemoRegistry.official_pie_rich_text,                          // rich   (native N/A)
+        EChartsDemoRegistry.official_pie_rich_text,                          // rich
     ]
 
     /// The official gallery's chart-type categories, in ITS nav order (`line` … `rich`) — the

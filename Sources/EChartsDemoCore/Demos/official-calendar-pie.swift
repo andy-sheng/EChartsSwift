@@ -14,10 +14,8 @@
 //     × 0…9999, and 0…24) and the SAME arrays feed BOTH panes — spliced into webOptionJS as JSON
 //     literals, and used verbatim as the native series data. Everything else is verbatim, including the
 //     `scatterData.map(...)` that builds the 28 pie series in the reference pane.
-//   - PORT-NOTE (below): the scatter series' `label.formatter` is a JS closure
-//     (`echarts.time.format(params.value[0], '{dd}')` → the day number); Swift's option cannot carry it,
-//     so the native pane falls back to the default label content there. The pies' `label.formatter` is
-//     the string template '{c}', which IS portable and is kept on both panes.
+//   - The scatter series' JS `label.formatter` is represented by the native
+//     `(CallbackDataParams) -> String` formatter seam; both panes print the two-digit day number.
 //   - `export {};` and the TS type annotations/casts are dropped (a bare export is a SyntaxError in the
 //     reference page's classic script).
 //
@@ -26,6 +24,7 @@
 // `dayLabel.margin: 20` header row and the `legend.bottom: 20` footer and the chart needs ~540px of
 // height; at the default 460 the legend would sit on top of the last week's pies.
 import Foundation
+import EChartsKit
 
 // The random rows upstream would have produced, made deterministic: a fixed-seed LCG stands in for
 // Math.random(). Generated in upstream's order — first the 28 scatter values, then 3 pie slices per day.
@@ -70,10 +69,13 @@ private let calendarPieSeries: [[String: Any]] = {
             "symbolSize": 0.0,
             "label": [
                 "show": true,
-                // PORT-NOTE: label.formatter omitted — the JS closure returned
-                // `echarts.time.format(params.value[0], '{dd}', false)`, i.e. the two-digit day-of-month
-                // pulled out of the row's date string. Swift's option cannot carry a closure, so the
-                // native pane shows echarts' default label content for these points instead.
+                "formatter": { (params: CallbackDataParams) -> String in
+                    guard let row = params.value as? [Any],
+                          let date = row.first as? String,
+                          let day = date.split(separator: "-").last
+                    else { return "" }
+                    return String(day)
+                } as (CallbackDataParams) -> String,
                 "offset": [-30.0, -30.0],   // upstream: [-cellSize[0] / 2 + 10, -cellSize[1] / 2 + 10]
                 "fontSize": 14.0
             ] as [String: Any],
