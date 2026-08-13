@@ -111,9 +111,17 @@ public final class CGRenderer: Renderer {
     private func fillGradientClipped(_ g: Gradient, rule: CGPathFillRule, alpha: Double, rect: CGRect?) {
         guard let grad = makeCGGradient(g, alpha: alpha) else { return }
         ctx.saveGState()
+        // Core Graphics does not generate a path shadow when a gradient is painted by clipping and
+        // calling drawLinear/DrawRadialGradient: the clip itself is not a drawing source. Composite
+        // the clipped gradient as one transparency layer so the current canvas shadow is applied to
+        // the resulting alpha mask, matching `ctx.fillStyle = gradient; ctx.fill()`.
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        ctx.saveGState()
         ctx.addPath(_pathRebuilder.path)
         if rule == .evenOdd { ctx.clip(using: .evenOdd) } else { ctx.clip() }
         drawGradient(g, grad, rect: rect)
+        ctx.restoreGState()
+        ctx.endTransparencyLayer()
         ctx.restoreGState()
     }
 

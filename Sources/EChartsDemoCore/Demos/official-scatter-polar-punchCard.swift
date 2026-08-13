@@ -8,9 +8,10 @@
 //   - webOptionJS: the TS type annotation on the tooltip formatter (`function (params: any)`) is
 //     dropped — the reference pane runs the script as classic JS, where `: any` is a SyntaxError.
 //     Everything else (hours/days/data consts, all three closures) is verbatim.
-//   - native pane: `series[].symbolSize` (fn), `series[].animationDelay` (fn) and `tooltip.formatter`
-//     (fn) cannot be expressed in a Swift [String: Any] option and are omitted — see the PORT-NOTEs.
-//     The bubbles therefore all render at echarts' default symbol size instead of `val[2] * 2`.
+//   - native pane uses the typed symbol-size callback seam; animation delay and tooltip formatting do
+//     not affect the static comparison frame.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_polar_punchcard = EChartsDemo(
         name: "official-scatter-polar-punchCard", category: "scatter",
@@ -132,8 +133,10 @@ option = {
                     "name": "Punch Card",
                     "type": "scatter",
                     "coordinateSystem": "polar",
-                    // PORT-NOTE: symbolSize omitted — the JS closure sized each bubble as
-                    // `val[2] * 2` (commit count × 2); bubbles fall back to the default size.
+                    "symbolSize": { (rawValue: Any, _: CallbackDataParams) -> Any in
+                        guard let row = rawValue as? [Double], row.count > 2 else { return 0.0 }
+                        return row[2] * 2
+                    } as SymbolSizeCallback<CallbackDataParams>,
                     "data": punchCardData
                     // PORT-NOTE: animationDelay omitted — the JS closure staggered the entry
                     // animation by `idx * 5` ms; the gallery renders one static frame anyway.

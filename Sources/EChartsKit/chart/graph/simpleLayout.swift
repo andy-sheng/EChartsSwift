@@ -96,7 +96,19 @@ func graphSimpleLayout(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
 // `data.get(...)` returns a dynamic ParsedValue?; coerce to Double (NaN when non-numeric),
 // mirroring the upstream `as number` cast + `isNaN(val)` test.
 private func asNumber(_ v: Any?) -> Double {
+    guard let v else { return Double.nan }
+    let mirror = Mirror(reflecting: v)
+    if mirror.displayStyle == .optional {
+        return asNumber(mirror.children.first?.value)
+    }
     if let d = v as? Double { return d }
     if let i = v as? Int { return Double(i) }
+    if let s = v as? String {
+        // A time dimension is normally stored as its parsed millisecond value upstream. Some original
+        // graph-node arrays still expose the raw date string through SeriesData in the Swift port;
+        // normalize it here before handing the homogeneous coordinate vector to Calendar.dataToPoint.
+        let timestamp = number.parseDate(s).timeIntervalSince1970 * 1000
+        return timestamp.isNaN ? (Double(s) ?? Double.nan) : timestamp
+    }
     return Double.nan
 }

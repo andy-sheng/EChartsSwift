@@ -113,6 +113,10 @@ open class GraphView: ChartView {
     private let _symbolDraw = SymbolDraw()
     private let _edgeGroup = Group()
     private var _edgeEls: [Int: Path] = [:]
+    // GraphView keeps its edge geometry inline instead of using ECLine, so keep the corresponding
+    // from/to endpoint symbols here as siblings of each edge. The visual stage has already resolved
+    // `edgeSymbol` / `edgeSymbolSize` into the edge data's `fromSymbol*` / `toSymbol*` item visuals.
+    private var _edgeEndSymbolEls: [Int: [_GraphEdgeEndSymbol]] = [:]
     // The per-edge label (wave-1 `graphAddEdgeLabel`) is a free-standing element added to `_mainGroup`.
     //   Now that `_mainGroup` is no longer wiped each render, track it by edge index so it can be
     //   removed-and-rebuilt on update (and dropped on leave) instead of accumulating every render.
@@ -331,10 +335,18 @@ open class GraphView: ChartView {
             let edgeDisabled = (edgeEmphasis.get("disabled") as? Bool) ?? false
             states.toggleHoverEmphasis(edge, edgeFocus, edgeBlurScope, edgeDisabled)
             states.setStatesStylesFromModel(edge, edgeItemModel, "lineStyle")
-            // fromSymbol / toSymbol arrow markers — PORT-NOTE (deferred): the end-symbol machinery IS ported,
-            //   in chart/helper/ECLine.swift (upstream `Line._createLine` + `_updateCommonStl`). What blocks
-            //   it here is that this view inlines its edge geometry instead of constructing an `ECLine` per
-            //   edge — ECLine is what builds and positions the end symbols.
+            // GraphView does not use ECLine, so reproduce ECLine's resolved endpoint-symbol creation,
+            // styling and tangent placement for inline graph edges. Rebuild on render because the symbol
+            // type/size/offset can change independently of the reusable line geometry.
+            if let oldSymbols = self._edgeEndSymbolEls[i] {
+                for old in oldSymbols { _ = self._edgeGroup.remove(old.path) }
+            }
+            let endSymbols = graphMakeEdgeEndSymbols(edgeData, i, edge.pathStyle.stroke, edge.pathStyle.opacity)
+            for endSymbol in endSymbols {
+                graphPlaceEdgeEndSymbol(endSymbol, edge: edge, p1: p1, p2: p2, cp: cp)
+                _ = self._edgeGroup.add(endSymbol.path)
+            }
+            self._edgeEndSymbolEls[i] = endSymbols
             edgeData.setItemGraphicEl(i, edge)
 
             // Edge label (wave-1) — upstream chart/helper/Line.ts `_updateCommonStl` (setLabelStyle with
@@ -365,6 +377,9 @@ open class GraphView: ChartView {
         for (idx, old) in self._edgeEls where !seenEdgeIdx.contains(idx) {
             _ = self._edgeGroup.remove(old)
             self._edgeEls[idx] = nil
+            if let oldSymbols = self._edgeEndSymbolEls.removeValue(forKey: idx) {
+                for oldSymbol in oldSymbols { _ = self._edgeGroup.remove(oldSymbol.path) }
+            }
             if let lbl = self._edgeLabelEls[idx] {
                 _ = group.remove(lbl)
                 self._edgeLabelEls[idx] = nil
@@ -519,6 +534,12 @@ open class GraphView: ChartView {
             }
             edge.markRedraw()
 
+            if let endSymbols = self._edgeEndSymbolEls[i] {
+                for endSymbol in endSymbols {
+                    graphPlaceEdgeEndSymbol(endSymbol, edge: edge, p1: p1, p2: p2, cp: cp)
+                }
+            }
+
             // Re-place this edge's label along the moved edge (upstream Line.beforeUpdate).
             if let label = self._edgeLabelEls[i] {
                 graphPlaceEdgeLabel(
@@ -561,6 +582,7 @@ open class GraphView: ChartView {
         self._symbolDraw.remove()
         _ = self._edgeGroup.removeAll()
         self._edgeEls.removeAll()
+        self._edgeEndSymbolEls.removeAll()
         // The edge labels are free-standing children of `_mainGroup` (not of `_edgeGroup`), so they must
         //   be detached explicitly or they survive the remove() as orphans.
         for (_, lbl) in self._edgeLabelEls { _ = self._mainGroup.remove(lbl) }
@@ -731,6 +753,92 @@ private func graphNumberArray(_ v: Any?) -> [Double]? {
     if let d = v as? [Double] { return d }
     if let arr = v as? [Any] { return arr.map { graphToNumber($0) } }
     return nil
+}
+
+// Inline counterpart of chart/helper/ECLine's endpoint symbol support. GraphView owns bare
+// Line/BezierCurve paths rather than ECLine groups, but consumes the same item-visual keys written by
+// graph/edgeVisual.swift and follows the same endpoint tangent-rotation convention.
+private struct _GraphEdgeEndSymbol {
+    let path: Path
+    let isFrom: Bool
+    let specifiedRotation: Double?
+}
+
+private func graphMakeEdgeEndSymbols(
+    _ edgeData: SeriesData,
+    _ idx: Int,
+    _ edgeColor: ZRenderKit.ZRColor?,
+    _ edgeOpacity: Double?
+) -> [_GraphEdgeEndSymbol] {
+    var result: [_GraphEdgeEndSymbol] = []
+    for (category, isFrom) in [("fromSymbol", true), ("toSymbol", false)] {
+        guard let symbolType = edgeData.getItemVisual(idx, category) as? String,
+              symbolType != "none" else { continue }
+
+        let size = symbol.normalizeSymbolSize(edgeData.getItemVisual(idx, category + "Size") ?? 0)
+        let offset = symbol.normalizeSymbolOffset(
+            edgeData.getItemVisual(idx, category + "Offset") ?? 0,
+            [size.0, size.1]
+        ) ?? (0, 0)
+        let keepAspect = edgeData.getItemVisual(idx, category + "KeepAspect") as? Bool
+        guard let path = symbol.createSymbol(
+            symbolType,
+            -size.0 / 2 + offset.0,
+            -size.1 / 2 + offset.1,
+            size.0,
+            size.1,
+            nil,
+            keepAspect
+        ) as? Path else { continue }
+
+        path.name = isFrom ? "from" : "to"
+        if let edgeColor {
+            if let ecSymbol = path as? ECSymbol {
+                ecSymbol.setColor(edgeColor, nil)
+            } else {
+                path.pathStyle.fill = edgeColor
+                path.pathStyle.stroke = edgeColor
+            }
+        }
+        path.pathStyle.opacity = edgeOpacity
+
+        var specifiedRotation: Double?
+        let rawRotation = edgeData.getItemVisual(idx, category + "Rotate")
+        let degrees = graphToNumber(rawRotation)
+        if degrees.isFinite { specifiedRotation = degrees * Double.pi / 180 }
+        result.append(_GraphEdgeEndSymbol(path: path, isFrom: isFrom, specifiedRotation: specifiedRotation))
+    }
+    return result
+}
+
+private func graphPlaceEdgeEndSymbol(
+    _ endSymbol: _GraphEdgeEndSymbol,
+    edge: Path,
+    p1: GraphPoint,
+    p2: GraphPoint,
+    cp: GraphPoint?
+) {
+    let endpoint = endSymbol.isFrom ? p1 : p2
+    var tangent: GraphPoint
+    if let cp {
+        // Quadratic Bezier endpoint derivatives: 2 * (cp - p1), 2 * (p2 - cp).
+        tangent = endSymbol.isFrom
+            ? GraphPoint(x: cp.x - p1.x, y: cp.y - p1.y)
+            : GraphPoint(x: p2.x - cp.x, y: p2.y - cp.y)
+        if abs(tangent.x) + abs(tangent.y) < 1e-12 {
+            tangent = GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
+        }
+    } else {
+        tangent = GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
+    }
+
+    endSymbol.path.setPosition([endpoint.x, endpoint.y])
+    endSymbol.path.rotation = endSymbol.specifiedRotation
+        ?? ((endSymbol.isFrom ? Double.pi / 2 : -Double.pi / 2) - atan2(tangent.y, tangent.x))
+    endSymbol.path.scaleX = 1
+    endSymbol.path.scaleY = 1
+    endSymbol.path.z2 = edge.z2 + 1
+    endSymbol.path.markRedraw()
 }
 
 // `zrUtil.defaults({ strokeNoScale: true, fill: null }, lineStyle)` → a PathStyleProps built from the

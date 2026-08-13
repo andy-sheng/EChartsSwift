@@ -15,20 +15,8 @@
 //      (`{type:'radial', x:.., y:.., r:.., colorStops:[...]}`) instead of
 //      `new echarts.graphic.RadialGradient(x, y, r, [...])` — echarts accepts both, and it is the only
 //      form a `[String: Any]` can carry. webOptionJS keeps the `new echarts.graphic...` calls verbatim.
-//   4. The Swift option omits the two JS closures (`symbolSize` and `emphasis.label.formatter`) — see
-//      the PORT-NOTE lines where they would have gone.
-//   5. NATIVE PANE (renders, but three visual gaps — all pre-existing framework limits, none of them
-//      specific to this demo):
-//        * the bubbles are all the DEFAULT symbol size (10px), not population-scaled: `symbolSize` is
-//          a JS closure the Swift option cannot carry (deviation 4).
-//        * the two item gradients do not render. EChartsKit's `barStyleFromDict` (BarView.swift, also
-//          used by SymbolElement for scatter) bridges only SOLID colors to the ZRenderKit path style,
-//          so a gradient fill is dropped and the symbols fall back to the palette/default fill. The
-//          shadowBlur/shadowColor/shadowOffsetY beside it DO bridge. Same gap as official-bar-gradient.
-//        * the gradient `backgroundColor` is ignored: `ECharts.render` reads the top-level
-//          backgroundColor as `as? String` only, so a gradient object yields no background rect and
-//          the native canvas stays white.
-//      Geometry (the two point clouds, the dashed splitLines, the scaled y-axis, title and legend) match.
+//   4. Native uses typed callbacks for `symbolSize` and the emphasis-label formatter.
+import EChartsKit
 
 extension EChartsDemoRegistry {
     static let official_bubble_gradient = EChartsDemo(
@@ -229,14 +217,12 @@ option = {
                     "name": "1990",
                     "data": bubbleGradientData1990,
                     "type": "scatter",
-                    // PORT-NOTE: symbolSize omitted — the JS closure sized each bubble by its population:
-                    //   `Math.sqrt(data[2]) / 5e2`. Native bubbles use the default symbol size.
+                    "symbolSize": bubbleGradientSymbolSize,
                     "emphasis": [
                         "focus": "series",
                         "label": [
                             "show": true,
-                            // PORT-NOTE: formatter omitted — the JS closure returned `param.data[3]`,
-                            //   the country name, as the hover label.
+                            "formatter": bubbleGradientLabelFormatter,
                             "position": "top"
                         ] as [String: Any]
                     ] as [String: Any],
@@ -251,12 +237,12 @@ option = {
                     "name": "2015",
                     "data": bubbleGradientData2015,
                     "type": "scatter",
-                    // PORT-NOTE: symbolSize omitted — same population-scaling closure as the 1990 series.
+                    "symbolSize": bubbleGradientSymbolSize,
                     "emphasis": [
                         "focus": "series",
                         "label": [
                             "show": true,
-                            // PORT-NOTE: formatter omitted — same `param.data[3]` (country name) closure.
+                            "formatter": bubbleGradientLabelFormatter,
                             "position": "top"
                         ] as [String: Any]
                     ] as [String: Any],
@@ -270,6 +256,17 @@ option = {
             ] as [Any]
         ])
 }
+
+private let bubbleGradientSymbolSize = { (rawValue: Any, _: CallbackDataParams) -> Any in
+    guard let row = rawValue as? [Any], row.count > 2,
+          let population = row[2] as? Double else { return 0.0 }
+    return population.squareRoot() / 500
+} as SymbolSizeCallback<CallbackDataParams>
+
+private let bubbleGradientLabelFormatter = { (params: CallbackDataParams) -> String in
+    guard let row = params.data as? [Any], row.count > 3 else { return "" }
+    return row[3] as? String ?? ""
+} as (CallbackDataParams) -> String
 
 // MARK: - file-scope data (hoisted + explicitly typed: 19-row heterogeneous literals inline stall the type-checker)
 

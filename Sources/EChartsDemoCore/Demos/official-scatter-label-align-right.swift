@@ -12,10 +12,10 @@
 //     same script, so it is assigned by the time the closure runs during setOption.
 //   - The source's `data` const holds two slices (1990 and 2015) but the option only ever plots
 //     `data[0]`; the Swift side ports the 1990 slice only. The JS pane keeps both, verbatim.
-//   - NATIVE PANE IS DEGRADED (still renders): the three closures that make this example what it is
-//     — symbolSize, labelLayout, label.formatter — cannot be expressed as a Swift option, so the
-//     native scatter draws uniform symbols with default labels in the default 'right' position and
-//     no right-column alignment. See the PORT-NOTEs below.
+//   - Native uses the typed symbol-size, label-layout and formatter callback seams to preserve all
+//     three official closures.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_label_align_right = EChartsDemo(
         name: "official-scatter-label-align-right", category: "scatter",
@@ -95,16 +95,23 @@ option = {
                     "name": "1990",
                     "data": scatterLabelAlignRight1990,
                     "type": "scatter",
-                    // PORT-NOTE: symbolSize omitted — JS closure `Math.sqrt(data[2]) / 5e2`, sizing each
-                    // bubble by the square root of the country's population (data[2]). Native symbols are
-                    // therefore all the default size.
+                    "symbolSize": { (rawValue: Any, _: CallbackDataParams) -> Any in
+                        guard let row = rawValue as? [Any], row.count > 2,
+                              let population = row[2] as? Double else { return 0.0 }
+                        return population.squareRoot() / 500
+                    } as SymbolSizeCallback<CallbackDataParams>,
                     "emphasis": [
                         "focus": "self"
                     ] as [String: Any],
-                    // PORT-NOTE: labelLayout omitted — JS closure returning
-                    // `{ x: myChart.getWidth() - 100, moveOverlap: 'shiftY' }`, i.e. the whole point of the
-                    // example: it slams every label into one column 100px from the right edge and resolves
-                    // the resulting pile-up by shifting labels along y. Native labels stay at their symbols.
+                    "labelLayout": { (params: LabelLayoutOptionCallbackParams) -> LabelLayoutOption in
+                        var layout = LabelLayoutOption()
+                        layout.x = 540.0
+                        // The Swift label manager cannot store Timeline's JS dummy-transform global
+                        // y fallback yet, so preserve the host's current global center explicitly.
+                        layout.y = params.rect.y + params.rect.height / 2
+                        layout.moveOverlap = "shiftY"
+                        return layout
+                    } as LabelLayoutOptionCallback,
                     "labelLine": [
                         "show": true,
                         "length2": 5.0,
@@ -114,8 +121,10 @@ option = {
                     ] as [String: Any],
                     "label": [
                         "show": true,
-                        // PORT-NOTE: label.formatter omitted — JS closure `param.data[3]`, the country name
-                        // (the 4th slot of each data row). Native labels fall back to the default text.
+                        "formatter": { (params: CallbackDataParams) -> String in
+                            guard let row = params.data as? [Any], row.count > 3 else { return "" }
+                            return row[3] as? String ?? ""
+                        } as (CallbackDataParams) -> String,
                         "position": "right",
                         "minMargin": 2.0
                     ] as [String: Any]

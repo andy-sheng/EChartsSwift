@@ -243,12 +243,20 @@ public final class LabelManager {
                 label.rotation = rotate * degreeToRadian
             }
 
-            // LABEL_OPTION_TO_STYLE_KEYS = ['align', 'verticalAlign', 'width', 'height', 'fontSize']
-            if let align = layoutOption.align { _ = label.setStyle("align", align) }
-            if let verticalAlign = layoutOption.verticalAlign { _ = label.setStyle("verticalAlign", verticalAlign) }
-            if let w = layoutOption.width { _ = label.setStyle("width", w) }
-            if let h = layoutOption.height { _ = label.setStyle("height", h) }
-            if let fs = layoutOption.fontSize { _ = label.setStyle("fontSize", fs) }
+            // LABEL_OPTION_TO_STYLE_KEYS = ['align', 'verticalAlign', 'width', 'height', 'fontSize'].
+            // A ZRText keeps these fields in `textStyle`, not Displayable's common `style` bag.
+            // Calling the inherited `setStyle(key:value:)` silently ignores text-only keys.
+            if layoutOption.align != nil || layoutOption.verticalAlign != nil
+                || layoutOption.width != nil || layoutOption.height != nil
+                || layoutOption.fontSize != nil {
+                var textStyle = label.textStyle ?? TextStyleProps()
+                if let align = layoutOption.align { textStyle.align = align }
+                if let verticalAlign = layoutOption.verticalAlign { textStyle.verticalAlign = verticalAlign }
+                if let w = layoutOption.width { textStyle.width = w }
+                if let h = layoutOption.height { textStyle.height = h }
+                if let fs = layoutOption.fontSize { textStyle.fontSize = .number(fs) }
+                label.useStyle(textStyle)
+            }
         }
     }
 
@@ -289,6 +297,41 @@ public final class LabelManager {
         let height = api.getHeight()
         manager.updateLayoutConfig(width, height)
         manager.layout(width, height)
+        manager.processLabelLines()
+    }
+
+    /// Static-frame portion of upstream `processLabelsOverall`: create/style generic series guide
+    /// lines after labelLayout has moved labels, then calculate their point-to-label geometry.
+    private func processLabelLines() {
+        for chartView in self._chartViewList {
+            guard let seriesModel = chartView.__model else { continue }
+            _ = chartView.group.traverse { child -> Bool in
+                guard let text = child.getTextContent() else { return false }
+                let ecData = innerStore.getECData(child)
+                let hostModel: Model
+                if let dataIndex = ecData.dataIndex {
+                    hostModel = seriesModel.getData(ecData.dataType).getItemModel(Int(dataIndex))
+                }
+                else {
+                    // Some SymbolDraw hosts carry ECData on their parent group rather than the
+                    // concrete path. Their label still belongs to this series and inherits its line.
+                    hostModel = seriesModel
+                }
+                let statesModels = labelGuideHelper.getLabelLineStatesModels(hostModel)
+                let labelLineModel = hostModel.getModel("labelLine")
+                let seriesLabelLineModel = seriesModel.getModel("labelLine")
+                if child.getTextGuideLine() == nil,
+                   ((labelLineModel.get("show") as? Bool) == true
+                    || (seriesLabelLineModel.get("show") as? Bool) == true) {
+                    child.setTextGuideLine(Polyline())
+                }
+                labelGuideHelper.setLabelLineStyle(child, statesModels, PathStyleProps())
+                labelGuideHelper.updateLabelLinePoints(child, labelLineModel)
+                // Keep the guide in lockstep with the label visibility chosen by overlap layout.
+                child.getTextGuideLine()?.ignore = text.ignore
+                return false
+            }
+        }
     }
 
     // ─────────────────────── labelLayout option parsing ───────────────────────

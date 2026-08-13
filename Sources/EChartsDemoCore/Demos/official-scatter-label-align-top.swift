@@ -9,9 +9,10 @@
 //     data[0]; webOptionJS keeps both verbatim, the native pane inlines only the 1990 slice it uses.
 //   - `export {};` and the TS parameter annotation (`param: any`) are stripped from webOptionJS — both
 //     are SyntaxErrors in the reference pane's classic script.
-//   - NATIVE PANE: `series.symbolSize` (a JS closure) and `label.formatter` (ditto) are omitted, so the
-//     native bubbles are all the default size and the labels show the default value text instead of the
-//     country name. See the PORT-NOTEs. Everything else is identical.
+//   - Native uses typed callback seams for the official symbol-size, label-layout and formatter
+//     closures.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_label_align_top = EChartsDemo(
         name: "official-scatter-label-align-top", category: "scatter",
@@ -77,18 +78,25 @@ option = {
                     "name": "1990",
                     "data": scatterLabelAlignTop1990Data,
                     "type": "scatter",
-                    // PORT-NOTE: symbolSize omitted — the JS closure sized each bubble by population,
-                    // `Math.sqrt(data[2]) / 5e2`; Swift cannot carry a closure, so the native pane uses
-                    // the default symbol size and every bubble is the same radius.
+                    "symbolSize": { (rawValue: Any, _: CallbackDataParams) -> Any in
+                        guard let row = rawValue as? [Any], row.count > 2,
+                              let population = row[2] as? Double else { return 0.0 }
+                        return population.squareRoot() / 500
+                    } as SymbolSizeCallback<CallbackDataParams>,
                     "emphasis": [
                         "focus": "self"
                     ] as [String: Any],
-                    "labelLayout": [
-                        "y": 20.0,
-                        "align": "center",
-                        "hideOverlap": true,
-                        "moveOverlap": "shiftX"
-                    ] as [String: Any],
+                    "labelLayout": { (params: LabelLayoutOptionCallbackParams) -> LabelLayoutOption in
+                        var layout = LabelLayoutOption()
+                        // Preserve the label's current horizontal center while pinning all labels to
+                        // the official top band.
+                        layout.x = params.rect.x + params.rect.width / 2
+                        layout.y = 20.0
+                        layout.align = .center
+                        layout.hideOverlap = true
+                        layout.moveOverlap = "shiftX"
+                        return layout
+                    } as LabelLayoutOptionCallback,
                     "labelLine": [
                         "show": true,
                         "length2": 5.0,
@@ -98,9 +106,10 @@ option = {
                     ] as [String: Any],
                     "label": [
                         "show": true,
-                        // PORT-NOTE: label.formatter omitted — the JS closure returned `param.data[3]`,
-                        // the country name (dimension 3); without it the native labels fall back to the
-                        // default series-value text.
+                        "formatter": { (params: CallbackDataParams) -> String in
+                            guard let row = params.data as? [Any], row.count > 3 else { return "" }
+                            return row[3] as? String ?? ""
+                        } as (CallbackDataParams) -> String,
                         "minMargin": 10.0,
                         "position": "top"
                     ] as [String: Any]

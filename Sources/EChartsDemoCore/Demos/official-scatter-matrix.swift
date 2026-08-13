@@ -372,7 +372,11 @@ option = {
                     "dim": 6.0,
                     "name": "等级",
                     "type": "category",
-                    "data": ["优", "良", "轻度", "中度", "重度", "严重"]
+                    "data": ["优", "良", "轻度", "中度", "重度", "严重"],
+                    // The reference fits all six category labels on this parallel axis. Pin the
+                    // native category interval so its generic auto-overlap heuristic does not
+                    // discard every other semantic level.
+                    "axisLabel": ["interval": 0.0] as [String: Any]
                 ] as [String: Any]
             ],
             "parallel": [

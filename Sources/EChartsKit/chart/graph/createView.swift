@@ -250,6 +250,15 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
     ecModel.eachSeriesByType("graph") { seriesModelBase, _ in
         let seriesModel = seriesModelBase as! GraphSeriesModel
 
+        // `view` is the graph series' DEFAULT coordinate system. Do not replace an explicitly
+        // injected external coordinate system (calendar/geo/cartesian2d/polar/matrix). Upstream's
+        // `injectCoordSysByOption(... isDefaultDataCoordSys: true)` has exactly this guard; the
+        // stand-in direct-assignment path below must preserve it as well.
+        if let requested = seriesModel.get("coordinateSystem", false) as? String,
+           !requested.isEmpty, requested != "view" {
+            return
+        }
+
         // PORT-NOTE: injectCoordSysByOption({ targetModel: seriesModel, coordSysType: 'view',
         //   coordSysProvider: createViewCoordSys (inner), isDefaultDataCoordSys: true }). Both
         //   injectCoordSysByOption and the `View` provider are ported; this file inlines the pure

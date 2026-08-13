@@ -119,4 +119,30 @@ final class ZZTimelineTests: XCTestCase {
         XCTAssertEqual(pointer.x, mid, accuracy: 1.0,
                        "the checkpoint at currentIndex=1 (value 1 of 0..2) must sit at the axis midpoint")
     }
+
+    func testVerticalCategoryTimelineUsesLabelHeightForAutoInterval() {
+        let view = EChartsView(width: 640, height: 420)
+        view.setOption([
+            "baseOption": [
+                "timeline": [
+                    "axisType": "category",
+                    "orient": "vertical",
+                    "top": "center",
+                    "right": 50.0,
+                    "height": 300.0,
+                    "width": 10.0,
+                    "label": ["formatter": "step {value}", "position": 10.0] as [String: Any],
+                    "data": (0..<6).map(String.init)
+                ] as [String: Any]
+            ] as [String: Any],
+            "options": (0..<6).map { _ in [String: Any]() }
+        ])
+
+        guard let timeline = timelineView(view) else {
+            XCTFail("vertical timeline must render")
+            return
+        }
+        XCTAssertEqual(timeline._tickLabels.count, 6,
+                       "50pt vertical spacing fits every one-line step label; width must not thin them")
+    }
 }

@@ -138,6 +138,16 @@ open class BrushModel: ComponentModel {
 
         thisOption["inBrush"] = inBrush
         self.option = thisOption
+
+        // Static/native hosts can provide the same deterministic brush area that an upstream demo
+        // dispatches immediately after setOption. Upstream normally populates `areas` only through
+        // `dispatchAction`, but accepting it in the option is intentionally additive and lets a
+        // headless first-frame render run the regular layout/selector/visual pipeline as well.
+        if let areas = newOption["areas"] as? [[String: Any]] {
+            setAreas(areas)
+        } else if let rawAreas = newOption["areas"] as? [Any] {
+            setAreas(rawAreas.compactMap { $0 as? [String: Any] })
+        }
     }
 
     // setAreas(areas?: BrushAreaParam[]): void

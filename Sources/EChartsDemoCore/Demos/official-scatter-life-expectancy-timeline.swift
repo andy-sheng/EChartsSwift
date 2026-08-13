@@ -19,13 +19,13 @@
 //     carries a `baseOption` (only baseOption/options/timeline/media are read off the root), so the web
 //     pane would otherwise snapshot a half-grown scatter. Turned off inside `baseOption` instead — the
 //     harness's intent, restored, not a change to the chart.
-//   - native bubble size: `symbolSize` is a JS closure (`sizeFunction(val[2])`) and cannot cross into the
-//     Swift option, so the native pane draws every point at the default symbol size instead of scaling it
-//     by population. Expect uniformly-sized dots on the left, population-sized bubbles on the right.
-//     Same for `tooltip.formatter` (see the PORT-NOTEs).
+//   - native bubble size: the JS `sizeFunction(val[2])` closure is represented by the typed native
+//     callback seam, preserving the population-to-diameter mapping. `tooltip.formatter` remains omitted
+//     because it does not affect the static comparison frame.
 //   - native title/series text: JS pushes the raw NUMBER `data.timeline[n]` into `title.text` and
 //     `series.name`; the Swift option carries its string form ("1800"), which is what JS renders anyway.
 import Foundation
+import EChartsKit
 
 // The vendored asset (19 countries × 81 years; each row is [income, lifeExpectancy, population, country,
 // year]). Read ONCE from the repo; a read/parse failure degrades to an empty dataset (blank pane, no crash).
@@ -76,6 +76,14 @@ private let lifeExpectancyYearLabels: [String] = lifeExpectancyDataset.timeline.
 // `var itemStyle = { opacity: 0.8 };` — shared by baseOption.series[0] and every options[n].series.
 private let lifeExpectancyItemStyle: [String: Any] = ["opacity": 0.8]
 
+// JS `sizeFunction(val[2])`: `(sqrt(population / 5e8) + 0.1) * 80`.
+private let lifeExpectancySymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row = rawValue as? [Any] ?? []
+    let population = (row.count > 2 ? row[2] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return (sqrt(population / 5e8) + 0.1) * 80
+}
+
 // visualMap.inRange.color — the IIFE's `colors.concat(colors)` (10 hues, doubled to cover 19 countries).
 private let lifeExpectancyColors: [String] = {
     let colors = ["#51689b", "#ce5c5c", "#fbc357", "#8fbf8f", "#659d84",
@@ -91,10 +99,8 @@ private let lifeExpectancyTimelineOptions: [[String: Any]] = lifeExpectancyDatas
             "name": lifeExpectancyYearLabels[n],
             "type": "scatter",
             "itemStyle": lifeExpectancyItemStyle,
+            "symbolSize": lifeExpectancySymbolSize,
             "data": lifeExpectancyDataset.series[n] as [Any]
-            // PORT-NOTE: series.symbolSize omitted — JS closure `val => sizeFunction(val[2])`, where
-            //   sizeFunction(x) = (Math.sqrt(x / 5e8) + 0.1) * 80, i.e. each bubble's radius grows with
-            //   the square root of the country's population (dimension 2).
         ] as [String: Any]
     ] as [String: Any]
 }
@@ -184,8 +190,8 @@ private let lifeExpectancyBaseOption: [String: Any] = [
         [
             "type": "scatter",
             "itemStyle": lifeExpectancyItemStyle,
+            "symbolSize": lifeExpectancySymbolSize,
             "data": (lifeExpectancyDataset.series.first ?? []) as [Any]
-            // PORT-NOTE: series.symbolSize omitted — same `val => sizeFunction(val[2])` closure as above.
         ] as [String: Any]
     ],
     "animationDurationUpdate": 1000.0,

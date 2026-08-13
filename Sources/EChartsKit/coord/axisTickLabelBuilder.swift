@@ -555,10 +555,12 @@ private func fetchAutoCategoryIntervalCalculationParams(_ axis: Axis) -> AutoCat
     if let getRotate = axis.getRotate {
         axisRotate = getRotate()
     }
-    // PORT-NOTE: `Axis2D` (coord/cartesian/Axis2D.swift) is ported.
-    //   `(axis as Axis2D).isHorizontal &&` (a truthy method-existence check) collapses to the
-    //   `as? Axis2D` cast; `!(axis as Axis2D).isHorizontal()` is the negated call.
+    // JS checks for any `axis.isHorizontal` method. Swift has no shared protocol for that structural
+    // method, so cover both concrete axis families that use this builder.
     else if let axis2D = axis as? Axis2D, !axis2D.isHorizontal() {
+        axisRotate = 90
+    }
+    else if let timelineAxis = axis as? TimelineAxis, !timelineAxis.isHorizontal() {
         axisRotate = 90
     }
     else {

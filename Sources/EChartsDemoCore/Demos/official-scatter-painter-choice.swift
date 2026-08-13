@@ -14,13 +14,10 @@
 //     verbatim — `myChart.showLoading()/hideLoading()`, the `data` map, both closures, the whole option.
 //     Only the `$.get` wrapper, the TypeScript annotations (`x: number, idx: number`, `as string`) and
 //     the trailing `export {}` are gone.
-//   - NATIVE PANE: a Swift `[String: Any]` option cannot carry a JS closure, so the example's THREE
-//     function-valued keys (series.symbolSize, series.itemStyle.color, xAxis.axisLabel.formatter) are
-//     omitted — see the PORT-NOTE lines. Consequence: the native pane plots the same 4111 points on the
-//     same axes, but every dot is the default size (10) in the palette's first colour, and the x ticks
-//     read `1600` where the web pane reads `1600s`. The colour/size mapping the example exists to show
-//     is therefore visible ONLY on the web pane; that difference is the point of the side-by-side.
+//   - NATIVE PANE: the three function-valued keys are carried through the typed callback seams:
+//     per-point symbol size, per-point colour, and the value-axis label formatter.
 import Foundation
+import EChartsKit
 
 private let painterChoiceAssetURL =
     Upstream.repoRoot.appendingPathComponent("assets/data/masterPainterColorChoice.json")
@@ -45,6 +42,47 @@ private let painterChoiceData: [[Double]] = {
         return [xv, y.doubleValue]
     }
 }()
+
+private struct PainterChoiceMarker {
+    let sizes: [Double]
+    let sizeRef: Double
+    let colors: [String]
+}
+
+private let painterChoiceMarker: PainterChoiceMarker = {
+    guard let data = try? Data(contentsOf: painterChoiceAssetURL),
+          let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
+          let marker = arr.first?["marker"] as? [String: Any] else {
+        return PainterChoiceMarker(sizes: [], sizeRef: 1, colors: [])
+    }
+    let sizes = (marker["size"] as? [NSNumber] ?? []).map(\.doubleValue)
+    let sizeRef = (marker["sizeref"] as? NSNumber)?.doubleValue ?? 1
+    return PainterChoiceMarker(
+        sizes: sizes,
+        sizeRef: sizeRef == 0 ? 1 : sizeRef,
+        colors: marker["color"] as? [String] ?? []
+    )
+}()
+
+private let painterChoiceSymbolSize: SymbolSizeCallback<CallbackDataParams> = { _, params in
+    let index = Int(params.dataIndex)
+    guard painterChoiceMarker.sizes.indices.contains(index) else { return 0.0 }
+    return painterChoiceMarker.sizes[index] / painterChoiceMarker.sizeRef
+}
+
+private let painterChoiceColor: (CallbackDataParams) -> EChartsKit.ZRColor = { params in
+    let index = Int(params.dataIndex)
+    let color = painterChoiceMarker.colors.indices.contains(index)
+        ? painterChoiceMarker.colors[index]
+        : "#5470c6"
+    return .color(color)
+}
+
+private let painterChoiceXAxisFormatter: AxisLabelValueFormatter = { value, _, _ in
+    let rounded = value.rounded()
+    let number = rounded == value ? String(Int(rounded)) : String(value)
+    return number + "s"
+}
 
 extension EChartsDemoRegistry {
     static let official_scatter_painter_choice = EChartsDemo(
@@ -124,9 +162,10 @@ myChart.setOption(
                 "splitLine": ["show": false] as [String: Any],
                 "scale": true,
                 "splitNumber": 5.0,
-                "max": "dataMax"
-                // PORT-NOTE: xAxis.axisLabel.formatter omitted — the JS closure suffixed every tick with
-                // the decade 's' (`val + 's'`): 1600 → "1600s".
+                "max": "dataMax",
+                "axisLabel": [
+                    "formatter": painterChoiceXAxisFormatter as AxisLabelValueFormatter
+                ] as [String: Any]
             ] as [String: Any],
             "yAxis": [
                 "type": "value",
@@ -140,14 +179,10 @@ myChart.setOption(
                 [
                     "name": "scatter",
                     "type": "scatter",
-                    // PORT-NOTE: series.symbolSize omitted — the JS closure sized each dot from the
-                    // dataset's own marker table: `marker.size[param.dataIndex] / marker.sizeref`
-                    // (size ∈ [0, 0.99], sizeref = 0.05 → ~0…19.8px). Native falls back to symbolSize 10.
-                    // PORT-NOTE: series.itemStyle.color omitted — the JS closure painted each dot in the
-                    // painting's own dominant colour: `marker.color[param.dataIndex]` (4100 of the 4111 are
-                    // '#rrggbb'; 11 carry an alpha byte, '#rrggbbaa'). Native falls back to the palette's
-                    // first colour, so the native pane shows the DISTRIBUTION but not the COLOURS this
-                    // example is named for.
+                    "symbolSize": painterChoiceSymbolSize,
+                    "itemStyle": [
+                        "color": painterChoiceColor as (CallbackDataParams) -> EChartsKit.ZRColor
+                    ] as [String: Any],
                     "data": painterChoiceData as [Any]
                 ] as [String: Any]
             ]

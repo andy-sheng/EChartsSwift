@@ -9,15 +9,11 @@
 //     in our page — WebPage.swift declares `var myChart` AFTER the option script, so at option time it
 //     is hoisted-but-undefined and `.getWidth()` would throw. We read the container's clientWidth,
 //     which is the same number the chart would report (the #main div is the demo's width, 640).
-//   - native pane: the 3rd data dimension is `Math.random()` upstream. Nothing consumes it (no
-//     visualMap, no symbolSize closure, colorBy is 'data' = by index), so the Swift port fills it from
-//     a seeded LCG to keep the native render reproducible.
-//   - native pane: `jitter` / `jitterOverlap` / `jitterMargin` exist in EChartsKit's axis defaults, but
-//     the jitter LAYOUT (upstream `fixJitter`) is not ported — the native pane is expected to draw the
-//     un-jittered hairlines. That gap is the point of carrying this example; it still renders, so
-//     nativeSupported stays true.
-//   - the jitter offset is itself `Math.random()`-based upstream (jitterOverlap defaults to true), so
-//     even the reference pane is non-deterministic frame to frame.
+//   - The 3rd data dimension is `Math.random()` upstream, but nothing consumes it. Both panes use 0
+//     so it does not consume the random stream before jitter layout.
+//   - Jitter layout is random upstream. The native renderer uses a deterministic xorshift64* stream;
+//     the web pane installs the byte-identical BigInt implementation immediately before setOption, so
+//     every jitter offset is reproducible and directly comparable.
 
 import Foundation
 
@@ -39,9 +35,20 @@ const data = [];
 for (let day = 0; day < 7; ++day) {
   for (let i = 0; i < 1000; ++i) {
     const y = Math.tan(i) / 2 + 7;
-    data.push([day, y, Math.random()]);
+    data.push([day, y, 0]);
   }
 }
+let jitterState = 0x2545F4914F6CDD1Dn;
+const jitterMask = 0xFFFFFFFFFFFFFFFFn;
+Math.random = function () {
+  let x = jitterState;
+  x ^= x >> 12n;
+  x ^= (x << 25n) & jitterMask;
+  x ^= x >> 27n;
+  jitterState = x & jitterMask;
+  const value = ((x * 0x2545F4914F6CDD1Dn) & jitterMask) >> 11n;
+  return Number(value) / 9007199254740992;
+};
 option = {
   title: {
     text: 'Scatter with Jittering'
@@ -61,6 +68,7 @@ option = {
     {
       name: 'Sleeping Hours',
       type: 'scatter',
+      progressive: 0,
       data,
       colorBy: 'data',
       itemStyle: {
@@ -92,6 +100,7 @@ option = {
                 [
                     "name": "Sleeping Hours",
                     "type": "scatter",
+                    "progressive": 0.0,
                     "data": scatterJitterData,
                     "colorBy": "data",
                     "itemStyle": [
@@ -108,19 +117,14 @@ private let scatterJitterGridLeft = 80.0
 private let scatterJitterGridRight = 50.0
 private let scatterJitterAmount = (640.0 - scatterJitterGridLeft - scatterJitterGridRight) / 7.0 * 0.8
 
-// 7 days x 1000 points: [dayIndex, tan(i)/2 + 7, <unused random dim>].
-// The 3rd dim is `Math.random()` upstream and feeds nothing; a seeded LCG keeps the native pane
-// reproducible run to run.
+// 7 days x 1000 points: [dayIndex, tan(i)/2 + 7, <unused dim>].
 private let scatterJitterData: [[Double]] = {
     var out: [[Double]] = []
     out.reserveCapacity(7 * 1000)
-    var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
     for day in 0..<7 {
         for i in 0..<1000 {
             let y = tan(Double(i)) / 2 + 7
-            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            let r = Double(seed >> 11) / Double(1 << 53)
-            out.append([Double(day), y, r])
+            out.append([Double(day), y, 0])
         }
     }
     return out

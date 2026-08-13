@@ -8,15 +8,10 @@
 //   - The TS scaffolding is JS in the web pane (`const title: echarts.TitleComponentOption[] = []` →
 //     `const title = []`, `(series as any)[...]` → `series[...]`, trailing `export {};` dropped). The
 //     title/singleAxis/series arrays are still built by the SAME forEach loops, verbatim.
-//   - Native pane: `series[].symbolSize` is a JS closure (`dataItem[1] * 4`) and is omitted — every
-//     bubble would render at the default size, so the native rows read as an even dot grid rather
-//     than a punch card. Everything else (7 single axes, 7 titles, the 168 points, tooltip) is ported.
-//
-// KNOWN NATIVE GAP (framework, not this port): ScatterView only places points for cartesian2d /
-// polar / geo — the `singleAxis` branch is an explicit early `return`
-// (Sources/EChartsKit/chart/scatter/ScatterView.swift, "PORT-NOTE (deferred): singleAxis/calendar/
-// matrix scatter"). So the native pane draws the 7 axes and the 7 titles but NO symbols until that
-// branch is wired. Kept nativeSupported: true — this demo is exactly the diff that should surface it.
+//   - Native pane represents the JS `symbolSize` closure with EChartsKit's typed
+//     `SymbolSizeCallback<CallbackDataParams>` seam; the same `dataItem[1] * 4` mapping is preserved.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_single_axis = EChartsDemo(
         name: "official-scatter-single-axis", category: "scatter",
@@ -150,13 +145,16 @@ private let scatterSingleAxisOption: [String: Any] = {
         let points: [[Double]] = scatterSingleAxisData
             .filter { $0[0] == i }
             .map { [$0[1], $0[2]] }
+        let symbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+            guard let dataItem = rawValue as? [Double], dataItem.count > 1 else { return 0.0 }
+            return dataItem[1] * 4
+        }
         seriesList.append([
             "singleAxisIndex": i,
             "coordinateSystem": "singleAxis",
             "type": "scatter",
-            "data": points
-            // PORT-NOTE: symbolSize omitted — the JS closure `function (dataItem) { return dataItem[1] * 4; }`
-            // sized each bubble's diameter at 4x its count (dataItem = [hourIndex, count]).
+            "data": points,
+            "symbolSize": symbolSize
         ] as [String: Any])
     }
 

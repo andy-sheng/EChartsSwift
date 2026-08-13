@@ -65,16 +65,11 @@ public final class TimelineAxis: Axis {
         return self.timelineModel.getModel("label")
     }
 
-    // PORT-DEVIATION: upstream inherits `Axis.getViewLabels` → `createAxisLabels`, whose CATEGORY branch's
-    //   'auto' interval (`makeCategoryLabels` → `makeAutoCategoryInterval` → `calculateCategoryInterval`)
-    //   reads the interval cache via `modelInner(axis.model)`. The timeline axis has no base `model` (it
-    //   structurally overrides the slot with a `TimelineModel`, held in `timelineModel` — see above), so
-    //   the 'auto' path would crash on a `category` axisType. We therefore mirror `createAxisLabels` here
-    //   but never invoke the base-model 'auto' machinery: a numeric / callback `label.interval` is honored
-    //   faithfully (via `makeTicksLabelsByCategoryIntervalNumOrCb`'s `ordinalScaleCreateTicks`), while the
-    //   default 'auto' falls back to interval 0 (all ticks — timelines are small and show every option).
+    // PORT-DEVIATION: upstream inherits `Axis.getViewLabels`, but the Swift base `Axis.model` cannot hold
+    // a TimelineModel. Mirror the category-label builder here while retaining the shared auto-interval
+    // calculation. That calculation is orientation-aware, which is essential for vertical timelines:
+    // label HEIGHT, not its much larger text width, determines whether adjacent steps overlap.
     public override func getViewLabels(_ ctx: AxisLabelsComputingContext? = nil) -> [AxisLabelInfoDetermined] {
-        _ = ctx
         let labelFormatter = axisHelper.makeLabelFormatter(self)
 
         // upstream `createAxisLabels`: "Only ordinal scale support tick interval" — the CATEGORY branch
@@ -83,32 +78,17 @@ public final class TimelineAxis: Axis {
             // makeCategoryLabelsActually: optionLabelInterval = getOptionCategoryInterval(labelModel).
             let optionLabelInterval = axisHelper.getOptionCategoryInterval(self.getLabelModel())
             let categoryIntervalCb = optionLabelInterval as? CategoryTickLabelSplitIntervalCb
-            // TimelineAxis cannot use the generic category-axis cache because its model is a
-            // TimelineModel rather than AxisBaseModel. Still perform the same width/spacing
-            // calculation for `auto`, without that cache, so dense year labels are thinned exactly
-            // like the web implementation instead of all being rendered on top of one another.
             let numericLabelInterval: Double
             if categoryIntervalCb != nil {
                 numericLabelInterval = 0
             }
             else if (optionLabelInterval as? String) == "auto" {
-                let extent = ordinalScale.getExtent()
-                let unitSpan = abs(self.dataToCoord(extent[0] + 1) - self.dataToCoord(extent[0]))
-                var maxWidth = 7.0
-                if unitSpan > 0 {
-                    var value = extent[0]
-                    while value <= extent[1] {
-                        let formatted = labelFormatter(ScaleTick(value: value), nil)
-                        let rect = text.getBoundingRect(
-                            formatted, self.getLabelModel().getFont(), .center, .top
-                        )
-                        maxWidth = Swift.max(maxWidth, rect.width * 1.3)
-                        value += 1
-                    }
-                }
-                numericLabelInterval = unitSpan > 0
-                    ? Swift.max(0, floor(maxWidth / unitSpan))
-                    : 0
+                // TimelineAxis has no AxisBaseModel in the inherited `model` slot, so use the
+                // no-cache estimate path. The geometry calculation is identical; only the generic
+                // AxisBaseModel interval-stability cache is bypassed.
+                numericLabelInterval = self.calculateCategoryInterval(
+                    createAxisLabelsComputingContext(AxisTickLabelComputingKind.estimate)
+                )
             }
             else {
                 numericLabelInterval = (optionLabelInterval as? Double) ?? 0

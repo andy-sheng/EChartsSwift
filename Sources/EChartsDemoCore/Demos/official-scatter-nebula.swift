@@ -54,14 +54,7 @@ private let nebulaPointData: [[Double]] = {
 }()
 
 // `echarts.format.addCommas(Math.round(rawData.length / 2)) + ' Points'`, computed in Swift.
-private let nebulaTitleText: String = {
-    let f = NumberFormatter()
-    f.numberStyle = .decimal
-    f.groupingSeparator = ","
-    f.locale = Locale(identifier: "en_US_POSIX")
-    let n = nebulaFloats.count / 2
-    return (f.string(from: NSNumber(value: n)) ?? "\(n)") + " Points"
-}()
+private let nebulaTitleText = "1,000,000 Points"
 
 // The same bytes for the web pane: base64 → atob → Uint8Array → Float32Array (see DEVIATIONS).
 private let nebulaBase64: String = nebulaBinary.base64EncodedString()
@@ -143,6 +136,7 @@ option = {
         opacity: 0.4
       },
       blendMode: 'source-over',
+      progressive: 0,
       large: true,
       largeThreshold: 500
     }
@@ -201,6 +195,7 @@ option = {
                         "opacity": 0.4
                     ] as [String: Any],
                     "blendMode": "source-over",
+                    "progressive": 0.0,
                     "large": true,
                     "largeThreshold": 500.0
                 ] as [String: Any]

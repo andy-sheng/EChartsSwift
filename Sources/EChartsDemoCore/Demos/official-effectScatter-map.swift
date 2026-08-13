@@ -17,10 +17,8 @@
 //     pane calls `ECharts.registerMap` with the same GeoJSON. Without this BOTH panes would draw an
 //     empty geo. (echarts.js special-cases `mapType === 'china'` — Nanhai inset, 台湾 label — and does so
 //     off the map NAME, so that behaviour is unchanged.)
-//   - NATIVE pane only: both series' `symbolSize: function (val) { return val[2] / 10; }` is a JS
-//     closure the Swift option cannot carry, so it is omitted and every symbol falls back to the default
-//     size. See the PORT-NOTEs. The web pane runs the real closures, so the bubbles ARE value-sized
-//     there — this is exactly the kind of gap the two-pane diff is meant to surface.
+//   - NATIVE pane: both series carry the JS `val[2] / 10` rule through the typed symbol-size callback
+//     seam, so the PM2.5 size encoding and effectScatter ripple radii match the reference pane.
 //   - `roam: true` is inert in a single static frame (kept verbatim; nothing to pan/zoom).
 //   - The TS `interface DataItem` and its three type annotations are dropped from the web JS (they are
 //     TypeScript-only), as is the trailing `export {}` (a SyntaxError in a classic script).
@@ -244,6 +242,20 @@ private let effectScatterMapTopCities: [[String: Any]] = [
     ["name": "廊坊", "value": [116.7, 39.53, 193.0]],
     ["name": "衢州", "value": [118.88, 28.97, 177.0]],
 ]
+
+private let effectScatterMapSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let value: [Any]
+    if let row = rawValue as? [Any] {
+        value = row
+    } else if let item = rawValue as? [String: Any], let row = item["value"] as? [Any] {
+        value = row
+    } else {
+        value = []
+    }
+    let pm25 = (value.count > 2 ? value[2] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return pm25 / 10
+}
 
 extension EChartsDemoRegistry {
     static let official_effectscatter_map = EChartsDemo(
@@ -808,8 +820,7 @@ option = {
                         "encode": [
                             "value": 2.0
                         ] as [String: Any],
-                        // PORT-NOTE: symbolSize omitted — the JS closure `function (val) { return val[2] / 10; }`
-                        // sized each bubble by its PM2.5 reading (dimension 2). Symbols fall back to the default size.
+                        "symbolSize": effectScatterMapSymbolSize,
                         "label": [
                             "formatter": "{b}",
                             "position": "right",
@@ -832,8 +843,7 @@ option = {
                         "encode": [
                             "value": 2.0
                         ] as [String: Any],
-                        // PORT-NOTE: symbolSize omitted — same `function (val) { return val[2] / 10; }` closure as
-                        // the scatter series above. The ripple still renders, at the default symbol size.
+                        "symbolSize": effectScatterMapSymbolSize,
                         "showEffectOn": "render",
                         "rippleEffect": [
                             "brushType": "stroke"

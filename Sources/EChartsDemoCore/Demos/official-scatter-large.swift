@@ -5,18 +5,12 @@
 // `animation: false`. The point is the LARGE fast path (LargeSymbolDraw: one path for every point).
 //
 // DEVIATIONS:
-//   - webOptionJS is the official source VERBATIM, minus the TS type annotations on `genData` and the
-//     trailing `export {};` (a bare export is a SyntaxError in the page's classic script). It keeps the
-//     real 5e5 + 5e5 points, the Float32Array flat data, and `echarts.format.addCommas` in the title.
-//   - The NATIVE pane cannot carry `genData` (a JS closure) or a Float32Array, so the data is
-//     regenerated in Swift by `scatterLargeGenData`, a line-for-line mirror of `genData` with a
-//     deterministic LCG standing in for `Math.random()`. The two panes' clouds are therefore
-//     statistically identical but never point-identical — the upstream example is random, so no port of
-//     it can be pixel-comparable.
-//   - The native point count is reduced 5e5 -> 2e4 PER SERIES (still far past `largeThreshold` 2000, so
+//   - Both panes use the same deterministic 64-bit LCG instead of `Math.random()`, making the random
+//     example screenshot-comparable.
+//   - The point count is reduced 5e5 -> 2e4 PER SERIES (still far past `largeThreshold` 2000, so
 //     the large path is what renders). 1e6 boxed points through the Swift option/model path costs
 //     minutes in the headless render sweep for no extra signal; the sin-band cloud reads the same.
-//     The title text follows the reduced count ("40,000 Points") rather than "1,000,000 Points".
+//     Both panes' title follows the reduced count ("40,000 Points").
 //   - toolbox/dataZoom are interactive; the gallery snapshots one static frame of their initial state.
 import Foundation
 
@@ -28,29 +22,33 @@ extension EChartsDemoRegistry {
         nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
-function genData(len, offset) {
-  let arr = new Float32Array(len * 2);
-  let off = 0;
+function genData(len, offset, seed) {
+  const mask64 = (1n << 64n) - 1n;
+  let state = seed;
+  function random() {
+    state = (state * 6364136223846793005n + 1442695040888963407n) & mask64;
+    return Number(state >> 11n) / 9007199254740992;
+  }
+  let arr = [];
 
   for (let i = 0; i < len; i++) {
-    let x = +Math.random() * 10;
+    let x = random() * 10;
     let y =
       +Math.sin(x) -
-      x * (len % 2 ? 0.1 : -0.1) * Math.random() +
+      x * (len % 2 ? 0.1 : -0.1) * random() +
       (offset || 0) / 10;
-    arr[off++] = x;
-    arr[off++] = y;
+    arr.push([x, y]);
   }
   return arr;
 }
 
-const data1 = genData(5e5);
-const data2 = genData(5e5, 10);
+const data1 = genData(2e4, 0, 0x9E3779B97F4A7C15n);
+const data2 = genData(2e4, 10, 0xD1B54A32D192ED03n);
 
 option = {
   title: {
     text:
-      echarts.format.addCommas(data1.length / 2 + data2.length / 2) + ' Points'
+      echarts.format.addCommas(data1.length + data2.length) + ' Points'
   },
   tooltip: {},
   toolbox: {
@@ -84,6 +82,7 @@ option = {
       itemStyle: {
         opacity: 0.4
       },
+      progressive: 0,
       large: true
     },
     {
@@ -95,6 +94,7 @@ option = {
       itemStyle: {
         opacity: 0.4
       },
+      progressive: 0,
       large: true
     }
   ]
@@ -133,6 +133,7 @@ option = {
                     "dimensions": ["x", "y"],
                     "symbolSize": 3.0,
                     "itemStyle": ["opacity": 0.4] as [String: Any],
+                    "progressive": 0.0,
                     "large": true
                 ] as [String: Any],
                 [
@@ -142,6 +143,7 @@ option = {
                     "dimensions": ["x", "y"],
                     "symbolSize": 3.0,
                     "itemStyle": ["opacity": 0.4] as [String: Any],
+                    "progressive": 0.0,
                     "large": true
                 ] as [String: Any]
             ]

@@ -16,10 +16,9 @@
 //     order from one stream) and the SAME arrays feed BOTH panes — spliced into webOptionJS as JSON
 //     literals, and used verbatim as the native `series[].data`. `graphData` / `links` are already literal
 //     upstream and stay verbatim.
-//   - PORT-NOTEs (below): the effectScatter's and scatter's `symbolSize` are JS closures
-//     (`val[1] / 40` and `val[1] / 60` — symbol area scaled by the day's value). Swift's option cannot carry
-//     a closure, so those two series fall back to echarts' default symbolSize (10) on the native pane: same
-//     positions and colours, uniform dot size instead of value-scaled.
+//   - The effectScatter/scatter `symbolSize` functions use the typed native callback seam. The native
+//     option also pins the default calendar locale to Chinese for January/March, matching the zh official
+//     example page (February already specifies `nameMap: 'cn'`; April explicitly uses English weekdays).
 //   - `export {};` and the TS type annotations are dropped (a bare export is a SyntaxError in the reference
 //     page's classic script).
 //
@@ -29,6 +28,7 @@
 // pane is therefore 900×600 (upstream's own shot is 1000 wide): at the default 460 height the bottom two
 // calendars and both visualMaps would be off-canvas / overlapping in BOTH panes.
 import Foundation
+import EChartsKit
 
 // The four random arrays upstream's four `getVirtualData('2017')` calls would have produced, made
 // deterministic: a fixed-seed LCG stands in for Math.random(), drawn in upstream's call order (heatmap,
@@ -83,6 +83,20 @@ private let calendarChartsHeatmap0JSON: String = calendarChartsJSON(calendarChar
 private let calendarChartsEffectScatterJSON: String = calendarChartsJSON(calendarChartsEffectScatterData)
 private let calendarChartsScatterJSON: String = calendarChartsJSON(calendarChartsScatterData)
 private let calendarChartsHeatmap3JSON: String = calendarChartsJSON(calendarChartsHeatmap3Data)
+
+private let calendarChartsEffectSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row = rawValue as? [Any] ?? []
+    let value = (row.count > 1 ? row[1] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return value / 40
+}
+
+private let calendarChartsScatterSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row = rawValue as? [Any] ?? []
+    let value = (row.count > 1 ? row[1] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return value / 60
+}
 
 extension EChartsDemoRegistry {
     static let official_calendar_charts = EChartsDemo(
@@ -300,12 +314,12 @@ option = {
                         "margin": 40.0
                     ] as [String: Any],
                     "monthLabel": [
-                        "nameMap": "cn",
+                        "nameMap": "ZH",
                         "margin": 20.0
                     ] as [String: Any],
                     "dayLabel": [
                         "firstDay": 1.0,
-                        "nameMap": "cn"
+                        "nameMap": "ZH"
                     ] as [String: Any],
                     "cellSize": 40.0,
                     "range": "2017-02"
@@ -316,7 +330,11 @@ option = {
                         "margin": 40.0
                     ] as [String: Any],
                     "monthLabel": [
+                        "nameMap": "ZH",
                         "margin": 20.0
+                    ] as [String: Any],
+                    "dayLabel": [
+                        "nameMap": "ZH"
                     ] as [String: Any],
                     "cellSize": 40.0,
                     "left": 460.0,
@@ -328,7 +346,11 @@ option = {
                         "margin": 40.0
                     ] as [String: Any],
                     "monthLabel": [
+                        "nameMap": "ZH",
                         "margin": 20.0
+                    ] as [String: Any],
+                    "dayLabel": [
+                        "nameMap": "ZH"
                     ] as [String: Any],
                     "cellSize": 40.0,
                     "top": 350.0,
@@ -344,7 +366,7 @@ option = {
                         "nameMap": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                     ] as [String: Any],
                     "monthLabel": [
-                        "nameMap": "cn",
+                        "nameMap": "ZH",
                         "margin": 20.0
                     ] as [String: Any],
                     "cellSize": 40.0,
@@ -372,18 +394,14 @@ option = {
                     "type": "effectScatter",
                     "coordinateSystem": "calendar",
                     "calendarIndex": 1.0,
-                    // PORT-NOTE: symbolSize omitted — the JS closure returned `val[1] / 40`, sizing each
-                    // day's ripple dot by that day's value (0…999 → 0…25px). Swift's option cannot carry a
-                    // closure, so the native pane uses echarts' default symbolSize (10) for every point.
+                    "symbolSize": calendarChartsEffectSymbolSize,
                     "data": calendarChartsEffectScatterData
                 ] as [String: Any],
                 [
                     "type": "scatter",
                     "coordinateSystem": "calendar",
                     "calendarIndex": 2.0,
-                    // PORT-NOTE: symbolSize omitted — the JS closure returned `val[1] / 60`, sizing each
-                    // day's dot by that day's value (0…999 → 0…16.6px). Swift's option cannot carry a
-                    // closure, so the native pane uses echarts' default symbolSize (10) for every point.
+                    "symbolSize": calendarChartsScatterSymbolSize,
                     "data": calendarChartsScatterData
                 ] as [String: Any],
                 [

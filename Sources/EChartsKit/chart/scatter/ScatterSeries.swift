@@ -105,13 +105,11 @@ open class ScatterSeriesModel: SeriesModel {
         //   greying out. Fall back to the series data visual only when itemStyle has no usable fill.
         let colorZR: ZRenderKit.ZRColor? = {
             if let f = opt.itemStyle["fill"] {
-                if let z = f as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
-                if let s = f as? String, !s.isEmpty, s != "inherit", s != "auto", s != "none" { return .string(s) }
+                if let paint = zrPaintFromStyleValue(f) { return paint }
             }
             guard let s = self.getData().getVisual("style") as? [String: Any] else { return nil }
             for key in ["fill", "stroke"] {
-                if let z = s[key] as? EChartsKit.ZRColor, case let .color(c) = z { return .string(c) }
-                if let str = s[key] as? String, !str.isEmpty, str != "inherit", str != "auto" { return .string(str) }
+                if let paint = zrPaintFromStyleValue(s[key]) { return paint }
             }
             return nil
         }()
@@ -122,6 +120,9 @@ open class ScatterSeriesModel: SeriesModel {
         guard let sym = symbol.createSymbol(
             symbolType, (opt.itemWidth - size) / 2, 0, size, size, colorZR
         ) as? Path else { return nil }
+        // Preserve the full legend-resolved series style, not just its colour. In particular,
+        // scatter-large uses itemStyle.opacity and the Web legend inherits that opacity.
+        _ = sym.setStyle(barStyleFromDict(opt.itemStyle))
         if symbolType.contains("empty") {
             sym.pathStyle.stroke = colorZR
             sym.pathStyle.fill = .string("#fff")

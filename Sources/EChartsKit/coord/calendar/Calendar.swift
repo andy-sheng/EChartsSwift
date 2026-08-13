@@ -404,6 +404,11 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
         var data: OptionDataValueDate? = dataArg
         if let arr = dataArg as? [Any] {
             data = arr.isEmpty ? nil : arr[0]
+        } else if let arr = dataArg as? [Double] {
+            // Generic coordinate-system consumers (notably graphSimpleLayout) build a homogeneous
+            // numeric coordinate array from SeriesData. Swift `[Double]` does not bridge-cast to
+            // `[Any]`, unlike a JavaScript Array, so handle that representation explicitly.
+            data = arr.isEmpty ? nil : arr[0]
         }
         // clamp == null && (clamp = true);
         let clamp = clampArg ?? true

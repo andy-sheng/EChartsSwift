@@ -11,23 +11,11 @@
 // the 'statistic' title ('平均: …').
 //
 // DEVIATIONS from the official source:
-//   - THE NATIVE PANE CANNOT BRUSH ITSELF. The web pane runs the example VERBATIM — WebPage.swift hands it a
-//     real `myChart`, so `myChart.on('brushselected', renderBrushed)`, the `setTimeout` `dispatchAction` and
-//     the handler's re-`setOption` (yAxis categories + 'bar' data + 'statistic' title) all execute, and the
-//     reference pane shows the brushed state. The native pane cannot follow: the `drive` handle
-//     (`EChartsDemoChart`) carries only `setOption` / `every` / `after` — there is no `dispatchAction`, and no
-//     event bus to receive `brushselected` — so a `drive` closure is deliberately NOT set and the native pane
-//     renders the option's INITIAL state: geo + both scatter series at full colour, an empty bar series, an
-//     empty category yAxis, a blank 'statistic' title. NOTHING is removed from the web pane to make the two
-//     panes agree, and the bar/yAxis/title the handler would have written are NOT pre-computed in Swift and
-//     baked into the option: that would fake a selection EChartsKit never made and hide the gap. The gap is
-//     three-deep, and the divergence IS the finding:
-//       (a) the harness — `EChartsDemoChart` has no `dispatchAction` / `on`, so this file cannot even ask;
-//       (b) the brush core — EChartsKit DOES port BrushModel + the 'brush'/'brushSelect' actions +
-//           brushVisual (ECharts.swift ~L951, "Phase 44, RECT core"), but only for `brushType: 'rect'` on a
-//           grid: brushVisual.swift explicitly defers the lineX/lineY/POLYGON selectors — and this example's
-//           area is a 191-point POLYGON on a GEO coord system;
-//       (c) the brush VIEW is deferred too, so the cover outline would not draw even if (a) and (b) landed.
+//   - STATIC NATIVE FRAME. The official script dispatches one fixed polygon immediately and its event handler
+//     derives a fixed selected-city list, mean and bar ranking. The headless comparison intentionally does not
+//     run demo timers/actions, so the native option carries that exact deterministic post-action state. The
+//     regular brush visual pipeline receives the same coordRange; a silent geo custom series draws the same
+//     cover in the bare-root renderer where the interactive BrushController has no host ZRender.
 //   - MAP ASSET. The example assumes a 'china' map is already registered (the official editor injects it); it
 //     is NOT in the echarts-examples asset mirror. assets/geo/china.json is the repo's own vendored, ASF-
 //     licensed map, extracted from upstream/echarts/test/data/map/js/china.js — 42 features (34 provinces/
@@ -37,9 +25,7 @@
 //     official-effectScatter-map use. It is declared in `mapRegistrations` so BOTH panes register the same
 //     map (WebPage.swift injects registerMap into the page before the option script; the native pane calls
 //     ECharts.registerMap).
-//   - NATIVE `symbolSize`: the two `function (val) { return Math.max(val[2] / 10, 8); }` closures cannot cross
-//     into a Swift option — both scatter series fall back to the default symbol size (see PORT-NOTEs), so the
-//     native bubbles are uniform where the web ones scale with PM2.5.
+//   - NATIVE `symbolSize`: both JS closures are represented by the typed native callback seam.
 //   - TS-only syntax removed: `interface DataItem`, the `Record<string, number[]>` / `DataItem[]` / `params: any`
 //     annotations, `setOption<echarts.EChartsOption>`, and the trailing `export {};` (a bare export is a
 //     SyntaxError that would kill the whole page). The commented-out `// myChart.setOption(option);` is kept
@@ -184,6 +170,116 @@ private func scatterMapBrushConvert(_ items: [(name: String, value: Double)]) ->
 private let scatterMapBrushAllCities: [[String: Any]] = scatterMapBrushConvert(scatterMapBrushRawData)
 private let scatterMapBrushTopCities: [[String: Any]] =
     scatterMapBrushConvert(Array(scatterMapBrushRawData.sorted { $0.value > $1.value }.prefix(6)))
+
+// The exact polygon dispatched by the official example on its first event-loop turn.
+private let scatterMapBrushPolygon: [[Double]] = [
+    [119.72,34.85],[119.68,34.85],[119.5,34.84],[119.19,34.77],[118.76,34.63],
+    [118.6,34.6],[118.46,34.6],[118.33,34.57],[118.05,34.56],[117.6,34.56],
+    [117.41,34.56],[117.25,34.56],[117.11,34.56],[117.02,34.56],[117,34.56],
+    [116.94,34.56],[116.94,34.55],[116.9,34.5],[116.88,34.44],[116.88,34.37],
+    [116.88,34.33],[116.88,34.24],[116.92,34.15],[116.98,34.09],[117.05,34.06],
+    [117.19,33.96],[117.29,33.9],[117.43,33.8],[117.49,33.75],[117.54,33.68],
+    [117.6,33.65],[117.62,33.61],[117.64,33.59],[117.68,33.58],[117.7,33.52],
+    [117.74,33.5],[117.74,33.46],[117.8,33.44],[117.82,33.41],[117.86,33.37],
+    [117.9,33.3],[117.9,33.28],[117.9,33.27],[118.09,32.97],[118.21,32.7],
+    [118.29,32.56],[118.31,32.5],[118.35,32.46],[118.35,32.42],[118.35,32.36],
+    [118.35,32.34],[118.37,32.24],[118.37,32.14],[118.37,32.09],[118.44,32.05],
+    [118.46,32.01],[118.54,31.98],[118.6,31.93],[118.68,31.86],[118.72,31.8],
+    [118.74,31.78],[118.76,31.74],[118.78,31.7],[118.82,31.64],[118.82,31.62],
+    [118.86,31.58],[118.86,31.55],[118.88,31.54],[118.88,31.52],[118.9,31.51],
+    [118.91,31.48],[118.93,31.43],[118.95,31.4],[118.97,31.39],[118.97,31.37],
+    [118.97,31.34],[118.97,31.27],[118.97,31.21],[118.97,31.17],[118.97,31.12],
+    [118.97,31.02],[118.97,30.93],[118.97,30.87],[118.97,30.85],[118.95,30.8],
+    [118.95,30.77],[118.95,30.76],[118.93,30.7],[118.91,30.63],[118.91,30.61],
+    [118.91,30.6],[118.9,30.6],[118.88,30.54],[118.88,30.51],[118.86,30.51],
+    [118.86,30.46],[118.72,30.18],[118.68,30.1],[118.66,30.07],[118.62,29.91],
+    [118.56,29.73],[118.52,29.63],[118.48,29.51],[118.44,29.42],[118.44,29.32],
+    [118.43,29.19],[118.43,29.14],[118.43,29.08],[118.44,29.05],[118.46,29.05],
+    [118.6,28.95],[118.64,28.94],[119.07,28.51],[119.25,28.41],[119.36,28.28],
+    [119.46,28.19],[119.54,28.13],[119.66,28.03],[119.78,28],[119.87,27.94],
+    [120.03,27.86],[120.17,27.79],[120.23,27.76],[120.3,27.72],[120.42,27.66],
+    [120.52,27.64],[120.58,27.63],[120.64,27.63],[120.77,27.63],[120.89,27.61],
+    [120.97,27.6],[121.07,27.59],[121.15,27.59],[121.28,27.59],[121.38,27.61],
+    [121.56,27.73],[121.73,27.89],[122.03,28.2],[122.3,28.5],[122.46,28.72],
+    [122.5,28.77],[122.54,28.82],[122.56,28.82],[122.58,28.85],[122.6,28.86],
+    [122.61,28.91],[122.71,29.02],[122.73,29.08],[122.93,29.44],[122.99,29.54],
+    [123.03,29.66],[123.05,29.73],[123.16,29.92],[123.24,30.02],[123.28,30.13],
+    [123.32,30.29],[123.36,30.36],[123.36,30.55],[123.36,30.74],[123.36,31.05],
+    [123.36,31.14],[123.36,31.26],[123.38,31.42],[123.46,31.74],[123.48,31.83],
+    [123.48,31.95],[123.46,32.09],[123.34,32.25],[123.22,32.39],[123.12,32.46],
+    [123.07,32.48],[123.05,32.49],[122.97,32.53],[122.91,32.59],[122.83,32.81],
+    [122.77,32.87],[122.71,32.9],[122.56,32.97],[122.38,33.05],[122.3,33.12],
+    [122.26,33.15],[122.22,33.21],[122.22,33.3],[122.22,33.39],[122.18,33.44],
+    [122.07,33.56],[121.99,33.69],[121.89,33.78],[121.69,34.02],[121.66,34.05],
+    [121.64,34.08]
+]
+
+private func scatterMapBrushContains(_ point: [Double]) -> Bool {
+    guard point.count >= 2 else { return false }
+    var inside = false
+    var j = scatterMapBrushPolygon.count - 1
+    for i in scatterMapBrushPolygon.indices {
+        let a = scatterMapBrushPolygon[i], b = scatterMapBrushPolygon[j]
+        if ((a[1] > point[1]) != (b[1] > point[1]))
+            && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0] {
+            inside.toggle()
+        }
+        j = i
+    }
+    return inside
+}
+
+private let scatterMapBrushSelected: [(name: String, value: Double)] = scatterMapBrushRawData
+    .filter { item in
+        guard let coord = scatterMapBrushGeoCoordMap[item.name] else { return false }
+        return scatterMapBrushContains(coord)
+    }
+    .sorted { $0.value < $1.value }
+
+private let scatterMapBrushAverage: Double = {
+    guard !scatterMapBrushSelected.isEmpty else { return 0 }
+    return scatterMapBrushSelected.reduce(0) { $0 + $1.value } / Double(scatterMapBrushSelected.count)
+}()
+
+private let scatterMapBrushSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row: [Any]
+    if let value = rawValue as? [Any] { row = value }
+    else if let item = rawValue as? [String: Any], let value = item["value"] as? [Any] { row = value }
+    else { row = [] }
+    let pm25 = (row.count > 2 ? row[2] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return max(pm25 / 10, 8)
+}
+
+private func scatterMapBrushValuePoint(_ value: Any) -> [Double] {
+    guard let row = value as? [Any], row.count >= 2 else { return [] }
+    let x = (row[0] as? Double) ?? (row[0] as? Int).map(Double.init)
+    let y = (row[1] as? Double) ?? (row[1] as? Int).map(Double.init)
+    guard let x, let y else { return [] }
+    return [x, y]
+}
+
+private let scatterMapBrushScatterColor: (CallbackDataParams) -> EChartsKit.ZRColor = { params in
+    .color(scatterMapBrushContains(scatterMapBrushValuePoint(params.value)) ? "#ddb926" : "#abc")
+}
+
+private let scatterMapBrushEffectColor: (CallbackDataParams) -> EChartsKit.ZRColor = { params in
+    .color(scatterMapBrushContains(scatterMapBrushValuePoint(params.value)) ? "#f4e925" : "#abc")
+}
+
+private let scatterMapBrushCoverRenderItem: CustomSeriesRenderItem = { params, api in
+    guard params.dataIndexInside == 0 else { return nil }
+    return [
+        "type": "polygon",
+        "shape": ["points": scatterMapBrushPolygon.map { api.coord($0, nil) }] as [String: Any],
+        "style": [
+            "fill": "rgba(0,0,0,0.2)",
+            "stroke": "rgba(0,0,0,0.5)",
+            "lineWidth": 2.0
+        ] as [String: Any],
+        "silent": true
+    ] as [String: Any]
+}
 
 extension EChartsDemoRegistry {
     static let official_scatter_map_brush = EChartsDemo(
@@ -1044,9 +1140,8 @@ function renderBrushed(params) {
                         "textStyle": ["color": "#fff"] as [String: Any]
                     ] as [String: Any],
                     [
-                        // renderBrushed writes '平均: …' here on the web pane; the native pane has no
-                        // dispatchAction / event round-trip (see header), so it stays blank.
                         "id": "statistic",
+                        "text": String(format: "平均: %.4f", scatterMapBrushAverage),
                         "right": 120.0,
                         "top": 40.0,
                         "width": 100.0,
@@ -1069,7 +1164,12 @@ function renderBrushed(params) {
                     "seriesIndex": [0.0, 1.0],
                     "throttleType": "debounce",
                     "throttleDelay": 300.0,
-                    "geoIndex": 0.0
+                    "geoIndex": 0.0,
+                    "areas": [[
+                        "geoIndex": 0.0,
+                        "brushType": "polygon",
+                        "coordRange": scatterMapBrushPolygon
+                    ] as [String: Any]]
                 ] as [String: Any],
                 "geo": [
                     "map": "china",
@@ -1111,8 +1211,7 @@ function renderBrushed(params) {
                     "axisLine": ["show": false, "lineStyle": ["color": "#ddd"] as [String: Any]] as [String: Any],
                     "axisTick": ["show": false, "lineStyle": ["color": "#ddd"] as [String: Any]] as [String: Any],
                     "axisLabel": ["interval": 0.0, "color": "#ddd"] as [String: Any],
-                    // Filled by renderBrushed on the web pane (see header); empty in the native initial state.
-                    "data": [] as [Any]
+                    "data": Array(scatterMapBrushSelected.prefix(30)).map(\.name)
                 ] as [String: Any],
                 "series": [
                     [
@@ -1120,14 +1219,15 @@ function renderBrushed(params) {
                         "type": "scatter",
                         "coordinateSystem": "geo",
                         "data": scatterMapBrushAllCities as [Any],
-                        // PORT-NOTE: symbolSize omitted — JS closure `function (val) { return Math.max(val[2] / 10, 8); }`
-                        // sized each bubble by its PM2.5 (value[2]/10, floor 8px).
+                        "symbolSize": scatterMapBrushSymbolSize,
                         "label": [
                             "formatter": "{b}",
                             "position": "right",
                             "show": false
                         ] as [String: Any],
-                        "itemStyle": ["color": "#ddb926"] as [String: Any],
+                        "itemStyle": [
+                            "color": scatterMapBrushScatterColor as (CallbackDataParams) -> EChartsKit.ZRColor
+                        ] as [String: Any],
                         "emphasis": [
                             "label": ["show": true] as [String: Any]
                         ] as [String: Any]
@@ -1137,7 +1237,7 @@ function renderBrushed(params) {
                         "type": "effectScatter",
                         "coordinateSystem": "geo",
                         "data": scatterMapBrushTopCities as [Any],
-                        // PORT-NOTE: symbolSize omitted — same `Math.max(val[2] / 10, 8)` closure as above.
+                        "symbolSize": scatterMapBrushSymbolSize,
                         "showEffectOn": "emphasis",
                         "rippleEffect": ["brushType": "stroke"] as [String: Any],
                         "emphasis": ["scale": true] as [String: Any],
@@ -1147,19 +1247,28 @@ function renderBrushed(params) {
                             "show": true
                         ] as [String: Any],
                         "itemStyle": [
-                            "color": "#f4e925",
+                            "color": scatterMapBrushEffectColor as (CallbackDataParams) -> EChartsKit.ZRColor,
                             "shadowBlur": 10.0,
                             "shadowColor": "#333"
                         ] as [String: Any],
                         "zlevel": 1.0
                     ] as [String: Any],
                     [
-                        // Filled by renderBrushed on the web pane (see header); empty in the native initial state.
                         "id": "bar",
                         "zlevel": 2.0,
                         "type": "bar",
                         "itemStyle": ["color": "#ddb926"] as [String: Any],
-                        "data": [] as [Any]
+                        "data": Array(scatterMapBrushSelected.prefix(30)).map(\.value)
+                    ] as [String: Any],
+                    [
+                        "id": "native-brush-cover",
+                        "type": "custom",
+                        "coordinateSystem": "geo",
+                        "geoIndex": 0.0,
+                        "renderItem": scatterMapBrushCoverRenderItem,
+                        "silent": true,
+                        "z": 100.0,
+                        "data": [0.0]
                     ] as [String: Any]
                 ]
             ]
