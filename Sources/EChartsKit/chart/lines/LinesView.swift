@@ -144,11 +144,11 @@ open class LinesView: ChartView {
         // PORT-NOTE: `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath is not wired
         //   in this static view (helper/createClipPathFromCoordSys IS ported).
 
-        // PORT-NOTE (deferred): polar / geo lines DEFERRED (only Cartesian2D wired). Upstream's coord system is
-        //   `Polar | Cartesian2D | Geo`; linesLayout calls `coordSys.dataToPoint(coord)` generically —
-        //   the same call works for Polar once its lines path is exercised, but geo is not ported.
-        guard let coord = seriesModelBase.coordinateSystem as? Cartesian2D else {
-            // Coord system missing / changed away from cartesian → drop the persistent line + effect
+        // Project through the generic coordinate-system contract, matching linesLayout. Cartesian2D,
+        // Geo (including SVG-backed geo maps), and Calendar conform here; Polar still has its divergent
+        // dataToPoint signature and remains outside this render path.
+        guard let coord = seriesModelBase.coordinateSystem as? CoordinateSystem else {
+            // Coord system missing / changed to an unsupported type → drop persistent line + effect
             //   elements so a later reuse can't stitch onto a stale coord projection.
             self.resetPersistentElements()
             // upstream applies clip unconditionally; with no cartesian coord there is nothing to draw,
@@ -307,8 +307,8 @@ open class LinesView: ChartView {
 
                 let len = seriesModel.getLineCoords(i, &lineCoords)
                 if len < 2 { data.setItemLayout(i, nil); continue }
-                let p0 = coord.dataToPoint(lineCoords[0])
-                let p1 = coord.dataToPoint(lineCoords[1])
+                let p0 = coord.dataToPoint(lineCoords[0], nil)
+                let p1 = coord.dataToPoint(lineCoords[1], nil)
                 if p0.count < 2 || p1.count < 2
                     || !p0[0].isFinite || !p0[1].isFinite
                     || !p1[0].isFinite || !p1[1].isFinite {
@@ -384,7 +384,7 @@ open class LinesView: ChartView {
             var points: [VectorArray] = []
             points.reserveCapacity(len)
             for j in 0..<len {
-                let p = coord.dataToPoint(lineCoords[j])
+                let p = coord.dataToPoint(lineCoords[j], nil)
                 if p.count >= 2 && p[0].isFinite && p[1].isFinite {
                     points.append(VectorArray(p[0], p[1]))
                 }

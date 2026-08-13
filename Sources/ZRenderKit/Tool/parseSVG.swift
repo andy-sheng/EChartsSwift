@@ -823,7 +823,12 @@ private final class SVGParser {
             if let v = inheritedStyle["textAlign"] { style.textAlign = v }
             text.useStyle(style)
         }
-        // Group / ZRImage: only visibility/display + inheritance (tracked in the maps) matter.
+        else if let image = el as? ZRImage {
+            var style = image.imageStyle ?? ImageStyleProps()
+            if let v = numAttr("opacity") { style.opacity = v }
+            image.useStyle(style)
+        }
+        // Group: only visibility/display + inheritance (tracked in the maps) matter.
 
         // visibility / display map to invisible / ignore on any Displayable.
         if let disp = el as? Displayable {

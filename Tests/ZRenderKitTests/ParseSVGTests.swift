@@ -5,6 +5,7 @@
 
 import XCTest
 @testable import ZRenderKit
+import NativePainter
 
 final class ParseSVGTests: XCTestCase {
 
@@ -126,5 +127,33 @@ final class ParseSVGTests: XCTestCase {
         } else {
             XCTFail("expected inherited fill on the child rect")
         }
+    }
+
+    func test_group_opacity_is_applied_to_image() throws {
+        let svg = """
+        <svg width="100" height="100">
+          <g opacity="0.6">
+            <image href="data:image/png;base64,AA==" x="5" y="6" width="20" height="30"/>
+          </g>
+        </svg>
+        """
+        let result = parse(svg)
+        let group = try XCTUnwrap(result.root.childrenRef().first as? Group)
+        let image = try XCTUnwrap(group.childrenRef().first as? ZRImage)
+        XCTAssertEqual(try XCTUnwrap(image.imageStyle.opacity), 0.6, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(image.imageStyle.x), 5, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(image.imageStyle.y), 6, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(image.imageStyle.width), 20, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(image.imageStyle.height), 30, accuracy: 1e-9)
+    }
+
+    func test_data_uri_image_decoder_accepts_wrapped_base64() throws {
+        let wrappedPNG = """
+        data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
+        AAAADUlEQVR42mP8/5+hHgAHggJ/PshqCgAAAABJRU5ErkJggg==
+        """
+        let image = try XCTUnwrap(loadCGImage(wrappedPNG))
+        XCTAssertEqual(image.width, 1)
+        XCTAssertEqual(image.height, 1)
     }
 }

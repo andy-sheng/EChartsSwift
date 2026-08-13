@@ -105,4 +105,30 @@ final class ZZVisualMapContinuousInteractionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(after[0], 0)
         XCTAssertLessThanOrEqual(after[1], 100)
     }
+
+    func testNullEndTextRendersAsEmptyString() {
+        let view = EChartsView(width: 480, height: 360)
+        view.setOption([
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "visualMap": [
+                "type": "continuous", "min": 0.0, "max": 100.0,
+                "text": [NSNull(), "FG:   "] as [Any],
+                "dimension": 1.0,
+                "inRange": ["color": ["green", "yellow"]] as [String: Any]
+            ] as [String: Any],
+            "series": [["type": "scatter", "data": [[0.0, 50.0]]] as [String: Any]]
+        ])
+
+        guard let cv = continuousView(view) else {
+            return XCTFail("continuous visualMap view must render")
+        }
+        var texts: [String] = []
+        _ = cv.group.traverse { el in
+            if let text = (el as? ZRText)?.textStyle?.text { texts.append(text) }
+            return false
+        }
+        XCTAssertFalse(texts.contains("<null>"), "JSON null end text must stay visually empty")
+        XCTAssertTrue(texts.contains("FG:   "))
+    }
 }

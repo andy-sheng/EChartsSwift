@@ -74,6 +74,57 @@ final class LinesLargeDrawTests: XCTestCase {
         XCTAssertEqual((shape?.segs.count ?? 1) % 4, 0, "LAYOUT INVARIANT: segs is a multiple of 4")
     }
 
+    func testLargePathCarriesSeriesBlendMode() {
+        let ec = ECharts(width: 400, height: 300)
+        var opt = option(twoPointData(3), large: true, polyline: false)
+        var series = (opt["series"] as? [[String: Any]]) ?? []
+        series[0]["blendMode"] = "lighter"
+        series[0]["lineStyle"] = ["opacity": 0.05, "width": 0.5] as [String: Any]
+        opt["series"] = series
+        ec.setOption(opt)
+
+        let path = largePaths(ec).first
+        XCTAssertEqual(path?.pathStyle.blend, "lighter",
+                       "series blendMode must reach the batched path painter")
+    }
+
+    func testCompletedProgressiveLargeRenderKeepsBatchPaths() {
+        let ec = ECharts(width: 400, height: 300)
+        var opt = option(twoPointData(5_003), large: true, polyline: false)
+        var series = (opt["series"] as? [[String: Any]]) ?? []
+        series[0]["progressive"] = 5_001.0
+        series[0]["progressiveThreshold"] = 2.0
+        series[0]["blendMode"] = "lighter"
+        opt["series"] = series
+        ec.setOption(opt)
+
+        let paths = largePaths(ec)
+        XCTAssertEqual(paths.count, 2,
+                       "completed static render should preserve the two progressive batch strokes")
+        XCTAssertEqual((paths[0].shape as? LargeLinesPathShape)?.segs.count, 5_001 * 4)
+        XCTAssertEqual((paths[1].shape as? LargeLinesPathShape)?.segs.count, 2 * 4)
+    }
+
+    func testCompletedProgressiveLargePolylineKeepsBatchPaths() {
+        let ec = ECharts(width: 400, height: 300)
+        let data: [[String: Any]] = (0..<5_003).map { i in
+            ["coords": [[Double(i), 0.0], [Double(i), 10.0]]] as [String: Any]
+        }
+        var opt = option(data, large: true, polyline: true)
+        var series = (opt["series"] as? [[String: Any]]) ?? []
+        series[0]["progressive"] = 5_001.0
+        series[0]["progressiveThreshold"] = 2.0
+        series[0]["blendMode"] = "lighter"
+        opt["series"] = series
+        ec.setOption(opt)
+
+        let paths = largePaths(ec)
+        XCTAssertEqual(paths.count, 2,
+                       "completed polyline render should preserve progressive additive batches")
+        XCTAssertEqual((paths[0].shape as? LargeLinesPathShape)?.segs.count, 5_001 * 5)
+        XCTAssertEqual((paths[1].shape as? LargeLinesPathShape)?.segs.count, 2 * 5)
+    }
+
     // An item with a coord count OTHER than 2 must NOT shift the packing: upstream's fixed-size
     // Float32Array silently drops the overflow, keeping segs a multiple of 4. Appending would both
     // mis-pair every later segment and trap in buildPath.

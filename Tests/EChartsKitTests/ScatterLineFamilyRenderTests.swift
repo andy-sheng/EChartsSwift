@@ -91,4 +91,44 @@ final class ScatterLineFamilyRenderTests: XCTestCase {
             if case let .string(s)? = p.pathStyle?.stroke { XCTAssertFalse(s.isEmpty, "line stroke non-empty") }
         }
     }
+
+    func testGeoPolylineAndEffectSymbolRender() {
+        ECharts.registerMap("linesGeoToy", [
+            "type": "FeatureCollection",
+            "features": [[
+                "type": "Feature",
+                "properties": ["name": "area"],
+                "geometry": [
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [30.0, 0.0], [30.0, 20.0],
+                                     [0.0, 20.0], [0.0, 0.0]]]
+                ] as [String: Any]
+            ] as [String: Any]] as [Any]
+        ] as [String: Any])
+
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "geo": ["map": "linesGeoToy", "left": 30.0, "right": 30.0,
+                    "top": 30.0, "bottom": 30.0] as [String: Any],
+            "series": [[
+                "type": "lines", "coordinateSystem": "geo", "polyline": true,
+                "lineStyle": ["color": "#c46e54", "width": 5.0, "opacity": 1.0,
+                              "type": "dotted"] as [String: Any],
+                "effect": ["show": true, "symbol": "circle", "symbolSize": 10.0,
+                           "trailLength": 0.0] as [String: Any],
+                "data": [["coords": [[2.0, 2.0], [15.0, 16.0], [28.0, 3.0]]]
+                         as [String: Any]] as [Any]
+            ] as [String: Any]]
+        ])
+
+        var baseLines = 0
+        var effectSymbols = 0
+        _ = ec.getRoot().traverse { el in
+            if el.name == "line" { baseLines += 1 }
+            if el.name == "effectSymbol" { effectSymbols += 1 }
+            return false
+        }
+        XCTAssertEqual(baseLines, 1, "geo polyline should render its base route")
+        XCTAssertEqual(effectSymbols, 1, "geo polyline should render its moving effect symbol")
+    }
 }

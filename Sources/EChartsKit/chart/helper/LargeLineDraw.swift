@@ -282,12 +282,44 @@ public final class LargeLineDraw {
     public func updateData(_ data: SeriesData) {
         self._clear()
 
-        let lineEl = self._create()
-        var shape = (lineEl.shape as? LargeLinesPathShape) ?? LargeLinesPathShape()
-        shape.segs = (data.getLayout("linesPoints") as? [Double]) ?? []
-        _ = lineEl.setShape(shape)
+        let allSegs = (data.getLayout("linesPoints") as? [Double]) ?? []
+        let host = data.hostModel as? LinesSeriesModel
+        let progressive = largeLinesToInt(host?.getProgressive())
+        let thresholdValue = host?.getProgressiveThreshold() ?? Double.greatestFiniteMagnitude
+        let threshold = thresholdValue.isFinite ? Int(thresholdValue) : Int.max
+        let polyline = largeLinesTruthy(host?.get("polyline"))
 
-        self._setCommon(lineEl, data)
+        // The live canvas renderer keeps one LargeLinesPath per progressive batch once a packed batch
+        // reaches 20k values. Those separate strokes matter visually for `blendMode: lighter`: each
+        // batch is additively composited, while thousands of subpaths inside one Core Graphics stroke
+        // are rasterized as a single source and cannot brighten one another. The static native driver
+        // has no incremental task loop, so reproduce the completed progressive path boundaries here.
+        let chunks: [[Double]]
+        if progressive > 0, data.count() > threshold {
+            chunks = splitLargeLineSegs(allSegs, polyline: polyline, itemsPerChunk: progressive)
+        }
+        else {
+            chunks = [allSegs]
+        }
+
+        var mergedChunks: [[Double]] = []
+        for chunk in chunks {
+            if var last = mergedChunks.last, last.count < 20_000 {
+                last.append(contentsOf: chunk)
+                mergedChunks[mergedChunks.count - 1] = last
+            }
+            else {
+                mergedChunks.append(chunk)
+            }
+        }
+
+        for segs in mergedChunks {
+            let lineEl = self._create()
+            var shape = (lineEl.shape as? LargeLinesPathShape) ?? LargeLinesPathShape()
+            shape.segs = segs
+            _ = lineEl.setShape(shape)
+            self._setCommon(lineEl, data)
+        }
     }
 
     // upstream: incrementalPrepareUpdate(data) { this.group.removeAll(); this._clear(); }
@@ -372,6 +404,12 @@ public final class LargeLineDraw {
         lineEl.useStyle(barStyleFromDict(lineStyle))
         // upstream: lineEl.style.strokeNoScale = true;
         lineEl.pathStyle.strokeNoScale = true
+        // Series-level `blendMode` is applied to every rendered displayable by ECharts' generic
+        // render pipeline. This port paints chart-view children directly, so carry it onto the one
+        // batched path explicitly (critical for dense low-opacity routes using additive `lighter`).
+        if let blendMode = hostModel?.get("blendMode") as? String {
+            lineEl.pathStyle.blend = blendMode
+        }
 
         // upstream: const style = data.getVisual('style');
         //           if (style && style.stroke) { lineEl.setStyle('stroke', style.stroke); }
@@ -428,4 +466,38 @@ private func largeLinesToNumber(_ v: Any?) -> Double {
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     return 0
+}
+
+private func largeLinesToInt(_ v: Any?) -> Int {
+    let n = largeLinesToNumber(v)
+    return n.isFinite && n > 0 ? Int(n) : 0
+}
+
+private func splitLargeLineSegs(
+    _ segs: [Double], polyline: Bool, itemsPerChunk: Int
+) -> [[Double]] {
+    guard itemsPerChunk > 0, !segs.isEmpty else { return [segs] }
+    if !polyline {
+        let valuesPerChunk = itemsPerChunk * 4
+        return stride(from: 0, to: segs.count, by: valuesPerChunk).map {
+            Array(segs[$0..<Swift.min($0 + valuesPerChunk, segs.count)])
+        }
+    }
+
+    var chunks: [[Double]] = []
+    var chunkStart = 0
+    var itemCount = 0
+    var cursor = 0
+    while cursor < segs.count {
+        let pointCount = Swift.max(0, Int(segs[cursor]))
+        cursor = Swift.min(cursor + 1 + pointCount * 2, segs.count)
+        itemCount += 1
+        if itemCount == itemsPerChunk {
+            chunks.append(Array(segs[chunkStart..<cursor]))
+            chunkStart = cursor
+            itemCount = 0
+        }
+    }
+    if chunkStart < segs.count { chunks.append(Array(segs[chunkStart..<segs.count])) }
+    return chunks
 }

@@ -15,10 +15,9 @@
 //  - Dropped the trailing `myChart.getZr().on('click', ...)` handler (it console.logs
 //    convertFromPixel of the clicked point): the gallery renders one static frame and dispatches no
 //    events, and `myChart` does not exist in the option script's scope.
-//  - NATIVE pane: `series.symbolSize` is a JS closure and is omitted (see PORT-NOTE). The six points
-//    render at the default symbol size instead of scaling with their 3rd value; every other key is
-//    ported. Also, upstream's bare `series: { ... }` object is written as a one-element array — echarts
-//    normalizes an object to an array itself, so it is the same option.
+//  - NATIVE pane: `series.symbolSize` uses the native `SymbolSizeCallback` seam with the same formula.
+//    Upstream's bare `series: { ... }` object is written as a one-element array — echarts normalizes an
+//    object to an array itself, so it is the same option.
 import Foundation
 import EChartsKit
 
@@ -41,6 +40,13 @@ private let icelandScatterData: [[Double]] = [
     [1372.98925630313, 477.3839988649537, 70],
     [1378.62251255796, 935.6708486282843, 81]
 ]
+
+private let icelandScatterSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    let row = rawValue as? [Any] ?? []
+    let value = (row.count > 2 ? row[2] : nil)
+        .flatMap { ($0 as? Double) ?? ($0 as? Int).map(Double.init) } ?? 0
+    return (value / 100) * 15 + 5
+}
 
 extension EChartsDemoRegistry {
     static let official_geo_svg_scatter_simple = EChartsDemo(
@@ -102,9 +108,7 @@ option = {
                         "type": "effectScatter",
                         "coordinateSystem": "geo",
                         "geoIndex": 0.0,
-                        // PORT-NOTE: symbolSize omitted — a JS closure `(params) => (params[2] / 100) * 15 + 5`,
-                        // sizing each symbol from its datum's 3rd value (5–20px). Swift cannot express it, so
-                        // the native points fall back to the default symbol size.
+                        "symbolSize": icelandScatterSymbolSize,
                         "itemStyle": [
                             "color": "#b02a02"
                         ] as [String: Any],

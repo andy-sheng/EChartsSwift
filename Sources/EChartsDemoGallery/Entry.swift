@@ -36,8 +36,13 @@ private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1
     func advance(_ el: Element) {
         for animator in el.animators {
             if let clip = animator.getClip() {
+                // WKWebView waits 400 ms after the page is ready before taking its deterministic
+                // snapshot. Lines-series effect symbols keep animating even when option.animation is
+                // false, so sample those at the same 400 ms phase. EffectScatter ripples also keep
+                // animating independently of option.animation; their paths are named `ripple`.
+                let sampleTime = (el.name == "effectSymbol" || el.name == "ripple") ? 400.0 : timeMs
                 _ = clip.step(0, 0)          // establish baseline / apply delay offsets
-                _ = clip.step(timeMs, timeMs) // advance to the representative frame
+                _ = clip.step(sampleTime, sampleTime) // advance to the representative frame
             }
         }
     }
@@ -52,6 +57,15 @@ private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1
 func renderNativeGroup(_ demo: EChartsDemo) -> Group {
     var opt = demo.option
     opt["animation"] = false
+    // `geo-lines` uses endlessly looping, negatively staggered ripples whose phase origin differs
+    // between the native animation clock and WKWebView. Its Web snapshot applies the same static
+    // hover-only trigger, so compare the stable weighted core symbols and all line/map geometry.
+    if demo.name == "official-geo-lines", var series = opt["series"] as? [[String: Any]] {
+        for i in series.indices where series[i]["type"] as? String == "effectScatter" {
+            series[i]["showEffectOn"] = "emphasis"
+        }
+        opt["series"] = series
+    }
     let ec = ECharts(width: demo.width, height: demo.height)
     ec.setOption(opt)
     let root = ec.getRoot()
@@ -724,7 +738,11 @@ final class WebSnapper: NSObject, WKNavigationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             wv.evaluateJavaScript("window.__echartsSnapshotReady !== false") { value, _ in
                 let ready = (value as? Bool) ?? true
-                if !ready && attempt < 30 {
+                // Explicitly gated heavyweight examples (for example the 624k-polyline New York
+                // street map) can need well beyond three seconds for their first complete canvas.
+                // Ordinary demos never set the marker false and still snapshot after the initial
+                // 0.4 s delay; only opted-in async/progressive pages use this 30 s ceiling.
+                if !ready && attempt < 300 {
                     self.waitUntilReady(wv, attempt: attempt + 1)
                     return
                 }

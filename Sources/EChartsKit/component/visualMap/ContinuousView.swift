@@ -167,7 +167,10 @@ public final class ContinuousView: VisualMapView {
 
         // Compatible with ec2, text[0] map to high value, text[1] map low value.
         let rawText = dataRangeText.indices.contains(1 - endsIndex) ? dataRangeText[1 - endsIndex] : nil
-        let text = rawText != nil ? stringifyAny(rawText) : ""
+        // JSON `null` is JavaScript null and ContinuousView renders it as an empty end label.
+        // Swift JSONSerialization boxes it as NSNull; stringifyAny(NSNull()) produces the literal
+        // "<null>", which both leaks into the chart and expands the visualMap layout bounds.
+        let text = (rawText == nil || rawText is NSNull) ? "" : stringifyAny(rawText)
 
         let textGap = visualMapAsDouble(visualMapModel.get("textGap")) ?? 0
         let itemSize = visualMapModel.itemSize

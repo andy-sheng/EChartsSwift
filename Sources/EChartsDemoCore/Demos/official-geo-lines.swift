@@ -17,15 +17,14 @@
 //     calls ECharts.registerMap), from assets/geo/china.json — the repo's own vendored, ASF-licensed map,
 //     exactly as official-scatter-map.swift does. Nothing else about the option changed.
 //   - THE COMET TRAIL AND THE RIPPLES ARE ANIMATIONS. `effect` (period 6s, trailLength) on the two `lines`
-//     series and `rippleEffect` on the effectScatter are time-driven; the gallery renders ONE static frame
-//     with animation forced off, so both panes capture the effect at its first frame — no flying plane, no
-//     travelling comet, no expanding ripple. The static geometry (map, curved arrows, arrow heads, dots,
-//     labels) is what the diff is actually about.
-//   - series[0].lineStyle keeps its ec2 `{ normal: { … } }` nesting VERBATIM on both panes. Real echarts
-//     un-nests it in its backwardCompat preprocessor, which EChartsKit does not port, so the native pane is
-//     EXPECTED to fall back to the default lineStyle there (palette colour, non-zero width) instead of the
-//     invisible width-0 line. Rewriting it to the flat form here would hide that gap.
-//   - series[2].symbolSize is a JS closure; the web pane runs it, the native option omits it (PORT-NOTE below).
+//     series and `rippleEffect` on the effectScatter are time-driven. Their independent native/Web clocks
+//     cannot be phase-locked in a still comparison, so snapshot mode changes only effectScatter's
+//     `showEffectOn` to `emphasis` in both panes and compares the stable weighted core points plus all map,
+//     line, label and legend geometry. The live gallery keeps the official looping effects unchanged.
+//   - series[0].lineStyle uses legacy ec2 `{ normal: { … } }` nesting in the Web source, where echarts'
+//     backwardCompat preprocessor flattens it. The native option carries that normalized result directly,
+//     because EChartsKit does not run the legacy preprocessor at option ingress.
+//   - series[2].symbolSize is a JS closure; the native pane carries the equivalent typed Swift callback.
 //   - `convertData()` is likewise JS-only: the native option carries its RESULT, computed in Swift from the
 //     same inputs by the same lookup-and-skip rule.
 //   - No data fetch, no timers, no `app.*` in the source; nothing else changed.
@@ -247,13 +246,11 @@ private let geoLinesSeries: [[String: Any]] = {
                 "color": "#fff",
                 "symbolSize": 3.0
             ] as [String: Any],
-            // ec2 `{ normal: { … } }` nesting, kept verbatim — see DEVIATIONS in the header.
+            // Native equivalent of Web backwardCompat flattening legacy `lineStyle.normal`.
             "lineStyle": [
-                "normal": [
-                    "color": color[i],
-                    "width": 0.0,
-                    "curveness": 0.2
-                ] as [String: Any]
+                "color": color[i],
+                "width": 0.0,
+                "curveness": 0.2
             ] as [String: Any],
             "data": geoLinesConvertData(data) as [Any]
         ] as [String: Any])
@@ -291,10 +288,11 @@ private let geoLinesSeries: [[String: Any]] = {
                 "position": "right",
                 "formatter": "{b}"
             ] as [String: Any],
-            // PORT-NOTE: symbolSize omitted — the JS closure `function (val) { return val[2] / 8; }` sized
-            // each destination dot by its weight (value dimension 2, the third element of the [lng, lat,
-            // weight] triple), i.e. radius 95/8 ≈ 11.9px down to 10/8 ≈ 1.3px. Swift cannot carry the
-            // closure, so the native pane falls back to the default symbolSize (all dots equal).
+            "symbolSize": { (rawValue: Any, _: CallbackDataParams) -> Any in
+                guard let value = rawValue as? [Any], value.count > 2,
+                      let weight = value[2] as? NSNumber else { return 0.0 }
+                return weight.doubleValue / 8.0
+            } as SymbolSizeCallback<CallbackDataParams>,
             "itemStyle": [
                 "color": color[i]
             ] as [String: Any],
@@ -612,6 +610,16 @@ option = {
   },
   series: series
 };
+
+// A still screenshot cannot synchronize the two independent looping animation clocks. Keep the live
+// demo unchanged; for the deterministic comparison frame, render weighted core points without ripples.
+if (__snapshot) {
+  option.series.forEach(function (s) {
+    if (s.type === 'effectScatter') {
+      s.showEffectOn = 'emphasis';
+    }
+  });
+}
 """#,
         option: {
             // The map the `geo` component names — upstream leaves this to the example editor (see header).

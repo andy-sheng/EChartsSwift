@@ -305,6 +305,10 @@ public final class CGRenderer: Renderer {
         // The destination rect is in the current (already y-down) user space. CGContext.draw
         // would otherwise paint images bottom-up; flip locally so the image is upright.
         ctx.saveGState()
+        // Match canvas imageSmoothingQuality="high" for large downscales. Core Graphics' default
+        // interpolation noticeably washes out high-frequency raster detail (for example the relief
+        // texture embedded in the Sicily SVG) when a multi-megapixel source is fitted to the chart.
+        ctx.interpolationQuality = .high
         ctx.translateBy(x: CGFloat(dx), y: CGFloat(dy + dh))
         ctx.scaleBy(x: 1, y: -1)
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: dw, height: dh))
@@ -617,7 +621,13 @@ public func loadCGImage(_ src: String) -> CGImage? {
     if src.hasPrefix("data:") {
         // data:[<mime>][;base64],<payload>
         if let comma = src.firstIndex(of: ","), src.contains(";base64") {
-            data = Data(base64Encoded: String(src[src.index(after: comma)...]))
+            // RFC 2397 payloads embedded by SVG exporters are commonly line-wrapped. Browsers
+            // ignore ASCII whitespace while decoding data URLs, so mirror that behavior instead
+            // of rejecting an otherwise valid image (the official Sicily SVG is one such asset).
+            data = Data(
+                base64Encoded: String(src[src.index(after: comma)...]),
+                options: .ignoreUnknownCharacters
+            )
         }
         else if let comma = src.firstIndex(of: ",") {
             // Non-base64 (percent-encoded) data URI, e.g. `data:image/svg+xml,<svg .../>`.

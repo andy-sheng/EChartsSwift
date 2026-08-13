@@ -21,6 +21,10 @@
 //    `mapRegistrations` (WebPage.swift injects `echarts.registerMap('world', ...)` before the option script;
 //    the native pane registers the same GeoJSON).
 //  - `tooltip.formatter` omitted from the native option (a JS closure) — see PORT-NOTE. The web pane keeps it.
+//  - In snapshot mode the Web pane holds `__echartsSnapshotReady` until the ZRender display list contains
+//    all route-segment values, then waits two paint frames. This makes the progressive 65k-route capture
+//    deterministic; both ECharts' public `finished` event and the scheduler's `unfinished` flag can briefly
+//    report completion between progressive frames for this case and are not reliable gates by themselves.
 // Everything else (title, backgroundColor, geo left/right/silent/roam/itemStyle, and the whole lines series
 // incl. large/largeThreshold/lineStyle/blendMode) is carried verbatim by both panes.
 import Foundation
@@ -94,6 +98,31 @@ function getAirportCoord(idx) {
 var routes = data.routes.map(function (airline) {
   return [getAirportCoord(airline[1]), getAirportCoord(airline[2])];
 });
+
+if (__snapshot) {
+  window.__echartsSnapshotReady = false;
+  setTimeout(function waitForAllRoutes() {
+    // Do not force `updateDisplayList` while the incremental canvas is painting: rebuilding the
+    // display list between progressive frames drops the retained additive layers from the snapshot.
+    var displayList = myChart.getZr().storage.getDisplayList(false);
+    var routeValueCount = 0;
+    for (var i = 0; i < displayList.length; i++) {
+      var segs = displayList[i] && displayList[i].shape && displayList[i].shape.segs;
+      if (segs && typeof segs.length === 'number') {
+        routeValueCount += segs.length;
+      }
+    }
+    if (routeValueCount < routes.length * 4) {
+      setTimeout(waitForAllRoutes, 100);
+      return;
+    }
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.__echartsSnapshotReady = true;
+      });
+    });
+  }, 0);
+}
 
 option = {
   title: {

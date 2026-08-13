@@ -221,6 +221,25 @@ option = {
 myChart.setOption(option);
 
 fetchData(0);
+
+// The default snapshot delay is intentionally short for ordinary charts, but this example paints
+// 624k polylines progressively. Hold the reference capture until ZRender has stopped producing paint
+// frames for a short quiet window; walking the heavyweight display list while it is rendering puts
+// enough memory pressure on WebKit to terminate the content process.
+if (__snapshot) {
+  window.__echartsSnapshotReady = false;
+  var lastStreetPaint = Date.now();
+  myChart.getZr().on('rendered', function () {
+    lastStreetPaint = Date.now();
+  });
+  setTimeout(function waitForStreetPaintToSettle() {
+    if (Date.now() - lastStreetPaint < 500) {
+      setTimeout(waitForStreetPaintToSettle, 100);
+      return;
+    }
+    window.__echartsSnapshotReady = true;
+  }, 500);
+}
 """#,
         option: {
             // Upstream registers nothing (the editor injects the `world` map); the native pane must.
