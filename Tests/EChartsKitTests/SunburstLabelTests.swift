@@ -3,8 +3,7 @@
 //
 // After render, each drawn sector's attached label (its ZRText textContent) must carry:
 //   - style.text == the node's default label (the datum name — upstream `text || node.name`), and
-//   - a non-nil style.fill inherited from the sector's visual fill (`inheritColor`) — the concrete
-//     signature of the setLabelStyle path (the old inline builder left fill nil), and
+//   - no forced sector-color fill when label.color is unspecified (upstream attached-text behavior),
 //   - the host `textConfig.inside == true` reflecting the default 'inside' label position.
 import XCTest
 import ZRenderKit
@@ -43,7 +42,7 @@ final class SunburstLabelTests: XCTestCase {
 
         var labelTexts: [String] = []
         var piecesWithLabel = 0
-        var piecesWithFill = 0
+        var piecesWithForcedFill = 0
         var piecesInside = 0
 
         _ = ec.getRoot().traverse { el in
@@ -55,9 +54,7 @@ final class SunburstLabelTests: XCTestCase {
             piecesWithLabel += 1
             labelTexts.append(text)
 
-            // Discriminator vs the old inline style builder: the shared core sets a non-nil fill from
-            //   inheritColor (the sector fill). The old code produced a bare style with fill == nil.
-            if label.textStyle?.fill != nil { piecesWithFill += 1 }
+            if label.textStyle?.fill != nil { piecesWithForcedFill += 1 }
 
             // Default sunburst label position is 'inside' → host textConfig.inside == true.
             if piece.textConfig?.inside == true { piecesInside += 1 }
@@ -72,9 +69,10 @@ final class SunburstLabelTests: XCTestCase {
                           "expected a sector label with text == \(expected); got \(labelTexts)")
         }
 
-        // Every drawn label went through setLabelStyle (fill inherited) and reflects inside placement.
-        XCTAssertEqual(piecesWithFill, piecesWithLabel,
-                       "every sector label must inherit a fill color via setLabelStyle (old code left it nil)")
+        // Default labels use the global text color. Only an explicit label.color='inherit' should
+        // receive the sector fill; forcing it here makes labels blend into their sectors.
+        XCTAssertEqual(piecesWithForcedFill, 0,
+                       "unspecified sunburst label color must not inherit the sector fill")
         XCTAssertEqual(piecesInside, piecesWithLabel,
                        "every sector's textConfig.inside must reflect the default 'inside' label position")
     }

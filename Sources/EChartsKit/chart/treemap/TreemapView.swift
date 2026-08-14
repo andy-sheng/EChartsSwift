@@ -419,7 +419,16 @@ open class TreemapView: ChartView {
         // if (!targetInfo) { targetInfo = leafDepth != null ? {node: getViewRoot()} : findTarget(center); }
         if targetInfo == nil {
             // `getViewRoot()` is `TreeNode?` in the sibling port (upstream is non-null).
-            if seriesModel.get("leafDepth", true) != nil, let viewRoot = seriesModel.getViewRoot() {
+            let leafDepth = seriesModel.get("leafDepth", true)
+            let explicitSeriesName = seriesModel.get("name", true) as? String
+            if let explicitSeriesName = explicitSeriesName, !explicitSeriesName.isEmpty,
+               let viewRoot = seriesModel.getViewRoot() {
+                // Named treemaps use their named view root as the initial breadcrumb tail. This is
+                // what produces a stable root crumb such as `ALL` / `Disk Usage` in the reference;
+                // anonymous treemaps instead derive the tail from the tile under the viewport center.
+                targetInfo = FoundTargetInfo(node: viewRoot)
+            }
+            else if leafDepth != nil, !(leafDepth is NSNull), let viewRoot = seriesModel.getViewRoot() {
                 targetInfo = FoundTargetInfo(node: viewRoot)
             }
             else {
@@ -526,6 +535,10 @@ open class TreemapView: ChartView {
             let bgEl = self._storage.background[node.getRawIndex()]
             // If invisible, there might be no element.
             if let bgEl = bgEl {
+                // Breadcrumb rendering calls findTarget during the chart render pass, before Storage's
+                // normal display-list update has propagated parent transforms. Force that propagation
+                // here so nested node groups are hit-tested in global coordinates, matching zrender.
+                _ = bgEl.getComputedTransform()
                 // const point = bgEl.transformCoordToLocal(x, y);
                 let point = bgEl.transformCoordToLocal(x, y)
                 // const shape = bgEl.shape;
@@ -912,6 +925,7 @@ open class TreemapView: ChartView {
             _ visualOpacity: Double?,
             _ upperLabelRect: RectLike?
         ) {
+            let isNewText = rectEl.getTextContent() == nil
             // const normalLabelModel = nodeModel.getModel(upperLabelRect ? 'upperLabel' : 'label');
             let normalLabelModel = nodeModel.getModel(upperLabelRect != nil ? PATH_UPPERLABEL_NORMAL : PATH_LABEL_NOAMAL)
 
@@ -989,6 +1003,23 @@ open class TreemapView: ChartView {
             }
 
             textEl.useStyle(textStyle)
+            textEl.name = "treemapLabel"
+
+            // The reference renderer gives a newly attached treemap label its own enter/style fade.
+            // This is separate from the tile animation, so use animateFrom directly; the surrounding
+            // isAnimationEnabled gate still respects both animation:false and the animation threshold.
+            if isNewText && seriesModel.isAnimationEnabled() == true {
+                let duration = treemapDouble(seriesModel.get("animationDuration")) ?? 0
+                if duration > 0 {
+                    var cfg = ElementAnimateConfig()
+                    cfg.duration = duration
+                    let easing = (seriesModel.get("animationEasing") as? String)
+                        ?? "cubicInOut"
+                    cfg.easing = .named(easing)
+                    cfg.scope = "enter"
+                    textEl.animateFrom(["style": ["opacity": 0.0] as [String: Any]], cfg)
+                }
+            }
         }
     }
 }
@@ -1002,6 +1033,13 @@ open class TreemapView: ChartView {
 // [0, 1] to avoid that treemap with large z overlaps other components.
 private func calculateZ2(_ depth: Double, _ z2InLevel: Double) -> Double {
     return depth * Z2_BASE + z2InLevel
+}
+
+private func treemapDouble(_ value: Any?) -> Double? {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber { return value.doubleValue }
+    return nil
 }
 
 // Helpers (not upstream symbols): build the `{x,y,width,height,r}` RectShape / RectLike bags.

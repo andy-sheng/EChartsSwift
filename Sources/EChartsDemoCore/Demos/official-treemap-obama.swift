@@ -10,11 +10,9 @@
 //   - The 447-node budget tree is fetched at runtime from assets/data/obama_budget_proposal_2012.json
 //     (upstream `$.get(ROOT_PATH + '/data/asset/data/obama_budget_proposal_2012.json', ...)`); the web
 //     pane gets the SAME JSON spliced in verbatim, the native pane parses it via Upstream.repoRoot.
-//   - `series[].tooltip.formatter` and `series[].label.formatter` are JS closures (they build the rich
-//     `{name}/{budget}/{household}` label text and the HTML tooltip with echarts.format.addCommas /
-//     encodeHTML) — omitted from the native option (see PORT-NOTEs). The web pane runs them verbatim,
-//     so the two panes diverge exactly on those closures: native labels fall back to the node name and
-//     native tooltips to the default. The `label.rich` style bag and everything else are ported.
+//   - `series[].tooltip.formatter` is an HTML-producing JS closure and is omitted from the native option.
+//     `series[].label.formatter` is ported as an equivalent Swift callback, including its rich-text tokens
+//     and number formatting, so the visible chart labels remain identical.
 //   - Not dynamic (no setInterval/setTimeout; the only interaction is the legend), so no `drive`.
 import Foundation
 import EChartsKit
@@ -80,7 +78,37 @@ private func obamaLevelOption(_ mode: Int) -> [[String: Any]] {
 
 private let obamaModes = ["2012Budget", "2011Budget", "Growth"]
 
-// The label.rich style bag from createSeriesCommon (kept verbatim; only the formatter closure is dropped).
+private func obamaAddCommas(_ value: Double, maxFractionDigits: Int = 0) -> String {
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.numberStyle = .decimal
+    formatter.usesGroupingSeparator = true
+    formatter.groupingSize = 3
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = maxFractionDigits
+    return formatter.string(from: NSNumber(value: value)) ?? String(value)
+}
+
+private func obamaLabelFormatter(_ mode: Int) -> (CallbackDataParams) -> String {
+    return { params in
+        let value = params.value as? [Any] ?? []
+        let amount = (value.first as? NSNumber)?.doubleValue ?? 0
+        var lines = [
+            "{name|\(params.name)}",
+            "{hr|}",
+            "{budget|$ \(obamaAddCommas(amount))} {label|budget}"
+        ]
+        if mode != 1 {
+            let perHousehold = value.count > 3 ? (value[3] as? NSNumber)?.doubleValue ?? 0 : 0
+            // JS: +perHousehold.toFixed(4) * 1000. Four decimals become at most one decimal here.
+            let perThousand = (perHousehold * 10_000).rounded() / 10
+            lines.append("{household|$ \(obamaAddCommas(perThousand, maxFractionDigits: 1))} {label|per household}")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+// The label.rich style bag from createSeriesCommon, consumed by the Swift formatter above.
 private let obamaLabelRich: [String: Any] = [
     "budget": ["fontSize": 22.0, "lineHeight": 30.0, "color": "yellow"] as [String: Any],
     "household": ["fontSize": 14.0, "color": "#fff"] as [String: Any],
@@ -331,8 +359,7 @@ myChart.setOption(
                     // amounts, per-household amount and change% into an HTML tooltip (addCommas/encodeHTML).
                     "label": [
                         "position": "insideTopLeft",
-                        // PORT-NOTE: label.formatter omitted — JS closure building rich
-                        // {name}/{budget}/{household} text; native falls back to the node name.
+                        "formatter": obamaLabelFormatter(idx),
                         "rich": obamaLabelRich
                     ] as [String: Any],
                     "itemStyle": ["borderColor": "black"] as [String: Any],
@@ -352,7 +379,11 @@ myChart.setOption(
                     "subtext": "Obama’s 2012 Budget Proposal"
                 ] as [String: Any],
                 "legend": [
-                    "data": obamaModes,
+                    "data": [
+                        ["name": obamaModes[0], "itemStyle": ["color": "#5070dd"] as [String: Any]] as [String: Any],
+                        obamaModes[1],
+                        obamaModes[2]
+                    ] as [Any],
                     "selectedMode": "single",
                     "top": 55.0,
                     "itemGap": 5.0,

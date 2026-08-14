@@ -356,7 +356,14 @@ open class SunburstPiece: Sector {
         opt.labelFetcher = seriesModel
         opt.labelDataIndex = Double(dataIndex)
         opt.defaultText = self.node.name
-        opt.inheritColor = inheritColor
+        // Upstream creates sunburst label text with `isAttached: true` and no inherited default
+        // fill. Therefore an unspecified label color uses the normal global text color; only an
+        // explicit `color: 'inherit'` should resolve to the sector fill. Passing `inheritColor`
+        // unconditionally through the shared label helper made every default label blend into its
+        // blue/green sector.
+        if (normalLabelModel.get("color") as? String) == "inherit" {
+            opt.inheritColor = inheritColor
+        }
         labelStyle.setLabelStyle(label, labelStateModels, opt)
 
         // label.ignore = !isNormalShown;  (after setLabelStyle, which sets its own `ignore` from `show`;

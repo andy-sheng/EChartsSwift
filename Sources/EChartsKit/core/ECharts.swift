@@ -2456,17 +2456,11 @@ public final class ECharts: EChartsType {
         //   (each with a fresh `maxZ2 = -Infinity`). Mirror that: run `doUpdateZ` on each direct child of
         //   the view group. The container `group` itself is a `Group` (not a Displayable) → nothing to set.
         //
-        // SCOPED z2-lift: upstream `doUpdateZ` ALWAYS lifts each host's attached label to `z2 =
-        //   subtreeMaxZ2 + 2` (labels over glyphs). The port applies that lift ONLY for the graph series.
-        //   Reason: several ported views (notably treemap) create tile labels that upstream HIDES via the
-        //   label overflow/visibility engine (NOT ported); the port relied on those labels sorting BEHIND
-        //   the tile (tile `z2` > label `z2` 0) to stay invisible. Lifting them everywhere re-exposes
-        //   them — a visual-parity regression vs real echarts (which shows no treemap labels here). Graph
-        //   node symbols carry `z2 = 100` (Symbol._createSymbol's `retrieve2(z2, 100)`), so WITHOUT the
-        //   lift their name label (default `z2 = 0`) sorts behind the node and is invisible — the bug this
-        //   fixes. Scoping to graph fixes that without perturbing treemap/other views. See util/graphic.ts
-        //   `doUpdateZ` for the general form.
-        let liftLabelZ2 = model is GraphSeriesModel
+        // Graph symbols and treemap tiles are opaque hosts whose attached labels otherwise paint
+        // behind them in this port. Keep the lift scoped to those two series until the upstream
+        // `ignoreModelZ` flag is fully represented: other views intentionally author special z2
+        // values (for example line end labels at 200) or keep host/label z2 equal for state lifting.
+        let liftLabelZ2 = model is GraphSeriesModel || model is TreemapSeriesModel
         for child in group.children() {
             _ = doUpdateZ(child, z, zlevel, -Double.infinity, liftLabelZ2)
         }
@@ -2474,10 +2468,9 @@ public final class ECharts: EChartsType {
 
     // upstream: util/graphic.ts `doUpdateZ(el, z, zlevel, maxZ2)`. Sets `z`/`zlevel` on every displayable
     //   (preserving `z2`, the intra-view order the painter tie-breaks on) and on each host's attached
-    //   label. When `liftLabelZ2` is set (graph only — see `updateZ`), also threads the running max `z2`
+    //   label. When `liftLabelZ2` is set, also threads the running max `z2`
     //   through the DFS and LIFTS each label to `z2 = subtreeMaxZ2 + 2` (and the text guide line to
-    //   `maxZ2 ± 1`) so it paints over the glyph it annotates. When `liftLabelZ2` is off, only z/zlevel is
-    //   set (label z2 left at its authored value) — the port's historical behavior for non-graph views.
+    //   `maxZ2 ± 1`) so it paints over the glyph it annotates.
     //   PORT-NOTE: `ignoreModelZ` (an ExtendedElement flag used to intentionally pin lifted elements) is
     //   not ported → not checked here.
     @discardableResult
@@ -2506,15 +2499,13 @@ public final class ECharts: EChartsType {
             maxZ2 = Swift.max(d.z2.isNaN ? 0 : d.z2, maxZ2)
         }
 
-        // Always set z/zlevel if label/labelLine exists; lift z2 above the subtree glyphs (graph only).
+        // Always set z/zlevel if label/labelLine exists; lift z2 above the subtree glyphs.
         if let label = label {   // ZRText is a Displayable — no downcast needed.
             label.z = z
             label.zlevel = zlevel
             if liftLabelZ2, maxZ2.isFinite { label.z2 = maxZ2 + 2 }
         }
-        // labelLine (text guide line) z-handling is gated on the lift too: graph has no label lines, so
-        //   this is a graph-only no-op, and non-graph views keep their historical labelLine z (untouched
-        //   here — set only if the line is also a traversed group child, exactly as before).
+        // Keep the guide line adjacent to the label/host using the same upstream z2 rule.
         if liftLabelZ2, let labelLine = labelLine {
             labelLine.z = z
             labelLine.zlevel = zlevel

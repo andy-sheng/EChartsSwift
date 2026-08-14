@@ -40,11 +40,29 @@ private func advanceAnimationsForStaticFrame(_ root: Group, _ timeMs: Double = 1
                 // snapshot. Lines-series effect symbols keep animating even when option.animation is
                 // false, so sample those at the same 400 ms phase. EffectScatter ripples also keep
                 // animating independently of option.animation; their paths are named `ripple`.
-                let sampleTime = (el.name == "effectSymbol" || el.name == "ripple") ? 400.0 : timeMs
+                let sampleTime: Double
+                if el.name == "treemapLabel" {
+                    // Snapshot mode forces option.animation=false in the Web oracle. Treemap's label
+                    // enter animator is still installed by its label manager but remains parked at
+                    // the initial opacity-zero frame, so keep Native at that same deterministic phase.
+                    sampleTime = 0
+                }
+                else if el.name == "effectSymbol" || el.name == "ripple" {
+                    sampleTime = 400
+                }
+                else {
+                    sampleTime = timeMs
+                }
                 _ = clip.step(0, 0)          // establish baseline / apply delay offsets
                 _ = clip.step(sampleTime, sampleTime) // advance to the representative frame
             }
         }
+        // Attached text/guide elements are inserted into ZRender's display list but are not ordinary
+        // Group children, so Element.traverse does not visit them. Advance their independent animators
+        // explicitly. Treemap labels are named `treemapLabel`, which lets the sampler preserve the
+        // Web snapshot's initial label phase without affecting unrelated text animations.
+        if let text = el.getTextContent() { advance(text) }
+        if let guide = el.getTextGuideLine() { advance(guide) }
     }
     advance(root)
     _ = root.traverse { el in advance(el); return false }
