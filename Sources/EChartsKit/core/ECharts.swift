@@ -1718,14 +1718,30 @@ public final class ECharts: EChartsType {
     // VISUAL stage — run the ported `visual/style.swift` handlers.
     // ------------------------------------------------------------------------
     private func performVisualStage(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // Order mirrors upstream registration (core/echarts.ts:3360-3362): seriesStyleTask (GLOBAL),
-        //   then dataStyleTask, then dataColorPaletteTask (both CHART_DATA_CUSTOM). The palette task
+        // Order mirrors upstream registration (core/echarts.ts:3360-3365): seriesStyleTask and
+        //   seriesSymbolTask (GLOBAL), then dataStyleTask, dataColorPaletteTask and dataSymbolTask
+        //   (all CHART_DATA_CUSTOM). Symbol visuals MUST be resolved here, before renderComponents:
+        //   legends read `data.getVisual("legendIcon")`, and running symbolVisual only from each chart
+        //   view is too late because component views render first (pictorialBar then falls back from its
+        //   configured `circle` to the generic `roundRect`). The chart views keep their inline calls for
+        //   now; the tasks are idempotent and those calls remain the slim-scheduler fallback.
+        //
+        //   Use every RAW series, matching upstream `createOnAllSeries + performRawSeries`, so a
+        //   legend-filtered series still retains the visual needed to draw its inactive legend item.
+        //
+        //   The palette task
         //   MUST run LAST: it reads the `colorFromPalette` item visual that seriesStyleTask sets, and
         //   assigns per-item palette colors for `colorBy:'data'` series (e.g. pie slices). Running it
         //   first (as before) left `colorFromPalette` unset → every pie slice collapsed to one color.
         runSeriesStageHandler(seriesStyleTask, ecModel, api)
+        ecModel.eachRawSeries { seriesModel, _ in
+            symbolVisual.seriesSymbolTask(seriesModel, ecModel)
+        }
         runSeriesStageHandler(dataStyleTask, ecModel, api)
         runOverallStageHandler(dataColorPaletteTask, ecModel, api)
+        ecModel.eachRawSeries { seriesModel, _ in
+            symbolVisual.dataSymbolTask(seriesModel, ecModel)
+        }
 
         // VISUAL — graph node/edge colours. Upstream registers `categoryVisual` + `edgeVisual` as normal
         //   VISUAL stage handlers (chart/graph/install.ts), so they run in the visual phase BEFORE any
@@ -1887,7 +1903,11 @@ public final class ECharts: EChartsType {
         // BACKGROUND — upstream `echarts._updateBackground` calls `zr.setBackgroundColor(backgroundColor)`
         //   (a painter-level clear color). The driver renders into a bare Group and has no painter clear
         //   hook (that is a host concern, e.g. CALayerPainter's white), so instead draw the resolved
-        //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything. Now that render() no longer
+        //   top-level `backgroundColor` as a full-canvas Rect BEHIND everything. Because series are
+        //   allowed to use negative `z`/`zlevel`, lowering only `z2` is insufficient: a z:-12 series
+        //   would sort before a z:0 background and be covered by it. Pin all three sort keys to the
+        //   lowest finite value, matching the painter-level background's before-display-list semantics.
+        //   Now that render() no longer
         //   wipes `root`, the prior bg rect must be removed/reused each render so it never accumulates.
         //   Transparent/absent → no rect (the host clear shows through, preserving the default white).
         if let old = _bgRect { _ = root.remove(old); _bgRect = nil }
@@ -1924,6 +1944,8 @@ public final class ECharts: EChartsType {
                 "shape": shape as PathShape,
                 "style": bgStyle,
                 "silent": true,
+                "zlevel": -Double.greatestFiniteMagnitude,
+                "z": -Double.greatestFiniteMagnitude,
                 "z2": -Double.greatestFiniteMagnitude
             ])
             _ = root.add(bgRect)
@@ -2456,11 +2478,15 @@ public final class ECharts: EChartsType {
         //   (each with a fresh `maxZ2 = -Infinity`). Mirror that: run `doUpdateZ` on each direct child of
         //   the view group. The container `group` itself is a `Group` (not a Displayable) → nothing to set.
         //
-        // Graph symbols and treemap tiles are opaque hosts whose attached labels otherwise paint
-        // behind them in this port. Keep the lift scoped to those two series until the upstream
+        // Graph symbols, treemap tiles, bars, and heatmap cells are opaque hosts whose attached labels
+        // otherwise paint behind them in this port. Keep the lift scoped to those series until the upstream
         // `ignoreModelZ` flag is fully represented: other views intentionally author special z2
         // values (for example line end labels at 200) or keep host/label z2 equal for state lifting.
-        let liftLabelZ2 = model is GraphSeriesModel || model is TreemapSeriesModel
+        let liftLabelZ2 = model is GraphSeriesModel
+            || model is TreemapSeriesModel
+            || model is BarSeriesModel
+            || model is HeatmapSeriesModel
+            || model is CustomSeriesModel
         for child in group.children() {
             _ = doUpdateZ(child, z, zlevel, -Double.infinity, liftLabelZ2)
         }

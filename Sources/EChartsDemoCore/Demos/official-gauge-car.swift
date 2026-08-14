@@ -5,9 +5,8 @@
 // interaction, so no `drive`.
 //
 // DEVIATIONS from the official source:
-//   - Two `axisLabel.formatter` FUNCTIONS (gauge 5 fraction labels "2/4"/"4/4"; gauge 6 negated
-//     labels) are omitted from the native `option` — Swift cannot carry a JS closure. See the two
-//     PORT-NOTE lines. The web pane runs them verbatim.
+//   - The two JS `axisLabel.formatter` functions are represented by equivalent Swift
+//     `(Double) -> String` callbacks in the native option.
 //   - gauge 4's `detail.formatter` is `[...].join('\n')` in JS; the native `option` carries the
 //     already-joined static rich-text string (identical result — it is data, not a closure).
 //   - No other changes: string/rich formatters, gradient axisLine color stops and path-icon pointers
@@ -697,8 +696,11 @@ private let gaugeCarSeries5: [String: Any] = [
     "axisLine": ["lineStyle": ["width": 9.0, "color": [[0.15, "#f00"], [1.0, "rgba(255, 0, 0, 0)"]] as [[Any]]] as [String: Any]] as [String: Any],
     "splitLine": ["distance": -14.0, "length": 16.0, "lineStyle": ["color": "#fff", "width": 4.0] as [String: Any]] as [String: Any],
     "axisTick": ["distance": -14.0, "length": 10.0, "lineStyle": ["color": "#fff", "width": 2.0] as [String: Any]] as [String: Any],
-    // PORT-NOTE: axisLabel.formatter omitted — JS closure returned "2/4" at value 0.5 and "4/4" at value 1, else the raw number.
-    "axisLabel": ["distance": 12.0, "fontSize": 18.0, "fontWeight": 800.0, "fontFamily": "Arial", "color": "#fff"] as [String: Any],
+    "axisLabel": [
+        "distance": 12.0, "fontSize": 18.0, "fontWeight": 800.0,
+        "fontFamily": "Arial", "color": "#fff",
+        "formatter": gaugeCarFuelLabelFormatter as (Double) -> String
+    ] as [String: Any],
     "progress": ["show": true, "width": 5.0, "itemStyle": ["color": "#fff"] as [String: Any]] as [String: Any],
     "anchor": [
         "show": true, "itemStyle": [:] as [String: Any],
@@ -726,8 +728,11 @@ private let gaugeCarSeries6: [String: Any] = [
     "axisLine": ["lineStyle": ["color": [[1.0, "#AE96A6"], [1.1, "#f00"]] as [[Any]]] as [String: Any]] as [String: Any],
     "splitLine": ["distance": -8.0, "length": 12.0, "lineStyle": ["color": "#fff", "width": 4.0] as [String: Any]] as [String: Any],
     "axisTick": ["splitNumber": 3.0, "length": 8.0, "distance": -8.0, "lineStyle": ["color": "#fff", "width": 2.0] as [String: Any]] as [String: Any],
-    // PORT-NOTE: axisLabel.formatter omitted — JS closure returned the negated value (`-value`) as a string.
-    "axisLabel": ["distance": 14.0, "fontSize": 18.0, "fontWeight": 800.0, "fontFamily": "Arial", "color": "#fff"] as [String: Any],
+    "axisLabel": [
+        "distance": 14.0, "fontSize": 18.0, "fontWeight": 800.0,
+        "fontFamily": "Arial", "color": "#fff",
+        "formatter": gaugeCarTemperatureLabelFormatter as (Double) -> String
+    ] as [String: Any],
     "anchor": [
         "show": true, "itemStyle": [:] as [String: Any],
         "offsetCenter": [0, "55%"] as [Any], "size": 20.0, "icon": gaugeCarTempAnchorIcon
@@ -740,3 +745,14 @@ private let gaugeCarSeries6: [String: Any] = [
     "detail": ["show": false] as [String: Any],
     "data": [["value": -120.0, "name": ""] as [String: Any]]
 ]
+
+private let gaugeCarFuelLabelFormatter: (Double) -> String = { value in
+    if abs(value - 0.5) < 1e-9 { return "2/4" }
+    if abs(value - 1.0) < 1e-9 { return "4/4" }
+    return value.rounded() == value ? String(Int(value)) : String(value)
+}
+
+private let gaugeCarTemperatureLabelFormatter: (Double) -> String = { value in
+    let negated = -value
+    return negated.rounded() == negated ? String(Int(negated)) : String(negated)
+}

@@ -10,6 +10,52 @@ import ZRenderKit
 @testable import EChartsKit
 
 final class ThemeRiverRenderTests: XCTestCase {
+    func testTimeSingleAxisInheritsLabelAndSplitLineDefaults() {
+        let ec = ECharts(width: 520, height: 380)
+        ec.setOption([
+            "singleAxis": [
+                "type": "time",
+                "left": "10%",
+                "right": "10%",
+                "top": "10%",
+                "bottom": "10%",
+                "splitLine": [
+                    "show": true,
+                    "lineStyle": ["type": "dashed", "opacity": 0.2] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any],
+            "series": [[
+                "type": "themeRiver",
+                "data": [
+                    ["2015/11/08", 10.0, "Alpha"],
+                    ["2015/11/09", 12.0, "Alpha"],
+                    ["2015/11/10", 8.0, "Alpha"]
+                ]
+            ] as [String: Any]]
+        ])
+
+        guard let axisModel = ec.getModel()?.getComponent("singleAxis", 0) as? SingleAxisModel else {
+            return XCTFail("singleAxis model")
+        }
+        XCTAssertEqual(axisModel.get(["axisLabel", "margin"]) as? Int, 8)
+        XCTAssertEqual(axisModel.get(["axisLabel", "color"]) as? String, tokens.color.axisLabel)
+        XCTAssertEqual(axisModel.get(["splitLine", "lineStyle", "color"]) as? String,
+                       tokens.color.axisSplitLine)
+        XCTAssertEqual(axisModel.get(["splitLine", "lineStyle", "width"]) as? Int, 1)
+
+        var dashedSplitPaths = 0
+        _ = ec.getRoot().traverse { element in
+            guard let path = element as? Path,
+                  path.pathStyle?.stroke != nil,
+                  path.pathStyle?.lineDash != nil else {
+                return false
+            }
+            dashedSplitPaths += 1
+            return false
+        }
+        XCTAssertGreaterThan(dashedSplitPaths, 0, "time singleAxis split lines must have a visible dashed stroke")
+    }
+
     func testThemeRiverRendersAxisBackdropAndLayerBands() {
         let w = 520.0, h = 380.0
         let ec = ECharts(width: w, height: h)

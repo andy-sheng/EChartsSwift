@@ -6,18 +6,8 @@
 // DEVIATIONS:
 //   - web pane: the official source VERBATIM (formatter closure and all), minus the trailing
 //     `export {};` (a bare export is a SyntaxError in a classic script).
-//   - native pane: `series[0].detail.formatter` is a JS function and is omitted (see PORT-NOTE) —
-//     but NOT because the option bag cannot hold one. `option` is [String: Any] and util.isFunction
-//     duck-types Swift closures (ZRenderKit/Core/util.swift), so a closure would arrive intact. It is
-//     the gauge's own label path that drops it: GaugeView.formatLabel (EChartsKit/chart/gauge/
-//     GaugeView.swift:88-106) MATCHES the isFunction branch and deliberately does not call it
-//     ("PORT-NOTE (deferred): requires the formatter-callback seam"), keeping the raw numeric label.
-//     Carrying the closure here would therefore be an invisible no-op; natively only a '{value}'
-//     STRING template is honoured. The `detail.rich` styles the formatter addressed stay in the
-//     option, but with no formatter emitting `{value|...}{unit|...}` markup they are never applied:
-//     the native detail falls back to the plain value, so it will read "100" (unstyled, no "km/h")
-//     where the web pane reads "100km/h" in 50px bold + a 20px grey unit. That divergence is the
-//     point — it is a real framework gap, not a simplification of the example.
+//   - native pane: the JS detail formatter is represented by the equivalent Swift `(Double) ->
+//     String` callback supported by GaugeView. It emits the same rich-text tokens and rounded value.
 //   - static example: no timers, no data fetch, no map — hence no `drive` closure and no assets.
 extension EChartsDemoRegistry {
     static let official_gauge_speed = EChartsDemo(
@@ -182,15 +172,7 @@ option = {
                         "borderRadius": 8.0,
                         "offsetCenter": [0.0, "35%"] as [Any],
                         "valueAnimation": true,
-                        // PORT-NOTE: detail.formatter omitted — the JS closure returned
-                        // `'{value|' + value.toFixed(0) + '}{unit|km/h}'`, i.e. the rounded value tagged
-                        // for the `value` rich style followed by a literal "km/h" tagged for `unit`.
-                        // A Swift closure WOULD fit in this [String: Any] bag (util.isFunction duck-types
-                        // one), but GaugeView.formatLabel deliberately does not invoke a function
-                        // formatter — the formatter-callback seam is unported — so carrying it here would
-                        // be a silent no-op. Native therefore renders the raw value and the `rich` styles
-                        // below go unused. Closing this gap means porting that seam, not substituting a
-                        // '{value}' string template the official example does not use.
+                        "formatter": gaugeSpeedDetailFormatter as (Double) -> String,
                         "rich": [
                             "value": [
                                 "fontSize": 50.0,
@@ -210,6 +192,10 @@ option = {
                 ] as [String: Any]
             ]
         ])
+}
+
+private let gaugeSpeedDetailFormatter: (Double) -> String = { value in
+    "{value|\(Int(value.rounded()))}{unit|km/h}"
 }
 
 // The pointer's custom needle, an SVG path in echarts' `path://` form (verbatim from the example).

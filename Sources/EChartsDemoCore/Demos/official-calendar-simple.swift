@@ -86,7 +86,11 @@ option = {
                 "max": 10000.0
             ] as [String: Any],
             "calendar": [
-                "range": "2017"
+                "range": "2017",
+                // The zh official example resolves the page locale to Chinese. Native rendering does
+                // not inherit that browser locale, so pin the equivalent calendar name map explicitly.
+                "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                "dayLabel": ["nameMap": "ZH"] as [String: Any]
             ] as [String: Any],
             "series": [
                 [

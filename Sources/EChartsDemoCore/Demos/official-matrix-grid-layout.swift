@@ -12,13 +12,10 @@
 // media unit, no `query`) it is 4 columns x 10 rows and the sidebar sits beside the main area.
 //
 // DEVIATIONS from the official source:
-//   - THE DATA IS RANDOM UPSTREAM. `generateSingleSeriesData` is a `Math.random()` walk, so the
-//     example draws different curves on every load and the two panes can NEVER match pixel-for-pixel.
-//     The web pane keeps that generator VERBATIM (it is the example). The Swift option reproduces the
-//     SAME algorithm — same weekly (7-day) steps off 2025-05-05, same ±50 delta, same sign-flipping
-//     turn points, same `{yyyy}-{MM}-{dd}` x values, same `inverseXY` swap for the sidebar — but off a
-//     seeded xorshift PRNG, so the native pane is at least deterministic. Compare the two panes for
-//     LAYOUT (the matrix grid placement + media query), not for the curves.
+//   - THE DATA IS RANDOM UPSTREAM. `generateSingleSeriesData` is a `Math.random()` walk, so two panes
+//     loaded independently can never show the same curves. Both panes replace only that random source
+//     with the same seeded xorshift32 generator. The walk algorithm, weekly steps, turn points and
+//     inverseXY handling remain unchanged, while screenshots become reproducible and comparable.
 //   - JS `Math.round` / `Number.toFixed(0)` tie-breaking (toward +inf) is not reproduced exactly;
 //     `.rounded()` (ties away from zero) is used. Noise-level on random data.
 //   - `echarts.time.format(xTime, '{yyyy}-{MM}-{dd}')` is called with NO `isUTC` argument, so the web
@@ -60,17 +57,16 @@ import Foundation
 // Math.random() (see DEVIATIONS).
 // ---------------------------------------------------------------------------------------------
 
-/// xorshift64* — a `Math.random()` replacement, so the native pane is stable across runs.
+/// xorshift32 — mirrored verbatim by the web pane so independently loaded panes receive identical data.
 private struct MatrixGridRNG {
-    private var state: UInt64
-    init(seed: UInt64) { self.state = seed | 1 }
+    private var state: UInt32
+    init(seed: UInt32) { self.state = seed == 0 ? 1 : seed }
     /// Uniform in [0, 1), like `Math.random()`.
     mutating func next() -> Double {
-        state ^= state >> 12
-        state ^= state << 25
-        state ^= state >> 27
-        let v = state &* 2_685_821_657_736_338_717
-        return Double(v >> 11) / Double(1 << 53)
+        state ^= state << 13
+        state ^= state >> 17
+        state ^= state << 5
+        return Double(state) / 4_294_967_296.0
     }
 }
 
@@ -139,7 +135,7 @@ private let matrixGridOuterBounds: [String: Any] = [
 private func matrixGridSections() -> [MatrixGridSection] {
     // Same call order as the source's `_sectionDefinitionMap` object literal, off one RNG — so each
     // series gets its own walk, exactly as the four sequential `Math.random()`-driven calls do.
-    var rng = MatrixGridRNG(seed: 2_025_05_05)
+    var rng = MatrixGridRNG(seed: 0x2025_0505)
     let headerData = matrixGridSeriesData(100, inverseXY: false, rng: &rng)
     let sidebarData = matrixGridSeriesData(10, inverseXY: true, rng: &rng)
     let mainData = matrixGridSeriesData(100, inverseXY: false, rng: &rng)
@@ -170,7 +166,8 @@ private func matrixGridSections() -> [MatrixGridSection] {
             xAxis: [
                 "type": "time",
                 "id": "header_1",
-                "gridId": "header_1"
+                "gridId": "header_1",
+                "axisLabel": ["formatter": "{MM}-{dd}"] as [String: Any]
             ],
             yAxis: [
                 "id": "header_1",
@@ -218,7 +215,7 @@ private func matrixGridSections() -> [MatrixGridSection] {
                 "type": "time",
                 "id": "sidebar_1",
                 "gridId": "sidebar_1",
-                "axisLabel": ["hideOverlap": true] as [String: Any]
+                "axisLabel": ["hideOverlap": true, "formatter": "{MM}-{dd}"] as [String: Any]
             ],
             grid: [
                 "id": "sidebar_1",
@@ -252,7 +249,8 @@ private func matrixGridSections() -> [MatrixGridSection] {
             xAxis: [
                 "type": "time",
                 "id": "main_content_area_1",
-                "gridId": "main_content_area_1"
+                "gridId": "main_content_area_1",
+                "axisLabel": ["formatter": "{MM}-{dd}"] as [String: Any]
             ],
             yAxis: [
                 "id": "main_content_area_1",
@@ -291,7 +289,8 @@ private func matrixGridSections() -> [MatrixGridSection] {
             xAxis: [
                 "type": "time",
                 "id": "footer_1",
-                "gridId": "footer_1"
+                "gridId": "footer_1",
+                "axisLabel": ["formatter": "{MM}-{dd}"] as [String: Any]
             ],
             yAxis: [
                 "id": "footer_1",
@@ -428,6 +427,7 @@ extension EChartsDemoRegistry {
  */
 
 let _idBase = 1;
+let _matrixGridRandomState = 0x20250505 >>> 0;
 
 const _mediaDefinitionList = [
   {
@@ -491,7 +491,8 @@ const _sectionDefinitionMap = {
       xAxis: {
         type: 'time',
         id: 'header_1',
-        gridId: 'header_1'
+        gridId: 'header_1',
+        axisLabel: { formatter: '{MM}-{dd}' }
       },
       yAxis: {
         id: 'header_1',
@@ -548,7 +549,8 @@ const _sectionDefinitionMap = {
         id: 'sidebar_1',
         gridId: 'sidebar_1',
         axisLabel: {
-          hideOverlap: true
+          hideOverlap: true,
+          formatter: '{MM}-{dd}'
         }
       },
       grid: {
@@ -589,7 +591,8 @@ const _sectionDefinitionMap = {
       xAxis: {
         type: 'time',
         id: 'main_content_area_1',
-        gridId: 'main_content_area_1'
+        gridId: 'main_content_area_1',
+        axisLabel: { formatter: '{MM}-{dd}' }
       },
       yAxis: {
         id: 'main_content_area_1',
@@ -634,7 +637,8 @@ const _sectionDefinitionMap = {
       xAxis: {
         type: 'time',
         id: 'footer_1',
-        gridId: 'footer_1'
+        gridId: 'footer_1',
+        axisLabel: { formatter: '{MM}-{dd}' }
       },
       yAxis: {
         id: 'footer_1',
@@ -769,24 +773,33 @@ function normalizeToArray(value) {
 /**
  * Generate some random data for a single series.
  */
+function matrixGridRandom() {
+  let x = _matrixGridRandomState;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  _matrixGridRandomState = x >>> 0;
+  return _matrixGridRandomState / 4294967296;
+}
+
 function generateSingleSeriesData(dayCount, inverseXY) {
   const dayStart = new Date('2025-05-05T00:00:00.000Z'); // Monday
   const timeStart = dayStart.getTime();
   const sevenDay = 7 * 1000 * 3600 * 24;
   const seriesData = [];
-  let lastVal = +(Math.random() * 300).toFixed(0);
+  let lastVal = +(matrixGridRandom() * 300).toFixed(0);
 
   let turnCount = null;
   let sign = -1;
   for (let idx = 0; idx < dayCount; idx++) {
     if (turnCount == null || idx >= turnCount) {
       turnCount =
-        idx + Math.round((dayCount / 4) * ((Math.random() - 0.5) * 0.1));
+        idx + Math.round((dayCount / 4) * ((matrixGridRandom() - 0.5) * 0.1));
       sign = -sign;
     }
     const deltaMag = 50;
     const delta = +(
-      Math.random() * deltaMag -
+      matrixGridRandom() * deltaMag -
       deltaMag / 2 +
       (sign * deltaMag) / 3
     ).toFixed(0);

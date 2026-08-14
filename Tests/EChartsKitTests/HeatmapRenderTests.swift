@@ -119,6 +119,37 @@ final class HeatmapRenderTests: XCTestCase {
                        "cell fills should be visualMap colors, not the default black")
     }
 
+    func testMatrixHeatmapLabelsPaintAboveOpaqueCells() {
+        let ec = ECharts(width: 480, height: 320)
+        ec.setOption([
+            "matrix": [
+                "left": 60.0, "top": 60.0, "right": 40.0, "bottom": 60.0,
+                "x": ["data": ["A", "B"] as [Any]] as [String: Any],
+                "y": ["data": ["U"] as [Any]] as [String: Any]
+            ] as [String: Any],
+            "visualMap": ["min": 0.0, "max": 20.0, "dimension": 2.0] as [String: Any],
+            "series": [[
+                "type": "heatmap",
+                "coordinateSystem": "matrix",
+                "data": [["A", "U", 10.0] as [Any], ["B", "U", 20.0] as [Any]],
+                "label": ["show": true] as [String: Any]
+            ] as [String: Any]]
+        ])
+
+        guard let series = firstSeries(ec) else { return XCTFail("no matrix heatmap series") }
+        let data = series.getData()
+        XCTAssertEqual(data.count(), 2)
+        for index in 0..<data.count() {
+            guard let cell = data.getItemGraphicEl(index) as? Rect,
+                  let label = cell.getTextContent() else {
+                XCTFail("matrix heatmap cell should carry its value label")
+                continue
+            }
+            XCTAssertGreaterThan(label.z2, cell.z2,
+                                 "matrix heatmap value text must paint over its opaque cell")
+        }
+    }
+
     // MARK: helpers
     private func firstSeries(_ ec: ECharts) -> SeriesModel? {
         var found: SeriesModel?

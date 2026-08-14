@@ -7,15 +7,8 @@
 // DEVIATIONS from the official source:
 //   - webOptionJS is the example VERBATIM, minus the TypeScript `(value: number)` annotations and the
 //     trailing `export {};` (a bare export is a SyntaxError in a classic script). Both formatters run.
-//   - NATIVE pane: both JS formatters are omitted (see the PORT-NOTEs). GaugeView's `formatLabel`
-//     implements only the STRING branch — a '{value}' template, which is what the portable gauge
-//     demos (e.g. gauge-stage's '{value} km/h') use; its FUNCTION branch is a deferred PORT-NOTE
-//     (GaugeView.swift:99) that keeps the raw numeric label. Neither closure here is expressible as
-//     a '{value}' template (one maps four tick values to grade names, the other is value×100), so
-//     leaving them in the option bag would render identically to dropping them. Consequence, visible
-//     in the diff: the native gauge labels the axis with raw numbers (0, 0.125, …) instead of
-//     "Grade A/B/C/D" — the official example prints an empty string for every non-grade tick — and
-//     the detail reads `0.7` rather than `70`.
+//   - NATIVE pane: the two JS formatter functions are represented by equivalent Swift
+//     `(Double) -> String` callbacks supported by GaugeView.
 //   - No timers, no data fetch, no map: no `drive`, no assets.
 extension EChartsDemoRegistry {
     static let official_gauge_grade = EChartsDemo(
@@ -155,13 +148,8 @@ option = {
                         "color": "#464646",
                         "fontSize": 20.0,
                         "distance": -60.0,
-                        "rotate": "tangential"
-                        // PORT-NOTE: axisLabel.formatter omitted — the JS closure mapped the four band
-                        // midpoints to grade names (0.875→"Grade A", 0.625→"Grade B", 0.375→"Grade C",
-                        // 0.125→"Grade D") and returned '' for every other tick. Not expressible as a
-                        // '{value}' template, and GaugeView.formatLabel's function branch is deferred
-                        // (GaugeView.swift:99), so the native pane labels all 9 ticks with their raw
-                        // numeric value.
+                        "rotate": "tangential",
+                        "formatter": gaugeGradeAxisLabelFormatter as (Double) -> String
                     ] as [String: Any],
                     "title": [
                         "offsetCenter": [0.0, "-10%"] as [Any],
@@ -171,12 +159,8 @@ option = {
                         "fontSize": 30.0,
                         "offsetCenter": [0.0, "-35%"] as [Any],
                         "valueAnimation": true,
+                        "formatter": gaugeGradeDetailFormatter as (Double) -> String,
                         "color": "inherit"
-                        // PORT-NOTE: detail.formatter omitted — the JS closure rendered the 0…1 value as
-                        // a percentage integer (`Math.round(value * 100) + ''`, i.e. "70"). Arithmetic,
-                        // so no '{value}' template can express it, and GaugeView.formatLabel's function
-                        // branch is deferred (GaugeView.swift:99); the native pane prints the raw value.
-                        // `valueAnimation` above still rolls the readout, just over the raw 0…1 number.
                     ] as [String: Any],
                     "data": [
                         [
@@ -196,3 +180,15 @@ private let gaugeGradeBandColors: [[Any]] = [
     [0.75, "#58D9F9"],
     [1.0, "#7CFFB2"]
 ]
+
+private let gaugeGradeAxisLabelFormatter: (Double) -> String = { value in
+    if abs(value - 0.875) < 1e-9 { return "Grade A" }
+    if abs(value - 0.625) < 1e-9 { return "Grade B" }
+    if abs(value - 0.375) < 1e-9 { return "Grade C" }
+    if abs(value - 0.125) < 1e-9 { return "Grade D" }
+    return ""
+}
+
+private let gaugeGradeDetailFormatter: (Double) -> String = { value in
+    String(Int((value * 100).rounded()))
+}

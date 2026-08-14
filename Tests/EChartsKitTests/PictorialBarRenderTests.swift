@@ -19,6 +19,37 @@ final class PictorialBarRenderTests: XCTestCase {
 
     override func setUp() { super.setUp(); ComponentModel.registerClass(PictorialBarSeriesModel.self) }
 
+    func testLegendUsesSeriesSymbolBeforeChartViewRenders() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "animation": false,
+            "legend": ["data": ["Vehicles"]] as [String: Any],
+            "xAxis": ["type": "value", "show": false] as [String: Any],
+            "yAxis": ["type": "category", "show": false, "data": ["car"]] as [String: Any],
+            "series": [[
+                "name": "Vehicles", "type": "pictorialBar", "symbol": "circle",
+                "data": [10.0]
+            ] as [String: Any]]
+        ])
+
+        var legendText: ZRText?
+        _ = ec.getRoot().traverse { element in
+            if let text = element as? ZRText, text.textStyle?.text == "Vehicles" {
+                legendText = text
+            }
+            return false
+        }
+        guard let itemGroup = legendText?.parent as? Group else {
+            return XCTFail("legend item group was not rendered")
+        }
+        guard let icon = itemGroup.childAt(0) as? SymbolPath,
+              let iconShape = icon.shape as? SymbolShape else {
+            return XCTFail("legend icon was not rendered as a symbol path")
+        }
+        XCTAssertEqual(iconShape.symbolType, "circle",
+                       "pictorialBar legend must inherit its circle symbol instead of falling back to roundRect")
+    }
+
     /// Collect every pictorial symbol `Path` (SymbolPath, type == "symbol") from the root group. The
     /// per-bar `barRect` is a `Rect` (type "rect") and is therefore excluded.
     private func collectSymbols(_ root: Group) -> [Path] {
@@ -154,5 +185,54 @@ final class PictorialBarRenderTests: XCTestCase {
                 XCTFail("repeated symbol should have a solid palette fill")
             }
         }
+    }
+
+    func testNegativeZRepeatedRectsRemainAboveGlowBars() {
+        let ec = ECharts(width: 400, height: 300)
+        let glow: [String: Any] = [
+            "type": "linear", "x": 0.0, "y": 0.0, "x2": 0.0, "y2": 1.0,
+            "colorStops": [
+                ["offset": 0.0, "color": "rgba(20,200,212,0.5)"],
+                ["offset": 1.0, "color": "rgba(20,200,212,0)"]
+            ] as [[String: Any]]
+        ]
+        ec.setOption([
+            "animation": false,
+            "backgroundColor": "#0f375f",
+            "xAxis": ["type": "category", "data": ["A", "B"]] as [String: Any],
+            "yAxis": ["type": "value", "max": 100.0] as [String: Any],
+            "series": [
+                ["type": "bar", "z": -12.0, "barWidth": 10.0,
+                 "itemStyle": ["color": glow] as [String: Any], "data": [80.0, 60.0]] as [String: Any],
+                ["type": "pictorialBar", "z": -10.0, "symbol": "rect", "symbolRepeat": true,
+                 "symbolSize": [12.0, 4.0], "symbolMargin": 1.0,
+                 "itemStyle": ["color": "#0f375f"] as [String: Any], "data": [80.0, 60.0]] as [String: Any]
+            ]
+        ])
+
+        #if canImport(QuartzCore) && canImport(CoreGraphics)
+        let list = flattenDisplayList(ec.getRoot())
+        let glowBars = list.compactMap { $0 as? Rect }.filter { $0.z == -12 }
+        let cuts = list.compactMap { $0 as? SymbolPath }.filter { $0.z == -10 }
+        XCTAssertEqual(glowBars.count, 2, "the negative-z glow bar series must remain in the paint list")
+        XCTAssertGreaterThan(cuts.count, 2, "the repeated background rects must remain in the paint list")
+        XCTAssertTrue(glowBars.allSatisfy {
+            if case .linearGradient? = $0.pathStyle.fill { return true }
+            return false
+        }, "glow bars must retain their translucent linear gradient")
+        XCTAssertTrue(cuts.allSatisfy {
+            if case .string("#0f375f")? = $0.pathStyle.fill { return true }
+            return false
+        },
+                      "repeated rects must retain the background-color punch-out fill")
+        guard let first = list.first, let background = first as? Rect,
+              let bgShape = background.shape as? RectShape else {
+            return XCTFail("the chart background must sort before every negative-z displayable")
+        }
+        XCTAssertGreaterThanOrEqual(bgShape.width, 400)
+        XCTAssertGreaterThanOrEqual(bgShape.height, 300)
+        XCTAssertLessThan(background.zlevel, -12,
+                          "the painter-level background emulation must stay behind negative-z series")
+        #endif
     }
 }

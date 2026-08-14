@@ -380,11 +380,15 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_sankey_nodealign_right,                 // sankey
         EChartsDemoRegistry.official_funnel,                                 // funnel
         EChartsDemoRegistry.official_funnel_align,                           // funnel
+        EChartsDemoRegistry.official_funnel_customize,                       // funnel
+        EChartsDemoRegistry.official_funnel_mutiple,                         // funnel
         EChartsDemoRegistry.official_gauge,                                  // gauge
         EChartsDemoRegistry.official_gauge_simple,                           // gauge
         EChartsDemoRegistry.official_gauge_speed,                            // gauge
+        EChartsDemoRegistry.official_gauge_progress,                         // gauge
         EChartsDemoRegistry.official_gauge_stage,                            // gauge
         EChartsDemoRegistry.official_gauge_grade,                            // gauge
+        EChartsDemoRegistry.official_gauge_ring,                             // gauge
         EChartsDemoRegistry.official_gauge_multi_title,                      // gauge
         EChartsDemoRegistry.official_gauge_temperature,                      // gauge
         EChartsDemoRegistry.official_gauge_barometer,                        // gauge

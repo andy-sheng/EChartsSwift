@@ -13,13 +13,11 @@
 //     calendar-heatmap) and the SAME array is inlined into BOTH panes: spliced into webOptionJS as a
 //     JSON literal, and used verbatim as the native `series.data`. The `Top 12` slice is computed the
 //     same way upstream does — sort by value descending, take the first 12.
-//   - PORT-NOTE (native pane): every series' `symbolSize: function (val) { return val[1] / 500; }` is a
-//     JS closure. symbolVisual DEFERS callback symbol props (only literal option values are encoded —
-//     symbolVisual.swift), so the native pane omits `symbolSize` and the dots fall back to the scatter
-//     default (10px, uniform) instead of scaling with the day's step count. The web pane keeps the
-//     closure verbatim, so the reference still shows value-scaled dots.
+//   - Native carries each `symbolSize: function (val) { return val[1] / 500; }` through the typed
+//     `SymbolSizeCallback` seam, preserving the official value-driven point sizes.
 //   - `series` order/`calendarIndex` kept 1:1 with upstream; `export {};` and TS annotations dropped.
 import Foundation
+import EChartsKit
 
 // The 366 rows of 2016 that `getVirtualData('2016')` would have produced, made deterministic (fixed-seed
 // LCG stand-in for Math.random). Element shape is the upstream `[string, number]` pair.
@@ -56,6 +54,14 @@ private let calendarEffectDataJSON: String = {
     return json
 }()
 
+private let calendarEffectSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
+    guard let row = rawValue as? [Any], row.count > 1 else { return 0.0 }
+    if let value = row[1] as? Double { return value / 500.0 }
+    if let value = row[1] as? Int { return Double(value) / 500.0 }
+    if let value = row[1] as? NSNumber { return value.doubleValue / 500.0 }
+    return 0.0
+}
+
 private func calendarEffectCalendar(top: Double, range: [String], yearFormatter: String) -> [String: Any] {
     return [
         "top": top,
@@ -66,8 +72,8 @@ private func calendarEffectCalendar(top: Double, range: [String], yearFormatter:
             "lineStyle": ["color": "#000", "width": 4.0, "type": "solid"] as [String: Any]
         ] as [String: Any],
         "yearLabel": ["formatter": yearFormatter, "color": "#fff"] as [String: Any],
-        "monthLabel": ["color": "#aaa"] as [String: Any],
-        "dayLabel": ["color": "#aaa"] as [String: Any],
+        "monthLabel": ["color": "#aaa", "nameMap": "ZH"] as [String: Any],
+        "dayLabel": ["color": "#aaa", "nameMap": "ZH"] as [String: Any],
         "itemStyle": ["color": "#323c48", "borderWidth": 1.0, "borderColor": "#111"] as [String: Any]
     ]
 }
@@ -187,12 +193,12 @@ option = {
                 calendarEffectCalendar(top: 340.0, range: ["2016-07-01", "2016-12-31"], yearFormatter: "{start}  2nd")
             ],
             "series": [
-                // PORT-NOTE: symbolSize (val[1]/500 closure) omitted — symbolVisual defers callback props.
                 [
                     "name": "Steps",
                     "type": "scatter",
                     "coordinateSystem": "calendar",
                     "data": calendarEffectData,
+                    "symbolSize": calendarEffectSymbolSize,
                     "itemStyle": ["color": "#ddb926"] as [String: Any]
                 ] as [String: Any],
                 [
@@ -201,6 +207,7 @@ option = {
                     "coordinateSystem": "calendar",
                     "calendarIndex": 1.0,
                     "data": calendarEffectData,
+                    "symbolSize": calendarEffectSymbolSize,
                     "itemStyle": ["color": "#ddb926"] as [String: Any]
                 ] as [String: Any],
                 [
@@ -209,6 +216,7 @@ option = {
                     "coordinateSystem": "calendar",
                     "calendarIndex": 1.0,
                     "data": calendarEffectTop12,
+                    "symbolSize": calendarEffectSymbolSize,
                     "showEffectOn": "render",
                     "rippleEffect": ["brushType": "stroke"] as [String: Any],
                     "itemStyle": ["color": "#f4e925", "shadowBlur": 10.0, "shadowColor": "#333"] as [String: Any],
@@ -219,6 +227,7 @@ option = {
                     "type": "effectScatter",
                     "coordinateSystem": "calendar",
                     "data": calendarEffectTop12,
+                    "symbolSize": calendarEffectSymbolSize,
                     "showEffectOn": "render",
                     "rippleEffect": ["brushType": "stroke"] as [String: Any],
                     "itemStyle": ["color": "#f4e925", "shadowBlur": 10.0, "shadowColor": "#333"] as [String: Any],

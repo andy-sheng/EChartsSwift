@@ -66,4 +66,34 @@ final class BarLabelStyleTests: XCTestCase {
         XCTAssertEqual(Set(texts), Set(["10", "20", "30", "40"]),
                        "each bar's default label is its value")
     }
+
+    func testAttachedBarLabelPaintsAboveItsOpaqueBar() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption(barChartOptionWithLabel())
+
+        let bars = collectBars(ec.getRoot())
+        XCTAssertEqual(bars.count, 4)
+        for bar in bars {
+            guard let label = bar.getTextContent() else {
+                XCTFail("each bar should have an attached label")
+                continue
+            }
+            XCTAssertGreaterThan(label.z2, bar.z2,
+                                 "an attached bar label must paint after the opaque bar that hosts it")
+        }
+
+        let displayList = ec.storage.getDisplayList(true, true)
+        let lastBarIndex = displayList.lastIndex { $0 is Rect && $0.name == "item" }
+        let attachedLabels = Set(bars.compactMap { $0.getTextContent() }.map(ObjectIdentifier.init))
+        let firstLabelIndex = displayList.firstIndex {
+            guard let span = $0 as? TSpan, let parent = span.parent as? ZRText else { return false }
+            return attachedLabels.contains(ObjectIdentifier(parent))
+        }
+        XCTAssertNotNil(lastBarIndex)
+        XCTAssertNotNil(firstLabelIndex)
+        if let lastBarIndex, let firstLabelIndex {
+            XCTAssertGreaterThan(firstLabelIndex, lastBarIndex,
+                                 "bar label glyphs must be sorted after every opaque bar")
+        }
+    }
 }

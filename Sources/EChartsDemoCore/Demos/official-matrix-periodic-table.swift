@@ -21,19 +21,9 @@
 // at 620px of canvas a row is (0.8 * 620)/11 = 45px too — square cells, as on the website.
 //
 // DEVIATIONS from the official source:
-//   - NATIVE PANE UNSUPPORTED (nativeSupported: false). The series is `custom` and its renderItem
-//     closure IS the chart: without it not a single element tile is drawn, and what is left — a matrix
-//     whose x/y labels, item borders and divider lines are ALL switched off — renders as an empty
-//     white rectangle. A Swift [String: Any] cannot carry a JS function. Everything else IS ported
-//     (the matrix component, the series' type/coordinateSystem/data, label.rich/textStyle), so the
-//     option lights up the moment renderItem gains a native form.
-//   - The trailing `setTimeout(...)` block has NO native counterpart and no `drive` hook: it builds its
-//     11 `graphic.elements` from `myChart.convertToPixel({ matrixIndex: 0 }, ...)`, i.e. from live
-//     coordinate-system layout read back out of the chart. `EChartsDemoChart` exposes setOption/every/
-//     after only — no convertToPixel — and the native pane has no tiles to annotate anyway. It is kept
-//     VERBATIM on the web pane, where it runs exactly as it does on the website.
-//   - `label.formatter` and `series.renderItem` are omitted from the Swift option (JS closures); each
-//     has a PORT-NOTE where it would have gone.
+//   - The native pane expresses the JS renderItem and label formatter as a typed CustomSeriesRenderItem.
+//     The delayed graphic annotations are emitted as attached texts on the final custom group; their
+//     positions use the fixed matrix box geometry and are equivalent to the web pane's convertToPixel.
 //   - `series` is an array of one in the Swift option where the source writes the single-series object
 //     form (`series: { ... }`) — echarts normalises the two to the same thing.
 //   - The example's `/* title: ... */` metadata block is dropped (it is the website's front-matter, not
@@ -51,25 +41,58 @@ private func periodicNum(_ v: Any?) -> Double {
     if let s = v as? String { return Double(s) ?? .nan }
     return .nan
 }
+private func periodicString(_ v: Any?) -> String {
+    guard let v else { return "" }
+    if let s = v as? String { return s }
+    let mirror = Mirror(reflecting: v)
+    if mirror.displayStyle == .optional {
+        return periodicString(mirror.children.first?.value)
+    }
+    return String(describing: v)
+}
 private let periodicTableRenderItem: CustomSeriesRenderItem = { _, api in
-    let x = api.value(0.0, nil)
-    let y = api.value(1.0, nil)
+    let x = api.ordinalRawValue(0.0, nil) ?? api.value(0.0, nil)
+    let y = api.ordinalRawValue(1.0, nil) ?? api.value(1.0, nil)
     guard let rect = api.layout([x, y], nil)?.rect else { return nil }
-    let isElement = !periodicNum(api.value(2.0, nil)).isNaN
+    let atomicNumber = periodicNum(api.value(2.0, nil))
+    let isElement = !atomicNumber.isNaN
+    let symbol = periodicString(api.ordinalRawValue(3.0, nil) ?? api.value(3.0, nil))
+    let label = isElement ? "\(Int(atomicNumber))\n\(symbol)" : "{small|\(symbol)}"
     let margin = 2.0
-    return [
+    let tile: [String: Any] = [
         "type": "rect",
         "shape": [
             "x": rect.x + margin, "y": rect.y + margin,
             "width": rect.width - margin * 2, "height": rect.height - margin * 2
         ] as [String: Any],
         "style": api.style([
-            "fill": api.value(4.0, nil) as Any,
+            "fill": api.ordinalRawValue(4.0, nil) ?? api.value(4.0, nil) as Any,
             "stroke": "#aaa",
             "lineWidth": isElement ? 1.0 : 0.0,
             "opacity": isElement ? 1.0 : 0.5
-        ] as [String: Any], nil)
-    ] as [String: Any]
+        ] as [String: Any], nil),
+        "textConfig": ["position": "inside"] as [String: Any],
+        "textContent": [
+            "type": "text",
+            "style": [
+                "text": label,
+                "fill": "#555",
+                "fontSize": 14.0,
+                "align": "center",
+                "verticalAlign": "middle",
+                "rich": [
+                    "small": ["fontSize": 12.0, "fill": "#777"] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any]
+    ]
+    if symbol == "Ac~No" {
+        return [
+            "type": "group",
+            "children": [tile] + periodicTableGraphicElements()
+        ] as [String: Any]
+    }
+    return tile
 }
 
 // The four category colours (upstream's `const colors`), reused by every data row below.
@@ -83,16 +106,67 @@ private let periodicYellow = "#ff8"
 private let periodicTableXData: [String] = (1...19).map { String($0) }
 private let periodicTableYData: [String] = (1...10).map { String($0) }
 
+// [matrix x, matrix y, text, dx, dy] — mirrors the web pane's delayed graphic rows.
+private let periodicTableAnnotationData: [[Any]] = [
+    ["2", "9", "Lanthanides", 20.0, 0.0],
+    ["2", "10", "Actinides", 20.0, 0.0],
+    ["1", "1", "Nonmetals", -70.0, 0.0],
+    ["1", "2", "Metals", -70.0, 0.0],
+    ["19", "1", "Noble gases", 0.0, -40.0],
+    ["9", "3", "Transition metals\n(somtimes excl. group 12)", -25.0, 0.0],
+    ["1", "8", "s-block\n(incl. He)", 20.0, -3.0],
+    ["3", "8", "f-block", 0.0, -10.0],
+    ["9", "8", "d-block", -25.0, -10.0],
+    ["17", "8", "p-block (excl. He)", -25.0, -10.0],
+    ["16", "1", "Some elements near\nthe dashed staircase are\nsometimes called metalloids", 0.0, 0.0]
+]
+
+private func periodicTableGraphicElements() -> [[String: Any]] {
+    // Matrix box: width 900 centered in 1040; default top/bottom are 10% of 620. The hidden headers
+    // still occupy one column/row, so convertToPixel(category) uses 20 columns and 11 rows.
+    let left = 70.0
+    let top = 62.0
+    let cellWidth = 900.0 / 20.0
+    let cellHeight = (620.0 - top * 2.0) / 11.0
+    return periodicTableAnnotationData.compactMap { row in
+        guard row.count == 5,
+              let x = Double(row[0] as? String ?? ""),
+              let y = Double(row[1] as? String ?? ""),
+              let text = row[2] as? String,
+              let dx = row[3] as? Double,
+              let dy = row[4] as? Double else { return nil }
+        return [
+            "type": "rect",
+            "shape": [
+                "x": left + cellWidth * (x + 0.5) + dx,
+                "y": top + cellHeight * (y + 0.5) + dy,
+                "width": 0.0,
+                "height": 0.0
+            ] as [String: Any],
+            "style": ["fill": "rgba(0,0,0,0)", "opacity": 0.0] as [String: Any],
+            "z2": 100.0,
+            "silent": true,
+            "textConfig": ["position": "inside"] as [String: Any],
+            "textContent": [
+                "type": "text",
+                "style": [
+                    "text": text,
+                    "fill": "#333",
+                    "font": "italic bold 14px sans-serif",
+                    "textAlign": "center",
+                    "textVerticalAlign": "middle"
+                ] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any]
+    }
+}
+
 extension EChartsDemoRegistry {
     static let official_matrix_periodic_table = EChartsDemo(
         name: "official-matrix-periodic-table", category: "matrix",
         summary: "元素周期表 — Periodic Table",
         width: 1040, height: 620,
-        nativeSupported: true,   // renderItem ported: coloured cells render in the periodic-table shape.
-                                 // Per-element SYMBOL/number labels (series.label.formatter — a JS closure
-                                 // + rich text) and the category labels (a graphic layer positioned by the
-                                 // runtime `myChart.convertToPixel`) are omitted; the gallery surfaces that
-                                 // gap (matrix-covariance convention) rather than hiding the correct grid.
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const colors = {
@@ -384,11 +458,6 @@ setTimeout(function () {
                     "data": periodicTableData as [Any],
                     "label": [
                         "show": true,
-                        // PORT-NOTE: label.formatter omitted — the JS arrow returned
-                        // `'{small|' + value[3] + '}'` (the rich `small` style: 12px #777) for the two
-                        // rows whose atomic number is null (the 'La~Yb' / 'Ac~No' placeholder tiles),
-                        // and otherwise `value[2] + '\n' + value[3]` — the atomic number stacked over
-                        // the element symbol.
                         "rich": [
                             "small": ["fontSize": 12.0, "color": "#777"] as [String: Any]
                         ] as [String: Any],
@@ -398,13 +467,6 @@ setTimeout(function () {
                             "align": "center"
                         ] as [String: Any]
                     ] as [String: Any]
-                    // PORT-NOTE: renderItem omitted — the JS closure IS the chart. Per datum it read the
-                    // group/period (api.value(0)/api.value(1)), asked the matrix coord system for that
-                    // cell's rectangle via `api.layout([x, y]).rect`, and returned ONE `rect` inset by a
-                    // 2px margin on every side, styled with api.style({ fill: api.value(4) — the row's
-                    // category colour, stroke: '#aaa' }). The two placeholder rows (atomic number null,
-                    // so `!isNaN(api.value(2))` is false) got lineWidth 0 + opacity 0.5; every real
-                    // element got lineWidth 1 + opacity 1. Without it the series draws nothing.
                 ] as [String: Any]
             ]
         ])

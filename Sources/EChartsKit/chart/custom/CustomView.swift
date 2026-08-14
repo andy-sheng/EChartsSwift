@@ -1436,8 +1436,8 @@ private func bridgeCustomElementTextConfig(_ bag: [String: Any]?) -> ElementText
 }
 
 // upstream: function doCreateOrUpdateAttachedTx(el, dataIndex, elOption, seriesModel, isInit, attachedTxInfo)
-//   BASIC subset — a `textContent` element spec becomes a plain text child. The legacy detection +
-//   per-state text config + rich label are DEFERRED.
+//   The normal-state textContent/textConfig path is wired, including rich text. Legacy ec4 detection
+//   and per-state text config remain deferred.
 private func doCreateOrUpdateAttachedTx(
     _ el: Element,
     _ dataIndex: Int,
@@ -1764,7 +1764,8 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
     return out
 }
 
-// `[String: Any]` style bag → TextStyleProps (basic-text subset). Includes the ec4 textFill/textStroke compat.
+// `[String: Any]` style bag → TextStyleProps. Includes the ec4 textFill/textStroke compat and
+// the rich-token/background/border fields used by custom-series attached labels.
 private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     var out = TextStyleProps()
     out.text = s["text"] as? String
@@ -1794,8 +1795,73 @@ private func bridgeTextStyle(_ s: [String: Any]) -> TextStyleProps {
     out.overflow = s["overflow"] as? String
     out.ellipsis = s["ellipsis"] as? String
     out.truncateMinChar = customToDouble(s["truncateMinChar"])
-    // PORT-NOTE (deferred): fontStyle/fontWeight/rich/backgroundColor/padding text-style bridging is
-    //   deferred (basic-text subset only).
+    if let bg = s["backgroundColor"] as? String { out.backgroundColor = .string(bg) }
+    out.padding = bridgeTextNumberArray(s["padding"])
+    out.margin = bridgeTextNumberArray(s["margin"])
+    out.borderColor = s["borderColor"] as? String
+    out.borderWidth = customToDouble(s["borderWidth"])
+    out.borderRadius = bridgeTextNumberArray(s["borderRadius"])
+    out.fontStyle = (s["fontStyle"] as? String).flatMap(FontStyle.init(rawValue:))
+    out.fontWeight = bridgeTextFontWeight(s["fontWeight"])
+    if let rich = s["rich"] as? [String: Any] {
+        var tokens: [String: TextStylePropsPart] = [:]
+        for (name, rawToken) in rich {
+            guard let tokenBag = rawToken as? [String: Any] else { continue }
+            tokens[name] = bridgeTextStylePart(tokenBag)
+        }
+        out.rich = tokens
+    }
+    return out
+}
+
+private func bridgeTextNumberArray(_ value: Any?) -> NumberOrNumberArray? {
+    if let number = customToDouble(value) { return .number(number) }
+    if let values = value as? [Any] { return .array(values.compactMap(customToDouble)) }
+    if let values = value as? [Double] { return .array(values) }
+    return nil
+}
+
+private func bridgeTextFontWeight(_ value: Any?) -> FontWeight? {
+    if let number = customToDouble(value) { return .number(number) }
+    switch value as? String {
+    case "normal": return .normal
+    case "bold": return .bold
+    case "bolder": return .bolder
+    case "lighter": return .lighter
+    default: return nil
+    }
+}
+
+private func bridgeTextStylePart(_ s: [String: Any]) -> TextStylePropsPart {
+    var out = TextStylePropsPart()
+    out.fill = (s["fill"] as? String) ?? (s["color"] as? String)
+    out.stroke = (s["stroke"] as? String) ?? (s["textBorderColor"] as? String)
+    out.lineWidth = customToDouble(s["lineWidth"]) ?? customToDouble(s["textBorderWidth"])
+    out.opacity = customToDouble(s["opacity"])
+    out.font = s["font"] as? String
+    out.fontFamily = s["fontFamily"] as? String
+    if let fs = customToDouble(s["fontSize"]) { out.fontSize = .number(fs) }
+    else if let fs = s["fontSize"] as? String { out.fontSize = .string(fs) }
+    out.fontStyle = (s["fontStyle"] as? String).flatMap(FontStyle.init(rawValue:))
+    out.fontWeight = bridgeTextFontWeight(s["fontWeight"])
+    if let align = s["align"] as? String { out.align = TextAlign(rawValue: align) }
+    if let verticalAlign = s["verticalAlign"] as? String {
+        out.verticalAlign = TextVerticalAlign(rawValue: verticalAlign)
+    }
+    out.lineHeight = customToDouble(s["lineHeight"])
+    if let width = customToDouble(s["width"]) { out.width = .number(width) }
+    else if let width = s["width"] as? String { out.width = .string(width) }
+    out.height = customToDouble(s["height"])
+    if let bg = s["backgroundColor"] as? String { out.backgroundColor = .string(bg) }
+    out.padding = bridgeTextNumberArray(s["padding"])
+    out.margin = bridgeTextNumberArray(s["margin"])
+    out.borderColor = s["borderColor"] as? String
+    out.borderWidth = customToDouble(s["borderWidth"])
+    out.borderRadius = bridgeTextNumberArray(s["borderRadius"])
+    out.shadowColor = s["shadowColor"] as? String
+    out.shadowBlur = customToDouble(s["shadowBlur"])
+    out.shadowOffsetX = customToDouble(s["shadowOffsetX"])
+    out.shadowOffsetY = customToDouble(s["shadowOffsetY"])
     return out
 }
 

@@ -146,18 +146,24 @@ option = {
             "calendar": [
                 [
                     "range": "2017",
-                    "cellSize": ["auto", 20.0] as [Any]
+                    "cellSize": ["auto", 20.0] as [Any],
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                    "dayLabel": ["nameMap": "ZH"] as [String: Any]
                 ] as [String: Any],
                 [
                     "top": 260.0,
                     "range": "2016",
-                    "cellSize": ["auto", 20.0] as [Any]
+                    "cellSize": ["auto", 20.0] as [Any],
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                    "dayLabel": ["nameMap": "ZH"] as [String: Any]
                 ] as [String: Any],
                 [
                     "top": 450.0,
                     "range": "2015",
                     "cellSize": ["auto", 20.0] as [Any],
-                    "right": 5.0
+                    "right": 5.0,
+                    "monthLabel": ["nameMap": "ZH"] as [String: Any],
+                    "dayLabel": ["nameMap": "ZH"] as [String: Any]
                 ] as [String: Any]
             ],
             "series": [

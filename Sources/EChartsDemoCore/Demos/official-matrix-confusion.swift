@@ -36,15 +36,57 @@ private func matrixConfusionStr(_ v: Any?) -> String {
     return String(describing: v)
 }
 private let matrixConfusionRenderItem: CustomSeriesRenderItem = { _, api in
-    let x = api.value(0.0, nil)
-    let y = api.value(1.0, nil)
+    // `value` returns the ordinal store index (0/1) for matrix category dimensions. Upstream's JS
+    // exposes the original category string here; use the port's explicit raw-ordinal accessor so the
+    // label says Positive/Negative and so matrix `layout` receives the same locator as upstream.
+    let x = api.ordinalRawValue(0.0, nil) ?? api.value(0.0, nil)
+    let y = api.ordinalRawValue(1.0, nil) ?? api.value(1.0, nil)
     guard let rect = api.layout([x, y], nil)?.rect else { return nil }
     let isDiagonal = matrixConfusionStr(x) == matrixConfusionStr(y)
+    let truth = matrixConfusionStr(y)
+    let count = matrixConfusionStr(api.value(2.0, nil))
+    let labelText = "{name|\(isDiagonal ? "True " : "False ")\(truth)}\n{value|\(count)}"
     return [
         "type": "rect",
         "shape": ["x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height] as [String: Any],
-        "style": api.style(["fill": isDiagonal ? "#8f8" : "#f88"], nil)
+        "style": api.style(["fill": isDiagonal ? "#8f8" : "#f88"], nil),
+        "textConfig": ["position": "inside"] as [String: Any],
+        "textContent": [
+            "type": "text",
+            "style": [
+                "text": labelText,
+                "align": "center",
+                "verticalAlign": "middle",
+                "rich": [
+                    "name": [
+                        "fill": "#fff",
+                        "backgroundColor": "#999",
+                        "stroke": "#333",
+                        "lineWidth": 2.0,
+                        "padding": 5.0,
+                        "fontSize": 18.0
+                    ] as [String: Any],
+                    "value": [
+                        "fill": "#444",
+                        "lineWidth": 0.0,
+                        "padding": 5.0,
+                        "fontSize": 16.0,
+                        "align": "center"
+                    ] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any]
     ] as [String: Any]
+}
+
+// Native equivalent of the official `label.formatter` closure. The shared data-format mixin invokes
+// this typed callback with the raw [predicted class, true class, count] row.
+private let matrixConfusionLabelFormatter: (CallbackDataParams) -> String = { params in
+    guard let value = params.value as? [Any], value.count >= 3 else { return "" }
+    let predicted = matrixConfusionStr(value[0])
+    let truth = matrixConfusionStr(value[1])
+    let count = matrixConfusionStr(value[2])
+    return "{name|\(predicted == truth ? "True " : "False ")\(truth)}\n{value|\(count)}"
 }
 
 extension EChartsDemoRegistry {
@@ -180,10 +222,7 @@ option = {
                 "data": matrixConfusionData,
                 "label": [
                     "show": true,
-                    // PORT-NOTE: label.formatter omitted — JS closure building the two-line rich label
-                    // `{name|True|False <predicted class>}\n{value|<count>}`: "True " when the datum's x and
-                    // y locators match (the diagonal), "False " otherwise, followed by value[1]; the count
-                    // (value[2]) goes on the second line.
+                    "formatter": matrixConfusionLabelFormatter,
                     "rich": [
                         "name": [
                             "color": "#fff",

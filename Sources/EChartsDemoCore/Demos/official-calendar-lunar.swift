@@ -538,7 +538,8 @@ option = {
                     "orient": "vertical",
                     "dayLabel": [
                         "firstDay": 1.0,
-                        "nameMap": "cn"
+                        // The native locale registry uses the canonical ECharts locale key.
+                        "nameMap": "ZH"
                     ] as [String: Any],
                     "monthLabel": [
                         "show": false
@@ -554,7 +555,10 @@ option = {
                     "label": [
                         "show": true,
                         "formatter": calendarLunarDayLabelFormatter,
-                        "color": "#000"
+                        "color": "#000",
+                        // Scatter's default item opacity is 0.8. Pin label opacity so the attached
+                        // native text does not inherit that symbol alpha in addition to its own paint.
+                        "opacity": 1.0
                     ] as [String: Any],
                     "data": calendarLunarLunarData,
                     "silent": true
@@ -568,7 +572,8 @@ option = {
                         "formatter": calendarLunarTermLabelFormatter,
                         "fontSize": 14.0,
                         "fontWeight": 700.0,
-                        "color": "#a00"
+                        "color": "#a00",
+                        "opacity": 1.0
                     ] as [String: Any],
                     "data": calendarLunarLunarData,
                     "silent": true

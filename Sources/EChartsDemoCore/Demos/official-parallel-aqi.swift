@@ -274,7 +274,11 @@ option = {
                     "dim": 7.0,
                     "name": "等级",
                     "type": "category",
-                    "data": ["优", "良", "轻度污染", "中度污染", "重度污染", "严重污染"]
+                    "data": ["优", "良", "轻度污染", "中度污染", "重度污染", "严重污染"],
+                    // The reference keeps all six semantic pollution levels visible. Pin the Native
+                    // interval so the generic category-axis overlap heuristic does not drop every
+                    // other label on this short parallel axis.
+                    "axisLabel": ["interval": 0.0] as [String: Any]
                 ] as [String: Any]
             ],
             "visualMap": [

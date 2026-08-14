@@ -304,6 +304,11 @@ public final class LabelManager {
     /// lines after labelLayout has moved labels, then calculate their point-to-label geometry.
     private func processLabelLines() {
         for chartView in self._chartViewList {
+            // Pie and funnel own their guide-line geometry and default item-colour styling. Upstream
+            // excludes views with `ignoreLabelLineUpdate` from the generic label-line pass; without
+            // this gate the empty generic default style replaced their resolved coloured stroke with
+            // nil after the chart view had finished rendering it.
+            if chartView.ignoreLabelLineUpdate { continue }
             guard let seriesModel = chartView.__model else { continue }
             _ = chartView.group.traverse { child -> Bool in
                 guard let text = child.getTextContent() else { return false }

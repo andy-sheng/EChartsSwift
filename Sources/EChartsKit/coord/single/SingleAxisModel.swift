@@ -180,8 +180,21 @@ public final class SingleAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     // upstream (generated AxisModel): optionUpdated() { if (this.option.type === 'category') this.__ordinalMeta = OrdinalMeta.createByAxisModel(this); }
     public override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
-        let thisOption = self.option as? [String: Any]
-        if (thisOption?["type"] as? String) == "category" {
+        // Upstream does not register `SingleAxisModel` alone: `axisModelCreator` creates a subtype and
+        // merges `axisDefault[axisType]` underneath `SingleAxisModel.defaultOption`. The Swift runtime
+        // directly registers this concrete model, so reproduce that generated-class merge here. Without
+        // it a single axis has no default label margin/color or split-line color/width: labels sit on the
+        // axis line and splitLine paths are built with a nil stroke (and therefore disappear).
+        var thisOption = (self.option as? [String: Any]) ?? [:]
+        let axisType = (thisOption["type"] as? String)
+            ?? (thisOption["data"] != nil ? "category" : "value")
+        thisOption["type"] = axisType
+        if let axisTypeDefault = axisDefault.option[axisType] as? [String: Any] {
+            _ = util.merge(&thisOption, axisTypeDefault, false)
+        }
+        self.option = thisOption
+
+        if axisType == "category" {
             self.__ordinalMeta = OrdinalMeta.createByAxisModel(self)
         }
     }

@@ -147,6 +147,80 @@ final class CustomRenderTests: XCTestCase {
         }
     }
 
+    // A custom element's attached rich text must preserve the style bag and paint above its opaque
+    // host. This is the path used by matrix/confusion-style custom cells: without the z2 lift the
+    // label exists in the scene graph but is hidden behind a later opaque rectangle.
+    func testCustomAttachedRichTextPreservesStyleAndPaintsAboveHost() {
+        let ec = ECharts(width: 400, height: 300)
+        let renderItem: CustomSeriesRenderItem = { _, api in
+            let center = api.coord([0.0, 5.0], nil)
+            guard center.count >= 2 else { return nil }
+            return [
+                "type": "rect",
+                "shape": [
+                    "x": center[0] - 60.0, "y": center[1] - 35.0,
+                    "width": 120.0, "height": 70.0
+                ] as [String: Any],
+                "style": ["fill": "#d9534f"] as [String: Any],
+                "textConfig": ["position": "inside"] as [String: Any],
+                "textContent": [
+                    "type": "text",
+                    "style": [
+                        "text": "{name|True Positive}\n{value|10}",
+                        "fill": "#222222",
+                        "align": "center",
+                        "verticalAlign": "middle",
+                        "rich": [
+                            "name": [
+                                "fill": "#ffffff",
+                                "backgroundColor": "#666666",
+                                "borderColor": "#111111",
+                                "borderWidth": 2.0,
+                                "borderRadius": 4.0,
+                                "padding": [2.0, 5.0],
+                                "fontSize": 18.0,
+                                "fontWeight": "bold"
+                            ] as [String: Any],
+                            "value": ["fill": "#111111", "fontSize": 14.0] as [String: Any]
+                        ] as [String: Any]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        }
+
+        ec.setOption(customOption(renderItem, [[0, 5]], animation: false))
+
+        var host: Rect?
+        _ = ec.getRoot().traverse { el in
+            if let rect = el as? Rect, rect.getTextContent() != nil { host = rect }
+            return false
+        }
+        guard let host, let label = host.getTextContent() else {
+            XCTFail("custom rect should own an attached textContent")
+            return
+        }
+
+        XCTAssertEqual(label.textStyle?.text, "{name|True Positive}\n{value|10}")
+        XCTAssertEqual(label.textStyle?.fill, "#222222")
+        XCTAssertEqual(label.textStyle?.rich?["name"]?.fill, "#ffffff")
+        XCTAssertEqual(label.textStyle?.rich?["name"]?.borderColor, "#111111")
+        XCTAssertEqual(label.textStyle?.rich?["name"]?.borderWidth, 2.0)
+        if case let .string(color)? = label.textStyle?.rich?["name"]?.backgroundColor {
+            XCTAssertEqual(color, "#666666")
+        }
+        else {
+            XCTFail("rich token backgroundColor should be bridged")
+        }
+        if case let .array(padding)? = label.textStyle?.rich?["name"]?.padding {
+            XCTAssertEqual(padding, [2.0, 5.0])
+        }
+        else {
+            XCTFail("rich token padding should be bridged")
+        }
+        XCTAssertGreaterThan(label.z2, host.z2,
+            "attached custom labels must paint above their opaque host")
+    }
+
     #if canImport(CoreGraphics) && canImport(ImageIO)
     // `style.decal` on a custom path resolves through createOrUpdatePatternFromDecal into a real Pattern.
     func testCustomStyleDecalResolvesToPattern() {

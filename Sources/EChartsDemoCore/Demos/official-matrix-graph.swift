@@ -12,8 +12,10 @@
 //   - Pane is 900x560 rather than the gallery default: the example hardcodes 150px top/bottom margins,
 //     which at a 460px-tall canvas leaves only 160px of matrix body for 4 year-rows and the node labels
 //     collide. Only the canvas size changes; every option value is the example's.
-//   - NATIVE pane: `series[0].label.formatter` (a JS arrow fn) is dropped — see PORT-NOTE. Native node
-//     labels therefore fall back to the default label text instead of the course name.
+//   - NATIVE pane: `series[0].label.formatter` is a JS arrow function and cannot live in the static
+//     Swift option. Each native datum therefore carries the formatter's fourth-slot result as its
+//     `name`, while keeping the original four-slot array in `value`; graph's default label is then
+//     byte-for-byte the same course name without changing the matrix coordinates or link indices.
 extension EChartsDemoRegistry {
     static let official_matrix_graph = EChartsDemo(
         name: "official-matrix-graph", category: "matrix",
@@ -164,8 +166,8 @@ option = {
                     "data": matrixGraphNodes,
                     "label": [
                         "show": true,
-                        // PORT-NOTE: label.formatter omitted — the JS closure `(params) => params.data[3]`
-                        // pulls the course name out of the 4th slot of each node's array value.
+                        // The JS closure `(params) => params.data[3]` is represented by each native
+                        // datum's `name` field (see matrixGraphNodes below).
                         "color": "#555",
                         "borderWidth": 0.0,
                         "fontSize": 15.0,
@@ -236,13 +238,21 @@ private let matrixGraphLinks: [[String: Any]] = [
     ["source": 6.0, "target": 3.0]
 ]
 
-// [matrix x-category (course area), matrix y-category (year), value, course name].
-private let matrixGraphNodes: [[Any]] = [
-    ["Programming", "1st Year", 1.0, "Intro to Computer Science"],
-    ["Data Analysis", "2nd Year", 1.0, "Intro to Data Analysis"],
-    ["Algorithms", "2nd Year", 1.0, "Intro to Algorithms"],
-    ["Programming", "2nd Year", 1.0, "Advanced Programming"],
-    ["Algorithms", "4th Year", 1.0, "Data Structures\nand Algorithms"],
-    ["Data Analysis", "3rd Year", 1.0, "Statistics for Data Analysis"],
-    ["Programming", "3rd Year", 1.0, "Software Development"]
+// The value retains [matrix x-category, matrix y-category, value, course name]. The explicit name is
+// the static native equivalent of the web formatter `(params) => params.data[3]`.
+private let matrixGraphNodes: [[String: Any]] = [
+    ["value": ["Programming", "1st Year", 1.0, "Intro to Computer Science"] as [Any],
+     "name": "Intro to Computer Science"],
+    ["value": ["Data Analysis", "2nd Year", 1.0, "Intro to Data Analysis"] as [Any],
+     "name": "Intro to Data Analysis"],
+    ["value": ["Algorithms", "2nd Year", 1.0, "Intro to Algorithms"] as [Any],
+     "name": "Intro to Algorithms"],
+    ["value": ["Programming", "2nd Year", 1.0, "Advanced Programming"] as [Any],
+     "name": "Advanced Programming"],
+    ["value": ["Algorithms", "4th Year", 1.0, "Data Structures\nand Algorithms"] as [Any],
+     "name": "Data Structures\nand Algorithms"],
+    ["value": ["Data Analysis", "3rd Year", 1.0, "Statistics for Data Analysis"] as [Any],
+     "name": "Statistics for Data Analysis"],
+    ["value": ["Programming", "3rd Year", 1.0, "Software Development"] as [Any],
+     "name": "Software Development"]
 ]
