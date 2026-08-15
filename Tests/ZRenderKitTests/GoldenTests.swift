@@ -468,7 +468,7 @@ final class CALayerPainterSmokeTests: XCTestCase {
     /// still paint inside the rect and nowhere outside it. Guards the `CGRenderer.tilePattern` rewrite
     /// that applies the full pattern matrix (translate·rotate·scale) and bounds tiles via M⁻¹ — a
     /// broken extent/inverse would render the rect blank or spill the tiling outside the clip.
-    /// (Rotation *direction* is verified visually against the upstream html; see DEMO_PARITY_GAPS.md.)
+    /// Rotation direction is verified visually against the matching upstream HTML demo.
     func testRotatedPatternFillsRectAndClips() throws {
         // 20x20 tile: ECharts-blue with a white dot + amber corner (same as the pattern demos).
         let tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAd0lEQVR4nGP8dSLiPwMURK3IY6AUMFFsAq0NZAwpOAb3MjUAEzUNI8nA1f2WlHt5NR5DQguPk+bC1QRchEueiYHKgIkuBq4mMgKwqWMiJcCJUcfEQGXARDcDQwl4G5c8I7F5GRQBxIQtEzGG4XMRA7kGEgsGv4EAElwhSajUA98AAAAASUVORK5CYII="

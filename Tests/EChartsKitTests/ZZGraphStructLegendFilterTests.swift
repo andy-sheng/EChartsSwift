@@ -12,8 +12,8 @@
 // `Graph.update()` ran only once, at graph construction. Symptoms: the hidden node's ribbons keep
 // being drawn, and the remaining arcs keep their pre-click angles.
 //
-// Found by the structural sweep (SCENE_SWEEP_2026-07-27.md), not by pixels — official-chord-simple
-// scores 0.12% on the PNG oracle because the phantom ribbon happens to land under other geometry.
+// Found by a structural native/web scene sweep, not by pixels — official-chord-simple scores 0.12%
+// on the PNG oracle because the phantom ribbon happens to land under other geometry.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit

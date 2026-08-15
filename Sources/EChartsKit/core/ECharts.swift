@@ -571,9 +571,8 @@ public final class ECharts: EChartsType {
     // C1 TEMPORARY ORDERING: the returned array order == the current `update()` hand-call SOURCE order,
     //   NOT upstream `PRIORITY.PROCESSOR.*`. The ported `_performStageTasks` iterates ARRAY order (it
     //   does not sort by `__prio`), so routing through the Scheduler reproduces today's output exactly.
-    //   A later reorder task realigns `__prio` to the real upstream priorities (see the priority table in
-    //   docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md) and re-sorts the array, gated
-    //   separately against the web oracle. Isolating "does the Scheduler machinery reproduce the
+    //   A later reorder task realigns `__prio` to the real upstream priorities and re-sorts the array,
+    //   gated separately against the web oracle. Isolating "does the Scheduler machinery reproduce the
     //   hand-calls?" from "does upstream order differ?" keeps each landing debuggable.
     // ========================================================================
 
@@ -1588,7 +1587,6 @@ public final class ECharts: EChartsType {
         //   series stages route fine because their work is in the RESET (reading getData() directly), not
         //   the progress callback. Fixing the stub outputData passthrough end-to-end is C2-level pipeline
         //   work (also required for real progressive render); until then the visual stage stays direct.
-        //   See docs/superpowers/specs/2026-07-10-c-scheduler-wiring-design.md (C2 prerequisite).
         performVisualStage(ecModel, api)
 
         // VISUAL (coordless series own color) — a few coordless series (sunburst) color their data in an
