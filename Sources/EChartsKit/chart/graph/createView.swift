@@ -355,8 +355,8 @@ private func toNumber(_ value: Any?) -> Double {
     // Widening for numeric boxes that `as? Double` / `as? Int` miss (Float, CGFloat, Int8, a
     //   non-bridging NSNumber); one such node would otherwise be NaN and poison the whole bbox.
     //   The CFBoolean singletons are excluded so `+true`/`+false` still take the Bool arm.
-    //   SYMBOLS.tsv follow-up: fold this arm into `number.numberCoerce` itself (shared symbol,
-    //   out of this lane's scope) so every dynamic `+x` call site benefits.
+    //   Future cleanup: fold this arm into the shared `number.numberCoerce` so every dynamic `+x`
+    //   call site benefits.
     if let n = value as? NSNumber, !(n === kCFBooleanTrue || n === kCFBooleanFalse) {
         return n.doubleValue
     }

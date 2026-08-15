@@ -495,8 +495,7 @@ open class LinesSeriesModel: SeriesModel {
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }
     open override func preventIncremental() -> Bool {
-        // PORT-NOTE: this is the LinesSeries leg of SYMBOLS.tsv row `core/Scheduler.currentTask+pipelineHooks`
-        //   and it is LIVE, not dormant. `preventIncremental` is a real `open func` slot on the base
+        // PORT-NOTE: this pipeline hook is LIVE, not dormant. `preventIncremental` is a real `open func` slot on the base
         //   `SeriesModel` CLASS BODY (Series.swift:837) — declared there, not in an extension, so this
         //   `override` is dynamically dispatched — and `Scheduler.restorePipelines` (Scheduler.swift:343)
         //   gates `progressiveEnabled: jsTruthy(progressive) && !seriesModel.preventIncremental()` on it,

@@ -127,8 +127,8 @@ open class Symbol: Group {
     ///   the path style/shape, so it yields nil for an `image://` symbol. Consequence: the Element-level
     ///   consumers (LineView's symbol label fade in/out, circularLayoutHelper's label
     ///   setTextConfig/emphasis, TreeView) silently skip image symbols. The faithful fix is widening
-    ///   this to `Displayable?` and adding `as? Path` at the few shape/style consumers; that touches
-    ///   four other files (a SYMBOLS.tsv signature change), so it is tracked rather than done here.
+    ///   this to `Displayable?` and adding `as? Path` at the few shape/style consumers; that requires
+    ///   a coordinated signature change across four other files, so it is tracked rather than done here.
     ///   No regression: before the ZRImage branch was enabled an `image://` symbol produced no child
     ///   at all, so these call sites already saw nil.
     public func getSymbolPath() -> Path? {

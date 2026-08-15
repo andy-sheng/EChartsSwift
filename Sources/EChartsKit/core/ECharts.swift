@@ -474,10 +474,8 @@ public final class ECharts: EChartsType {
     //   (echarts.ts:506).
     //   The map is populated but NOT read anywhere yet: because showLoading is
     //   unported, effects registered today are inert until it lands.
-    //   SYMBOLS.tsv's notes for this row also ask for `registerLoading("default",
-    //   loadingDefault)` in `installOnce()`; NOT done — it contradicts the same row's
-    //   own out-of-scope list and requires widening `LoadingEffect` to extend
-    //   `Element` first.
+    //   Registering `loadingDefault` in `installOnce()` is also deferred because it requires widening
+    //   `LoadingEffect` to extend `Element` first.
     // ------------------------------------------------------------------------
     private static var loadingEffects: [String: LoadingEffectCreator] = [:]
 

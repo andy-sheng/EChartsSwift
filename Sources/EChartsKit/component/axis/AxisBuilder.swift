@@ -27,9 +27,8 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     → PORT-NOTE: `graphic.Group/Line/Text/Rect` are the ZRenderKit scene-graph types used directly
 //       (`Group`, `Line`, `ZRText`, `Rect`); `graphic.subPixelOptimizeLine`
-//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` → deferred to the
-//       SYMBOLS.tsv row-37 lane (see the setTooltipConfig PORT-NOTEs at the axisName / axisLabel
-//       call sites).
+//       → `subPixelOptimizeNS.subPixelOptimizeLine`; `graphic.setTooltipConfig` is deferred (see the
+//       setTooltipConfig PORT-NOTEs at the axisName / axisLabel call sites).
 //   import {getECData} from '../../util/innerStore';                    → `innerStore.getECData` (deferred; event wiring)
 //   import {createTextStyle} from '../../label/labelStyle';
 //     → `label/labelStyle.swift` IS ported (`LabelStyle.createTextStyle`, labelStyle.swift:417). AxisBuilder
@@ -1022,8 +1021,6 @@ let builders: [String: AxisElementsBuilder] = [
 
         // PORT-NOTE (deferred): graphic.setTooltipConfig (util/graphic.swift is ported, but the axis-name
         //   tooltip params/wiring are out of this render-focused scope).
-        //   SCOPE: owned by SYMBOLS.tsv row 37 (`util/graphic.setTooltipConfig`), which enumerates this
-        //   call site — left to that lane to avoid a two-lane edit of the same hunk.
         // PORT-NOTE (deferred): textEl.__fullText = name — the truncation-tooltip decoration is not wired.
         // Id for animation
         textEl.anid = "name"
@@ -1686,8 +1683,6 @@ func buildAxisLabel(
         inner.layoutRotation = labelLayout.rotation
 
         // PORT-NOTE (deferred): graphic.setTooltipConfig (tooltip + truncation params) not wired on axis labels.
-        //   SCOPE: owned by SYMBOLS.tsv row 37 (`util/graphic.setTooltipConfig`), which enumerates this
-        //   call site — left to that lane to avoid a two-lane edit of the same hunk.
 
         // Pack data for mouse event
         if triggerEvent {

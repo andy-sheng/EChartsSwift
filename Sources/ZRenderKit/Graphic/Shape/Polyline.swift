@@ -112,9 +112,8 @@ public final class Polyline: Path {
     //   only because `labelGuideHelper.setLabelLineStyle` re-installs the override on every update; a
     //   caller that cannot re-install must add a dedicated `__buildPathOverride` slot on `Path`
     //   (consulted before `__morphBuildPath`) rather than share this one.
-    // PORT-NOTE: the name has no upstream analogue (upstream just reassigns the method); SYMBOLS.tsv
-    //   row 47 asked for "__morphBuildPath exposed publicly" — this wraps that slot instead of
-    //   exposing it raw so the shape cast + weak capture live in one place.
+    // PORT-NOTE: the name has no upstream analogue (upstream just reassigns the method). This wraps
+    //   `__morphBuildPath` instead of exposing it raw so the shape cast + weak capture live in one place.
     public func setBuildPathOverride(_ builder: ((PathProxy, PolylineShape) -> Void)?) {
         guard let builder = builder else {
             self.__morphBuildPath = nil

@@ -75,9 +75,8 @@ private typealias RegionName = String
  */
 // upstream: const OPTION_STYLE_ENABLED_TAGS + the three `createHashMap` lookups built from it.
 //   A `Set` is the same membership lookup (`map.get(tag) != null` → `set.contains(tag)`).
-// PORT-NOTE (scope): all of these are module-private in upstream TS and are file-private here
-//   (SYMBOLS.tsv row 46: "+ file-private helpers") — the names are generic enough to collide with a
-//   future sibling geo/region port if left module-`internal`.
+// PORT-NOTE (scope): all of these are module-private in upstream TS and are file-private here. The
+//   names are generic enough to collide with a future sibling geo/region port if left module-`internal`.
 private let OPTION_STYLE_ENABLED_TAGS: [SVGNodeTagLower] = [
     "rect", "circle", "line", "ellipse", "polygon", "polyline", "path"
 ]
