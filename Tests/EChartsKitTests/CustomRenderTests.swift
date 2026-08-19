@@ -190,6 +190,91 @@ final class CustomRenderTests: XCTestCase {
         }
     }
 
+    func testCustomExtraDuringTransitionInterpolatesReusedElement() throws {
+        let view = EChartsView(width: 400, height: 300)
+        let ec = view.ec
+        let renderItem: CustomSeriesRenderItem = { _, api in
+            let target = (api.value(0.0, nil) as? Double) ?? 0
+            let during: (TransitionDuringAPI) -> Void = { transitionAPI in
+                let raw = transitionAPI.getExtra("progress")
+                let progress = (raw as? Double) ?? (raw as? NSNumber)?.doubleValue ?? 0
+                _ = transitionAPI.setShape("x", progress)
+            }
+            let textDuring: (TransitionDuringAPI) -> Void = { transitionAPI in
+                let raw = transitionAPI.getExtra("progress")
+                let progress = (raw as? Double) ?? (raw as? NSNumber)?.doubleValue ?? 0
+                _ = transitionAPI.setStyle("text", String(format: "%.1f", progress))
+            }
+            let child = [
+                "type": "rect",
+                "shape": ["x": target, "y": 20.0, "width": 20.0, "height": 20.0] as [String: Any],
+                "extra": [
+                    "progress": target,
+                    "transition": ["progress"]
+                ] as [String: Any],
+                "style": ["fill": "#5470c6"] as [String: Any],
+                "during": during
+            ] as [String: Any]
+            let label = [
+                "type": "text",
+                "style": ["text": String(format: "%.1f", target), "fill": "#333"] as [String: Any],
+                "extra": [
+                    "progress": target,
+                    "transition": ["progress"]
+                ] as [String: Any],
+                "during": textDuring
+            ] as [String: Any]
+            return ["type": "group", "children": [child, label]] as [String: Any]
+        }
+
+        func option(_ value: Double) -> [String: Any] {
+            [
+                "animation": true,
+                "animationDuration": 0.0,
+                "animationDurationUpdate": 1000.0,
+                "animationEasingUpdate": "linear",
+                "xAxis": ["type": "value"] as [String: Any],
+                "yAxis": ["type": "value"] as [String: Any],
+                "series": [[
+                    "type": "custom",
+                    "renderItem": renderItem,
+                    "data": [value]
+                ] as [String: Any]]
+            ]
+        }
+
+        view.setOption(option(10))
+        var group = try XCTUnwrap(ec.getModel()?.getSeriesByIndex(0)?.getData().getItemGraphicEl(0) as? Group)
+        var rect = try XCTUnwrap(group.childAt(0) as? Rect)
+        var label = try XCTUnwrap(group.childAt(1) as? ZRText)
+        let originalGroupID = ObjectIdentifier(group)
+        let originalID = ObjectIdentifier(rect)
+        let originalLabelID = ObjectIdentifier(label)
+        XCTAssertNotNil(rect.__zr)
+
+        view.setOption(option(30))
+        group = try XCTUnwrap(ec.getModel()?.getSeriesByIndex(0)?.getData().getItemGraphicEl(0) as? Group)
+        rect = try XCTUnwrap(group.childAt(0) as? Rect)
+        label = try XCTUnwrap(group.childAt(1) as? ZRText)
+        XCTAssertEqual(ObjectIdentifier(group), originalGroupID)
+        XCTAssertEqual(ObjectIdentifier(rect), originalID, "custom update must reuse the element")
+        XCTAssertEqual(ObjectIdentifier(label), originalLabelID, "custom update must reuse the label")
+        XCTAssertFalse(rect.animators.isEmpty, "extra.transition must create an update animator")
+
+        view.zr.animation.update(true)
+        XCTAssertEqual(try XCTUnwrap(rect.shape as? RectShape).x, 10, accuracy: 1.0)
+        Thread.sleep(forTimeInterval: 0.05)
+        view.zr.animation.update(true)
+        let liveIntermediate = try XCTUnwrap(rect.shape as? RectShape).x
+        XCTAssertGreaterThan(liveIntermediate, 10)
+        XCTAssertLessThan(liveIntermediate, 30,
+                          "the registered frame clock must drive `during`, not leave the final snap")
+        let liveLabel = try XCTUnwrap(Double(label.textStyle?.text ?? ""))
+        XCTAssertGreaterThan(liveLabel, 10)
+        XCTAssertLessThan(liveLabel, 30,
+                          "custom `during.setStyle(text:)` must update ZRText.textStyle")
+    }
+
     // A custom element's attached rich text must preserve the style bag and paint above its opaque
     // host. This is the path used by matrix/confusion-style custom cells: without the z2 lift the
     // label exists in the scene graph but is hidden behind a later opaque rectangle.

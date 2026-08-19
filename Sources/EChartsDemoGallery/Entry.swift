@@ -789,7 +789,7 @@ final class WebSnapper: NSObject, WKNavigationDelegate {
 /// Reference holder for --anim-invariant's per-offset element-identity snapshots (the asyncAfter
 /// closures share and append to it across the run loop).
 final class AnimInvariantSnaps {
-    var samples: [(Int, Set<ObjectIdentifier>)] = []
+    var samples: [(time: Int, ids: Set<ObjectIdentifier>, activeAnimators: Int)] = []
 }
 
 /// Live-timeline analog of WebSnapper: snapshots the echarts.js pane at a series of wall-clock offsets
@@ -1252,17 +1252,33 @@ func runCLI() -> Bool {
         for (i, t) in isorted.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(t) / 1000.0) {
                 var ids = Set<ObjectIdentifier>()
-                _ = ihost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
-                snaps.samples.append((t, ids))
+                var activeAnimators = 0
+                var animatorTypes: [String: Int] = [:]
+                var animatedExtraSamples: [String] = []
+                _ = ihost.echartsView.ec.getRoot().traverse { el in
+                    ids.insert(ObjectIdentifier(el))
+                    activeAnimators += el.animators.count
+                    if !el.animators.isEmpty { animatorTypes[el.type, default: 0] += el.animators.count }
+                    if !el.animators.isEmpty, let raw = el.extra?["endRadian"] {
+                        let value = (raw as? Double) ?? (raw as? NSNumber)?.doubleValue
+                        if let value { animatedExtraSamples.append(String(format: "%@.endRadian=%.3f", el.type, value)) }
+                    }
+                    return false
+                }
+                snaps.samples.append((t, ids, activeAnimators))
+                let typeSummary = animatorTypes.keys.sorted().map { "\($0):\(animatorTypes[$0]!)" }.joined(separator: ",")
+                print("  t\(t) activeAnimators=\(activeAnimators) [\(typeSummary)]")
+                if !animatedExtraSamples.isEmpty { print("    " + animatedExtraSamples.joined(separator: " ")) }
                 if i == isorted.count - 1 {
                     var minOverlap = 1.0
                     for k in 1..<snaps.samples.count {
-                        let a = snaps.samples[k - 1].1, b = snaps.samples[k].1
+                        let a = snaps.samples[k - 1].ids, b = snaps.samples[k].ids
                         let inter = a.intersection(b).count
                         let ratio = a.isEmpty ? 1.0 : Double(inter) / Double(a.count)
                         minOverlap = min(minOverlap, ratio)
                         print(String(format: "  t%d->t%d  overlap=%.2f  (%d/%d kept, %d total@t%d)",
-                                     snaps.samples[k-1].0, snaps.samples[k].0, ratio, inter, a.count, b.count, snaps.samples[k].0))
+                                     snaps.samples[k-1].time, snaps.samples[k].time, ratio, inter, a.count,
+                                     b.count, snaps.samples[k].time))
                     }
                     print(String(format: "MIN_OVERLAP\t%.2f\t%@", minOverlap, demo.name))
                     exit(0)
@@ -1290,13 +1306,13 @@ func runCLI() -> Bool {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
             var ids = Set<ObjectIdentifier>()
             _ = uhost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
-            usnaps.samples.append((700, ids))
+            usnaps.samples.append((700, ids, 0))
             uhost.setOption(demo.option, notMerge: false)   // the second, MERGE-mode apply
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             var ids = Set<ObjectIdentifier>()
             _ = uhost.echartsView.ec.getRoot().traverse { el in ids.insert(ObjectIdentifier(el)); return false }
-            usnaps.samples.append((1500, ids))
+            usnaps.samples.append((1500, ids, 0))
             let a = usnaps.samples[0].1, b = usnaps.samples[1].1
             let ratio = a.isEmpty ? 1.0 : Double(a.intersection(b).count) / Double(a.count)
             print(String(format: "UPDATE_OVERLAP\t%.2f\t%d\t%d\t%@", ratio, a.count, b.count, demo.name))

@@ -708,6 +708,7 @@ public final class ECharts: EChartsType {
                                                   //   captures the axis-statistics processor (see registrar).
                                                   //   NOTE: registers BOTH 'bar' and 'pictorialBar' axis
                                                   //   handlers, so pictorialBar needs no separate call.
+        installBarAction(_registers)               // realtimeSort: changeAxisOrder -> category sort mapping.
         // upstream chart/bar/install.ts also `registerBarPolarAxisHandlers(registers, 'bar')`. This
         //   registers the polar-bar axis-statistics client (key "bar|&polar") so `associateSeriesWithAxis`
         //   (called by polarCreator) records each polar bar's BASE axis under that key — which the polar
@@ -1508,7 +1509,15 @@ public final class ECharts: EChartsType {
         // comes from `setOption`'s `transition` opt, which the port's setOption signature does not carry
         // (PORT-NOTE: `SetOptionOpts.transition` unported — the option-driven finder form; the seriesKey/
         // id-driven form, which is what every ported demo uses, is fully wired).
+        // A render hook may dispatch an internal action (realtimeSort does this on its first frame).
+        // Upstream marks the whole setOption/update pipeline as the EC main process, so that action is
+        // queued until the first render has finished. Without the guard the port re-entered render while
+        // BarView._data was still nil: both renders took the diff `.add` branch and permanently mounted
+        // two copies of every racing bar and label.
+        _inEcCycle = true
         update(UpdateLifecycleParams(optionChanged: true))
+        _inEcCycle = false
+        flushPendingActions(false)
     }
 
     // ------------------------------------------------------------------------
@@ -1669,12 +1678,23 @@ public final class ECharts: EChartsType {
         render(ecModel, api)
     }
 
-    /// upstream `updateMethods.updateLayout` (echarts.ts:2080): re-run layout then re-render. In the
-    /// every layout stage runs inside `render()`, so this is the same view-only refresh as
-    /// updateView (which is exactly what upstream's updateLayout reduces to once the Scheduler-driven
-    /// layout tasks are folded into the render pass).
+    /// upstream `updateMethods.updateLayout` (echarts.ts:2080): refresh coordinate layout, then re-run
+    /// series layout and render. Most layout stages are folded into `render()` here, but cartesian axis
+    /// builders are produced by `coordSysMgr.update`. Realtime-sort mutates the ordinal scale in place;
+    /// without this refresh its bars move to the new rows while the axis keeps the previous labels.
     public func updateLayout() {
-        updateView()
+        guard let ecModel = _model else { return }
+        let api = _api!
+        // Rebuild cartesian axis builders from the already-updated scales. Calling the full
+        // CoordinateSystemManager.update a second time in the same data cycle would repeat raw-extent
+        // initialization (which is intentionally single-shot); Grid.resize is the upstream-equivalent
+        // geometry/axis-builder part needed by this light update.
+        for coordSys in _coordSysMgr.getCoordinateSystems() {
+            if let grid = coordSys as? Grid {
+                grid.resize(grid.gridModel, api)
+            }
+        }
+        render(ecModel, api)
     }
 
     /// upstream `updateMethods.updateTransform` (echarts.ts:1943): a coordinate-transform-only refresh

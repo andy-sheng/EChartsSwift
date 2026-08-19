@@ -1,5 +1,7 @@
 // Ported from zrender/src/core/Eventful.ts — keep in sync with upstream
 
+import Foundation
+
 // upstream: import { Dictionary, WithThisType } from './types';
 //
 // Generic-typing notes (CONVENTIONS §2, §8):
@@ -19,6 +21,14 @@ public typealias EventCallback = (_ thisCtx: AnyObject?, _ args: [Any?]) -> Bool
 
 public typealias EventQuery = Any
 
+/// Stable identity for a registered Swift closure. JavaScript can compare function objects when
+/// `off(event, handler)` runs; Swift closures have no identity/equality operation, so callers that
+/// need precise unsubscription keep this token instead.
+public struct EventHandlerToken: Hashable {
+    fileprivate let id: UUID
+    fileprivate init() { self.id = UUID() }
+}
+
 // type CbThis<Ctx, Impl> = unknown extends Ctx ? Impl : Ctx;
 // (compile-time `this`-type selection; collapses to `AnyObject?` here.)
 
@@ -27,6 +37,7 @@ private struct EventHandler {
     var h: EventCallback
     var ctx: AnyObject?
     var query: EventQuery?
+    var token: EventHandlerToken
 
     var callAtLast: Bool
 }
@@ -118,7 +129,8 @@ public final class Eventful {
         _ context: AnyObject? = nil,
         callAtLast: Bool = false
     ) -> Eventful {
-        return self.on(event, nil, handler, context, callAtLast: callAtLast)
+        _ = self.onWithToken(event, nil, handler, context, callAtLast: callAtLast)
+        return self
     }
 
     /**
@@ -142,8 +154,33 @@ public final class Eventful {
         _ context: AnyObject? = nil,
         callAtLast: Bool = false
     ) -> Eventful {
+        _ = self.onWithToken(event, query, handler, context, callAtLast: callAtLast)
+        return self
+    }
+
+    /// Token-returning registration used where a listener must be replaced repeatedly (for example,
+    /// realtime-sort's per-render callback). The ordinary `on` API remains source compatible.
+    @discardableResult
+    public func onWithToken(
+        _ event: String,
+        _ handler: @escaping EventCallback,
+        _ context: AnyObject? = nil,
+        callAtLast: Bool = false
+    ) -> EventHandlerToken {
+        return self.onWithToken(event, nil, handler, context, callAtLast: callAtLast)
+    }
+
+    @discardableResult
+    public func onWithToken(
+        _ event: String,
+        _ query: EventQuery?,
+        _ handler: @escaping EventCallback,
+        _ context: AnyObject? = nil,
+        callAtLast: Bool = false
+    ) -> EventHandlerToken {
         var query = query
         let context = context
+        let token = EventHandlerToken()
 
         if self._$handlers == nil {
             self._$handlers = [:]
@@ -155,7 +192,7 @@ public final class Eventful {
 
         // if (!handler || !event) — `handler` is non-optional here; replicate the `!event` guard.
         if event.isEmpty {
-            return self
+            return token
         }
 
         let eventProcessor = self._$eventProcessor
@@ -179,6 +216,7 @@ public final class Eventful {
             h: handler,
             ctx: (context ?? self) as AnyObject?,
             query: query,
+            token: token,
             // FIXME
             // Do not publish this feature util it is proved that it makes sense.
             // upstream: `callAtLast: (handler as any).zrEventfulCallAtLast` — the flag JS tacks onto the
@@ -195,7 +233,7 @@ public final class Eventful {
             self._$handlers![event]!.append(wrap)
         }
 
-        return self
+        return token
     }
 
     /**
@@ -243,6 +281,21 @@ public final class Eventful {
             self._$handlers![eventType] = nil
         }
 
+        return self
+    }
+
+    /// Precisely remove one registration. This is the Swift replacement for JavaScript's
+    /// `handlerA === handlerB` branch in `off`.
+    @discardableResult
+    public func off(_ eventType: String, token: EventHandlerToken) -> Eventful {
+        guard var list = self._$handlers?[eventType] else { return self }
+        list.removeAll { $0.token == token }
+        if list.isEmpty {
+            self._$handlers?[eventType] = nil
+        }
+        else {
+            self._$handlers?[eventType] = list
+        }
         return self
     }
 

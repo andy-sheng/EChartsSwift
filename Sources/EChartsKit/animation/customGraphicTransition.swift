@@ -382,13 +382,23 @@ private final class TransitionDuringAPIImpl: TransitionDuringAPI {
         return (tmpDuringScope.el as? Path)?.shape?.animationGet(key)
     }
     func setStyle(_ key: String, _ val: Any?) -> TransitionDuringAPI {
-        if let disp = tmpDuringScope.el as? Displayable, disp.style != nil {
+        if let text = tmpDuringScope.el as? ZRText {
+            // ZRText renders from `textStyle` rather than Displayable's common `style` bag.
+            // The inherited per-key setter intentionally only knows common keys, so routing
+            // custom-series `during` updates through it silently drops `text` (and the other
+            // text-only fields). `attr` dispatches to ZRText.attrKV and merges into textStyle.
+            _ = text.attr("style", [key: val])
+        }
+        else if let disp = tmpDuringScope.el as? Displayable, disp.style != nil {
             // upstream __DEV__ warns when val is NaN; dropped (dev-only).
             _ = disp.setStyle(key, val)
         }
         return self
     }
     func getStyle(_ key: String) -> Any? {
+        if let text = tmpDuringScope.el as? ZRText {
+            return (text.animationGet("style") as? AnimationTarget)?.animationGet(key)
+        }
         return (tmpDuringScope.el as? Displayable)?.style?.animationGet(key)
     }
     func setExtra(_ key: String, _ val: Any?) -> TransitionDuringAPI {

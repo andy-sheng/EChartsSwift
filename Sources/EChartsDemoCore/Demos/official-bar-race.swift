@@ -22,10 +22,11 @@
 //    literal, handed to the native option as-is). Upstream seeds with
 //    `for (let i = 0; i < 5; ++i) data.push(Math.round(Math.random() * 200))`, so each pane would otherwise
 //    roll its own dice and frame 0 would differ for reasons that have nothing to do with the port.
-//  - THE RACE'S OWN DICE ARE NOT PINNED, and cannot be: `run()` keeps rolling `Math.random()` on the web
-//    pane and `Double.random(in: 0..<1)` on the native one, exactly as upstream does. The two panes
-//    therefore hold different numbers — and, once one of them rolls the 10% jackpot, a different running
-//    order — after the first step. Compare the cadence, the re-sorting and the label, not the pixels.
+//  - THE RACE'S OWN DICE ARE PINNED to a repeating delta table shared by both panes. Random input makes
+//    animation validation impossible: after the first tick the values and often the rank order differ,
+//    so a frame mismatch says nothing about the tween implementation. The table deliberately contains
+//    the same small increments plus occasional large "jackpots" as upstream, preserving overtakes while
+//    making every transition reproducible and frame-comparable.
 //  - TypeScript-only syntax dropped, as a classic script cannot parse it: the `: number[]` annotation on
 //    `data`, the `myChart.setOption<echarts.EChartsOption>(…)` type argument, and the trailing `export {};`.
 //    `run()` and both timers are KEPT.
@@ -44,18 +45,28 @@ private let barRaceData: [Double] = [117, 42, 178, 96, 151]
 private let barRaceDataJS: String =
     "[" + barRaceData.map { String(Int($0)) }.joined(separator: ", ") + "]"
 
-/// Upstream `run()`'s body, for the native pane's `drive` (the web pane runs the JS one): bump every bar —
-/// 10% of the time by up to 2000 (the overtake), otherwise by up to 200. `Math.random()` →
-/// `Double.random(in: 0..<1)`; `Math.round` → `.rounded()` (identical for the non-negative values these
-/// expressions produce).
-private func barRaceStep(_ data: inout [Double]) {
+/// Reproducible equivalents of the official small increments and occasional 0...2000 jackpots.
+private let barRaceDeltas: [[Double]] = [
+    [83, 1270, 43, 155, 74],
+    [120, 35, 1600, 89, 51],
+    [61, 144, 72, 1320, 96],
+    [930, 88, 117, 46, 181],
+    [151, 73, 99, 165, 1110],
+    [42, 191, 1280, 57, 136],
+    [176, 1050, 38, 143, 64],
+    [69, 121, 184, 970, 53]
+]
+
+private let barRaceDeltasJS: String = "[" + barRaceDeltas.map { row in
+    "[" + row.map { String(Int($0)) }.joined(separator: ", ") + "]"
+}.joined(separator: ", ") + "]"
+
+private func barRaceStep(_ data: inout [Double], step: inout Int) {
+    let deltas = barRaceDeltas[step % barRaceDeltas.count]
     for i in data.indices {
-        if Double.random(in: 0..<1) > 0.9 {
-            data[i] += (Double.random(in: 0..<1) * 2000).rounded()
-        } else {
-            data[i] += (Double.random(in: 0..<1) * 200).rounded()
-        }
+        data[i] += deltas[i]
     }
+    step += 1
 }
 
 private let barRaceCategories = ["A", "B", "C", "D", "E"]
@@ -75,6 +86,8 @@ extension EChartsDemoRegistry {
 // pinned array the native pane starts from is inlined here instead, so frame 0 is diffable. Everything below
 // — including `run()`, which keeps rolling fresh random values — is the official source.
 const data = \#(barRaceDataJS);
+const deltas = \#(barRaceDeltasJS);
+let step = 0;
 const categories = ['A', 'B', 'C', 'D', 'E'];
 function pairedData() {
   return data.map(function (value, index) { return [value, categories[index]]; });
@@ -116,12 +129,9 @@ option = {
 
 function run() {
   for (var i = 0; i < data.length; ++i) {
-    if (Math.random() > 0.9) {
-      data[i] += Math.round(Math.random() * 2000);
-    } else {
-      data[i] += Math.round(Math.random() * 200);
-    }
+    data[i] += deltas[step % deltas.length][i];
   }
+  step++;
   myChart.setOption({
     series: [
       {
@@ -146,8 +156,9 @@ if (!__snapshot) {
         // the example's two timers share the one JS array.
         drive: { chart in
             var data = barRaceData
+            var step = 0
             let run: @MainActor () -> Void = {
-                barRaceStep(&data)
+                barRaceStep(&data, step: &step)
                 // `myChart.setOption({ series: [{ type: 'bar', data }] })` — a MERGE: only the series data is
                 // re-sent, everything the initial option set up stays.
                 chart.setOption(["series": [["type": "bar", "data": barRacePairs(data)] as [String: Any]]],

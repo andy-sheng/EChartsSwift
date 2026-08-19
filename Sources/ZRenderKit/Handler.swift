@@ -603,6 +603,12 @@ public final class Handler: DraggableHandler {
         return self._eventful.on(event, handler, context ?? self)
     }
 
+    public func onWithToken(
+        _ event: String, _ handler: @escaping EventCallback, _ context: AnyObject? = nil
+    ) -> EventHandlerToken {
+        return self._eventful.onWithToken(event, handler, context ?? self)
+    }
+
     @discardableResult
     public func on(_ event: String, _ query: EventQuery?, _ handler: @escaping EventCallback, _ context: AnyObject? = nil) -> Eventful {
         return self._eventful.on(event, query, handler, context ?? self)
@@ -622,6 +628,11 @@ public final class Handler: DraggableHandler {
     @discardableResult
     public func off(_ eventType: String? = nil, _ handler: EventCallback? = nil) -> Eventful {
         return self._eventful.off(eventType, handler)
+    }
+
+    @discardableResult
+    public func off(_ eventType: String, token: EventHandlerToken) -> Eventful {
+        return self._eventful.off(eventType, token: token)
     }
 
     @discardableResult

@@ -245,6 +245,21 @@ fileprivate final class _RefBag: AnimationTarget {
     func animationSet(_ key: String, _ value: Any?) { self.dict[key] = value }
 }
 
+/// Reference view over `Element.extra`, matching zrender's ordinary mutable `el.extra` object.
+/// Custom-series transitions animate nested keys through `animationGet("extra")`; returning a copied
+/// Swift dictionary would lose every per-frame write, so the accessor writes each key back to the owner.
+fileprivate final class _ElementExtraAnimationAccessor: AnimationTarget {
+    weak var element: Element?
+    init(_ element: Element) { self.element = element }
+    func animationGet(_ key: String) -> Any? { element?.extra?[key] }
+    func animationSet(_ key: String, _ value: Any?) {
+        guard let element else { return }
+        var bag = element.extra ?? [:]
+        bag[key] = value
+        element.extra = bag
+    }
+}
+
 // TextPositionCalculationResult is now ported in Contain/text.swift; the opaque stub is removed.
 public typealias ElementCalculateTextPosition = (
     _ out: TextPositionCalculationResult,
@@ -767,6 +782,7 @@ open class Element: Transformable, AnimationTarget {
                     : ((s == "vertical") ? .vertical : .false)
             }
         case "anid": if let v = value as? String { self.anid = v }
+        case "extra": if let v = value as? [String: Any] { self.extra = v }
         case "globalScaleRatio": if let v = value as? Double { self.globalScaleRatio = v }
         // Transformable props (TRANSFORMABLE_PROPS)
         case "x": if let v = value as? Double { self.x = v }
@@ -795,10 +811,15 @@ open class Element: Transformable, AnimationTarget {
     //   matching upstream `target[propName] = value`). PORT-NOTE: Displayable/Path now override
     //   these to expose the value-type `style`/`shape` bags (wired — see class note).
     public func animationGet(_ key: String) -> Any? {
+        if key == "extra" { return _ElementExtraAnimationAccessor(self) }
         return self._getKnownKV(key)
     }
 
     public func animationSet(_ key: String, _ value: Any?) {
+        if key == "extra", let v = value as? [String: Any] {
+            self.extra = v
+            return
+        }
         self._setKnownKV(key, value)
     }
 

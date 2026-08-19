@@ -8,15 +8,10 @@
 // renderItem ported to Swift (spiralRaceRenderItem, below) statement-for-statement — nativeSupported:true.
 //
 // DEVIATIONS:
-//   - `during` dropped on both the polygon and the label. CustomView rebuilds the whole element tree
-//     from scratch on every renderItem call (transitions/`during` are DEFERRED — see the PORT-NOTE on
-//     CustomSeriesRenderItemAPI's `during` doc in CustomSeries.swift), so the per-frame retween body has
-//     no effect natively: each call to renderItem already computes geometry for the CURRENT data, which
-//     is what `during` was tweening TOWARD. The `drive` timeline below still re-invokes setOption on the
-//     schedule upstream uses, so the native pane still steps through the same 9 datasources — just
-//     without the 60fps interpolation between steps (a snap instead of a tween).
-//   - `extra`/`transition` keys dropped on both elements for the same reason (customGraphicTransition is
-//     not ported — nothing reads them).
+//   - None in the animation contract. The polygon and label carry the same `extra.transition` and
+//     `during` callbacks as the HTML example. CustomView reuses children by index, interpolates those
+//     extra values and invokes the callbacks every frame, so geometry, position and the round/percent
+//     text move continuously instead of snapping at each datasource update.
 //   - The 9 datasources are hoisted to a file-scope `spiralDatasourceList`; the initial radiusAxis.max
 //     is computed by `spiralMaxRadius` (upstream getMaxRadius). The web pane inlines them verbatim.
 //   - `drive` reproduces upstream next()/setTimeout on the native chart (advance after 1s, then every 7s
@@ -151,7 +146,7 @@ private func spiralLabelText(_ endRadian: Double) -> String {
     return "Round {round|\(round)}\n{percent|\(percent)}"
 }
 
-// addPolygon(params, children, widthRadius, startRadius, endRadian, color) — `during` dropped, see header.
+// addPolygon(params, children, widthRadius, startRadius, endRadian, color)
 private func spiralPolygonElement(
     _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double,
     _ color: SpiralColor
@@ -161,13 +156,28 @@ private func spiralPolygonElement(
         "shape": [
             "points": spiralShapePoints(params, widthRadius, startRadius, endRadian)
         ] as [String: Any],
+        "extra": [
+            "widthRadius": widthRadius,
+            "startRadius": startRadius,
+            "endRadian": endRadian,
+            "transition": ["widthRadius", "startRadius", "endRadian"]
+        ] as [String: Any],
         "style": [
             "fill": color.fill
-        ] as [String: Any]
+        ] as [String: Any],
+        "during": ({ apiDuring in
+            let currentWidth = spiralRaceNum(apiDuring.getExtra("widthRadius"))
+            let currentStart = spiralRaceNum(apiDuring.getExtra("startRadius"))
+            let currentEnd = spiralRaceNum(apiDuring.getExtra("endRadian"))
+            _ = apiDuring.setShape(
+                "points",
+                spiralShapePoints(params, currentWidth, currentStart, currentEnd)
+            )
+        } as (TransitionDuringAPI) -> Void)
     ] as [String: Any]
 }
 
-// addLabel(params, children, widthRadius, startRadius, endRadian, color) — `during` dropped, see header.
+// addLabel(params, children, widthRadius, startRadius, endRadian, color)
 private func spiralLabelElement(
     _ params: CustomSeriesRenderItemParams, _ widthRadius: Double, _ startRadius: Double, _ endRadian: Double,
     _ color: SpiralColor
@@ -177,6 +187,15 @@ private func spiralLabelElement(
         "type": "text",
         "x": point[0],
         "y": point[1],
+        // Upstream deliberately disables ordinary x/y transition; the moving position is derived
+        // from the three interpolated extra values in `during`.
+        "transition": [] as [String],
+        "extra": [
+            "startRadius": startRadius,
+            "endRadian": endRadian,
+            "widthRadius": widthRadius,
+            "transition": ["startRadius", "endRadian", "widthRadius"]
+        ] as [String: Any],
         "style": [
             "text": spiralLabelText(endRadian),
             "fill": color.text,
@@ -190,7 +209,20 @@ private func spiralLabelElement(
                 "percent": ["fontSize": 18.0] as [String: Any]
             ] as [String: Any]
         ] as [String: Any],
-        "z2": 50.0
+        "z2": 50.0,
+        "during": ({ apiDuring in
+            let currentEnd = spiralRaceNum(apiDuring.getExtra("endRadian"))
+            let currentPoint = spiralLabelPosition(
+                params,
+                spiralRaceNum(apiDuring.getExtra("widthRadius")),
+                spiralRaceNum(apiDuring.getExtra("startRadius")),
+                currentEnd
+            )
+            _ = apiDuring
+                .setTransform("x", currentPoint[0])
+                .setTransform("y", currentPoint[1])
+            _ = apiDuring.setStyle("text", spiralLabelText(currentEnd))
+        } as (TransitionDuringAPI) -> Void)
     ] as [String: Any]
 }
 

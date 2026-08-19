@@ -141,9 +141,9 @@ open class BarView: ChartView {
     private var _isFirstFrame: Bool = true // First frame after series added
     // upstream: private _onRendered: EventCallback;
     //   The realtimeSort "rendered" listener. `api.getZr()` is now wired (resolves through the root
-    //   group's `__zr` back-pointer; nil in pure headless), so this holds the ZRender `EventCallback`
-    //   bound in `_enableRealtimeSort` for later removal in `_removeOnRenderedListener`.
-    private var _onRendered: EventCallback?
+    //   group's `__zr` back-pointer; nil in pure headless), so this holds the stable registration token
+    //   returned by `_enableRealtimeSort` for later removal in `_removeOnRenderedListener`.
+    private var _onRenderedToken: EventHandlerToken?
 
     private var _backgroundGroup: Group?
 
@@ -478,6 +478,17 @@ open class BarView: ChartView {
                     updateProps(el!, ["shape": rectShapeAnimShape(layout)], seriesModel, newIndex)
                 }
 
+                // LabelManager's overall animation pass is not part of the lightweight native render
+                // pipeline yet. Bar labels still need the upstream valueAnimation contract: after
+                // updateStyle snapshots prevValue/targetValue, drive the attached text with the SAME
+                // series update duration/easing as the bar's value-direction geometry. Without this,
+                // race bars tween while their numbers jump straight to the final value.
+                if !isChangeOrder, let label = el!.getTextContent() {
+                    labelStyle.animateLabelValue(
+                        label, Double(newIndex), data, animationModel, seriesModel
+                    )
+                }
+
                 data.setItemGraphicEl(newIndex, el!)
                 el!.ignore = isClipped
                 _ = group.add(el!)
@@ -594,8 +605,7 @@ open class BarView: ChartView {
                 self?._updateSortWithinSameData(data, orderMapping, baseAxis, api)
                 return nil
             }
-            self._onRendered = handler
-            _ = api.getZr()?.on("rendered", handler)
+            self._onRenderedToken = api.getZr()?.onWithToken("rendered", handler)
         }
     }
 
@@ -735,14 +745,11 @@ open class BarView: ChartView {
     }
 
     private func _removeOnRenderedListener(_ api: ExtensionAPI) {
-        if let onRendered = self._onRendered {
-            // upstream: api.getZr().off('rendered', this._onRendered);
-            // PORT-NOTE: ZRenderKit `Eventful.off(event, handler)` cannot filter a SPECIFIC closure
-            //   (Swift closures have no identity — a documented divergence in Eventful.off), so this is
-            //   best-effort: it clears our stored handler and requests removal (a no-op for the specific
-            //   handler in the current ZRenderKit). `getZr()` may also be nil in pure headless.
-            _ = api.getZr()?.off("rendered", onRendered)
-            self._onRendered = nil
+        if let token = self._onRenderedToken {
+            // Swift closures have no comparable identity, so ZRenderKit exposes a stable registration
+            // token for the same precise unsubscription that upstream performs with function identity.
+            api.getZr()?.off("rendered", token: token)
+            self._onRenderedToken = nil
         }
     }
 

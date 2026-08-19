@@ -461,6 +461,14 @@ public final class ZRender {
         return self
     }
 
+    /// Register a listener with stable identity so it can be removed precisely later.
+    public func onWithToken(
+        _ eventName: String, _ eventHandler: @escaping EventCallback, _ context: AnyObject? = nil
+    ) -> EventHandlerToken? {
+        if self._disposed { return nil }
+        return self.handler.onWithToken(eventName, eventHandler, context)
+    }
+
     /// Bind event, `callAtLast` variant. Upstream reads the flag off the function object
     /// (`handler.zrEventfulCallAtLast`; see `Eventful.on`) — echarts' `_initEvents` sets it on the
     /// chart-event handler so the public chart bus fires AFTER the inner component handlers (tooltip,
@@ -483,6 +491,11 @@ public final class ZRender {
             return
         }
         self.handler.off(eventName, eventHandler)
+    }
+
+    public func off(_ eventName: String, token: EventHandlerToken) {
+        if self._disposed { return }
+        self.handler.off(eventName, token: token)
     }
 
     /// Trigger event manually
