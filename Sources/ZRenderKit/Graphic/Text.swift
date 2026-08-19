@@ -1156,6 +1156,11 @@ public final class ZRText: Displayable, GroupLike {
 
             textY += lineHeight
 
+            // `TSpan` keeps the complete text style separately from the common `Displayable`
+            // style. The painter reads shadows from the latter, so synchronize after all of the
+            // per-line mutations above and before pinning the measured bounding rect.
+            el.useStyle(el.tspanStyle)
+
             // Always set tspan bounding rect to guarantee consistency (see upstream long comment on
             //   whether the bounding rect should include the (auto) stroke width).
             el.setBoundingRect(parseText.tSpanCreateBoundingRect2(
@@ -1395,6 +1400,11 @@ public final class ZRText: Displayable, GroupLike {
         if let textFill = textFill {
             el.tspanStyle.fill = .string(textFill)
         }
+
+        // Keep the common `Displayable` style used by the painter in sync with this rich token's
+        // final TSpan style (notably textShadow*). Do this before setBoundingRect because useStyle
+        // invalidates the cached rect.
+        el.useStyle(el.tspanStyle)
 
         // NOTE: Should not call dirtyStyle after setBoundingRect. Or it will be cleared.
         el.setBoundingRect(parseText.tSpanCreateBoundingRect2(

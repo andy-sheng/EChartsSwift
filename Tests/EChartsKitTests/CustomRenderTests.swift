@@ -88,6 +88,49 @@ final class CustomRenderTests: XCTestCase {
         XCTAssertEqual(Set(fills), ["#5470c6"], "custom rects use the renderItem-specified fill")
     }
 
+    func testDeprecatedAPIStyleBridgesSeriesLabelToAttachedText() {
+        let ec = ECharts(width: 400, height: 300)
+        let renderItem: CustomSeriesRenderItem = { _, api in
+            let value = (api.value(1.0, nil) as? Double) ?? 0
+            let top = api.coord([0.0, value], nil)
+            let base = api.coord([0.0, 0.0], nil)
+            guard top.count >= 2, base.count >= 2 else { return nil }
+            return [
+                "type": "rect",
+                "shape": [
+                    "x": top[0] - 20.0, "y": top[1],
+                    "width": 40.0, "height": base[1] - top[1]
+                ] as [String: Any],
+                "style": api.style(nil, nil)
+            ] as [String: Any]
+        }
+
+        ec.setOption([
+            "animation": false,
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "type": "custom",
+                "renderItem": renderItem,
+                "label": ["show": true, "position": "top"] as [String: Any],
+                "encode": ["x": 0.0, "y": 1.0] as [String: Any],
+                "data": [[0.0, 5.0]]
+            ] as [String: Any]]
+        ])
+
+        var host: Rect?
+        _ = ec.getRoot().traverse { el in
+            if let rect = el as? Rect, rect.getTextContent() != nil { host = rect }
+            return false
+        }
+        guard let host, let label = host.getTextContent() else {
+            return XCTFail("api.style() must materialize the series label as attached text")
+        }
+        XCTAssertEqual(label.textStyle?.text, "5")
+        XCTAssertEqual(host.textConfig?.position as? String, "top")
+    }
+
     // A minimal renderItem: one rect bar per datum, optionally carrying an extra style bag.
     private func makeRectRenderItem(extraStyle: [String: Any] = [:]) -> CustomSeriesRenderItem {
         return { _, api in

@@ -100,6 +100,11 @@ private let profileStartTime: Double = 1700000000000.0
 
 private let profileCategories: [String] = ["categoryA", "categoryB", "categoryC"]
 
+private let profileXAxisLabelFormatter: AxisLabelValueFormatter = { value, _, _ in
+    let elapsed = max(0, value - profileStartTime)
+    return "\(Int(elapsed.rounded())) ms"
+}
+
 // MARK: - the upstream renderItem, ported
 
 // Coerce a ParsedValue (Any: Double | Int | NSNumber) to Double — the recurring Int-vs-Double read trap.
@@ -341,10 +346,9 @@ option = {
             "xAxis": [
                 "min": profileStartTime,
                 "scale": true,
-                // PORT-NOTE: xAxis.axisLabel.formatter omitted — JS closure rendering each tick as
-                // `Math.max(0, val - startTime) + ' ms'` (elapsed ms since startTime). Without it the
-                // ticks would print the raw epoch millisecond values.
-                "axisLabel": [:] as [String: Any]
+                "axisLabel": [
+                    "formatter": profileXAxisLabelFormatter as AxisLabelValueFormatter
+                ] as [String: Any]
             ] as [String: Any],
             "yAxis": [
                 "data": profileCategories

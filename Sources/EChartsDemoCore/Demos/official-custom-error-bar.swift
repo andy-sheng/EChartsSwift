@@ -13,11 +13,8 @@
 //      SyntaxError that would blank the whole page), and the `/* title: … */` editor-metadata block is
 //      dropped. Every statement, including the data loop and `echarts.number.round`, is otherwise as-is
 //      (`echarts.number` is still exported by the 6.1.0 dist the pane loads).
-//   2. The data is RANDOM (`Math.random()`) and regenerated on every load — upstream ships no fixed
-//      dataset, so the two panes CANNOT show identical bars by construction. The native pane runs the
-//      SAME recurrence off a SEEDED PRNG so at least its frame is stable across runs and diffable
-//      against itself. Compare the panes for shape/scale/axes/legend/dataZoom and for the FORM of the
-//      error bars, not for per-bar values.
+//   2. The upstream data is RANDOM (`Math.random()`). We run its recurrence once with a seeded PRNG and
+//      inject the resulting arrays into both panes for deterministic pixel comparison.
 //   3. `tooltip` and `dataZoom` are interactive; the gallery snapshots ONE static frame, so both panes
 //      show them in their initial state (the dataZoom window the option itself sets, 50%–70%).
 //   4. NOTHING ELSE. `renderItem` IS ported natively (errorBarRenderItem, below) statement for
@@ -92,6 +89,15 @@ private let errorBarGenerated: (categories: [String], errors: [[Double]], bars: 
 private let errorBarCategoryData: [String] = errorBarGenerated.categories
 private let errorBarErrorData: [[Double]] = errorBarGenerated.errors
 private let errorBarBarData: [Double] = errorBarGenerated.bars
+
+private func errorBarJSON(_ value: Any) -> String {
+    guard let data = try? JSONSerialization.data(withJSONObject: value, options: []),
+          let json = String(data: data, encoding: .utf8) else { return "[]" }
+    return json
+}
+private let errorBarCategoryDataJSON = errorBarJSON(errorBarCategoryData)
+private let errorBarErrorDataJSON = errorBarJSON(errorBarErrorData)
+private let errorBarBarDataJSON = errorBarJSON(errorBarBarData)
 
 // MARK: - the upstream renderItem, ported
 
@@ -177,20 +183,9 @@ extension EChartsDemoRegistry {
         nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
-var categoryData = [];
-var errorData = [];
-var barData = [];
-var dataCount = 100;
-for (var i = 0; i < dataCount; i++) {
-  var val = Math.random() * 1000;
-  categoryData.push('category' + i);
-  errorData.push([
-    i,
-    echarts.number.round(Math.max(0, val - Math.random() * 100)),
-    echarts.number.round(val + Math.random() * 80)
-  ]);
-  barData.push(echarts.number.round(val, 2));
-}
+var categoryData = \#(errorBarCategoryDataJSON);
+var errorData = \#(errorBarErrorDataJSON);
+var barData = \#(errorBarBarDataJSON);
 
 option = {
   tooltip: {

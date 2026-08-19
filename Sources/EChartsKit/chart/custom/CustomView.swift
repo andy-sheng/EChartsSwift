@@ -53,8 +53,8 @@ import ZRenderKit
 //   - the GROUP-CHILD by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren`
 //     still rebuilds a group's children by index each render.
 //   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
-//   - the legacy ec4 style compat (`convertFromEC4CompatibleStyle` / `isEC4CompatibleStyle` /
-//     `convertToEC4StyleForCustomSerise`) and the deprecated `api.style` / `api.styleEmphasis`.
+//   - the complete legacy ec4 style compat remains deferred, but the normal-state `api.style()` label
+//     bridge is wired (legacy text fields are converted to attached textContent/textConfig).
 //   - `attachTextContent` / rich-label nuance — only basic `textContent` (a plain text child) is wired.
 //   - decal pattern (`createOrUpdatePatternFromDecal`) is WIRED in `updateElNormal`; universal
 //     transition and the incremental hover-layer stay deferred.
@@ -936,7 +936,7 @@ private func makeRenderItem(
     //   coord/size closures from `prepareResult.api`. `currDataIndexInside` lives on that instance
     //   (upstream's closure-captured mutable state).
     let userAPI = CustomRenderItemAPI(
-        data: data,
+        customSeries: customSeries, data: data,
         ecModel: ecModel,
         extApi: api,
         coordSys: coordSys,
@@ -990,6 +990,7 @@ private func makeRenderItem(
 //   builds this as an object literal of closures; here it is a `final class` holding the render-round
 //   state (`currDataIndexInside`) + the coord-system `coord`/`size` closures produced by `prepareCustoms`.
 private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
+    let customSeries: CustomSeriesModel
     let data: SeriesData
     let ecModel: GlobalModel
     let extApi: ExtensionAPI
@@ -1000,9 +1001,10 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     var currDataIndexInside: Int = 0
 
     init(
-        data: SeriesData, ecModel: GlobalModel, extApi: ExtensionAPI, coordSys: Any?,
+        customSeries: CustomSeriesModel, data: SeriesData, ecModel: GlobalModel, extApi: ExtensionAPI, coordSys: Any?,
         coordClosure: (([Double]) -> [Double])?, sizeClosure: (([Double], [Double]?) -> [Double])?
     ) {
+        self.customSeries = customSeries
         self.data = data
         self.ecModel = ecModel
         self.extApi = extApi
@@ -1100,14 +1102,39 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     }
 
     // upstream (deprecated): function style(userProps?, dataIndexInside?): ZRStyleProps
-    //   DEFERRED — depends on label/labelStyle + styleCompat (createTextStyle / convertToEC4...),
-    //   neither ported. Returns the raw item visual style bag as a best effort.
+    //   The normal label compatibility path is intentionally kept because official ECharts 4-era
+    //   custom examples use `api.style()` to materialize `series.label` on the returned host shape.
     func style(_ userProps: [String: Any]?, _ dataIndexInside: Double?) -> [String: Any] {
-        // PORT-NOTE (deferred): the full (deprecated) api.style (itemStyle + label + ec4 compat) requires
-        //   label/labelStyle createTextStyle + styleCompat convertToEC4Style, neither ported. Returns the
-        //   raw item visual style bag merged with userProps as a best effort.
         let idx = resolveIdx(dataIndexInside)
         var out = (data.getItemVisual(idx, "style") as? [String: Any]) ?? [:]
+
+        let itemModel = data.getItemModel(idx)
+        let labelModel = itemModel.getModel("label")
+        if (labelModel.getShallow("show") as? Bool) == true {
+            let visualColor = out["fill"] as? String
+            let common = TextCommonParams(inheritColor: visualColor ?? "#000")
+            let textStyle = labelStyle.createTextStyle(labelModel, nil, common, false, false)
+            let textConfig = labelStyle.createTextConfig(labelModel, common, false)
+            let text = customSeries.getFormattedLabel(Double(idx), .normal, nil, nil, nil, nil)
+                ?? labelHelper.getDefaultLabel(data, Double(idx))
+
+            if let text { out["text"] = text }
+            out["textPosition"] = textConfig.position ?? "inside"
+            if let offset = textConfig.offset { out["textOffset"] = offset }
+            if let rotation = textConfig.rotation { out["textRotation"] = rotation }
+            if let distance = textConfig.distance { out["textDistance"] = distance }
+
+            let position = (out["textPosition"] as? String) ?? "inside"
+            let isInside = position.contains("inside")
+            out["textFill"] = textStyle.fill
+                ?? (isInside ? (textConfig.insideFill ?? "#fff") : (visualColor ?? textConfig.outsideFill ?? "#000"))
+            if let stroke = textStyle.stroke { out["textStroke"] = stroke }
+            if let width = textStyle.lineWidth { out["textStrokeWidth"] = width }
+            if let font = textStyle.font { out["font"] = font }
+            if let align = textStyle.align { out["textAlign"] = align.rawValue }
+            if let verticalAlign = textStyle.verticalAlign { out["textVerticalAlign"] = verticalAlign.rawValue }
+            out["legacy"] = true
+        }
         if let userProps = userProps {
             for (k, v) in userProps { out[k] = v }
         }
@@ -1247,10 +1274,12 @@ private func doCreateOrUpdateEl(
     _ api: ExtensionAPI?,
     _ existsElIn: Element?,
     _ dataIndex: Int,
-    _ elOption: [String: Any],
+    _ elOptionIn: [String: Any],
     _ seriesModel: CustomSeriesModel,
     _ group: Group
 ) -> Element? {
+
+    let elOption = customNormalizeLegacyText(elOptionIn)
 
     // upstream DEV assert: elOption not null.
 
@@ -1549,6 +1578,40 @@ private func retrieveStyleOptionOnState(
         style = normal["styleEmphasis"]
     }
     return style
+}
+
+// ECharts 5 compatibility for ECharts 4 custom-series styles. `api.style()` historically returned
+// `text`/`textFill`/`textPosition` on the host style; zrender 5 renders that text as an attached element.
+// Keep the conversion deliberately scoped to normal-state text generated by api.style(). Explicit
+// renderItem `textContent`/`textConfig` always wins.
+private func customNormalizeLegacyText(_ input: [String: Any]) -> [String: Any] {
+    guard input["textContent"] == nil, input["textConfig"] == nil,
+          let style = input["style"] as? [String: Any],
+          (style["legacy"] as? Bool) == true,
+          let text = style["text"] as? String
+    else { return input }
+
+    var output = input
+    var textStyle: [String: Any] = ["text": text]
+    if let value = style["textFill"] { textStyle["fill"] = value }
+    if let value = style["textStroke"] { textStyle["stroke"] = value }
+    if let value = style["textStrokeWidth"] { textStyle["lineWidth"] = value }
+    if let value = style["font"] { textStyle["font"] = value }
+    if let value = style["fontSize"] { textStyle["fontSize"] = value }
+    if let value = style["fontFamily"] { textStyle["fontFamily"] = value }
+    if let value = style["fontStyle"] { textStyle["fontStyle"] = value }
+    if let value = style["fontWeight"] { textStyle["fontWeight"] = value }
+    if let value = style["textAlign"] { textStyle["align"] = value }
+    if let value = style["textVerticalAlign"] { textStyle["verticalAlign"] = value }
+
+    var textConfig: [String: Any] = ["position": style["textPosition"] ?? "inside"]
+    if let value = style["textOffset"] { textConfig["offset"] = value }
+    if let value = style["textRotation"] { textConfig["rotation"] = value }
+    if let value = style["textDistance"] { textConfig["distance"] = value }
+
+    output["textContent"] = ["type": "text", "silent": true, "style": textStyle] as [String: Any]
+    output["textConfig"] = textConfig
+    return output
 }
 
 

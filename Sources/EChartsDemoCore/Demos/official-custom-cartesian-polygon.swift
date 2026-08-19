@@ -9,13 +9,8 @@
 // grid instead of being re-tessellated), and `transition: ['shape']` tweens the shape across zooms.
 //
 // DEVIATIONS from the official source:
-//   1. RANDOM DATA, FIXED ON THE NATIVE SIDE: the example seeds `data` with 7 × `Math.random()` on every
-//      load. The web pane keeps that loop VERBATIM (it is the example). A Swift `[String: Any]` option is
-//      a static literal, so the native `option` carries one fixed draw of the same shape/ranges
-//      (x ∈ [0,100], y ∈ [0,400]) — see `customCartesianPolygonData`. The two panes therefore hold
-//      different point sets; that is the example's own nondeterminism, not a simplification. Compare the
-//      panes for the FORM (one closed, self-intersecting polygon, clipped by the grid, axes auto-scaled
-//      to the points, dataZoom + legend + tooltip), not for per-vertex values.
+//   1. The example seeds its seven vertices with `Math.random()`. A fixed draw is injected into both
+//      panes so the polygon geometry is deterministic and directly diffable.
 //   2. THE "RENDER ONCE" LATCH IS SPELLED DIFFERENTLY NATIVELY. Upstream gates the closure on
 //      `params.context.rendered`, relying on one `context` object being SHARED across the render round.
 //      The port rebuilds `CustomSeriesRenderItemParams` (a struct) per datum, so a `[String: Any]`
@@ -55,6 +50,12 @@ private let customCartesianPolygonData: [[Double]] = [
     [8.6, 47.2],
     [53.8, 371.5]
 ]
+
+private let customCartesianPolygonDataJSON: String = {
+    guard let data = try? JSONSerialization.data(withJSONObject: customCartesianPolygonData, options: []),
+          let json = String(data: data, encoding: .utf8) else { return "[]" }
+    return json
+}()
 
 // MARK: - the upstream renderItem, ported
 
@@ -112,14 +113,7 @@ extension EChartsDemoRegistry {
         nativeSupported: true,    // renderItem IS the chart, and it IS ported — see header
         collection: .official,
         webOptionJS: #"""
-const data = [];
-const dataCount = 7;
-for (let i = 0; i < dataCount; i++) {
-  data.push([
-    echarts.number.round(Math.random() * 100),
-    echarts.number.round(Math.random() * 400)
-  ]);
-}
+const data = \#(customCartesianPolygonDataJSON);
 
 option = {
   tooltip: {

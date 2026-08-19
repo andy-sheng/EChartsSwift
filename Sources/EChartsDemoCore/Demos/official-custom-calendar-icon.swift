@@ -37,11 +37,8 @@
 //          field (already ported, just unwired) that `api.font(...)` is written through here, matching
 //          zrender's own `font && trim(font) || style.textFont || style.font` fallback in Text.ts.
 //
-// NOTE (upstream's quirk, kept verbatim — not a deviation): `dayLabel.nameMap: 'cn'` is the ECharts-4
-// spelling. echarts 6 looks that string up case-sensitively in the locale registry ('ZH' / 'EN'), so 'cn'
-// MISSES and the day labels silently fall back to the chart's DEFAULT locale — which is the host's system
-// language. The week header therefore reads 一二三四五六日 on a zh host and Mon…Sun on an en one, in the
-// reference pane exactly as on echarts.apache.org. Verified: headless-Chrome render of this demo's page.
+// The upstream source uses the old ECharts-4 locale spelling `cn`. Pin both panes to the current `ZH`
+// locale so the comparison is deterministic and matches the Chinese official-gallery rendering.
 //
 // The full year of data is kept even though `calendar.range` is '2017-03': the out-of-range days are what
 // exercise renderItem's `isNaN(cellPoint[0])` early-return guard, exactly as upstream.
@@ -224,7 +221,7 @@ option = {
       orient: 'vertical',
       dayLabel: {
         firstDay: 1,
-        nameMap: 'cn'
+        nameMap: 'ZH'
       },
       monthLabel: {
         show: false
@@ -315,7 +312,7 @@ option = {
                     "orient": "vertical",
                     "dayLabel": [
                         "firstDay": 1.0,
-                        "nameMap": "cn"
+                        "nameMap": "ZH"
                     ] as [String: Any],
                     "monthLabel": [
                         "show": false

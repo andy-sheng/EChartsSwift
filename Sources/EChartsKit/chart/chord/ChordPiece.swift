@@ -114,8 +114,14 @@ open class ChordPiece: Sector {
         }
 
         if firstCreate {
-            // el.setShape(shape);
-            _ = el.setShape(shape)
+            // Enter by sweeping each node arc open from its own start angle. `initProps` keeps the
+            // final shape installed for label/layout work while retaining a shape animator when
+            // animation is enabled; with animation disabled it simply applies the final end angle.
+            let finalEndAngle = shape.endAngle
+            var collapsedShape = shape
+            collapsedShape.endAngle = collapsedShape.startAngle
+            _ = el.setShape(collapsedShape)
+            initProps(el, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
         }
         else {
             // graphic.updateProps(el, { shape: shape }, seriesModel, idx);

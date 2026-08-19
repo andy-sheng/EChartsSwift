@@ -2474,7 +2474,7 @@ public final class ECharts: EChartsType {
         //   (each with a fresh `maxZ2 = -Infinity`). Mirror that: run `doUpdateZ` on each direct child of
         //   the view group. The container `group` itself is a `Group` (not a Displayable) → nothing to set.
         //
-        // Graph symbols, treemap tiles, bars, and heatmap cells are opaque hosts whose attached labels
+        // Graph symbols, treemap tiles, bars, heatmap cells, and chord node arcs are opaque hosts whose attached labels
         // otherwise paint behind them in this port. Keep the lift scoped to those series until the upstream
         // `ignoreModelZ` flag is fully represented: other views intentionally author special z2
         // values (for example line end labels at 200) or keep host/label z2 equal for state lifting.
@@ -2483,6 +2483,7 @@ public final class ECharts: EChartsType {
             || model is BarSeriesModel
             || model is HeatmapSeriesModel
             || model is CustomSeriesModel
+            || model is ChordSeriesModel
         for child in group.children() {
             _ = doUpdateZ(child, z, zlevel, -Double.infinity, liftLabelZ2)
         }

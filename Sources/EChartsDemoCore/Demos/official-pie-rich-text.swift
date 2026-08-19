@@ -13,6 +13,8 @@
 //     bytes, same three images, spliced into BOTH panes' options. Nothing else changed; the option is
 //     otherwise verbatim.
 //   - Rich token image backgrounds are carried as data URIs and rendered by the native image seam.
+//     Their width is set explicitly to the same 30 px as their height so native layout does not depend
+//     on the browser-only preloaded-image natural-size lookup; the source icons are square.
 //
 // PORT-NOTE (native option completeness): NOTHING is dropped from the Swift `option`. This example has
 // no JS-function-valued keys at all — both formatters (`tooltip.formatter` and the CityE
@@ -61,16 +63,19 @@ private let cityELabelRich: [String: Any] = [
     ] as [String: Any],
     "Sunny": [
         "height": 30.0,
+        "width": 30.0,
         "align": "left",
         "backgroundColor": ["image": sunnyIcon] as [String: Any]
     ] as [String: Any],
     "Cloudy": [
         "height": 30.0,
+        "width": 30.0,
         "align": "left",
         "backgroundColor": ["image": cloudyIcon] as [String: Any]
     ] as [String: Any],
     "Showers": [
         "height": 30.0,
+        "width": 30.0,
         "align": "left",
         "backgroundColor": ["image": showersIcon] as [String: Any]
     ] as [String: Any],
@@ -195,6 +200,7 @@ option = {
               },
               Sunny: {
                 height: 30,
+                width: 30,
                 align: 'left',
                 backgroundColor: {
                   image: weatherIcons.Sunny
@@ -202,6 +208,7 @@ option = {
               },
               Cloudy: {
                 height: 30,
+                width: 30,
                 align: 'left',
                 backgroundColor: {
                   image: weatherIcons.Cloudy
@@ -209,6 +216,7 @@ option = {
               },
               Showers: {
                 height: 30,
+                width: 30,
                 align: 'left',
                 backgroundColor: {
                   image: weatherIcons.Showers

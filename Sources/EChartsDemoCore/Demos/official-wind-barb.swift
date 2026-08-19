@@ -92,6 +92,15 @@ private func windBarbTemp(_ v: Any?) -> String {
     return n == n.rounded() ? String(Int(n)) : String(n)
 }
 
+// Match the zh-CN time-axis labels used by the official web example: ordinary
+// day ticks are numeric, while the first tick of a month is rendered as “7月”.
+private let windBarbXAxisLabelFormatter: AxisLabelTimeFormatter = { value, _, _ in
+    let date = Date(timeIntervalSince1970: value / 1000.0)
+    let components = Calendar.current.dateComponents([.day, .month], from: date)
+    guard let day = components.day, let month = components.month else { return "" }
+    return day == 1 ? "\(month)月" : "\(day)"
+}
+
 // upstream renderArrow: a rotated wind-barb arrow `path` at each [time, windSpeed] point, rotation from
 //   directionMap[R] (dims: time=0, windSpeed=1, R=2).
 private let windBarbArrowRenderItem: CustomSeriesRenderItem = { _, api in
@@ -473,6 +482,9 @@ myChart.setOption(option);
             "xAxis": [
                 "type": "time",
                 "maxInterval": 3600.0 * 1000.0 * 24.0,
+                "axisLabel": [
+                    "formatter": windBarbXAxisLabelFormatter as AxisLabelTimeFormatter
+                ] as [String: Any],
                 "splitLine": ["lineStyle": ["color": "#ddd"] as [String: Any]] as [String: Any]
             ] as [String: Any],
             "yAxis": [

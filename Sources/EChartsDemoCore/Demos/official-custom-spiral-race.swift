@@ -17,8 +17,6 @@
 //     without the 60fps interpolation between steps (a snap instead of a tween).
 //   - `extra`/`transition` keys dropped on both elements for the same reason (customGraphicTransition is
 //     not ported — nothing reads them).
-//   - angleAxis.axisLabel.formatter / radiusAxis.axisLabel.formatter dropped (JS closures returning the
-//     zodiac tick names / 'A'/'B'/'C'). PORT-NOTEs left where they were.
 //   - The 9 datasources are hoisted to a file-scope `spiralDatasourceList`; the initial radiusAxis.max
 //     is computed by `spiralMaxRadius` (upstream getMaxRadius). The web pane inlines them verbatim.
 //   - `drive` reproduces upstream next()/setTimeout on the native chart (advance after 1s, then every 7s
@@ -71,6 +69,26 @@ private let spiralColors: [SpiralColor] = [
     SpiralColor(fill: "#91cc75", text: "#447f27"),
     SpiralColor(fill: "#fac858", text: "#a0761c")
 ]
+
+private let spiralRadianLabels = [
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpius", "Sagittarius", "Capricornus", "Aquarius", "Pisces"
+]
+
+private let spiralAngleAxisLabelFormatter: AxisLabelValueFormatter = { value, _, _ in
+    let index = Int(value.rounded())
+    guard index >= 0, index < spiralRadianLabels.count else { return "" }
+    return spiralRadianLabels[index]
+}
+
+private let spiralRadiusAxisLabelFormatter: AxisLabelValueFormatter = { value, _, _ in
+    switch Int(value.rounded()) {
+    case 1: return "A"
+    case 2: return "B"
+    case 3: return "C"
+    default: return ""
+    }
+}
 
 // getSpiralRadius(startRadius, endRadian, radiusStep)
 private func spiralGetRadius(_ startRadius: Double, _ endRadian: Double, _ radiusStep: Double) -> Double {
@@ -536,9 +554,10 @@ setTimeout(next, 1000);
             "angleAxis": [
                 "type": "value",
                 "splitArea": ["show": true] as [String: Any],
-                // PORT-NOTE: angleAxis.axisLabel.formatter omitted — the JS closure returned
-                // _radianLabels[val] (a zodiac sign name for each integer tick 0…11).
-                "axisLabel": ["color": "rgba(0,0,0,0.2)"] as [String: Any],
+                "axisLabel": [
+                    "color": "rgba(0,0,0,0.2)",
+                    "formatter": spiralAngleAxisLabelFormatter as AxisLabelValueFormatter
+                ] as [String: Any],
                 "axisLine": ["lineStyle": ["color": "rgba(0,0,0,0.2)"] as [String: Any]] as [String: Any],
                 "min": 0.0,
                 "max": 12.0
@@ -547,9 +566,10 @@ setTimeout(next, 1000);
                 "type": "value",
                 "interval": 1.0,
                 "splitLine": ["show": false] as [String: Any],
-                // PORT-NOTE: radiusAxis.axisLabel.formatter omitted — the JS closure returned
-                // _barNamesByOrdinal[value] ('A'/'B'/'C' for ticks 1/2/3, '' otherwise).
-                "axisLabel": ["color": "rgba(0,0,0,0.6)"] as [String: Any],
+                "axisLabel": [
+                    "color": "rgba(0,0,0,0.6)",
+                    "formatter": spiralRadiusAxisLabelFormatter as AxisLabelValueFormatter
+                ] as [String: Any],
                 "axisTick": ["show": false] as [String: Any],
                 "axisLine": ["lineStyle": ["color": "rgba(0,0,0,0.2)"] as [String: Any]] as [String: Any],
                 "min": 0.0,

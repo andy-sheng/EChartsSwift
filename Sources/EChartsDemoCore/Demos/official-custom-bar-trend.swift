@@ -16,12 +16,8 @@
 //      page), and the `/* title: … */` editor-metadata block is dropped. Every statement, including the
 //      data loop, `echarts.number.round`, the spread of `dataList.map(...)` and renderItem, is as-is
 //      (`echarts.number` is still exported by the 6.1.0 dist the pane loads).
-//   2. The data is RANDOM (`Math.random()`) and regenerated on every load — upstream ships no fixed
-//      dataset, so the two panes CANNOT show identical bars by construction. The native pane runs the
-//      SAME recurrence (each year = the previous year ± up to 100, floored at 0) off a SEEDED PRNG so
-//      its frame is stable across runs and diffable against itself. Compare the panes for layout,
-//      axes, legend, dataZoom window, bar grouping, and for the FORM of the trend polyline (one open
-//      stroke per category, vertices centred on the bars and 20px above them) — not for per-bar values.
+//   2. The upstream data is RANDOM (`Math.random()`). We run the same recurrence once with a seeded
+//      PRNG and inject the resulting arrays into both panes, making pixel comparison deterministic.
 //   3. `tooltip`, `legend` and `dataZoom` are interactive; the gallery snapshots ONE static frame, so
 //      both panes show them in their initial state (the 50%–70% window the option itself sets).
 //   4. NOTHING ELSE. `renderItem` IS ported natively (barTrendRenderItem, below) statement for
@@ -113,6 +109,17 @@ private let barTrendXAxisData: [String] = barTrendGenerated.categories
 private let barTrendCustomData: [[Double]] = barTrendGenerated.custom
 private let barTrendDataList: [[Double]] = barTrendGenerated.years
 private let barTrendLegendData: [String] = barTrendGenerated.legend
+
+private func barTrendJSON(_ value: Any) -> String {
+    guard let data = try? JSONSerialization.data(withJSONObject: value, options: []),
+          let json = String(data: data, encoding: .utf8) else { return "[]" }
+    return json
+}
+
+private let barTrendXAxisDataJSON = barTrendJSON(barTrendXAxisData)
+private let barTrendCustomDataJSON = barTrendJSON(barTrendCustomData)
+private let barTrendDataListJSON = barTrendJSON(barTrendDataList)
+private let barTrendLegendDataJSON = barTrendJSON(barTrendLegendData)
 
 /// `encodeY` — dim 1…7 of a customData row, one per year series. Doubles: `api.value` /
 /// `SeriesData.getDimensionIndex` force-cast a numeric DimensionLoose `as! Double`.
@@ -222,38 +229,11 @@ extension EChartsDemoRegistry {
         webOptionJS: #"""
 const yearCount = 7;
 const categoryCount = 30;
-
-const xAxisData = [];
-const customData = [];
-const legendData = [];
-const dataList = [];
-
-legendData.push('trend');
-const encodeY = [];
-for (var i = 0; i < yearCount; i++) {
-  legendData.push(2010 + i + '');
-  dataList.push([]);
-  encodeY.push(1 + i);
-}
-
-for (var i = 0; i < categoryCount; i++) {
-  var val = Math.random() * 1000;
-  xAxisData.push('category' + i);
-  var customVal = [i];
-  customData.push(customVal);
-
-  for (var j = 0; j < dataList.length; j++) {
-    var value =
-      j === 0
-        ? echarts.number.round(val, 2)
-        : echarts.number.round(
-            Math.max(0, dataList[j - 1][i] + (Math.random() - 0.5) * 200),
-            2
-          );
-    dataList[j].push(value);
-    customVal.push(value);
-  }
-}
+const xAxisData = \#(barTrendXAxisDataJSON);
+const customData = \#(barTrendCustomDataJSON);
+const legendData = \#(barTrendLegendDataJSON);
+const dataList = \#(barTrendDataListJSON);
+const encodeY = [1, 2, 3, 4, 5, 6, 7];
 
 option = {
   tooltip: {

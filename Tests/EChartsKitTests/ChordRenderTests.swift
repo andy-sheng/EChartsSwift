@@ -51,4 +51,42 @@ final class ChordRenderTests: XCTestCase {
         // GEOMETRY GUARD: every node arc must be laid out inside the view rect with a positive radius.
         XCTAssertEqual(arcsInRect, nodeArcs, "every node arc must sit within the view rect (r > 0)")
     }
+
+    func testInsideNodeLabelsPaintAboveChordArcs() {
+        let ec = ECharts(width: 460, height: 360)
+        ec.setOption([
+            "series": [[
+                "type": "chord",
+                "radius": ["60%", "70%"],
+                "data": [["name": "A"], ["name": "B"], ["name": "C"]],
+                "links": [
+                    ["source": "A", "target": "B", "value": 5.0],
+                    ["source": "B", "target": "C", "value": 4.0],
+                    ["source": "C", "target": "A", "value": 3.0]
+                ],
+                "label": [
+                    "show": true,
+                    "position": "inside",
+                    "color": "#fff"
+                ] as [String: Any]
+            ] as [String: Any]]
+        ])
+
+        var pieces: [ChordPiece] = []
+        _ = ec.getRoot().traverse { el in
+            if let piece = el as? ChordPiece { pieces.append(piece) }
+            return false
+        }
+        XCTAssertEqual(pieces.count, 3)
+        XCTAssertEqual(Set(pieces.compactMap { $0.getTextContent()?.textStyle?.text }), Set(["A", "B", "C"]))
+        for piece in pieces {
+            guard let label = piece.getTextContent() else {
+                XCTFail("each chord node should own an attached label")
+                continue
+            }
+            XCTAssertFalse(label.ignore)
+            XCTAssertGreaterThan(label.z2, piece.z2,
+                "inside chord labels must paint above the opaque node arcs")
+        }
+    }
 }
