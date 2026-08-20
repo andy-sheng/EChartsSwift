@@ -601,7 +601,7 @@ final class ContentViewController: NSViewController {
         currentHostView = nil
         liveScroll.documentView = nil
         if demo.nativeSupported {
-            var opt = demo.option
+            var opt = demo.liveOption ?? demo.option
             if animSwitch.state == .off { opt["animation"] = false }   // ON → leave echarts default (animate)
             let useMetal = metalSwitch.state == .on
             nativeCap.stringValue = useMetal
@@ -1728,7 +1728,7 @@ func runCLI() -> Bool {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let host = EChartsHostView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
-        host.setOption(demo.option)          // animation ON (do NOT force it off)
+        host.setOption(demo.liveOption ?? demo.option) // animation ON (do NOT force it off)
         demo.drive?(host)                    // replay the example's setInterval/setOption timeline
         let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
         let sorted = offsets.sorted()

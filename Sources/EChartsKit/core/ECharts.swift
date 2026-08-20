@@ -3573,8 +3573,21 @@ public final class ECharts: EChartsType {
         seriesModel.appendData(SeriesAppendDataParams(data: data))
 
         // `appendData` does not support updating axis scale extent of coordinate systems (see the
-        //   upstream NOTICE). Mark the scheduler unfinished + wake the zr so the appended data paints.
+        // upstream NOTICE). Upstream marks the scheduler unfinished and `_onframe` incrementally
+        // performs the pipeline. This port does not yet bind ECharts._onframe to the host ZRender
+        // animation loop, so `wakeUp()` alone only repaints the OLD display list. Perform one
+        // synchronous update per append as the native fallback. Streaming callers still append on
+        // separate run-loop turns, preserving the visible progressive build-up without making this
+        // API silently inert.
         _scheduler?.unfinished = true
+        if !_inEcCycle {
+            _inEcCycle = true
+            update()
+            _inEcCycle = false
+            _scheduler?.unfinished = false
+            flushPendingActions(false)
+            triggerUpdatedEvent(false)
+        }
         getZr()?.wakeUp()
     }
 

@@ -198,6 +198,12 @@ extension EChartsHostView: EChartsDemoChart {
         echartsView.setOption(optionRespectingAnimationPolicy(option), notMerge: notMerge)
     }
 
+    func appendData(seriesIndex: Int, data: [Double]) {
+        guard !isDisposed else { return }
+        echartsView.ec.appendData(seriesIndex: seriesIndex, data: data.map { $0 as Any })
+        echartsView.syncAfterAction()
+    }
+
     func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
         guard !isDisposed else { return }
         let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] timer in

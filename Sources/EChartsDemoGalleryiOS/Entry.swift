@@ -216,7 +216,7 @@ final class DemoDetailViewController: UIViewController {
         nativeFit?.removeFromSuperview()
         hostView = nil
         if demo.nativeSupported {
-            var opt = demo.option
+            var opt = demo.liveOption ?? demo.option
             if !animSwitch.isOn { opt["animation"] = false }   // ON → leave echarts default (animate)
             let host = EChartsHostView(
                 frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height),

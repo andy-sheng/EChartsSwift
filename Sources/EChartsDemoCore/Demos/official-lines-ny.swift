@@ -23,23 +23,11 @@
 //     (`myChart.setOption(option)` before `fetchData(0)`) or `appendData` would find no series. The
 //     `var xhr` / `xhr.open` / `xhr.send` lines and the trailing `export {}` are dropped; the TS
 //     annotation `fetchData(idx: number)` is dropped (a classic script cannot parse it).
-//   - NATIVE PANE: no `appendData`. `EChartsDemoChart` (see EChartsDemo.swift) exposes setOption /
-//     every / after / dispatch, not appendData, so the chunk-by-chunk STREAM cannot be replayed; the
-//     native option carries the identical end state instead — all 32 chunks decoded, offset-corrected
-//     and concatenated into one flat count-prefixed `[Double]` (6,059,629 values), which the ported
-//     `LinesSeriesModel._processFlatCoordsArray` reads exactly as echarts reads the Float64Array.
-//     Upstream's `data: new Float64Array()` (empty, filled by appendData) is kept verbatim on the web
-//     pane. No `drive` closure: with the data already in `option`, the example has no other timeline.
-//     (The stream is a data-DELIVERY mechanism, not a timeline the chart animates: upstream's end state
-//     — every street drawn — is exactly what the native option starts at, so nothing is lost by not
-//     replaying it. Contrast official-map-bar-morph, whose `drive` reproduces a real 2s series flip.)
-//   - NATIVE `large` / `progressive` ARE INERT (framework gap, NOT a demo simplification). Both keys are
-//     carried verbatim into the Swift option, but the ported LinesView PORT-NOTEs `LargeLineDraw` as
-//     DEFERRED (see chart/lines/LinesView.swift), so the native pane takes the ordinary per-item path:
-//     it builds one ECPolyline element per street — 624,407 of them — instead of one large-mode batch,
-//     and renders them in a single pass rather than in 20,000-point progressive chunks. Same pixels,
-//     same street count, no data dropped; it is just SLOW (and memory-hungry) until LargeLineDraw lands.
-//     The web pane, on real echarts, honours both.
+//   - NATIVE PANE: the static `option` carries the complete concatenated stream so headless stable-frame
+//     rendering stays deterministic. Its `liveOption` starts with the same empty series as Web, then
+//     `drive` replays all 32 `appendData` calls one chunk per run-loop turn. This preserves both the
+//     official progressive build-up and the stable screenshot without first constructing the full live
+//     display list and immediately throwing it away.
 //   - MAP REGISTRATION: the example registers nothing — the official editor auto-injects the map named
 //     by `geo.map: 'world'`. We must be explicit: assets/geo/world.json goes to BOTH panes via
 //     `mapRegistrations` (WebPage.swift injects `echarts.registerMap('world', ...)` ahead of the option
@@ -89,34 +77,94 @@ private func linesNYChunksBase64JS() -> String {
 // `rawData[i] + offsetX` (JS adds the two float32s as doubles — hence the widen-then-add here). The
 // per-chunk Float64Arrays that upstream appendData's one by one are concatenated into the single flat
 // array the option carries.
+private func decodeLinesNYChunk(_ bin: Data) -> [Double] {
+    let floatCount = bin.count / MemoryLayout<Float>.size
+    guard floatCount > 2 else { return [] }
+    var out: [Double] = []
+    out.reserveCapacity(floatCount)
+        // `new Float32Array(this.response)` — little-endian float32s, memcpy'd out so the file buffer's
+        // alignment never matters (same decode as official-scatter-nebula).
+    var rawData = [Float](repeating: 0, count: floatCount)
+    rawData.withUnsafeMutableBytes { dst in _ = bin.copyBytes(to: dst) }
+    let offsetX = Double(rawData[0])
+    let offsetY = Double(rawData[1])
+    var i = 2
+    while i < floatCount {
+        // (`Int(_: Float)` traps on NaN/±inf, so a corrupt chunk is stopped at, not crashed on.)
+        let rawCount = rawData[i]; i += 1
+        guard rawCount.isFinite, rawCount >= 0, rawCount < 1e9 else { break }
+        let count = Int(rawCount)
+        guard i + 2 * count <= floatCount else { break }               // truncated chunk → stop
+        out.append(Double(count))
+        for _ in 0..<count {
+            out.append(Double(rawData[i]) + offsetX); i += 1
+            out.append(Double(rawData[i]) + offsetY); i += 1
+        }
+    }
+    return out
+}
+
+private func linesNYDecodedChunk(_ index: Int) -> [Double] {
+    let url = Upstream.repoRoot
+        .appendingPathComponent("assets/data/links-ny/links_ny_\(index).bin")
+    return decodeLinesNYChunk((try? Data(contentsOf: url)) ?? Data())
+}
+
 private let linesNYFlatCoords: [Double] = {
     var out: [Double] = []
     out.reserveCapacity(6_100_000)
     for bin in linesNYChunkBinaries() {
-        let floatCount = bin.count / MemoryLayout<Float>.size
-        guard floatCount > 2 else { continue }
-        // `new Float32Array(this.response)` — little-endian float32s, memcpy'd out so the file buffer's
-        // alignment never matters (same decode as official-scatter-nebula).
-        var rawData = [Float](repeating: 0, count: floatCount)
-        rawData.withUnsafeMutableBytes { dst in _ = bin.copyBytes(to: dst) }
-        let offsetX = Double(rawData[0])
-        let offsetY = Double(rawData[1])
-        var i = 2
-        while i < floatCount {
-            // (`Int(_: Float)` traps on NaN/±inf, so a corrupt chunk is stopped at, not crashed on.)
-            let rawCount = rawData[i]; i += 1
-            guard rawCount.isFinite, rawCount >= 0, rawCount < 1e9 else { break }
-            let count = Int(rawCount)
-            guard i + 2 * count <= floatCount else { break }               // truncated chunk → stop
-            out.append(Double(count))
-            for _ in 0..<count {
-                out.append(Double(rawData[i]) + offsetX); i += 1
-                out.append(Double(rawData[i]) + offsetY); i += 1
-            }
-        }
+        out.append(contentsOf: decodeLinesNYChunk(bin))
     }
     return out
 }()
+
+private func linesNYNativeOption(data: [Double]) -> [String: Any] {
+    return [
+        "progressive": 20000.0,
+        "backgroundColor": "#111",
+        "geo": [
+            "center": [-74.04327099998152, 40.86737600240287],
+            "zoom": 360.0,
+            "map": "world",
+            "roam": true,
+            "silent": true,
+            "itemStyle": [
+                "color": "transparent",
+                "borderColor": "rgba(255,255,255,0.1)",
+                "borderWidth": 1.0
+            ] as [String: Any]
+        ] as [String: Any],
+        "series": [[
+            "type": "lines",
+            "coordinateSystem": "geo",
+            "blendMode": "lighter",
+            "dimensions": ["value"],
+            "data": data,
+            "polyline": true,
+            "large": true,
+            "lineStyle": [
+                "color": "orange",
+                "width": 0.5,
+                "opacity": 0.3
+            ] as [String: Any]
+        ] as [String: Any]]
+    ]
+}
+
+@MainActor
+private func streamLinesNYChunk(_ index: Int, into chart: EChartsDemoChart) {
+    guard index < linesNYChunkCount else { return }
+    chart.appendData(seriesIndex: 0, data: linesNYDecodedChunk(index))
+    if index + 1 < linesNYChunkCount {
+        // Wait until a later run-loop turn so the just-appended batch can be presented. This mirrors
+        // the asynchronous XHR recursion in the official example instead of appending all chunks in
+        // one blocking call that visually collapses the stream into a single frame.
+        chart.after(0.03) {
+            streamLinesNYChunk(index + 1, into: chart)
+        }
+    }
+}
 
 extension EChartsDemoRegistry {
     static let official_lines_ny = EChartsDemo(
@@ -241,47 +289,15 @@ if (__snapshot) {
   }, 500);
 }
 """#,
+        liveOption: linesNYNativeOption(data: []),
+        drive: { chart in
+            chart.after(0.03) {
+                streamLinesNYChunk(0, into: chart)
+            }
+        },
         option: {
             // Upstream registers nothing (the editor injects the `world` map); the native pane must.
             ECharts.registerMap("world", linesNYWorldGeoJSON)
-            let opt: [String: Any] = [
-                // PORT-NOTE: kept verbatim, but INERT natively — the ported LinesView defers
-                // LargeLineDraw (large/progressive), so this renders in one pass, not 20k-point chunks.
-                "progressive": 20000.0,
-                "backgroundColor": "#111",
-                "geo": [
-                    "center": [-74.04327099998152, 40.86737600240287],
-                    "zoom": 360.0,
-                    "map": "world",
-                    "roam": true,
-                    "silent": true,
-                    "itemStyle": [
-                        "color": "transparent",
-                        "borderColor": "rgba(255,255,255,0.1)",
-                        "borderWidth": 1.0
-                    ] as [String: Any]
-                ] as [String: Any],
-                "series": [
-                    [
-                        "type": "lines",
-                        "coordinateSystem": "geo",
-                        "blendMode": "lighter",
-                        "dimensions": ["value"],
-                        // Upstream's `new Float64Array()` + 32 appendData calls, pre-concatenated (see
-                        // DEVIATIONS): the same flat `count | x | y | ...` stream, 6,059,629 values.
-                        "data": linesNYFlatCoords,
-                        "polyline": true,
-                        // PORT-NOTE: kept verbatim, but INERT natively (LargeLineDraw deferred) — the
-                        // native pane draws 624,407 individual polylines instead of one large batch.
-                        "large": true,
-                        "lineStyle": [
-                            "color": "orange",
-                            "width": 0.5,
-                            "opacity": 0.3
-                        ] as [String: Any]
-                    ] as [String: Any]
-                ]
-            ]
-            return opt
+            return linesNYNativeOption(data: linesNYFlatCoords)
         }())
 }

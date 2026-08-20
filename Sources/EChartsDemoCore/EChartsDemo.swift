@@ -41,6 +41,10 @@ public protocol EChartsDemoChart: AnyObject {
     /// `notMerge: true` REPLACES the option (upstream's `setOption(option, true)`) — what an example
     /// swapping one chart type for another passes.
     func setOption(_ option: [String: Any], notMerge: Bool)
+    /// The example's `myChart.appendData({seriesIndex, data})` streaming API.
+    /// Flat numeric data is kept typed until it reaches EChartsKit; the host performs the `[Any]`
+    /// bridge required by the ported public API.
+    func appendData(seriesIndex: Int, data: [Double])
     /// The example's `setInterval(fn, ms)`.
     func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void)
     /// The example's `setTimeout(fn, ms)`.
@@ -70,6 +74,12 @@ public protocol EChartsDemoChart: AnyObject {
     func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void)
 }
 
+public extension EChartsDemoChart {
+    /// Backward-compatible default for lightweight test spies. Live gallery hosts override this and
+    /// forward to EChartsKit; a spy that does not exercise streaming can remain intentionally inert.
+    func appendData(seriesIndex: Int, data: [Double]) {}
+}
+
 // MARK: - Demo value type (mirrors DemoGallery.Demo, option-driven)
 
 /// One gallery case: a named ECharts `option` plus the logical canvas size both panes render at.
@@ -83,6 +93,10 @@ public struct EChartsDemo {
     public let width: Double
     public let height: Double
     public let option: [String: Any]
+    /// Optional initial option for the live gallery. Static/headless rendering continues to use
+    /// `option`; streaming examples can start live from an empty series without first constructing
+    /// and briefly presenting their complete stable-frame dataset.
+    public let liveOption: [String: Any]?
     /// Whether the native (EChartsKit) pane can render this demo today (see PHASE-6b LIMITATION).
     /// HTML always renders. Non-bar demos set this false so the gallery shows an honest "native N/A".
     public let nativeSupported: Bool
@@ -130,6 +144,7 @@ public struct EChartsDemo {
                 collection: Collection = .port,
                 webOptionJS: String? = nil,
                 entranceSetupDelayMs: Int = 0,
+                liveOption: [String: Any]? = nil,
                 drive: (@MainActor (EChartsDemoChart) -> Void)? = nil,
                 option: [String: Any]) {
         self.name = name; self.category = category; self.summary = summary
@@ -139,6 +154,7 @@ public struct EChartsDemo {
         self.collection = collection
         self.webOptionJS = webOptionJS
         self.entranceSetupDelayMs = entranceSetupDelayMs
+        self.liveOption = liveOption
         self.drive = drive
         self.option = option
     }
