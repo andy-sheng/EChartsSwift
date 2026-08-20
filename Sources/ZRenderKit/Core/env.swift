@@ -89,9 +89,15 @@ func configureNativeEnv(_ env: Env) {
     env.svgSupported = true
 
     // PORT-NOTE: not faithful, native deviation — upstream's node branch leaves these at the
-    // `Env` default `false`; we override them for the native Core Graphics / touch backend.
-    // Confined to here so the rest of `env` mirrors upstream's node env exactly.
-    env.touchEventsSupported = true     // native touch is the input model (vs. browser DOM events)
+    // `Env` default `false`; we override them for the native Core Graphics backend. Keep the
+    // pointer capability platform-specific: UIKit hosts use touch/coarse hit targets, while AppKit
+    // hosts use a precise mouse just like desktop Web. Treating every native host as touch-capable
+    // made every data series respond up to 22pt outside its visible geometry on macOS.
+#if canImport(UIKit)
+    env.touchEventsSupported = true
+#else
+    env.touchEventsSupported = false
+#endif
     env.transformSupported = true       // affine transforms via Core Graphics
     env.transform3dSupported = true     // 3D transforms via Core Animation
 }

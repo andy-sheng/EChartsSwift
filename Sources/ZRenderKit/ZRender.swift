@@ -188,8 +188,8 @@ public final class ZRender {
         //   if (usePointerSize) { pointerSize = zrUtil.retrieve2(opts.pointerSize, defaultPointerSize); }
         // `useCoarsePointer` is modeled as `Bool?` — the `'auto'` string arm folds into the `nil`
         //   branch (it behaves identically to `nil`, so no runtime behavior is lost). When `nil`
-        //   (or 'auto'), defaulting follows `env.touchEventsSupported` (true on the native touch
-        //   path), so the native default enlarges the hit area to `defaultPointerSize` (44).
+        //   (or 'auto'), defaulting follows `env.touchEventsSupported`: UIKit enlarges the hit area
+        //   to `defaultPointerSize` (44), while AppKit keeps exact desktop-Web mouse geometry.
         let useCoarsePointer = opts.useCoarsePointer
         let usePointerSize = (useCoarsePointer == nil) ? env.touchEventsSupported : useCoarsePointer!
         let defaultPointerSize: Double = 44

@@ -1,7 +1,5 @@
-// Theme-river stream bands fade in (style.opacity 0→final) when animation on, and are at final opacity
-// with no animator when off (the invisible-band guard). ThemeRiverView applies the shared OPACITY FADE
-// (FunnelView/HeatmapView idiom) in place of upstream's deferred grid-clip reveal: `style.opacity = 0`
-// before `useStyle`, then `initProps(band, {style:{opacity}}, seriesModel, indices.last)`.
+// Upstream themeRiver reveals a new band through an animated left-to-right clip rectangle. The band
+// itself stays at final opacity; disabling animation removes the clip entirely.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -23,18 +21,20 @@ final class ThemeRiverTransitionTests: XCTestCase {
                      ]] as [String: Any]]
         ]
     }
-    func test_band_fades_in_when_animation_on() {
+    func test_band_uses_horizontal_clip_reveal_when_animation_on() {
         let ec = ECharts(width: 400, height: 400); ec.setOption(option(true))
         guard let band = firstBand(ec.getRoot()) else { return XCTFail("no themeRiver band") }
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
-        // targeted at "style" and carries an "opacity" leaf track.
-        let anim = band.animators.first { $0.targetName == "style" }
-        XCTAssertNotNil(anim, "themeRiver band should have a style (opacity) animator when animation on")
+        guard let clip = band.getClipPath() as? ZRenderKit.Rect else {
+            return XCTFail("themeRiver band should carry the upstream clip reveal")
+        }
+        XCTAssertNotNil(clip.animators.first { $0.targetName == "shape" })
+        XCTAssertTrue(band.animators.isEmpty, "the band itself must not opacity-fade")
     }
     func test_band_final_opacity_when_animation_off() {
         let ec = ECharts(width: 400, height: 400); ec.setOption(option(false))
         guard let band = firstBand(ec.getRoot()) else { return XCTFail("no themeRiver band") }
         XCTAssertEqual(band.animators.count, 0, "no animator when animation off")
+        XCTAssertNil(band.getClipPath(), "no reveal clip when animation is disabled")
         XCTAssertGreaterThan(band.pathStyle.opacity ?? 0, 0.0, "band must be at final (visible) opacity when off — not invisible")
     }
 }

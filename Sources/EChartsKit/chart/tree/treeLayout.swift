@@ -72,6 +72,7 @@ private func commonLayout(_ seriesModel: TreeSeriesModel, _ api: ExtensionAPI) {
 
     if let realRoot = realRootOpt {
         layoutHelper.`init`(virtualRoot)
+        defer { layoutHelper.clear(virtualRoot) }
         traversalHelper.eachAfter(realRoot, layoutHelper.firstWalk, separation)
         virtualRoot.hierNode.modifier = -realRoot.hierNode.prelim
         traversalHelper.eachBefore(realRoot, layoutHelper.secondWalk)

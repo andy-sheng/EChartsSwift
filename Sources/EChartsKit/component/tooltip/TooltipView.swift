@@ -727,9 +727,10 @@ public final class TooltipView {
             for axisItem in itemCoordSys.dataByAxis {
                 // upstream: ecModel.getComponent(axisItem.axisDim + 'Axis', axisItem.axisIndex) as AxisBaseModel
                 let axisModel = ecModel.getComponent(axisItem.axisDim + "Axis", axisItem.axisIndex) as? AxisBaseModel
-                let axisValue = axisItem.value
                 // upstream: if (!axisModel || axisValue == null) return;
-                guard let axisModel = axisModel, axisValue != nil, !(axisValue is NSNull) else {
+                guard let axisModel = axisModel,
+                      let axisValue = axisItem.value,
+                      !(axisValue is NSNull) else {
                     continue
                 }
                 // upstream: `const axis = axisModel.axis;` — the BASE `Axis`. `AxisBaseModel.axis` is

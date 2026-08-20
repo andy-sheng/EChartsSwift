@@ -26,7 +26,9 @@ import ZRenderKit
 //       -> `extend` == building a SectorShape from the layout dict + merging cornerRadius (see below);
 //          `retrieve3` only feeds the DEFERRED label formatter.
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Sector` / `ZRText`;
-//       `graphic.updateProps` is the enter/update animation helper — DEFERRED (see PORT-NOTE in updateData).
+//       `graphic.updateProps` is the update animation helper. Chord entrance is intentionally NOT a
+//       per-sector sweep: upstream installs the final sector shape immediately and ChordView scales the
+//       whole group from its center.
 //   import SeriesData from '../../data/SeriesData';                -> `SeriesData`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';-> `getSectorCornerRadius` (chart/helper/sectorHelper.swift).
 //   import ChordSeriesModel, { ChordNodeItemOption } from './ChordSeries';
@@ -114,14 +116,10 @@ open class ChordPiece: Sector {
         }
 
         if firstCreate {
-            // Enter by sweeping each node arc open from its own start angle. `initProps` keeps the
-            // final shape installed for label/layout work while retaining a shape animator when
-            // animation is enabled; with animation disabled it simply applies the final end angle.
-            let finalEndAngle = shape.endAngle
-            var collapsedShape = shape
-            collapsedShape.endAngle = collapsedShape.startAngle
-            _ = el.setShape(collapsedShape)
-            initProps(el, ["shape": ["endAngle": finalEndAngle] as [String: Any]], seriesModel, idx)
+            // Upstream first-create semantics: install the final sector directly. The only chord
+            // entrance transition is ChordView's whole-group scale animation. Animating endAngle here
+            // adds a non-Web outline/sweep effect around every node arc.
+            _ = el.setShape(shape)
         }
         else {
             // graphic.updateProps(el, { shape: shape }, seriesModel, idx);

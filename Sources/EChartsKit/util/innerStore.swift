@@ -123,6 +123,16 @@ public enum innerStore {
         ///   READ by `TooltipView._tryShow`'s `findEventDispatcher` walk (TooltipView.ts:483): the flag
         ///   on the hovered element OR on ANY of its ancestors cancels the tooltip entirely.
         public var tooltipDisabled: Bool?
+        /// Upstream `ECElement.forceLabelAnimation` / `disableLabelAnimation`.
+        /// `forceLabelAnimation` wins when both are present.
+        public var forceLabelAnimation: Bool?
+        public var disableLabelAnimation: Bool?
+
+        /// Per-element stores used by LabelManager._animateLabels. Upstream keeps these in
+        /// `labelLayoutInnerStore(textEl)` / `labelLineAnimationStore(guideLine)` WeakMaps.
+        /// They live in the already-designated ECElement side store in Swift.
+        public var labelOldLayout: [String: Double]?
+        public var labelLineOldPoints: [[Double]]?
         public init() {}
     }
     public static let getECElementProps: (Element) -> ECElementProps = model.makeInner { ECElementProps() }

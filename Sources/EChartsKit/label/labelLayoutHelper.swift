@@ -87,7 +87,7 @@ public enum labelLayoutHelper {
         dim == 0 ? r.width : r.height
     }
     private static func labelXY(_ l: ZRText, _ dim: Int) -> Double {
-        (dim == 0 ? l.x : l.y) ?? 0
+        dim == 0 ? l.x : l.y
     }
     private static func setLabelXY(_ l: ZRText, _ dim: Int, _ v: Double) {
         if dim == 0 { l.x = v } else { l.y = v }

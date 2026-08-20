@@ -11,37 +11,25 @@
 //   - window.innerWidth / window.innerHeight — the source sizes the matrix and picks font sizes from
 //     the live window (`size = round(min(innerW, innerH) * 0.9)`, group/item/value font 24/13/15 vs
 //     16/11/12, matrix `left = (innerW - size)/2`). Kept VERBATIM in the web pane (it is real example
-//     behavior). The native option cannot read a window, so it pins the matrix to width/height 360 at
-//     left 180 / top 50 (fits the 720x460 pane) and takes the desktop (>700) font branch (group 24,
-//     item 13). getColor()'s lightness/group logic is deterministic, so every color the JS closures
+//     behavior). The native option cannot read a window, so it resolves the same expression against
+//     this demo's 720x460 canvas: size 414, left 153, top 50, and the <=700 font branch (group 16,
+//     item 11, value 12). getColor()'s lightness/group logic is deterministic, so every color the JS closures
 //     compute is precomputed in Swift and baked into the data — colors are NOT a deviation.
-//   - Function-valued keys omitted from the native option (each marked PORT-NOTE): tooltip.formatter
-//     (colored "<B> / <A> : NN%"), and detail-scatter series label.formatter (`round(value[2]*100)+'%'`).
-//     The scatter series exists only to render those percentage labels, so with the formatter gone the
-//     native pane shows no per-cell percentages. Kept verbatim in the web pane.
-//   - Click-to-toggle grouping is pure `myChart.on('click', ...)` interaction: kept verbatim in the web
-//     pane (both the detail and group series are built there); the native pane is not driven (per the
-//     harness's rule that pure-click examples need no `drive`), so it stays on the initial detail view.
-//   - NATIVE PANE: nativeSupported: false — but the original blocker (no matrix branch in HeatmapView) is
-//     GONE: HeatmapView._renderOnMatrix now lays out all 256 cells on the matrix coord, so the native pane
-//     draws the 16x16 grid. It still diverges from the reference on FOUR counts, hence stays off:
-//       (1) Cell COLOUR — each datum bakes an itemStyle.color (green/purple/blue/orange by group), but the
-//           cells render GREYSCALE: the continuous visualMap (dimension 2 → inRange.opacity only) leaves a
-//           default grey value ramp in the visual pipeline that overrides the baked colour. The visualMap
-//           should modulate only opacity here.
-//       (2) Two-level GROUP HEADERS (NF/NT/SJ/SP + the per-type IN/FJ… stacks on both axes) are not drawn.
-//       (3) Per-cell DECAL circle patterns are not drawn.
-//       (4) Per-cell PERCENTAGE labels come from the detail-`scatter` series' `label.formatter` — a JS
-//           closure (`round(value[2]*100)+'%'`), which is necessarily OMITTED from the static native option.
-//           These labels sit in every one of the 256 cells, so this one alone keeps the native pane from
-//           ever matching the reference, independent of (1)–(3).
-//     Because (4) is unreachable without a live formatter, the pane stays off even once (1)–(3) land.
+//   - Function-valued keys cross to Native as typed Swift callbacks. The tooltip uses plain text rather
+//     than HTML spans because the native tooltip renderer is rich-text/canvas based; its content is the
+//     same "<B> / <A> : NN%" value. Cell percentages are identical on both panes.
+//   - NATIVE PANE: enabled. Matrix heatmap/scatter placement, nested group headers, per-cell decal
+//     patterns, opacity visualMap, percentage formatter callbacks, and click-to-toggle grouping are
+//     all wired.
+import Foundation
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_matrix_mbti = EChartsDemo(
         name: "official-matrix-mbti", category: "matrix",
         summary: "MBTI 伴侣相容性 — MBTI Partner Compatibility",
         width: 720, height: 460,
-        nativeSupported: false,
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 // Click on the data to toggle grouping
@@ -621,6 +609,13 @@ myChart.on('click', () => {
   myChart.setOption(option, true);
 });
 """#,
+        drive: { chart in
+            var isGroup = false
+            chart.on("click") { _ in
+                isGroup.toggle()
+                chart.setOption(isGroup ? matrixMbtiGroupOption : matrixMbtiOption, notMerge: true)
+            }
+        },
         option: matrixMbtiOption)
 }
 
@@ -727,6 +722,25 @@ private func mbtiValue(_ a: String, _ b: String) -> Double {
     return 0
 }
 
+private func mbtiPercent(_ value: Any?) -> String {
+    guard let row = value as? [Any], row.count > 2 else { return "" }
+    let v: Double
+    if let d = row[2] as? Double { v = d }
+    else if let i = row[2] as? Int { v = Double(i) }
+    else if let n = row[2] as? NSNumber { v = n.doubleValue }
+    else { return "" }
+    return "\(Int(floor(v * 100 + 0.5)))%"
+}
+
+private let mbtiCellLabelFormatter: (CallbackDataParams) -> String = { params in
+    mbtiPercent(params.value)
+}
+
+private let mbtiTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let row = params.value as? [Any], row.count > 2 else { return "" }
+    return "\(row[1]) / \(row[0]) : \(mbtiPercent(row))"
+}
+
 /// 256 heatmap cells `{ value: [a, b, v], itemStyle: { decal, borderColor } }` — the detail series.
 private let mbtiHeatmapData: [[String: Any]] = {
     let decalSize = 1.0
@@ -774,8 +788,8 @@ private let mbtiScatterData: [[String: Any]] = {
 }()
 
 /// Two-level matrix axis data (four temperament groups, each with four types) — the source's
-/// `generateGroup(...)` output; identical for the x and y axes. Font sizes take the desktop (>700)
-/// branch (group 24 / item 13); see DEVIATIONS.
+/// `generateGroup(...)` output; identical for the x and y axes. Font sizes take the <=700-height
+/// branch (group 16 / item 11); see DEVIATIONS.
 private func mbtiGenerateGroup(_ groupName: String) -> [String: Any] {
     let colorMap = ["NF": "#2D9A69", "NT": "#7D568F", "SJ": "#3A8DAB", "SP": "#E0A433"]
     let groupMembers = [
@@ -788,12 +802,12 @@ private func mbtiGenerateGroup(_ groupName: String) -> [String: Any] {
     let children: [[String: Any]] = groupMembers[groupName]!.map { m in
         [
             "value": m,
-            "label": ["color": c, "fontSize": 13.0, "fontWeight": "bold"] as [String: Any]
+            "label": ["color": c, "fontSize": 11.0, "fontWeight": "bold"] as [String: Any]
         ]
     }
     return [
         "value": groupName,
-        "label": ["color": c, "fontSize": 24.0, "fontWeight": "bolder", "padding": 0.0] as [String: Any],
+        "label": ["color": c, "fontSize": 16.0, "fontWeight": "bolder", "padding": 0.0] as [String: Any],
         "children": children
     ]
 }
@@ -822,14 +836,79 @@ private let mbtiDetailSeries: [[String: Any]] = [
         "symbolSize": 0.0,
         "data": mbtiScatterData,
         "color": "#fff",
-        // PORT-NOTE: label.formatter omitted — JS closure `round(value[2]*100)+'%'` printed each cell's
-        // compatibility percentage; this scatter series exists only to draw those labels.
         "label": [
             "show": true,
+            "formatter": mbtiCellLabelFormatter,
             "fontWeight": "bold",
             "color": "inherit"
         ] as [String: Any],
         "silent": true
+    ]
+]
+
+/// The source groups the upper-triangle compatibility values by temperament pair and uses their
+/// median for the 4x4 summary shown after a click.
+private let mbtiGroupData: [[String: Any]] = {
+    var rawByPair: [String: [Double]] = [:]
+    for (a, b, value) in mbtiOriginalData {
+        let groupA = mbtiGroup(a)
+        let groupB = mbtiGroup(b)
+        let key = groupA > groupB ? "\(groupA)-\(groupB)" : "\(groupB)-\(groupA)"
+        rawByPair[key, default: []].append(value)
+    }
+
+    var result: [[String: Any]] = []
+    for key in rawByPair.keys.sorted() {
+        guard let values = rawByPair[key] else { continue }
+        let pair = key.split(separator: "-").map(String.init)
+        guard pair.count == 2 else { continue }
+        let a = pair[0]
+        let b = pair[1]
+        let value = mbtiMedian(values)
+        let decalSize = 3.0
+        let label: [String: Any] = [
+            "color": value < 0.2 ? mbtiGetColor(b) : "#fff",
+            "fontSize": 12.0,
+            "fontWeight": "bold",
+            "opacity": value < 0.15 ? 0.6 : 1.0,
+            "formatter": mbtiCellLabelFormatter
+        ]
+        let itemStyle: [String: Any] = [
+            "decal": [
+                "shape": "circle",
+                "symbolSize": 1.0,
+                "color": mbtiGetColor(a, 1),
+                "backgroundColor": mbtiGetColor(b, 1),
+                "dashArrayX": [[decalSize, decalSize], [0.0, decalSize, decalSize, 0.0]],
+                "dashArrayY": [decalSize, 0.0]
+            ] as [String: Any],
+            "borderColor": mbtiGetColor(b),
+            "borderWidth": 0.0
+        ]
+
+        result.append([
+            "value": [a, b, value] as [Any],
+            "label": label,
+            "itemStyle": itemStyle
+        ])
+        if a != b {
+            result.append([
+                "value": [b, a, value] as [Any],
+                "label": label,
+                "itemStyle": itemStyle
+            ])
+        }
+    }
+    return result
+}()
+
+private let mbtiGroupSeries: [[String: Any]] = [
+    [
+        "id": "summary-heatmap",
+        "type": "heatmap",
+        "coordinateSystem": "matrix",
+        "data": mbtiGroupData,
+        "label": ["show": true] as [String: Any]
     ]
 ]
 
@@ -845,9 +924,8 @@ private let matrixMbtiOption: [String: Any] = [
         "textStyle": ["fontSize": 20.0, "color": "#57576A"] as [String: Any],
         "itemGap": 5.0
     ] as [String: Any],
-    // PORT-NOTE: tooltip.formatter omitted — JS closure rendered "<B> / <A> : NN%" with each type
-    // colored by its group. The rest of the tooltip config is carried.
     "tooltip": [
+        "formatter": mbtiTooltipFormatter,
         "borderColor": "#eee",
         "padding": [2.0, 8.0]
     ] as [String: Any],
@@ -873,9 +951,9 @@ private let matrixMbtiOption: [String: Any] = [
             "label": ["fontFamily": mbtiFontFamily] as [String: Any]
         ] as [String: Any],
         // Fixed layout (the source derives these from window.innerWidth/innerHeight — see DEVIATIONS).
-        "width": 360.0,
-        "height": 360.0,
-        "left": 180.0,
+        "width": 414.0,
+        "height": 414.0,
+        "left": 153.0,
         "top": 50.0,
         "backgroundStyle": [
             "color": "transparent", "borderColor": "transparent", "borderWidth": 0.0
@@ -903,3 +981,29 @@ private let matrixMbtiOption: [String: Any] = [
     ] as [String: Any],
     "animation": false
 ]
+
+private let matrixMbtiGroupOption: [String: Any] = {
+    var option = matrixMbtiOption
+    option["series"] = mbtiGroupSeries
+    return option
+}()
+
+private func mbtiGroup(_ mbti: String) -> String {
+    if mbti.contains("NF") { return "NF" }
+    if mbti.contains("NT") { return "NT" }
+    if mbti.count >= 4 {
+        let chars = Array(mbti)
+        if chars[1] == "S" && chars[3] == "J" { return "SJ" }
+        if chars[1] == "S" && chars[3] == "P" { return "SP" }
+    }
+    return ""
+}
+
+private func mbtiMedian(_ values: [Double]) -> Double {
+    let sorted = values.sorted()
+    let middle = sorted.count / 2
+    if sorted.count.isMultiple(of: 2) {
+        return (sorted[middle - 1] + sorted[middle]) / 2
+    }
+    return sorted[middle]
+}

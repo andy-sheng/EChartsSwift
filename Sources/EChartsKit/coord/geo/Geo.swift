@@ -507,7 +507,8 @@ extension Geo: CoordinateSystem {
 
     // The `CoordinateSystem.pointToData` witness (upstream `pointToData(point, reserved?, out?)`).
     public func pointToData(_ point: [Double], _ opt: Any?) -> Any? {
-        return self.pointToData(point, opt as Any?)
+        let result: [Double]? = self.pointToData(point, opt)
+        return result
     }
 
     // Geo declares NO axes (upstream: `getAxes` is an optional member it does not implement). Both

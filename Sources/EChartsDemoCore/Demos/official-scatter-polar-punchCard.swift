@@ -137,9 +137,8 @@ option = {
                         guard let row = rawValue as? [Double], row.count > 2 else { return 0.0 }
                         return row[2] * 2
                     } as SymbolSizeCallback<CallbackDataParams>,
-                    "data": punchCardData
-                    // PORT-NOTE: animationDelay omitted — the JS closure staggered the entry
-                    // animation by `idx * 5` ms; the gallery renders one static frame anyway.
+                    "data": punchCardData,
+                    "animationDelay": ({ idx, _ in idx * 5 } as AnimationDelayCallback)
                 ] as [String: Any]
             ]
         ])

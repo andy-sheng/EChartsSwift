@@ -184,7 +184,7 @@ public final class Task<Ctx: TaskContext>: AnyTask {
     // PORT-NOTE: `_upstream`/`_downstream` form a strong reference cycle (upstream JS relies on GC;
     //   `dispose()` breaks the chain). Kept strong to preserve upstream lifetime semantics.
     //   Erased to `(any AnyTask)?` (upstream `Task<Ctx>`) to allow cross-context piping (see AnyTask).
-    public var _upstream: (any AnyTask)?
+    public weak var _upstream: (any AnyTask)?
     public var _downstream: (any AnyTask)?
     private var _dueEnd: Double = 0
     public private(set) var _outputDueEnd: Double = 0   // upstream: private
@@ -193,7 +193,8 @@ public final class Task<Ctx: TaskContext>: AnyTask {
     public private(set) var _disposed: Bool = false      // upstream: private
 
     // Injected in schedular
-    public var __pipeline: Pipeline?
+    // Scheduler owns pipelines and tasks; this inverse link must not form task <-> pipeline cycles.
+    public weak var __pipeline: Pipeline?
     public var __idxInPipeline: Double?
     public var __block: Bool? // FIXME: simplify it - merge with PerformStageTaskOpt['block']?
 
@@ -201,7 +202,7 @@ public final class Task<Ctx: TaskContext>: AnyTask {
     //   task object). `agentStubMap` lives on the overall task; `agent` on the stub. Kept on the base
     //   `Task` so they survive `context` replacement across resets (the overall task reuses its stubs).
     public var agentStubMap: HashMap<StubTask>?   // upstream: OverallTask['agentStubMap']
-    public var agent: OverallTask?                // upstream: StubTask['agent']
+    public weak var agent: OverallTask?           // upstream: StubTask['agent']
 
     // Context must be specified implicitly, to
     // avoid miss update context when model changed.

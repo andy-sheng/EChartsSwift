@@ -919,17 +919,13 @@ private func resetLabelForRegion(
         // there is not case that "only label layout enabled but user event disabled", so here
         // we depends `resetEventTriggerForRegion` to do the job of setting `el.dataIndex`.
 
-        // upstream: (el as ECElement).disableLabelAnimation = true;  (see the ECElement PORT-TODO above.)
-        if let ec = el as? ECElement {
-            ec.disableLabelAnimation = true
-        }
+        // upstream: (el as ECElement).disableLabelAnimation = true;
+        innerStore.getECElementProps(el).disableLabelAnimation = true
     }
     else {
         el.removeTextContent()
         el.removeTextConfig()
-        if let ec = el as? ECElement {
-            ec.disableLabelAnimation = nil
-        }
+        innerStore.getECElementProps(el).disableLabelAnimation = nil
     }
 }
 

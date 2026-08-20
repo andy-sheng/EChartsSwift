@@ -59,8 +59,24 @@ final class UniversalTransitionGlobalStore {
     var oldData: [SeriesData] = []
     init() {}
 }
-private let getUniversalTransitionGlobalStore: (ExtensionAPI) -> UniversalTransitionGlobalStore
-    = model.makeInner { UniversalTransitionGlobalStore() }
+private let universalTransitionGlobalStore = WeakMap<ExtensionAPI, UniversalTransitionGlobalStore>()
+private func getUniversalTransitionGlobalStore(_ api: ExtensionAPI) -> UniversalTransitionGlobalStore {
+    if let existing = universalTransitionGlobalStore.get(api) { return existing }
+    let created = UniversalTransitionGlobalStore()
+    universalTransitionGlobalStore.set(api, created)
+    return created
+}
+
+/// The store intentionally keeps the previous frame's data while a chart is alive. Remove it
+/// explicitly on dispose because Foundation's weak-key map releases values lazily.
+func clearUniversalTransitionStore(_ api: ExtensionAPI) {
+    if let store = universalTransitionGlobalStore.get(api) {
+        store.oldSeries = nil
+        store.oldDataGroupIds = []
+        store.oldData = []
+    }
+    _ = universalTransitionGlobalStore.delete(api)
+}
 
 // interface DiffItem { data, groupId, childGroupId, divide, dataIndex }
 private struct DiffItem {

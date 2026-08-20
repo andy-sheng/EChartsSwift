@@ -13,6 +13,7 @@ final class ZZMarkerTests: XCTestCase {
     override func setUp() {
         super.setUp()
         ComponentModel.registerClass(BarSeriesModel.self)
+        ComponentModel.registerClass(ScatterSeriesModel.self)
     }
 
     private func makeChart(_ markLine: [String: Any]) -> EChartsView {
@@ -151,6 +152,31 @@ final class ZZMarkerTests: XCTestCase {
         XCTAssertEqual(toCount, 1, "a markLine draws one 'to' end symbol (arrow)")
     }
 
+    func testMarkLineEntranceLabelFollowsGrowingEndpoint() {
+        let view = makeChart(["data": [["type": "average"] as [String: Any]]])
+        guard let series = view.ec.getModel()?.getSeriesByIndex(0),
+              let model = MarkerModel.getMarkerModelFromSeries(series, "markLine"),
+              let lineGroup = model.getData().getItemGraphicEl(0) as? ECLine,
+              let line = lineGroup.getLinePath(),
+              let animator = line.animators.first(where: { $0.targetName == "shape" }),
+              let clip = animator.getClip(),
+              let label = lineGroup.getTextContent() else {
+            return XCTFail("markLine must expose an animated line and attached label")
+        }
+
+        _ = clip.step(0, 0)
+        let startX = label.x
+        _ = clip.step(500, 500)
+        let middleX = label.x
+        _ = clip.step(1000, 500)
+        let endX = label.x
+
+        XCTAssertGreaterThan(middleX, startX,
+                             "markLine end label must move with the growing line head")
+        XCTAssertGreaterThan(endX, middleX,
+                             "markLine end label must reach the final endpoint at animation end")
+    }
+
     func testPairedStatisticMarkLineRenders() {
         let view = makeChart(["data": [[
             ["symbol": "none", "x": "90%", "yAxis": "max"] as [String: Any],
@@ -256,5 +282,46 @@ final class ZZMarkerTests: XCTestCase {
         let texts = labelTexts(view)
         XCTAssertTrue(texts.contains("12"),
                       "the max markPoint default label shows the value 12; got \(texts)")
+    }
+
+    func testMarkPointEntranceScalesPinButKeepsAttachedValueVisible() {
+        let view = makePointChart(["data": [["type": "max"] as [String: Any]]])
+        guard let symbolGroup = allElements(view).compactMap({ $0 as? Symbol }).first,
+              let pin = symbolGroup.childAt(0) as? Displayable else {
+            return XCTFail("markPoint must render a symbol path")
+        }
+
+        XCTAssertTrue(pin.animators.contains { animator in
+            animator.getTrack("scaleX") != nil && animator.getTrack("scaleY") != nil
+        }, "markPoint pin must have a scale entrance animator")
+        XCTAssertGreaterThan(pin.getTextContent()?.textStyle?.opacity ?? 0, 0,
+                             "upstream keeps the attached markPoint value visible while the pin scales in")
+    }
+
+    func testScatterMarkerEntranceUsesScatterHostAnimationModel() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "animation": true,
+            "grid": ["left": 50.0, "top": 20.0, "width": 380.0, "height": 240.0] as [String: Any],
+            "xAxis": ["type": "value", "min": 140.0, "max": 200.0] as [String: Any],
+            "yAxis": ["type": "value", "min": 40.0, "max": 120.0] as [String: Any],
+            "series": [[
+                "type": "scatter",
+                "data": [[160.0, 55.0], [172.0, 78.0], [184.0, 105.0]],
+                "markPoint": ["data": [["type": "max"] as [String: Any]]] as [String: Any],
+                "markLine": ["data": [["type": "average"] as [String: Any]]] as [String: Any]
+            ] as [String: Any]]
+        ])
+
+        guard let symbol = allElements(view).compactMap({ $0 as? Symbol }).first,
+              let pin = symbol.childAt(0) as? Displayable else {
+            return XCTFail("scatter markPoint must render a symbol path")
+        }
+        XCTAssertTrue(pin.animators.contains { animator in
+            animator.getTrack("scaleX") != nil && animator.getTrack("scaleY") != nil
+        }, "scatter markPoint must inherit the scatter series' entrance animation")
+        XCTAssertTrue(markLineBodies(view).contains { line in
+            line.animators.contains { $0.targetName == "shape" }
+        }, "scatter markLine must inherit the scatter series' entrance animation")
     }
 }

@@ -75,7 +75,7 @@ open class BoxplotView: ChartView {
         let clipArea: Any? = coordSys?.getArea()
         // const clipPath = needClip && createClipPath(coordSys, false, seriesModel);
         let clipPath: Path? = needClip
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
 
         // upstream (diff chain): incremental enter/update/remove so a same-count merge-mode value

@@ -219,7 +219,7 @@ open class GraphSeriesModel: SeriesModel {
         let subOpts = ["show"]
         if var opt = self.option as? [String: Any] {
             // opt[key] = opt[key] || {};
-            var optKey = (opt[key] as? [String: Any]) ?? [:]
+            let optKey = (opt[key] as? [String: Any]) ?? [:]
             // opt.emphasis = opt.emphasis || {};
             var emphasis = (opt["emphasis"] as? [String: Any]) ?? [:]
             // opt.emphasis[key] = opt.emphasis[key] || {};

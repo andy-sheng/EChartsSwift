@@ -22,6 +22,7 @@ final class StateMachineryTests: XCTestCase {
         r.ensureState("rotate").rotation = 2
         r.ensureState("enlarge").shape = ["x": -100.0, "y": -100.0, "width": 200.0, "height": 200.0]
         r.ensureState("changeFill").style = ["fill": "green"]   // raw string (html: 'green'); color tween
+        r.ensureState("changeNativeFill").style = ["fill": ZRColor.string("green")]
         r.ensureState("shadow").style = ["shadowBlur": 20.0]
 
         var transition = ElementAnimateConfig()
@@ -112,6 +113,43 @@ final class StateMachineryTests: XCTestCase {
         let restored = try XCTUnwrap(color.parse(fillString(r) ?? ""))
         let red = try XCTUnwrap(color.parse("red"))
         for i in 0..<3 { XCTAssertEqual(restored[i], red[i], accuracy: 1.0, "removing changeFill should restore red (channel \(i))") }
+    }
+
+    func test_native_zrcolor_state_uses_color_tween_instead_of_discrete_jump() throws {
+        let r = makeStatefulRect()
+        r.toggleState("changeNativeFill", true)
+
+        let animator = try XCTUnwrap(r.animators.first {
+            $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("fill") != nil
+        }, "a strongly-typed ZRColor state target must still create a fill tween")
+        let clip = try XCTUnwrap(animator.getClip())
+        _ = clip.step(0, 0)
+        _ = clip.step(500, 500)
+
+        let mid = try XCTUnwrap(color.parse(fillString(r) ?? ""))
+        let red = try XCTUnwrap(color.parse("red"))
+        let green = try XCTUnwrap(color.parse("green"))
+        XCTAssertNotEqual(mid[0], red[0], "mid-frame must have left the source color")
+        XCTAssertNotEqual(mid[0], green[0], "mid-frame must not jump directly to the target color")
+
+        _ = clip.step(1000, 500)
+        let end = try XCTUnwrap(color.parse(fillString(r) ?? ""))
+        for i in 0..<3 { XCTAssertEqual(end[i], green[i], accuracy: 1.0) }
+
+        r.toggleState("changeNativeFill", false)
+        let restoreAnimator = try XCTUnwrap(r.animators.first {
+            $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("fill") != nil
+        }, "leaving a strongly-typed color state must animate back to the normal fill")
+        let restoreClip = try XCTUnwrap(restoreAnimator.getClip())
+        _ = restoreClip.step(1000, 0)
+        _ = restoreClip.step(1500, 500)
+        let restoreMid = try XCTUnwrap(color.parse(fillString(r) ?? ""))
+        XCTAssertNotEqual(restoreMid[0], green[0], "restore mid-frame must have left the state color")
+        XCTAssertNotEqual(restoreMid[0], red[0], "restore mid-frame must not jump to normal")
+
+        _ = restoreClip.step(2000, 500)
+        let restored = try XCTUnwrap(color.parse(fillString(r) ?? ""))
+        for i in 0..<3 { XCTAssertEqual(restored[i], red[i], accuracy: 1.0) }
     }
 
     func test_additive_accumulation_then_clearStates() throws {

@@ -90,4 +90,46 @@ final class ZZLiveHoverTests: XCTestCase {
         }
         XCTAssertNil(weakView, "EChartsView must deallocate (no zr↔handler↔eventful↔self retain cycle)")
     }
+
+    func testDisposeTearsDownChartAndRenderer() {
+        let view = makeBarView()
+        let ec = view.ec
+
+        view.dispose()
+
+        XCTAssertTrue(ec.isDisposed())
+        XCTAssertTrue(view.zr.isDisposed)
+        XCTAssertNil(ec.getModel(), "dispose must release the per-demo GlobalModel")
+    }
+
+    func testDisposedChartObjectGraphDeallocates() {
+        weak var weakEC: ECharts?
+        weak var weakModel: GlobalModel?
+        weak var weakData: SeriesData?
+        weak var weakScheduler: Scheduler?
+        weak var weakSourceManager: SourceManager?
+
+        autoreleasepool {
+            let view = makeBarView()
+            weakEC = view.ec
+            weakModel = view.ec.getModel()
+            let series = view.ec.getModel()?.getSeriesByIndex(0)
+            weakData = series?.getData()
+            weakScheduler = view.ec.testScheduler
+            weakSourceManager = series?.getSourceManager()
+            view.dispose()
+        }
+        // NSMapTable-backed WeakMaps compact zeroed weak keys lazily on subsequent access. Opening
+        // the next gallery item performs that access; reproduce the real switch lifecycle here.
+        autoreleasepool {
+            let nextView = makeBarView()
+            nextView.dispose()
+        }
+
+        XCTAssertNil(weakEC, "Scheduler must not retain a disposed ECharts instance")
+        XCTAssertNil(weakModel, "models and coordinate systems must not retain a disposed GlobalModel")
+        XCTAssertNil(weakScheduler, "task pipelines must not retain the Scheduler")
+        XCTAssertNil(weakSourceManager, "the weak inner store must release a series SourceManager")
+        XCTAssertNil(weakData, "task/model back-references must not retain disposed series data")
+    }
 }

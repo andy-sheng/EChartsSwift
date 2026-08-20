@@ -9,6 +9,44 @@ import ZRenderKit
 final class CustomRenderTests: XCTestCase {
     override func setUp() { super.setUp(); ComponentModel.registerClass(CustomSeriesModel.self) }
 
+    func testRenderItemContextIsSharedWithinOneRenderAndResetOnUpdate() {
+        let ec = ECharts(width: 240, height: 160)
+        var seenContexts: [CustomSeriesRenderItemContext] = []
+        var seenCounters: [Int] = []
+        let renderItem: CustomSeriesRenderItem = { params, _ in
+            let next = (params.context["counter"] as? Int ?? 0) + 1
+            params.context["counter"] = next
+            seenContexts.append(params.context)
+            seenCounters.append(next)
+            return [
+                "type": "circle",
+                "shape": ["cx": 20.0 + params.dataIndexInside * 20.0,
+                          "cy": 40.0, "r": 5.0] as [String: Any]
+            ] as [String: Any]
+        }
+        let option: [String: Any] = [
+            "animation": false,
+            "series": [[
+                "type": "custom", "coordinateSystem": "none",
+                "renderItem": renderItem, "data": [1.0, 2.0, 3.0]
+            ] as [String: Any]]
+        ]
+
+        ec.setOption(option)
+        XCTAssertEqual(seenCounters, [1, 2, 3])
+        XCTAssertTrue(seenContexts.dropFirst().allSatisfy { $0 === seenContexts[0] })
+
+        let firstRenderContext = seenContexts.first
+        seenContexts.removeAll()
+        seenCounters.removeAll()
+        ec.setOption(option)
+        XCTAssertEqual(seenCounters, [1, 2, 3], "a new setOption starts a fresh context")
+        XCTAssertTrue(seenContexts.dropFirst().allSatisfy { $0 === seenContexts[0] })
+        if let firstRenderContext {
+            XCTAssertFalse(firstRenderContext === seenContexts[0])
+        }
+    }
+
     func testCustomRendersOneRectPerDatum() {
         let W = 400.0, H = 300.0
         let ec = ECharts(width: W, height: H)
@@ -273,6 +311,65 @@ final class CustomRenderTests: XCTestCase {
         XCTAssertGreaterThan(liveLabel, 10)
         XCTAssertLessThan(liveLabel, 30,
                           "custom `during.setStyle(text:)` must update ZRText.textStyle")
+    }
+
+    func testCustomClipPathDuringBuildsPointerFromEntranceTween() throws {
+        let view = EChartsView(width: 240, height: 240)
+        let ec = view.ec
+        let endAngle = Double.pi / 2
+        func pointer(_ angle: Double) -> [[Double]] {
+            [[120 + cos(angle) * 90, 120 - sin(angle) * 90],
+             [120 + cos(angle + 0.08) * 90, 120 - sin(angle + 0.08) * 90],
+             [120 + cos(angle) * 20, 120 - sin(angle) * 20]]
+        }
+        let renderItem: CustomSeriesRenderItem = { _, api in
+            let target = (api.value(0.0, nil) as? Double) ?? 0
+            let during: (TransitionDuringAPI) -> Void = { transitionAPI in
+                let raw = transitionAPI.getExtra("angle")
+                let angle = (raw as? Double) ?? (raw as? NSNumber)?.doubleValue ?? 0
+                _ = transitionAPI.setShape("points", pointer(angle))
+            }
+            return [
+                "type": "rect",
+                "shape": ["x": 10.0, "y": 10.0, "width": 220.0, "height": 220.0] as [String: Any],
+                "style": ["fill": "#fff"] as [String: Any],
+                "clipPath": [
+                    "type": "polygon",
+                    "shape": ["points": pointer(target)] as [String: Any],
+                    "extra": [
+                        "angle": target,
+                        "transition": ["angle"],
+                        "enterFrom": ["angle": 0.0] as [String: Any]
+                    ] as [String: Any],
+                    "during": during
+                ] as [String: Any]
+            ] as [String: Any]
+        }
+        view.setOption([
+            "animation": true,
+            "animationDuration": 1000.0,
+            "animationEasing": "linear",
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "custom", "renderItem": renderItem, "data": [endAngle]] as [String: Any]]
+        ])
+
+        let host = try XCTUnwrap(ec.getModel()?.getSeriesByIndex(0)?.getData().getItemGraphicEl(0) as? Rect)
+        let clipPath = try XCTUnwrap(host.getClipPath() as? ZRenderKit.Polygon)
+        let animator = try XCTUnwrap(clipPath.animators.first { $0.targetName == "extra" })
+        let clip = try XCTUnwrap(animator.getClip())
+        clip.resetForDeterministicSampling()
+        _ = clip.sampleForDeterministicRendering(at: 0)
+        var shape = try XCTUnwrap(clipPath.shape as? PolygonShape)
+        XCTAssertEqual(try XCTUnwrap(shape.points?.first).x, 210, accuracy: 1e-6,
+                       "pointer entrance must start at angle zero")
+
+        _ = clip.sampleForDeterministicRendering(at: 500)
+        shape = try XCTUnwrap(clipPath.shape as? PolygonShape)
+        let halfway = endAngle / 2
+        XCTAssertEqual(try XCTUnwrap(shape.points?.first).x, 120 + cos(halfway) * 90, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(shape.points?.first).y, 120 - sin(halfway) * 90, accuracy: 1e-6,
+                       "custom clip-path during callback must rebuild pointer geometry every frame")
     }
 
     // A custom element's attached rich text must preserve the style bag and paint above its opaque

@@ -184,7 +184,7 @@ open class ComponentModel: Model, ClassManageable {
     //   instantiable via the metatype in `Global._mergeOption` (`new ComponentModelClass(...)`).
     //   Every subclass inherits it (none declares its own designated initializer). CONVENTIONS §2:
     //   Swift metatypes can not call a non-`required` init, so this is the minimal enabling change.
-    public required override init(_ option: ModelOption?, _ parentModel: Model?, _ ecModel: GlobalModel?) {
+    public required init(_ option: ModelOption?, _ parentModel: Model?, _ ecModel: GlobalModel?) {
         self.uid = component.getUID("ec_cpt_model")
         super.init(option, parentModel, ecModel)
     }

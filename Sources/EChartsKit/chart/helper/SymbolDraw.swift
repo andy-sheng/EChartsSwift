@@ -161,6 +161,7 @@ public final class SymbolDraw {
 
         let group = self.group
         let seriesModel = data.hostModel as? SeriesModel
+        let animationModel = data.hostModel
         let oldData = self._data
         let symbolCtor = self._symbolCtor
         let disableAnimation = opt.disableAnimation
@@ -215,7 +216,7 @@ public final class SymbolDraw {
                         _ = symbolEl!.attr(target)
                     }
                     else {
-                        updateProps(symbolEl!, target, seriesModel)
+                        updateProps(symbolEl!, target, animationModel)
                     }
                 }
 

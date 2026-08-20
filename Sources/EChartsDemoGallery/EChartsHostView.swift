@@ -42,13 +42,18 @@ final class EChartsHostView: NSView {
     /// setTimeout). Owned here so they die with the view — the gallery builds a fresh host per demo,
     /// and a leaked timer would keep setOption-ing a disposed chart.
     private var driveTimers: [Timer] = []
+    private var isDisposed = false
+    /// Gallery policy, not an ECharts option: when false every later drive/setOption call is stamped
+    /// with animation:false as well. Timers still run, so the switch disables interpolation without
+    /// freezing race/dynamic data progression.
+    var animationsEnabled = true
 
     init(frame: CGRect, dpr: Double? = nil, painter injected: LayerHostedPainter? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: NSColor.white.cgColor)
         let proxy = NativeHandlerProxy()
         let ecView = EChartsView(width: Double(size.width), height: Double(size.height),
-                                 painter: painter, proxy: proxy)
+                                 painter: painter, proxy: proxy, useCoarsePointer: false)
 
         self.painter = painter
         self.proxy = proxy
@@ -66,16 +71,54 @@ final class EChartsHostView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     deinit {
-        self.driveTimers.forEach { $0.invalidate() }
-        self.animationLoop.stop()
-        self.echartsView.zr.dispose()
+        dispose()
+    }
+
+    /// Explicitly stop a demo before the gallery releases it. A drive callback usually captures the
+    /// chart, so deinit alone cannot break the host -> timer -> host retain cycle.
+    func dispose() {
+        guard !isDisposed else { return }
+        isDisposed = true
+        driveTimers.forEach { $0.invalidate() }
+        driveTimers.removeAll()
+        animationLoop.stop()
+        echartsView.dispose()
     }
 
     // Top-left / y-down, matching zrender + the flipped AppKit root layer.
     override var isFlipped: Bool { true }
 
     func setOption(_ option: [String: Any]) {
-        self.echartsView.setOption(option)
+        self.echartsView.setOption(optionRespectingAnimationPolicy(option))
+    }
+
+    private func optionRespectingAnimationPolicy(_ option: [String: Any]) -> [String: Any] {
+        guard !animationsEnabled else { return option }
+        return disablingAllAnimations(in: option)
+    }
+
+    private func disablingAllAnimations(in option: [String: Any]) -> [String: Any] {
+        var result = option
+        result["animation"] = false
+        // Series options may explicitly enable animation (gauge-clock), and treemap's merged default
+        // does so too. A force-off UI policy must win over both, including notMerge drive updates.
+        if var series = result["series"] as? [String: Any] {
+            series["animation"] = false
+            result["series"] = series
+        }
+        else if let series = result["series"] as? [[String: Any]] {
+            result["series"] = series.map { item in
+                var item = item; item["animation"] = false; return item
+            }
+        }
+        // Timeline/media wrappers resolve their own option trees rather than inheriting the outer bag.
+        if let base = result["baseOption"] as? [String: Any] {
+            result["baseOption"] = disablingAllAnimations(in: base)
+        }
+        if let snapshots = result["options"] as? [[String: Any]] {
+            result["options"] = snapshots.map(disablingAllAnimations)
+        }
+        return result
     }
 
     override func layout() {
@@ -152,21 +195,30 @@ final class EChartsHostView: NSView {
 extension EChartsHostView: EChartsDemoChart {
 
     func setOption(_ option: [String: Any], notMerge: Bool) {
-        echartsView.setOption(option, notMerge: notMerge)
+        echartsView.setOption(optionRespectingAnimationPolicy(option), notMerge: notMerge)
     }
 
     /// The example's `setInterval(fn, ms)`.
     func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
-        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { _ in
-            MainActor.assumeIsolated { body() }
+        guard !isDisposed else { return }
+        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, !self.isDisposed else { timer.invalidate(); return }
+                body()
+            }
         }
         driveTimers.append(t)
     }
 
     /// The example's `setTimeout(fn, ms)`.
     func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
-        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in
-            MainActor.assumeIsolated { body() }
+        guard !isDisposed else { return }
+        let t = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, !self.isDisposed else { return }
+                defer { self.driveTimers.removeAll { $0 === timer } }
+                body()
+            }
         }
         driveTimers.append(t)
     }

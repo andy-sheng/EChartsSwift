@@ -112,8 +112,8 @@ final class PictorialBarRenderTests: XCTestCase {
         // the grid horizontally and its scale is finite & non-zero.
         guard let grid = gridArea(ec) else { XCTFail("series should have a cartesian2d area"); return }
         for p in symbols {
-            let sx = p.scaleX ?? 0
-            let sy = p.scaleY ?? 0
+            let sx = p.scaleX
+            let sy = p.scaleY
             XCTAssertTrue(sx.isFinite && sy.isFinite, "finite symbol scale")
             XCTAssertGreaterThan(Swift.abs(sx), 0.0, "symbol has a non-zero horizontal scale")
             XCTAssertGreaterThan(Swift.abs(sy), 0.0, "symbol has a non-zero vertical scale")
@@ -124,7 +124,7 @@ final class PictorialBarRenderTests: XCTestCase {
         var bundleXs: [Double] = []
         _ = ec.getRoot().traverse { el in
             if let g = el as? PictorialBarElement, let bundle = g.__pictorialBundle {
-                bundleXs.append(bundle.x ?? Double.nan)
+                bundleXs.append(bundle.x)
             }
             return false
         }
@@ -139,6 +139,35 @@ final class PictorialBarRenderTests: XCTestCase {
         let image = renderToImage(group: ec.getRoot(), size: CGSize(width: width, height: height), dpr: 1.0)
         XCTAssertNotNil(image, "CALayerPainter should render the pictorialBar scene to a non-nil image")
         #endif
+    }
+
+    func testRawNumericPictorialDataKeepsEntranceAnimator() {
+        let ec = ECharts(width: 400, height: 300)
+        ec.setOption([
+            "animation": true,
+            "animationDuration": 1000,
+            "xAxis": ["type": "category", "data": ["A", "B"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "type": "pictorialBar",
+                "symbol": "path://M0,10 L10,10 L5,0 Z",
+                "data": [20.0, 50.0]
+            ] as [String: Any]]
+        ])
+
+        var symbols: [Displayable] = []
+        _ = ec.getRoot().traverse { el in
+            if let bar = el as? PictorialBarElement,
+               let mainPath = bar.__pictorialMainPath {
+                symbols.append(mainPath)
+            }
+            return false
+        }
+        XCTAssertEqual(symbols.count, 2)
+        XCTAssertTrue(
+            symbols.allSatisfy { $0.animators.contains(where: { $0.scope == "enter" }) },
+            "numeric item models must inherit the series animation just like object-valued items"
+        )
     }
 
     // ---- 2. symbolRepeat: many symbols stacked per bar (a taller bar → more symbols). ----

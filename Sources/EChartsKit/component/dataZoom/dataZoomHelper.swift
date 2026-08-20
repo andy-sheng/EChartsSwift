@@ -231,7 +231,7 @@ public func collectReferCoordSysModelInfo(_ dataZoomModel: DataZoomModel) -> Dat
     let ecModel = dataZoomModel.ecModel!
     var coordSysInfoWrap = DataZoomReferCoordSysInfoWrap(
         infoList: [],
-        infoMap: createHashMap<DataZoomReferCoordSysInfo>()
+        infoMap: createHashMap()
     )
 
     dataZoomModel.eachTargetAxis { axisDim, axisIndex in

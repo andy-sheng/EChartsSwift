@@ -212,6 +212,7 @@ final class DemoDetailViewController: UIViewController {
 
         // Native pane: a FRESH host per demo at the demo's logical size (ECharts lays out at
         // init size), scale-to-fit via FitBox. Recreating also clears the previous demo's scene.
+        hostView?.dispose()
         nativeFit?.removeFromSuperview()
         hostView = nil
         if demo.nativeSupported {
@@ -220,7 +221,9 @@ final class DemoDetailViewController: UIViewController {
             let host = EChartsHostView(
                 frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height),
                 dpr: Double(UIScreen.main.scale))
+            host.animationsEnabled = animSwitch.isOn
             host.setOption(opt)
+            demo.drive?(host)
             let fit = FitBox(content: host, logicalSize: CGSize(width: demo.width, height: demo.height))
             fit.translatesAutoresizingMaskIntoConstraints = false
             nativePane.addSubview(fit)

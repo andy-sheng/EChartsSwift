@@ -58,10 +58,11 @@ public final class Graph: LinkableStruct {
     public private(set) var edges: [GraphEdge] = []
 
     // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
-    public var data: SeriesData!
+    // The linked SeriesData objects own this Graph. These inverse links must not close ARC cycles.
+    public weak var data: SeriesData!
 
     // PORT-NOTE: upstream `edgeData: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
-    public var edgeData: SeriesData!
+    public weak var edgeData: SeriesData!
 
     /**
      * Whether directed graph.
@@ -374,7 +375,7 @@ public final class GraphNode {
 
     // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction (addNode/clone);
     //   implicitly-unwrapped so the proxy accessors can reach `hostGraph.data`.
-    public var hostGraph: Graph!
+    public unowned var hostGraph: Graph!
 
     public var dataIndex: Int = -1
 
@@ -548,16 +549,16 @@ public final class GraphEdge {
     /**
      * The first node. If directed graph, it represents the source node.
      */
-    public var node1: GraphNode
+    public unowned var node1: GraphNode
     /**
      * The second node. If directed graph, it represents the target node.
      */
-    public var node2: GraphNode
+    public unowned var node2: GraphNode
 
     public var dataIndex: Int = -1
 
     // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction; implicitly-unwrapped.
-    public var hostGraph: Graph!
+    public unowned var hostGraph: Graph!
 
     // constructor(n1: GraphNode, n2: GraphNode, dataIndex?: number)
     public init(_ n1: GraphNode, _ n2: GraphNode, _ dataIndex: Int? = nil) {

@@ -175,4 +175,18 @@ final class GroupUnitTests: XCTestCase {
         XCTAssertTrue(children[1] === g11)
         XCTAssertTrue(children[2] === g2)
     }
+
+    func test_Element_traverse_dispatches_recursively_for_group() throws {
+        let root: Element = Group(["name": "root"])
+        let branch = Group(["name": "branch"])
+        let leaf = Rect()
+        leaf.name = "leaf"
+        _ = (root as? Group)?.add(branch)
+        _ = branch.add(leaf)
+
+        var names: [String] = []
+        root.traverse { names.append($0.name) }
+
+        XCTAssertEqual(names, ["branch", "leaf"])
+    }
 }

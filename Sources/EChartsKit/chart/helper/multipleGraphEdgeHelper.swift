@@ -52,15 +52,12 @@ public enum multipleGraphEdgeHelper {
 
     private static let KEY_DELIMITER = "-->"
 
-    // Side table: seriesModel identity -> its curveness state.
-    private static var _stateTable: [ObjectIdentifier: CurvenessState] = [:]
+    // Side table: seriesModel identity -> its curveness state (weak-keyed like upstream).
+    private static let _state: (GraphSeriesModel) -> CurvenessState =
+        model.makeInner { CurvenessState() }
 
     private static func state(_ seriesModel: GraphSeriesModel) -> CurvenessState {
-        let key = ObjectIdentifier(seriesModel)
-        if let s = _stateTable[key] { return s }
-        let s = CurvenessState()
-        _stateTable[key] = s
-        return s
+        return _state(seriesModel)
     }
 
     // const getAutoCurvenessParams = function (seriesModel) {

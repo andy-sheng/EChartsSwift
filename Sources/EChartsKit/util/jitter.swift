@@ -59,14 +59,15 @@ struct JitterData {
 }
 
 // upstream: const inner = makeInner<{ items: JitterData[] }, Axis2D | SingleAxis>();
-//   Per-axis accumulator for the avoid-overlaps path (jitterOverlap === false). Keyed by the axis
-//   instance identity; a full render rebuilds the coord system (fresh axis), so this resets per render.
-private var jitterInnerStore: [ObjectIdentifier: [JitterData]] = [:]
+private final class JitterInner {
+    var items: [JitterData] = []
+}
+private let jitterInner: (Axis) -> JitterInner = model.makeInner { JitterInner() }
 
 /// Reset the avoid-overlaps accumulator for an axis (called once before a series' jitter pass so the
 ///   overlap set does not leak across re-renders that reuse the same axis instance).
 public func resetJitterStore(_ axis: Axis) {
-    jitterInnerStore[ObjectIdentifier(axis)] = []
+    jitterInner(axis).items = []
 }
 
 /**
@@ -133,8 +134,8 @@ private func fixJitterAvoidOverlaps(
     _ jitter: Double,
     _ margin: Double
 ) -> Double {
-    let key = ObjectIdentifier(fixedAxis)
-    var items = jitterInnerStore[key] ?? []
+    let inner = jitterInner(fixedAxis)
+    var items = inner.items
 
     // Try both positive and negative directions, choose the one with smaller movement.
     let overlapA = placeJitterOnDirection(items, fixedCoord, floatCoord, radius, jitter, margin, 1)
@@ -154,7 +155,7 @@ private func fixJitterAvoidOverlaps(
 
     // Add new point to array.
     items.append(JitterData(fixedCoord: fixedCoord, floatCoord: minFloat, r: radius))
-    jitterInnerStore[key] = items
+    inner.items = items
 
     return minFloat
 }

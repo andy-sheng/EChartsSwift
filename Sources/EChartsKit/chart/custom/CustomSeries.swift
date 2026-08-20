@@ -255,11 +255,29 @@ public protocol CustomSeriesRenderItemAPI: CustomSeriesRenderItemCoordinateSyste
 // export type WrapEncodeDefRet = Dictionary<number[]>;
 public typealias WrapEncodeDefRet = [String: [Double]]
 
+// `params.context` is one mutable object shared by every `renderItem` invocation in a render round.
+// A reference type is required here: a Swift Dictionary is copy-on-write, so carrying it directly on
+// the value-typed params bag silently gave each datum an isolated context.
+public final class CustomSeriesRenderItemContext {
+    private var storage: [String: Any]
+
+    public init(_ storage: [String: Any] = [:]) {
+        self.storage = storage
+    }
+
+    public subscript(_ key: String) -> Any? {
+        get { storage[key] }
+        set { storage[key] = newValue }
+    }
+
+    public var dictionary: [String: Any] { storage }
+}
+
 // export interface CustomSeriesRenderItemParams { ... }
-//   Data bag passed to the user's `renderItem`. No identity -> struct.
+//   The params bag itself has value semantics; its `context` deliberately has identity semantics.
 public struct CustomSeriesRenderItemParams {
     // context: Dictionary<unknown>;
-    public var context: [String: Any]
+    public var context: CustomSeriesRenderItemContext
     public var dataIndex: Double
     public var seriesId: String
     public var seriesName: String
@@ -275,7 +293,7 @@ public struct CustomSeriesRenderItemParams {
     public var actionType: String?
 
     public init(
-        context: [String: Any] = [:],
+        context: CustomSeriesRenderItemContext = CustomSeriesRenderItemContext(),
         dataIndex: Double = 0,
         seriesId: String = "",
         seriesName: String = "",

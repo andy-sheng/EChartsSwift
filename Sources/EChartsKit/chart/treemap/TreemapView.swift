@@ -804,24 +804,9 @@ open class TreemapView: ChartView {
                     bg.removeTextContent()
                 }
 
-                // bg.setStyle(normalStyle);
-                // PORT ADDITION (entrance animation): heatmap-style opacity fade-in. Construct the tile
-                //   at opacity 0, then `initProps({style:{opacity:final}})` — animates toward the final
-                //   opacity when the series has animation on, or (via Path.attrKV's partial-"style" merge)
-                //   lands it instantly when off. Upstream treemap's own rect enter transition (position/size
-                //   morph via util/animation) is DEFERRED; this mirrors the shipped Funnel/heatmap fade.
-                var bgStyle = barStyleFromDict(normalStyle)
-                if reuse {
-                    // MORPH: the tile is already on-screen at full opacity — set the (possibly recoloured)
-                    //   style directly; do NOT re-run the 0→final entrance fade (it would re-collapse it).
-                    bg.useStyle(bgStyle)
-                }
-                else {
-                    let bgFinalOpacity = bgStyle.opacity ?? 1
-                    bgStyle.opacity = 0
-                    bg.useStyle(bgStyle)
-                    initProps(bg, ["style": ["opacity": bgFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
-                }
+                // bg.setStyle(normalStyle); — upstream does not fade a newly-created tile. Treemap's
+                // own transition machinery handles drill/roll/update geometry separately.
+                bg.useStyle(barStyleFromDict(normalStyle))
                 // Phase 49 (hover-emphasis): upstream stamps the emphasis/blur/select itemStyle states +
                 //   setDefaultStateProxy on the bg rect (TreemapView.ts:910-914). Ported faithfully via the
                 //   treemap `getStateItemStyle` mapping (with the background's `fill = borderColor` override
@@ -882,19 +867,8 @@ open class TreemapView: ChartView {
 
                 prepareText(content, visualColor as? String, nodeStyle["opacity"] as? Double, nil)
 
-                // content.setStyle(normalStyle);
-                // PORT ADDITION (entrance animation): heatmap-style opacity fade-in (see renderBackground).
-                var contentStyle = barStyleFromDict(normalStyle)
-                if reuse {
-                    // MORPH: keep the on-screen opacity; do not re-run the entrance fade.
-                    content.useStyle(contentStyle)
-                }
-                else {
-                    let contentFinalOpacity = contentStyle.opacity ?? 1
-                    contentStyle.opacity = 0
-                    content.useStyle(contentStyle)
-                    initProps(content, ["style": ["opacity": contentFinalOpacity] as [String: Any]], seriesModel, thisNode.dataIndex)
-                }
+                // content.setStyle(normalStyle); — no ad-hoc opacity entrance in upstream.
+                content.useStyle(barStyleFromDict(normalStyle))
                 // Phase 49 (hover-emphasis): emphasis/blur/select itemStyle states + setDefaultStateProxy on
                 //   the content rect (TreemapView.ts:961-962). Ported faithfully via `getStateItemStyle`.
                 // content.ensureState('emphasis').style = emphasisStyle; (blur/select likewise)
@@ -925,7 +899,6 @@ open class TreemapView: ChartView {
             _ visualOpacity: Double?,
             _ upperLabelRect: RectLike?
         ) {
-            let isNewText = rectEl.getTextContent() == nil
             // const normalLabelModel = nodeModel.getModel(upperLabelRect ? 'upperLabel' : 'label');
             let normalLabelModel = nodeModel.getModel(upperLabelRect != nil ? PATH_UPPERLABEL_NORMAL : PATH_LABEL_NOAMAL)
 
@@ -1005,21 +978,6 @@ open class TreemapView: ChartView {
             textEl.useStyle(textStyle)
             textEl.name = "treemapLabel"
 
-            // The reference renderer gives a newly attached treemap label its own enter/style fade.
-            // This is separate from the tile animation, so use animateFrom directly; the surrounding
-            // isAnimationEnabled gate still respects both animation:false and the animation threshold.
-            if isNewText && seriesModel.isAnimationEnabled() == true {
-                let duration = treemapDouble(seriesModel.get("animationDuration")) ?? 0
-                if duration > 0 {
-                    var cfg = ElementAnimateConfig()
-                    cfg.duration = duration
-                    let easing = (seriesModel.get("animationEasing") as? String)
-                        ?? "cubicInOut"
-                    cfg.easing = .named(easing)
-                    cfg.scope = "enter"
-                    textEl.animateFrom(["style": ["opacity": 0.0] as [String: Any]], cfg)
-                }
-            }
         }
     }
 }
@@ -1033,13 +991,6 @@ open class TreemapView: ChartView {
 // [0, 1] to avoid that treemap with large z overlaps other components.
 private func calculateZ2(_ depth: Double, _ z2InLevel: Double) -> Double {
     return depth * Z2_BASE + z2InLevel
-}
-
-private func treemapDouble(_ value: Any?) -> Double? {
-    if let value = value as? Double { return value }
-    if let value = value as? Int { return Double(value) }
-    if let value = value as? NSNumber { return value.doubleValue }
-    return nil
 }
 
 // Helpers (not upstream symbols): build the `{x,y,width,height,r}` RectShape / RectLike bags.

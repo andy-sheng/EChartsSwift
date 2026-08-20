@@ -275,6 +275,7 @@ open class GraphView: ChartView {
             //   at index `i` is REUSED and its shape MORPHED (updateProps) rather than rebuilt.
             let needCurve = (cp != nil)
             let edge: Path
+            var isNewEdge = false
             if let existing = self._edgeEls[i], (existing is BezierCurve) == needCurve {
                 edge = existing
                 if let cp = cp {
@@ -285,6 +286,7 @@ open class GraphView: ChartView {
                 }
             }
             else {
+                isNewEdge = true
                 if let old = self._edgeEls[i] { _ = self._edgeGroup.remove(old) }
                 let fresh: Path
                 if let cp = cp {
@@ -316,6 +318,20 @@ open class GraphView: ChartView {
                 edge = fresh
             }
 
+            // Upstream LineDraw creates a new ECLine with `shape.percent = 0` and lets initProps draw
+            // it to 1. Without this, graph nodes scale in while every edge is already fully visible in
+            // the first frame. Both LineShape and BezierCurveShape expose percent to the animator.
+            if isNewEdge {
+                if var shape = edge.shape as? LineShape {
+                    shape.percent = 0
+                    _ = edge.setShape(shape)
+                }
+                else if var shape = edge.shape as? BezierCurveShape {
+                    shape.percent = 0
+                    _ = edge.setShape(shape)
+                }
+            }
+
             edge.name = "edge"
             edge.useStyle(edgeStyle)
             // upstream Line._updateCommonStl: `line.useStyle(lineStyle); line.style.fill = null;
@@ -343,7 +359,10 @@ open class GraphView: ChartView {
             }
             let endSymbols = graphMakeEdgeEndSymbols(edgeData, i, edge.pathStyle.stroke, edge.pathStyle.opacity)
             for endSymbol in endSymbols {
-                graphPlaceEdgeEndSymbol(endSymbol, edge: edge, p1: p1, p2: p2, cp: cp)
+                graphPlaceEdgeEndSymbol(
+                    endSymbol, edge: edge, p1: p1, p2: p2, cp: cp,
+                    percent: isNewEdge ? 0 : 1
+                )
                 _ = self._edgeGroup.add(endSymbol.path)
             }
             self._edgeEndSymbolEls[i] = endSymbols
@@ -363,12 +382,42 @@ open class GraphView: ChartView {
             if let built = graphAddEdgeLabel(
                 group: group, edgeData: edgeData, idx: i,
                 edgeItemModel: edgeItemModel, seriesModel: seriesModel,
-                p1: p1, p2: p2, cp: cp, edgeStroke: edgeStyle.stroke
+                p1: p1, p2: p2, cp: cp, edgeStroke: edgeStyle.stroke,
+                percent: isNewEdge ? 0 : 1
             ) {
                 self._edgeLabelEls[i] = built.label
                 // Cache the resolved `distance` Y offset so the force iteration can RE-PLACE the label
                 //   along the moved edge without re-resolving its label models (see `_updateEdgeLayout`).
                 self._edgeLabelDistanceY[i] = built.distanceY
+            }
+            if isNewEdge {
+                // ECLine derives endpoint symbols and labels from the line's animated percent: the
+                // arrow travels with the growing line and scales from zero, while the label sits
+                // halfway along the revealed segment. Keep this bare-path port on that same clock.
+                initProps(
+                    edge,
+                    ["shape": ["percent": 1.0] as [String: Any]],
+                    seriesModel,
+                    i,
+                    nil,
+                    { [weak self, weak edge] _ in
+                        guard let self, let edge else { return }
+                        let percent = graphEdgePercent(edge)
+                        for endSymbol in self._edgeEndSymbolEls[i] ?? [] {
+                            graphPlaceEdgeEndSymbol(
+                                endSymbol, edge: edge, p1: p1, p2: p2, cp: cp,
+                                percent: percent
+                            )
+                        }
+                        if let label = self._edgeLabelEls[i] {
+                            graphPlaceEdgeLabel(
+                                label, p1: p1, p2: p2, cp: cp,
+                                distanceY: self._edgeLabelDistanceY[i] ?? 5,
+                                percent: percent
+                            )
+                        }
+                    }
+                )
             }
             seenEdgeIdx.insert(i)
         }
@@ -816,29 +865,58 @@ private func graphPlaceEdgeEndSymbol(
     edge: Path,
     p1: GraphPoint,
     p2: GraphPoint,
-    cp: GraphPoint?
+    cp: GraphPoint?,
+    percent: Double = 1
 ) {
-    let endpoint = endSymbol.isFrom ? p1 : p2
-    var tangent: GraphPoint
-    if let cp {
-        // Quadratic Bezier endpoint derivatives: 2 * (cp - p1), 2 * (p2 - cp).
-        tangent = endSymbol.isFrom
-            ? GraphPoint(x: cp.x - p1.x, y: cp.y - p1.y)
-            : GraphPoint(x: p2.x - cp.x, y: p2.y - cp.y)
-        if abs(tangent.x) + abs(tangent.y) < 1e-12 {
-            tangent = GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
-        }
-    } else {
-        tangent = GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
-    }
+    let t = Swift.max(0, Swift.min(percent, 1))
+    let endpoint = endSymbol.isFrom ? p1 : graphEdgePoint(p1, p2, cp, t)
+    let tangent = graphEdgeTangent(p1, p2, cp, endSymbol.isFrom ? 0 : t)
 
     endSymbol.path.setPosition([endpoint.x, endpoint.y])
     endSymbol.path.rotation = endSymbol.specifiedRotation
         ?? ((endSymbol.isFrom ? Double.pi / 2 : -Double.pi / 2) - atan2(tangent.y, tangent.x))
-    endSymbol.path.scaleX = 1
-    endSymbol.path.scaleY = 1
+    endSymbol.path.scaleX = t
+    endSymbol.path.scaleY = t
     endSymbol.path.z2 = edge.z2 + 1
     endSymbol.path.markRedraw()
+}
+
+private func graphEdgePercent(_ edge: Path) -> Double {
+    if let shape = edge.shape as? LineShape { return shape.percent }
+    if let shape = edge.shape as? BezierCurveShape { return shape.percent }
+    return 1
+}
+
+private func graphEdgePoint(
+    _ p1: GraphPoint, _ p2: GraphPoint, _ cp: GraphPoint?, _ t: Double
+) -> GraphPoint {
+    guard let cp else {
+        return GraphPoint(x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t)
+    }
+    let oneMinusT = 1 - t
+    return GraphPoint(
+        x: oneMinusT * oneMinusT * p1.x + 2 * oneMinusT * t * cp.x + t * t * p2.x,
+        y: oneMinusT * oneMinusT * p1.y + 2 * oneMinusT * t * cp.y + t * t * p2.y
+    )
+}
+
+private func graphEdgeTangent(
+    _ p1: GraphPoint, _ p2: GraphPoint, _ cp: GraphPoint?, _ t: Double
+) -> GraphPoint {
+    var tangent: GraphPoint
+    if let cp {
+        tangent = GraphPoint(
+            x: 2 * ((1 - t) * (cp.x - p1.x) + t * (p2.x - cp.x)),
+            y: 2 * ((1 - t) * (cp.y - p1.y) + t * (p2.y - cp.y))
+        )
+    }
+    else {
+        tangent = GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
+    }
+    if abs(tangent.x) + abs(tangent.y) < 1e-12 {
+        return GraphPoint(x: p2.x - p1.x, y: p2.y - p1.y)
+    }
+    return tangent
 }
 
 // `zrUtil.defaults({ strokeNoScale: true, fill: null }, lineStyle)` → a PathStyleProps built from the
@@ -890,7 +968,8 @@ private func graphAddEdgeLabel(
     p1: GraphPoint,
     p2: GraphPoint,
     cp: GraphPoint?,
-    edgeStroke: ZRenderKit.ZRColor?
+    edgeStroke: ZRenderKit.ZRColor?,
+    percent: Double = 1
 ) -> (label: ZRText, distanceY: Double)? {
     // upstream Line.ts:252 — `labelStatesModels = getLabelStatesModels(itemModel)`. The default
     //   labelName "label" is correct: the parent resolves through the live 'label' → 'edgeLabel'
@@ -943,7 +1022,10 @@ private func graphAddEdgeLabel(
     if label.textStyle.verticalAlign == nil { label.textStyle.verticalAlign = .bottom }
 
     // beforeUpdate placement (factored out — the force-layout iteration re-runs it every frame).
-    graphPlaceEdgeLabel(label, p1: p1, p2: p2, cp: cp, distanceY: distanceY)
+    graphPlaceEdgeLabel(
+        label, p1: p1, p2: p2, cp: cp, distanceY: distanceY,
+        percent: percent
+    )
 
     _ = group.add(label)
     return (label, distanceY)
@@ -957,25 +1039,20 @@ private func graphPlaceEdgeLabel(
     p1: GraphPoint,
     p2: GraphPoint,
     cp: GraphPoint?,
-    distanceY: Double
+    distanceY: Double,
+    percent: Double = 1
 ) {
-    let mid: GraphPoint
-    if let cp = cp {
-        // quadraticAt(t=0.5): 0.25·p1 + 0.5·cp + 0.25·p2
-        mid = GraphPoint(x: 0.25 * p1.x + 0.5 * cp.x + 0.25 * p2.x,
-                         y: 0.25 * p1.y + 0.5 * cp.y + 0.25 * p2.y)
-    }
-    else {
-        mid = GraphPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
-    }
-    // tangent at the midpoint == normalize(p2 - p1) for both a line and a quadratic curve.
-    let dx = p2.x - p1.x
-    let dy0 = p2.y - p1.y
+    let t = Swift.max(0, Swift.min(percent, 1)) / 2
+    let mid = graphEdgePoint(p1, p2, cp, t)
+    let tangent = graphEdgeTangent(p1, p2, cp, t)
+    let dx = tangent.x
+    let dy0 = tangent.y
 
     // rotation = -atan2(tangent.y, tangent.x); flip by π when the edge points right→left so the text
     //   never renders upside down (upstream `if (toPos[0] < fromPos[0]) rotation = Math.PI + rotation`).
     var rotation = -atan2(dy0, dx)
-    if p2.x < p1.x { rotation = Double.pi + rotation }
+    let toPos = graphEdgePoint(p1, p2, cp, Swift.max(0, Swift.min(percent, 1)))
+    if toPos.x < p1.x { rotation = Double.pi + rotation }
 
     // 'middle': dy = -distanceY, verticalAlign 'bottom', align 'center'; origin at (0, -dy).
     let dy = -distanceY

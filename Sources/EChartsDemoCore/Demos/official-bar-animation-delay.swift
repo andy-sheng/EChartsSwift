@@ -15,6 +15,7 @@
 //     Swift option omits them (see PORT-NOTEs). Everything else — including `animationEasing` — matches.
 //     The 100-point series data is precomputed in `barAnimationDelay*` below with the same formulas.
 import Foundation
+import EChartsKit
 
 extension EChartsDemoRegistry {
     static let official_bar_animation_delay = EChartsDemo(
@@ -116,22 +117,19 @@ option = {
                     "name": "bar",
                     "type": "bar",
                     "data": barAnimationDelayData1,
-                    "emphasis": ["focus": "series"] as [String: Any]
-                    // PORT-NOTE: series[0].animationDelay omitted — JS closure `idx => idx * 10`,
-                    // staggering each bar's entry animation by 10ms per data index.
+                    "emphasis": ["focus": "series"] as [String: Any],
+                    "animationDelay": ({ idx, _ in idx * 10 } as AnimationDelayCallback)
                 ] as [String: Any],
                 [
                     "name": "bar2",
                     "type": "bar",
                     "data": barAnimationDelayData2,
-                    "emphasis": ["focus": "series"] as [String: Any]
-                    // PORT-NOTE: series[1].animationDelay omitted — JS closure `idx => idx * 10 + 100`,
-                    // the same 10ms/index stagger offset 100ms behind the first series.
+                    "emphasis": ["focus": "series"] as [String: Any],
+                    "animationDelay": ({ idx, _ in idx * 10 + 100 } as AnimationDelayCallback)
                 ] as [String: Any]
             ],
-            "animationEasing": "elasticOut"
-            // PORT-NOTE: animationDelayUpdate omitted — JS closure `idx => idx * 5`, staggering the
-            // re-layout animation (e.g. after the toolbox `magicType: ['stack']` switch) by 5ms per index.
+            "animationEasing": "elasticOut",
+            "animationDelayUpdate": ({ idx, _ in idx * 5 } as AnimationDelayCallback)
         ])
 }
 

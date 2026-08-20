@@ -280,6 +280,10 @@ final class ZZTopologyFocusTests: XCTestCase {
         let unrelatedRibbon = edgeData.getItemGraphicEl(1) as? Path
         let normalNodeOpacity = unrelatedNode?.pathStyle?.opacity ?? 1
         let normalRibbonOpacity = unrelatedRibbon?.pathStyle?.opacity ?? 1
+        XCTAssertEqual(unrelatedNode?.stateTransition?.duration ?? -1, 300, accuracy: 1e-9,
+                       "chord data elements inherit the global stateAnimation duration")
+        XCTAssertEqual(unrelatedRibbon?.stateTransition?.duration ?? -1, 300, accuracy: 1e-9,
+                       "chord ribbons inherit the global stateAnimation duration")
 
         // Hover node a (mid-angle / mid-radius, local → global).
         let midAngle = (shape.startAngle + shape.endAngle) / 2
@@ -294,15 +298,43 @@ final class ZZTopologyFocusTests: XCTestCase {
                       "live hover must blur the unrelated node c (was the reported no-op)")
         XCTAssertTrue(isBlurred(edgeData.getItemGraphicEl(1)), "unrelated ribbon c-d must blur")
         XCTAssertFalse(isBlurred(edgeData.getItemGraphicEl(0)), "adjacent ribbon a-b must stay bright")
+        XCTAssertTrue(unrelatedNode?.animators.contains(where: {
+            $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("opacity") != nil
+        }) == true, "hover blur must interpolate node opacity through a state-transition animator")
+        XCTAssertTrue(unrelatedRibbon?.animators.contains(where: {
+            $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("opacity") != nil
+        }) == true, "hover blur must interpolate ribbon opacity through a state-transition animator")
+
+        // State transitions deliberately leave the live style at its normal value until the first
+        // animation frame (matching zrender). Prime and sample the two opacity clips halfway through
+        // the global 300 ms cubicOut transition instead of expecting the old instantaneous jump.
+        for element in [unrelatedNode, unrelatedRibbon] {
+            guard let clip = element?.animators.first(where: {
+                $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("opacity") != nil
+            })?.getClip() else {
+                XCTFail("hover blur is missing its opacity clip"); return
+            }
+            _ = clip.step(0, 0)
+            _ = clip.step(150, 150)
+        }
         XCTAssertLessThan(unrelatedNode?.pathStyle?.opacity ?? 1, normalNodeOpacity,
-                          "the blur must RENDER on the unrelated node (opacity drop)")
+                          "the blur must visibly interpolate the unrelated node opacity")
         XCTAssertLessThan(unrelatedRibbon?.pathStyle?.opacity ?? 1, normalRibbonOpacity,
-                          "the blur must RENDER on the unrelated ribbon (opacity drop)")
+                          "the blur must visibly interpolate the unrelated ribbon opacity")
 
         // Mouse-out → everything restores.
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
         XCTAssertFalse(isBlurred(data.getItemGraphicEl(c)), "mouseout must clear the node blur")
         XCTAssertFalse(isBlurred(edgeData.getItemGraphicEl(1)), "mouseout must clear the ribbon blur")
+        for element in [unrelatedNode, unrelatedRibbon] {
+            guard let clip = element?.animators.first(where: {
+                $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("opacity") != nil
+            })?.getClip() else {
+                XCTFail("mouseout restore is missing its opacity clip"); return
+            }
+            _ = clip.step(0, 0)
+            _ = clip.step(300, 300)
+        }
         XCTAssertEqual(unrelatedNode?.pathStyle?.opacity ?? -1, normalNodeOpacity, accuracy: 1e-6,
                        "node opacity restored after mouseout")
         XCTAssertEqual(unrelatedRibbon?.pathStyle?.opacity ?? -1, normalRibbonOpacity, accuracy: 1e-6,

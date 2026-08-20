@@ -9,6 +9,14 @@ import XCTest
 // that only calls `enterEmphasisWhenMouseOver` highlights the hovered element but never blurs the rest
 // (reported: chord focus-adjacency and sunburst focus-ancestor had no visible effect).
 final class GlobalHighDownBlurTests: XCTestCase {
+    private func finishStateTransition(_ el: Element) {
+        for animator in el.animators where animator.__fromStateTransition != nil {
+            guard let clip = animator.getClip() else { continue }
+            _ = clip.step(0, 0)
+            if clip.step(300, 300) { clip.ondestroy() }
+        }
+    }
+
     private func opacity(_ el: Element?) -> Double? {
         return (el as? Path)?.pathStyle?.opacity
     }
@@ -39,12 +47,14 @@ final class GlobalHighDownBlurTests: XCTestCase {
         XCTAssertTrue(s0.currentStates.contains("emphasis"), "hovered sector enters emphasis")
         XCTAssertTrue(s1.currentStates.contains("blur"),
                       "focus:'self' must blur the non-hovered sibling (states=\(s1.currentStates))")
+        finishStateTransition(s1)
         XCTAssertEqual(opacity(s1) ?? 1, 0.1, accuracy: 1e-6,
                        "blurred sibling must RENDER faded, got opacity=\(String(describing: opacity(s1)))")
 
         // Move off the pie entirely → allLeaveBlur must restore the sibling.
         v._injectPointerForTest(type: "mousemove", zrX: 2, zrY: 2)
         XCTAssertFalse(s1.currentStates.contains("blur"), "mouseout must leave blur")
+        finishStateTransition(s1)
         XCTAssertEqual(opacity(s1) ?? 1, 1, accuracy: 1e-6, "opacity restored after mouseout")
     }
 

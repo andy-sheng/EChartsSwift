@@ -78,7 +78,8 @@ public final class TreeNode {
 
     public var isExpand: Bool = false
 
-    public let hostTree: Tree
+    // The tree owns all of its nodes. This inverse edge is non-owning to avoid tree -> node -> tree.
+    public unowned let hostTree: Tree
 
     public init(_ name: String, _ hostTree: Tree) {
         // this.name = name || '';
@@ -399,7 +400,8 @@ public final class Tree: LinkableStruct {
     public var root: TreeNode!
 
     // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
-    public var data: SeriesData!
+    // SeriesData owns the linked Tree; this is the inverse link.
+    public weak var data: SeriesData!
 
     public var hostModel: Model
 

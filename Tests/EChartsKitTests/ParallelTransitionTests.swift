@@ -1,11 +1,20 @@
-// Parallel polylines fade in (style.opacity 0→final) when animation on, and are at final opacity with no
-// animator when off (the invisible-line guard). ParallelView's static port has no upstream line fade
-// (upstream uses a clip-reveal); this reuses the shared opacity-fade infra (FunnelView/HeatmapView idiom).
+// Parallel polylines use the upstream clip reveal when animation is on. The individual lines stay at
+// their final opacity; animation is carried by the data group's clip rect rather than a style fade.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
 
 final class ParallelTransitionTests: XCTestCase {
+    private func firstClipRect(_ el: Element) -> Rect? {
+        if let clip = el.getClipPath() as? Rect { return clip }
+        if let group = el as? Group {
+            for child in group.children() {
+                if let clip = firstClipRect(child) { return clip }
+            }
+        }
+        return nil
+    }
+
     private func firstLine(_ el: Element) -> ZRenderKit.Polyline? {
         if let p = el as? ZRenderKit.Polyline { return p }
         if let g = el as? Group { for c in g.children() { if let h = firstLine(c) { return h } } }
@@ -28,13 +37,14 @@ final class ParallelTransitionTests: XCTestCase {
                         ]] as [String: Any]]
         ]
     }
-    func test_line_fades_in_when_animation_on() {
+    func test_parallel_clip_reveals_when_animation_on() {
         let ec = ECharts(width: 520, height: 380); ec.setOption(option(true))
-        guard let line = firstLine(ec.getRoot()) else { return XCTFail("no parallel polyline") }
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is targeted
-        // at "style" and carries an "opacity" leaf track (same idiom as FunnelTransitionTests).
-        let anim = line.animators.first { $0.targetName == "style" }
-        XCTAssertNotNil(anim, "parallel line should have a style (opacity) animator when animation on")
+        guard let clip = firstClipRect(ec.getRoot()) else { return XCTFail("no parallel clip rect") }
+        guard let animator = clip.animators.first(where: { $0.targetName == "shape" }) else {
+            return XCTFail("parallel clip should have a shape animator when animation is on")
+        }
+        XCTAssertNotNil(animator.getTrack("width") ?? animator.getTrack("height"),
+                        "parallel clip should reveal along its layout axis")
     }
     func test_line_final_opacity_when_animation_off() {
         let ec = ECharts(width: 520, height: 380); ec.setOption(option(false))

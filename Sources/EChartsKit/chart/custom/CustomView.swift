@@ -52,7 +52,8 @@ import ZRenderKit
 //   - MORPH (universalTransition / morphPath).
 //   - the GROUP-CHILD by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren`
 //     still rebuilds a group's children by index each render.
-//   - the clipPath handling (`doCreateOrUpdateClipPath`, group `createClipPath`) — animation + Polar.
+//   - group-level `createClipPath` and the remaining Polar-specific clip nuances. Per-element
+//     `doCreateOrUpdateClipPath`, including enter/update transitions and `during`, is wired.
 //   - the complete legacy ec4 style compat remains deferred, but the normal-state `api.style()` label
 //     bridge is wired (legacy text fields are converted to attached textContent/textConfig).
 //   - `attachTextContent` / rich-label nuance — only basic `textContent` (a plain text child) is wired.
@@ -947,7 +948,8 @@ private func makeRenderItem(
     // upstream: const userParams: CustomSeriesRenderItemParams = { context: {}, seriesId, seriesName,
     //     seriesIndex, coordSys: prepareResult.coordSys, dataInsideLength: data.count(),
     //     encode: wrapEncodeDef(customSeries.getData()), itemPayload: customSeries.get('itemPayload') || {} }
-    //   `CustomSeriesRenderItemParams` is a struct (value bag); build it fresh per datum below.
+    //   `CustomSeriesRenderItemParams` is a struct (value bag), while `context` is the one reference
+    //   object shared by all datum calls made by this render round.
     let coordSysBag = prepareResult["coordSys"] as? [String: Any]
     let paramsCoordSys = CustomSeriesRenderItemParamsCoordSys(
         type: (coordSysBag?["type"] as? String) ?? "",
@@ -959,17 +961,15 @@ private func makeRenderItem(
     let seriesName = customSeries.name
     let seriesIndex = customSeries.seriesIndex
     let dataInsideLength = Double(data.count())
+    let renderContext = CustomSeriesRenderItemContext()
 
     // upstream: return function (dataIndexInside, payload): CustomElementOption { ... }
     return { (dataIndexInside: Int, payload: Payload?) -> Any? in
         userAPI.currDataIndexInside = dataIndexInside
 
         // upstream: renderItem && renderItem(defaults({ dataIndexInside, dataIndex, actionType }, userParams), userAPI)
-        // PORT-NOTE (language difference): `context` — upstream shares one `{}` across the render round so
-        //   a user can stash cross-datum state; the value-type `[:]` copies per datum, so that sharing is
-        //   lost (fresh `[:]` here). Would need a reference-typed context box to restore the sharing.
         let userParams = CustomSeriesRenderItemParams(
-            context: [:],
+            context: renderContext,
             dataIndex: Double(data.getRawIndex(dataIndexInside)),
             seriesId: seriesId,
             seriesName: seriesName,
@@ -1338,10 +1338,9 @@ private func doCreateOrUpdateEl(
     )
 
     // upstream: doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit);
-    // PORT-NOTE (STATIC subset, now wired — genuine gap found porting official-custom-gauge): the per-element
-    //   `clipPath` spec's ANIMATION stays deferred with the rest of the transition machinery, but the static
-    //   create/update below IS ported — without it, a renderItem spec that clips an element to a sector/
-    //   polygon/etc (e.g. the gauge's coloured-arc and needle images) rendered fully UNCLIPPED.
+    // PORT-NOTE: per-element clip paths use the same normal update path as ordinary custom elements,
+    // including `applyUpdateTransition` and `during`. Without this call a sector/polygon clip (such as
+    // custom-gauge's arc and pointer) would either render unclipped or snap to its final geometry.
     doCreateOrUpdateClipPath(elUnwrapped, dataIndex, elOption, seriesModel, isInit)
 
     updateElNormal(
@@ -1411,7 +1410,8 @@ private func doesElNeedRecreate(_ el: Element, _ elOption: [String: Any], _ seri
 }
 
 // upstream: function doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit): void
-//   STATIC subset (animation deferred). Reuses `createEl` / `updateElNormal` / `doesElNeedRecreate` and
+//   Reuses `createEl` / `updateElNormal` / `doesElNeedRecreate`; `updateElNormal` supplies the same
+//   enter/update transition and `during` support used by ordinary custom elements. Also uses
 //   `Element.getClipPath`/`setClipPath`/`removeClipPath` (already used by bar/candlestick/geo/line clip).
 private func doCreateOrUpdateClipPath(
     _ el: Element,

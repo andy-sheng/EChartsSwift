@@ -9,6 +9,8 @@
 //     verbatim. Same resulting order: Video Ads, Union Ads, Email, Direct, Search Engine.
 //   - series.animationDelay (a JS closure) is dropped from the native option — see PORT-NOTE. Both
 //     panes render one static, animation-free frame anyway, so entry animation is not observable.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_pie_custom = EChartsDemo(
         name: "official-pie-custom", category: "pie",
@@ -77,7 +79,7 @@ option = {
       animationType: 'scale',
       animationEasing: 'elasticOut',
       animationDelay: function (idx) {
-        return Math.random() * 200;
+        return [137, 41, 181, 92, 15][idx];
       }
     }
   ]
@@ -129,10 +131,13 @@ option = {
                         "shadowColor": "rgba(0, 0, 0, 0.5)"
                     ] as [String: Any],
                     "animationType": "scale",
-                    "animationEasing": "elasticOut"
-                    // PORT-NOTE: series.animationDelay omitted — the JS closure `function (idx) { return
-                    // Math.random() * 200; }` staggered each slice's entry animation by a random 0–200ms.
-                    // Not expressible as a Swift option value; the gallery renders a static frame regardless.
+                    "animationEasing": "elasticOut",
+                    // The official callback is random. Pin one representative 0...200ms draw per slice in
+                    // both panes so the visual oracle is reproducible while preserving the same semantics.
+                    "animationDelay": ({ idx, _ in
+                        let delays = [137.0, 41.0, 181.0, 92.0, 15.0]
+                        return delays[min(max(Int(idx), 0), delays.count - 1)]
+                    } as AnimationDelayCallback)
                 ] as [String: Any]
             ]
         ])

@@ -127,7 +127,6 @@ public final class SliderTimelineView: TimelineView {
         _ = self.group.removeAll()
         self._tickSymbols = []
         self._tickLabels = []
-        self._currentPointer = nil
         self._progressLine = nil
 
         // if (timelineModel.get('show', true)) { ... }
@@ -639,16 +638,39 @@ public final class SliderTimelineView: TimelineView {
         let clampedIndex = Swift.max(0, Swift.min(currentIndex, data.count() - 1))
         let pointerModel = data.getItemModel(clampedIndex).getModel("checkpointStyle")
 
-        // this._currentPointer = giveSymbol(pointerModel, pointerModel, this._mainGroup, {}, ...);
-        //   (create branch: fresh each static render). Then move it to the current-index coord — the
-        //   `onCreate` callback's `pointerMoveTo(..., noAnimation=true)` in upstream.
-        let pointer = timelineGiveSymbol(pointerModel, pointerModel, self._mainGroup, x: 0, y: 0)
-        // pointerMoveTo (noAnimation): pointer.x = axis.dataToCoord(data.get('value', currentIndex)); y = 0.
+        // Reuse the checkpoint symbol across renders. Upstream intentionally keeps `_currentPointer`
+        // after `group.removeAll()`, re-adds it to the new main group, and animates both the pointer and
+        // freshly-created progress line to the new index.
+        let previousPointer = self._currentPointer
+        let pointer = timelineGiveSymbol(
+            pointerModel, pointerModel, self._mainGroup,
+            x: previousPointer?.x ?? 0, y: previousPointer?.y ?? 0,
+            reuse: previousPointer
+        )
         let toCoord = axis.dataToCoord(tlReadDouble(data.get("value", clampedIndex)) ?? 0)
-        pointer.x = toCoord
-        pointer.y = 0
-        pointer.updateTransform()
         self._currentPointer = pointer
+
+        if previousPointer == nil || !tlTruthy(timelineModel.get(["checkpointStyle", "animation"], true)) {
+            pointer.x = toCoord
+            pointer.y = 0
+            if let progressLine = self._progressLine {
+                var shape = (progressLine.shape as? LineShape) ?? LineShape()
+                shape.x2 = toCoord
+                progressLine.shape = shape
+            }
+        }
+        else {
+            let pointerModel = timelineModel.getModel("checkpointStyle")
+            var cfg = ElementAnimateConfig()
+            cfg.duration = tlReadDouble(pointerModel.get("animationDuration", true)) ?? 0
+            cfg.easing = .named((pointerModel.get("animationEasing", true) as? String) ?? "linear")
+            _ = pointer.stopAnimation(nil, true)
+            pointer.animateTo(["x": toCoord, "y": 0.0], cfg)
+            if let progressLine = self._progressLine {
+                progressLine.animateTo(["shape": ["x2": toCoord] as [String: Any]], cfg)
+            }
+        }
+        pointer.updateTransform()
 
         // upstream `callback.onCreate`: make the checkpoint pointer draggable and route drift/dragend to
         //   the timeline-change handlers. The Draggable mixin calls `pointer.drift(dx, dy, e)` on each
@@ -890,16 +912,23 @@ private func timelineCreateIcon(_ iconStr: String, _ rect: BoundingRect) -> Path
 //   scale by symbolSize/2 → symbolOffset → symbolRotate → updateTransform.
 @discardableResult
 private func timelineGiveSymbol(
-    _ hostModel: Model, _ itemStyleModel: Model, _ group: Group, x: Double, y: Double
+    _ hostModel: Model, _ itemStyleModel: Model, _ group: Group, x: Double, y: Double,
+    reuse: Path? = nil
 ) -> Path {
     // const color = itemStyleModel.get('color');
     let color = itemStyleModel.get("color") as? String
 
     // const symbolType = hostModel.get('symbol');
-    let symbolType = (hostModel.get("symbol") as? String) ?? "circle"
-    // symbol = createSymbol(symbolType, -1, -1, 2, 2, color); symbol.setStyle('strokeNoScale', true);
-    let symbolEc = symbol.createSymbol(symbolType, -1, -1, 2, 2, color.map { ZRenderKit.ZRColor.string($0) })
-    let sym: Path = (symbolEc as? Path) ?? Path()
+    let sym: Path
+    if let reuse {
+        sym = reuse
+    }
+    else {
+        let symbolType = (hostModel.get("symbol") as? String) ?? "circle"
+        // symbol = createSymbol(symbolType, -1, -1, 2, 2, color); symbol.setStyle('strokeNoScale', true);
+        let symbolEc = symbol.createSymbol(symbolType, -1, -1, 2, 2, color.map { ZRenderKit.ZRColor.string($0) })
+        sym = (symbolEc as? Path) ?? Path()
+    }
     _ = group.add(sym)
 
     // const itemStyle = itemStyleModel.getItemStyle(['color']); symbol.setStyle(itemStyle);

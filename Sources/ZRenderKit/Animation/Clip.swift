@@ -117,6 +117,32 @@ public final class Clip {
         }
     }
 
+    /// Reset only the clock bookkeeping so deterministic render oracles can replay this clip from
+    /// logical t=0 after chart construction. This deliberately preserves tracks/callbacks and is not
+    /// used by the live animation loop.
+    public func resetForDeterministicSampling() {
+        _inited = false
+        _startTime = 0
+        _pausedTime = 0
+        _paused = false
+    }
+
+    /// Evaluate this clip at an absolute logical offset without consulting or mutating its live
+    /// wall-clock origin. Returns true when a non-looping clip has reached its terminal frame.
+    @discardableResult
+    public func sampleForDeterministicRendering(at time: Double) -> Bool {
+        let elapsed = time - _delay
+        var percent: Double
+        if loop, elapsed >= 0 {
+            percent = elapsed.truncatingRemainder(dividingBy: _life) / _life
+        }
+        else {
+            percent = Swift.max(0, Swift.min(elapsed / _life, 1))
+        }
+        onframe(easingFunc?(percent) ?? percent)
+        return !loop && elapsed >= _life
+    }
+
     @discardableResult
     public func step(_ globalTime: Double, _ deltaTime: Double) -> Bool {
         // Set startTime on first step, or _startTime may has milleseconds different between clips

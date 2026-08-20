@@ -237,8 +237,18 @@ public final class RasterizerPainter {
     /// Public so the headless verification path can build + CPU-render without a display.
     public func buildSceneList(_ displayList: [Displayable]) -> RASceneList {
         let scene = RAScene()
-        for el in displayList {
-            addDisplayable(el) { self.apply($0, to: scene) }
+        // Rasterizer currently has source-over compositing only. Preserve zrender's additive
+        // `lighter` blend by flattening the whole ordered frame through the native CG reference
+        // painter when such an element is present, then hand the engine one image record. Flattening
+        // only the lighter paths onto transparency would be incorrect: source-overing that bitmap
+        // later cannot reproduce plus-lighter against content already below it. This whole-frame
+        // fallback keeps the exact prior destination, clip/transform, opacity and ordering semantics.
+        if containsLighterBlend(displayList), let op = compositeDisplayList(displayList) {
+            apply(op, to: scene)
+        } else {
+            for el in displayList {
+                addDisplayable(el) { self.apply($0, to: scene) }
+            }
         }
 
         let list = RASceneList(scene: scene)
@@ -251,6 +261,77 @@ public final class RasterizerPainter {
             list.clearColor = RAPaint(cgColor: bg)
         }
         return list
+    }
+
+    private func containsLighterBlend(_ displayList: [Displayable]) -> Bool {
+        func contains(_ el: Displayable) -> Bool {
+            if let p = el as? ZRenderKit.Path, p.pathStyle?.blend == "lighter" { return true }
+            if let inc = el as? IncrementalDisplayable {
+                return inc.getDisplayables().contains(where: contains)
+                    || inc.getTemporalDisplayables().contains(where: contains)
+            }
+            return false
+        }
+        return displayList.contains(where: contains)
+    }
+
+    /// Whole-frame CoreGraphics fallback for blend modes the Rasterizer engine cannot express.
+    /// The returned image is opaque whenever `backgroundColor` is opaque, so replaying it as the
+    /// scene's first/only record is pixel-equivalent to drawing the ordered display list in place.
+    private func compositeDisplayList(_ displayList: [Displayable]) -> PaintOp? {
+        let pxW = Int((surfaceSize.width * CGFloat(dpr)).rounded())
+        let pxH = Int((surfaceSize.height * CGFloat(dpr)).rounded())
+        guard pxW > 0, pxH > 0, let ctx = CGContext(
+            data: nil, width: pxW, height: pxH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        if let bg = backgroundColor {
+            ctx.setFillColor(bg)
+            ctx.fill(CGRect(x: 0, y: 0, width: pxW, height: pxH))
+        }
+        ctx.translateBy(x: 0, y: CGFloat(pxH))
+        ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
+        let renderer = CGRenderer(ctx, flipped: true)
+        func draw(_ el: Displayable) {
+            if let inc = el as? IncrementalDisplayable {
+                for child in inc.getDisplayables() { draw(child) }
+                for child in inc.getTemporalDisplayables() { draw(child) }
+            } else {
+                NativePainter.drawDisplayable(el, into: renderer)
+            }
+        }
+        var index = 0
+        while index < displayList.count {
+            let el = displayList[index]
+            if el.incremental != 0 {
+                // CanvasPainter puts progressive/incremental displayables on a separate transparent
+                // zlevel2 canvas. Blend modes therefore combine the run against transparency first;
+                // the browser then source-overs that physical canvas onto lower layers (including the
+                // chart background). Drawing `lighter` directly into this opaque whole-frame bitmap
+                // leaves the destination's RGB in every covered pixel and makes dense routes too bright.
+                // A CG transparency layer reproduces the same two-stage composition while preserving
+                // the run's exact display-list position and all per-element transforms/clips/opacity.
+                ctx.saveGState()
+                ctx.setBlendMode(.normal)
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                repeat {
+                    draw(displayList[index])
+                    index += 1
+                } while index < displayList.count && displayList[index].incremental != 0
+                ctx.endTransparencyLayer()
+                ctx.restoreGState()
+            } else {
+                draw(el)
+                index += 1
+            }
+        }
+        guard let composed = ctx.makeImage(),
+              let flipped = Self.verticallyFlipped(composed) else { return nil }
+        return PaintOp(
+            path: RAPath(rect: CGRect(origin: .zero, size: surfaceSize)), ctm: .identity,
+            paint: RAPaint(cgImage: flipped), isFill: true
+        )
     }
 
     private func addDisplayable(_ el: Displayable, _ sink: (PaintOp) -> Void) {
@@ -316,6 +397,23 @@ public final class RasterizerPainter {
 
         let world = (p.getComputedTransform().map { AffineTransform($0).cg }) ?? .identity
 
+        // LargeSymbolDraw's canvas fast path does NOT fill its one giant compound path. For tiny
+        // symbols it calls fillRect once per datum in afterBrush; LargeBarPath and the large
+        // candlestick path expose the same renderer-agnostic primitive stream. A single Rasterizer
+        // fill loses that semantic for translucent symbols: all overlapping subpaths are composited
+        // only once, so a dense cloud remains uniformly pale instead of accumulating opacity like
+        // Canvas. It is also pathological for the million-point nebula.
+        //
+        // Pre-compose those primitive fills into one DPR-sized transparent canvas, then insert that
+        // bitmap at this exact display-list position. This preserves per-datum source-over alpha,
+        // clip/world transforms and ordering while keeping the Rasterizer scene at one record rather
+        // than one million records. The bitmap is flipped before becoming an engine image paint for
+        // the same texture-orientation reason as addImage below.
+        if let rects = p.largeSymbolBoostRects(),
+           emitBoostRects(rects, style: style, world: world, clip: clip, sink) {
+            return
+        }
+
         // Geometry (strokePercent trims the replayed path, mirroring CALayerPainter.drawPath).
         let strokePercent = style.strokePercent ?? 1
         guard let geom = geometry(for: p, strokePercent: strokePercent < 1 ? strokePercent : 1) else {
@@ -379,6 +477,60 @@ public final class RasterizerPainter {
             emitStroke(geom, paint: paint, alpha: alpha, localRect: localRect,
                        world: world, clip: clip, capturingSink)
         }
+    }
+
+    /// Rasterize zrender's large-mode per-primitive fill stream into a transparent surface image.
+    /// Returns false for unsupported paints so the caller can fall back to normal path geometry.
+    private func emitBoostRects(
+        _ packed: [Double], style: PathStyleProps, world: CGAffineTransform,
+        clip: ResolvedClip, _ sink: (PaintOp) -> Void
+    ) -> Bool {
+        guard packed.count >= 4 else { return false }
+        let paint = PaintStyle.from(style)
+        // Upstream's boost is `ctx.fillRect`, so only a solid fill belongs on this branch. Current
+        // LargeSymbol/LargeBar/Candlestick users are solid; gradients/patterns retain vector fallback.
+        guard let fill = paint.fill,
+              paint.fillGradient == nil, paint.fillPattern == nil else { return false }
+
+        let pxW = Int((surfaceSize.width * CGFloat(dpr)).rounded())
+        let pxH = Int((surfaceSize.height * CGFloat(dpr)).rounded())
+        guard pxW > 0, pxH > 0, let ctx = CGContext(
+            data: nil, width: pxW, height: pxH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+
+        // Canvas/zrender space is y-down. Clip paths are already baked into world space by
+        // resolveClip; install them before concatenating the element-local -> world transform.
+        ctx.translateBy(x: 0, y: CGFloat(pxH))
+        ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
+        if !clip.rect.isNull && !clip.rect.isInfinite {
+            ctx.clip(to: clip.rect)
+        }
+        if let clipPath = clip.cgPath {
+            ctx.addPath(clipPath)
+            ctx.clip()
+        }
+        ctx.concatenate(world)
+        ctx.setFillColor(fill)
+        ctx.setAlpha(CGFloat(paint.opacity))
+
+        var i = 0
+        while i + 3 < packed.count {
+            let x = packed[i], y = packed[i + 1]
+            let w = packed[i + 2], h = packed[i + 3]
+            if x.isFinite, y.isFinite, w.isFinite, h.isFinite, w != 0, h != 0 {
+                ctx.fill(CGRect(x: x, y: y, width: w, height: h))
+            }
+            i += 4
+        }
+
+        guard let composed = ctx.makeImage(),
+              let flipped = Self.verticallyFlipped(composed) else { return false }
+        let surfacePath = RAPath(rect: CGRect(origin: .zero, size: surfaceSize))
+        sink(PaintOp(path: surfacePath, ctm: .identity, paint: RAPaint(cgImage: flipped),
+                     isFill: true))
+        return true
     }
 
     private func emitFill(
@@ -598,14 +750,17 @@ public final class RasterizerPainter {
         // and the paint buffer stores rows top-first), so pre-flip the pixels once (cached
         // by source-image identity).
         let paint: RAPaint
-        if let cached = _imagePaintCache.object(forKey: cg) {
+        let opacity = Swift.max(0, Swift.min(1, style.opacity ?? 1))
+        if opacity == 1, let cached = _imagePaintCache.object(forKey: cg) {
             paint = cached
         } else {
-            guard let flipped = Self.verticallyFlipped(cg) else { return }
-            // PORT-NOTE: RAPaint carries no global alpha for image fills — style.opacity is
-            // not applied to images.
+            // RAPaint has no separate global-alpha field for image fills. Bake imageStyle.opacity
+            // into a temporary premultiplied bitmap so pictorialBar's faint background sprites and
+            // every ordinary ZRImage match Canvas source-over semantics. Fully opaque paints retain
+            // the identity cache; translucent images are uncommon and are rebuilt per refresh.
+            guard let flipped = Self.verticallyFlipped(cg, alpha: opacity) else { return }
             paint = RAPaint(cgImage: flipped)
-            _imagePaintCache.setObject(paint, forKey: cg)
+            if opacity == 1 { _imagePaintCache.setObject(paint, forKey: cg) }
         }
         let raPath = RAPath(rect: CGRect(x: 0, y: 0, width: dw, height: dh))
         let world = (img.getComputedTransform().map { AffineTransform($0).cg }) ?? .identity
@@ -640,6 +795,7 @@ public final class RasterizerPainter {
     private struct ResolvedClip {
         var rect: CGRect = .null      // .null/.infinite => no rect clip (the bridge treats it as huge)
         var path: RAPath? = nil
+        var cgPath: CGPath? = nil     // same innermost path, used by large-primitive precomposition
         var clippedOut = false
     }
 
@@ -672,6 +828,7 @@ public final class RasterizerPainter {
         var out = ResolvedClip()
         out.rect = rect
         out.path = innermost.map { RAPath(cgPath: $0) }
+        out.cgPath = innermost
         return out
     }
 
@@ -819,7 +976,7 @@ public final class RasterizerPainter {
     }
 
     /// Vertically mirror an image (see the image-paint orientation note in `addImage`).
-    private static func verticallyFlipped(_ img: CGImage) -> CGImage? {
+    private static func verticallyFlipped(_ img: CGImage, alpha: Double = 1) -> CGImage? {
         let w = img.width, h = img.height
         guard w > 0, h > 0, let ctx = CGContext(
             data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
@@ -827,6 +984,7 @@ public final class RasterizerPainter {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.translateBy(x: 0, y: CGFloat(h))
         ctx.scaleBy(x: 1, y: -1)
+        ctx.setAlpha(CGFloat(Swift.max(0, Swift.min(1, alpha))))
         ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
         return ctx.makeImage()
     }
@@ -867,6 +1025,16 @@ public final class RasterizerPainter {
     /// Metal pipeline's output (only available while motion blur is enabled, which is what
     /// keeps the feedback texture alive).
     public func renderMetalFrame() -> CGImage? {
+        return host.copyFeedbackFrame()
+    }
+
+    /// Render exactly one synchronous frame through `RasterizerLayer` and read that drawable back
+    /// through its retained feedback texture. Enabling feedback before the first display only makes
+    /// the drawable CPU-readable and schedules the terminal blit: there is no previous valid frame
+    /// to composite, so the captured pixels are the unmodified first Metal frame.
+    public func renderFirstMetalFrame() -> CGImage? {
+        host.setMotionBlurAlpha(1)
+        host.displayNow()
         return host.copyFeedbackFrame()
     }
 

@@ -20,13 +20,9 @@
 //     the trailing `setInterval(..., 3000)` that drives `myChart.setOption({ dataset: ... })`. Only the
 //     headless PNG paths (--web-snapshot / --compare) neuter setInterval + animation, so a still frame is
 //     deterministic; the live gallery pane runs the example exactly as the website does.
-//   - `during` DROPPED on both the needle's polygon clipPath and the number text. CustomView rebuilds the
-//     whole element tree from scratch on every renderItem call (transitions/`during` are DEFERRED — same
-//     deviation as official-custom-spiral-race), so the per-frame retween body has no effect natively:
-//     each renderItem call already computes geometry for the CURRENT (final) data, which is what `during`
-//     was tweening TOWARD. The native pane therefore renders the gauge's RESTING state (arc filled to the
-//     value, needle pointing at the value, number at its final count) rather than a mid-sweep animation
-//     frame — a snap instead of a tween. `transition`/`enterFrom` keys are kept (harmless, unread).
+//   - none for animation: CustomView now supports custom-element `transition` / `enterFrom` / `during`,
+//     including clip paths. The two Swift callbacks below mirror the official callbacks and rebuild the
+//     polygon pointer / percentage text from each frame's interpolated `extra` value.
 //   - FRAMEWORK FIX (flagged): CustomView.swift's per-element `clipPath` (`doCreateOrUpdateClipPath`) was
 //     entirely unwired (the call site was commented out, deferred with the transition machinery) — every
 //     renderItem `clipPath` spec was previously a silent no-op, so an element clipped to a shape (this
@@ -89,15 +85,14 @@ private func customGaugePointerPoints(_ cx: Double, _ cy: Double, _ polarEndRadi
     ]
 }
 
-// makeText(valOnRadian) — the `alert()` debug guard (fires only on an illegal mid-tween `during` value)
-// has no static equivalent (there is no per-frame retween natively — see header DEVIATIONS) and is dropped.
+// makeText(valOnRadian) — the official `alert()` is a debug-only guard for an impossible tween value;
+// the Swift callback uses the same percentage formatting without presenting UI from render code.
 private func customGaugeMakeText(_ valOnRadian: Double) -> String {
     let pct = (valOnRadian / customGaugeValOnRadianMax) * 100
     return String(format: "%.0f", pct) + "%"
 }
 
-// The official `renderItem`, ported statement-for-statement (statically — `transition`/`enterFrom` keys
-// are kept for provenance but inert, and `during` is DROPPED; see header DEVIATIONS). Typed EXACTLY
+// The official `renderItem`, ported statement-for-statement. Typed EXACTLY
 // `CustomSeriesRenderItem` so CustomView's `get("renderItem") as? CustomSeriesRenderItem` cast holds.
 private let customGaugeRenderItem: CustomSeriesRenderItem = { params, api in
     // var valOnRadian = api.value(1);
@@ -155,9 +150,16 @@ private let customGaugeRenderItem: CustomSeriesRenderItem = { params, api in
                         "polarEndRadian": polarEndRadian,
                         "transition": "polarEndRadian",
                         "enterFrom": ["polarEndRadian": 0.0] as [String: Any]
-                    ] as [String: Any]
-                    // `during` DROPPED — re-derived `points` from the tweened `polarEndRadian` every frame;
-                    // the static render already used the FINAL polarEndRadian to build them above.
+                    ] as [String: Any],
+                    "during": { (duringAPI: TransitionDuringAPI) in
+                        let raw = duringAPI.getExtra("polarEndRadian")
+                        let radian = customGaugeNum(raw)
+                        guard radian.isFinite else { return }
+                        _ = duringAPI.setShape(
+                            "points",
+                            customGaugePointerPoints(cx, cy, radian)
+                        )
+                    } as (TransitionDuringAPI) -> Void
                 ] as [String: Any]
             ] as [String: Any],
             // The white shadowed inner disc.
@@ -190,9 +192,13 @@ private let customGaugeRenderItem: CustomSeriesRenderItem = { params, api in
                     "align": "center",
                     "verticalAlign": "middle",
                     "enterFrom": ["opacity": 0.0] as [String: Any]
-                ] as [String: Any]
-                // `during` DROPPED — re-derived the text from the tweened `valOnRadian` every frame; the
-                // static render already used the FINAL valOnRadian (customGaugeMakeText above).
+                ] as [String: Any],
+                "during": { (duringAPI: TransitionDuringAPI) in
+                    let raw = duringAPI.getExtra("valOnRadian")
+                    let value = customGaugeNum(raw)
+                    guard value.isFinite else { return }
+                    _ = duringAPI.setStyle("text", customGaugeMakeText(value))
+                } as (TransitionDuringAPI) -> Void
             ] as [String: Any]
         ]
     ] as [String: Any]
@@ -419,9 +425,8 @@ setInterval(function () {
                     // endAngle -polarEndRadian) for the coloured arc; the SAME PNG clipped to a 3-point
                     // polygon (outerRadius 200 → pointerInnerRadius 40) for the needle; a white circle of
                     // r 140 with a blue shadow; and a centred 50px text showing (val / 200 * 100).toFixed(0)
-                    // + '%'. `transition`/`enterFrom` are kept (inert); `during` is dropped — see header
-                    // DEVIATIONS (the native pane renders the gauge's RESTING/final state, not a mid-sweep
-                    // animation frame).
+                    // + '%'. The clip-path and text `during` callbacks rebuild their typed shape/style
+                    // from interpolated `extra` values on every animation frame, matching echarts.js.
                     "renderItem": customGaugeRenderItem
                 ] as [String: Any]
             ]

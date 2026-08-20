@@ -11,6 +11,14 @@ import XCTest
 @testable import ZRenderKit
 
 final class SymbolHoverScaleTests: XCTestCase {
+    private func finishStateTransition(_ el: Element) {
+        for animator in el.animators where animator.__fromStateTransition != nil {
+            guard let clip = animator.getClip() else { continue }
+            _ = clip.step(0, 0)
+            if clip.step(300, 300) { clip.ondestroy() }
+        }
+    }
+
     func testLineSymbolEmphasisEnlargesAndDownplayRestores() {
         let ec = ECharts(width: 400, height: 300)
         ec.setOption([
@@ -29,17 +37,19 @@ final class SymbolHoverScaleTests: XCTestCase {
         }
 
         // symbolSize 10 → resting half-size 5; default hoverScale = max(1.1, 3/5) = 1.1 → 5 * 1.1 = 5.5.
-        let rest = path.scaleX ?? .nan
+        let rest = path.scaleX
         XCTAssertEqual(rest, 5.0, accuracy: 1e-9, "resting symbol scaleX should be symbolSize/2")
 
         group.highlight()
-        let hovered = path.scaleX ?? .nan
+        finishStateTransition(path)
+        let hovered = path.scaleX
         XCTAssertTrue(hovered.isFinite, "emphasis scaleX must not be NaN")
         XCTAssertGreaterThan(hovered, rest, "hover must ENLARGE the symbol, not shrink it")
         XCTAssertEqual(hovered, 5.5, accuracy: 1e-9, "emphasis scaleX = halfSize * hoverScale (5 * 1.1)")
 
         group.downplay()
-        let restored = path.scaleX ?? .nan
+        finishStateTransition(path)
+        let restored = path.scaleX
         XCTAssertTrue(restored.isFinite, "downplay scaleX must not be NaN")
         XCTAssertEqual(restored, rest, accuracy: 1e-9, "mouse-out must RESTORE the resting scale")
     }

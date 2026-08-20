@@ -346,9 +346,7 @@ open class BarView: ChartView {
                 )
                 if realtimeSortCfg != nil {
                     // (el as ECElement).forceLabelAnimation = true;
-                    // PORT-NOTE (deferred): ECElement.forceLabelAnimation is only consumed by the label
-                    //   animation subsystem, which is deferred in this view (and this branch is
-                    //   realtimeSort-gated, itself deferred). No-op until the label block lands.
+                    innerStore.getECElementProps(el).forceLabelAnimation = true
                 }
 
                 updateStyle(
@@ -449,7 +447,8 @@ open class BarView: ChartView {
                 }
 
                 if realtimeSortCfg != nil {
-                    // (el as ECElement).forceLabelAnimation = true;  // PORT-NOTE (deferred: label block).
+                    // (el as ECElement).forceLabelAnimation = true;
+                    innerStore.getECElementProps(el!).forceLabelAnimation = true
                 }
 
                 if isChangeOrder {
@@ -552,7 +551,7 @@ open class BarView: ChartView {
         // upstream: const clipPath = seriesModel.get('clip', true) && createClipPath(...)
         let clip = (seriesModel.get("clip", true) as? Bool) ?? false
         let clipPath: Path? = clip
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
         let group = self.group
         if let clipPath = clipPath {
@@ -1404,12 +1403,10 @@ func zrPaintFromStyleValue(_ v: Any?) -> ZRenderKit.ZRColor? {
         case .color(let s):
             return .string(s)
         case .linearGradient(let g):
-            let lg = (g as? ZRenderKit.LinearGradient)
-                ?? ZRenderKit.LinearGradient(g.x, g.y, g.x2, g.y2, g.colorStops, g.global)
+            let lg = ZRenderKit.LinearGradient(g.x, g.y, g.x2, g.y2, g.colorStops, g.global)
             return .linearGradient(lg)
         case .radialGradient(let g):
-            let rg = (g as? ZRenderKit.RadialGradient)
-                ?? ZRenderKit.RadialGradient(g.x, g.y, g.r, g.colorStops, g.global)
+            let rg = ZRenderKit.RadialGradient(g.x, g.y, g.r, g.colorStops, g.global)
             return .radialGradient(rg)
         case .pattern(let p):
             // Image pattern (`{image, repeat}`): the only ported PatternObject arm (SVG patterns are

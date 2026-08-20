@@ -85,9 +85,9 @@ extension SeriesModel: SourceManagerHost {}
  */
 public final class SourceManager {
 
-    // Currently only datasetModel can host `transform`
-    // (upstream holds a strong ref to the host; NOT weak.)
-    private let _sourceHost: SourceManagerHost
+    // The host owns its SourceManager. Keep the inverse edge unowned so every series/dataset does not
+    // become a permanent host <-> manager ARC cycle.
+    private unowned let _sourceHost: SourceManagerHost
 
     // Cached source. Do not repeat calculating if not dirty.
     private var _sourceList: [Source] = []
@@ -112,6 +112,14 @@ public final class SourceManager {
         self._setLocalSource([], [])
         self._storeList = []
         self._dirty = true
+    }
+
+    /// Release cached sources/stores when the owning chart is disposed.
+    func dispose() {
+        _setLocalSource([], [])
+        _storeList = []
+        _upstreamSignList = []
+        _dirty = true
     }
 
     private func _setLocalSource(

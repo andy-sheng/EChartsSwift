@@ -185,6 +185,7 @@ public final class ECLine: Group {
     private var _labelDistance: [Double] = [5, 5]
     private var _labelAlign: TextAlign?
     private var _labelVerticalAlign: TextVerticalAlign?
+    private var _linePoints: [[Double]] = []
 
     // upstream: constructor(lineData, idx, seriesScope?) { super(); this._createLine(...); }
     public init(_ lineData: SeriesData, _ idx: Int, _ seriesScope: LineDrawSeriesScope?) {
@@ -196,6 +197,7 @@ public final class ECLine: Group {
     private func _createLine(_ lineData: SeriesData, _ idx: Int, _ seriesScope: LineDrawSeriesScope?) {
         let seriesModel = lineData.hostModel
         let linePoints = eclinePoints(lineData.getItemLayout(idx))
+        self._linePoints = linePoints
         let z2 = eclineToNumber(lineData.getItemVisual(idx, "z2"))
         let line = createLine(linePoints)
         // line.shape.percent = 0 — grow from x1,y1 toward x2,y2.
@@ -234,6 +236,7 @@ public final class ECLine: Group {
     public func updateData(_ lineData: SeriesData, _ idx: Int, _ seriesScope: LineDrawSeriesScope?) {
         let seriesModel = lineData.hostModel
         let linePoints = eclinePoints(lineData.getItemLayout(idx))
+        self._linePoints = linePoints
 
         var line = self.childOfName("line") as? Path
         let needCurve = pointsAreCurved(linePoints)
@@ -401,6 +404,7 @@ public final class ECLine: Group {
     public func updateLayout(_ lineData: SeriesData, _ idx: Int) {
         _ = self.childOfName("line")?.stopAnimation()
         let points = eclinePoints(lineData.getItemLayout(idx))
+        self._linePoints = points
         self.setLinePoints(points)
         self._positionEndsAndLabel(points)
         _growEnds(self.childOfName("line") as? Path, 1)
@@ -423,8 +427,8 @@ public final class ECLine: Group {
 
     // ── positioning (upstream `beforeUpdate`, computed at build/update time here) ──────────────────
 
-    // Position the from/to symbols + label at their FINAL layout (percent = 1), from the layout points.
-    private func _positionEndsAndLabel(_ points: [[Double]]) {
+    // Position the symbols and label on the currently revealed portion of the line.
+    private func _positionEndsAndLabel(_ points: [[Double]], _ percent: Double = 1) {
         let symbolFrom = self.childOfName("from") as? Path
         let symbolTo = self.childOfName("to") as? Path
         let label = self.getTextContent()
@@ -435,8 +439,8 @@ public final class ECLine: Group {
         let invScale = self._invScale()
         let lineChild = self.childOfName("line") as? Path
 
-        let fromPos = points[0]
-        let toPos = points[1]
+        let fromPos = lineChild.map { pointAtOf($0, 0) } ?? points[0]
+        let toPos = lineChild.map { pointAtOf($0, percent) } ?? points[1]
         var d = [toPos[0] - fromPos[0], toPos[1] - fromPos[1]]
         let dlen = (d[0] * d[0] + d[1] * d[1]).squareRoot()
         if dlen > 0 { d = [d[0] / dlen, d[1] / dlen] }
@@ -448,16 +452,16 @@ public final class ECLine: Group {
             symbolFrom.setPosition(fromPos)
             let t = lineChild.map { tangentAtOf($0, 0) } ?? d
             symbolFrom.rotation = _fromSpecifiedRotation ?? (Double.pi / 2 - atan2(t[1], t[0]))
-            symbolFrom.scaleX = invScale
-            symbolFrom.scaleY = invScale
+            symbolFrom.scaleX = invScale * percent
+            symbolFrom.scaleY = invScale * percent
             symbolFrom.markRedraw()
         }
         if let symbolTo = symbolTo {
             symbolTo.setPosition(toPos)
             let t = lineChild.map { tangentAtOf($0, 1) } ?? d
             symbolTo.rotation = _toSpecifiedRotation ?? (-Double.pi / 2 - atan2(t[1], t[0]))
-            symbolTo.scaleX = invScale
-            symbolTo.scaleY = invScale
+            symbolTo.scaleX = invScale * percent
+            symbolTo.scaleY = invScale * percent
             symbolTo.markRedraw()
         }
 
@@ -470,13 +474,14 @@ public final class ECLine: Group {
 
         let distanceX = _labelDistance[0] * invScale
         let distanceY = _labelDistance[1] * invScale
-        // upstream: halfPercent = percent / 2 (= 0.5 at the final layout); cp = line.pointAt(halfPercent);
+        // upstream: halfPercent = percent / 2; the label follows the currently revealed portion.
         //   tangent = line.tangentAt(halfPercent). Works for both the straight `Line` and quadratic
         //   `BezierCurve` children (helpers below dispatch on the child type). Falls back to the chord
         //   midpoint/direction only if the line child is missing.
-        let cp: [Double] = lineChild.map { pointAtOf($0, 0.5) }
+        let halfPercent = percent / 2
+        let cp: [Double] = lineChild.map { pointAtOf($0, halfPercent) }
             ?? [(fromPos[0] + toPos[0]) / 2, (fromPos[1] + toPos[1]) / 2]
-        let tangent = lineChild.map { tangentAtOf($0, 0.5) } ?? d
+        let tangent = lineChild.map { tangentAtOf($0, halfPercent) } ?? d
         let dir = tangent[0] < 0 ? -1.0 : 1.0
         let position = _labelPosition ?? "middle"
 
@@ -539,21 +544,8 @@ public final class ECLine: Group {
     //   symbols by `percent` and ride the `to` symbol along the growing line. Called by the initProps
     //   `during` and once at the end of build/update.
     private func _growEnds(_ line: Path?, _ percent: Double) {
-        let invScale = self._invScale()
-        if let symbolFrom = self.childOfName("from") as? Path {
-            symbolFrom.scaleX = invScale * percent
-            symbolFrom.scaleY = invScale * percent
-            symbolFrom.markRedraw()
-        }
-        if let symbolTo = self.childOfName("to") as? Path {
-            if let line = line {
-                let pt = pointAtOf(line, percent)
-                symbolTo.setPosition(pt)
-            }
-            symbolTo.scaleX = invScale * percent
-            symbolTo.scaleY = invScale * percent
-            symbolTo.markRedraw()
-        }
+        guard line != nil, self._linePoints.count >= 2 else { return }
+        self._positionEndsAndLabel(self._linePoints, percent)
     }
 
     // upstream: invScale = product of 1/parent.scaleX up the tree (parent scale compensation).

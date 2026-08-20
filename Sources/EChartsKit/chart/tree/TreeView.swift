@@ -335,6 +335,25 @@ open class TreeView: ChartView {
         }
         symbolDraw.updateData(data, opt)
 
+        // Upstream tree entry starts every node at the real root and expands the hierarchy to its laid-out
+        // position. SymbolDraw already animates each node's child path scale/opacity; animate the containing
+        // Symbol group's position independently so the topology itself grows rather than appearing in its
+        // final geometry on frame zero.
+        let entranceRootLayout = data.tree?.root.children.first.flatMap { treeNodeLayout($0.getLayout()) }
+        if self._firstRender, let root = entranceRootLayout {
+            for dataIndex in 0..<data.count() where symbolNeedsDraw(data, dataIndex) {
+                guard let symbolEl = data.getItemGraphicEl(dataIndex) as? Symbol else { continue }
+                let finalX = symbolEl.x
+                let finalY = symbolEl.y
+                symbolEl.x = root.x
+                symbolEl.y = root.y
+                // TreeView upstream deliberately uses updateProps even for a newly-created node, so
+                // hierarchy motion follows animationDurationUpdate/animationEasingUpdate while the
+                // symbol path's scale/opacity still follows the enter configuration.
+                updateProps(symbolEl, ["x": finalX, "y": finalY], seriesModel, dataIndex)
+            }
+        }
+
         // Per-node decoration the shared Symbol does not cover: the tree's outward label side, the parent/
         //   child EDGE (drawn inline + retained in `_edges`), the topology `emphasis.focus` index set, and
         //   the edge blur-forward. Track which node indices still own an edge this render so stale edges
@@ -342,7 +361,10 @@ open class TreeView: ChartView {
         var liveEdges = Set<Int>()
         for newIdx in 0..<data.count() {
             if symbolNeedsDraw(data, newIdx) {
-                let edge = decorateNode(data, newIdx, group, seriesModel, self._edges[newIdx])
+                let edge = decorateNode(
+                    data, newIdx, group, seriesModel, self._edges[newIdx],
+                    self._firstRender, entranceRootLayout
+                )
                 if let edge = edge {
                     self._edges[newIdx] = edge
                     liveEdges.insert(newIdx)
@@ -548,7 +570,9 @@ private func decorateNode(
     _ dataIndex: Int,
     _ group: Group,
     _ seriesModel: TreeSeriesModel,
-    _ existingEdge: Path?
+    _ existingEdge: Path?,
+    _ isEntering: Bool,
+    _ entranceRootLayout: TreeNodeLayout?
 ) -> Path? {
     // const node = data.tree.getNodeByDataIndex(dataIndex);
     guard let node = data.tree?.getNodeByDataIndex(dataIndex) else { return nil }
@@ -679,7 +703,10 @@ private func decorateNode(
     // drawEdge(seriesModel, node, virtualRoot, symbolEl, sourceOldLayout, sourceLayout, targetLayout, group);
     //   Pass the node's retained edge (if any) so a refresh REUSES + `updateProps`-tweens it (upstream's
     //   `symbolEl.__edge` cache); a nil return means this node draws no edge this render.
-    let edgeEl = drawEdge(seriesModel, node, virtualRoot, sourceLayout, targetLayout, group, existingEdge)
+    let edgeEl = drawEdge(
+        seriesModel, node, virtualRoot, sourceLayout, targetLayout, group, existingEdge,
+        isEntering, entranceRootLayout
+    )
 
     // Phase 48: `symbolEl.__edge` blur propagation (upstream TreeView.ts:464-477). Tree edges are anonymous
     //   children (not in edge-data), so they are blurred by the blurSeries group-traverse but never
@@ -718,7 +745,9 @@ private func drawEdge(
     _ sourceLayout: TreeNodeLayout?,
     _ targetLayout: TreeNodeLayout,
     _ group: Group,
-    _ existingEdge: Path?
+    _ existingEdge: Path?,
+    _ isEntering: Bool,
+    _ entranceRootLayout: TreeNodeLayout?
 ) -> Path? {
     let itemModel = node.getModel()
     // const edgeShape = seriesModel.get('edgeShape');
@@ -750,8 +779,25 @@ private func drawEdge(
             }
             else {
                 var props: ElementProps = [:]
-                props["shape"] = target as PathShape
+                if isEntering, let root = entranceRootLayout {
+                    var collapsed = BezierCurveShape()
+                    collapsed.x1 = root.x
+                    collapsed.y1 = root.y
+                    collapsed.x2 = root.x
+                    collapsed.y2 = root.y
+                    collapsed.cpx1 = root.x
+                    collapsed.cpy1 = root.y
+                    collapsed.cpx2 = root.x
+                    collapsed.cpy2 = root.y
+                    props["shape"] = collapsed as PathShape
+                }
+                else {
+                    props["shape"] = target as PathShape
+                }
                 edge = BezierCurve(props)
+                if let edge = edge, isEntering {
+                    updateProps(edge, ["shape": bezierShapeDict(target)], seriesModel, node.dataIndex)
+                }
             }
         }
     }
@@ -785,6 +831,16 @@ private func drawEdge(
                     var props: ElementProps = [:]
                     props["shape"] = shape as PathShape
                     edge = TreePath(props)
+                    // TreeEdgeShape contains arrays and cannot be interpolated key-by-key. A scale from
+                    // the real root preserves the exact final polyline while matching the root-outward
+                    // entrance topology used by the Web renderer.
+                    if let edge = edge, isEntering, let root = entranceRootLayout {
+                        edge.originX = root.x
+                        edge.originY = root.y
+                        edge.scaleX = 0
+                        edge.scaleY = 0
+                        updateProps(edge, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, node.dataIndex)
+                    }
                 }
             }
         }

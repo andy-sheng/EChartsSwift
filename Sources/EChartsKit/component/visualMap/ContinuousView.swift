@@ -816,7 +816,7 @@ public final class ContinuousView: VisualMapView {
         let cursorPos = Swift.min(Swift.max(sizeExtent[0], cursorPosIn), sizeExtent[1])
 
         let halfHoverLinkSize = getHalfHoverLinkSize(visualMapModel, dataExtent, sizeExtent)
-        var hoverRange = [cursorPos - halfHoverLinkSize, cursorPos + halfHoverLinkSize]
+        let hoverRange = [cursorPos - halfHoverLinkSize, cursorPos + halfHoverLinkSize]
         let cursorValue = number.linearMap(cursorPos, sizeExtent, dataExtent, true)
         var valueRange = [
             number.linearMap(hoverRange[0], sizeExtent, dataExtent, true),
@@ -825,8 +825,6 @@ public final class ContinuousView: VisualMapView {
         // Consider data range out of visualMap range.
         if hoverRange[0] < sizeExtent[0] { valueRange[0] = -Double.infinity }
         if hoverRange[1] > sizeExtent[1] { valueRange[1] = Double.infinity }
-        _ = hoverRange   // (kept for structural fidelity)
-
         // Do not show indicator when mouse is over handle (labels overlap, especially dragging).
         if hoverOnBar {
             if valueRange[0] == -Double.infinity {

@@ -1,6 +1,5 @@
-// Heatmap cells fade in (style.opacity 0→final) when animation on, and are at final opacity with no
-// animator when off (the invisible-cell guard). Faithful to HeatmapView initProps({style:{opacity}}),
-// mirroring FunnelPiece's fade-in.
+// Upstream heatmap cells do not add a per-cell entrance fade. They are painted at final opacity on
+// the initial render regardless of the global animation switch (updates may still morph).
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -34,13 +33,11 @@ final class HeatmapTransitionTests: XCTestCase {
             ]
          ] as [String: Any]]]
     }
-    func test_cell_fades_in_when_animation_on() {
+    func test_cell_has_no_extra_entrance_fade_when_animation_on() {
         let ec = ECharts(width: 480, height: 320); ec.setOption(option(true))
         guard let rect = firstCell(ec.getRoot()) else { return XCTFail("no heatmap cell rect") }
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
-        // targeted at "style" and carries an "opacity" leaf track.
-        let anim = rect.animators.first { $0.targetName == "style" }
-        XCTAssertNotNil(anim, "heatmap cell should have a style (opacity) animator when animation on")
+        XCTAssertTrue(rect.animators.isEmpty, "heatmap must not invent a per-cell entrance fade")
+        XCTAssertGreaterThan(rect.pathStyle.opacity ?? 0, 0.0)
     }
     func test_cell_final_opacity_when_animation_off() {
         let ec = ECharts(width: 480, height: 320); ec.setOption(option(false))

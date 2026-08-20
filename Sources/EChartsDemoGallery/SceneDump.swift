@@ -209,13 +209,15 @@ func deriveLegendActions(_ demo: EChartsDemo, max: Int) -> [[String: Any]] {
 struct AnimProbeResult {
     let demo: String
     let sceneChanged: Bool
+    let initialTotal: Int
+    let initialAnimated: Int
     let total: Int
     let animated: Int
 }
 
 /// Compact canonical signature of the settled scene — enough to detect "did this update change anything".
 @MainActor
-private func sceneSignature(_ view: EChartsView) -> String {
+func sceneSignature(_ view: EChartsView) -> String {
     let ec = view.ec
     var parts: [String] = []
     for el in ec.storage.getDisplayList(true, true) {
@@ -237,7 +239,9 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
     // not of the port.
     func build(_ animation: Bool) -> EChartsView {
         var opt = demo.option
-        opt["animation"] = animation
+        // The live side must preserve an example's explicit `animation: false`; the Web oracle runs
+        // that option verbatim. Only the synthetic settled side forces animation off.
+        if !animation { opt["animation"] = false }
         let v = EChartsView(width: demo.width, height: demo.height)
         v.setOption(opt)
         _ = v.zr.storage.getDisplayList(true)
@@ -259,7 +263,7 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
             // then asked why nothing animated, reporting all 19 no-action demos (every tree demo among
             // them) as zero-animator false positives.
             var opt = demo.option
-            opt["animation"] = animation
+            if !animation { opt["animation"] = false }
             ec.setOption(opt, notMerge: false)
         }
     }
@@ -273,6 +277,12 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
 
     // Now the same update with animation on: how much of the scene is actually tweening?
     let live = build(true)
+    var initialTotal = 0, initialAnimated = 0
+    _ = live.ec.getRoot().traverse { el in
+        initialTotal += 1
+        if !el.animators.isEmpty { initialAnimated += 1 }
+        return false
+    }
     applyUpdate(live, animation: true)
     var total = 0, animated = 0
     _ = live.ec.getRoot().traverse { el in
@@ -280,7 +290,14 @@ func animProbe(_ demo: EChartsDemo, action: [String: Any]?) -> AnimProbeResult {
         if !el.animators.isEmpty { animated += 1 }
         return false
     }
-    return AnimProbeResult(demo: demo.name, sceneChanged: changed, total: total, animated: animated)
+    return AnimProbeResult(
+        demo: demo.name,
+        sceneChanged: changed,
+        initialTotal: initialTotal,
+        initialAnimated: initialAnimated,
+        total: total,
+        animated: animated
+    )
 }
 
 /// Verbose single-demo form of `animProbe`: breaks the scene down by element class so a zero-animator
@@ -295,7 +312,7 @@ func animProbeVerbose(_ demo: EChartsDemo, action: [String: Any]?) {
     // not of the port.
     func build(_ animation: Bool) -> EChartsView {
         var opt = demo.option
-        opt["animation"] = animation
+        if !animation { opt["animation"] = false }
         let v = EChartsView(width: demo.width, height: demo.height)
         v.setOption(opt)
         _ = v.zr.storage.getDisplayList(true)
@@ -309,7 +326,7 @@ func animProbeVerbose(_ demo: EChartsDemo, action: [String: Any]?) {
             ec.dispatchAction(payload)
         } else {
             var opt = demo.option
-            opt["animation"] = animation
+            if !animation { opt["animation"] = false }
             ec.setOption(opt, notMerge: false)
         }
     }
@@ -336,6 +353,13 @@ func animProbeVerbose(_ demo: EChartsDemo, action: [String: Any]?) {
     print("sceneChanged: \(after != before)   (signature \(before.count) -> \(after.count) chars)")
 
     let live = build(true)
+    live.ec.getModel()?.eachSeries { series, _ in
+        let own = String(describing: series.getShallow("animation", true))
+        let resolved = String(describing: series.getShallow("animation"))
+        let enabled = String(describing: series.isAnimationEnabled())
+        let threshold = String(describing: series.getShallow("animationThreshold"))
+        print("series[\(series.seriesIndex)] \(series.subType) animationOwn=\(own) animationResolved=\(resolved) enabled=\(enabled) count=\(series.getData().count()) threshold=\(threshold)")
+    }
     print("live  before: \(breakdown(live))")
     apply(live, true)
     print("live  after : \(breakdown(live))    [class:total/animated]")
@@ -370,6 +394,13 @@ let animProbeJS = """
     for (var i = 0; i < roots.length; i++) walk(roots[i]);
     return { total: total, animated: animated, byType: byType };
   }
+  // `didFinish` is deliberately delayed so async demo setup can settle, which means a short
+  // 300ms entrance animation may already be over. Recreate the current chart synchronously and
+  // census it immediately after setOption; this is the same phase as the Native probe and avoids
+  // classifying animation duration as an implementation mismatch.
+  var replayOption = myChart.getOption();
+  myChart.clear();
+  myChart.setOption(replayOption, true);
   var before = count();
   if (window.__SCENE_ACTION__) {
     myChart.dispatchAction(window.__SCENE_ACTION__);
@@ -392,44 +423,79 @@ final class WebAnimProber: NSObject, WKNavigationDelegate {
     private var idx = 0
     private let wv: WKWebView
     private let out: URL
-    private var rows: [String] = []
+    private let outHandle: FileHandle
+    private var loadGeneration = 0
 
-    init(jobs: [SweepJob], wv: WKWebView, out: URL) { self.jobs = jobs; self.wv = wv; self.out = out }
+    init(jobs: [SweepJob], wv: WKWebView, out: URL) {
+        self.wv = wv
+        self.out = out
+
+        var done = Set<String>()
+        if let existing = try? String(contentsOf: out, encoding: .utf8) {
+            for line in existing.split(separator: "\n").dropFirst() {
+                if let name = line.split(separator: "\t").first { done.insert(String(name)) }
+            }
+        } else {
+            try? "demo\tinitialTotal\tinitialAnimated\tupdateTotal\tupdateAnimated\n"
+                .write(to: out, atomically: true, encoding: .utf8)
+        }
+        self.jobs = jobs.filter { !done.contains($0.demo.name) }
+        self.outHandle = try! FileHandle(forWritingTo: out)
+        self.outHandle.seekToEndOfFile()
+        super.init()
+    }
 
     func start() { loadCurrent() }
 
     private func finish() {
-        try? (["demo\ttotal\tanimated\tbeforeAnimated"] + rows)
-            .joined(separator: "\n").appending("\n")
-            .write(to: out, atomically: true, encoding: .utf8)
-        print("anim-probe-web done: \(rows.count)/\(jobs.count) -> \(out.path)")
+        try? outHandle.close()
+        print("anim-probe-web done: \(idx)/\(jobs.count) -> \(out.path)")
         exit(0)
+    }
+
+    private func append(_ row: String) {
+        outHandle.write(Data((row + "\n").utf8))
+        try? outHandle.synchronize()
+        FileHandle.standardOutput.write(Data((row + "\n").utf8))
     }
 
     private func loadCurrent() {
         guard idx < jobs.count else { return finish() }
         let job = jobs[idx]
         guard let page = echartsHTMLPage(job.demo, snapshot: false) else {
-            rows.append("\(job.demo.name)\tERR\tERR\tERR"); idx += 1; loadCurrent(); return
+            append("\(job.demo.name)\tERR\tERR\tERR\tERR"); idx += 1; loadCurrent(); return
         }
+        loadGeneration += 1
+        let generation = loadGeneration
         wv.frame = CGRect(x: 0, y: 0, width: job.demo.width, height: job.demo.height)
         wv.loadHTMLString(page, baseURL: nil)
+        // A single malformed/heavy example must not stall the 400+ case sweep forever. The row is
+        // persisted immediately, so the command is both observable and safely resumable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            guard let self, self.loadGeneration == generation, self.idx < self.jobs.count else { return }
+            self.append("\(self.jobs[self.idx].demo.name)\tTIMEOUT\tTIMEOUT\tTIMEOUT\tTIMEOUT")
+            self.wv.stopLoading()
+            self.idx += 1
+            self.loadCurrent()
+        }
     }
 
     func webView(_ wv: WKWebView, didFinish nav: WKNavigation!) {
         let job = jobs[idx]
+        let generation = loadGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard generation == self.loadGeneration, self.idx < self.jobs.count else { return }
             var prelude = ""
             if let a = job.actionJSON { prelude += "window.__SCENE_ACTION__ = \(a);\n" }
             wv.evaluateJavaScript(prelude + animProbeJS) { result, err in
+                guard generation == self.loadGeneration, self.idx < self.jobs.count else { return }
                 if let json = result as? String,
                    let obj = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any],
                    let after = obj["after"] as? [String: Any], let before = obj["before"] as? [String: Any] {
-                    self.rows.append("\(job.demo.name)\t\(after["total"] ?? -1)\t\(after["animated"] ?? -1)\t\(before["animated"] ?? -1)")
+                    self.append("\(job.demo.name)\t\(before["total"] ?? -1)\t\(before["animated"] ?? -1)\t\(after["total"] ?? -1)\t\(after["animated"] ?? -1)")
                 } else {
-                    self.rows.append("\(job.demo.name)\tERR\tERR\t\(err.map { "\($0)" } ?? "")")
+                    self.append("\(job.demo.name)\tERR\tERR\tERR\t\(err.map { "\($0)" } ?? "")")
                 }
-                if (self.idx + 1) % 25 == 0 { print("  … \(self.idx + 1)/\(self.jobs.count)") }
                 self.idx += 1
                 self.loadCurrent()
             }
@@ -437,10 +503,10 @@ final class WebAnimProber: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ wv: WKWebView, didFail nav: WKNavigation!, withError e: Error) {
-        rows.append("\(jobs[idx].demo.name)\tERR\tERR\tload"); idx += 1; loadCurrent()
+        append("\(jobs[idx].demo.name)\tERR\tERR\tERR\tload"); idx += 1; loadCurrent()
     }
     func webView(_ wv: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError e: Error) {
-        rows.append("\(jobs[idx].demo.name)\tERR\tERR\tprov"); idx += 1; loadCurrent()
+        append("\(jobs[idx].demo.name)\tERR\tERR\tERR\tprov"); idx += 1; loadCurrent()
     }
 }
 

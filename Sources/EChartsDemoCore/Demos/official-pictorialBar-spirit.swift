@@ -15,26 +15,18 @@
 // option) and neuter the timer, so a snapshot stays deterministic.
 //
 // DEVIATIONS from the official source:
-//   - series[1].label.formatter is a JS closure — `((params.value / maxData) * 100).toFixed(1) + ' %'`.
-//     A Swift option dict cannot carry a function, so it is OMITTED from `option` (PORT-NOTE below):
-//     the WEB pane labels each bar with its percentage of maxData, the NATIVE pane falls back to
-//     echarts' default label (the raw value). Everything else in the option is identical.
+//   - None in the chart option. series[1].label.formatter crosses to Native as the equivalent typed
+//     Swift callback, while the Web pane keeps the original JS closure.
 //   - The TS annotation (`function (params: any)`) and the trailing `export {};` are dropped — a classic
 //     script cannot parse either.
 //   - The `spirit` base64 data URI is spliced into webOptionJS from the Swift constant below (same bytes
 //     as upstream, both panes) instead of being repeated twice in this file.
 //   - No data fetch, no ROOT_PATH: the sprite is inline upstream too, so nothing is downloaded.
 //
-// NATIVE PANE: nativeSupported: false — but the `image://` sprite now RENDERS (createSymbol's image://
-// branch + makeImage + ZRImage-as-ECSymbol are ported), so the native pane draws the actual elf sprites,
-// not the old grey rects. What still diverges from the reference is one level up in the pictorialBar
-// LAYOUT, not the symbol: this example overlays a faded FULL-ROW background series (symbolBoundingData =
-// maxData) with a solid foreground clipped to the value (`symbolClip: true`), and labels the rows with a
-// PERCENTAGE formatter. Natively the foreground repeats across the whole axis (the symbolClip-to-value +
-// faded-background pairing is not honored) and the label shows the raw value, so 2013 reads as "full"
-// when it is 44.5%. That misrepresents the data, so the pane stays off until symbolClip-with-background
-// lands. (Sibling official-pictorialBar-hill, whose single-image-per-bar clip DOES work, is now ON.)
+// NATIVE PANE: enabled. `image://` symbols, fixed repetition, symbolBoundingData, symbolClip, the faded
+// background overlay, percentage labels, markLine, and the 3-second merging updates are all native.
 import Foundation
+import EChartsKit
 
 // `const spirit = 'image://data:image/png;base64,...'` — the sprite, verbatim from the official source.
 private let pictorialBarSpiritSymbol: String =
@@ -46,12 +38,21 @@ private let pictorialBarSpiritMaxData: Double = 2000
 // The first frame's data (upstream assigns the SAME array to both series before the timer starts).
 private let pictorialBarSpiritData: [Double] = [891, 1220, 660, 1670]
 
+private let pictorialBarSpiritLabelFormatter: (CallbackDataParams) -> String = { params in
+    let value: Double
+    if let d = params.value as? Double { value = d }
+    else if let i = params.value as? Int { value = Double(i) }
+    else if let n = params.value as? NSNumber { value = n.doubleValue }
+    else { value = 0 }
+    return String(format: "%.1f %%", value / pictorialBarSpiritMaxData * 100)
+}
+
 extension EChartsDemoRegistry {
     static let official_pictorialbar_spirit = EChartsDemo(
         name: "official-pictorialBar-spirit", category: "pictorialBar",
         summary: "精灵 — Spirits",
         width: 640, height: 420,
-        nativeSupported: false,   // sprite now renders; symbolClip-with-faded-background + % labels remain
+        nativeSupported: true,
         collection: .official,
         webOptionJS: #"""
 const spirit =
@@ -250,12 +251,9 @@ private let pictorialBarSpiritOption: [String: Any] = [
         [
             "type": "pictorialBar",
             "itemStyle": ["opacity": 0.2] as [String: Any],
-            // PORT-NOTE: series[1].label.formatter omitted — the JS closure rendered each bar's value as a
-            // percentage of maxData: `((params.value / maxData) * 100).toFixed(1) + ' %'` (e.g. 1670 → "83.5 %").
-            // Swift cannot express a function in the option dict, so the native pane's label shows the raw
-            // value instead; the web pane keeps the percentage.
             "label": [
                 "show": true,
+                "formatter": pictorialBarSpiritLabelFormatter,
                 "position": "right",
                 "offset": [10.0, 0.0],
                 "color": "green",

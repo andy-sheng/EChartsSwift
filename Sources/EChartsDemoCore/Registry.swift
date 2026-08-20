@@ -399,7 +399,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_pictorialbar_dotted,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_forest,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_hill,                      // pictorialBar   (native N/A)
-        EChartsDemoRegistry.official_pictorialbar_spirit,                    // pictorialBar   (native N/A)
+        EChartsDemoRegistry.official_pictorialbar_spirit,                    // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_vehicle,                   // pictorialBar
         EChartsDemoRegistry.official_pictorialbar_velocity,                  // pictorialBar
         EChartsDemoRegistry.official_themeriver_basic,                       // themeRiver
@@ -424,7 +424,7 @@ extension EChartsDemoRegistry {
         EChartsDemoRegistry.official_matrix_grid_layout,                     // matrix
         EChartsDemoRegistry.official_matrix_periodic_table,                  // matrix   (native N/A)
         EChartsDemoRegistry.official_matrix_mini_bar_data_collection,        // matrix   (native N/A)
-        EChartsDemoRegistry.official_matrix_mbti,                            // matrix   (native N/A)
+        EChartsDemoRegistry.official_matrix_mbti,                            // matrix
         EChartsDemoRegistry.official_chord_simple,                           // chord
         EChartsDemoRegistry.official_chord_minangle,                         // chord
         EChartsDemoRegistry.official_chord_linestyle_color,                  // chord

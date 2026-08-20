@@ -141,9 +141,8 @@ option = {
                     "type": "scatter",
                     // JS `symbolSize: val => val[2] * 2` — bubble diameter is twice the commit count.
                     "symbolSize": punchCardSymbolSize,
-                    "data": punchCardData
-                    // PORT-NOTE: animationDelay omitted — JS closure `idx => idx * 5`, staggering the
-                    // entry animation per point. The gallery snapshots one static frame anyway.
+                    "data": punchCardData,
+                    "animationDelay": ({ idx, _ in idx * 5 } as AnimationDelayCallback)
                 ] as [String: Any]
             ]
         ])

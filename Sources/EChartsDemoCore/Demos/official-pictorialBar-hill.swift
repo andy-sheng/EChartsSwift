@@ -57,9 +57,8 @@ private let hillData: [[String: Any]] = [
         "symbolRepeat": true,
         "symbolSize": ["130%", "20%"],
         "symbolOffset": [0.0, 10.0],
-        "symbolMargin": "-30%"
-        // PORT-NOTE: animationDelay omitted — JS closure `function (dataIndex, params) { return
-        // params.index * 30; }`, staggering the repeated paper symbols 30ms apart as the bar grows in.
+        "symbolMargin": "-30%",
+        "animationDelay": ({ _, params in (params?.index ?? 0) * 30 } as AnimationDelayCallback)
     ],
     [
         "value": "-",

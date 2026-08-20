@@ -873,7 +873,7 @@ open class LineView: ChartView {
         }
 
         let emphasisModel = seriesModel.getModel("emphasis")
-        let focus: InnerFocus? = emphasisModel.get("focus") as? InnerFocus
+        let focus: InnerFocus? = emphasisModel.get("focus")
         let blurScope = (emphasisModel.get("blurScope") as? String).flatMap { BlurScope(rawValue: $0) }
         let emphasisDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
 
@@ -1180,7 +1180,7 @@ open class LineView: ChartView {
 
         data.eachItemGraphicEl { el, idx in
             guard let symbol = el as? Symbol else { return }
-            let point = [symbol.x ?? 0, symbol.y ?? 0]
+            let point = [symbol.x, symbol.y]
             var start = Double.nan
             var end = Double.nan
             var current = Double.nan
@@ -1204,12 +1204,12 @@ open class LineView: ChartView {
                     if isHorizontalOrRadial {
                         start = gridClip.x
                         end = gridClip.x + gridClip.width
-                        current = symbol.x ?? 0
+                        current = symbol.x
                     }
                     else {
                         start = gridClip.y + gridClip.height
                         end = gridClip.y
-                        current = symbol.y ?? 0
+                        current = symbol.y
                     }
                 }
             }
@@ -1245,17 +1245,9 @@ open class LineView: ChartView {
             }
 
             // upstream: (symbolPath as ECElement).disableLabelAnimation = true;
-            // PORT-TODO: inert twice over, so the write is deliberately not emitted here.
-            //   (a) No concrete scene-graph type conforms to `ECElement` (util/types.swift:256 models the
-            //       TS interface augmentation as a protocol and owns the adoption strategy), so the
-            //       `as? ECElement` cast — the idiom at MapDraw.swift:922 — can never succeed today.
-            //   (b) Nothing reads `disableLabelAnimation`: upstream's only consumer,
-            //       `LabelManager._animateLabels`'s `forceLabelAnimation || (!ignore && !invisible &&
-            //       !disableLabelAnimation && !isElementRemoved(el))` gate (LabelManager.ts:528-540), is
-            //       not ported in label/LabelManager.swift.
-            //   Effect: symbol labels may animate in the label stage where upstream suppresses it.
-            //   Same deferral as SankeyView.swift:490/510, MapView.swift:823, MapDraw.swift:922,
-            //   Breadcrumb.swift:254.
+            if let symbolPath = symbolPath {
+                innerStore.getECElementProps(symbolPath).disableLabelAnimation = true
+            }
             _ = symbolPath
         }
     }
@@ -1284,9 +1276,9 @@ open class LineView: ChartView {
                 created.ignoreClip = true
                 polyline?.setTextContent(created)
                 // upstream: (polyline as ECElement).disableLabelAnimation = true;
-                // PORT-TODO: same two-sided gap as in _initSymbolLabelAnimation above (no concrete type
-                //   conforms to `ECElement`, and `LabelManager._animateLabels` is unported), so the end
-                //   label may animate where upstream suppresses it.
+                if let polyline = polyline {
+                    innerStore.getECElementProps(polyline).disableLabelAnimation = true
+                }
                 self._endLabel = created
                 endLabel = created
             }
@@ -1299,8 +1291,8 @@ open class LineView: ChartView {
                 opt.labelFetcher = seriesModel
                 opt.labelDataIndex = Double(dataIndex)
                 opt.defaultText = ({ (dIdx: Double?, _ opt: SetLabelStyleOpt, interpolatedValue: InterpolatableValue?) -> String in
-                    if interpolatedValue != nil {
-                        return labelHelper.getDefaultInterpolatedLabel(data, interpolatedValue) ?? ""
+                    if let interpolatedValue = interpolatedValue {
+                        return labelHelper.getDefaultInterpolatedLabel(data, interpolatedValue)
                     }
                     return labelHelper.getDefaultLabel(data, dIdx ?? 0) ?? ""
                 } as DefaultTextFn)
@@ -1403,7 +1395,7 @@ open class LineView: ChartView {
             if valueAnimation {
                 let inner = labelStyle.labelInner(endLabel)
                 if let setLabelText = inner.setLabelText {
-                    setLabelText(value as? InterpolatableValue)
+                    setLabelText(value)
                 }
             }
         }

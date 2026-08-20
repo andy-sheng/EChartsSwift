@@ -315,6 +315,15 @@ public final class LargeLineDraw {
 
         for segs in mergedChunks {
             let lineEl = self._create()
+            // Upstream creates every progressive LargeLinesPath through incrementalUpdate and stamps
+            // a non-zero incremental id on it. CanvasPainter uses that flag to put the paths on a
+            // transparent incremental zlevel2 layer, separate from the opaque background layer. The
+            // static completed-frame reconstruction must retain that layer identity too: additive
+            // `lighter` strokes accumulate within the transparent layer, which is then source-overed
+            // onto the chart background.
+            if progressive > 0, data.count() > threshold {
+                lineEl.incremental = 1
+            }
             var shape = (lineEl.shape as? LargeLinesPathShape) ?? LargeLinesPathShape()
             shape.segs = segs
             _ = lineEl.setShape(shape)

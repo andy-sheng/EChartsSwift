@@ -157,7 +157,7 @@ open class CandlestickView: ChartView {
         let clipArea: Any? = coordSys?.getArea()
         // const clipPath = needClip && createClipPath(coordSys, false, seriesModel);
         let clipPath: Path? = needClip
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
 
         // There is no old data only when first rendering or switching from
@@ -261,7 +261,7 @@ open class CandlestickView: ChartView {
 
         // const clipPath = seriesModel.get('clip', true) ? createClipPath(...) : null;
         let clipPath: Path? = ((seriesModel.get("clip", true) as? Bool) ?? true)
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
         updateClipPath(clipPath != nil, self.group, clipPath)
     }

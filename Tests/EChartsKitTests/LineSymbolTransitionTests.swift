@@ -41,17 +41,17 @@ final class LineSymbolTransitionTests: XCTestCase {
         XCTAssertGreaterThan(group.animators.count, 0, "symbol group should have a scale-in animator when animation on")
         let animator = group.animators.first { $0.getTrack("scaleX") != nil }
         XCTAssertNotNil(animator, "an animator should carry a scaleX track (the 0→1 group scale-in)")
-        XCTAssertEqual(group.scaleX ?? -1, 1.0, accuracy: 1e-9, "setToFinal jumps the group scaleX to its final value (1)")
+        XCTAssertEqual(group.scaleX, 1.0, accuracy: 1e-9, "setToFinal jumps the group scaleX to its final value (1)")
         // Prove the track carries a genuine 0→1 delta (not a no-op): step to t=0 restores the start.
         if let track = animator?.getTrack("scaleX") {
             track.step(group, 0.0)
-            XCTAssertEqual(group.scaleX ?? -1, 0.0, accuracy: 1e-9, "scaleX track starts at 0 (real scale-in delta)")
+            XCTAssertEqual(group.scaleX, 0.0, accuracy: 1e-9, "scaleX track starts at 0 (real scale-in delta)")
             track.step(group, 1.0)
-            XCTAssertEqual(group.scaleX ?? -1, 1.0, accuracy: 1e-9, "scaleX track ends at 1")
+            XCTAssertEqual(group.scaleX, 1.0, accuracy: 1e-9, "scaleX track ends at 1")
         }
         // The symbol path still rests at symbolSize/2 = 10 (its size is not animated).
         if let path = firstSymbolPath(ec.getRoot()) {
-            XCTAssertEqual(path.scaleX ?? -1, 10.0, accuracy: 1e-9, "symbol path at symbolSize/2")
+            XCTAssertEqual(path.scaleX, 10.0, accuracy: 1e-9, "symbol path at symbolSize/2")
         }
     }
 
@@ -60,9 +60,9 @@ final class LineSymbolTransitionTests: XCTestCase {
         ec.setOption(option(false))
         guard let group = firstSymbolGroup(ec.getRoot()) else { return XCTFail("no line symbol group") }
         XCTAssertEqual(group.animators.count, 0, "no scale-in animator when animation off")
-        XCTAssertEqual(group.scaleX ?? -1, 1.0, accuracy: 1e-9, "group at full scale (1) when animation off")
+        XCTAssertEqual(group.scaleX, 1.0, accuracy: 1e-9, "group at full scale (1) when animation off")
         // Path rests at symbolSize/2 = 10.
         guard let path = firstSymbolPath(ec.getRoot()) else { return XCTFail("no line symbol path") }
-        XCTAssertEqual(path.scaleX ?? -1, 10.0, accuracy: 1e-9, "symbol path at full scale (symbolSize/2) when animation off")
+        XCTAssertEqual(path.scaleX, 10.0, accuracy: 1e-9, "symbol path at full scale (symbolSize/2) when animation off")
     }
 }

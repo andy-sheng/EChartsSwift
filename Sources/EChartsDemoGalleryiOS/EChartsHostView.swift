@@ -19,6 +19,7 @@ import UIKit
 import ZRenderKit
 import NativePainter
 import EChartsKit
+import EChartsDemoCore
 
 final class EChartsHostView: UIView {
 
@@ -26,13 +27,17 @@ final class EChartsHostView: UIView {
     private let painter: CALayerPainter
     private let proxy: NativeHandlerProxy
     private let animationLoop: AnimationLoop
+    private var driveTimers: [Timer] = []
+    private var isDisposed = false
+    /// Disable ECharts interpolation without stopping the demo's data/timer progression.
+    var animationsEnabled = true
 
     init(frame: CGRect, dpr: Double? = nil) {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = CALayerPainter(size: size, dpr: dpr, backgroundColor: UIColor.white.cgColor)
         let proxy = NativeHandlerProxy()
         let ecView = EChartsView(width: Double(size.width), height: Double(size.height),
-                                 painter: painter, proxy: proxy)
+                                 painter: painter, proxy: proxy, useCoarsePointer: true)
 
         self.painter = painter
         self.proxy = proxy
@@ -54,12 +59,48 @@ final class EChartsHostView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     deinit {
-        self.animationLoop.stop()
-        self.echartsView.zr.dispose()
+        dispose()
+    }
+
+    /// Stop all per-demo work explicitly. Timer callbacks commonly capture the chart passed to the
+    /// demo, so waiting for `deinit` would leave a host -> timer -> host cycle running forever.
+    func dispose() {
+        guard !isDisposed else { return }
+        isDisposed = true
+        driveTimers.forEach { $0.invalidate() }
+        driveTimers.removeAll()
+        animationLoop.stop()
+        echartsView.dispose()
     }
 
     func setOption(_ option: [String: Any]) {
-        self.echartsView.setOption(option)
+        self.echartsView.setOption(optionRespectingAnimationPolicy(option))
+    }
+
+    private func optionRespectingAnimationPolicy(_ option: [String: Any]) -> [String: Any] {
+        guard !animationsEnabled else { return option }
+        return disablingAllAnimations(in: option)
+    }
+
+    private func disablingAllAnimations(in option: [String: Any]) -> [String: Any] {
+        var result = option
+        result["animation"] = false
+        if var series = result["series"] as? [String: Any] {
+            series["animation"] = false
+            result["series"] = series
+        }
+        else if let series = result["series"] as? [[String: Any]] {
+            result["series"] = series.map { item in
+                var item = item; item["animation"] = false; return item
+            }
+        }
+        if let base = result["baseOption"] as? [String: Any] {
+            result["baseOption"] = disablingAllAnimations(in: base)
+        }
+        if let snapshots = result["options"] as? [[String: Any]] {
+            result["options"] = snapshots.map(disablingAllAnimations)
+        }
+        return result
     }
 
     override func layoutSubviews() {
@@ -149,6 +190,52 @@ final class EChartsHostView: UIView {
         // Reset so each delta is reported relative to the last (matches the per-step pinch ratio the
         // GestureMgr recognizer produces from successive touch frames).
         g.scale = 1
+    }
+}
+
+extension EChartsHostView: EChartsDemoChart {
+    func setOption(_ option: [String: Any], notMerge: Bool) {
+        echartsView.setOption(optionRespectingAnimationPolicy(option), notMerge: notMerge)
+    }
+
+    func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        guard !isDisposed else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, !self.isDisposed else { timer.invalidate(); return }
+                body()
+            }
+        }
+        driveTimers.append(timer)
+    }
+
+    func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        guard !isDisposed else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, !self.isDisposed else { return }
+                defer { self.driveTimers.removeAll { $0 === timer } }
+                body()
+            }
+        }
+        driveTimers.append(timer)
+    }
+
+    func dispatch(_ payload: [String: Any]) {
+        guard let type = payload["type"] as? String else { return }
+        var action = Payload(type: type)
+        action.other = payload.filter { $0.key != "type" }
+        echartsView.ec.dispatchAction(action)
+        echartsView.syncAfterAction()
+    }
+
+    func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void) {
+        echartsView.on(event) { [weak self] params in
+            MainActor.assumeIsolated {
+                handler(params)
+                self?.echartsView.syncAfterAction()
+            }
+        }
     }
 }
 #endif

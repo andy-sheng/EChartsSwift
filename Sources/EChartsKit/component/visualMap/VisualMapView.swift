@@ -188,7 +188,7 @@ open class VisualMapView: ComponentView {
                 visualMapping = mappingsDict?["__alphaForOpacity"]
             }
             // if (VisualMapping.dependsOn(type, visualCluster)) { visualMapping && visualMapping.applyVisual(targetValue, getter, setter); }
-            if VisualMapping.dependsOn(type, visualCluster) {
+            if VisualMapping.dependsOn(type, visualCluster), let targetValue = targetValue {
                 visualMapping?.applyVisual(targetValue, getter, setter)
             }
         }

@@ -1,11 +1,20 @@
-// Sankey node rects fade in (style.opacity 0→final) when animation on, and are at final opacity with no
-// animator when off (the invisible-node guard). Faithful to the FunnelView initProps({style:{opacity}})
-// entrance pattern applied to the sankey node Rects.
+// Sankey uses the upstream first-render clip reveal. Nodes stay at final opacity while a clip rect grows
+// across the entire diagram; with animation off no clip animation is installed.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
 
 final class SankeyTransitionTests: XCTestCase {
+    private func firstClipRect(_ el: Element) -> Rect? {
+        if let clip = el.getClipPath() as? Rect { return clip }
+        if let group = el as? Group {
+            for child in group.children() {
+                if let clip = firstClipRect(child) { return clip }
+            }
+        }
+        return nil
+    }
+
     private func firstNode(_ el: Element) -> ZRenderKit.Rect? {
         if el.name == "node", let r = el as? ZRenderKit.Rect { return r }
         if let g = el as? Group { for c in g.children() { if let h = firstNode(c) { return h } } }
@@ -22,13 +31,13 @@ final class SankeyTransitionTests: XCTestCase {
                                ["source": "b", "target": "d", "value": 4.0],
                                ["source": "c", "target": "d", "value": 2.0]]] as [String: Any]]]
     }
-    func test_node_fades_in_when_animation_on() {
+    func test_diagram_clip_reveals_when_animation_on() {
         let ec = ECharts(width: 460, height: 360); ec.setOption(option(true))
-        guard let rect = firstNode(ec.getRoot()) else { return XCTFail("no sankey node rect") }
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
-        // targeted at "style" and carries an "opacity" leaf track.
-        let anim = rect.animators.first { $0.targetName == "style" }
-        XCTAssertNotNil(anim, "sankey node should have a style (opacity) animator when animation on")
+        guard let clip = firstClipRect(ec.getRoot()) else { return XCTFail("no sankey clip rect") }
+        guard let animator = clip.animators.first(where: { $0.targetName == "shape" }) else {
+            return XCTFail("sankey clip should have a shape animator when animation is on")
+        }
+        XCTAssertNotNil(animator.getTrack("width"), "sankey clip should reveal from left to right")
     }
     func test_node_final_opacity_when_animation_off() {
         let ec = ECharts(width: 460, height: 360); ec.setOption(option(false))

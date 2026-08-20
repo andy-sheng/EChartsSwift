@@ -544,7 +544,7 @@ open class BaseAxisPointer: AxisPointer {
             "shadowColor", "shadowBlur", "shadowOffsetX", "shadowOffsetY"
         ])
         if let path = handle as? Path {
-            _ = path.useStyle(handlePathStyleFromDict(itemStyle))
+            path.useStyle(handlePathStyleFromDict(itemStyle))
         }
 
         // update position

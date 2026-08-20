@@ -37,13 +37,21 @@ final class MatrixRenderTests: XCTestCase {
 
         var rects = 0
         var textStrings: [String] = []
-        _ = ec.getRoot().traverse { el in
+        var seen = Set<ObjectIdentifier>()
+        func visit(_ el: Element?) {
+            guard let el, seen.insert(ObjectIdentifier(el)).inserted else { return }
             if el is ZRenderKit.Rect { rects += 1 }
             else if let t = el as? ZRenderKit.ZRText {
                 if let s = t.textStyle?.text { textStrings.append(s) }
             }
-            return false
+            visit(el.getClipPath())
+            visit(el.getTextContent())
+            visit(el.getTextGuideLine())
+            if let group = el as? Group {
+                for child in group.children() { visit(child) }
+            }
         }
+        visit(ec.getRoot())
 
         // 3 x-header cells + 2 y-header cells + 6 body cells = 11 table cells, each a Rect; plus the
         //   background + outer-border Rects. So the scene must carry strictly MORE Rects than the 11 cells.

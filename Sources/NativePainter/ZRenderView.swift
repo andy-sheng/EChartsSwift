@@ -56,6 +56,10 @@ public final class NativeHandlerProxy: HandlerProxyInterface {
 
     private var __lastTouchMoment: Date?
 
+    /// Last cursor requested by zrender's hit-test. Public for host diagnostics/tests; iOS records the
+    /// semantic value but has no system mouse cursor to update.
+    public private(set) var currentCursorStyle: String = "default"
+
     public init() {}
 
     // MARK: HandlerProxyInterface
@@ -65,9 +69,25 @@ public final class NativeHandlerProxy: HandlerProxyInterface {
         self.handler = nil
     }
 
-    /// `setCursor` is a no-op on iOS (no pointer cursor). // PORT-NOTE: map to `NSCursor` on macOS.
+    /// Apply zrender's CSS cursor semantic to the native pointer on macOS.
     public func setCursor(_ cursorStyle: String?) {
-        // PORT-NOTE: iOS has no cursor; macOS could `NSCursor`-map `cursorStyle`. No-op for parity.
+        let style = cursorStyle ?? "default"
+        currentCursorStyle = style
+#if canImport(AppKit)
+        let cursor: NSCursor
+        switch style {
+        case "pointer": cursor = .pointingHand
+        case "crosshair": cursor = .crosshair
+        case "text": cursor = .iBeam
+        case "move", "grab": cursor = .openHand
+        case "grabbing": cursor = .closedHand
+        case "ew-resize", "e-resize", "w-resize", "col-resize": cursor = .resizeLeftRight
+        case "ns-resize", "n-resize", "s-resize", "row-resize": cursor = .resizeUpDown
+        case "not-allowed": cursor = .operationNotAllowed
+        default: cursor = .arrow
+        }
+        cursor.set()
+#endif
     }
 
     @discardableResult
@@ -189,7 +209,9 @@ public final class ZRenderView: UIView {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
         let proxy = NativeHandlerProxy()
-        let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        var opts = ZRenderInitOpt()
+        opts.useCoarsePointer = true
+        let zr = ZRenderKit.`init`(nil, opts, painter: painter, proxy: proxy)
 
         self.painter = painter
         self.proxy = proxy
@@ -340,7 +362,9 @@ public final class ZRenderView: NSView {
         let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
         let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: bg)
         let proxy = NativeHandlerProxy()
-        let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        var opts = ZRenderInitOpt()
+        opts.useCoarsePointer = false
+        let zr = ZRenderKit.`init`(nil, opts, painter: painter, proxy: proxy)
 
         self.painter = painter
         self.proxy = proxy

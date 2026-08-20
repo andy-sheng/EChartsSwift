@@ -69,9 +69,13 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     //   (PORT note: Swift uses native subclassing, so this hazard does not apply; the members
     //    are still declared without initializers and assigned in the initializer, faithfully.)
 
+    // `getModel(...)` builds lightweight child models whose inherited parent can itself be a
+    // temporary model. The child must retain that chain: item-level options such as
+    // `{label: {color: ...}}` inherit `show`/`formatter` from the series through it. Making this
+    // reference weak drops the temporary parent before the child is consumed and silently disables
+    // inheritance. `ecModel`, in contrast, is a true back-reference to the owning global model.
     public var parentModel: Model?
-
-    public var ecModel: GlobalModel?
+    public weak var ecModel: GlobalModel?
 
     // TODO Opt should only be object.
     // PORT-NOTE: upstream `option: Opt` (Opt = ModelOption = Dictionary<any> | any[] | string |
@@ -86,6 +90,10 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     //   CLOSURE so a consumer (PictorialBarView) can assign it on a specific item Model; nil on
     //   every other Model, matching the `getAnimationDelayParams?` optional call semantics.
     public var getAnimationDelayParams: ((Element, Int) -> AnimationDelayCallbackParam)?
+    /// Optional structural override used by PictorialBar's per-item animation model. Upstream
+    /// monkeypatches this method on each item model; a raw numeric datum otherwise can not inherit
+    /// animation settings because its own option is not a dictionary.
+    public var isAnimationEnabledOverride: (() -> Bool?)?
 
     // PORT-NOTE: marked `required` so `clone()` can reconstruct the dynamic subclass via
     //   `type(of: self).init(...)` (a Swift metatype can only call a `required` initializer),
@@ -248,6 +256,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
 
     // FIXME:TS check whether put this method here
     open func isAnimationEnabled() -> Bool? {
+        if let override = isAnimationEnabledOverride { return override() }
         // upstream: if (!env.node && this.option) { ... }
         // PORT-NOTE: `env` is module-internal to ZRenderKit (not importable here), and the
         //   ZRenderKit port hardcodes `env.node = true` (windowless branch) — which would

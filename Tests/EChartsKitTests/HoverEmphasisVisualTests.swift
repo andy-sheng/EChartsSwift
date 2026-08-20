@@ -26,9 +26,15 @@ final class HoverEmphasisVisualTests: XCTestCase {
         v._injectPointerForTest(type: "mousemove", zrX: s.x + s.width / 2, zrY: s.y + s.height / 2)
 
         XCTAssertTrue(bar0.currentStates.contains("emphasis"), "hover enters the emphasis state")
+        let animator = bar0.animators.first {
+            $0.__fromStateTransition != nil && $0.targetName == "style" && $0.getTrack("fill") != nil
+        }
+        XCTAssertNotNil(animator, "default emphasis lift must use the inherited stateAnimation color tween")
+        _ = animator?.getClip()?.step(0, 0)
+        _ = animator?.getClip()?.step(150, 150)
         let hoverFill = fillString(bar0)
         XCTAssertNotEqual(hoverFill, normalFill,
-                          "hovering a bar with no explicit emphasis must LIFT the fill (default emphasis) — normal=\(normalFill ?? "nil") hover=\(hoverFill ?? "nil")")
+                          "hovering a bar must visibly interpolate toward the lifted fill — normal=\(normalFill ?? "nil") hover=\(hoverFill ?? "nil")")
     }
 
     func testBarExplicitEmphasisColorApplies() {

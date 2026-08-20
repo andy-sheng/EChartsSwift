@@ -104,7 +104,7 @@ final class LegendToggleSelectTests: XCTestCase {
 
         // What LegendView passes for an UNSELECTED item: itemStyle.fill forced to the grey inactiveColor.
         let grey = "#cfd2d7"
-        var params = LegendIconParams(itemWidth: 25, itemHeight: 14, icon: "circle",
+        let params = LegendIconParams(itemWidth: 25, itemHeight: 14, icon: "circle",
                                       iconRotate: 0, itemStyle: ["fill": grey], lineStyle: [:],
                                       symbolKeepAspect: nil)
         guard let icon = series.getLegendIcon(params) else { XCTFail("scatter getLegendIcon returned nil"); return }

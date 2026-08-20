@@ -63,11 +63,8 @@ import ZRenderKit
 //       `MatrixBodyOrCornerKind` ('body' | 'corner'); Swift has no string-literal generics, so the kind is a
 //       plain `String` argument and `MatrixBodyCorner` is referenced non-generically (kind held internally).
 //   import { setLabelStyle } from '../../label/labelStyle';
-//     → `label/labelStyle.swift` (setLabelStyle IS ported: labelStyle.setLabelStyle / getLabelStatesModels).
-//       Upstream attaches the cell label as the rect's textContent via setLabelStyle (+ inside textConfig
-//       positioning). This port keeps the CalendarView/FunnelView deviation instead: the label is rendered as
-//       a STANDALONE `ZRText` centered on the cell rect (align center / middle), carrying the label model's
-//       font + color. The textContent-inside-positioning / rich-text / state / overflow-clip machinery is deferred.
+//     → `label/labelStyle.swift`. Cell labels are attached to their rect via setLabelStyle, including
+//       inside positioning and the matrix cell's auto-overflow/layoutRect constraints.
 //   import GlobalModel from '../../model/Global';                → `GlobalModel`.
 //
 //   The sibling coord/matrix types (assumed API, mirroring upstream MatrixDim.ts / MatrixBodyCorner.ts /
@@ -397,7 +394,7 @@ private func createMatrixCell(
         ?? ((cellOption != nil && cellOption!["itemStyle"] != nil) ? zrCellDefault.special : zrCellDefault.normal)
     // upstream: const tooltipOptionShow = tooltipOption && tooltipOption.show;
     //   `tooltipOption` is the dynamic `[String: Any]` bag; read `.show` with JS-truthiness. Used below to
-    //   decide the standalone label's `silent`.
+    //   decide the attached label's `silent`.
     let tooltipOptionShow = jsTruthy((tooltipOption as? [String: Any])?["show"])
 
     let cellRect = createMatrixRect(shape, _tmpCellItemStyleModel.getItemStyle(), z2)
@@ -431,42 +428,22 @@ private func createMatrixCell(
             if util.isString(formatter), let tpl = formatter as? String {
                 text = format.formatTplSimple(tpl, params)
             }
-            else if util.isFunction(formatter) {
-                // PORT-NOTE (deferred): requires JS-callback formatter bridging. A callback formatter can not
-                //   be invoked from the option bag in this static port; falls through to the default `text`
-                //   (matches the no-formatter case).
-                _ = params
+            else if let formatter = formatter as? ([String: Any]) -> String {
+                text = formatter(params)
             }
         }
 
-        // upstream: setLabelStyle(cellRect, {normal: _tmpCellLabelModel}, {defaultText: text, autoOverflowArea, layoutRect});
-        //           cellText = cellRect.getTextContent(); cellText.z2 = z2 + 1; ...clip path...
-        // PORT NOTE: `label/labelStyle.setLabelStyle` IS ported (labelStyle.setLabelStyle). This view keeps the
-        //   CalendarView/FunnelView drawing deviation instead of wiring it: the cell label is rendered as a
-        //   STANDALONE `ZRText` centered on the cell rect (align center / middle), carrying the label model's
-        //   font + color. `shape` is the subpixel-optimized rect (createMatrixRect mutated it in place), so the
-        //   center matches the drawn cell. Wiring the real setLabelStyle would re-parent the label as the rect's
-        //   textContent (textConfig-inside positioning + autoOverflowArea/layoutRect clip path) — a rendering
-        //   change out of scope for this cleanup. The rich-text / overflow-clip machinery is deferred (static, §5).
-        // Honor `label.show`: upstream's setLabelStyle produces NO text element when the label model's
-        // `show` is false (default true). Gate the ZRText on it (nil/true → draw).
-        let labelShow = _tmpCellLabelModel.getShallow("show")
-        if labelShow == nil || jsTruthy(labelShow) {
-            var style = TextStyleProps()
-            style.text = text
-            style.font = _tmpCellLabelModel.getFont()
-            style.fill = _tmpCellLabelModel.getTextColor()
-            style.align = .center
-            style.verticalAlign = .middle
-            style.x = shape.x + shape.width / 2
-            style.y = shape.y + shape.height / 2
-
-            let text0 = ZRText([
-                "z2": z2 + 1,
-                "style": style
-            ])
-            _ = group.add(text0)
-            cellText = text0
+        // Keep the label in the cell's exact layout rect. Matrix's default overflow/lineOverflow then
+        // prevents dense nested headers from painting over adjacent cells.
+        let labelLayoutRect = BoundingRect(shape.x, shape.y, shape.width, shape.height)
+        var labelOpt = SetLabelStyleOpt()
+        labelOpt.defaultText = text
+        labelOpt.autoOverflowArea = true
+        labelOpt.layoutRect = labelLayoutRect
+        labelStyle.setLabelStyle(cellRect, [.normal: _tmpCellLabelModel], labelOpt)
+        cellText = cellRect.getTextContent()
+        if let cellText = cellText {
+            cellText.z2 = z2 + 1
         }
 
         // upstream: setTooltipConfig({ // At least for text overflow.
@@ -481,17 +458,6 @@ private func createMatrixCell(
         //   PORT-NOTE: upstream types the locator as `MatrixXYLocator[]` (integer locators); this port carries
         //   it as `[Double]`, and it is appended to `formatterParams.$vars`, hence user-visible through
         //   `format.formatTpl` aliases — so it is coerced back to `Int` here to avoid rendering `1.0` for `1`.
-        // PORT-TODO: upstream attaches this config to `cellRect` because the label is `cellRect`'s
-        //   textContent ("At least for text overflow."), so hovering the LABEL resolves the host rect's
-        //   ecData. This port draws the label as a standalone `ZRText` added to `group` (see the drawing
-        //   deviation note above), and `cellRect.silent` defaults to true when the cell has no fill — which is
-        //   precisely the text-overflow case — so the overflow tooltip will not resolve from either element.
-        //   NO LONGER LATENT: `TooltipView._showComponentItemTooltip` now READS `ecData.tooltipConfig`
-        //   (routed from `EChartsView._showTooltipForHover`), so the gap would be user-visible — it is
-        //   closed below by stamping the SAME config on the standalone label too. The residual PORT-TODO
-        //   is the drawing deviation itself: re-parenting the label as `cellRect`'s textContent (the real
-        //   upstream shape) would make the second stamp unnecessary, because the label's ecData walk
-        //   (`__hostTarget`) would then reach the host rect.
         setTooltipConfig(
             el: cellRect,
             componentModel: matrixModel,
@@ -499,23 +465,6 @@ private func createMatrixCell(
             itemTooltipOption: tooltipOption,
             formatterParamsExtra: ["xyLocator": xyLocator.map { Int($0) }]
         )
-        // PORT-NOTE (adaptation, no upstream line — it follows from the standalone-label deviation
-        //   above): upstream needs ONE stamp because the label is `cellRect`'s textContent, so
-        //   `findEventDispatcher`'s `__hostTarget` hop lands on the rect. Here the label is a sibling in
-        //   `group`, and `cellRect` is silent by default whenever the cell has no fill — precisely the
-        //   text-overflow case this config exists for ("At least for text overflow.") — so without this
-        //   the tooltip resolves from NEITHER element. The label's own `silent` is already set to
-        //   `!(triggerEvent || tooltipOptionShow)` below, i.e. it IS hoverable when a tooltip is asked
-        //   for. Same arguments as the rect stamp, so both elements produce identical content.
-        if let cellText = cellText {
-            setTooltipConfig(
-                el: cellText,
-                componentModel: matrixModel,
-                itemName: text,
-                itemTooltipOption: tooltipOption,
-                formatterParamsExtra: ["xyLocator": xyLocator.map { Int($0) }]
-            )
-        }
     }
 
     // Set silent
@@ -525,9 +474,7 @@ private func createMatrixCell(
     // upstream: if (cellText) { let labelSilent = _tmpCellLabelModel.get('silent');
     //     if (labelSilent == null) { labelSilent = !(triggerEvent || tooltipOptionShow); }
     //     cellText.silent = labelSilent; cellText.ignoreHostSilent = true; }
-    //   By default, silent: false is needed for triggerEvent or tooltip interaction. This port renders the
-    //   label as a STANDALONE ZRText (not the rect's textContent), but the silent/ignoreHostSilent policy is
-    //   applied identically to that element.
+    //   By default, silent: false is needed for triggerEvent or tooltip interaction.
     if let cellText = cellText {
         var labelSilent = _tmpCellLabelModel.get("silent") as? Bool
         if labelSilent == nil {
@@ -579,7 +526,7 @@ private func createMatrixCell(
             "coord": xyLocator
         ]
         // upstream: name: (cellText && cellText.style) ? cellText.style.text : undefined
-        //   (this port's standalone label stores its style on `.textStyle`, upstream `ZRText.style`).
+        //   (`ZRText.style` is exposed as `.textStyle` by ZRenderKit's typed-style split).
         if let name = cellText?.textStyle?.text {
             eventData["name"] = name
         }
@@ -607,7 +554,7 @@ private let _tmpCellLabelModel = Model()
 // upstream: function createMatrixRect(shape: RectShape, style: ItemStyleProps, z2: number): Rect
 //   `shape` is passed as a `RectLike` (BoundingRect) here; upstream mutates it in place (subpixel), then
 //   `new Rect({shape})`. The in-place mutation is preserved (BoundingRect is a reference type) so the caller
-//   reads the optimized rect (used for the standalone label center). `style` is the dynamic `[String: Any]`
+//   reads the optimized rect (also used as the attached label's layoutRect). `style` is the dynamic `[String: Any]`
 //   itemStyle bag, bridged to `PathStyleProps` via `matrixPathStyleFromDict`.
 private func createMatrixRect(_ shape: RectLike, _ style: [String: Any], _ z2: Double) -> Rect {
     // Currently `subPixelOptimizeRect` can not be used here because it will break rect alignment.

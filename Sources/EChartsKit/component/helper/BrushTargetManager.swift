@@ -622,7 +622,7 @@ private func axisConvert(
     //   system yields an empty conversion (and so selects nothing) instead of crashing.
     guard let cartesian = coordSys.asCartesian2D,
           let rangeIn = brushDimensionMinMax(rangeOrCoordRange),
-          let axis = cartesian.getAxis(["x", "y"][axisNameIndex]) as? Axis2D else {
+          let axis = cartesian.getAxis(["x", "y"][axisNameIndex]) else {
         return (values: [Double](), xyMinMax: [[Double.nan, Double.nan], [Double.nan, Double.nan]])
     }
 

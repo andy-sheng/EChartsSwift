@@ -390,6 +390,15 @@ final class PathStyleAnimationAccessor: AnimationTarget {
         path.pathStyle = s           // write back to the live property
         path.dirtyStyle()
     }
+    func animationNormalize(_ key: String, _ value: Any?) -> Any? {
+        // ElementState style bags use the native ZRColor enum, while upstream state bags contain
+        // plain color strings/gradient objects. Normalize the target before Track type inference so
+        // hover emphasis is a color tween rather than a discrete immediate assignment.
+        if key == "fill" || key == "stroke", let color = value as? ZRColor {
+            return zrColorToAnimValue(color)
+        }
+        return value
+    }
 }
 
 // The base `Path`'s default shape (upstream `getDefaultShape() { return {} }` — an empty bag).

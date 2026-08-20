@@ -1120,6 +1120,7 @@ function renderBrushed(params) {
   });
 }
 """#,
+        entranceSetupDelayMs: 400,
         option: {
             // Register the 'china' map before the option is consumed — the web pane gets the SAME GeoJSON
             // via mapRegistrations (WebPage.swift → echarts.registerMap).

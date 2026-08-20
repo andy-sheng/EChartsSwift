@@ -66,7 +66,10 @@ public func calendarPrepareCustom(_ coordSys: Calendar) -> [String: Any] {
             //   returns CoordinateSystemDataLayout (rect + contentRect); modeled as the dynamic result of
             //   coordSys.dataToLayout (narrow at the custom-series call site).
             "layout": { (data: Any, clamp: Bool?) -> Any in
-                return coordSys.dataToLayout(data, clamp)
+                let result: CoordinateSystemDataLayout = coordSys.dataToLayout(
+                    data as OptionDataValueDate?, clamp
+                )
+                return result
             } as (Any, Bool?) -> Any
         ] as [String: Any]
     ]

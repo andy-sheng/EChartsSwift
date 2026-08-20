@@ -120,6 +120,24 @@ final class ZZTimelineTests: XCTestCase {
                        "the checkpoint at currentIndex=1 (value 1 of 0..2) must sit at the axis midpoint")
     }
 
+    func testTimelineChangeReusesAndAnimatesCheckpointAndProgressLine() {
+        let view = makeTimelineChart(currentIndex: 0)
+        guard let beforeView = timelineView(view), let beforePointer = beforeView._currentPointer else {
+            return XCTFail("no initial timeline pointer")
+        }
+        var action = Payload(type: "timelineChange")
+        action.other["currentIndex"] = 2
+        view.ec.dispatchAction(action)
+
+        guard let afterView = timelineView(view), let afterPointer = afterView._currentPointer,
+              let progress = afterView._progressLine else {
+            return XCTFail("timeline did not render after timelineChange")
+        }
+        XCTAssertTrue(beforePointer === afterPointer, "upstream reuses the checkpoint path across updates")
+        XCTAssertFalse(afterPointer.animators.isEmpty, "the checkpoint should move to the new index")
+        XCTAssertFalse(progress.animators.isEmpty, "the progress line should grow with the checkpoint")
+    }
+
     func testVerticalCategoryTimelineUsesLabelHeightForAutoInterval() {
         let view = EChartsView(width: 640, height: 420)
         view.setOption([

@@ -83,6 +83,16 @@ extension TreeNode {
 // upstream free-function module `layoutHelper` -> caseless enum namespace (CONVENTIONS §1).
 public enum layoutHelper {
 
+    /// Drop the temporary Reingold-Tilford records after a layout pass. Upstream attaches them to
+    /// collectable JS nodes; the Swift side table otherwise retains every tree ever rendered.
+    public static func clear(_ root: TreeNode) {
+        var nodes: [TreeNode] = [root]
+        while let node = nodes.popLast() {
+            _hierNodeStore.removeValue(forKey: ObjectIdentifier(node))
+            nodes.append(contentsOf: node.children)
+        }
+    }
+
     /**
      * Initialize all computational message for following algorithm.
      */

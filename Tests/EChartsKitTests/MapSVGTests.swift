@@ -36,7 +36,7 @@ final class MapSVGTests: XCTestCase {
             ] as [String: Any]
         ])
 
-        guard let geoModel = ec.getModel()?.getComponent("geo", 0) as? GeoModel,
+        guard ec.getModel()?.getComponent("geo", 0) is GeoModel,
               let geoView = ec._componentsViews.compactMap({ $0 as? GeoView }).first else {
             return XCTFail("geo component / GeoView not wired for an SVG map")
         }
@@ -75,7 +75,7 @@ final class MapSVGTests: XCTestCase {
             ] as [String: Any]
         ])
 
-        guard let geoModel = ec.getModel()?.getComponent("geo", 0) as? GeoModel,
+        guard ec.getModel()?.getComponent("geo", 0) is GeoModel,
               let geoView = ec._componentsViews.compactMap({ $0 as? GeoView }).first else {
             return XCTFail("geo component / GeoView not wired for an SVG map")
         }

@@ -96,22 +96,10 @@ final class SourceHelperGlobalInner {
 }
 
 // upstream: const innerGlobalModel = makeInner<{ datasetMap: ... }, GlobalModel>();
-// PORT-NOTE: `GlobalModel` is now a concrete class (model/Global.swift) and `model.makeInner`
-//   is ported (util/modelUtil.swift). This still uses an equivalent object-identity keyed store
-//   with the same `innerGlobalModel(ecModel)` call shape; it could be switched to `model.makeInner`.
-private final class SourceHelperGlobalInnerStore {
-    private var map: [ObjectIdentifier: SourceHelperGlobalInner] = [:]   // PORT-NOTE: strong map (JS uses a WeakMap); entries live as long as this process-global store, so a GlobalModel keyed here is retained. Switch to `model.makeInner` for weak semantics.
-    func callAsFunction(_ host: GlobalModel) -> SourceHelperGlobalInner {
-        let id = ObjectIdentifier(host as AnyObject)
-        if let existing = map[id] {
-            return existing
-        }
-        let created = SourceHelperGlobalInner()
-        map[id] = created
-        return created
-    }
-}
-private let innerGlobalModel = SourceHelperGlobalInnerStore()
+// Use the port's WeakMap-backed makeInner as well: the previous process-global ObjectIdentifier map
+// accumulated a dataset record for every chart the gallery had ever opened.
+private let innerGlobalModel: (GlobalModel) -> SourceHelperGlobalInner =
+    model.makeInner { SourceHelperGlobalInner() }
 
 // `sourceHelper.ts` is a free-function module -> caseless `enum` namespace `sourceHelper`
 // (CONVENTIONS §2). Call sites stay identical to upstream named imports, e.g.

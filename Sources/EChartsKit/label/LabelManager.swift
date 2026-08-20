@@ -39,13 +39,8 @@ import ZRenderKit
 //     rect/labelRect/align/verticalAlign/labelLinePoints), and applies the returned `LabelLayoutOption`.
 //
 //   DEFERRED (documented gaps, faithful to the rest of the port):
-//     - `draggable` / drag handlers, `labelLinePoints`, and `processLabelsOverall` (label-line update +
-//        label value/fade animation) — the driver draws a static frame and has no per-frame label
-//        animation loop, and label lines are drawn by each chart view. This is where upstream's
-//        `_updateLabelLine` calls `setLabelLineStyle(el, getLabelLineStatesModels(itemModel), defaultStyle)`
-//        (LabelManager.ts:522) — that consumer stays DEFERRED here; the provider
-//        (`labelGuideHelper.setLabelLineStyle`) is nonetheless fully ported and is already wired by the
-//        chart views (FunnelView, PieView) that own their label lines.
+//     - `draggable` / drag handlers. Label-line creation/style/geometry and the global label/value/
+//        guide-line animation pass are ported below in `processLabelsOverall`.
 //     - The `dummyTransformable` global-space decomposition of `defaultAttr` — since the driver
 //        renders each label fresh every frame, the label's CURRENT attrs ARE the defaults, so the
 //        "restore default" branches of `updateLayoutConfig` reduce to no-ops and are omitted.
@@ -128,7 +123,7 @@ public final class LabelManager {
         let seriesIndex = seriesModel.seriesIndex
 
         _ = chartView.group.traverse({ child -> Bool in
-            if child.ignore {
+            if child.ignore && innerStore.getECElementProps(child).forceLabelAnimation != true {
                 return true    // Stop traverse descendants.
             }
             // Only support label being hosted on graphic elements.
@@ -297,45 +292,110 @@ public final class LabelManager {
         let height = api.getHeight()
         manager.updateLayoutConfig(width, height)
         manager.layout(width, height)
-        manager.processLabelLines()
+        manager.processLabelsOverall()
     }
 
-    /// Static-frame portion of upstream `processLabelsOverall`: create/style generic series guide
-    /// lines after labelLayout has moved labels, then calculate their point-to-label geometry.
-    private func processLabelLines() {
+    /// Upstream `processLabelsOverall`: create/style generic series guide lines after labelLayout has
+    /// moved labels, calculate their geometry, then animate every hosted label and guide line. The
+    /// animation pass intentionally runs for every chart view, including views without a `labelLayout`
+    /// option: this is what fades pie/sunburst labels and draws pie guide lines on chart entrance.
+    private func processLabelsOverall() {
         for chartView in self._chartViewList {
             // Pie and funnel own their guide-line geometry and default item-colour styling. Upstream
             // excludes views with `ignoreLabelLineUpdate` from the generic label-line pass; without
             // this gate the empty generic default style replaced their resolved coloured stroke with
             // nil after the chart view had finished rendering it.
-            if chartView.ignoreLabelLineUpdate { continue }
             guard let seriesModel = chartView.__model else { continue }
             _ = chartView.group.traverse { child -> Bool in
+                if child.ignore && innerStore.getECElementProps(child).forceLabelAnimation != true {
+                    return true
+                }
                 guard let text = child.getTextContent() else { return false }
-                let ecData = innerStore.getECData(child)
-                let hostModel: Model
-                if let dataIndex = ecData.dataIndex {
-                    hostModel = seriesModel.getData(ecData.dataType).getItemModel(Int(dataIndex))
+                if !chartView.ignoreLabelLineUpdate {
+                    let ecData = innerStore.getECData(child)
+                    let hostModel: Model
+                    if let dataIndex = ecData.dataIndex {
+                        hostModel = seriesModel.getData(ecData.dataType).getItemModel(Int(dataIndex))
+                    }
+                    else {
+                        // Some SymbolDraw hosts carry ECData on their parent group rather than the
+                        // concrete path. Their label still belongs to this series and inherits its line.
+                        hostModel = seriesModel
+                    }
+                    let statesModels = labelGuideHelper.getLabelLineStatesModels(hostModel)
+                    let labelLineModel = hostModel.getModel("labelLine")
+                    let seriesLabelLineModel = seriesModel.getModel("labelLine")
+                    if child.getTextGuideLine() == nil,
+                       ((labelLineModel.get("show") as? Bool) == true
+                        || (seriesLabelLineModel.get("show") as? Bool) == true) {
+                        child.setTextGuideLine(Polyline())
+                    }
+                    labelGuideHelper.setLabelLineStyle(child, statesModels, PathStyleProps())
+                    labelGuideHelper.updateLabelLinePoints(child, labelLineModel)
+                    // Keep the guide in lockstep with the label visibility chosen by overlap layout.
+                    child.getTextGuideLine()?.ignore = text.ignore
                 }
-                else {
-                    // Some SymbolDraw hosts carry ECData on their parent group rather than the
-                    // concrete path. Their label still belongs to this series and inherits its line.
-                    hostModel = seriesModel
-                }
-                let statesModels = labelGuideHelper.getLabelLineStatesModels(hostModel)
-                let labelLineModel = hostModel.getModel("labelLine")
-                let seriesLabelLineModel = seriesModel.getModel("labelLine")
-                if child.getTextGuideLine() == nil,
-                   ((labelLineModel.get("show") as? Bool) == true
-                    || (seriesLabelLineModel.get("show") as? Bool) == true) {
-                    child.setTextGuideLine(Polyline())
-                }
-                labelGuideHelper.setLabelLineStyle(child, statesModels, PathStyleProps())
-                labelGuideHelper.updateLabelLinePoints(child, labelLineModel)
-                // Keep the guide in lockstep with the label visibility chosen by overlap layout.
-                child.getTextGuideLine()?.ignore = text.ignore
+
+                self.animateLabels(child, seriesModel)
                 return false
             }
+        }
+    }
+
+    /// Faithful port of LabelManager._animateLabels. First appearance fades text opacity 0→configured
+    /// opacity and draws guide lines with strokePercent 0→1. Retained labels morph x/y/rotation and
+    /// retained guide lines morph their points. Stores live on the graphic elements, matching the two
+    /// upstream WeakMaps and preventing a fresh fade on ordinary setOption updates.
+    private func animateLabels(_ host: Element, _ seriesModel: SeriesModel) {
+        let text = host.getTextContent()
+        let guideLine = host.getTextGuideLine()
+        let hostProps = innerStore.getECElementProps(host)
+
+        if let text = text,
+           hostProps.forceLabelAnimation == true
+            || (!text.ignore && !text.invisible
+                && hostProps.disableLabelAnimation != true && !isElementRemoved(host)) {
+            let store = innerStore.getECElementProps(text)
+            let newLayout: [String: Double] = ["x": text.x, "y": text.y, "rotation": text.rotation]
+            let ecData = innerStore.getECData(host)
+            let dataIndex = ecData.dataIndex.map(Int.init)
+
+            if let oldLayout = store.labelOldLayout {
+                _ = text.attr(oldLayout)
+                updateProps(text, newLayout, seriesModel, dataIndex)
+            }
+            else {
+                _ = text.attr(newLayout)
+                // Value-animation owns the same label animator and suppresses the ordinary fade.
+                if labelStyle.labelInner(text).valueAnimation != true {
+                    let targetOpacity = text.textStyle?.opacity ?? 1
+                    if text.textStyle == nil { text.useStyle(TextStyleProps()) }
+                    text.textStyle.opacity = 0
+                    text.dirtyStyle()
+                    initProps(text, ["style": ["opacity": targetOpacity] as [String: Any]],
+                              seriesModel, dataIndex)
+                }
+            }
+            store.labelOldLayout = newLayout
+
+            let data = seriesModel.getData(ecData.dataType)
+            labelStyle.animateLabelValue(text, ecData.dataIndex, data, seriesModel, seriesModel)
+        }
+
+        if let guideLine = guideLine, !guideLine.ignore, !guideLine.invisible,
+           let shape = guideLine.shape as? PolylineShape, let points = shape.points {
+            let store = innerStore.getECElementProps(guideLine)
+            let newPoints = points.map { [$0.x, $0.y] }
+            if let oldPoints = store.labelLineOldPoints {
+                _ = guideLine.setShape("points", oldPoints)
+                updateProps(guideLine, ["shape": ["points": newPoints] as [String: Any]], seriesModel)
+            }
+            else {
+                _ = guideLine.setShape("points", newPoints)
+                guideLine.pathStyle.strokePercent = 0
+                initProps(guideLine, ["style": ["strokePercent": 1.0] as [String: Any]], seriesModel)
+            }
+            store.labelLineOldPoints = newPoints
         }
     }
 

@@ -76,4 +76,45 @@ final class GraphLabelStyleTests: XCTestCase {
             XCTAssertTrue(label.ignore, "label textContent should be ignored when label.show==false")
         }
     }
+
+    func test_node_label_enter_fade_uses_its_data_index_delay() {
+        let delay: AnimationDelayCallback = { idx, _ in idx * 1_000 }
+        let ec = ECharts(width: 400, height: 400)
+        ec.setOption([
+            "animation": true,
+            "animationDuration": 1_000.0,
+            "series": [[
+                "type": "graph", "layout": "none",
+                "animationDelay": delay,
+                "label": ["show": true],
+                "data": [
+                    ["name": "n0", "x": 100.0, "y": 100.0],
+                    ["name": "n1", "x": 200.0, "y": 200.0],
+                    ["name": "n2", "x": 300.0, "y": 300.0]
+                ]
+            ]]
+        ])
+
+        var labelsByIndex: [Int: ZRText] = [:]
+        _ = ec.getRoot().traverse { el in
+            if let label = el.getTextContent(), let idx = innerStore.getECData(el).dataIndex {
+                labelsByIndex[Int(idx)] = label
+            }
+            return false
+        }
+        XCTAssertEqual(Set(labelsByIndex.keys), Set([0, 1, 2]))
+
+        for label in labelsByIndex.values {
+            for animator in label.animators {
+                _ = animator.getClip()?.sampleForDeterministicRendering(at: 500)
+            }
+        }
+
+        XCTAssertGreaterThan(labelsByIndex[0]?.textStyle?.opacity ?? 0, 0,
+                             "index 0 label should be fading in at 500ms")
+        XCTAssertEqual(labelsByIndex[1]?.textStyle?.opacity ?? -1, 0, accuracy: 1e-9,
+                       "index 1 label must wait for its 1000ms delay")
+        XCTAssertEqual(labelsByIndex[2]?.textStyle?.opacity ?? -1, 0, accuracy: 1e-9,
+                       "index 2 label must wait for its 2000ms delay")
+    }
 }

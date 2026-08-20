@@ -37,6 +37,13 @@ public typealias InterpolatableType = Any
 public protocol AnimationTarget: AnyObject {
     func animationGet(_ key: String) -> Any?
     func animationSet(_ key: String, _ value: Any?)
+    /// Convert a strongly-typed stored value into the untyped value zrender's Animator expects.
+    /// Most targets already store JS-like numbers/strings and use the identity implementation.
+    func animationNormalize(_ key: String, _ value: Any?) -> Any?
+}
+
+public extension AnimationTarget {
+    func animationNormalize(_ key: String, _ value: Any?) -> Any? { value }
 }
 
 // upstream: interface ParsedColorStop { color: number[], offset: number }

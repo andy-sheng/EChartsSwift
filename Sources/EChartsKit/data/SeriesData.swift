@@ -164,7 +164,10 @@ public final class SeriesData: DataStackSeriesData {
      */
     private var _dimIdxToName: HashMap<DimensionName>?
 
-    public let hostModel: Model?   // upstream: readonly hostModel: HostModel (HostModel extends Model)
+    // This link must stay strong while a chart is live: emphasis/blur and item visual code can retain
+    // a derived data list without separately retaining its model. The owning SeriesModel explicitly
+    // detaches it during chart disposal to break the JS-GC-style model <-> data cycle under Swift ARC.
+    public private(set) var hostModel: Model?
 
     /**
      * @readonly
@@ -392,6 +395,11 @@ public final class SeriesData: DataStackSeriesData {
                 dimIdxToName.set(dimensionInfos[dimName]!.storeDimIndex, dimName)
             }
         }
+    }
+
+    /// Called only from the owning series' terminal disposal path.
+    func detachHostModelForChartDispose() {
+        hostModel = nil
     }
 
     /**
@@ -1282,7 +1290,6 @@ public final class SeriesData: DataStackSeriesData {
      * Shallow clone a new list except visual and layout properties, and graph elements.
      * New list only change the indices.
      */
-    @discardableResult
     // PORT helper: fire the side-effect injections `wrapMethod` stored for `methodName`, in registration
     //   order, feeding each the method's result (`res`). Upstream rebinds `this[methodName]` so the injection
     //   runs after the original method; here the ported wrappable methods call this explicitly. Mirrors the
@@ -1296,6 +1303,7 @@ public final class SeriesData: DataStackSeriesData {
         }
     }
 
+    @discardableResult
     public func cloneShallow(_ list: SeriesData? = nil) -> SeriesData {
         var list = list
         if list == nil {

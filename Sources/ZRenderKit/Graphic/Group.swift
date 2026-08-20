@@ -252,9 +252,8 @@ open class Group: Element {
      */
     // TODO Group itself should also invoke the callback.
     // PORT-NOTE: upstream `cb` returns `boolean | void`; modeled as `-> Bool` (return `true`
-    //   to stop descending). This is an OVERLOAD of `Element.traverse` (whose closure returns
-    //   `Void`), not an override — the closure types differ. Recursion casts each child to
-    //   `Group` to reach this method.
+    //   to stop descending). This is the Bool-callback OVERLOAD; the polymorphic override of
+    //   `Element.traverse`'s Void-callback signature is provided immediately below.
     @discardableResult
     public func traverse(_ cb: (_ el: Element) -> Bool, _ context: Any? = nil) -> Group {
         for i in 0..<self._children.count {
@@ -266,6 +265,20 @@ open class Group: Element {
             }
         }
         return self
+    }
+
+    /// Polymorphic counterpart of `Element.traverse`.
+    ///
+    /// Some callers hold a group as `Element` and therefore dispatch through the void-callback
+    /// signature (not the bool-callback convenience overload above). Keep that entry point recursive
+    /// as well; otherwise calls such as `setCommonECData` never reach a group's descendants.
+    public override func traverse(_ cb: (_ el: Element) -> Void, _ context: Any? = nil) {
+        for child in self._children {
+            cb(child)
+            if child.isGroup {
+                child.traverse(cb, context)
+            }
+        }
     }
 
     public override func addSelfToZr(_ zr: ZRenderType) {

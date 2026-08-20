@@ -60,7 +60,13 @@ final class SeriesModelInner {
     var sourceManager: SourceManager?
     init() {}
 }
-private let inner: (SeriesModel) -> SeriesModelInner = model.makeInner { SeriesModelInner() }
+private let seriesInnerStore = WeakMap<SeriesModel, SeriesModelInner>()
+private func inner(_ host: SeriesModel) -> SeriesModelInner {
+    if let existing = seriesInnerStore.get(host) { return existing }
+    let created = SeriesModelInner()
+    seriesInnerStore.set(host, created)
+    return created
+}
 
 func getSelectionKey(_ data: SeriesData, _ dataIndex: Int) -> String {
     // return data.getName(dataIndex) || data.getId(dataIndex);
@@ -558,6 +564,27 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         return inner(self).sourceManager!
     }
 
+    /// Break the port-only side-store/task ownership graph during ECharts disposal. JavaScript's
+    /// WeakMap/GC drops this state with the model; ARC needs the entry removed explicitly.
+    func disposeForChart() {
+        dataTask?.context?.data?.detachHostModelForChartDispose()
+        dataTask?.context?.outputData?.detachHostModelForChartDispose()
+        dataTask?.dispose()
+        dataTask?.context = nil
+        coordinateSystem = nil
+        boxCoordinateSystem = nil
+
+        if let record = seriesInnerStore.get(self) {
+            record.data?.detachHostModelForChartDispose()
+            record.dataBeforeProcessed?.detachHostModelForChartDispose()
+            record.sourceManager?.dispose()
+            record.sourceManager = nil
+            record.data = nil
+            record.dataBeforeProcessed = nil
+        }
+        _ = seriesInnerStore.delete(self)
+    }
+
     open func getSource() -> Source {
         // upstream `SeriesModel.getSource` returns `Source` (non-optional). The ported
         // `SourceManager.getSource()` returns `Source?` (faithful to upstream's `Source | undefined`
@@ -758,7 +785,11 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         if jsTruthy(animationEnabled) {
             // Absent threshold => no cap (JS `count > undefined` is false, animation stays on).
             // Using 0 would wrongly disable animation for any non-empty data. PORT_STATUS §29 #1.
-            if Double(self.getData().count()) > ((self.getShallow("animationThreshold") as? Double) ?? Double.infinity) {
+            // Dynamic option numbers commonly arrive as `Int` (the global default is the integer
+            // literal 2000). A Double-only cast silently treated that value as infinity, so large
+            // heatmaps/scatters animated thousands of elements while echarts.js correctly disabled
+            // animation at the threshold.
+            if Double(self.getData().count()) > (seriesOptionNum(self.getShallow("animationThreshold")) ?? Double.infinity) {
                 animationEnabled = false
             }
         }
@@ -1113,7 +1144,8 @@ func wrapData(_ data: SeriesData, _ seriesModel: SeriesModel) {
     //   (`+` for concat, an explicit closure for the curried `onDataChange`).
     let methods = data.CHANGABLE_METHODS + data.DOWNSAMPLE_METHODS
     util.each(methods) { methodName, _ in
-        data.wrapMethod(methodName) { args in
+        data.wrapMethod(methodName) { [weak data, weak seriesModel] args in
+            guard let data, let seriesModel else { return args.first as? SeriesData }
             // curried onDataChange(seriesModel, newList): the wrapped method's first arg is newList.
             let newList = args.first as? SeriesData
             return onDataChange(data, seriesModel, newList)

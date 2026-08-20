@@ -103,4 +103,50 @@ final class PieTransitionTests: XCTestCase {
         let sh = sec.shape as? SectorShape
         XCTAssertNotEqual(sh?.endAngle ?? 0, sh?.startAngle ?? 0, "sector at final (non-collapsed) angle when off")
     }
+
+    func test_outer_label_fades_and_guide_line_draws_on_entrance() {
+        let ec = ECharts(width: 400, height: 400)
+        ec.setOption(option(true))
+        guard let sec = firstSector(ec.getRoot()),
+              let label = sec.getTextContent(),
+              let guide = sec.getTextGuideLine() else {
+            return XCTFail("pie sector should own an outer label and guide line")
+        }
+
+        let labelAnimator = label.animators.first {
+            $0.targetName == "style" && $0.getTrack("opacity") != nil
+        }
+        XCTAssertNotNil(labelAnimator, "global LabelManager should fade the label on first appearance")
+        if let animator = labelAnimator, let track = animator.getTrack("opacity") {
+            track.step(animator.getTarget(), 0)
+            XCTAssertEqual(label.textStyle.opacity ?? -1, 0, accuracy: 1e-9)
+            track.step(animator.getTarget(), 1)
+            XCTAssertEqual(label.textStyle.opacity ?? -1, 1, accuracy: 1e-9)
+        }
+
+        let lineAnimator = guide.animators.first {
+            $0.targetName == "style" && $0.getTrack("strokePercent") != nil
+        }
+        XCTAssertNotNil(lineAnimator, "global LabelManager should draw the guide line on first appearance")
+        if let animator = lineAnimator, let track = animator.getTrack("strokePercent") {
+            track.step(animator.getTarget(), 0)
+            XCTAssertEqual(guide.pathStyle.strokePercent ?? -1, 0, accuracy: 1e-9)
+            track.step(animator.getTarget(), 1)
+            XCTAssertEqual(guide.pathStyle.strokePercent ?? -1, 1, accuracy: 1e-9)
+        }
+    }
+
+    func test_label_animation_is_disabled_with_series_animation() {
+        let ec = ECharts(width: 400, height: 400)
+        ec.setOption(option(false))
+        guard let sec = firstSector(ec.getRoot()),
+              let label = sec.getTextContent(),
+              let guide = sec.getTextGuideLine() else {
+            return XCTFail("pie sector should own an outer label and guide line")
+        }
+        XCTAssertFalse(label.animators.contains { $0.getTrack("opacity") != nil })
+        XCTAssertFalse(guide.animators.contains { $0.getTrack("strokePercent") != nil })
+        XCTAssertEqual(label.textStyle.opacity ?? 1, 1, accuracy: 1e-9)
+        XCTAssertEqual(guide.pathStyle.strokePercent ?? 1, 1, accuracy: 1e-9)
+    }
 }

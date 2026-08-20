@@ -169,10 +169,10 @@ open class ParallelView: ChartView {
                     // Callback invoked when the clip-reveal animation completes (or immediately when
                     //   animation is off). Upstream defers via setTimeout(...) to the next tick; the
                     //   port drops the line clip once the reveal finishes.
-                    _ = dataGroup.removeClipPath()
+                    dataGroup.removeClipPath()
                 }
             )
-            _ = dataGroup.setClipPath(clipPath)
+            dataGroup.setClipPath(clipPath)
         }
 
         // this._data = data;

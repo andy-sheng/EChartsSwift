@@ -253,7 +253,7 @@ open class PictorialBarView: ChartView {
 
         // Do clipping. pictorialBar clip defaults to false.
         let clipPath: Path? = ((seriesModel.get("clip", true) as? Bool) ?? false)
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
         if let clipPath = clipPath {
             group.setClipPath(clipPath)
@@ -268,7 +268,9 @@ open class PictorialBarView: ChartView {
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let group = self.group
         let data = self._data
-        if (ecModel.get("animation") as? Bool) ?? false {
+        // Global default is the JS-truthy string "auto", not a Bool. A Bool-only cast skipped the
+        // official scale-to-zero leave transition when a legend hid the pictorial series.
+        if pbTruthy(ecModel.get("animation")) {
             if let data = data {
                 data.eachItemGraphicEl({ el, _ in
                     if let bar = el as? PictorialBarElement {
@@ -420,7 +422,7 @@ private func pbPrepareBarLength(
 //   return axis.toGlobalCoord(axis.dataToCoord(axis.scale.parse(value)));
 // }
 private func pbConvertToCoordOnAxis(_ axis: Axis2D, _ value: Any?) -> Double {
-    let parsed = axis.scale.parse(value as? ScaleDataValue ?? (pbDouble(value) ?? Double.nan))
+    let parsed = axis.scale.parse(value ?? Double.nan)
     return axis.toGlobalCoord(axis.dataToCoord(parsed))
 }
 
@@ -878,6 +880,13 @@ private let pictorialAnimInner: (Element) -> PictorialAnimRecord = model.makeInn
 //   by basicTransition's animateOrSetProps as `model.getAnimationDelayParams?(el, dataIndex)`.
 private func pbGetItemModel(_ data: SeriesData, _ dataIndex: Int) -> Model {
     let itemModel = data.getItemModel(dataIndex)
+    weak let weakItemModel = itemModel
+    weak let weakHostModel = data.hostModel
+    itemModel.isAnimationEnabledOverride = {
+        guard let itemModel = weakItemModel else { return false }
+        return (weakHostModel?.isAnimationEnabled() ?? false)
+            && pbTruthy(itemModel.getShallow("animation"))
+    }
     // upstream getAnimationDelayParams(this, path):
     //   { index: path.__pictorialAnimationIndex, count: path.__pictorialRepeatTimes }
     //   The order is the same as the z-order, see `symbolRepeatDiretion`.
@@ -1091,8 +1100,8 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
 
         if hoverScale {
             // NOTE: must be after scale is set by updateAttr.
-            emphasisState.scaleX = (path.scaleX ?? 0) * 1.1
-            emphasisState.scaleY = (path.scaleY ?? 0) * 1.1
+            emphasisState.scaleX = path.scaleX * 1.1
+            emphasisState.scaleY = path.scaleY * 1.1
         }
 
         path.ensureState("blur").style = blurStyle

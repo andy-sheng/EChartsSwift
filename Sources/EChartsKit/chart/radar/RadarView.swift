@@ -220,7 +220,7 @@ open class RadarView: ChartView {
         _ = itemGroup.add(polygon)
         _ = itemGroup.add(symbolGroup)
 
-        // --- symbols: one per vertex (skip the closing duplicate), scale-in entrance ---------------
+        // --- symbols: one per vertex (skip the closing duplicate) ---------------------------------
         let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
         let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 4.0
         let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? seriesSymbol
@@ -233,8 +233,12 @@ open class RadarView: ChartView {
                 fill = .string(cs)
             }
             let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
+            // Subtle upstream ordering: polygon/polyline initProps above uses setToFinal, then
+            // updateSymbols receives `polyline.shape.points`. Those live points are already FINAL,
+            // not the collapsed seed, so radar vertex symbols are full-size at their final positions
+            // from t=0 while only the line/area grows outward. Pass final points as both old/new.
             buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
-                              seriesModel, idx, symbolRotate, animateIn: true)
+                              seriesModel, idx, symbolRotate, oldPoints: points, isInit: true)
         }
 
         return itemGroup
@@ -256,6 +260,8 @@ open class RadarView: ChartView {
               let symbolGroup = itemGroup.childAt(2) as? Group else {
             return
         }
+        // Capture before updateProps: its setToFinal contract stamps the final points immediately.
+        let oldSymbolPoints = radarPointsFromLayout(polyline.shape)
 
         // upstream: saveOldStyle(polygon); saveOldStyle(polyline); — snapshot the pre-restyle style so the
         //   post-diff styling pass's `useStyle` can tween a color change through the style transition.
@@ -268,50 +274,24 @@ open class RadarView: ChartView {
         updateProps(polyline, ["shape": ["points": finalPoints] as [String: Any]], seriesModel, idx)
         updateProps(polygon, ["shape": ["points": finalPoints] as [String: Any]], seriesModel, idx)
 
-        // Vertex symbols: re-run the visual fallbacks and morph each symbol's SymbolShape x/y to the new
-        //   vertex (skip the closing duplicate). A symbol-type/count change per item rebuilds this item's
-        //   symbol group fresh. (updateSymbols upstream simply rerenders all; the port reuses when it can.)
+        // Vertex symbols: upstream deliberately rerenders them all, placing each fresh local 2×2 symbol
+        // at the old vertex and tweening its element x/y to the new vertex. This is also the entrance
+        // contract: symbols move with the polygon from the radar center; they do not scale in at their
+        // final coordinates.
         let seriesSymbol = (seriesModel.get("symbol", false) as? String) ?? "circle"
         let seriesSymbolSize: Any = seriesModel.get("symbolSize", false) ?? 4.0
         let color = (data.getItemVisual(idx, "style") as? [String: Any])?["fill"]
         let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? seriesSymbol
-        let vertexCount = points.count - 1
         var fill: ZRenderKit.ZRColor? = nil
         if let cs = radarColorString(color) { fill = .string(cs) }
         let (sizeW, sizeH) = symbol.normalizeSymbolSize(
             data.getItemVisual(idx, "symbolSize") ?? seriesSymbolSize
         )
         let symbolRotate = symbolAsDouble(data.getItemVisual(idx, "symbolRotate")) ?? 0
-        // PORT-NOTE (intentional): only `Path` symbols are reuse candidates. An `image://` series yields
-        //   `ZRImage` children, so `existing` is empty, `canMorphSymbols` is false, and the update takes
-        //   the `removeAll()` + rebuild branch — which IS upstream's behaviour (`updateSymbols` "Simply
-        //   rerender all"); the Path morph below is the port's extra optimisation. Consequence to know:
-        //   an image symbol is destroyed/recreated each update, so its vertex position does not tween and
-        //   a still-loading image re-enters `makeImage` (re-running the keepAspect 'center' onload
-        //   recentering in ToolPath.swift). Widen this scan to `as? Displayable` + rewrite
-        //   `imageStyle.x/y/width/height` if image symbols ever need to tween.
-        let existing = symbolGroup.childrenRef().compactMap { $0 as? Path }
-        let canMorphSymbols = symbolType != "none"
-            && existing.count == vertexCount
-            && existing.allSatisfy { $0.shape is SymbolShape }
-        if canMorphSymbols {
-            for i in 0..<vertexCount {
-                let pt = points[i]
-                let path = existing[i]
-                path.originX = pt.x
-                path.originY = pt.y
-                path.rotation = symbolRotate * Double.pi / 180
-                updateProps(path, ["shape": [
-                    "x": pt.x - sizeW / 2, "y": pt.y - sizeH / 2,
-                    "width": sizeW, "height": sizeH
-                ] as [String: Any]], seriesModel, idx)
-            }
-        } else {
-            _ = symbolGroup.removeAll()
-            if symbolType != "none" {
-                buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
-                                  seriesModel, idx, symbolRotate, animateIn: false)
-            }
+        _ = symbolGroup.removeAll()
+        if symbolType != "none" {
+            buildRadarSymbols(points, symbolType, sizeW, sizeH, fill, symbolGroup,
+                              seriesModel, idx, symbolRotate, oldPoints: oldSymbolPoints, isInit: false)
         }
     }
 
@@ -368,19 +348,19 @@ open class RadarView: ChartView {
         if areaStyleDict["fill"] == nil { polygon.pathStyle.fill = nil }
     }
 
-    // Build one vertex symbol per ring point (skipping the closing duplicate) into `symbolGroup`. On a
-    //   fresh rebuild the symbols scale-in from 0 (upstream Symbol.ts entrance); on a morph rebuild
-    //   (symbol count/type changed) they appear at full scale.
+    // Build one vertex symbol per ring point (skipping the closing duplicate). Faithful to
+    // RadarView.updateSymbols: symbols use local 2×2 geometry scaled to symbolSize, start at the old
+    // point (the radar center on entrance), and tween their element x/y to the final vertex.
     private func buildRadarSymbols(
         _ points: [VectorArray], _ symbolType: String, _ sizeW: Double, _ sizeH: Double,
         _ fill: ZRenderKit.ZRColor?, _ symbolGroup: Group, _ seriesModel: SeriesModel, _ idx: Int,
-        _ symbolRotate: Double, animateIn: Bool
+        _ symbolRotate: Double, oldPoints: [VectorArray]?, isInit: Bool
     ) {
         let count = points.count - 1   // skip the closing duplicate vertex
         guard count > 0 else { return }
         for i in 0..<count {
             let pt = points[i]
-            let el = symbol.createSymbol(symbolType, pt.x - sizeW / 2, pt.y - sizeH / 2, sizeW, sizeH, fill)
+            let el = symbol.createSymbol(symbolType, -1, -1, 2, 2, fill)
             // `symbol.createSymbol` returns an `ECSymbol` whose concrete type is a `Path` (SymbolPath /
             //   SVGPath) OR — for an `image://` symbol — a `ZRImage`. Both are `Displayable`s, so place
             //   either one (upstream's `symbolPath` is likewise the union `ReturnType<createSymbol>`).
@@ -388,16 +368,23 @@ open class RadarView: ChartView {
                 symbolPath.name = "vertex"
                 // upstream: symbolPath.attr({ z2: 100 }) — lift the vertex markers above the radar axis lines.
                 symbolPath.z2 = 100
-                symbolPath.originX = pt.x
-                symbolPath.originY = pt.y
+                symbolPath.scaleX = sizeW / 2
+                symbolPath.scaleY = sizeH / 2
                 // upstream createSymbol: `rotation: symbolRotate * Math.PI / 180 || 0` — the symbol rotates
                 //   about its own center (here the vertex point, which is the transform origin).
                 symbolPath.rotation = symbolRotate * Double.pi / 180
-                if animateIn {
-                    // upstream Symbol.ts first-create scale-in entrance, centered on the vertex point.
-                    symbolPath.scaleX = 0
-                    symbolPath.scaleY = 0
-                    initProps(symbolPath, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, idx)
+                if let old = oldPoints, i < old.count {
+                    symbolPath.x = old[i].x
+                    symbolPath.y = old[i].y
+                    let target = ["x": pt.x, "y": pt.y]
+                    if isInit {
+                        initProps(symbolPath, target, seriesModel, idx)
+                    } else {
+                        updateProps(symbolPath, target, seriesModel, idx)
+                    }
+                } else {
+                    symbolPath.x = pt.x
+                    symbolPath.y = pt.y
                 }
                 _ = symbolGroup.add(symbolPath)
             }

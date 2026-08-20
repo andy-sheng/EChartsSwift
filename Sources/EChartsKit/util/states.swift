@@ -136,6 +136,10 @@ public enum states {
 
     // upstream: `doChangeHoverState(el, stateName, hoverStateEnum)`.
     static func doChangeHoverState(_ el: Element, _ stateName: DisplayState, _ hoverStateEnum: Double) {
+        // `blurSeries` also invokes the single-state helpers directly while traversing a chart group,
+        // so keep the removed-element guard at this shared hover-state seam as well as in
+        // `updateElementState` below.
+        if isElementRemoved(el) { return }
         let inner = getHighDownInner(el)
         if let cb = inner.onHoverStateChange, inner.hoverState != hoverStateEnum {
             cb(stateName)
@@ -189,6 +193,12 @@ public enum states {
     // upstream: `updateElementState(el, updater, commonParam)` — the `commonParam` generic is unused by
     //   every call site's updater in scope, so it is dropped (the updaters take only `el`).
     static func updateElementState(_ el: Element, _ updater: (Element) -> Void) {
+        // A displayable kept in the group solely for its leave animation no longer represents live
+        // data. Applying a later legend-click highlight/blur to it would start a competing style
+        // transition, abort the leave opacity clip, and make the item jump to 10% opacity at t=0.
+        // Upstream defers state application and removed elements do not reach that repaint pass; this
+        // port applies states immediately, so make the same exclusion explicit here.
+        if isElementRemoved(el) { return }
         updater(el)
     }
 

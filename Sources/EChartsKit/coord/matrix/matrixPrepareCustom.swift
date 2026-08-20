@@ -55,7 +55,10 @@ public func matrixPrepareCustom(_ coordSys: Matrix) -> [String: Any] {
             //   Returns ReturnType<Matrix['dataToLayout']> (= CoordinateSystemDataLayout); modeled as the
             //   dynamic result of coordSys.dataToLayout (narrow at the custom-series call site).
             "layout": { (data: [Any], opt: [String: Any]?) -> Any in
-                return coordSys.dataToLayout(data, matrixDataToLayoutOptFromDict(opt))
+                let result: CoordinateSystemDataLayout = coordSys.dataToLayout(
+                    data as Any?, matrixDataToLayoutOptFromDict(opt)
+                )
+                return result
             } as ([Any], [String: Any]?) -> Any
         ] as [String: Any]
     ]

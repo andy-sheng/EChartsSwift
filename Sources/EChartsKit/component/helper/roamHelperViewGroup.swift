@@ -257,7 +257,7 @@ public func registerViewGroupRoamAction(_ actionType: String, _ seriesType: Stri
         let originY = viewGroupRoamNum(payload.other["originY"]) ?? 0
 
         ecModel.eachSeriesByType(seriesType) { s, _ in
-            guard let seriesModel = s as? SeriesModel else { return }
+            let seriesModel = s
             if let sid = targetSeriesId, !sid.isEmpty, seriesModel.id != sid { return }
 
             let state = viewGroupRoamState(seriesModel)

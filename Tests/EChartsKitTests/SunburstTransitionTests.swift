@@ -1,6 +1,6 @@
-// Entering sunburst sectors sweep open: endAngle animates from startAngle to the final angle when
-// animation is on; sectors are at final angle with no animator when off. Faithful to SunburstPiece.ts
-// firstCreate expansion (angle-expansion form, mirroring PieView's PiePiece sweep).
+// Entering sunburst sectors expand radially: the angular partition is established immediately and
+// the outer radius animates from the inner radius to its final value. This follows upstream
+// SunburstPiece.ts firstCreate behavior (sunburst entrance is not PieView's angular sweep).
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -38,29 +38,28 @@ final class SunburstTransitionTests: XCTestCase {
         ]
     }
 
-    func test_sector_sweeps_open_when_animation_on() {
+    func test_sector_expands_outward_when_animation_on() {
         let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(true))
         guard let sec = firstSector(ec.getRoot()) else { return XCTFail("no sunburst sector") }
         XCTAssertGreaterThan(sec.animators.count, 0, "sector should have an expansion animator when animation on")
 
-        // Step the "shape" animator's "endAngle" track directly on the animator's real target (the Path's
-        // internal shape-accessor CLASS — a value-type struct copy would not observe the mutation). This
-        // proves a genuine collapsed->final sweep (collapsed at t=0, final at t=1), not just presence.
+        // Step the "shape" animator's radius track directly on its real target. This proves a genuine
+        // inner-radius -> outer-radius expansion, not merely the presence of an animator.
         guard let animator = sec.animators.first(where: { $0.targetName == "shape" }) else {
             return XCTFail("no shape-targeted animator on sector")
         }
-        guard let track = animator.getTrack("endAngle") else {
-            return XCTFail("no endAngle track on the shape animator")
+        guard let track = animator.getTrack("r") else {
+            return XCTFail("no radius track on the shape animator")
         }
         let target = animator.getTarget()
         track.step(target, 0.0)
-        let startAngle = (sec.shape as? SectorShape)?.startAngle ?? .infinity
-        XCTAssertEqual((sec.shape as? SectorShape)?.endAngle ?? .nan, startAngle, accuracy: 1e-6,
-                       "endAngle track at t=0 should be collapsed (== startAngle)")
+        let innerRadius = (sec.shape as? SectorShape)?.r0 ?? .infinity
+        XCTAssertEqual((sec.shape as? SectorShape)?.r ?? .nan, innerRadius, accuracy: 1e-6,
+                       "radius track at t=0 should be collapsed to the inner radius")
         track.step(target, 1.0)
-        XCTAssertNotEqual((sec.shape as? SectorShape)?.endAngle ?? 0, startAngle,
-                          "endAngle track at t=1 should be swept open")
+        XCTAssertGreaterThan((sec.shape as? SectorShape)?.r ?? 0, innerRadius,
+                             "radius track at t=1 should be expanded to the outer radius")
     }
 
     func test_sector_final_angle_when_animation_off() {

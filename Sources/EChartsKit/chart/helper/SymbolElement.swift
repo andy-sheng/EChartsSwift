@@ -163,7 +163,10 @@ open class Symbol: Group {
         self.silent = false
 
         let symbolType = (data.getItemVisual(idx, "symbol") as? String) ?? "circle"
-        let seriesModel = data.hostModel as? SeriesModel
+        // Marker symbols are hosted by MarkPointModel, while normal scatter/line symbols are hosted
+        // by a SeriesModel. Both are animatable Models. Narrowing this to SeriesModel silently made
+        // markPoint entrance animation snap to its final scale.
+        let animationModel = data.hostModel
         let symbolSize = Symbol.getSymbolSize(data, idx)
         let z2 = Symbol.getSymbolZ2(data, idx)
         let isInit = symbolType != self._symbolType
@@ -180,7 +183,7 @@ open class Symbol: Group {
                 _ = symbolPath.attr(target)
             }
             else {
-                updateProps(symbolPath, target, seriesModel, idx)
+                updateProps(symbolPath, target, animationModel, idx)
             }
             saveOldStyle(symbolPath)
         }
@@ -207,7 +210,7 @@ open class Symbol: Group {
                 //   accessor, image symbols scale in without the opacity tween.
                 symbolPath.scaleX = 0
                 symbolPath.scaleY = 0
-                initProps(symbolPath, target, seriesModel, idx)
+                initProps(symbolPath, target, animationModel, idx)
             }
         }
 

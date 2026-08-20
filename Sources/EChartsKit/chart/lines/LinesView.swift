@@ -439,7 +439,7 @@ open class LinesView: ChartView {
     private func applyClipPath(_ seriesModel: SeriesModel) {
         let clip = (seriesModel.get("clip", true) as? Bool) ?? true
         let clipPath: Path? = clip
-            ? createClipPath(seriesModel.coordinateSystem as? CoordinateSystem, false, seriesModel)
+            ? createClipPath(seriesModel.coordinateSystem, false, seriesModel)
             : nil
         if let clipPath = clipPath {
             self.group.setClipPath(clipPath)

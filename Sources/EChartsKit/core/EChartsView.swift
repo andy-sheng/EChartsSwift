@@ -188,21 +188,31 @@ public final class EChartsView {
     //   an INJECTED painter (headless by default), and `ec.getRoot()` is synced into the zr so the zr
     //   `storage` hit-tests + paints the echarts elements.
     // ------------------------------------------------------------------------
-    public init(width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
+    public init(width: Double, height: Double,
+                painter: PainterBase? = nil,
+                proxy: HandlerProxyInterface? = nil,
+                useCoarsePointer: Bool? = nil) {
         self.ec = ECharts(width: width, height: height)
         let painter = painter ?? HeadlessPainter(width: width, height: height)
+        var zrOpts = ZRenderInitOpt()
+        zrOpts.useCoarsePointer = useCoarsePointer
         // Free `zrender.init(...)` helper (ZRender.swift). `proxy: nil` → Handler uses `EmptyProxy`,
         //   so synthetic input is driven directly through `zr.handler` (no native input bridge needed).
-        self.zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        self.zr = ZRenderKit.`init`(nil, zrOpts, painter: painter, proxy: proxy)
         _initEvents()
     }
 
     /// Convenience: bind an already-built `ECharts`. (The driver's size is fixed at its own
     /// init; `width`/`height` here only size the injected headless painter / zr surface.)
-    public init(ec: ECharts, width: Double, height: Double, painter: PainterBase? = nil, proxy: HandlerProxyInterface? = nil) {
+    public init(ec: ECharts, width: Double, height: Double,
+                painter: PainterBase? = nil,
+                proxy: HandlerProxyInterface? = nil,
+                useCoarsePointer: Bool? = nil) {
         self.ec = ec
         let painter = painter ?? HeadlessPainter(width: width, height: height)
-        self.zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        var zrOpts = ZRenderInitOpt()
+        zrOpts.useCoarsePointer = useCoarsePointer
+        self.zr = ZRenderKit.`init`(nil, zrOpts, painter: painter, proxy: proxy)
         _initEvents()
     }
 
@@ -1439,10 +1449,11 @@ public final class EChartsView {
         return nil
     }
 
-    /// Dispose the live zr (releases the animation clock + input proxy + removes it from the module-global
-    /// zrender `instances` registry). The `ec` has no lifecycle.
+    /// Dispose the chart model/views before its live zr. The ordering matters: component disposal can
+    /// still consult `api.getZr()`, while `zr.dispose()` removes that connection.
     public func dispose() {
         _disposeAxisPointers()
+        ec.dispose()
         zr.dispose()
     }
 
@@ -1463,6 +1474,7 @@ public final class EChartsView {
     //   zr↔handler↔eventful↔self cycle is broken (all `_initEvents` listeners bind ctx `nil`, not `self`).
     deinit {
         _disposeAxisPointers()
+        ec.dispose()
         zr.dispose()
     }
 }

@@ -252,8 +252,7 @@ open class Breadcrumb {
             }, nil)
 
             // (el as ECElement).disableLabelAnimation = true;
-            // PORT-NOTE (deferred): the ECElement `disableLabelAnimation` flag gates label animation,
-            //   which is not ported — setting it is a no-op (matches sibling views SankeyView / MapView / GeoView).
+            innerStore.getECElementProps(el).disableLabelAnimation = true
 
             // el.getTextContent().ensureState('emphasis').style = createTextStyle(emphasisTextStyleModel, {text});
             //   textEl is the textContent created above; the emphasis text style is stored on ZRText's

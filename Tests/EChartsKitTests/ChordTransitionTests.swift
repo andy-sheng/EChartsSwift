@@ -1,6 +1,6 @@
-// Entering chord node arcs sweep open: endAngle animates from startAngle to the final layout angle when
-// animation is on; arcs sit at their final angle with no animator when off. Mirrors PieView's PiePiece
-// expansion, applied to the chord ChordPiece (a Sector subclass) — see ChordPiece.updateData(firstCreate).
+// Upstream chord entrance scales the complete chord group about its center. Individual node sectors are
+// installed at their final angles immediately: adding an endAngle tween creates a spurious outline/sweep
+// animation that is not present in echarts.js.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit
@@ -29,29 +29,31 @@ final class ChordTransitionTests: XCTestCase {
         ]
     }
 
-    func test_node_arc_sweeps_open_when_animation_on() {
+    func test_group_scales_in_without_node_arc_sweep_when_animation_on() {
         let ec = ECharts(width: 460, height: 360)
         ec.setOption(option(true))
         guard let sec = firstChordPiece(ec.getRoot()) else { return XCTFail("no chord node arc") }
-        XCTAssertGreaterThan(sec.animators.count, 0, "node arc should have an expansion animator when animation on")
+        XCTAssertNil(sec.animators.first(where: { $0.targetName == "shape" }),
+                     "node sectors must not carry a per-arc sweep animator")
+        let shape = sec.shape as? SectorShape
+        XCTAssertNotEqual(shape?.endAngle ?? 0, shape?.startAngle ?? 0,
+                          "node sector is installed at its final sweep")
 
-        // Strengthen: find the "shape" animator and step its "endAngle" track directly on the animator's
-        // real target (the Path's internal shape-accessor, which writes back into path.shape). This proves
-        // a genuine sweep-open delta (collapsed at t=0, final at t=1), not just animator presence.
-        guard let animator = sec.animators.first(where: { $0.targetName == "shape" }) else {
-            return XCTFail("no shape-targeted animator on node arc")
-        }
-        guard let track = animator.getTrack("endAngle") else {
-            return XCTFail("no endAngle track on the shape animator")
+        guard let chordGroup = sec.parent as? Group else { return XCTFail("no chord view group") }
+        guard let animator = chordGroup.animators.first(where: {
+            $0.getTrack("scaleX") != nil && $0.getTrack("scaleY") != nil
+        }) else {
+            return XCTFail("chord group must carry the entrance scale animator")
         }
         let target = animator.getTarget()
-        track.step(target, 0.0)
-        let startAngle = (sec.shape as? SectorShape)?.startAngle ?? .infinity
-        XCTAssertEqual((sec.shape as? SectorShape)?.endAngle ?? .nan, startAngle, accuracy: 1e-6,
-                       "endAngle track at t=0 should be collapsed (== startAngle)")
-        track.step(target, 1.0)
-        XCTAssertNotEqual((sec.shape as? SectorShape)?.endAngle ?? 0, startAngle,
-                          "endAngle track at t=1 should be swept open")
+        animator.getTrack("scaleX")?.step(target, 0)
+        animator.getTrack("scaleY")?.step(target, 0)
+        XCTAssertEqual(chordGroup.scaleX, 0.01, accuracy: 1e-9)
+        XCTAssertEqual(chordGroup.scaleY, 0.01, accuracy: 1e-9)
+        animator.getTrack("scaleX")?.step(target, 1)
+        animator.getTrack("scaleY")?.step(target, 1)
+        XCTAssertEqual(chordGroup.scaleX, 1, accuracy: 1e-9)
+        XCTAssertEqual(chordGroup.scaleY, 1, accuracy: 1e-9)
     }
 
     func test_node_arc_final_angle_when_animation_off() {

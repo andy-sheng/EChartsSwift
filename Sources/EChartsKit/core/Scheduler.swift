@@ -135,14 +135,14 @@ public final class SeriesTaskContext: TaskContext {
     public var outputData: SeriesData?
     public var data: SeriesData?
     public var payload: Payload?
-    public var model: SeriesModel?
-    public var view: ChartView?
-    public var ecModel: GlobalModel?
+    public weak var model: SeriesModel?
+    public weak var view: ChartView?
+    public weak var ecModel: GlobalModel?
     public var api: ExtensionAPI?
     public var useClearVisual: Bool?
     public var plan: StageHandlerPlan?
     public var reset: StageHandlerReset?
-    public var scheduler: Scheduler?
+    public weak var scheduler: Scheduler?
     public var resetDefines: [StageHandlerProgressExecutor]?
     public init() {}
 }
@@ -152,11 +152,11 @@ public final class OverallTaskContext: TaskContext {
     public var outputData: SeriesData?
     public var data: SeriesData?
     public var payload: Payload?
-    public var model: SeriesModel?
-    public var ecModel: GlobalModel!
+    public weak var model: SeriesModel?
+    public weak var ecModel: GlobalModel!
     public var api: ExtensionAPI!
     public var overallReset: StageHandlerOverallReset!
-    public var scheduler: Scheduler!
+    public weak var scheduler: Scheduler!
     public init() {}
 }
 
@@ -165,14 +165,14 @@ public final class StubTaskContext: TaskContext {
     public var outputData: SeriesData?
     public var data: SeriesData?
     public var payload: Payload?
-    public var model: SeriesModel?                     // upstream: model: SeriesModel (non-optional)
+    public weak var model: SeriesModel?                // upstream: model: SeriesModel (non-optional)
     public var dirtyOnOverallProgress: Bool?           // upstream: StageHandler['dirtyOnOverallProgress']
     public init() {}
 }
 
 public final class Scheduler {
 
-    public let ecInstance: EChartsType
+    public unowned let ecInstance: EChartsType
     public let api: ExtensionAPI
 
     // Shared with echarts.js, should only be modified by

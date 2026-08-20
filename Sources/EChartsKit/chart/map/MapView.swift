@@ -298,7 +298,8 @@ open class MapView: ChartView {
 
         let labelStatesModels = labelStyle.getLabelStatesModels(itemModel)
         labelStyle.setLabelStyle(circle, labelStatesModels, opt)
-        // upstream: (circle as ECElement).disableLabelAnimation = true;  → animation DEFERRED (no-op).
+        // upstream: (circle as ECElement).disableLabelAnimation = true;
+        innerStore.getECElementProps(circle).disableLabelAnimation = true
 
         // upstream: if (!labelModel.get('position')) { circle.setTextConfig({ position: 'bottom' }); }
         //   setLabelStyle's createTextConfig defaults position to "inside"; override to "bottom" when the
@@ -393,4 +394,3 @@ private func mapJsTruthy(_ v: Any?) -> Bool {
     if let a = v as? [Any] { return !a.isEmpty }
     return true
 }
-

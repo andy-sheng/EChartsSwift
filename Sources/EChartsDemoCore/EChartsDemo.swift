@@ -105,6 +105,11 @@ public struct EChartsDemo {
     /// JSON round-tripping cannot express. The native pane always uses `option`.
     public let webOptionJS: String?
 
+    /// Extra wall-clock setup time before the deterministic Web entrance oracle enumerates clips.
+    /// This is not animation time: zrender remains stopped while an example finishes immediate
+    /// asynchronous setup (for example an image decode or a throttled initial brush action).
+    public let entranceSetupDelayMs: Int
+
     /// Reproduces the example's own timeline on the NATIVE pane, after the initial `option` is applied
     /// — the Swift counterpart of the `setInterval` / `myChart.setOption` the example runs in JS.
     /// Only set it for examples that ARE dynamic; the still-frame render ignores it. See
@@ -124,6 +129,7 @@ public struct EChartsDemo {
                 mapRegistrations: [String: Any] = [:],
                 collection: Collection = .port,
                 webOptionJS: String? = nil,
+                entranceSetupDelayMs: Int = 0,
                 drive: (@MainActor (EChartsDemoChart) -> Void)? = nil,
                 option: [String: Any]) {
         self.name = name; self.category = category; self.summary = summary
@@ -132,6 +138,7 @@ public struct EChartsDemo {
         self.mapRegistrations = mapRegistrations
         self.collection = collection
         self.webOptionJS = webOptionJS
+        self.entranceSetupDelayMs = entranceSetupDelayMs
         self.drive = drive
         self.option = option
     }

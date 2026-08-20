@@ -127,7 +127,7 @@ public func renderScene(_ root: Element, into renderer: CGRenderer) {
 /// live refresh loop. An `IncrementalDisplayable` is drawn one-shot here (all its pending displayables),
 /// which is correct for a single offscreen frame; the live path uses the retained-bitmap variant
 /// (`CALayerPainter.drawIncrementalRetained`) so accumulated dots are not redrawn every frame.
-func drawDisplayable(_ el: Displayable, into r: CGRenderer) {
+public func drawDisplayable(_ el: Displayable, into r: CGRenderer) {
     if let p = el as? Path {
         drawPath(p, into: r)
     }

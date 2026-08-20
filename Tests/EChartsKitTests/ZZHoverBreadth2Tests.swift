@@ -26,11 +26,12 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         ComponentModel.registerClass(RadarModel.self)
     }
 
-    // Center of a path element: its bounding rect center. These per-item paths bake their absolute grid
-    // coords into the shape (no group transform), so the local bounding rect is already grid-global.
+    // Center of an element in viewport coordinates. Most per-item paths bake grid coordinates into
+    // their shape, while radar vertex symbols use a local unit path plus x/y/scale transforms.
     private func boundingCenter(_ el: Element) -> (Double, Double)? {
         guard let r = el.getBoundingRect() else { return nil }
-        return (r.x + r.width / 2, r.y + r.height / 2)
+        let center = el.transformCoordToGlobal(r.x + r.width / 2, r.y + r.height / 2)
+        return (center[0], center[1])
     }
 
     // Find the first descendant Path with the given name (radar vertex symbols live under a nested group).
@@ -175,13 +176,16 @@ final class ZZHoverBreadth2Tests: XCTestCase {
                       "RadarView must mark each series itemGroup a highDown dispatcher")
         XCTAssertTrue(el.currentStates.isEmpty, "radar row 0 must not be in emphasis before any hover")
 
-        // Hover a vertex symbol (its center is grid-global). The Handler hit resolves the symbol → walks
-        // up to the itemGroup dispatcher.
+        // Hover a vertex symbol. Its path is local and its final position is supplied by element
+        // transforms, so boundingCenter converts the local center into viewport coordinates. The Handler
+        // hit resolves the symbol and walks up to the itemGroup dispatcher.
+        // Force the display list once so the local symbol's computed x/y/scale transform is current
+        // before converting its bounding-box center to viewport coordinates.
+        _ = view.zr.storage.getDisplayList(true)
         guard let vertex = firstDescendant(el, named: "vertex"),
               let (cx, cy) = boundingCenter(vertex) else {
             XCTFail("radar render must produce vertex symbol paths"); return
         }
-        _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
         XCTAssertTrue(el.currentStates.contains("emphasis"),

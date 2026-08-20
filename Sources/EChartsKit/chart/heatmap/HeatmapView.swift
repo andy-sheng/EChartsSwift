@@ -248,8 +248,7 @@ open class HeatmapView: ChartView {
             // upstream (HeatmapView.ts:266-270): `new graphic.Rect({ z2: 1, shape, style })`.
             let rect = Rect(["shape": shape as PathShape])
             rect.z2 = 1
-            var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
-            let finalOpacity = cellStyle.opacity ?? 1
+            let cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
 
             // upstream (HeatmapView.ts:313-327): the per-cell value label — the shared grid-like block
             //   applies setLabelStyle to matrix cells too (rawValue[2] coerced to a string, else '-').
@@ -268,9 +267,7 @@ open class HeatmapView: ChartView {
             labelOpt.defaultText = defaultLabelText
             labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
 
-            cellStyle.opacity = 0
             rect.useStyle(cellStyle)
-            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
             rect.name = "item"
             states.setStatesStylesFromModel(rect, stateModel)
             states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
@@ -327,9 +324,9 @@ open class HeatmapView: ChartView {
             // upstream (HeatmapView.ts:282-286): new graphic.Rect({ z2: 1, shape, style })
             let rect = Rect(["shape": shape as PathShape])
             rect.z2 = 1
-            // Entrance animation (opacity fade-in) — same as the cartesian cell path.
-            var cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
-            let finalOpacity = cellStyle.opacity ?? 1
+            // Upstream creates calendar cells directly at their final style; entrance animation, when
+            // present, is coordinated at a higher level rather than as a per-cell opacity fade.
+            let cellStyle = heatmapStyleFromDict(data.getItemVisual(idx, "style"))
 
             // upstream (HeatmapView.ts:313-327): the per-cell value label — the shared grid-like block
             //   applies setLabelStyle to calendar cells too (rawValue[2] coerced to a string, else '-').
@@ -348,9 +345,7 @@ open class HeatmapView: ChartView {
             labelOpt.defaultText = defaultLabelText
             labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
 
-            cellStyle.opacity = 0
             rect.useStyle(cellStyle)
-            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
             rect.name = "item"
             // upstream (HeatmapView.ts:329-333): the calendar cell gets the same hover wiring.
             states.setStatesStylesFromModel(rect, stateModel)
@@ -533,8 +528,8 @@ open class HeatmapView: ChartView {
             // el.useStyle(style) — the fill color the visualMap encoding wrote + the itemStyle border.
             // PORT-NOTE (language diff): the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
             //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
-            //   keys (fill/stroke/lineWidth/opacity/...) — same deviation as BarView.
-            var cellStyle = heatmapStyleFromDict(style)
+//   keys (fill/stroke/lineWidth/opacity/decal/...) — same bridge as BarView.
+            let cellStyle = heatmapStyleFromDict(style)
             let finalOpacity = cellStyle.opacity ?? 1
             // Extract the visualMap-encoded fill as a color STRING (the shape the Animator's color-tween
             //   path consumes) so it can be morphed via `updateProps({style:{fill:...}})`.
@@ -613,13 +608,10 @@ open class HeatmapView: ChartView {
             labelOpt.defaultText = defaultLabelText
             labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
 
-            // Entrance animation (opacity fade-in, mirroring FunnelPiece): construct the cell at opacity 0,
-            //   then `initProps({style:{opacity}})` toward the intended (visualMap-encoded) final opacity.
-            //   With series animation off, `initProps` falls back to an instant `attr` of the partial
-            //   "style" dict (Path.attrKV merge) so the cell lands at its final, VISIBLE opacity.
-            cellStyle.opacity = 0
+            // Upstream HeatmapView creates cells at their final style. It has no per-cell entrance
+            // fade; adding one made calendar/matrix/cartesian heatmaps animate while echarts.js is
+            // static, and was especially expensive below the progressive threshold.
             rect.useStyle(cellStyle)
-            initProps(rect, ["style": ["opacity": finalOpacity] as [String: Any]], seriesModel, idx)
 
             // Name the cell 'item' (matches PieView/BarView/FunnelView per-datum element name; upstream
             //   leaves it unset — a harmless, non-load-bearing addition for hit-testing/debug parity).
@@ -847,8 +839,9 @@ private func heatmapRectRadius(_ v: Any?) -> RectRadius? {
 
 // PORT-NOTE (language diff): `util/graphic`-level `useStyle(dict)` bridge — the item visual 'style' is a `[String: Any]`
 //   bag (visual/style.swift, with the visualMap-encoded `fill`); ZRenderKit `Path.useStyle` takes a typed
-//   `PathStyleProps`. Maps the common paint keys so cells are actually colored. Gradient/pattern fills,
-//   decal, and lineDash are not bridged yet. Same deviation as BarView's `barStyleFromDict`.
+//   `PathStyleProps`. Maps the common paint keys so cells are actually colored. The decal visual stage
+//   stores its generated tiling Pattern in this bag; carry it onto the Path so matrix heatmaps such as
+//   official-matrix-mbti retain their per-cell circle patterns.
 private func heatmapStyleFromDict(_ style: Any?) -> PathStyleProps {
     var s = PathStyleProps()
     guard let d = style as? [String: Any] else { return s }
@@ -856,6 +849,7 @@ private func heatmapStyleFromDict(_ style: Any?) -> PathStyleProps {
     //   `zrPaintFromStyleValue` bridges all three (solid + linear/radial gradient) to a ZRenderKit paint.
     if let v = zrPaintFromStyleValue(d["fill"]) { s.fill = v }
     if let v = zrPaintFromStyleValue(d["stroke"]) { s.stroke = v }
+    if let pat = d["decal"] as? ZRenderKit.Pattern { s.decal = pat }
     if let v = d["opacity"] as? Double { s.opacity = v }
     if let v = d["fillOpacity"] as? Double { s.fillOpacity = v }
     if let v = d["strokeOpacity"] as? Double { s.strokeOpacity = v }

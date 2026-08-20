@@ -571,7 +571,7 @@ public final class BrushController {
 
         // (new DataDiffer(oldCovers, coverConfigList, oldGetKey, getKey)).add(addOrUpdate).update(addOrUpdate)
         //     .remove(remove).execute();
-        _ = DataDiffer<Any>(
+        DataDiffer<Any>(
             oldCovers,
             coverConfigList,
             { value, index in

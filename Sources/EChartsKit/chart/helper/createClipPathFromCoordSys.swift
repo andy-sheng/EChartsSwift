@@ -174,7 +174,7 @@ public func createPolarClipPath(
 }
 
 public func createClipPath(
-    _ coordSys: CoordinateSystem?,
+    _ coordSys: Any?,
     _ hasAnimation: Bool,
     _ seriesModel: SeriesModelWithLineWidth,
     _ done: (() -> Void)? = nil,
@@ -183,17 +183,11 @@ public func createClipPath(
     if coordSys == nil {
         return nil
     }
-    else if coordSys!.type == "polar" {
+    else if let polar = coordSys as? Polar {
         // upstream: return createPolarClipPath(coordSys as Polar, hasAnimation, seriesModel);
-        guard let polar = coordSys as? Polar else {
-            return nil
-        }
         return createPolarClipPath(polar, hasAnimation, seriesModel)
     }
-    else if coordSys!.type == "cartesian2d" {
-        guard let cartesian = coordSys as? Cartesian2D else {
-            return nil
-        }
+    else if let cartesian = coordSys as? Cartesian2D {
         // upstream `createGridClipPath`'s `during` is `(percent, clipRect) => void`; `createClipPath`'s
         //   `during` is `(percent) => void`. TS silently drops the extra argument — adapt the arity by
         //   wrapping into a 2-arg closure that ignores `clipRect`.

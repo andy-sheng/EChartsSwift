@@ -959,23 +959,51 @@ open class Element: Transformable, AnimationTarget {
         }
     }
 
-    // The full apply target for a set of active states: the union of their props laid over the saved
-    // normal values, so props no longer covered by any active state restore to normal (and within a
-    // shape/style sub-bag, sub-keys no longer covered restore too).
+    // The apply target for a set of active states. Only properties touched by either the previous or
+    // the next active states participate. `_normalState` can also contain the FINAL values of unrelated
+    // in-flight animations (saved by `saveCurrentToNormalState`); including every normal key here would
+    // make a style-only highlight write an updating shape to its final frame and abort its animator.
+    //
+    // Within shape/style bags the same rule is applied per sub-key: restore keys dropped by the old
+    // state, apply keys owned by the new state, and leave every unrelated animated key alone.
     private func _computeRestoreTarget(_ stateObjects: [ElementState]) -> [String: Any] {
         var merged: [String: Any] = [:]
         for s in stateObjects {
             self._deepMergeProps(&merged, s.props)
         }
+        var previous: [String: Any] = [:]
+        for stateName in self.currentStates {
+            var stateObj: ElementState?
+            if let proxy = self.stateProxy {
+                stateObj = proxy(stateName, self.currentStates)
+            }
+            if stateObj == nil {
+                stateObj = self.states[stateName]
+            }
+            if let stateObj = stateObj {
+                self._deepMergeProps(&previous, stateObj.props)
+            }
+        }
         let normal = self._normalState?.props ?? [:]
         var target: [String: Any] = [:]
-        var allKeys = Set(normal.keys)
+        var allKeys = Set(previous.keys)
         allKeys.formUnion(merged.keys)
         for key in allKeys {
             if let mv = merged[key] {
-                if let mDict = mv as? [String: Any], let nDict = normal[key] as? [String: Any] {
-                    var sub = nDict                       // start from normal (restores dropped sub-keys)
-                    self._deepMergeProps(&sub, mDict)     // active state sub-keys win
+                if let mDict = mv as? [String: Any] {
+                    let nDict = normal[key] as? [String: Any] ?? [:]
+                    let pDict = previous[key] as? [String: Any] ?? [:]
+                    var sub: [String: Any] = [:]
+                    var subKeys = Set(pDict.keys)
+                    subKeys.formUnion(mDict.keys)
+                    for subKey in subKeys {
+                        if let value = mDict[subKey] {
+                            sub[subKey] = value
+                        }
+                        else if let value = nDict[subKey] {
+                            sub[subKey] = value
+                        }
+                    }
                     target[key] = sub
                 }
                 else {
@@ -1083,7 +1111,7 @@ open class Element: Transformable, AnimationTarget {
 
         let target: [String: Any]
         if toNormalState {
-            target = self._normalState?.props ?? [:]          // restore every saved normal value
+            target = self._computeRestoreTarget([])           // restore only props owned by old states
         }
         else if keep {
             target = state!.props                              // additive: lay this state over current
@@ -1873,6 +1901,15 @@ func animateToShallow(
     _ animators: inout [Animator<Any>],
     _ reverse: Bool    // If `true`, animate from the `target` to current state.
 ) {
+    // Swift style/shape storage may use strongly-typed values (notably `ZRColor`) where upstream's
+    // JavaScript target object contains a string/gradient. Let the live animation target bridge that
+    // representation before equality checks and Track value-type inference.
+    var target = target
+    if let normalizer = animateObj as? AnimationTarget {
+        for key in target.keys {
+            target[key] = normalizer.animationNormalize(key, target[key])
+        }
+    }
     let targetKeys = util.keys(target)
     let duration = cfg.duration
     let delay = cfg.delay

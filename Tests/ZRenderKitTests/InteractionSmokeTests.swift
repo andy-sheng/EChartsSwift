@@ -38,6 +38,64 @@ final class InteractionSmokeTests: XCTestCase {
         return ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
     }
 
+    func test_hover_updates_native_cursor_semantic() {
+        let painter = CALayerPainter(size: CGSize(width: 200, height: 200))
+        let proxy = NativeHandlerProxy()
+        let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        defer { zr.dispose() }
+
+        let rect = makeRect(20, 20, 80, 80)
+        rect.cursor = "pointer"
+        zr.add(rect)
+
+        zr.handler.mousemove(makePointerEvent(50, 50))
+        XCTAssertEqual(proxy.currentCursorStyle, "pointer",
+                       "hovering an interactive data element must request the pointing-hand cursor")
+        zr.handler.mousemove(makePointerEvent(150, 150))
+        XCTAssertEqual(proxy.currentCursorStyle, "default",
+                       "moving off every element must restore the arrow cursor")
+    }
+
+    func test_coarsePointerExpansionIsOptInForMouseAndRetainedForTouch() {
+        func make(_ useCoarsePointer: Bool) -> (ZRender, Rect) {
+            let painter = CALayerPainter(size: CGSize(width: 200, height: 200))
+            let proxy = NativeHandlerProxy()
+            var opts = ZRenderInitOpt()
+            opts.useCoarsePointer = useCoarsePointer
+            let zr = ZRenderKit.`init`(nil, opts, painter: painter, proxy: proxy)
+            let rect = makeRect(20, 20, 20, 20)
+            zr.add(rect)
+            return (zr, rect)
+        }
+
+        let (mouseZR, _) = make(false)
+        defer { mouseZR.dispose() }
+        XCTAssertNil(mouseZR.handler.findHover(55, 30).target,
+                     "desktop/Web mouse semantics must stop at the actual series geometry")
+
+        let (touchZR, touchRect) = make(true)
+        defer { touchZR.dispose() }
+        XCTAssertTrue(touchZR.handler.findHover(55, 30).target === touchRect,
+                      "touch keeps zrender's 44pt coarse-pointer accessibility target")
+    }
+
+    func test_defaultPointerCapabilityMatchesTheNativePlatform() {
+        let painter = CALayerPainter(size: CGSize(width: 200, height: 200))
+        let proxy = NativeHandlerProxy()
+        let zr = ZRenderKit.`init`(nil, nil, painter: painter, proxy: proxy)
+        defer { zr.dispose() }
+        let rect = makeRect(20, 20, 20, 20)
+        zr.add(rect)
+
+#if canImport(UIKit)
+        XCTAssertTrue(zr.handler.findHover(55, 30).target === rect,
+                      "UIKit defaults to the touch-friendly coarse hit target")
+#else
+        XCTAssertNil(zr.handler.findHover(55, 30).target,
+                     "AppKit defaults to the exact desktop-Web mouse hit target")
+#endif
+    }
+
     private func makeRect(_ x: Double, _ y: Double, _ w: Double, _ h: Double, z2: Double = 0) -> Rect {
         var shape = RectShape()
         shape.x = x; shape.y = y; shape.width = w; shape.height = h

@@ -1,6 +1,5 @@
-// Treemap tiles fade in (style.opacity 0→final) when the series has animation on, and are at final
-// (visible) opacity with no animator when off (the invisible-tile guard). Heatmap-style opacity fade
-// via initProps(tile, {style: {opacity}}) in TreemapView.renderNode (bg/content Rect tiles).
+// Upstream treemap does not add a per-tile opacity fade on initial render. Tiles are immediately at
+// their final style; subsequent layout changes still use the treemap morph path.
 //
 // NOTE on the toggle: TreemapSeries.defaultOption sets `animation: true` (faithful to upstream
 // TreemapSeries.ts) — that default merges into the series' own option, so a GLOBAL `animation:false`
@@ -39,17 +38,12 @@ final class TreemapTransitionTests: XCTestCase {
         ]
     }
 
-    func test_tile_fades_in_when_animation_on() {
+    func test_tile_has_no_extra_entrance_fade_when_animation_on() {
         let ec = ECharts(width: 400, height: 400)
         ec.setOption(option(true))
         guard let tile = firstTile(ec.getRoot()) else { return XCTFail("no treemap tile") }
-        // The fade-in animates a partial "style" dict ({opacity}); the resulting sub-animator is
-        // targeted at "style" and carries an "opacity" leaf track (same idiom as FunnelTransitionTests /
-        // EffectScatter ripple opacity animator). The 0→final delta is proven by the animation-OFF test
-        // below asserting the element lands at a VISIBLE (>0) opacity — the invisible-element guard.
-        let anim = tile.animators.first { $0.targetName == "style" }
-        XCTAssertNotNil(anim, "treemap tile should have a style (opacity) animator when animation on")
-        XCTAssertNotNil(anim?.getTrack("opacity"), "the style animator should carry an opacity track (the 0→final fade-in)")
+        XCTAssertTrue(tile.animators.isEmpty, "treemap must not invent a per-tile entrance fade")
+        XCTAssertGreaterThan(tile.pathStyle.opacity ?? 0, 0.0)
     }
 
     func test_tile_final_opacity_when_animation_off() {

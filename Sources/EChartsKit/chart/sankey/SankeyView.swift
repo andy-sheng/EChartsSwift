@@ -533,8 +533,7 @@ open class SankeyView: ChartView {
             nodeLabelOpt.defaultText = node.id
             nodeLabelOpt.inheritColor = sankeyColorString(node.getVisual("color"))
             labelStyle.setLabelStyle(rect, nodeLabelModels, nodeLabelOpt)
-            // PORT-NOTE (deferred): `(rect as ECElement).disableLabelAnimation = true` — the ECElement
-            //   label-animation opt-out is not bridged (label value animation is deferred in labelStyle.swift anyway).
+            innerStore.getECElementProps(rect).disableLabelAnimation = true
 
             // rect.setStyle('fill', node.getVisual('color'));
             if let fill = sankeyColor(node.getVisual("color")) {

@@ -20,10 +20,9 @@ import XCTest
 
 final class ZZGraphStructLegendFilterTests: XCTestCase {
 
-    private func makeChord() -> ECharts {
-        let ec = ECharts(width: 640, height: 420)
-        ec.setOption([
-            "animation": false,
+    private func chordOption(animation: Bool = false) -> [String: Any] {
+        return [
+            "animation": animation,
             "legend": [:] as [String: Any],
             "series": [
                 [
@@ -43,7 +42,12 @@ final class ZZGraphStructLegendFilterTests: XCTestCase {
                     ]
                 ] as [String: Any]
             ]
-        ])
+        ]
+    }
+
+    private func makeChord() -> ECharts {
+        let ec = ECharts(width: 640, height: 420)
+        ec.setOption(chordOption())
         return ec
     }
 
@@ -111,5 +115,136 @@ final class ZZGraphStructLegendFilterTests: XCTestCase {
         // leaves A at 0.375.
         XCTAssertEqual(sweep(ec, "A") / arcSweepSum(ec), 60.0 / 120.0, accuracy: 1e-9,
                        "with D and the B→D link gone, A must be re-laid out to half the ring")
+    }
+
+    func testChordLegendToggleKeepsRemovedArcAliveForLeaveFade() throws {
+        let view = EChartsView(width: 640, height: 420)
+        var option = chordOption(animation: true)
+        option["animationDurationUpdate"] = 500.0
+        view.setOption(option)
+
+        let oldData = try XCTUnwrap((view.ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)?.getData())
+        let dIndex = try XCTUnwrap((0..<oldData.count()).first { oldData.getName($0) == "D" })
+        let dPiece = try XCTUnwrap(oldData.getItemGraphicEl(dIndex) as? ChordPiece)
+        XCTAssertNotNil(dPiece.__zr)
+
+        var off = Payload(type: "legendToggleSelect")
+        off.other["name"] = "D"
+        view.ec.dispatchAction(off)
+
+        XCTAssertNotNil(dPiece.parent,
+                        "the removed D arc must remain attached until its leave fade completes")
+        let leave = try XCTUnwrap(dPiece.animators.first { $0.scope == "leave" })
+        let clip = try XCTUnwrap(leave.getClip())
+        clip.resetForDeterministicSampling()
+        _ = clip.sampleForDeterministicRendering(at: 0)
+        XCTAssertEqual(dPiece.pathStyle.opacity ?? -1, 1, accuracy: 1e-9,
+                       "the leave animation must begin from the visible arc, not snap to opacity 0")
+    }
+
+    func testChordLegendToggleInterpolatesRemainingArcAndRibbon() throws {
+        let view = EChartsView(width: 640, height: 420)
+        var option = chordOption(animation: true)
+        option["animationDuration"] = 0.0
+        option["animationDurationUpdate"] = 500.0
+        option["animationEasingUpdate"] = "linear"
+        view.setOption(option)
+
+        var off = Payload(type: "legendToggleSelect")
+        off.other["name"] = "D"
+        view.ec.dispatchAction(off)
+
+        let chordSeries = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)
+        let data = chordSeries.getData()
+        let aIndex = try XCTUnwrap((0..<data.count()).first { data.getName($0) == "A" })
+        let aPiece = try XCTUnwrap(data.getItemGraphicEl(aIndex) as? ChordPiece)
+        let arcClip = try XCTUnwrap(aPiece.animators.first { $0.targetName == "shape" }?.getClip())
+        arcClip.resetForDeterministicSampling()
+        _ = arcClip.sampleForDeterministicRendering(at: 0)
+        let arcStart = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        _ = arcClip.sampleForDeterministicRendering(at: 250)
+        let arcMiddle = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        _ = arcClip.sampleForDeterministicRendering(at: 500)
+        let arcEnd = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        XCTAssertNotEqual(arcStart, arcEnd, accuracy: 1e-9)
+        XCTAssertEqual(arcMiddle, (arcStart + arcEnd) / 2, accuracy: 1e-6,
+                       "remaining chord arcs must visibly interpolate after a legend toggle")
+
+        let edgeData = chordSeries.getEdgeData()
+        let edge = try XCTUnwrap((0..<edgeData.count()).lazy
+            .compactMap { edgeData.getItemGraphicEl($0) as? ChordEdge }.first)
+        let edgeClip = try XCTUnwrap(edge.animators.first { $0.targetName == "shape" }?.getClip())
+        edgeClip.resetForDeterministicSampling()
+        _ = edgeClip.sampleForDeterministicRendering(at: 0)
+        let ribbonStart = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        _ = edgeClip.sampleForDeterministicRendering(at: 250)
+        let ribbonMiddle = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        _ = edgeClip.sampleForDeterministicRendering(at: 500)
+        let ribbonEnd = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        XCTAssertNotEqual(ribbonStart, ribbonEnd, accuracy: 1e-9)
+        XCTAssertEqual(ribbonMiddle, (ribbonStart + ribbonEnd) / 2, accuracy: 1e-6,
+                       "remaining chord ribbons must visibly interpolate with the arcs")
+    }
+
+    func testChordRealLegendClickSequenceKeepsUpdateAnimation() throws {
+        let view = EChartsView(width: 640, height: 420)
+        var option = chordOption(animation: true)
+        option["animationDuration"] = 0.0
+        option["animationDurationUpdate"] = 500.0
+        option["animationEasingUpdate"] = "linear"
+        view.setOption(option)
+
+        let oldData = try XCTUnwrap((view.ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)?.getData())
+        let oldDIndex = try XCTUnwrap((0..<oldData.count()).first { oldData.getName($0) == "D" })
+        let oldDPiece = try XCTUnwrap(oldData.getItemGraphicEl(oldDIndex) as? ChordPiece)
+
+        // LegendView dispatchSelectAction sends these three actions synchronously for a data legend
+        // item. Keep this exact sequence here: a lone legendToggleSelect does not reproduce clicks.
+        var downplay = Payload(type: "downplay")
+        downplay.other["name"] = "D"
+        view.ec.dispatchAction(downplay)
+        var toggle = Payload(type: "legendToggleSelect")
+        toggle.other["name"] = "D"
+        view.ec.dispatchAction(toggle)
+        var highlight = Payload(type: "highlight")
+        highlight.other["name"] = "D"
+        view.ec.dispatchAction(highlight)
+
+        let chordSeries = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)
+        let data = chordSeries.getData()
+        let aIndex = try XCTUnwrap((0..<data.count()).first { data.getName($0) == "A" })
+        let aPiece = try XCTUnwrap(data.getItemGraphicEl(aIndex) as? ChordPiece)
+        let arcClip = try XCTUnwrap(aPiece.animators.first { $0.targetName == "shape" }?.getClip(),
+                                    "the post-click highlight must not discard the arc update animator")
+        arcClip.resetForDeterministicSampling()
+        _ = arcClip.sampleForDeterministicRendering(at: 0)
+        let start = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        _ = arcClip.sampleForDeterministicRendering(at: 250)
+        let middle = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        _ = arcClip.sampleForDeterministicRendering(at: 500)
+        let end = try XCTUnwrap(aPiece.shape as? SectorShape).endAngle
+        XCTAssertNotEqual(start, end, accuracy: 1e-9)
+        XCTAssertEqual(middle, (start + end) / 2, accuracy: 1e-6)
+
+        let edgeData = chordSeries.getEdgeData()
+        let edge = try XCTUnwrap((0..<edgeData.count()).lazy
+            .compactMap { edgeData.getItemGraphicEl($0) as? ChordEdge }.first)
+        let ribbonClip = try XCTUnwrap(edge.animators.first { $0.targetName == "shape" }?.getClip(),
+                                       "the post-click highlight must not discard the ribbon animator")
+        ribbonClip.resetForDeterministicSampling()
+        _ = ribbonClip.sampleForDeterministicRendering(at: 0)
+        let ribbonStart = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        _ = ribbonClip.sampleForDeterministicRendering(at: 250)
+        let ribbonMiddle = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        _ = ribbonClip.sampleForDeterministicRendering(at: 500)
+        let ribbonEnd = try XCTUnwrap(edge.shape as? ChordPathShape).sEndAngle
+        XCTAssertNotEqual(ribbonStart, ribbonEnd, accuracy: 1e-9)
+        XCTAssertEqual(ribbonMiddle, (ribbonStart + ribbonEnd) / 2, accuracy: 1e-6)
+
+        let leaveClip = try XCTUnwrap(oldDPiece.animators.first { $0.scope == "leave" }?.getClip())
+        leaveClip.resetForDeterministicSampling()
+        _ = leaveClip.sampleForDeterministicRendering(at: 0)
+        XCTAssertEqual(oldDPiece.pathStyle.opacity ?? -1, 1, accuracy: 1e-9,
+                       "post-click highlight must not pre-dim the removed chord arc before its leave fade")
     }
 }

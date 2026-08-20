@@ -21,6 +21,7 @@
 //     String. echarts renders the name as label text either way, so the two panes print the same "1960".
 // No `drive`: the example has no timers — the fetch was its only asynchrony, and it is inlined.
 import Foundation
+import EChartsKit
 
 // ---------------------------------------------------------------------------
 // The asset: { counties: [19 names], timeline: [81 years], series: [81 × [19 × [income, lifeExpectancy,
@@ -95,10 +96,8 @@ private let graphLifeExpectancySeries: [[String: Any]] = graphLifeExpectancyCoun
         "lineStyle": ["color": "#333"] as [String: Any],
         "itemStyle": ["borderWidth": 1.0, "borderColor": "#333"] as [String: Any],
         "label": ["color": "#333", "position": "right"] as [String: Any],
-        "symbolSize": 10.0
-        // PORT-NOTE: series.animationDelay omitted — the JS closure `function (idx) { return idx * 100; }`
-        // staggered each node's entry animation by 100ms × its index, so a country's track drew itself
-        // year by year. A Swift option cannot carry the closure; the nodes appear together instead.
+        "symbolSize": 10.0,
+        "animationDelay": ({ idx, _ in idx * 100 } as AnimationDelayCallback)
     ] as [String: Any]
 }
 

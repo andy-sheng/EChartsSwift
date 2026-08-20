@@ -2438,11 +2438,37 @@ public final class ECharts: EChartsType {
     //   and hovering enters the emphasis state but the element is visually unchanged (the "no hover effect"
     //   bug). Runs after `clearRenderedStates` reset each element to normal, so `pathStyle.fill` is the
     //   normal (un-lifted) colour here. Skips elements fading out (a leave-scoped animator).
-    private func updateRenderedStates(_ eachRendered: (@escaping (Element) -> Bool) -> Void) {
+    private func updateRenderedStates(
+        _ model: Model,
+        _ eachRendered: (@escaping (Element) -> Bool) -> Void
+    ) {
+        // upstream `updateStates(model, view)`: interaction states use the model's inherited
+        // `stateAnimation` config (global default: 300ms cubicOut). Without assigning this transition,
+        // `useStates` still reaches emphasis/blur/select but applies the target style immediately.
+        var stateTransition: ElementAnimateConfig?
+        if model.isAnimationEnabled() == true {
+            let stateAnimationModel = model.getModel("stateAnimation")
+            let duration = zNum(stateAnimationModel.get("duration")) ?? 0
+            if duration > 0 {
+                var transition = ElementAnimateConfig()
+                transition.duration = duration
+                transition.delay = zNum(stateAnimationModel.get("delay")) ?? 0
+                if let easing = stateAnimationModel.get("easing") as? String {
+                    transition.easing = .named(easing)
+                }
+                else if let easing = stateAnimationModel.get("easing") as? AnimationEasing {
+                    transition.easing = easing
+                }
+                stateTransition = transition
+            }
+        }
         eachRendered { el in
             guard el.states["emphasis"] != nil else { return false }
             if el.animators.contains(where: { $0.scope == "leave" }) { return false }
             if let p = el as? Path { states.savePathStates(p) }
+            el.stateTransition = stateTransition
+            el.getTextContent()?.stateTransition = stateTransition
+            el.getTextGuideLine()?.stateTransition = stateTransition
             return false
         }
     }
@@ -2463,7 +2489,7 @@ public final class ECharts: EChartsType {
             updateZ(model, componentView.group, 0)
             // upstream renderComponents `updateStates(model, view)` (echarts.ts:2464) — save each
             //   emphasis-capable element's normal fill so hover lifts it (see updateRenderedStates).
-            updateRenderedStates(componentView.eachRendered)
+            updateRenderedStates(model, componentView.eachRendered)
             // upstream (echarts.ts renderComponents): a rendered view is marked alive so the
             //   `updateDirectly` light-update path (callView's `view.__alive` guard) can dispatch
             //   highlight/downplay/updateView to it. Without this, all light-update dispatch no-ops.
@@ -2499,6 +2525,7 @@ public final class ECharts: EChartsType {
         // `ignoreModelZ` flag is fully represented: other views intentionally author special z2
         // values (for example line end labels at 200) or keep host/label z2 equal for state lifting.
         let liftLabelZ2 = model is GraphSeriesModel
+            || model is ScatterSeriesModel
             || model is TreemapSeriesModel
             || model is BarSeriesModel
             || model is HeatmapSeriesModel
@@ -2623,7 +2650,7 @@ public final class ECharts: EChartsType {
             //   It runs AFTER 'series:transition' on purpose: applyMorphAnimation animates with
             //   `setToFinal: true`, so the morph target's style is already final and the saved
             //   normal fill is the correct one.
-            self.updateRenderedStates(chartView.eachRendered)
+            self.updateRenderedStates(seriesModel, chartView.eachRendered)
         }
 
         // updateHoverLayerStatus(ecIns, ecModel) — PORT-NOTE (deferred): hover layer not ported.
@@ -3474,9 +3501,19 @@ public final class ECharts: EChartsType {
 
         let api = _api!
         let ecModel = _model
+        clearUniversalTransitionStore(api)
         if let ecModel = ecModel {
             for component in _componentsViews { component.dispose(ecModel, api) }
             for chart in _chartsViews { chart.dispose(ecModel, api) }
+            ecModel.eachRawSeries { series, _ in series.disposeForChart() }
+            // A top-level component inherits from `ecModel`, while `ecModel` owns every component
+            // in `_componentsMap`. JavaScript's GC collects that cycle; Swift ARC cannot. Keep
+            // `Model.parentModel` strong for temporary option-inheritance chains, and sever only
+            // these chart-root backlinks when the chart is disposed.
+            ecModel.eachComponent { (_: String, component: ComponentModel, _: Double) in
+                component.parentModel = nil
+                component.ecModel = nil
+            }
         }
         // upstream: `chart._zr.dispose()` — the driver owns no zr (host-owned); clear its display list.
         _ = root.removeAll()

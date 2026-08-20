@@ -7,6 +7,7 @@
 //   swift run EChartsDemoGallery --render-all <dir>    native-render every demo to <dir>/<name>.png
 //   swift run EChartsDemoGallery --web-snapshot <name> <png>   headless echarts.js render → PNG
 //   swift run EChartsDemoGallery --compare <name> <dir>        BOTH panes → <dir>/<name>.{native,web}.png
+//   swift run EChartsDemoGallery --render-rasterizer <name> <png> [timeMs]  Metal snapshot
 
 #if canImport(AppKit)
 
@@ -595,6 +596,7 @@ final class ContentViewController: NSViewController {
         // Tear down the previous live chart (dropping the last strong ref deallocates the host,
         // whose deinit stops its animation clock + disposes its ZRender), then build a FRESH host
         // at the demo's logical size — the same per-demo lifecycle as DemoGallery's ZRenderView.
+        currentHostView?.dispose()
         currentHostView?.removeFromSuperview()
         currentHostView = nil
         liveScroll.documentView = nil
@@ -611,6 +613,7 @@ final class ContentViewController: NSViewController {
                                     backgroundColor: NSColor.white.cgColor)
                 : nil
             let host = EChartsHostView(frame: logical, dpr: 2.0, painter: painter)
+            host.animationsEnabled = animSwitch.state == .on
             host.setOption(opt)
             // Replay the example's own timeline (its setInterval / setOption), if it has one. Without
             // this a dynamic example — map-bar-morph's map<->bar morph, dynamic-data's shifting
@@ -820,6 +823,363 @@ final class WebMultiSnapper: NSObject, WKNavigationDelegate {
     }
 }
 
+/// Deterministic entrance-animation oracle. The page has already stopped zrender's RAF loop before
+/// setOption; each snapshot explicitly advances every entrance clip to the requested logical time.
+final class WebEntranceSnapper: NSObject, WKNavigationDelegate {
+    let demo: EChartsDemo
+    let dir: URL
+    let offsets: [Int]
+    let page: String
+    let actionJSON: String?
+    private var index = 0
+
+    init(demo: EChartsDemo, dir: URL, offsets: [Int], page: String, actionJSON: String? = nil) {
+        self.demo = demo
+        self.dir = dir
+        self.offsets = offsets
+        self.page = page
+        self.actionJSON = actionJSON
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        waitUntilEntranceReady(webView, attempt: 0)
+    }
+
+    private func waitUntilEntranceReady(_ webView: WKWebView, attempt: Int) {
+        webView.evaluateJavaScript(
+            "({ ready: Boolean(window.__entranceReady && window.__stepEntranceAnimation)," +
+            " stage: String(window.__entranceStage || 'missing')," +
+            " error: String(window.__entranceError || '') })"
+        ) { result, error in
+            if let error {
+                FileHandle.standardError.write(Data("entrance readiness probe failed: \(error)\n".utf8))
+                exit(1)
+            }
+            let state = result as? [String: Any]
+            if let pageError = state?["error"] as? String, !pageError.isEmpty {
+                FileHandle.standardError.write(Data("entrance page failed for \(self.demo.name): \(pageError)\n".utf8))
+                exit(1)
+            }
+            if (state?["ready"] as? Bool) == true {
+                if let actionJSON = self.actionJSON {
+                    self.prepareActionAnimation(webView, actionJSON: actionJSON)
+                } else {
+                    self.capture(webView)
+                }
+                return
+            }
+            guard attempt < 300 else {
+                let stage = state?["stage"] as? String ?? "unknown"
+                FileHandle.standardError.write(
+                    Data("entrance readiness timed out for \(self.demo.name) at \(stage)\n".utf8)
+                )
+                exit(1)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                self.waitUntilEntranceReady(webView, attempt: attempt + 1)
+            }
+        }
+    }
+
+    /// Settle the initial setOption animation, dispatch one interaction, then replace the entrance
+    /// stepper with the clips created by that interaction. This gives legend/update animations the
+    /// same deterministic visual oracle as first-render animations.
+    private func prepareActionAnimation(_ webView: WKWebView, actionJSON: String) {
+        let script = """
+        (function () {
+          window.__stepEntranceAnimation(1000000000);
+          var action = \(actionJSON);
+          if (action.type === '__setOption') { myChart.setOption(action.option || {}); }
+          else if (action.type === '__hoverData') {
+            myChart.getZr().storage.getDisplayList(true);
+            var series = myChart.getModel().getSeriesByIndex(action.seriesIndex || 0);
+            var data = series && series.getData();
+            var el = data && data.getItemGraphicEl(action.dataIndex || 0);
+            if (!el) { throw new Error('__hoverData could not resolve a data element'); }
+            if (!el.contain && el.traverse) {
+              var childTarget = null;
+              el.traverse(function (child) {
+                if (!childTarget && child && child.contain
+                    && child.states && child.states.emphasis) { childTarget = child; }
+              });
+              if (childTarget) { el = childTarget; }
+            }
+            var point;
+            var shape = el.shape || {};
+            if (shape.cx != null && shape.cy != null && shape.r != null
+                && shape.startAngle != null && shape.endAngle != null) {
+              var angle = (shape.startAngle + shape.endAngle) / 2;
+              var radius = ((shape.r0 || 0) + shape.r) / 2;
+              point = el.transformCoordToGlobal(shape.cx + Math.cos(angle) * radius,
+                                                 shape.cy + Math.sin(angle) * radius);
+              if (!el.contain(point[0], point[1])) { point = null; }
+            }
+            if (!point) {
+              var bounds = el.getBoundingRect();
+              for (var gy = 1; gy < 20 && !point; gy++) {
+                for (var gx = 1; gx < 20; gx++) {
+                  var candidate = el.transformCoordToGlobal(
+                    bounds.x + bounds.width * gx / 20,
+                    bounds.y + bounds.height * gy / 20
+                  );
+                  if (el.contain(candidate[0], candidate[1])) { point = candidate; break; }
+                }
+              }
+            }
+            if (!point) { throw new Error('__hoverData could not find a contained hit point'); }
+            myChart.getZr().handler.dispatchToElement(
+              { target: el, topTarget: el }, 'mouseover', { zrX: point[0], zrY: point[1] }
+            );
+            // ECharts applies high/down flags in its next frame (`applyChangedStates`). The
+            // deterministic oracle has intentionally stopped zrender's RAF loop, so explicitly run
+            // that frame seam before collecting the interaction clips. Without this, the real Web
+            // chart has the correct hover animation in a browser but this frozen harness reports 0
+            // clips and captures the unchanged pre-hover frame.
+            if (myChart._onframe) { myChart._onframe(); }
+          }
+          else if (action.type === '__legendClick') {
+            var item = action.name;
+            myChart.dispatchAction({ type: 'downplay', name: item });
+            myChart.dispatchAction({ type: 'legendToggleSelect', name: item });
+            myChart.dispatchAction({ type: 'highlight', name: item });
+          }
+          else { myChart.dispatchAction(action); }
+          myChart.getZr().animation.stop();
+          var clips = [];
+          var seenElements = new Set();
+          var seenClips = new Set();
+          function collect(el) {
+            if (!el || seenElements.has(el)) { return; }
+            seenElements.add(el);
+            var animators = el.animators || [];
+            for (var ai = 0; ai < animators.length; ai++) {
+              var clip = animators[ai].getClip && animators[ai].getClip();
+              if (clip && !seenClips.has(clip)) { seenClips.add(clip); clips.push(clip); }
+            }
+            if (el.getClipPath) { collect(el.getClipPath()); }
+            if (el.getTextContent) { collect(el.getTextContent()); }
+            if (el.getTextGuideLine) { collect(el.getTextGuideLine()); }
+            if (el.children) {
+              var children = el.children();
+              for (var ci = 0; ci < children.length; ci++) { collect(children[ci]); }
+            }
+          }
+          var roots = myChart.getZr().storage.getRoots();
+          for (var ri = 0; ri < roots.length; ri++) { collect(roots[ri]); }
+          for (var i = 0; i < clips.length; i++) {
+            clips[i]._inited = false;
+            clips[i]._startTime = 0;
+            clips[i]._pausedTime = 0;
+            clips[i]._paused = false;
+            clips[i].__entranceFinished = false;
+          }
+          window.__stepEntranceAnimation = function (timeMs) {
+            for (var ci = 0; ci < clips.length; ci++) {
+              var clip = clips[ci];
+              if (clip.__entranceFinished) { continue; }
+              var elapsed = timeMs - clip._delay;
+              var percent = clip.loop && elapsed >= 0
+                ? (elapsed % clip._life) / clip._life
+                : Math.max(0, Math.min(elapsed / clip._life, 1));
+              clip.onframe(clip.easingFunc ? clip.easingFunc(percent) : percent);
+              if (!clip.loop && elapsed >= clip._life) {
+                clip.ondestroy();
+                clip.__entranceFinished = true;
+              }
+            }
+            seenElements.forEach(function (el) { if (el.markRedraw) { el.markRedraw(); } });
+            myChart.getZr().animation.stop();
+            myChart.getZr().refreshImmediately(true);
+            return { clips: clips.length, time: timeMs };
+          };
+          return { clips: clips.length };
+        })()
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            if let error {
+                FileHandle.standardError.write(Data("action animation setup failed: \(error)\n".utf8))
+                exit(1)
+            }
+            print("action animation ready: \(result ?? [:])")
+            self.capture(webView)
+        }
+    }
+
+    private func capture(_ webView: WKWebView) {
+        guard index < offsets.count else { exit(0) }
+        let time = offsets[index]
+        let diagnosticStep = """
+        (function () {
+          var step = window.__stepEntranceAnimation(\(time));
+          var sources = Array.prototype.slice.call(myChart.getDom().querySelectorAll('canvas'));
+          sources.sort(function (a, b) {
+            return (parseFloat(a.style.zIndex) || 0) - (parseFloat(b.style.zIndex) || 0);
+          });
+          var source = sources[0];
+          var output = document.createElement('canvas');
+          output.width = source.width;
+          output.height = source.height;
+          var context = output.getContext('2d');
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, output.width, output.height);
+          for (var canvasIndex = 0; canvasIndex < sources.length; canvasIndex++) {
+            var layer = sources[canvasIndex];
+            if (layer.style.display === 'none' || layer.style.visibility === 'hidden') { continue; }
+            context.save();
+            context.globalAlpha = layer.style.opacity === '' ? 1 : Number(layer.style.opacity);
+            context.drawImage(layer, 0, 0);
+            context.restore();
+          }
+          return {
+            step: step,
+            png: output.toDataURL('image/png')
+          };
+        })()
+        """
+        webView.evaluateJavaScript(diagnosticStep) { result, error in
+            if let error {
+                FileHandle.standardError.write(Data("entrance step t\(time) failed: \(error)\n".utf8))
+                exit(1)
+            }
+            guard let result = result as? [String: Any],
+                  let dataURL = result["png"] as? String,
+                  let comma = dataURL.firstIndex(of: ","),
+                  let png = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else {
+                FileHandle.standardError.write(Data("entrance canvas t\(time) failed\n".utf8))
+                exit(1)
+            }
+            print("entrance web t\(time): \(result["step"] ?? [:])")
+                let out = self.dir.appendingPathComponent(
+                    String(format: "%@.t%04d.web.png", self.demo.name, time)
+                )
+                do {
+                    try png.write(to: out)
+                    print("wrote \(out.lastPathComponent)")
+                    self.index += 1
+                    if self.index == self.offsets.count { exit(0) }
+                    // Recreate the chart for every logical timestamp. Completion callbacks and
+                    // stateful tracks from an earlier sample must not influence a later keyframe.
+                    webView.loadHTMLString(self.page, baseURL: nil)
+                }
+                catch {
+                    FileHandle.standardError.write(Data("write failed: \(error)\n".utf8))
+                    exit(1)
+                }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        FileHandle.standardError.write(Data("web load failed: \(error)\n".utf8))
+        exit(1)
+    }
+}
+
+/// Walk normal children plus attached clip/text/guide elements and return each unique animator clip.
+/// A bare ECharts instance has no display-link host, so these clips remain at their pristine t=0 state
+/// until this deterministic validation path advances them.
+private func entranceAnimationClips(_ root: Element) -> [Clip] {
+    var clips: [Clip] = []
+    var seenElements = Set<ObjectIdentifier>()
+    var seenClips = Set<ObjectIdentifier>()
+
+    func visit(_ element: Element?) {
+        guard let element else { return }
+        let elementID = ObjectIdentifier(element)
+        guard seenElements.insert(elementID).inserted else { return }
+        for animator in element.animators {
+            guard let clip = animator.getClip() else { continue }
+            if seenClips.insert(ObjectIdentifier(clip)).inserted { clips.append(clip) }
+        }
+        visit(element.getClipPath())
+        visit(element.getTextContent())
+        visit(element.getTextGuideLine())
+        if let group = element as? Group {
+            for child in group.children() { visit(child) }
+        }
+    }
+
+    visit(root)
+    return clips
+}
+
+/// Resolve a stable hit point for deterministic hover-animation snapshots. Polar sectors need a
+/// point halfway through the annulus (the bounding-box center can sit in the empty inner hole);
+/// ordinary symbols/bars use their local bounding-box center. Both are transformed through the
+/// element's complete parent transform before entering the real Handler hit-test path.
+private func deterministicHoverPoint(
+    _ element: Element,
+    accepting: (([Double]) -> Bool)? = nil
+) -> [Double]? {
+    func accepted(_ point: [Double]) -> Bool {
+        (accepting?(point) ?? true)
+    }
+    if let path = element as? Path, let sector = path.shape as? SectorShape {
+        let angle = (sector.startAngle + sector.endAngle) / 2
+        let radius = (sector.r0 + sector.r) / 2
+        let candidate = element.transformCoordToGlobal(
+            sector.cx + cos(angle) * radius,
+            sector.cy + sin(angle) * radius
+        )
+        if path.contain(candidate[0], candidate[1]), accepted(candidate) { return candidate }
+    }
+    guard let bounds = element.getBoundingRect() else { return nil }
+    for y in 1..<20 {
+        for x in 1..<20 {
+            let candidate = element.transformCoordToGlobal(
+                bounds.x + bounds.width * Double(x) / 20,
+                bounds.y + bounds.height * Double(y) / 20
+            )
+            if let displayable = element as? Displayable,
+               displayable.contain(candidate[0], candidate[1]), accepted(candidate) {
+                return candidate
+            }
+        }
+    }
+    return nil
+}
+
+private func interactiveDisplayables(in root: Element) -> [Displayable] {
+    var result: [Displayable] = []
+    func visit(_ element: Element) {
+        if let displayable = element as? Displayable,
+           displayable.states["emphasis"] != nil {
+            result.append(displayable)
+        }
+        if let group = element as? Group {
+            for child in group.children() { visit(child) }
+        }
+    }
+    visit(root)
+    return result
+}
+
+/// Opt-in structural trace for debugging a visual entrance mismatch. Kept behind an environment
+/// variable so the normal all-demo oracle remains quiet while a failing frame can expose whether an
+/// element owns an enter clip and what transform the deterministic sampler actually applied.
+private func traceEntranceAnimationElements(_ root: Element, at time: Int) {
+    guard ProcessInfo.processInfo.environment["ECHARTS_ENTRANCE_TRACE"] == "1" else { return }
+    var seen = Set<ObjectIdentifier>()
+    func visit(_ element: Element?, _ depth: Int) {
+        guard let element else { return }
+        guard seen.insert(ObjectIdentifier(element)).inserted else { return }
+        if !element.animators.isEmpty || element.scaleX != 1 || element.scaleY != 1 {
+            let scopes = element.animators.map { $0.scope ?? "-" }.joined(separator: ",")
+            print(
+                "ENTRANCE_TRACE\tt=\(time)\tdepth=\(depth)\ttype=\(String(describing: type(of: element)))" +
+                "\tname=\(element.name.isEmpty ? "-" : element.name)\tx=\(element.x)\ty=\(element.y)" +
+                "\tsx=\(element.scaleX)\tsy=\(element.scaleY)\tanim=\(scopes)"
+            )
+        }
+        visit(element.getClipPath(), depth + 1)
+        visit(element.getTextContent(), depth + 1)
+        visit(element.getTextGuideLine(), depth + 1)
+        if let group = element as? Group {
+            for child in group.children() { visit(child, depth + 1) }
+        }
+    }
+    visit(root, 0)
+}
+
 @MainActor
 func loadWebAndSnapshot(_ demo: EChartsDemo, out: URL) -> Never {
     let app = NSApplication.shared
@@ -907,6 +1267,14 @@ func runCLI() -> Bool {
         }
         print("native-rendered demos to \(dir.path) (\(failed) failed)")
         exit(failed == 0 ? 0 : 1)
+
+    case "--list-driven":
+        // Dynamic examples whose behaviour includes a native drive timeline. Keep discovery in the
+        // registry so validation never silently misses a newly-added timer-driven case.
+        for demo in EChartsDemoRegistry.everything where demo.nativeSupported && demo.drive != nil {
+            print(demo.name)
+        }
+        exit(0)
 
     case "--web-snapshot":
         guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]) else {
@@ -1026,23 +1394,34 @@ func runCLI() -> Bool {
         let apMan = FileManager.default.contents(atPath: args[1])
             .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: [[String: Any]]] } ?? [:]
         let apOut = URL(fileURLWithPath: args[2])
+        let apClaim = URL(fileURLWithPath: args[2] + ".inprogress")
         var done = Set<String>()
         if let existing = try? String(contentsOf: apOut, encoding: .utf8) {
             for line in existing.split(separator: "\n").dropFirst() {
                 if let name = line.split(separator: "\t").first { done.insert(String(name)) }
             }
         } else {
-            try? "demo\tsceneChanged\ttotal\tanimated\n".write(to: apOut, atomically: true, encoding: .utf8)
+            try? "demo\tsceneChanged\tinitialTotal\tinitialAnimated\tupdateTotal\tupdateAnimated\n"
+                .write(to: apOut, atomically: true, encoding: .utf8)
         }
         let apHandle = try! FileHandle(forWritingTo: apOut)
         apHandle.seekToEndOfFile()
+        // A hard crash cannot be caught in-process. On resume, turn the prior claim into one durable
+        // CRASHED row, then continue with the following demo instead of looping forever.
+        if let claimed = try? String(contentsOf: apClaim, encoding: .utf8), !claimed.isEmpty,
+           !done.contains(claimed) {
+            apHandle.write(Data("\(claimed)\tCRASHED\t0\t0\t0\t0\n".utf8))
+            done.insert(claimed)
+        }
+        try? FileManager.default.removeItem(at: apClaim)
         for d in EChartsDemoRegistry.everything where d.nativeSupported {
             if done.contains(d.name) { continue }
             FileHandle.standardError.write(Data("RUN \(d.name)\n".utf8))
-            // Claim before running: a demo that hard-crashes must not be retried forever.
-            apHandle.write(Data("\(d.name)\tCRASHED\t0\t0\n".utf8))
+            try? d.name.write(to: apClaim, atomically: true, encoding: .utf8)
             let r = animProbe(d, action: apMan[d.name]?.first)
-            apHandle.write(Data("\(d.name)\t\(r.sceneChanged)\t\(r.total)\t\(r.animated)\n".utf8))
+            apHandle.write(Data("\(d.name)\t\(r.sceneChanged)\t\(r.initialTotal)\t\(r.initialAnimated)\t\(r.total)\t\(r.animated)\n".utf8))
+            try? apHandle.synchronize()
+            try? FileManager.default.removeItem(at: apClaim)
         }
         try? apHandle.close()
         print("anim-probe pass done -> \(apOut.path)")
@@ -1127,24 +1506,52 @@ func runCLI() -> Bool {
         return true
 
     case "--render-rasterizer":
-        // --render-rasterizer <name> <out.png> : headless render of the demo's static frame
-        // through the RasterizerPainter translation + the engine's RasterizerCG CPU reference
-        // (the Metal toggle renders the same scene list on the GPU).
+        // --render-rasterizer <name> <out.png> [timeMs] : deterministically sample the demo's
+        // entrance animation, then synchronously render the resulting display list through the
+        // REAL RasterizerLayer Metal pipeline. The drawable is blitted into the layer's feedback
+        // texture on that first frame and read back to the PNG. With no timeMs, sample a completed
+        // entrance frame; an explicit timeMs preserves an exact intermediate animation phase.
         guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]),
               demo.nativeSupported else {
-            FileHandle.standardError.write(Data("usage: --render-rasterizer <name> <out.png>\n".utf8)); exit(2)
+            FileHandle.standardError.write(
+                Data("usage: --render-rasterizer <name> <out.png> [timeMs]\n".utf8)
+            )
+            exit(2)
         }
-        let group = renderNativeGroup(demo)
+        var requestedTime: Double?
+        if args.count >= 4 {
+            guard let parsed = Double(args[3]), parsed.isFinite, parsed >= 0 else {
+                FileHandle.standardError.write(Data("timeMs must be a finite non-negative number\n".utf8))
+                exit(2)
+            }
+            requestedTime = parsed
+        }
+        let sampleTime = requestedTime ?? 1_000_000_000
+
+        // Do not use renderNativeGroup: that static oracle forces option.animation=false. A bare
+        // ECharts instance has no display-link host, so its freshly-created entrance clips remain
+        // pristine until this command advances every clip to the requested logical timestamp.
+        let ec = ECharts(width: demo.width, height: demo.height)
+        ec.setOption(demo.option)
+        let group = ec.getRoot()
+        let clips = entranceAnimationClips(group)
+        for clip in clips {
+            clip.resetForDeterministicSampling()
+            if clip.sampleForDeterministicRendering(at: sampleTime) { clip.ondestroy() }
+        }
+        renderAxisPointerHandlesIntoRoot(ec, group)
+
         let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
         let painter = RasterizerPainter(size: CGSize(width: demo.width, height: demo.height),
-                                        dpr: 1, backgroundColor: white)
+                                        dpr: 2, backgroundColor: white)
         painter.refresh(flattenDisplayList(group))
-        guard let img = painter.renderToImage(),
+        guard let img = painter.renderFirstMetalFrame(),
               let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]),
               (try? png.write(to: URL(fileURLWithPath: args[2]))) != nil else {
-            print("FAILED"); exit(1)
+            print("FAILED to render via RasterizerLayer Metal"); exit(1)
         }
-        print("wrote \(args[2])")
+        let phase = requestedTime.map { String($0) } ?? "stable"
+        print("wrote \(args[2]) (Metal, timeMs=\(phase), clips=\(clips.count))")
         exit(0)
 
     case "--compare":
@@ -1161,6 +1568,148 @@ func runCLI() -> Bool {
             print("native N/A for \(demo.name)")
         }
         loadWebAndSnapshot(demo, out: dir.appendingPathComponent(demo.name + ".web.png"))
+
+    case "--entrance-native":
+        // --entrance-native <demo> <outdir> [offsetsMsCSV] [actionJSON]
+        // Deterministic visual frames for the INITIAL setOption animation. Unlike --anim-native this
+        // does not use a wall clock: every clip is advanced to the same exact logical timestamps used
+        // by --entrance-web, eliminating process/WKWebView startup skew from the comparison.
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]), demo.nativeSupported else {
+            FileHandle.standardError.write(Data("usage: --entrance-native <name> <outdir> [offsetsMsCSV] [actionJSON]\n".utf8))
+            exit(2)
+        }
+        let dir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let parsed = args.count >= 4 ? args[3].split(separator: ",").compactMap { Int($0) } : []
+        let offsets = Array(Set(parsed.isEmpty ? [0, 250, 500, 800, 1200, 1600] : parsed)).sorted()
+        let action = args.count >= 5
+            ? (try? JSONSerialization.jsonObject(with: Data(args[4].utf8))) as? [String: Any]
+            : nil
+        let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+        for time in offsets {
+            // Fresh chart per timestamp for the same reason as the Web oracle: keyframes are
+            // independent samples, not mutations chained through prior completion callbacks.
+            let view = action == nil ? nil : EChartsView(width: demo.width, height: demo.height)
+            let ec = view?.ec ?? ECharts(width: demo.width, height: demo.height)
+            if let view { view.setOption(demo.option) }
+            else { ec.setOption(demo.option) }
+            let root = ec.getRoot()
+            if let action = action {
+                for clip in entranceAnimationClips(root) {
+                    clip.resetForDeterministicSampling()
+                    if clip.sampleForDeterministicRendering(at: 1_000_000_000) { clip.ondestroy() }
+                }
+                if action["type"] as? String == "__setOption",
+                   let option = action["option"] as? [String: Any] {
+                    ec.setOption(option, notMerge: false)
+                }
+                else if action["type"] as? String == "__hoverData", let view {
+                    let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
+                    let dataIndex = (action["dataIndex"] as? NSNumber)?.doubleValue ?? 0
+                    let displayList = view.zr.storage.getDisplayList(true)
+                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+                        if let series = ec.getModel()?.getSeriesByIndex(seriesIndex) {
+                            print("HOVER_TRACE model animation=\(String(describing: series.getShallow("animation"))) " +
+                                  "enabled=\(String(describing: series.isAnimationEnabled())) " +
+                                  "stateDuration=\(String(describing: series.getModel("stateAnimation").get("duration")))")
+                        }
+                    }
+                    var candidates = displayList.filter { displayable in
+                        let ecData = innerStore.getECData(displayable)
+                        return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
+                            && displayable.states["emphasis"] != nil
+                    }
+                    if let dataRoot = ec.getModel()?.getSeriesByIndex(seriesIndex)?.getData()
+                        .getItemGraphicEl(Int(dataIndex)) {
+                        candidates.append(contentsOf: interactiveDisplayables(in: dataRoot))
+                    }
+                    var resolved: (Displayable, [Double])?
+                    for candidate in candidates {
+                        if let point = deterministicHoverPoint(candidate, accepting: { point in
+                            view.zr.handler.findHover(point[0], point[1]).target === candidate
+                        }) {
+                            resolved = (candidate, point)
+                            break
+                        }
+                    }
+                    guard let (element, point) = resolved else {
+                        FileHandle.standardError.write(Data("__hoverData could not resolve a hittable data element\n".utf8))
+                        exit(1)
+                    }
+                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+                        let hovered = view.zr.handler.findHover(point[0], point[1])
+                        print("HOVER_TRACE before point=\(point) targetIsData=\(hovered.target === element) " +
+                              "transition=\(element.stateTransition?.duration ?? -1) states=\(element.currentStates)")
+                    }
+                    view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+                        print("HOVER_TRACE after states=\(element.currentStates) animators=\(element.animators.count)")
+                    }
+                }
+                else if action["type"] as? String == "__legendClick",
+                        let name = action["name"] as? String {
+                    for type in ["downplay", "legendToggleSelect", "highlight"] {
+                        var payload = Payload(type: type)
+                        payload.other["name"] = name
+                        ec.dispatchAction(payload)
+                    }
+                }
+                else if let type = action["type"] as? String {
+                    var payload = Payload(type: type)
+                    for (key, value) in action where key != "type" { payload.other[key] = value }
+                    ec.dispatchAction(payload)
+                }
+            }
+            let clips = entranceAnimationClips(root)
+            for clip in clips {
+                clip.resetForDeterministicSampling()
+                if clip.sampleForDeterministicRendering(at: Double(time)) {
+                    clip.ondestroy()
+                }
+            }
+            traceEntranceAnimationElements(root, at: time)
+            guard let image = renderToImage(group: root,
+                                            size: CGSize(width: demo.width, height: demo.height),
+                                            dpr: 2, backgroundColor: white),
+                  let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                FileHandle.standardError.write(Data("entrance native t\(time) render failed\n".utf8))
+                exit(1)
+            }
+            let out = dir.appendingPathComponent(String(format: "%@.t%04d.native.png", demo.name, time))
+            do { try png.write(to: out); print("wrote \(out.lastPathComponent)") }
+            catch { FileHandle.standardError.write(Data("write failed: \(error)\n".utf8)); exit(1) }
+        }
+        exit(0)
+
+    case "--entrance-web":
+        // --entrance-web <demo> <outdir> [offsetsMsCSV] [actionJSON] — real echarts.js, with its RAF loop frozen
+        // before setOption and its entrance clips explicitly advanced to the requested logical times.
+        guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]) else {
+            FileHandle.standardError.write(Data("usage: --entrance-web <name> <outdir> [offsetsMsCSV] [actionJSON]\n".utf8))
+            exit(2)
+        }
+        let dir = URL(fileURLWithPath: args[2], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let parsed = args.count >= 4 ? args[3].split(separator: ",").compactMap { Int($0) } : []
+        let offsets = Array(Set(parsed.isEmpty ? [0, 250, 500, 800, 1200, 1600] : parsed)).sorted()
+        let actionJSON = args.count >= 5 ? args[4] : nil
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        let window = NSWindow(contentRect: webView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = webView
+        window.orderFrontRegardless()
+        guard let page = echartsHTMLPage(demo, snapshot: false, freezeEntranceAnimation: true) else {
+            FileHandle.standardError.write(Data("could not build entrance html\n".utf8))
+            exit(1)
+        }
+        let snapper = WebEntranceSnapper(
+            demo: demo, dir: dir, offsets: offsets, page: page, actionJSON: actionJSON
+        )
+        webView.navigationDelegate = snapper
+        webView.loadHTMLString(page, baseURL: nil)
+        app.run()
+        return true
 
     case "--anim-native":
         // --anim-native <demo> <outdir> [offsetsMsCSV]
@@ -1286,6 +1835,47 @@ func runCLI() -> Bool {
             }
         }
         iapp.run()
+        return true
+
+    case "--anim-disabled-invariant":
+        // --anim-disabled-invariant <driven-demo> [offsetsMsCSV]
+        // The gallery switch means "disable ECharts interpolation", not "pause the example". Verify
+        // that drive timers still change the settled scene while every sample has zero animators.
+        guard args.count >= 2, let demo = EChartsDemoRegistry.byName(args[1]),
+              demo.nativeSupported, demo.drive != nil else {
+            FileHandle.standardError.write(Data("usage: --anim-disabled-invariant <driven-demo> [offsetsMsCSV]\n".utf8)); exit(2)
+        }
+        let offsets: [Int] = (args.count >= 3 ? args[2].split(separator: ",").compactMap { Int($0) } : [])
+            .isEmpty ? [100, 1100, 2100, 3100] : args[2].split(separator: ",").compactMap { Int($0) }
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let host = EChartsHostView(frame: CGRect(x: 0, y: 0, width: demo.width, height: demo.height))
+        host.animationsEnabled = false
+        host.setOption(demo.option)
+        demo.drive?(host)
+        let sorted = offsets.sorted()
+        var priorSignature: String?
+        var changed = false
+        var failed = false
+        for (i, time) in sorted.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(time) / 1000) {
+                var active = 0
+                _ = host.echartsView.ec.getRoot().traverse { el in
+                    active += el.animators.count
+                    return false
+                }
+                let signature = sceneSignature(host.echartsView)
+                if let priorSignature, priorSignature != signature { changed = true }
+                priorSignature = signature
+                if active != 0 { failed = true }
+                print("t\(time)\tactiveAnimators=\(active)")
+                if i == sorted.count - 1 {
+                    print("ANIMATION_DISABLED\t\(failed ? "FAIL" : "PASS")\tsceneChanged=\(changed)\t\(demo.name)")
+                    exit(failed ? 1 : 0)
+                }
+            }
+        }
+        app.run()
         return true
 
     case "--update-invariant":

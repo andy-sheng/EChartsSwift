@@ -25,19 +25,13 @@
 //     renderItem against this data, a wrong chart). So `stratify` / `sum` / `sort` / `pack` /
 //     `packEnclose` / `packSiblings`'s Welzl enclose are ported from the vendored d3-hierarchy 2.0.0
 //     source, statement for statement, and both panes draw the same packing.
-//     Two knowing divergences inside that port:
-//       * `params.context` is a VALUE-TYPE `[String: Any]` in the port (CustomSeriesRenderItemParams is a
-//         struct), so upstream's "lay out once per setOption, cache it on context" trick cannot write
-//         through. The layout is instead cached in a file-scope object keyed by the canvas size — same
-//         effect (one pack per size), no per-datum recompute.
-//       * d3 2.0.0's `enclose()` shuffles its input with `Math.random()`. The minimum enclosing circle is
-//         unique, so the shuffle only reorders the Welzl basis search; the Swift port shuffles with a
-//         fixed-seed LCG (what d3-hierarchy 3.x does) to keep the frame reproducible.
+//     `params.context` is reference-typed in EChartsKit, so the upstream "lay out once per setOption,
+//     cache it on context" lifecycle is preserved rather than leaking a layout across updates.
 //   - INTERACTION DROPPED ON THE NATIVE PANE ONLY. Upstream's `myChart.on('click', {seriesIndex: 0}, ...)`
 //     (drill into the clicked node) and `myChart.getZr().on('click', ...)` (reset on blank click) stay
-//     VERBATIM in the web pane. The port's `ECharts` is not `Eventful` — there is no chart-level event
-//     subscription yet (see EChartsDemoChart) — so the native pane shows the initial, un-drilled packing
-//     and does not respond to clicks. This is a framework gap, not a simplification of the example.
+//     VERBATIM in the web pane. `EChartsDemoChart` now exposes chart-level events but not the underlying
+//     zrender blank-area event needed by the paired reset handler, so the native demo still shows the
+//     initial, un-drilled packing. This limitation is independent of the update-animation path above.
 //   - The root row has no `$count`, i.e. `value: undefined` in JS; Swift carries `NSNull()` so the
 //     dataset's object-row dimension detection still sees all four keys (id / value / depth / index).
 import Foundation
@@ -401,22 +395,15 @@ private func d3ExtendBasis(_ B: [D3Circle], _ p: D3Circle) -> [D3Circle] {
     return [p]
 }
 
-/// A fixed-seed LCG — d3 2.0.0 shuffles with `Math.random()`, which would make the native frame
-/// irreproducible. The minimum enclosing circle is unique, so the order only steers the basis search.
-private struct D3LCG {
-    private var s: UInt32 = 0x2545_F491
-    mutating func next01() -> Double {
-        s = 1_664_525 &* s &+ 1_013_904_223
-        return Double(s) / 4_294_967_296.0
-    }
-}
-
 private func d3Enclose(_ circles: [D3Circle]) -> D3Circle? {
     var cs = circles
-    var lcg = D3LCG()
     var m = cs.count
     while m > 0 {
-        let i = Int(lcg.next01() * Double(m))
+        // d3-hierarchy 2.0.0: `array[i] = array[m], array[m] = t` with
+        // `i = random() * m-- | 0`. Its `random` is Math.random, so use Swift's system RNG rather
+        // than freezing the order across setOption calls; the latter suppresses the official shape
+        // update transition by making every floating-point result bit-identical.
+        let i = Int.random(in: 0..<m)
         m -= 1
         cs.swapAt(m, min(i, cs.count - 1))
     }
@@ -492,7 +479,7 @@ private func d3PackEnclose(_ circles: [D3Node]) -> Double {
     if n == 0 { return 0 }
 
     // Place the first circle.
-    var a = circles[0]
+    let a = circles[0]
     a.x = 0; a.y = 0
     if n <= 1 { return a.r }
 
@@ -507,7 +494,7 @@ private func d3PackEnclose(_ circles: [D3Node]) -> Double {
     // Initialize the front-chain using the first three circles a, b and c.
     var aNode = D3ChainNode(a)
     var bNode = D3ChainNode(b0)
-    var cNode = D3ChainNode(circles[2])
+    let cNode = D3ChainNode(circles[2])
     aNode.next = bNode; cNode.previous = bNode
     bNode.next = aNode; aNode.previous = cNode
     cNode.next = bNode.previous; bNode.previous = cNode
@@ -625,34 +612,19 @@ private func d3Pack(_ root: D3Node, dx: Double, dy: Double, padding: Double) {
     d3EachBefore(root) { d3TranslateChild($0, k: k3) }
 }
 
-// MARK: - the layout cache (upstream's `params.context`)
+// MARK: - per-render layout (upstream's `params.context`)
 
-/// `CustomSeriesRenderItemParams` is a STRUCT in the port, so `context.layout = true` / `context.nodes =
-/// {…}` cannot write through from inside renderItem. This object plays the same role: pack once per
-/// canvas size, then hand every datum its node.
-private final class CirclePackingLayout {
-    private var width: Double = -1
-    private var height: Double = -1
-    private var nodes: [String: D3Node] = [:]
-
-    /// `overallLayout(params, api)`: `d3.pack().size([api.getWidth() - 2, api.getHeight() - 2])
-    /// .padding(3)(displayRoot)`, then index every descendant by id.
-    func nodes(width w: Double, height h: Double) -> [String: D3Node] {
-        if w == width && h == height { return nodes }
-        width = w; height = h
-        nodes = [:]
-
-        // `displayRoot = stratify()` — the un-drilled root (the native pane has no click handler).
-        guard let root = circlePackingStratify(circlePackingSeriesData) else { return nodes }
-        circlePackingSumAndSort(root)
-        d3Pack(root, dx: w - 2, dy: h - 2, padding: 3)
-
-        for node in d3Descendants(root) { nodes[node.id] = node }
-        return nodes
-    }
+/// `overallLayout(params, api)`: pack once in a render round, then share the node index with every
+/// datum through `params.context`. A subsequent `setOption` receives a fresh context and recomputes,
+/// exactly like the JavaScript custom-series API.
+private func circlePackingNodes(width: Double, height: Double) -> [String: D3Node] {
+    var nodes: [String: D3Node] = [:]
+    guard let root = circlePackingStratify(circlePackingSeriesData) else { return nodes }
+    circlePackingSumAndSort(root)
+    d3Pack(root, dx: width - 2, dy: height - 2, padding: 3)
+    for node in d3Descendants(root) { nodes[node.id] = node }
+    return nodes
 }
-
-private let circlePackingLayout = CirclePackingLayout()
 
 /// `nodePath.slice(nodePath.lastIndexOf('.') + 1).split(/(?=[A-Z][^A-Z])/g).join('\n')` — break the leaf's
 /// key before every capital that starts a word (`itemStyle` → `item\nStyle`). A zero-width match at
@@ -695,9 +667,12 @@ private func circlePackingNum(_ v: Any?) -> Double {
 /// centre/radius, filled by the depth visualMap, with the leaf key as an inside `textContent`.
 /// Typed EXACTLY `CustomSeriesRenderItem` so CustomView's `get("renderItem") as? CustomSeriesRenderItem`
 /// cast holds.
-private let circlePackingRenderItem: CustomSeriesRenderItem = { _, api in
-    // `if (!context.layout) { context.layout = true; overallLayout(params, api); }` — see CirclePackingLayout.
-    let nodes = circlePackingLayout.nodes(width: api.getWidth(), height: api.getHeight())
+private let circlePackingRenderItem: CustomSeriesRenderItem = { params, api in
+    // `if (!context.layout) { context.layout = true; overallLayout(params, api); }`
+    if params.context["nodes"] == nil {
+        params.context["nodes"] = circlePackingNodes(width: api.getWidth(), height: api.getHeight())
+    }
+    guard let nodes = params.context["nodes"] as? [String: D3Node] else { return nil }
 
     // `api.value('id')` — the 'id' dimension is ordinal WITHOUT an ordinalMeta (no category axis), so the
     // store passes the raw string through, exactly as upstream does.
