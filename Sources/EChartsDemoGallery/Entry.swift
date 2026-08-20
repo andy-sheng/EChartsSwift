@@ -1153,6 +1153,53 @@ private func interactiveDisplayables(in root: Element) -> [Displayable] {
     return result
 }
 
+/// Drive a data-element hover through the real native Handler, matching the Web oracle's
+/// `dispatchToElement(..., 'mouseover', ...)`. Returns false when the requested item cannot be
+/// resolved to a point whose topmost hit target is that item.
+private func injectDeterministicHover(
+    _ action: [String: Any], ec: ECharts, view: EChartsView
+) -> Bool {
+    let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
+    let dataIndex = (action["dataIndex"] as? NSNumber)?.doubleValue ?? 0
+    let displayList = view.zr.storage.getDisplayList(true)
+    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+        if let series = ec.getModel()?.getSeriesByIndex(seriesIndex) {
+            print("HOVER_TRACE model animation=\(String(describing: series.getShallow("animation"))) " +
+                  "enabled=\(String(describing: series.isAnimationEnabled())) " +
+                  "stateDuration=\(String(describing: series.getModel("stateAnimation").get("duration")))")
+        }
+    }
+    var candidates = displayList.filter { displayable in
+        let ecData = innerStore.getECData(displayable)
+        return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
+            && displayable.states["emphasis"] != nil
+    }
+    if let dataRoot = ec.getModel()?.getSeriesByIndex(seriesIndex)?.getData()
+        .getItemGraphicEl(Int(dataIndex)) {
+        candidates.append(contentsOf: interactiveDisplayables(in: dataRoot))
+    }
+    var resolved: (Displayable, [Double])?
+    for candidate in candidates {
+        if let point = deterministicHoverPoint(candidate, accepting: { point in
+            view.zr.handler.findHover(point[0], point[1]).target === candidate
+        }) {
+            resolved = (candidate, point)
+            break
+        }
+    }
+    guard let (element, point) = resolved else { return false }
+    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+        let hovered = view.zr.handler.findHover(point[0], point[1])
+        print("HOVER_TRACE before point=\(point) targetIsData=\(hovered.target === element) " +
+              "transition=\(element.stateTransition?.duration ?? -1) states=\(element.currentStates)")
+    }
+    view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+        print("HOVER_TRACE after states=\(element.currentStates) animators=\(element.animators.count)")
+    }
+    return true
+}
+
 /// Opt-in structural trace for debugging a visual entrance mismatch. Kept behind an environment
 /// variable so the normal all-demo oracle remains quiet while a failing frame can expose whether an
 /// element owns an enter clip and what transform the deterministic sampler actually applied.
@@ -1506,15 +1553,16 @@ func runCLI() -> Bool {
         return true
 
     case "--render-rasterizer":
-        // --render-rasterizer <name> <out.png> [timeMs] : deterministically sample the demo's
-        // entrance animation, then synchronously render the resulting display list through the
+        // --render-rasterizer <name> <out.png> [timeMs] [actionJSON] : deterministically sample the
+        // demo's entrance animation (or an action animation after settling entrance), then
+        // synchronously render the resulting display list through the
         // REAL RasterizerLayer Metal pipeline. The drawable is blitted into the layer's feedback
         // texture on that first frame and read back to the PNG. With no timeMs, sample a completed
         // entrance frame; an explicit timeMs preserves an exact intermediate animation phase.
         guard args.count >= 3, let demo = EChartsDemoRegistry.byName(args[1]),
               demo.nativeSupported else {
             FileHandle.standardError.write(
-                Data("usage: --render-rasterizer <name> <out.png> [timeMs]\n".utf8)
+                Data("usage: --render-rasterizer <name> <out.png> [timeMs] [actionJSON]\n".utf8)
             )
             exit(2)
         }
@@ -1527,14 +1575,38 @@ func runCLI() -> Bool {
             requestedTime = parsed
         }
         let sampleTime = requestedTime ?? 1_000_000_000
+        let action = args.count >= 5
+            ? (try? JSONSerialization.jsonObject(with: Data(args[4].utf8))) as? [String: Any]
+            : nil
 
         // Do not use renderNativeGroup: that static oracle forces option.animation=false. A bare
         // ECharts instance has no display-link host, so its freshly-created entrance clips remain
-        // pristine until this command advances every clip to the requested logical timestamp.
-        let ec = ECharts(width: demo.width, height: demo.height)
-        ec.setOption(demo.option)
+        // pristine until this command advances every clip to the requested logical timestamp. Hover
+        // actions need an EChartsView because they deliberately enter through the real Handler.
+        let view = action == nil ? nil : EChartsView(width: demo.width, height: demo.height)
+        let ec = view?.ec ?? ECharts(width: demo.width, height: demo.height)
+        if let view { view.setOption(demo.option) }
+        else { ec.setOption(demo.option) }
         let group = ec.getRoot()
-        let clips = entranceAnimationClips(group)
+        var clips = entranceAnimationClips(group)
+        if let action {
+            for clip in clips {
+                clip.resetForDeterministicSampling()
+                if clip.sampleForDeterministicRendering(at: 1_000_000_000) { clip.ondestroy() }
+            }
+            if action["type"] as? String == "__hoverData", let view {
+                guard injectDeterministicHover(action, ec: ec, view: view) else {
+                    FileHandle.standardError.write(Data("__hoverData could not resolve a hittable data element\n".utf8))
+                    exit(1)
+                }
+            }
+            else if let type = action["type"] as? String {
+                var payload = Payload(type: type)
+                for (key, value) in action where key != "type" { payload.other[key] = value }
+                ec.dispatchAction(payload)
+            }
+            clips = entranceAnimationClips(group)
+        }
         for clip in clips {
             clip.resetForDeterministicSampling()
             if clip.sampleForDeterministicRendering(at: sampleTime) { clip.ondestroy() }
@@ -1604,46 +1676,9 @@ func runCLI() -> Bool {
                     ec.setOption(option, notMerge: false)
                 }
                 else if action["type"] as? String == "__hoverData", let view {
-                    let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
-                    let dataIndex = (action["dataIndex"] as? NSNumber)?.doubleValue ?? 0
-                    let displayList = view.zr.storage.getDisplayList(true)
-                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
-                        if let series = ec.getModel()?.getSeriesByIndex(seriesIndex) {
-                            print("HOVER_TRACE model animation=\(String(describing: series.getShallow("animation"))) " +
-                                  "enabled=\(String(describing: series.isAnimationEnabled())) " +
-                                  "stateDuration=\(String(describing: series.getModel("stateAnimation").get("duration")))")
-                        }
-                    }
-                    var candidates = displayList.filter { displayable in
-                        let ecData = innerStore.getECData(displayable)
-                        return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
-                            && displayable.states["emphasis"] != nil
-                    }
-                    if let dataRoot = ec.getModel()?.getSeriesByIndex(seriesIndex)?.getData()
-                        .getItemGraphicEl(Int(dataIndex)) {
-                        candidates.append(contentsOf: interactiveDisplayables(in: dataRoot))
-                    }
-                    var resolved: (Displayable, [Double])?
-                    for candidate in candidates {
-                        if let point = deterministicHoverPoint(candidate, accepting: { point in
-                            view.zr.handler.findHover(point[0], point[1]).target === candidate
-                        }) {
-                            resolved = (candidate, point)
-                            break
-                        }
-                    }
-                    guard let (element, point) = resolved else {
+                    if !injectDeterministicHover(action, ec: ec, view: view) {
                         FileHandle.standardError.write(Data("__hoverData could not resolve a hittable data element\n".utf8))
                         exit(1)
-                    }
-                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
-                        let hovered = view.zr.handler.findHover(point[0], point[1])
-                        print("HOVER_TRACE before point=\(point) targetIsData=\(hovered.target === element) " +
-                              "transition=\(element.stateTransition?.duration ?? -1) states=\(element.currentStates)")
-                    }
-                    view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
-                    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
-                        print("HOVER_TRACE after states=\(element.currentStates) animators=\(element.animators.count)")
                     }
                 }
                 else if action["type"] as? String == "__legendClick",

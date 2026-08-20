@@ -59,4 +59,37 @@ final class ThemeRiverHoverTests: XCTestCase {
         XCTAssertFalse(band.currentStates.contains("emphasis"), "mouseout leaves emphasis")
         XCTAssertEqual(fillString(band), normalFill, "fill restored after mouseout")
     }
+
+    func testThemeRiverLayerGraphicIndexAndExplicitShadowEmphasis() {
+        let v = EChartsView(width: 520, height: 380)
+        v.setOption([
+            "animation": false,
+            "singleAxis": ["type": "value", "left": "10%", "right": "10%",
+                           "top": "10%", "bottom": "10%"] as [String: Any],
+            "series": [["type": "themeRiver",
+                        "emphasis": ["itemStyle": [
+                            "shadowBlur": 20.0,
+                            "shadowColor": "rgba(0, 0, 0, 0.8)"
+                        ]] as [String: Any],
+                        "data": [
+                            [0.0, 10.0, "Alpha"], [1.0, 15.0, "Alpha"], [2.0, 12.0, "Alpha"],
+                            [0.0,  8.0, "Beta"],  [1.0,  6.0, "Beta"],  [2.0, 11.0, "Beta"]
+                        ]] as [String: Any]]
+        ])
+        _ = v.zr.storage.getDisplayList(true)
+
+        guard let data = v.ec.getModel()?.getSeriesByIndex(0)?.getData(),
+              let alpha = data.getItemGraphicEl(0) as? ThemeRiverBand,
+              let beta = data.getItemGraphicEl(1) as? ThemeRiverBand else {
+            XCTFail("themeRiver must register each band by its layer index")
+            return
+        }
+        XCTAssertFalse(alpha === beta)
+        XCTAssertNil(data.getItemGraphicEl(2),
+                     "raw datum indices must not be used as themeRiver layer item indices")
+
+        alpha.useState("emphasis")
+        XCTAssertEqual(alpha.pathStyle?.shadowBlur ?? -1, 20, accuracy: 1e-6)
+        XCTAssertEqual(alpha.pathStyle?.shadowColor, "rgba(0, 0, 0, 0.8)")
+    }
 }

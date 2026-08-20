@@ -14,6 +14,7 @@ config="${DEMO_CAPTURE_CONFIG:-debug}"
 binary="${DEMO_CAPTURE_BINARY:-}"
 force="${DEMO_CAPTURE_FORCE:-0}"
 reference=""
+action_json=""
 case_names=()
 
 usage() {
@@ -28,6 +29,7 @@ Options:
   -t, --times LIST       Exact comma-separated times; overrides interval/duration
   -o, --output DIR       Output directory (default: build/demo-screenshots)
       --reference NAME   Comparison reference renderer (default: web, or last renderer)
+      --action JSON      Sample an action after entrance settles (for example __hoverData)
       --binary PATH      Existing EChartsDemoGallery binary; skips Swift build
       --config NAME      Swift build configuration: debug or release (default: debug)
   -f, --force            Replace existing screenshots
@@ -45,6 +47,10 @@ Examples:
   # Several demos and exact keyframes, without a comparison renderer.
   scripts/capture-demo-screenshots.sh -r native -t 0,150,500,1000 \
     official-line-sections official-line-polar2
+
+  # Compare a deterministic hover transition across Raster and Web.
+  scripts/capture-demo-screenshots.sh -r raster,web -c official-themeRiver-basic \
+    -t 0,150,500 --action '{"type":"__hoverData","seriesIndex":0,"dataIndex":0}'
 
 Environment equivalents:
   DEMO_CAPTURE_BINARY, DEMO_CAPTURE_CONFIG, DEMO_CAPTURE_FORCE
@@ -88,6 +94,9 @@ while (( $# > 0 )); do
     --reference)
       (( $# >= 2 )) || { print -u2 "missing value for $1"; exit 2; }
       reference="$2"; shift 2 ;;
+    --action)
+      (( $# >= 2 )) || { print -u2 "missing value for $1"; exit 2; }
+      action_json="$2"; shift 2 ;;
     --binary)
       (( $# >= 2 )) || { print -u2 "missing value for $1"; exit 2; }
       binary="$2"; shift 2 ;;
@@ -244,13 +253,17 @@ for demo in "${case_names[@]}"; do
     case "$renderer" in
       native)
         print "  native: capturing deterministic keyframes"
-        if ! "$binary" --entrance-native "$demo" "$renderer_dir" "$offsets" > "$log" 2>&1; then
+        action_args=()
+        [[ -n "$action_json" ]] && action_args+=("$action_json")
+        if ! "$binary" --entrance-native "$demo" "$renderer_dir" "$offsets" "${action_args[@]}" > "$log" 2>&1; then
           print "capture failed" > "$failed"; failure_count=$((failure_count + 1))
         fi
         ;;
       web)
         print "  web: capturing deterministic keyframes"
-        if ! "$binary" --entrance-web "$demo" "$renderer_dir" "$offsets" > "$log" 2>&1; then
+        action_args=()
+        [[ -n "$action_json" ]] && action_args+=("$action_json")
+        if ! "$binary" --entrance-web "$demo" "$renderer_dir" "$offsets" "${action_args[@]}" > "$log" 2>&1; then
           print "capture failed" > "$failed"; failure_count=$((failure_count + 1))
         fi
         ;;
@@ -266,7 +279,9 @@ for demo in "${case_names[@]}"; do
             continue
           fi
           print "  raster: t=$time_ms"
-          if ! "$binary" --render-rasterizer "$demo" "$png" "$time_ms" >> "$log" 2>&1; then
+          action_args=()
+          [[ -n "$action_json" ]] && action_args+=("$action_json")
+          if ! "$binary" --render-rasterizer "$demo" "$png" "$time_ms" "${action_args[@]}" >> "$log" 2>&1; then
             renderer_failed=1
           fi
         done

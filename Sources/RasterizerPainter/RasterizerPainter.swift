@@ -29,13 +29,13 @@
 //
 // KNOWN GAPS (PORT-NOTEs inline):
 //   - shadows (shadowBlur/offset)      — engine has no shadow support; skipped.
-//   - blend modes (style.blend)        — engine composites source-over only; skipped.
+//   - blend modes (style.blend)        — engine composites source-over only; `lighter` uses the same
+//                                       NativePainter frame-composite fallback.
 //   - bevel join / miterLimit          — engine joins are miter|round; bevel falls back to miter.
 //   - clip chains longer than 1        — engine takes ONE clip path + one rect per record;
 //     the innermost path + the intersected bounding rect of the chain approximates nesting.
 //   - incremental displayables         — redrawn in full each frame (the engine's model);
 //     temporal displayables are NOT discarded after paint, so they survive scene rebuilds.
-//   - image paint opacity              — RAPaint carries no global alpha for image fills.
 
 import Foundation
 #if canImport(QuartzCore) && canImport(Metal)
@@ -464,8 +464,8 @@ public final class RasterizerPainter {
             sink(op)
         }
 
-        // PORT-NOTE: shadows (style.shadowBlur/...) and blend modes (style.blend) are
-        // unsupported by the engine and skipped here.
+        // PORT-NOTE: shadows are unsupported by the engine and skipped here. `lighter` blend takes
+        // the whole-frame NativePainter composite route in buildSceneList.
         if paint.strokeFirst {
             emitStroke(geom, paint: paint, alpha: alpha, localRect: localRect,
                        world: world, clip: clip, capturingSink)

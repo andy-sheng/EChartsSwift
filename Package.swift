@@ -44,8 +44,8 @@ let package = Package(
         // EXPERIMENTAL alternative live painter over mindbrix/Rasterizer (GPU/Metal).
         // Conforms to the same PainterBase seam as CALayerPainter; translates the flattened
         // display list into an RASceneList per frame. NOT a default backend — DemoGallery
-        // offers a runtime toggle for side-by-side evaluation. Known gaps: shadows, blend
-        // modes, bevel joins, multi-path clip chains (see RasterizerPainter.swift header).
+        // offers a runtime toggle for side-by-side evaluation. Shadows remain unsupported;
+        // `lighter` blend uses a CG composite fallback. See RasterizerPainter.swift for details.
         .target(
             name: "RasterizerPainter",
             dependencies: [

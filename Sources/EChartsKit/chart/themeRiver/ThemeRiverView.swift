@@ -342,11 +342,10 @@ open class ThemeRiverView: ChartView {
                 }
             }
 
-            // data.setItemGraphicEl(idx, polygon);  (upstream keys by the diff `idx`; the last data index
-            //   of the layer is the closest static analogue — upstream also labels indices[j - 1]).
-            if let last = indices.last {
-                data.setItemGraphicEl(last, polygon)
-            }
+            // upstream: data.setItemGraphicEl(idx, polygon). ThemeRiver's interactive item index is
+            // the LAYER index (0...layerCount-1), not the last raw datum index in that layer. Keeping
+            // this mapping exact is load-bearing for highlight/downplay and deterministic hover actions.
+            data.setItemGraphicEl(idx, polygon)
 
             // upstream (ThemeRiverView.ts:168-171): the band's hover wiring — state styles + the
             //   highDown-dispatcher mark. Runs on both the add and update paths.
