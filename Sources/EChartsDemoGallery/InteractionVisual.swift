@@ -151,6 +151,7 @@ private func dragInteractiveElement(
             return center[0] >= width * 0.08 && center[0] <= width * 0.92
                 && center[1] >= height * 0.68 && center[1] < height * 0.92
         }
+        if kind == "timeline" { return true }
         return center[0] >= width * 0.08 && center[0] <= width * 0.85 && center[1] < height * 0.68
     }
     if kind == "dataZoom" {
@@ -562,6 +563,21 @@ private func writeOfficialInteractionScenarios(
                 ["action": "settle", "capture": "datazoom-drag-cleared"],
             ]
         }
+        if let timeline = ecModel.findComponents(QueryConditionKindA(mainType: "timeline")).first,
+           (timeline.get("show") as? Bool) != false {
+            let vertical = (timeline.get("orient") as? String) == "vertical"
+            steps += [
+                [
+                    "action": "dragTimeline",
+                    "deltaX": vertical ? 0.0 : 120.0,
+                    "deltaY": vertical ? 90.0 : 0.0,
+                ],
+                ["action": "wait", "milliseconds": 180.0],
+                ["action": "settle", "capture": "timeline-dragged"],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+            ]
+        }
         if category == "line" && demo.name == "official-line-draggable" {
             steps += [[
                 "action": "dragGraphic", "deltaX": 42.0, "deltaY": 24.0,
@@ -784,12 +800,13 @@ func runNativeInteractionVisual(
             }
             record["name"] = name
             record["resolvedPoint"] = point
-        case "dragDataZoom", "dragGraphic", "dragAxisPointer":
+        case "dragDataZoom", "dragGraphic", "dragAxisPointer", "dragTimeline":
             let dx = step.deltaX ?? 48
             let dy = step.deltaY ?? 0
             if let point = dragInteractiveElement(
                 kind: step.action == "dragDataZoom" ? "dataZoom"
-                    : (step.action == "dragAxisPointer" ? "axisPointer" : "graphic"),
+                    : (step.action == "dragAxisPointer" ? "axisPointer"
+                        : (step.action == "dragTimeline" ? "timeline" : "graphic")),
                 deltaX: dx, deltaY: dy, deltaPercent: step.deltaPercent, view: view
             ) {
                 record["resolvedPoint"] = point
@@ -1127,13 +1144,15 @@ private let webInteractionHarnessJS = #"""
             bounds.x + bounds.width * gx / 20,
             bounds.y + bounds.height * gy / 20
           );
-          var inRegion = kind === 'dataZoom'
+          var inRegion = kind === 'timeline'
+            ? true
+            : (kind === 'dataZoom'
             ? point[0] >= width * 0.08 && point[0] <= width * 0.92
               && point[1] >= height * 0.68
             : (kind === 'axisPointer'
               ? point[0] >= width * 0.08 && point[0] <= width * 0.92
                 && point[1] >= height * 0.68 && point[1] < height * 0.92
-              : point[0] >= width * 0.08 && point[0] <= width * 0.85 && point[1] < height * 0.68);
+              : point[0] >= width * 0.08 && point[0] <= width * 0.85 && point[1] < height * 0.68));
           if (!inRegion || !el.contain(point[0], point[1])) { continue; }
           var hovered = zr.handler.findHover(point[0], point[1]);
           if (hovered && hovered.target === el) { found = point; break; }
@@ -1439,6 +1458,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.drag('graphic',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "dragAxisPointer":
             script = "(function(a){return window.__interactionVisual.drag('axisPointer',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
+        case "dragTimeline":
+            script = "(function(a){return window.__interactionVisual.drag('timeline',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "pointerMove":
             script = "(function(a){return window.__interactionVisual.pointerMove(a.x,a.y);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
