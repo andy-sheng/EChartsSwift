@@ -1172,10 +1172,22 @@ private let webInteractionHarnessJS = #"""
     }
     return { tooltipViews: found };
   }
+  function drainProgressive() {
+    var frames = 0;
+    var scheduler = myChart._scheduler;
+    while (scheduler && scheduler.unfinished && frames < 10000) {
+      if (myChart._onframe) { myChart._onframe(); }
+      frames++;
+    }
+    if (scheduler && scheduler.unfinished) {
+      throw new Error('progressive rendering did not settle after ' + frames + ' frames');
+    }
+    return frames;
+  }
   function finishAnimations() {
-    if (myChart._onframe) { myChart._onframe(); }
     var zr = myChart.getZr();
     zr.animation.stop();
+    var progressiveFrames = drainProgressive();
     var seenElements = new Set();
     var seenClips = new Set();
     var clips = [];
@@ -1208,11 +1220,11 @@ private let webInteractionHarnessJS = #"""
       clip.onframe(clip.easingFunc ? clip.easingFunc(percent) : percent);
       if (!clip.loop && elapsed >= life) { clip.ondestroy(); }
     }
-    if (myChart._onframe) { myChart._onframe(); }
+    progressiveFrames += drainProgressive();
     if (pointerOutside) { hideTooltipHost(); }
     zr.animation.stop();
     zr.refreshImmediately(true);
-    return { clips: clips.length };
+    return { clips: clips.length, progressiveFrames: progressiveFrames };
   }
   window.__interactionVisual = {
     settle: finishAnimations,
