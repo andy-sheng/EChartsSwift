@@ -1310,12 +1310,14 @@ public final class EChartsView {
 
     /// Whether pointer movement should drive the axisPointer chain. A trigger:"axis" tooltip needs the
     /// combined tooltip and pointer; a tooltip axisPointer of type:"cross" is also interactive even when
-    /// trigger:"none" (official-multiple-x-axis), but its collected axes keep triggerTooltip=false so no
-    /// floating tooltip box is produced.
+    /// trigger:"none" (official-multiple-x-axis). An explicitly shown global axisPointer is interactive
+    /// for the same reason: linked axes may collect tooltip data even while the tooltip's own trigger is
+    /// `none` (official-scatter-nutrients-matrix).
     private func _isAxisTrigger(_ ecModel: GlobalModel) -> Bool {
         guard let tooltip = ecModel.getComponent("tooltip") else { return false }
         return (tooltip.get("trigger") as? String) == "axis"
             || (tooltip.get(["axisPointer", "type"]) as? String) == "cross"
+            || (ecModel.getComponent("axisPointer")?.get("show") as? Bool) == true
     }
 
     /// The `realDispatch` seam handed to `globalListener.register`: the merged showTip/hideTip (and any

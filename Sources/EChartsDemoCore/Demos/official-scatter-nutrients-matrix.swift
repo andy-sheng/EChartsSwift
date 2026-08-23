@@ -24,8 +24,8 @@
 //      option-eval time in the gallery page, and the motion-blur trail only appears DURING the 2s
 //      `animationDurationUpdate` re-layout that `onChange` triggers — a single static frame cannot
 //      show it. The series keep `zlevel: 1`.
-//   4. NATIVE pane omits `tooltip.formatter` and `tooltip.position` (JS closures; PORT-NOTEs left in
-//      place). Both are hover-only, so the rendered frame is unaffected.
+//   4. The tooltip formatter and position callbacks use the native callback seams. The native rich-
+//      text host emits the same headings and values as the official HTML formatter without DOM tags.
 //   5. Canvas is 900x560, not the gallery default: four 35%x35% grids plus four dataZoom sliders
 //      overlap vertically at 640x420 (top grid bottom edge 197px vs bottom grid top edge 193px).
 import Foundation
@@ -155,6 +155,79 @@ private func nutrientsDataZoom(_ opt: [String: Any]) -> [String: Any] {
     return dz
 }
 
+private func nutrientsTooltipValueText(_ value: Any?) -> String {
+    if let value = value as? Double {
+        return value.rounded() == value ? String(Int(value)) : String(value)
+    }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? NSNumber {
+        let number = value.doubleValue
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    }
+    return String(describing: value ?? "")
+}
+
+private struct NutrientsTooltipFood {
+    var keyOrder: [String] = []
+    var values: [String: Any] = [:]
+}
+
+private let nutrientsTooltipFormatter: ([TooltipCallbackDataParams]) -> String = { params in
+    var foods: [String: NutrientsTooltipFood] = [:]
+    var foodOrder: [String] = []
+    var namesByAxis: [String: Set<String>] = ["x": [], "y": []]
+
+    for item in params {
+        guard let data = item.data as? [Any], data.count > 5,
+              let foodName = data[3] as? String,
+              let xSchema = data[4] as? String,
+              let ySchema = data[5] as? String else { continue }
+        if foods[foodName] == nil {
+            foods[foodName] = NutrientsTooltipFood()
+            foodOrder.append(foodName)
+        }
+        var food = foods[foodName]!
+        if food.values[xSchema] == nil { food.keyOrder.append(xSchema) }
+        food.values[xSchema] = data[0]
+        if food.values[ySchema] == nil { food.keyOrder.append(ySchema) }
+        food.values[ySchema] = data[1]
+        foods[foodName] = food
+        if let axisDim = item.axisDim, namesByAxis[axisDim] != nil {
+            namesByAxis[axisDim]!.insert(foodName)
+        }
+    }
+
+    let xNames = namesByAxis["x"] ?? []
+    let yNames = namesByAxis["y"] ?? []
+    let crossNames = xNames.intersection(yNames)
+    let sections: [(Set<String>, String)] = [
+        (crossNames, "CROSS"),
+        (xNames.subtracting(crossNames), "V LINE"),
+        (yNames.subtracting(crossNames), "H LINE")
+    ]
+    var output: [String] = []
+    for (names, heading) in sections where !names.isEmpty {
+        var lines = ["POINTS ON \(heading)"]
+        for foodName in foodOrder where names.contains(foodName) {
+            guard let food = foods[foodName] else { continue }
+            lines.append("")
+            lines.append(foodName)
+            for key in food.keyOrder {
+                lines.append("\(key): \(nutrientsTooltipValueText(food.values[key]))")
+            }
+        }
+        output.append(lines.joined(separator: "\n"))
+    }
+    return output.joined(separator: "\n\n")
+}
+
+private let nutrientsTooltipPosition: TooltipPositionCallback = { point, _, _, _, size in
+    var result: [String: Any] = [:]
+    result[point.0 < size.viewSize.0 / 2 ? "right" : "left"] = 60.0
+    result[point.1 < size.viewSize.1 / 2 ? "bottom" : "top"] = 20.0
+    return result
+}
+
 // The option's components, hoisted out of the one big literal (Swift's type-checker chokes on deeply
 // nested heterogeneous dictionaries). Assembled in `nutrientsOption` below.
 
@@ -164,13 +237,9 @@ private let nutrientsTooltip: [String: Any] = [
     "backgroundColor": "rgba(0,0,0,0.7)",
     "transitionDuration": 0.0,
     "extraCssText": "width: 300px; white-space: normal",
-    "textStyle": ["color": "#fff", "fontSize": 12.0] as [String: Any]
-    // PORT-NOTE: tooltip.position omitted — a JS closure that pins the box to the corner opposite the
-    // pointer (left/right at 60px, top/bottom at 20px, picked from which half of the viewport the
-    // pointer is in).
-    // PORT-NOTE: tooltip.formatter omitted — a JS closure (`tooltipFormatter`) that de-duplicates the
-    // axisPointer-linked params by food name, buckets them into POINTS ON CROSS / V LINE / H LINE by
-    // `param.axisDim`, and emits HTML with each nutrient name coloured by its axis (`colorBySchema`).
+    "textStyle": ["color": "#fff", "fontSize": 12.0] as [String: Any],
+    "position": nutrientsTooltipPosition,
+    "formatter": nutrientsTooltipFormatter
 ]
 
 // The four grids are linked pairwise: the two left grids share an x-axis pointer, the two right grids
