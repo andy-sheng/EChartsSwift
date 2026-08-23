@@ -57,6 +57,22 @@ and prints a final passed/failed summary. It covers representative line-series h
 every backed visible legend item off/on, slider dataZoom drags, restore, the draggable-points graphic
 target, and the tooltip-touch axisPointer handle.
 
+## Run every official bar case
+
+```sh
+DEMO_CAPTURE_BINARY=.build/debug/EChartsDemoGallery \
+  scripts/capture-bar-interaction-visuals.sh \
+  build/bar-interaction-scenarios \
+  build/bar-interaction-visuals
+```
+
+This uses the same same-instance runner and enumerates the official UI's complete `bar` section,
+including dataset and matrix examples cross-listed by the gallery. Generated scenarios cover real
+bar-element hover and cleanup, every backed visible legend item off/on, slider dataZoom drags,
+toolbox restore, and click-driven drilldown targets. Keep intended interactions that were removed
+from a static gallery option (for example upstream callbacks) separate from live-target discovery;
+otherwise a missing handler can be mistaken for a passing non-interactive chart.
+
 The orchestrating agent owns the final gate:
 
 1. Fail immediately if capture or real Handler hit resolution fails.

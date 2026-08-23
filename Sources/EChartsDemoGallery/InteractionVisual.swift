@@ -252,9 +252,15 @@ private func interactionSlug(_ value: String) -> String {
 }
 
 @MainActor
-func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
-    guard let section = demoSections(.official).first(where: { $0.title.lowercased() == "line" }) else {
-        FileHandle.standardError.write(Data("official line section was not found\n".utf8))
+private func writeOfficialInteractionScenarios(
+    category: String,
+    seriesSubtype: String,
+    outputDirectory: String
+) -> Bool {
+    guard let section = demoSections(.official).first(where: {
+        $0.title.caseInsensitiveCompare(category) == .orderedSame
+    }) else {
+        FileHandle.standardError.write(Data("official \(category) section was not found\n".utf8))
         return false
     }
     let directory = URL(fileURLWithPath: outputDirectory, isDirectory: true)
@@ -275,25 +281,50 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
 
         var steps: [[String: Any]] = [["action": "settle", "capture": "baseline"]]
         var selectedSeries: [SeriesModel] = []
-        let lineSeries = ecModel.getSeries().filter { $0.subType == "line" }
-        for position in [0, lineSeries.count / 2, max(0, lineSeries.count - 1)]
-        where !lineSeries.isEmpty {
-            let series = lineSeries[position]
+        let matchingSeries = ecModel.getSeries().filter {
+            $0.subType == seriesSubtype && ($0.get("silent") as? Bool) != true
+        }
+        for position in [0, matchingSeries.count / 2, max(0, matchingSeries.count - 1)]
+        where !matchingSeries.isEmpty {
+            let series = matchingSeries[position]
             if !selectedSeries.contains(where: { $0 === series }) { selectedSeries.append(series) }
         }
         for series in selectedSeries {
             let data = series.getData()
-            guard let points = data.getLayout("points") as? [Double] else { continue }
-            let count = min(data.count(), points.count / 2)
+            let count = data.count()
             guard count > 0 else { continue }
             let middle = count / 2
-            let candidates = (0..<count).sorted { abs($0 - middle) < abs($1 - middle) }
-            guard let index = candidates.first(where: {
-                points[$0 * 2].isFinite && points[$0 * 2 + 1].isFinite
-            }) else { continue }
+            let index: Int
+            if seriesSubtype == "line" {
+                guard let points = data.getLayout("points") as? [Double] else { continue }
+                let candidates = (0..<min(count, points.count / 2)).sorted {
+                    abs($0 - middle) < abs($1 - middle)
+                }
+                guard let pointIndex = candidates.first(where: {
+                    points[$0 * 2].isFinite && points[$0 * 2 + 1].isFinite
+                }) else { continue }
+                index = pointIndex
+            }
+            else {
+                var candidates = [middle]
+                for offset in 1...min(32, max(1, count - 1)) {
+                    if middle - offset >= 0 { candidates.append(middle - offset) }
+                    if middle + offset < count { candidates.append(middle + offset) }
+                }
+                if !candidates.contains(0) { candidates.append(0) }
+                if !candidates.contains(count - 1) { candidates.append(count - 1) }
+                guard let hitIndex = candidates.first(where: { candidate in
+                    resolveDeterministicDataHit([
+                        "seriesIndex": Double(series.seriesIndex),
+                        "dataIndex": Double(candidate),
+                    ], ec: view.ec, view: view) != nil
+                }) else { continue }
+                index = hitIndex
+            }
             let seriesIndex = Int(series.seriesIndex)
             steps.append([
-                "action": "hoverSeries", "seriesIndex": Double(seriesIndex),
+                "action": seriesSubtype == "line" ? "hoverSeries" : "hoverData",
+                "seriesIndex": Double(seriesIndex),
                 "dataIndex": Double(index)
             ])
             steps.append(["action": "wait", "milliseconds": 120.0])
@@ -319,7 +350,8 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
         }
         for component in ecModel.findComponents(QueryConditionKindA(mainType: "legend")) {
             guard let legend = component as? LegendModel,
-                  (legend.get("show") as? Bool) != false else { continue }
+                  (legend.get("show") as? Bool) != false,
+                  (legend.get("selectedMode") as? Bool) != false else { continue }
             for item in legend.getData() {
                 guard let name = model.convertOptionIdName(item.get("name", true), nil),
                       !name.isEmpty, hasLegendProvider(name),
@@ -344,7 +376,7 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
         }
 
         let hasSlider = ecModel.findComponents(QueryConditionKindA(mainType: "dataZoom"))
-            .contains { $0.subType == "slider" }
+            .contains { $0.subType == "slider" && ($0.get("show") as? Bool) != false }
         let hasRestore = view.zr.storage.getDisplayList(true).contains {
             innerStore.getECData($0).tooltipConfig?.name == "restore"
         }
@@ -359,13 +391,13 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
                 ["action": "settle", "capture": "datazoom-drag-cleared"],
             ]
         }
-        if demo.name == "official-line-draggable" {
+        if category == "line" && demo.name == "official-line-draggable" {
             steps += [[
                 "action": "dragGraphic", "deltaX": 42.0, "deltaY": 24.0,
                 "allowMissing": true, "capture": "graphic-point-dragged"
             ]]
         }
-        if demo.name == "official-line-tooltip-touch" {
+        if category == "line" && demo.name == "official-line-tooltip-touch" {
             steps += [[
                 "action": "dragAxisPointer", "deltaX": 56.0, "deltaY": 0.0,
             ], [
@@ -384,18 +416,35 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
             ]
         }
 
+        if category == "bar", demo.name.contains("drilldown"),
+           let series = selectedSeries.first {
+            let data = series.getData()
+            let index = max(0, data.count() / 2)
+            if data.count() > 0 {
+                steps += [
+                    [
+                        "action": "clickData", "seriesIndex": Double(series.seriesIndex),
+                        "dataIndex": Double(index), "movePointer": true,
+                    ],
+                    ["action": "wait", "milliseconds": 180.0],
+                    ["action": "settle", "capture": "bar-click-drilldown"],
+                ]
+            }
+        }
+
         let scenario: [String: Any] = [
-            "id": "line-all-\(demo.name)",
+            "id": "\(category)-all-\(demo.name)",
             "demo": demo.name,
             "checks": [
-                "Every requested line-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
+                "Every requested \(category)-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
                 "Every visible legend item must toggle its corresponding series off and back on in the same instance; the restored frame must recover all series, symbols, labels and annotations.",
                 "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
+                "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
                 "Native and Web must agree semantically after every interaction; ignore font antialiasing and subpixel stroke differences.",
             ],
             "steps": steps,
         ]
-        let file = "line-all-\(demo.name).json"
+        let file = "\(category)-all-\(demo.name).json"
         do {
             let data = try JSONSerialization.data(
                 withJSONObject: scenario, options: [.prettyPrinted, .sortedKeys]
@@ -419,11 +468,25 @@ func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
         try data.write(to: directory.appendingPathComponent("manifest.json"))
     }
     catch {
-        FileHandle.standardError.write(Data("could not write line manifest: \(error)\n".utf8))
+        FileHandle.standardError.write(Data("could not write \(category) manifest: \(error)\n".utf8))
         return false
     }
-    print("generated \(manifest.count) line interaction scenarios")
+    print("generated \(manifest.count) \(category) interaction scenarios")
     return true
+}
+
+@MainActor
+func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
+    writeOfficialInteractionScenarios(
+        category: "line", seriesSubtype: "line", outputDirectory: outputDirectory
+    )
+}
+
+@MainActor
+func writeBarInteractionScenarios(outputDirectory: String) -> Bool {
+    writeOfficialInteractionScenarios(
+        category: "bar", seriesSubtype: "bar", outputDirectory: outputDirectory
+    )
 }
 
 @MainActor
