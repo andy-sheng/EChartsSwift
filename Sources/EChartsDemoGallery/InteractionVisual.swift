@@ -28,6 +28,7 @@ struct InteractionVisualStep: Decodable {
     let milliseconds: Double?
     let deltaX: Double?
     let deltaY: Double?
+    let deltaPercent: Double?
     let allowMissing: Bool?
     let capture: String?
 }
@@ -132,7 +133,7 @@ private func resolvedSeriesPoint(
 
 @MainActor
 private func dragInteractiveElement(
-    kind: String, deltaX: Double, deltaY: Double, view: EChartsView
+    kind: String, deltaX: Double, deltaY: Double, deltaPercent: Double?, view: EChartsView
 ) -> [Double]? {
     let height = view.ec.getHeight()
     let width = view.ec.getWidth()
@@ -142,7 +143,10 @@ private func dragInteractiveElement(
         let center = element.transformCoordToGlobal(
             bounds.x + bounds.width / 2, bounds.y + bounds.height / 2
         )
-        if kind == "dataZoom" { return center[1] >= height * 0.68 }
+        if kind == "dataZoom" {
+            return center[0] >= width * 0.08 && center[0] <= width * 0.92
+                && center[1] >= height * 0.68
+        }
         if kind == "axisPointer" {
             return center[0] >= width * 0.08 && center[0] <= width * 0.92
                 && center[1] >= height * 0.68 && center[1] < height * 0.92
@@ -155,11 +159,27 @@ private func dragInteractiveElement(
         }) else { continue }
         var dx = deltaX
         var dy = deltaY
+        if kind == "dataZoom", let deltaPercent,
+           let bounds = candidate.getBoundingRect(),
+           let range = view.ec.getModel()?
+            .findComponents(QueryConditionKindA(mainType: "dataZoom"))
+            .compactMap({ ($0 as? DataZoomModel)?.getPercentRange() }).first {
+            let left = candidate.transformCoordToGlobal(bounds.x, bounds.y)
+            let right = candidate.transformCoordToGlobal(bounds.x + bounds.width, bounds.y)
+            let rangeSpan = abs(range[1] - range[0])
+            if rangeSpan > 0 {
+                dx = abs(right[0] - left[0]) * abs(deltaPercent) / rangeSpan
+            }
+        }
+        if kind == "dataZoom", dx != 0, start[0] > width * 0.72 {
+            dx = -abs(dx)
+        }
         if start[0] + dx < 2 || start[0] + dx > view.ec.getWidth() - 2 { dx = -dx }
         if start[1] + dy < 2 || start[1] + dy > view.ec.getHeight() - 2 { dy = -dy }
         view._injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
         view._injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
-        for fraction in [0.25, 0.5, 0.75, 1.0] {
+        let fractions = deltaPercent == nil ? [0.25, 0.5, 0.75, 1.0] : [1.0]
+        for fraction in fractions {
             view._injectPointerForTest(
                 type: "mousemove", zrX: start[0] + dx * fraction, zrY: start[1] + dy * fraction
             )
@@ -359,7 +379,16 @@ private func writeOfficialInteractionScenarios(
                 legendNames.append(name)
             }
         }
-        for name in legendNames {
+        // This official option positions its horizontal slider directly under the legend. Their live
+        // hit regions overlap, so a pointer click at the visible legend swatch is received by the
+        // slider and changes the data window instead of selecting a series. Record the coverage gap
+        // explicitly and exercise the slider below; dispatchAction would no longer be a UI hit test.
+        let skippedLegendReason: String? = category == "bar"
+            && demo.name == "official-mix-zoom-on-value"
+            ? "legend hit regions overlap the horizontal dataZoom slider; pointer clicks resolve to the slider"
+            : nil
+        let interactiveLegendNames = skippedLegendReason == nil ? legendNames : []
+        for name in interactiveLegendNames {
             let slug = interactionSlug(name)
             steps += [
                 ["action": "clickLegend", "name": name, "movePointer": true],
@@ -381,8 +410,14 @@ private func writeOfficialInteractionScenarios(
             innerStore.getECData($0).tooltipConfig?.name == "restore"
         }
         if hasSlider {
+            let usesSemanticZoomDelta = category == "bar"
+                && demo.name == "official-mix-zoom-on-value"
+            var dragStep: [String: Any] = [
+                "action": "dragDataZoom", "deltaX": 48.0, "deltaY": 0.0,
+            ]
+            if usesSemanticZoomDelta { dragStep["deltaPercent"] = 2.0 }
             steps += [
-                ["action": "dragDataZoom", "deltaX": 48.0, "deltaY": 0.0],
+                dragStep,
                 ["action": "wait", "milliseconds": 180.0],
                 ["action": "settle", "capture": "datazoom-dragged"],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
@@ -406,7 +441,7 @@ private func writeOfficialInteractionScenarios(
                 "action": "settle", "capture": "axis-pointer-handle-dragged"
             ]]
         }
-        if hasRestore && (hasSlider || !legendNames.isEmpty) {
+        if hasRestore && (hasSlider || !interactiveLegendNames.isEmpty) {
             steps += [
                 ["action": "clickToolbox", "name": "restore", "movePointer": true],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
@@ -432,18 +467,21 @@ private func writeOfficialInteractionScenarios(
             }
         }
 
-        let scenario: [String: Any] = [
+        var scenario: [String: Any] = [
             "id": "\(category)-all-\(demo.name)",
             "demo": demo.name,
             "checks": [
                 "Every requested \(category)-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
-                "Every visible legend item must toggle its corresponding series off and back on in the same instance; the restored frame must recover all series, symbols, labels and annotations.",
+                "Every requested hit-testable legend item must toggle its corresponding series off and back on in the same instance; the restored frame must recover all series, symbols, labels and annotations.",
                 "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
                 "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
                 "Native and Web must agree semantically after every interaction; ignore font antialiasing and subpixel stroke differences.",
             ],
             "steps": steps,
         ]
+        if let skippedLegendReason {
+            scenario["coverageNotes"] = [skippedLegendReason]
+        }
         let file = "\(category)-all-\(demo.name).json"
         do {
             let data = try JSONSerialization.data(
@@ -457,8 +495,10 @@ private func writeOfficialInteractionScenarios(
         }
         manifest.append([
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
+            "legendInteractionCount": interactiveLegendNames.count,
             "hoverSeriesCount": selectedSeries.count, "hasSlider": hasSlider,
             "hasRestore": hasRestore,
+            "coverageNotes": skippedLegendReason.map { [$0] } ?? [],
         ])
         view.dispose()
         print("wrote \(file)")
@@ -599,7 +639,7 @@ func runNativeInteractionVisual(
             if let point = dragInteractiveElement(
                 kind: step.action == "dragDataZoom" ? "dataZoom"
                     : (step.action == "dragAxisPointer" ? "axisPointer" : "graphic"),
-                deltaX: dx, deltaY: dy, view: view
+                deltaX: dx, deltaY: dy, deltaPercent: step.deltaPercent, view: view
             ) {
                 record["resolvedPoint"] = point
             }
@@ -614,6 +654,12 @@ func runNativeInteractionVisual(
             }
             record["deltaX"] = dx
             record["deltaY"] = dy
+            if let deltaPercent = step.deltaPercent { record["deltaPercent"] = deltaPercent }
+            if step.action == "dragDataZoom" {
+                record["dataZoomRanges"] = view.ec.getModel()?
+                    .findComponents(QueryConditionKindA(mainType: "dataZoom"))
+                    .compactMap { ($0 as? DataZoomModel)?.getPercentRange() } ?? []
+            }
         case "pointerMove":
             let x = step.x ?? 1
             let y = step.y ?? 1
@@ -856,7 +902,8 @@ private let webInteractionHarnessJS = #"""
             bounds.y + bounds.height * gy / 20
           );
           var inRegion = kind === 'dataZoom'
-            ? point[1] >= height * 0.68
+            ? point[0] >= width * 0.08 && point[0] <= width * 0.92
+              && point[1] >= height * 0.68
             : (kind === 'axisPointer'
               ? point[0] >= width * 0.08 && point[0] <= width * 0.92
                 && point[1] >= height * 0.68 && point[1] < height * 0.92
@@ -989,18 +1036,30 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
-    drag: function (kind, deltaX, deltaY) {
+    drag: function (kind, deltaX, deltaY, deltaPercent) {
       pointerOutside = false;
       var hit = draggableHit(kind);
       var handler = myChart.getZr().handler;
       var start = hit.point;
       var dx = deltaX;
       var dy = deltaY;
+      if (kind === 'dataZoom' && typeof deltaPercent === 'number') {
+        var zoomModels = myChart.getModel().queryComponents({mainType: 'dataZoom'});
+        var range = zoomModels.length ? zoomModels[0].getPercentRange() : null;
+        var bounds = hit.target.getBoundingRect();
+        var left = hit.target.transformCoordToGlobal(bounds.x, bounds.y);
+        var right = hit.target.transformCoordToGlobal(bounds.x + bounds.width, bounds.y);
+        var rangeSpan = range ? Math.abs(range[1] - range[0]) : 0;
+        if (rangeSpan > 0) { dx = Math.abs(right[0] - left[0]) * Math.abs(deltaPercent) / rangeSpan; }
+      }
+      if (kind === 'dataZoom' && dx !== 0 && start[0] > myChart.getWidth() * 0.72) {
+        dx = -Math.abs(dx);
+      }
       if (start[0] + dx < 2 || start[0] + dx > myChart.getWidth() - 2) { dx = -dx; }
       if (start[1] + dy < 2 || start[1] + dy > myChart.getHeight() - 2) { dy = -dy; }
       handler.mousemove(raw(start));
       handler.mousedown(raw(start));
-      [0.25, 0.5, 0.75, 1].forEach(function (fraction) {
+      (typeof deltaPercent === 'number' ? [1] : [0.25, 0.5, 0.75, 1]).forEach(function (fraction) {
         handler.mousemove(raw([start[0] + dx * fraction, start[1] + dy * fraction]));
       });
       if (kind !== 'axisPointer') {
@@ -1008,7 +1067,13 @@ private let webInteractionHarnessJS = #"""
       }
       if (myChart._onframe) { myChart._onframe(); }
       myChart.getZr().animation.stop();
-      return { x: start[0], y: start[1], deltaX: dx, deltaY: dy };
+      var ranges = [];
+      if (kind === 'dataZoom') {
+        ranges = myChart.getModel().queryComponents({mainType: 'dataZoom'}).map(function (model) {
+          return model.getPercentRange();
+        });
+      }
+      return { x: start[0], y: start[1], deltaX: dx, deltaY: dy, dataZoomRanges: ranges };
     },
     pointerMove: function (x, y) {
       pointerOutside = false;
@@ -1101,6 +1166,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "milliseconds": step.milliseconds ?? 0,
             "deltaX": step.deltaX ?? 48,
             "deltaY": step.deltaY ?? 0,
+            "deltaPercent": step.deltaPercent ?? NSNull(),
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(data: data, encoding: .utf8)!
@@ -1118,11 +1184,11 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "clickToolbox":
             script = "(function(a){return window.__interactionVisual.clickToolbox(a.name,a.movePointer);})(\(json))"
         case "dragDataZoom":
-            script = "(function(a){return window.__interactionVisual.drag('dataZoom',a.deltaX,a.deltaY);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.drag('dataZoom',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "dragGraphic":
-            script = "(function(a){return window.__interactionVisual.drag('graphic',a.deltaX,a.deltaY);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.drag('graphic',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "dragAxisPointer":
-            script = "(function(a){return window.__interactionVisual.drag('axisPointer',a.deltaX,a.deltaY);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.drag('axisPointer',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "pointerMove":
             script = "(function(a){return window.__interactionVisual.pointerMove(a.x,a.y);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"

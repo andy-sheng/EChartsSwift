@@ -73,6 +73,10 @@ toolbox restore, and click-driven drilldown targets. Keep intended interactions 
 from a static gallery option (for example upstream callbacks) separate from live-target discovery;
 otherwise a missing handler can be mistaken for a passing non-interactive chart.
 
+The generated manifest records `legendInteractionCount` and `coverageNotes`. A visible control whose
+hit region is obscured by another interactive component is reported as a coverage gap instead of
+being replaced with `dispatchAction`, because the latter would stop testing real pointer routing.
+
 The orchestrating agent owns the final gate:
 
 1. Fail immediately if capture or real Handler hit resolution fails.
