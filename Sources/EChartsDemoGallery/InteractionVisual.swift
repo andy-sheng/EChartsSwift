@@ -207,6 +207,33 @@ private func dragInteractiveElement(
     return nil
 }
 
+@MainActor
+private func dragRoamingGeo(
+    deltaX: Double, deltaY: Double, view: EChartsView
+) -> [Double]? {
+    guard let geoModel = view.ec.getModel()?
+        .findComponents(QueryConditionKindA(mainType: "geo"))
+        .compactMap({ $0 as? GeoModel })
+        .first(where: {
+            ($0.get("roam") as? Bool) == true || ($0.get("roam") as? String) != nil
+        }), let geo = geoModel.coordinateSystem as? Geo else { return nil }
+    let rect = geo.getViewRect()
+    let start = [rect.x + rect.width / 2, rect.y + rect.height / 2]
+    view._injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
+    view._injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
+    for fraction in [0.25, 0.5, 0.75, 1.0] {
+        view._injectPointerForTest(
+            type: "mousemove",
+            zrX: start[0] + deltaX * fraction,
+            zrY: start[1] + deltaY * fraction
+        )
+    }
+    view._injectPointerForTest(
+        type: "mouseup", zrX: start[0] + deltaX, zrY: start[1] + deltaY
+    )
+    return start
+}
+
 /// Minimal live-chart adapter for deterministic interaction scenarios. Timers are intentionally
 /// inert: this runner advances only the explicit scenario steps, while event subscriptions and
 /// synchronous setOption/dispatch calls remain live exactly as they are in the gallery host.
@@ -236,6 +263,8 @@ private final class InteractionVisualChart: EChartsDemoChart {
         for body in bodies { body() }
         return bodies.count
     }
+
+    var registeredIntervalCount: Int { intervalBodies.count }
 
     func dispatch(_ payload: [String: Any]) {
         guard let type = payload["type"] as? String else { return }
@@ -572,6 +601,25 @@ private func writeOfficialInteractionScenarios(
                 ["action": "settle", "capture": "datazoom-drag-cleared"],
             ]
         }
+        let hasGeoRoam = demo.name != "official-scatter-map-brush"
+            && ecModel.findComponents(QueryConditionKindA(mainType: "geo"))
+            .contains {
+                ($0.get("roam") as? Bool) == true || ($0.get("roam") as? String) != nil
+            }
+        if hasGeoRoam {
+            steps += [
+                ["action": "dragGeoRoam", "deltaX": 36.0, "deltaY": 24.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "geo-panned"],
+                ["action": "dragGeoRoam", "deltaX": -36.0, "deltaY": -24.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "geo-pan-restored"],
+            ]
+        }
         if let timeline = ecModel.findComponents(QueryConditionKindA(mainType: "timeline")).first,
            (timeline.get("show") as? Bool) != false {
             let vertical = (timeline.get("orient") as? String) == "vertical"
@@ -628,8 +676,9 @@ private func writeOfficialInteractionScenarios(
             }
         }
 
-        if demo.drive != nil {
-            for tick in 1...2 {
+        if chart.registeredIntervalCount > 0 {
+            let tickCount = demo.name == "official-scatter-symbol-morph" ? 11 : 2
+            for tick in 1...tickCount {
                 steps += [
                     ["action": "driveTick"],
                     ["action": "settle", "capture": "drive-tick-\(tick)"],
@@ -668,7 +717,7 @@ private func writeOfficialInteractionScenarios(
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
             "legendInteractionCount": interactiveLegendNames.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
-            "hasRestore": hasRestore,
+            "hasRestore": hasRestore, "hasGeoRoam": hasGeoRoam,
             "coverageNotes": coverageNotes,
         ])
         view.dispose()
@@ -819,6 +868,18 @@ func runNativeInteractionVisual(
             }
             record["name"] = name
             record["resolvedPoint"] = point
+        case "dragGeoRoam":
+            let dx = step.deltaX ?? 36
+            let dy = step.deltaY ?? 24
+            guard let point = dragRoamingGeo(deltaX: dx, deltaY: dy, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): roaming geo was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["deltaX"] = dx
+            record["deltaY"] = dy
         case "dragDataZoom", "dragGraphic", "dragAxisPointer", "dragTimeline":
             let dx = step.deltaX ?? 48
             let dy = step.deltaY ?? 0
@@ -1201,6 +1262,17 @@ private let webInteractionHarnessJS = #"""
     if (hits.length) { return hits[0]; }
     throw new Error(kind + ' draggable target was not hit-testable');
   }
+  function roamingGeoHit() {
+    var models = myChart.getModel().queryComponents({mainType: 'geo'});
+    for (var i = 0; i < models.length; i++) {
+      var roam = models[i].get('roam');
+      var geo = models[i].coordinateSystem;
+      if (!roam || !geo || !geo.getViewRect) { continue; }
+      var rect = geo.getViewRect();
+      return [rect.x + rect.width / 2, rect.y + rect.height / 2];
+    }
+    throw new Error('roaming geo was not available');
+  }
   var pointerOutside = false;
   function hideTooltipHost() {
     myChart.dispatchAction({ type: 'hideTip' });
@@ -1411,6 +1483,23 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { intervalCallbacks: callbacks.length };
     },
+    dragGeoRoam: function (deltaX, deltaY) {
+      pointerOutside = false;
+      var start = roamingGeoHit();
+      var handler = myChart.getZr().handler;
+      handler.mousemove(raw(start));
+      handler.mousedown(raw(start));
+      [0.25, 0.5, 0.75, 1].forEach(function (fraction) {
+        handler.mousemove(raw([
+          start[0] + deltaX * fraction,
+          start[1] + deltaY * fraction
+        ]));
+      });
+      handler.mouseup(raw([start[0] + deltaX, start[1] + deltaY]));
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
+    },
     globalOut: function () {
       pointerOutside = true;
       var chartDom = myChart.getDom();
@@ -1523,6 +1612,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "pointerMove":
             script = "(function(a){return window.__interactionVisual.pointerMove(a.x,a.y);})(\(json))"
         case "driveTick": script = "window.__interactionVisual.driveTick()"
+        case "dragGeoRoam":
+            script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
         default:
             fail("step \(currentIndex): unknown action \(step.action)")
