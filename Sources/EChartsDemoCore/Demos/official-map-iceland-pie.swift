@@ -53,8 +53,7 @@ private func icelandPieSeries(_ center: Any, _ radius: Double, _ values: [Double
     return [
         "type": "pie",
         "coordinateSystem": "geo",
-        // PORT-NOTE: tooltip.formatter omitted — the JS closure is the string template '{b}: {c} ({d}%)'
-        //   (slice name, value and percent); string formatters are a JS-side feature of the tooltip.
+        "tooltip": ["formatter": "{b}: {c} ({d}%)"] as [String: Any],
         "label": ["show": false] as [String: Any],
         "labelLine": ["show": false] as [String: Any],
         "animationDuration": 0.0,
