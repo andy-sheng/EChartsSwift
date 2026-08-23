@@ -1125,18 +1125,21 @@ open class Path: Displayable {
 
     internal override func _innerSaveToNormal(_ toState: ElementState) {  // upstream: protected
         super._innerSaveToNormal(toState)
-        // A Swift dictionary cannot retain a key whose value is nil. For optional Path colors that is
-        // significant: an emphasis-only `stroke` must restore to "no stroke", but the generic normal
-        // snapshot above otherwise drops the key and `_computeRestoreTarget` leaves black emphasis on
-        // the path forever. ZRender treats the explicit color string `none` exactly like a nil paint,
-        // while preserving the key needed by the state restore target.
+        // A Swift dictionary cannot retain a key whose value is nil, and pattern paints deliberately
+        // do not participate in color tweening (`animationGet` returns nil for them). Preserve either
+        // the real non-animatable normal paint or an explicit `none`: otherwise entering emphasis
+        // snapshots a patterned fill as absent and returning to normal erases the pattern permanently.
         if let targetStyle = toState.style, let normalState = self._normalState {
             var normalStyle = (normalState.props["style"] as? [String: Any]) ?? [:]
             for key in ["fill", "stroke"]
             where targetStyle[key] != nil
                 && normalStyle[key] == nil
                 && self.pathStyle?.animationGet(key) == nil {
-                normalStyle[key] = "none"
+                switch key {
+                case "fill": normalStyle[key] = self.pathStyle?.fill ?? ZRColor.string("none")
+                case "stroke": normalStyle[key] = self.pathStyle?.stroke ?? ZRColor.string("none")
+                default: break
+                }
             }
             normalState.props["style"] = normalStyle
         }
