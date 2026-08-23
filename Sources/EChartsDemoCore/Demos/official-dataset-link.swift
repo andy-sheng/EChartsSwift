@@ -12,11 +12,11 @@
 //     SyntaxError in a classic script). The `setTimeout(function () { ... })` wrapper, the
 //     `myChart.on('updateAxisPointer', ...)` handler and both `myChart.setOption` calls are VERBATIM —
 //     the web pane runs the example exactly as the site does, pointer linkage included.
-//   - NATIVE pane: `myChart.on('updateAxisPointer', ...)` is a JS closure, which a Swift `[String: Any]`
-//     option cannot carry (and `EChartsDemoChart` exposes no `on`). The native pane therefore renders the
-//     example's INITIAL state only — its pie stays encoded on '2012' while the web pane's re-slices on
-//     hover. The two panes side by side are meant to show that gap, not hide it: closing it needs a
-//     native-side event subscription + `updateAxisPointer` action, neither of which is ported yet.
+//   - NATIVE pane: the JS listener is expressed by the equivalent `drive` closure. It subscribes through
+//     `EChartsDemoChart.on`, reads `axesInfo[0].value`, and merges the same id-addressed pie option as the
+//     official callback, so the interaction remains part of the example instead of a static-only replica.
+import Foundation
+
 extension EChartsDemoRegistry {
     static let official_dataset_link = EChartsDemo(
         name: "official-dataset-link", category: "dataset",
@@ -111,6 +111,26 @@ setTimeout(function () {
   myChart.setOption(option);
 });
 """#,
+        drive: { chart in
+            chart.on("updateAxisPointer") { event in
+                guard let axesInfo = event["axesInfo"] as? [[String: Any]],
+                      let firstAxis = axesInfo.first,
+                      let axisValue = datasetLinkNumber(firstAxis["value"]) else { return }
+                let dimension = Int(axisValue) + 1
+                chart.setOption([
+                    "series": [[
+                        "id": "pie",
+                        "label": [
+                            "formatter": "{b}: {@[\(dimension)]} ({d}%)"
+                        ] as [String: Any],
+                        "encode": [
+                            "value": Double(dimension),
+                            "tooltip": Double(dimension)
+                        ] as [String: Any]
+                    ] as [String: Any]]
+                ], notMerge: false)
+            }
+        },
         option: [
             "legend": [:] as [String: Any],
             "tooltip": [
@@ -123,11 +143,6 @@ setTimeout(function () {
             "xAxis": ["type": "category"] as [String: Any],
             "yAxis": ["gridIndex": 0.0] as [String: Any],
             "grid": ["top": "55%"] as [String: Any],
-            // PORT-NOTE: myChart.on('updateAxisPointer', ...) omitted — the JS closure read the hovered
-            // category off `event.axesInfo[0].value`, turned it into a dataset column (`value + 1`), and
-            // re-setOption'd the pie (id: 'pie') with `encode.value` / `encode.tooltip` = that column and
-            // `label.formatter` = '{b}: {@[<col>]} ({d}%)'. The native pane keeps the initial '2012'
-            // encoding below; the web pane re-slices the pie as the pointer moves.
             "series": [
                 datasetLinkLineSeries,
                 datasetLinkLineSeries,
@@ -148,6 +163,13 @@ setTimeout(function () {
                 ] as [String: Any]
             ]
         ])
+}
+
+private func datasetLinkNumber(_ value: Any?) -> Double? {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber { return value.doubleValue }
+    return nil
 }
 
 // The shared dataset: a header row (product + six years), then one ROW per product — each line series

@@ -13,15 +13,12 @@
 //    resize listener all included. Dropped only what a classic script cannot parse: the TypeScript
 //    annotations (`params: any`, `dx: number, dy: number`, `dataIndex: number`, `pos: number[]`,
 //    `(this as any)` → `this`) and the trailing `export {};`. Nothing is simplified.
-//  - Native pane: no `drive`. The example's only timeline is that `setTimeout(..., 0)`, and every part
-//    of what it installs is beyond a Swift option: the circles are POSITIONED by
-//    `myChart.convertToPixel('grid', ...)` (EChartsDemoChart exposes no convertToPixel /
-//    convertFromPixel), and their `ondrag` / `onmousemove` / `onmouseout` are JS closures, which an
-//    option dictionary cannot carry at all. The handles are `invisible: true`, so the native STILL
-//    FRAME loses no pixels — it loses the dragging. The panes agree on the initial render and diverge
-//    the moment a point is grabbed: the web pane drags, the native one does not.
-//  - Native pane: `tooltip.formatter` is a JS closure and is omitted (see PORT-NOTE). Moot in the still
-//    frame anyway — `triggerOn: 'none'` means only the dropped drag handles' `showTip` would show it.
+//  - Native pane: the `drive` hook installs the same invisible draggable graphic circles through the
+//    native coordinate-conversion and graphic-event seams. Its tooltip formatter is expressed as the
+//    equivalent Swift callback.
+import Foundation
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_line_draggable = EChartsDemo(
         name: "official-line-draggable", category: "line",
@@ -175,15 +172,20 @@ function onPointDragging(dataIndex, pos) {
   });
 }
 """#,
+        drive: installLineDraggableInteraction,
         option: [
             "title": [
                 "text": "Try Dragging these Points",
                 "left": "center"
             ] as [String: Any],
             "tooltip": [
-                "triggerOn": "none"
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure rendered the raw datum as
-                // "X: <data[0].toFixed(2)><br>Y: <data[1].toFixed(2)>" while a point was dragged.
+                "triggerOn": "none",
+                "formatter": { (params: CallbackDataParams) -> String in
+                    let values = params.data as? [Any] ?? []
+                    let x = values.count > 0 ? lineDraggableNumber(values[0]) : 0
+                    let y = values.count > 1 ? lineDraggableNumber(values[1]) : 0
+                    return String(format: "X: %.2f<br>Y: %.2f", x, y)
+                }
             ] as [String: Any],
             "grid": [
                 "top": "8%",
@@ -232,10 +234,73 @@ function onPointDragging(dataIndex, pos) {
                     "data": lineDraggableData
                 ] as [String: Any]
             ]
-            // PORT-NOTE: the `graphic` overlay the example installs in its setTimeout is not ported —
-            // its circles are positioned by myChart.convertToPixel('grid', ...) and carry ondrag /
-            // onmousemove / onmouseout JS closures. See the DEVIATIONS block in the header.
         ])
+}
+
+@MainActor
+private func installLineDraggableInteraction(_ chart: EChartsDemoChart) {
+    var data = lineDraggableData
+
+    func graphicElements() -> [[String: Any]] {
+        data.enumerated().compactMap { dataIndex, item in
+            guard let position = chart.convertToPixel("grid", item) as? [Double],
+                  position.count >= 2 else { return nil }
+
+            let ondrag: GraphicElementEventCallback = { element, _ in
+                guard let converted = chart.convertFromPixel("grid", [element.x, element.y]) as? [Double],
+                      converted.count >= 2 else { return }
+                data[dataIndex] = [converted[0], converted[1]]
+                chart.setOption([
+                    "series": [["id": "a", "data": data] as [String: Any]]
+                ], notMerge: false)
+                // ZRender dispatches the element's mousemove before its global drag listener.
+                // Refresh the programmatic tooltip after the series data changes so the text
+                // follows the dragged point in the same frame, matching the browser result.
+                chart.dispatch([
+                    "type": "showTip", "seriesIndex": 0.0, "dataIndex": Double(dataIndex)
+                ])
+            }
+            let onmousemove: GraphicElementEventCallback = { _, _ in
+                chart.dispatch([
+                    "type": "showTip", "seriesIndex": 0.0, "dataIndex": Double(dataIndex)
+                ])
+            }
+            let onmouseout: GraphicElementEventCallback = { _, _ in
+                chart.dispatch(["type": "hideTip"])
+            }
+            return [
+                "id": "line-draggable-point-\(dataIndex)",
+                "type": "circle",
+                "position": position,
+                "shape": ["cx": 0.0, "cy": 0.0, "r": lineDraggableSymbolSize / 2],
+                // ZRenderKit Path has no implicit browser-canvas fill. Give the invisible hit area a
+                // real fill so Circle.contain performs winding hit-testing; `invisible` still prevents
+                // it from painting.
+                "style": ["fill": "#000"],
+                "invisible": true,
+                "draggable": true,
+                "ondrag": ondrag,
+                "onmousemove": onmousemove,
+                "onmouseout": onmouseout,
+                "ignoreModelZ": true,
+                "z": 100.0
+            ] as [String: Any]
+        }
+    }
+
+    func updatePosition() {
+        chart.setOption(["graphic": graphicElements()], notMerge: false)
+    }
+
+    updatePosition()
+    chart.on("dataZoom") { _ in updatePosition() }
+}
+
+private func lineDraggableNumber(_ value: Any) -> Double {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber { return value.doubleValue }
+    return 0
 }
 
 // The draggable points, [x, y] on a value/value grid (upstream `const data`).

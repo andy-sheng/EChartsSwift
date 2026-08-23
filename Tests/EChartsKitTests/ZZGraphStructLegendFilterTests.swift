@@ -15,8 +15,10 @@
 // Found by a structural native/web scene sweep, not by pixels — official-chord-simple scores 0.12%
 // on the PNG oracle because the phantom ribbon happens to land under other geometry.
 import XCTest
+import CoreGraphics
 @testable import EChartsKit
 @testable import ZRenderKit
+import NativePainter
 
 final class ZZGraphStructLegendFilterTests: XCTestCase {
 
@@ -246,5 +248,193 @@ final class ZZGraphStructLegendFilterTests: XCTestCase {
         _ = leaveClip.sampleForDeterministicRendering(at: 0)
         XCTAssertEqual(oldDPiece.pathStyle.opacity ?? -1, 1, accuracy: 1e-9,
                        "post-click highlight must not pre-dim the removed chord arc before its leave fade")
+    }
+
+    func testChordFLabelReturnsAfterRapidLegendOffOnAndPointerLeave() throws {
+        let view = EChartsView(width: 640, height: 420)
+        let officialOption: [String: Any] = [
+            "animation": true,
+            "animationDuration": 0.0,
+            "animationDurationUpdate": 500.0,
+            "legend": [:] as [String: Any],
+            "series": [[
+                "type": "chord",
+                "data": ["A", "B", "C", "D", "E", "F", "G"].map {
+                    ["name": $0] as [String: Any]
+                },
+                "label": [
+                    "show": true,
+                    "position": "inside",
+                    "color": "#fff",
+                    "fontWeight": "bold"
+                ] as [String: Any],
+                "links": [
+                    ["source": "A", "target": "B", "value": 14.0],
+                    ["source": "A", "target": "C", "value": 8.0],
+                    ["source": "B", "target": "C", "value": 20.0],
+                    ["source": "B", "target": "E", "value": 15.0],
+                    ["source": "C", "target": "B", "value": 8.0],
+                    ["source": "C", "target": "E", "value": 3.0],
+                    ["source": "D", "target": "A", "value": 12.0],
+                    ["source": "D", "target": "B", "value": 3.0],
+                    ["source": "E", "target": "A", "value": 15.0],
+                    ["source": "E", "target": "C", "value": 5.0],
+                    ["source": "F", "target": "C", "value": 5.0],
+                    ["source": "G", "target": "A", "value": 6.0],
+                    ["source": "G", "target": "B", "value": 8.0],
+                    ["source": "G", "target": "D", "value": 4.0]
+                ] as [[String: Any]]
+            ] as [String: Any]]
+        ]
+        view.setOption(officialOption)
+
+        func clickLegendItem(_ name: String, movePointer: Bool = true) {
+            // LegendView rebuilds every item synchronously after legendToggleSelect. Resolve the NEW
+            // hit rect and drive the same live Handler path as AppKit for every click; dispatching
+            // directly to the old group hides bugs caused by stale hover/press targets.
+            XCTAssertNotNil(
+                view._injectLegendClickForTest(name: name, movePointer: movePointer),
+                "legend item \(name) must be hit-testable"
+            )
+        }
+
+        func finishAllAnimations() {
+            var elements: [Element] = []
+            func collect(_ element: Element) {
+                elements.append(element)
+                if let text = element.getTextContent() { collect(text) }
+                if let guide = element.getTextGuideLine() { collect(guide) }
+                if let group = element as? Group {
+                    for child in group.children() { collect(child) }
+                }
+            }
+            collect(view.ec.getRoot())
+            var seen = Set<ObjectIdentifier>()
+            let clips = elements.flatMap(\.animators).compactMap { $0.getClip() }.filter {
+                seen.insert(ObjectIdentifier($0)).inserted
+            }
+            for clip in clips {
+                clip.resetForDeterministicSampling()
+                if clip.sampleForDeterministicRendering(at: 1_000_000_000) {
+                    clip.ondestroy()
+                }
+            }
+        }
+
+        finishAllAnimations()
+        clickLegendItem("F")
+        XCTAssertFalse((view.ec.getModel()?.getComponent("legend") as? LegendModel)?.isSelected("F") ?? true)
+        // A real second click at the same screen point does not emit another mouseMoved event. The
+        // first click has already rebuilt LegendView, so Handler._hovered still references the old F
+        // item while mousedown/up/click hit-test the new one. It can also happen before F's leave fade
+        // completes, leaving the old and newly added pieces alive at the same time.
+        clickLegendItem("F", movePointer: false)
+        XCTAssertTrue((view.ec.getModel()?.getComponent("legend") as? LegendModel)?.isSelected("F") ?? false)
+
+        // Match the screenshot: after the second click the pointer leaves the rebuilt F legend item
+        // and moves onto empty canvas BEFORE the new F label's enter fade has completed. Downplay must
+        // not freeze the in-flight opacity at zero.
+        view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
+        finishAllAnimations()
+
+        view._injectGlobalOutForTest()
+        finishAllAnimations()
+
+        let data = try XCTUnwrap(
+            (view.ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)?.getData()
+        )
+        let labels = (0..<data.count()).reduce(into: [String: ZRText?]()) { result, idx in
+            let name = data.getName(idx)
+            let piece = data.getItemGraphicEl(idx) as? ChordPiece
+            result[name] = piece?.getTextContent()
+        }
+
+        XCTAssertEqual(Set(labels.keys), Set(["A", "B", "C", "D", "E", "F", "G"]))
+        for name in ["A", "B", "C", "D", "E", "F", "G"] {
+            let label = try XCTUnwrap(labels[name] ?? nil,
+                                      "reselected chord node \(name) must own a label")
+            XCTAssertEqual(label.textStyle?.text, name)
+            XCTAssertFalse(label.ignore, "reselected chord label \(name) must be visible")
+            XCTAssertFalse(label.invisible, "reselected chord label \(name) must be paintable")
+            XCTAssertFalse(label.currentStates.contains("blur"),
+                           "leaving the legend must restore chord label \(name) from blur")
+            XCTAssertFalse(label.currentStates.contains("emphasis"),
+                           "leaving the legend must restore chord label \(name) from emphasis")
+            XCTAssertGreaterThan(label.textStyle?.opacity ?? 1, 0.99,
+                                 "leaving the legend must restore chord label \(name) opacity")
+            let idx = try XCTUnwrap((0..<data.count()).first { data.getName($0) == name })
+            let piece = try XCTUnwrap(data.getItemGraphicEl(idx) as? ChordPiece)
+            XCTAssertGreaterThan(label.z2, piece.z2,
+                                 "reselected chord label \(name) must paint above its sector")
+        }
+
+        // Structural state can look correct while NativePainter still omits a stale/rebuilt text
+        // child. The fully settled F-label pixels must match a fresh chart. (The whole chart is not
+        // byte-identical because removing/re-adding F legitimately changes equal-z ribbon insertion
+        // order, which only affects a few antialiased overlap pixels.)
+        let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+        let subject = try XCTUnwrap(renderToImage(
+            group: view.ec.getRoot(), size: CGSize(width: 640, height: 420), dpr: 1,
+            backgroundColor: white
+        ))
+        var controlOption = officialOption
+        controlOption["animation"] = false
+        let controlEC = ECharts(width: 640, height: 420)
+        controlEC.setOption(controlOption)
+        let control = try XCTUnwrap(renderToImage(
+            group: controlEC.getRoot(), size: CGSize(width: 640, height: 420), dpr: 1,
+            backgroundColor: white
+        ))
+
+        func fLabel(_ ec: ECharts) throws -> ZRText {
+            let data = try XCTUnwrap((ec.getModel()?.getSeriesByIndex(0) as? ChordSeriesModel)?.getData())
+            let idx = try XCTUnwrap((0..<data.count()).first { data.getName($0) == "F" })
+            let piece = try XCTUnwrap(data.getItemGraphicEl(idx) as? ChordPiece)
+            return try XCTUnwrap(piece.getTextContent())
+        }
+        let subjectF = try fLabel(view.ec)
+        let controlF = try fLabel(controlEC)
+        XCTAssertEqual(subjectF.z2, controlF.z2,
+                       "downplay must restore the rebuilt F label's normal z2")
+        XCTAssertEqual(subjectF.transform, controlF.transform)
+        let subjectRun = try XCTUnwrap(subjectF.childrenRef().compactMap { $0 as? TSpan }.first)
+        let controlRun = try XCTUnwrap(controlF.childrenRef().compactMap { $0 as? TSpan }.first)
+        XCTAssertEqual(subjectRun.z2, controlRun.z2)
+        XCTAssertEqual(subjectRun.tspanStyle?.text, controlRun.tspanStyle?.text)
+        XCTAssertEqual(subjectRun.tspanStyle?.opacity, controlRun.tspanStyle?.opacity)
+        XCTAssertEqual(subjectRun.transform, controlRun.transform)
+
+        func pixels(_ image: CGImage) -> [UInt8] {
+            var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            bytes.withUnsafeMutableBytes { raw in
+                let ctx = CGContext(
+                    data: raw.baseAddress, width: image.width, height: image.height,
+                    bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                )
+                ctx?.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            }
+            return bytes
+        }
+        let subjectPixels = pixels(subject)
+        let controlPixels = pixels(control)
+        let fRun = try XCTUnwrap(controlF.childrenRef().compactMap { $0 as? TSpan }.first)
+        let fBounds = try XCTUnwrap(fRun.getBoundingRect()).clone()
+        fBounds.applyTransform(fRun.transform)
+        let minX = max(0, Int(floor(fBounds.x)) - 2)
+        let maxX = min(subject.width - 1, Int(ceil(fBounds.x + fBounds.width)) + 2)
+        let minY = max(0, Int(floor(fBounds.y)) - 2)
+        let maxY = min(subject.height - 1, Int(ceil(fBounds.y + fBounds.height)) + 2)
+        var fDifferingBytes = 0
+        for y in minY...maxY {
+            for x in minX...maxX {
+                let base = (y * subject.width + x) * 4
+                fDifferingBytes += zip(subjectPixels[base..<(base + 4)], controlPixels[base..<(base + 4)])
+                    .lazy.filter { $0 != $1 }.count
+            }
+        }
+        XCTAssertEqual(fDifferingBytes, 0,
+                       "F off/on/downplay must repaint the F label exactly like a fresh chart")
     }
 }

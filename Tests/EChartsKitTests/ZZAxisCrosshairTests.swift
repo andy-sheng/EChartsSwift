@@ -143,4 +143,29 @@ final class ZZAxisCrosshairTests: XCTestCase {
         XCTAssertNil(crosshairLine(in: view, atX: bx),
                      "the crosshair must not remain at B's x-pixel after hovering C")
     }
+
+    func testCrossAxisPointerRunsWhenTooltipTriggerIsNone() {
+        let view = EChartsView(width: 400, height: 300)
+        view.setOption([
+            "tooltip": [
+                "trigger": "none",
+                "axisPointer": ["type": "cross"] as [String: Any]
+            ] as [String: Any],
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "bar", "data": [10.0, 20.0, 30.0]] as [String: Any]]
+        ])
+        let bar = view.ec.getModel()!.getSeriesByIndex(0)!.getData().getItemGraphicEl(1) as! Rect
+        let shape = bar.shape as! RectShape
+        let x = shape.x + shape.width / 2
+        _ = view.zr.storage.getDisplayList(true)
+
+        view._injectPointerForTest(type: "mousemove", zrX: x, zrY: 120)
+
+        XCTAssertNotNil(crosshairLine(in: view, atX: x),
+                        "axisPointer type:'cross' must react even when tooltip.trigger is 'none'")
+        XCTAssertFalse(view.tooltipView?.isShown() ?? false,
+                       "cross-only pointer must not invent a floating axis tooltip")
+    }
 }

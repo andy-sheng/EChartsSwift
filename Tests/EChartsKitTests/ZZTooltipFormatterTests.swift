@@ -204,6 +204,16 @@ final class ZZTooltipFormatterTests: XCTestCase {
         XCTAssertEqual(text, "TPL B: 20", "the string formatter must still substitute the $vars")
     }
 
+    func testRichTextHostTranslatesHTMLBreaksFromFormatter() {
+        let formatter: (CallbackDataParams) -> String = { _ in
+            "first<br/>second<BR>third<br />fourth"
+        }
+        let view = makeBarView(tooltip: ["trigger": "item", "formatter": formatter])
+        guard let text = hoverBar(view, 1) else { return }
+        XCTAssertEqual(text, "first\nsecond\nthird\nfourth",
+                       "the native rich-text tooltip must not paint HTML break tags literally")
+    }
+
     // `formatTpl` only substitutes the keys listed under `$vars` (= seriesName/name/value, + percent for
     // pie/funnel), so a `{marker}` token in a STRING formatter is left VERBATIM — upstream does the same.
     // (The pre-created `params.marker` is for the FUNCTION formatter; see the test above.)

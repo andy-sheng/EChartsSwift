@@ -126,7 +126,15 @@ public final class TooltipRichContent {
         // upstream `rich: markupStyleCreator.richTextStyles` — the `{styleName|text}` token style map.
         //   richTextStyles is [String: [String: Any]]; convert each style bag into a TextStylePropsPart.
         style.rich = richTextStylesToParts(markupStyleCreator.richTextStyles)
-        style.text = content
+        // The browser examples commonly return HTML line breaks from formatter callbacks. This
+        // native host is intentionally rich-text-only, so leaving `<br/>` untouched paints the tag
+        // literally. Preserve the formatter's line structure by translating every HTML break spelling
+        // to the newline understood by ZRText.
+        style.text = content.replacingOccurrences(
+            of: #"(?i)<br\s*/?>"#,
+            with: "\n",
+            options: .regularExpression
+        )
         style.lineHeight = 22
         style.borderWidth = 1
         style.borderColor = borderColor

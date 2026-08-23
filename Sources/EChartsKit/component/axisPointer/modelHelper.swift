@@ -371,7 +371,6 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         }
         if (seriesTooltipTrigger as? String) == "none"
             || (seriesTooltipTrigger as? Bool) == false
-            || (seriesTooltipTrigger as? String) == "item"
             || (seriesTooltipShow as? Bool) == false
             || (seriesModel.get(["axisPointer", "show"], true) as? Bool) == false {
             return

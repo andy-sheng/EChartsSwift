@@ -58,6 +58,10 @@ public protocol EChartsDemoChart: AnyObject {
     ///
     func dispatch(_ payload: [String: Any])
 
+    /// Coordinate conversion used by interaction-heavy examples such as draggable line points.
+    func convertToPixel(_ finder: ModelFinder, _ value: CoordinateSystemDataCoord) -> Any?
+    func convertFromPixel(_ finder: ModelFinder, _ value: [Double]) -> Any?
+
     /// The example's `myChart.on('click', handler)` — chart-level event SUBSCRIPTION.
     ///
     /// The other half of the round trip: plenty of official examples are driven by LISTENING (a click
@@ -78,6 +82,8 @@ public extension EChartsDemoChart {
     /// Backward-compatible default for lightweight test spies. Live gallery hosts override this and
     /// forward to EChartsKit; a spy that does not exercise streaming can remain intentionally inert.
     func appendData(seriesIndex: Int, data: [Double]) {}
+    func convertToPixel(_ finder: ModelFinder, _ value: CoordinateSystemDataCoord) -> Any? { nil }
+    func convertFromPixel(_ finder: ModelFinder, _ value: [Double]) -> Any? { nil }
 }
 
 // MARK: - Demo value type (mirrors DemoGallery.Demo, option-driven)

@@ -19,8 +19,59 @@ import XCTest
 import CoreGraphics
 import ZRenderKit
 import NativePainter
+#if canImport(AppKit)
+import AppKit
+#endif
 
 final class InteractionSmokeTests: XCTestCase {
+
+    func testClearingEmphasisRemovesAStateOnlyPathStroke() {
+        let rect = Rect([
+            "shape": ["x": 0.0, "y": 0.0, "width": 100.0, "height": 40.0],
+            "style": ["fill": "#8fd3e8"]
+        ])
+        XCTAssertNil(rect.pathStyle.stroke)
+        rect.ensureState("emphasis").style = ["stroke": "#000"]
+
+        _ = rect.useState("emphasis", false, true)
+        guard case .some(.string("#000")) = rect.pathStyle.stroke else {
+            return XCTFail("emphasis must apply its black stroke")
+        }
+
+        rect.clearStates(true)
+        guard case .some(.string("none")) = rect.pathStyle.stroke else {
+            return XCTFail("a color introduced only by emphasis must be removed on pointer leave")
+        }
+    }
+
+#if canImport(AppKit)
+    func testAppKitViewForwardsMouseExitAsGlobalOut() throws {
+        let view = ZRenderView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        view.updateTrackingAreas()
+        XCTAssertTrue(view.trackingAreas.contains {
+            $0.options.contains(.mouseEnteredAndExited)
+        }, "the AppKit host must subscribe to mouse-exit delivery")
+
+        var globalOutCount = 0
+        view.zr.on("globalout", { _, _ in globalOutCount += 1; return nil })
+
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(
+            with: .mouseExited,
+            location: NSPoint(x: 201, y: 100),
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 1,
+            trackingNumber: 1,
+            userData: nil
+        ))
+        view.mouseExited(with: event)
+
+        XCTAssertEqual(globalOutCount, 1,
+                       "leaving the native AppKit view must forward mouseout/globalout to zrender")
+    }
+#endif
 
     // MARK: - helpers
 

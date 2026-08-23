@@ -1,0 +1,40 @@
+{
+  "id": "official-chord-style-f-toggle",
+  "demo": "official-chord-style",
+  "checks": [
+    "The final Native chord must visibly contain all seven arc labels A, B, C, D, E, F, and G.",
+    "The F label must return after F is clicked twice and the pointer leaves the legend.",
+    "The final Native label visibility must agree semantically with the final Web reference frame.",
+    "Ignore small antialiasing, font-rendering, and ribbon-overlap differences that do not change label visibility."
+  ],
+  "steps": [
+    {
+      "action": "settle",
+      "capture": "baseline"
+    },
+    {
+      "action": "clickLegend",
+      "name": "F",
+      "movePointer": true,
+      "capture": "after-first-click"
+    },
+    {
+      "action": "clickLegend",
+      "name": "F",
+      "movePointer": false,
+      "capture": "after-second-click"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "settle",
+      "capture": "final-after-pointer-leave"
+    }
+  ]
+}

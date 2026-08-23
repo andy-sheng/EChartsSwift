@@ -1305,7 +1305,10 @@ private func doCreateOrUpdateEl(
         }
     }
     else {
-        // upstream: el.clearStates();  — states DEFERRED, no-op.
+        // upstream: el.clearStates(). A custom-series update frequently reuses the same graphic
+        // element for a different data index/layout. Keeping its previous hover emphasis here leaks
+        // the old stroke/text state into the newly rendered frame (notably flame-graph drill-down).
+        el?.clearStates()
     }
     let elUnwrapped = el!
 

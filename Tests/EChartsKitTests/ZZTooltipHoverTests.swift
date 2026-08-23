@@ -114,6 +114,31 @@ final class ZZTooltipHoverTests: XCTestCase {
         XCTAssertTrue(contentEl.ignore, "the hidden tooltip ZRText must be ignored (not drawn)")
     }
 
+    func testTriggerOnNoneDoesNotShowItemTooltipOnHover() {
+        let view = EChartsView(width: 400, height: 300)
+        view.setOption([
+            "tooltip": ["triggerOn": "none"] as [String: Any],
+            "grid": ["left": 50.0, "top": 20.0, "width": 300.0, "height": 200.0] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "bar", "data": [10.0, 20.0, 30.0]] as [String: Any]]
+        ])
+        let data = view.ec.getModel()!.getSeriesByIndex(0)!.getData()
+        guard let bar = data.getItemGraphicEl(0) as? Rect,
+              let shape = bar.shape as? RectShape else {
+            XCTFail("bar render must populate the first Rect"); return
+        }
+        _ = view.zr.storage.getDisplayList(true)
+        view._injectPointerForTest(
+            type: "mousemove",
+            zrX: shape.x + shape.width / 2,
+            zrY: shape.y + shape.height / 2
+        )
+
+        XCTAssertNil(view.tooltipView,
+            "triggerOn:'none' must not create an item tooltip from ordinary pointer hover")
+    }
+
     // ------------------------------------------------------------------------
     // The ITEM-PATH `showTip` ACTION (no pointer involved):
     //

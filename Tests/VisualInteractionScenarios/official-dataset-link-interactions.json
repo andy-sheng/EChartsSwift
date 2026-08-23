@@ -1,0 +1,61 @@
+{
+  "id": "official-dataset-link-interactions",
+  "demo": "official-dataset-link",
+  "checks": [
+    "Each legend-off frame must hide the named product consistently from both the line chart and the pie, including its line symbols, sector, guide line, and pie label; the other products must remain visible.",
+    "After all four legend items have each been clicked off and on, the all-legends-restored frame must show all four lines, all 24 line symbols, all four pie sectors, and all four pie labels.",
+    "Each pie hover frame must emphasize the requested sector without permanently losing any pie label; pie-hover-restored must return all sectors and labels to the normal visible state.",
+    "Each representative 2015 line-point hover must visibly emphasize the requested line series, and line-hover-restored must clear all temporary blur/emphasis so every pie label and line series is visible again.",
+    "The official linkage behavior must update the pie to the hovered 2015 dataset column when a 2015 line point is hovered. Compare the values and percentages in Native against Web; report a parity failure if Native remains on 2012.",
+    "Ignore font antialiasing and subpixel curve differences that do not change interaction semantics."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+
+    {"action": "clickLegend", "name": "Milk Tea", "movePointer": true},
+    {"action": "settle", "capture": "legend-off-milk-tea"},
+    {"action": "clickLegend", "name": "Milk Tea", "movePointer": false},
+    {"action": "settle"},
+
+    {"action": "clickLegend", "name": "Matcha Latte", "movePointer": true},
+    {"action": "settle", "capture": "legend-off-matcha-latte"},
+    {"action": "clickLegend", "name": "Matcha Latte", "movePointer": false},
+    {"action": "settle"},
+
+    {"action": "clickLegend", "name": "Cheese Cocoa", "movePointer": true},
+    {"action": "settle", "capture": "legend-off-cheese-cocoa"},
+    {"action": "clickLegend", "name": "Cheese Cocoa", "movePointer": false},
+    {"action": "settle"},
+
+    {"action": "clickLegend", "name": "Walnut Brownie", "movePointer": true},
+    {"action": "settle", "capture": "legend-off-walnut-brownie"},
+    {"action": "clickLegend", "name": "Walnut Brownie", "movePointer": false},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "settle", "capture": "all-legends-restored"},
+
+    {"action": "hoverData", "seriesIndex": 4, "dataIndex": 0},
+    {"action": "settle", "capture": "pie-hover-milk-tea"},
+    {"action": "hoverData", "seriesIndex": 4, "dataIndex": 1},
+    {"action": "settle", "capture": "pie-hover-matcha-latte"},
+    {"action": "hoverData", "seriesIndex": 4, "dataIndex": 2},
+    {"action": "settle", "capture": "pie-hover-cheese-cocoa"},
+    {"action": "hoverData", "seriesIndex": 4, "dataIndex": 3},
+    {"action": "settle", "capture": "pie-hover-walnut-brownie"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "settle", "capture": "pie-hover-restored"},
+
+    {"action": "hoverData", "seriesIndex": 0, "dataIndex": 3},
+    {"action": "settle", "capture": "line-hover-2015-milk-tea"},
+    {"action": "hoverData", "seriesIndex": 1, "dataIndex": 3},
+    {"action": "settle", "capture": "line-hover-2015-matcha-latte"},
+    {"action": "hoverData", "seriesIndex": 2, "dataIndex": 3},
+    {"action": "settle", "capture": "line-hover-2015-cheese-cocoa"},
+    {"action": "hoverData", "seriesIndex": 3, "dataIndex": 3},
+    {"action": "settle", "capture": "line-hover-2015-walnut-brownie"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "settle", "capture": "line-hover-restored"}
+  ]
+}

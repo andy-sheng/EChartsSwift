@@ -738,6 +738,14 @@ public final class ZRText: Displayable, GroupLike {
         _ noAnimation: Bool? = nil,
         _ forceUseHoverLayer: Bool? = nil
     ) -> ElementState? {
+        // Save BEFORE `super`: the base state engine may install an animated `style.opacity` target
+        // immediately. Reading `textStyle` afterwards would then mistake blur's 0.1 opacity for the
+        // normal value, so a later cross-item hover permanently restores to the blurred style.
+        if stateName != PRESERVED_NORMAL_STATE,
+           self.currentStates.isEmpty,
+           self._normalTextStyle == nil {
+            self._normalTextStyle = self.textStyle ?? TextStyleProps()
+        }
         let result = super.useState(stateName, keepCurrentStates, noAnimation, forceUseHoverLayer)
         self._applyStateTextStyle()
         return result
@@ -748,6 +756,13 @@ public final class ZRText: Displayable, GroupLike {
         _ noAnimation: Bool? = nil,
         _ forceUseHoverLayer: Bool? = nil
     ) {
+        // Same ordering requirement as `useState`: snapshot the pristine text style before the
+        // inherited transition mutates the text-style-backed animation accessor.
+        if !states.isEmpty,
+           self.currentStates.isEmpty,
+           self._normalTextStyle == nil {
+            self._normalTextStyle = self.textStyle ?? TextStyleProps()
+        }
         super.useStates(states, noAnimation, forceUseHoverLayer)
         self._applyStateTextStyle()
     }
@@ -764,8 +779,8 @@ public final class ZRText: Displayable, GroupLike {
             }
             return
         }
-        // Snapshot the pristine normal textStyle on first state entry (mirror `_innerSaveToNormal`:
-        //   `if (toState.style && !normalState.style) normalState.style = ...`).
+        // The pristine snapshot is taken before `super.useState(s)` mutates animated state props.
+        // Keep this fallback for callers that establish `currentStates` outside the overrides.
         let normal = self._normalTextStyle ?? (self.textStyle ?? TextStyleProps())
         if self._normalTextStyle == nil {
             self._normalTextStyle = normal

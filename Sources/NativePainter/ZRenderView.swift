@@ -422,7 +422,8 @@ public final class ZRenderView: NSView {
         super.updateTrackingAreas()
         if let area = movementTrackingArea { removeTrackingArea(area) }
         let area = NSTrackingArea(rect: .zero,
-                                  options: [.activeInActiveApp, .mouseMoved, .inVisibleRect],
+                                  options: [.activeInActiveApp, .mouseMoved, .mouseEnteredAndExited,
+                                            .inVisibleRect],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         movementTrackingArea = area
@@ -431,6 +432,12 @@ public final class ZRenderView: NSView {
     public override func mouseMoved(with event: NSEvent) {
         // Coalesce to the frame clock (browser-like): keep only the latest, flush once per frame.
         pendingMove = makeMouseEvent("mousemove", event, which: 0)
+    }
+
+    public override func mouseExited(with event: NSEvent) {
+        // Preserve ordering and prevent a queued in-view move from re-entering hover after the exit.
+        flushPendingMove()
+        proxy.mouseout(makeMouseEvent("mouseout", event, which: 0))
     }
 
     public override func mouseDown(with event: NSEvent) {

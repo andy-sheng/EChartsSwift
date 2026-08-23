@@ -37,7 +37,9 @@ final class EmphasisLabelZOrderTests: XCTestCase {
         }
         XCTAssertEqual(band.z2, label.z2, "before hover, band and label share a z2 (label drawn just above)")
 
-        band.useState("emphasis")
+        // Assert the terminal state, not the first frame of the configured state transition.
+        // With a working animationGet("z2"), z2 now interpolates from 0 to 10 instead of jumping.
+        band.useState("emphasis", nil, true)
         _ = v.zr.storage.getDisplayList(true)
 
         XCTAssertEqual(band.z2, 10.0, accuracy: 1e-9, "emphasis lifts the band z2 by Z2_EMPHASIS_LIFT")
@@ -59,7 +61,7 @@ final class EmphasisLabelZOrderTests: XCTestCase {
             return XCTFail("no bar with a label found")
         }
         let baseGap = label.z2 - bar.z2
-        bar.useState("emphasis")
+        bar.useState("emphasis", nil, true)
         _ = v.zr.storage.getDisplayList(true)
         XCTAssertEqual(label.z2 - bar.z2, baseGap, accuracy: 1e-9,
                        "the label keeps its relative z2 above the bar after emphasis (both lift by 10)")

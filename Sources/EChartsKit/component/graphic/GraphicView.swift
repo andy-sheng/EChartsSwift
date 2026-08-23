@@ -21,6 +21,10 @@
 import Foundation
 import ZRenderKit
 
+/// Swift counterpart of a graphic option's `on<Event>` function. The callback receives the live
+/// element as its JS `this` equivalent plus the zrender event packet.
+public typealias GraphicElementEventCallback = @MainActor (Element, ElementEvent) -> Void
+
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util.*` (ZRenderKit).
 //   import { TextStyleProps } from 'zrender/src/graphic/Text';       -> ZRenderKit `TextStyleProps`.
@@ -580,9 +584,21 @@ private func updateCommonAttrs(
         }
     }
 
-    // Assign event handlers.
-    // PORT-NOTE (deferred): the `on*` event-handler assignment loop requires the interaction/events layer
-    //   (out of static-render scope): upstream copies each `on<Event>` function from the option onto the element.
+    // Assign event handlers. Upstream writes `el[onEvent] = handler`; Eventful listeners are the native
+    // equivalent. Clear the prior option-owned listener first so a graphic merge replaces rather than
+    // accumulates callbacks.
+    for eventName in ["click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseout",
+                      "mouseover", "drag", "dragstart", "dragend"] {
+        let optionName = "on\(eventName)"
+        guard elOption.option.keys.contains(optionName) else { continue }
+        _ = el.off(eventName)
+        guard let callback = elOption.option[optionName] as? GraphicElementEventCallback else { continue }
+        _ = el.on(eventName, { [weak el] _, args in
+            guard let el, let event = args.first as? ElementEvent else { return nil }
+            MainActor.assumeIsolated { callback(el, event) }
+            return nil
+        })
+    }
 
     // if (zrUtil.hasOwn(elOption, 'draggable')) { el.draggable = elOption.draggable; }
     //   `Element.draggable` (ElementDraggable) accepts a Bool or a 'horizontal'/'vertical' string;

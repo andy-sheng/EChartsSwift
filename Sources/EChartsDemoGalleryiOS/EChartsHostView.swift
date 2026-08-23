@@ -235,6 +235,14 @@ extension EChartsHostView: EChartsDemoChart {
         echartsView.syncAfterAction()
     }
 
+    func convertToPixel(_ finder: ModelFinder, _ value: CoordinateSystemDataCoord) -> Any? {
+        echartsView.ec.convertToPixel(finder, value)
+    }
+
+    func convertFromPixel(_ finder: ModelFinder, _ value: [Double]) -> Any? {
+        echartsView.ec.convertFromPixel(finder, value)
+    }
+
     func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void) {
         echartsView.on(event) { [weak self] params in
             MainActor.assumeIsolated {

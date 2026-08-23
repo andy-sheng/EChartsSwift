@@ -417,6 +417,22 @@ open class Displayable: Element {
         if key == "style" {
             return _styleAnimationAccessor
         }
+        // Displayable owns these properties (Element's keyed accessor cannot see them). State entry
+        // snapshots a property's current value through animationGet before animationSet applies the
+        // state target. Keep both sides symmetric so emphasis/select can restore z/z2/invisible and
+        // other Displayable fields when the state is cleared.
+        switch key {
+        case "zlevel": return self.zlevel
+        case "z": return self.z
+        case "z2": return self.z2
+        case "culling": return self.culling
+        case "cursor": return self.cursor
+        case "rectHover": return self.rectHover
+        case "invisible": return self.invisible
+        case "incremental": return self.incremental
+        case "ignoreCoarsePointer": return self.ignoreCoarsePointer
+        default: break
+        }
         return super.animationGet(key)
     }
 

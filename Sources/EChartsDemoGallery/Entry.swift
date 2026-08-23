@@ -1106,7 +1106,7 @@ private func entranceAnimationClips(_ root: Element) -> [Clip] {
 /// point halfway through the annulus (the bounding-box center can sit in the empty inner hole);
 /// ordinary symbols/bars use their local bounding-box center. Both are transformed through the
 /// element's complete parent transform before entering the real Handler hit-test path.
-private func deterministicHoverPoint(
+func deterministicHoverPoint(
     _ element: Element,
     accepting: (([Double]) -> Bool)? = nil
 ) -> [Double]? {
@@ -1156,19 +1156,12 @@ private func interactiveDisplayables(in root: Element) -> [Displayable] {
 /// Drive a data-element hover through the real native Handler, matching the Web oracle's
 /// `dispatchToElement(..., 'mouseover', ...)`. Returns false when the requested item cannot be
 /// resolved to a point whose topmost hit target is that item.
-private func injectDeterministicHover(
+func resolveDeterministicDataHit(
     _ action: [String: Any], ec: ECharts, view: EChartsView
-) -> Bool {
+) -> (element: Displayable, point: [Double])? {
     let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
     let dataIndex = (action["dataIndex"] as? NSNumber)?.doubleValue ?? 0
     let displayList = view.zr.storage.getDisplayList(true)
-    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
-        if let series = ec.getModel()?.getSeriesByIndex(seriesIndex) {
-            print("HOVER_TRACE model animation=\(String(describing: series.getShallow("animation"))) " +
-                  "enabled=\(String(describing: series.isAnimationEnabled())) " +
-                  "stateDuration=\(String(describing: series.getModel("stateAnimation").get("duration")))")
-        }
-    }
     var candidates = displayList.filter { displayable in
         let ecData = innerStore.getECData(displayable)
         return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
@@ -1187,7 +1180,23 @@ private func injectDeterministicHover(
             break
         }
     }
-    guard let (element, point) = resolved else { return false }
+    return resolved
+}
+
+func injectDeterministicHover(
+    _ action: [String: Any], ec: ECharts, view: EChartsView
+) -> Bool {
+    let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
+    if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
+        if let series = ec.getModel()?.getSeriesByIndex(seriesIndex) {
+            print("HOVER_TRACE model animation=\(String(describing: series.getShallow("animation"))) " +
+                  "enabled=\(String(describing: series.isAnimationEnabled())) " +
+                  "stateDuration=\(String(describing: series.getModel("stateAnimation").get("duration")))")
+        }
+    }
+    guard let (element, point) = resolveDeterministicDataHit(action, ec: ec, view: view) else {
+        return false
+    }
     if ProcessInfo.processInfo.environment["ECHARTS_HOVER_TRACE"] == "1" {
         let hovered = view.zr.handler.findHover(point[0], point[1])
         print("HOVER_TRACE before point=\(point) targetIsData=\(hovered.target === element) " +
@@ -1198,6 +1207,47 @@ private func injectDeterministicHover(
         print("HOVER_TRACE after states=\(element.currentStates) animators=\(element.animators.count)")
     }
     return true
+}
+
+/// Click a data element through the same live Handler path as the gallery host. The target is
+/// re-resolved from the current series data before every call, so an earlier drill-down/re-render
+/// cannot leave the visual scenario clicking a stale coordinate.
+func injectDeterministicDataClick(
+    _ action: [String: Any], ec: ECharts, view: EChartsView, movePointer: Bool
+) -> [Double]? {
+    guard let (_, point) = resolveDeterministicDataHit(action, ec: ec, view: view) else {
+        return nil
+    }
+    if movePointer {
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+    }
+    view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+    view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+    view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+    return point
+}
+
+/// Click a toolbox feature through its rendered icon. `setTooltipConfig` stamps the stable feature
+/// name (for example `restore`) on the live Path, avoiding locale-dependent title matching.
+func injectDeterministicToolboxClick(
+    featureName: String, view: EChartsView, movePointer: Bool
+) -> [Double]? {
+    let candidates = view.zr.storage.getDisplayList(true).filter { displayable in
+        innerStore.getECData(displayable).tooltipConfig?.name == featureName
+    }
+    for candidate in candidates {
+        guard let point = deterministicHoverPoint(candidate, accepting: { point in
+            view.zr.handler.findHover(point[0], point[1]).target === candidate
+        }) else { continue }
+        if movePointer {
+            view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+        return point
+    }
+    return nil
 }
 
 /// Opt-in structural trace for debugging a visual entrance mismatch. Kept behind an environment
@@ -1328,6 +1378,53 @@ func runCLI() -> Bool {
             FileHandle.standardError.write(Data("usage: --web-snapshot <name> <out.png>\n".utf8)); exit(2)
         }
         loadWebAndSnapshot(demo, out: URL(fileURLWithPath: args[2]))
+
+    case "--interaction-native":
+        // --interaction-native <scenario.json> <frames-dir> <resolved.json>
+        // Replays a sequence through the real headless Handler and captures named visual states.
+        guard args.count >= 4 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-native <scenario.json> <frames-dir> <resolved.json>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(runNativeInteractionVisual(
+            scenarioPath: args[1], outputDirectory: args[2], resolvedPath: args[3]
+        ) ? 0 : 1)
+
+    case "--interaction-generate-line":
+        guard args.count >= 2 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-generate-line <scenario-dir>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(writeLineInteractionScenarios(outputDirectory: args[1]) ? 0 : 1)
+
+    case "--interaction-web":
+        // Web oracle for --interaction-native. It resolves the current LegendView after every
+        // rebuild and sends the same pointer sequence through zrender's Handler.
+        guard args.count >= 4 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-web <scenario.json> <frames-dir> <resolved.json>\n".utf8)
+            )
+            exit(2)
+        }
+        guard startWebInteractionVisual(
+            scenarioPath: args[1], outputDirectory: args[2], resolvedPath: args[3]
+        ) else { exit(1) }
+        return true
+
+    case "--interaction-contact":
+        guard args.count >= 3 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-contact <scenario.json> <case-root>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(writeInteractionVisualContact(
+            scenarioPath: args[1], caseRootPath: args[2]
+        ) ? 0 : 1)
 
     case "--scene-native":
         // --scene-native <demo> <out.json> : structural (scene-graph) dump of the native port's

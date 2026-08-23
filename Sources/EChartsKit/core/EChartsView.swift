@@ -90,6 +90,11 @@ public final class EChartsView {
     // ------------------------------------------------------------------------
     public private(set) var tooltipView: TooltipView?
 
+    /// Last live-pointer high/down dispatcher. `Handler.mouseout` normally carries the old target,
+    /// but a canvas-boundary `globalout` intentionally has no target. Keep the dispatcher so that
+    /// boundary exit can run the same blur/emphasis teardown as an element mouseout.
+    private weak var _lastHighDownDispatcher: Element?
+
     // ------------------------------------------------------------------------
     // Phase 36 — the visual axisPointer CROSSHAIR. WIRING APPROACH (documented deviation):
     //   Upstream, `AxisView._doUpdateAxisPointerClass` instantiates a per-axis `CartesianAxisPointer`
@@ -522,6 +527,7 @@ public final class EChartsView {
             // upstream `handleGlobalMouseOverForHighDown(dispatcher, e, ecIns._api)` (echarts.ts:2331) —
             //   the focus/blur fan-out (blurSeries per `ecData.focus`) + enterEmphasisWhenMouseOver.
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
+                self._lastHighDownDispatcher = dispatcher
                 states.handleGlobalMouseOverForHighDown(dispatcher, e, self.ec.api)
                 self.zr.refresh()
             }
@@ -545,6 +551,9 @@ public final class EChartsView {
             //   `allLeaveBlur` + leaveEmphasisWhenMouseOut.
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
                 states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+                if self._lastHighDownDispatcher === dispatcher {
+                    self._lastHighDownDispatcher = nil
+                }
                 self.zr.refresh()
             }
             // Phase 34: hide the tooltip when the pointer leaves the element (upstream `_hide`).
@@ -559,6 +568,19 @@ public final class EChartsView {
             for cv in self.ec._componentsViews {
                 (cv as? ContinuousView)?._hideIndicator()
             }
+            self.zr.refresh()
+            return nil
+        }, nil)
+
+        // A pointer leaving the entire native canvas can be reported as `globalout` without an
+        // element target (`zrEventControl == only_globalout`). Retire the last dispatcher through
+        // the same path as an ordinary element mouseout so blur/emphasis cannot remain stranded.
+        _ = zr.on("globalout", { [weak self] _, args in
+            guard let self = self,
+                  let dispatcher = self._lastHighDownDispatcher,
+                  let e = args.first as? ElementEvent else { return nil }
+            states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+            self._lastHighDownDispatcher = nil
             self.zr.refresh()
             return nil
         }, nil)
@@ -598,11 +620,8 @@ public final class EChartsView {
         //   `dispatchAction` from inside the callback.
         ec._initZrEvents(zr)
 
-        // PORT-NOTE (deferred): `globalout` (no `e.target`) → leave-emphasis reset. `allLeaveBlur` IS ported
-        //   (util/states.swift), but wiring it onto a globalout handler is not done (would need care not to
-        //   fight the drag-end globalout bindings in _bindInsidePan/_bindBrush). NOTE the public 'globalout'
-        //   EVENT itself IS now emitted (it is one of MOUSE_EVENT_NAMES) — only the internal emphasis reset
-        //   is missing.
+        // `globalout` state reset is bound above. The public event is also emitted through
+        // `ec._initZrEvents(zr)`.
     }
 
     // ------------------------------------------------------------------------
@@ -634,8 +653,9 @@ public final class EChartsView {
     //   ported `globalListener` (component/axisPointer/globalListener.swift), exactly as that file
     //   documents. `globalListener.register` binds ONE set of zr listeners (click/mousemove/mousewheel/
     //   globalout); its fan-out calls our `handler(currTrigger, event, dispatchAction)`, which builds the
-    //   axisTrigger payload (currTrigger + pointer x/y) and runs the ported `axisTrigger(payload, ecModel,
-    //   api)`. axisTrigger computes `dataByCoordSys` and dispatches showTip/hideTip through the FORWARDED
+    //   updateAxisPointer payload (currTrigger + pointer x/y) and dispatches it through the chart action
+    //   bus. Its registered handler runs `axisTrigger`, which computes `dataByCoordSys` and dispatches
+    //   showTip/hideTip through the FORWARDED
     //   `dispatchAction` (so they flow through globalListener's pend/merge "final stage"); the merged action
     //   is then handed to our `realDispatch` (`_realDispatchAxisPointer`), which shows/hides THIS view's
     //   owned TooltipView via `_showAxisTooltip`/`hide` (upstream `api.dispatchAction` → the tooltip view).
@@ -652,7 +672,7 @@ public final class EChartsView {
             // Only drive the axis path when a tooltip with trigger:"axis" is configured; otherwise every
             //   mousemove would dispatch hideTip and fight the trigger:"item" hover tooltip (Phase 34).
             guard self._isAxisTrigger(ecModel) else { return }
-            var payload = Payload(type: "axisTrigger")
+            var payload = Payload(type: "updateAxisPointer")
             payload.other["currTrigger"] = currTrigger
             if let e = event {
                 payload.other["x"] = e.offsetX
@@ -660,10 +680,13 @@ public final class EChartsView {
             }
             // Route showTip/hideTip THROUGH the merge stage (globalListener pendings), not directly.
             payload.other["dispatchAction"] = dispatchAction
-            axisTrigger(payload, ecModel, self.ec.api)
-            // Phase 36: axisTrigger has just written each axisPointer model's status/value; render the
-            //   visual crosshair(s) from those models, PARALLEL to the axis tooltip.
-            self._updateAxisPointers(ecModel)
+            // Do not call axisTrigger directly: upstream dispatches the registered updateAxisPointer
+            // action, whose public event is observable by examples such as official-dataset-link.
+            // Its listener may synchronously setOption, so re-read the model before drawing pointers.
+            self.ec.dispatchAction(payload)
+            if let updatedModel = self.ec.getModel() {
+                self._updateAxisPointers(updatedModel)
+            }
         })
 
         // Handle drag: `BaseAxisPointer._doDispatchAxisPointer` dispatches `updateAxisPointer`, whose
@@ -691,7 +714,19 @@ public final class EChartsView {
         ec.on("showTip") { [weak self] params in
             guard let self = self, let ecModel = self.ec.getModel() else { return }
             guard let e = params as? ECActionEvent else { return }
-            guard e.eventData["dataByCoordSys"] == nil, e.eventData["seriesIndex"] != nil else { return }
+            // A pointer-driven axis tooltip is merged and delivered by `globalListener`, but an
+            // axisPointer HANDLE dispatches `updateAxisPointer` directly through the chart API. Its
+            // resulting showTip therefore reaches this public action event with `dataByCoordSys`.
+            if let list = e.eventData["dataByCoordSys"] as? [DataByCoordSys] {
+                let x = _viewAsDouble(e.eventData["x"]) ?? 0
+                let y = _viewAsDouble(e.eventData["y"]) ?? 0
+                self._ensureTooltipView()?._tryShow(
+                    TryShowParams(offsetX: x, offsetY: y, dataByCoordSys: list)
+                )
+                self.zr.refresh()
+                return
+            }
+            guard e.eventData["seriesIndex"] != nil else { return }
             var payload = Payload(type: "showTip")
             payload.other = e.eventData
             self._ensureTooltipView()?.manuallyShowTip(payload: payload, ecModel: ecModel, api: self.ec.api)
@@ -1266,14 +1301,14 @@ public final class EChartsView {
         zr.refresh()
     }
 
-    /// Whether the current ec model asks for the trigger:"axis" combined tooltip (upstream: the tooltip
-    /// `trigger` option). axisPointer-only (crosshair without tooltip) is DEFERRED (Phase 36 view).
+    /// Whether pointer movement should drive the axisPointer chain. A trigger:"axis" tooltip needs the
+    /// combined tooltip and pointer; a tooltip axisPointer of type:"cross" is also interactive even when
+    /// trigger:"none" (official-multiple-x-axis), but its collected axes keep triggerTooltip=false so no
+    /// floating tooltip box is produced.
     private func _isAxisTrigger(_ ecModel: GlobalModel) -> Bool {
-        if let tooltip = ecModel.getComponent("tooltip"),
-           (tooltip.get("trigger") as? String) == "axis" {
-            return true
-        }
-        return false
+        guard let tooltip = ecModel.getComponent("tooltip") else { return false }
+        return (tooltip.get("trigger") as? String) == "axis"
+            || (tooltip.get(["axisPointer", "type"]) as? String) == "cross"
     }
 
     /// The `realDispatch` seam handed to `globalListener.register`: the merged showTip/hideTip (and any
@@ -1353,6 +1388,13 @@ public final class EChartsView {
     //     showTip-beats-hideTip stand-in — see the PORT-NOTE there before changing either side.
     // ------------------------------------------------------------------------
     private func _showTooltipForHover(_ e: ElementEvent) {
+        // Upstream registers the item-tooltip global listener with the configured `triggerOn` and only
+        // forwards matching zrender events. This host drives the item path from `mouseover`, so mirror
+        // the mousemove gate here; `triggerOn: 'none'` (official-line-tooltip-touch) must leave ordinary
+        // series hover to emphasis only while its axisPointer handle drives tooltip actions explicitly.
+        guard let tooltipModel = ec.getModel()?.getComponent("tooltip"),
+              let triggerOn = tooltipModel.get("triggerOn") as? String,
+              triggerOn.contains("mousemove") else { return }
         guard let tooltip = _ensureTooltipView() else { return }
         tooltip._tryShow(TryShowParams(target: e.target, offsetX: e.offsetX, offsetY: e.offsetY))
         zr.refresh()
@@ -1423,6 +1465,53 @@ public final class EChartsView {
         case "mousewheel", "wheel": zr.handler.mousewheel(raw)
         default:          zr.handler.mousemove(raw)
         }
+    }
+
+    /// Resolve the current legend item by its rendered text and click it through the real ZRender
+    /// Handler. LegendView rebuilds its item groups after every selection change, so this method
+    /// deliberately resolves the item and hit point again on every call. `movePointer: false`
+    /// reproduces a second click at the same screen position without an intervening mouse-move.
+    ///
+    /// This is a headless interaction/visual-test seam; it does not bypass hit testing or dispatch a
+    /// `legendToggleSelect` action directly.
+    @discardableResult
+    public func _injectLegendClickForTest(name: String, movePointer: Bool = true) -> [Double]? {
+        guard let legendView = ec._componentsViews.compactMap({ $0 as? LegendView }).first,
+              let item = legendView.getContentGroup().children().compactMap({ $0 as? Group }).first(where: { group in
+                  var matched = false
+                  group.traverse { element in
+                      if let text = element as? ZRText, text.textStyle?.text == name {
+                          matched = true
+                      }
+                  }
+                  return matched
+              }),
+              let hitTarget = item.children().last,
+              let rect = hitTarget.getBoundingRect() else {
+            return nil
+        }
+
+        _ = zr.storage.getDisplayList(true)
+        let point = hitTarget.transformCoordToGlobal(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2
+        )
+        guard zr.handler.findHover(point[0], point[1]).target != nil else { return nil }
+        if movePointer {
+            _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+        return point
+    }
+
+    /// Emit the global-out form used when a pointer leaves the renderer entirely.
+    public func _injectGlobalOutForTest() {
+        let raw = ZRRawEvent()
+        raw.type = "mouseout"
+        raw.zrEventControl = "only_globalout"
+        zr.handler.mouseout(raw)
     }
 
     // ------------------------------------------------------------------------

@@ -6,8 +6,10 @@
 //   - webOptionJS: the official source is TypeScript — its two `function (params: any)` axisPointer
 //     label formatters are copied verbatim except the `: any` type annotation, which is a SyntaxError
 //     in the plain <script> the reference pane runs. Bodies are untouched. Trailing `export {};` dropped.
-//   - option (native): both `xAxis[i].axisPointer.label.formatter` closures are omitted (see PORT-NOTEs);
-//     everything else is carried over. Nothing else changed — no data fetch, no timers in the source.
+//   - option (native): both axisPointer label formatters use the equivalent typed Swift callback.
+//     Everything else is carried over. Nothing else changed — no data fetch, no timers in the source.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_multiple_x_axis = EChartsDemo(
         name: "official-multiple-x-axis", category: "line",
@@ -143,9 +145,11 @@ option = {
                             "color": multipleXAxisColors[1]
                         ] as [String: Any]
                     ] as [String: Any],
-                    // PORT-NOTE: xAxis[0].axisPointer.label.formatter omitted — the JS closure rendered
-                    // the cross-pointer's x label as "Precipitation  <category>：<hovered series value>"
-                    // (the value suffix only when params.seriesData is non-empty).
+                    "axisPointer": [
+                        "label": [
+                            "formatter": multipleXAxisPointerLabelFormatter
+                        ] as [String: Any]
+                    ] as [String: Any],
                     "data": multipleXAxis2016Categories
                 ] as [String: Any],
                 [
@@ -159,7 +163,11 @@ option = {
                             "color": multipleXAxisColors[0]
                         ] as [String: Any]
                     ] as [String: Any],
-                    // PORT-NOTE: xAxis[1].axisPointer.label.formatter omitted — same closure as xAxis[0].
+                    "axisPointer": [
+                        "label": [
+                            "formatter": multipleXAxisPointerLabelFormatter
+                        ] as [String: Any]
+                    ] as [String: Any],
                     "data": multipleXAxis2015Categories
                 ] as [String: Any]
             ],
@@ -193,6 +201,24 @@ option = {
 }
 
 private let multipleXAxisColors: [String] = ["#5470C6", "#EE6666"]
+
+private let multipleXAxisPointerLabelFormatter: ([String: Any]) -> String = { params in
+    let value = params["value"].map(String.init(describing:)) ?? ""
+    let seriesData = params["seriesData"] as? [CallbackDataParams]
+    let data = seriesData?.first.map { multipleXAxisValueString($0.data) } ?? ""
+    let suffix = data.isEmpty ? "" : "：\(data)"
+    return "Precipitation  \(value)\(suffix)"
+}
+
+private func multipleXAxisValueString(_ value: Any) -> String {
+    if let value = value as? Double { return String(value) }
+    if let value = value as? Int { return String(value) }
+    let mirror = Mirror(reflecting: value)
+    if mirror.displayStyle == .optional, let child = mirror.children.first {
+        return multipleXAxisValueString(child.value)
+    }
+    return String(describing: value)
+}
 
 private let multipleXAxis2016Categories: [String] = [
     "2016-1", "2016-2", "2016-3", "2016-4", "2016-5", "2016-6",

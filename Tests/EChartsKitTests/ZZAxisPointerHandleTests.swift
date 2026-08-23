@@ -28,6 +28,7 @@ final class ZZAxisPointerHandleTests: XCTestCase {
     override func setUp() {
         super.setUp()
         ComponentModel.registerClass(BarSeriesModel.self)
+        ComponentModel.registerClass(LineSeriesModel.self)
         ComponentModel.registerClass(TooltipModel.self)
         ComponentModel.registerClass(AxisPointerModel.self)
     }
@@ -156,5 +157,73 @@ final class ZZAxisPointerHandleTests: XCTestCase {
         _ = view.zr.storage.getDisplayList(true)
         XCTAssertNil(handleIcon(in: view),
             "without axisPointer.handle.show, no draggable handle should be created")
+    }
+
+    // The official line-tooltip-touch example does not use `tooltip.trigger: 'axis'`; its
+    // `triggerOn: 'none'` tooltip is driven solely by an always-on time-axis handle. The handle must
+    // still opt that axis into collection and render at its configured initial date.
+    func testTimeAxisHandleRendersWithoutAxisTooltipTrigger() {
+        let view = EChartsView(width: 640, height: 420)
+        view.setOption([
+            "tooltip": ["triggerOn": "none"] as [String: Any],
+            "grid": ["left": 15.0, "top": 110.0, "right": 15.0, "height": 160.0] as [String: Any],
+            "xAxis": [
+                "type": "time",
+                "axisPointer": [
+                    "value": "2016-10-7",
+                    "snap": true,
+                    "label": ["show": true] as [String: Any],
+                    "handle": [
+                        "show": true, "color": "#7581BD", "throttle": 0.0
+                    ] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [[
+                "type": "line",
+                "data": [
+                    ["2016-10-4", 137.0],
+                    ["2016-10-7", 124.0],
+                    ["2016-10-12", 132.0]
+                ]
+            ] as [String: Any]]
+        ])
+        _ = view.zr.storage.getDisplayList(true)
+
+        guard let handle = handleIcon(in: view) else {
+            XCTFail("a time-axis handle must render even when tooltip.trigger is not 'axis'"); return
+        }
+
+        let hx = handle.x
+        let hy = handle.y
+        var showTipEvents = 0
+        var hideTipEvents = 0
+        var showTipDataByCoordSys: Any?
+        view.on("showTip") { params in
+            showTipEvents += 1
+            showTipDataByCoordSys = (params as? ECActionEvent)?.eventData["dataByCoordSys"]
+        }
+        view.on("hideTip") { _ in hideTipEvents += 1 }
+        view._injectPointerForTest(type: "mousedown", zrX: hx, zrY: hy)
+        view._injectPointerForTest(type: "mousemove", zrX: hx + 80, zrY: hy)
+
+        XCTAssertGreaterThan(showTipEvents, 0,
+            "dragging the handle must dispatch a showTip action")
+        XCTAssertEqual(hideTipEvents, 0, "the held handle must keep the tooltip visible")
+        XCTAssertNotNil(showTipDataByCoordSys,
+            "the handle-driven showTip must carry axis data")
+        let axisPayload = showTipDataByCoordSys as? [DataByCoordSys]
+        XCTAssertFalse(axisPayload?.isEmpty ?? true,
+            "the handle-driven showTip must carry at least one coordinate system")
+        XCTAssertFalse(axisPayload?.first?.dataByAxis.first?.seriesDataIndices.isEmpty ?? true,
+            "the handle-driven axis payload must contain the snapped series datum")
+        XCTAssertTrue(view.tooltipView?.isShown() == true,
+            "dragging a triggerOn:'none' axisPointer handle must show its combined axis tooltip")
+
+        view._injectPointerForTest(type: "mouseup", zrX: hx + 80, zrY: hy)
+        XCTAssertGreaterThan(hideTipEvents, 0,
+            "releasing the handle must dispatch hideTip")
+        XCTAssertFalse(view.tooltipView?.isShown() ?? true,
+            "releasing the handle must hide its temporary tooltip")
     }
 }

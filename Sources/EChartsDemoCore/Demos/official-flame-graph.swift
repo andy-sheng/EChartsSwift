@@ -11,10 +11,10 @@
 //     web pane gets its raw text spliced in as a `const stackTrace = {...}` above the (otherwise
 //     verbatim) callback body, so `option` is assigned unconditionally at the top level. The
 //     showLoading()/hideLoading() pair around the fetch is dropped with it.
-//   - INTERACTION DROPPED: `myChart.on('click', ...)` — which re-runs recursionJson(stackTrace, id) to
-//     zoom into the clicked frame and re-setOptions x-axis max + data — is gone; the gallery renders one
-//     static frame, so only the INITIAL (un-zoomed, full-root) state is ported. `filterJson`'s `id`
-//     branch is therefore dead code in both panes, but is kept verbatim in the web pane.
+//   - The official `myChart.on('click', ...)` drill-down is ported on both panes. Each click filters the
+//     original stack trace down to the clicked frame's ancestor path plus its complete subtree, then
+//     updates xAxis.max and the custom-series data on the SAME chart instance. Toolbox restore returns
+//     to the initial full-root option through the ordinary ECharts restore action.
 //   - The TS source is de-typed to plain JS for the web pane (the page runs a classic script): type
 //     annotations, `as const`, `as keyof typeof`, `as CustomSeriesRenderItemReturn` and the trailing
 //     `export {}` are removed. Nothing else in the JS changed — renderItem and the tooltip formatter
@@ -70,9 +70,23 @@ private func flameGraphHeightOfJSON(_ item: [String: Any], _ level: Int = 0) -> 
 // Upstream `recursionJson(stackTrace)` (the un-filtered, initial-state call): a depth-first flatten of
 // the tree into one datum per frame, `value: [level, start, start + value, name, value / rootVal * 100]`,
 // where a node's children are laid out end-to-end starting at the node's own `start`.
-private func flameGraphRecursionJSON(_ root: [String: Any]) -> [[String: Any]] {
+private func flameGraphFilterJSON(_ item: [String: Any], id: String) -> [String: Any]? {
+    if (item["id"] as? String) == id { return item }
+    for child in (item["children"] as? [[String: Any]]) ?? [] {
+        if let found = flameGraphFilterJSON(child, id: id) {
+            var ancestor = item
+            ancestor["children"] = [found]
+            ancestor["value"] = found["value"]
+            return ancestor
+        }
+    }
+    return nil
+}
+
+private func flameGraphRecursionJSON(_ root: [String: Any], id: String? = nil) -> [[String: Any]] {
     var data: [[String: Any]] = []
-    let rootVal = (root["value"] as? Double) ?? 1
+    let filteredRoot = id.flatMap { flameGraphFilterJSON(root, id: $0) } ?? root
+    let rootVal = (filteredRoot["value"] as? Double) ?? 1
 
     func recur(_ item: [String: Any], _ start: Double, _ level: Int) {
         let name = (item["name"] as? String) ?? ""
@@ -100,7 +114,7 @@ private func flameGraphRecursionJSON(_ root: [String: Any]) -> [[String: Any]] {
         }
     }
 
-    recur(root, 0, 0)
+    recur(filteredRoot, 0, 0)
     return data
 }
 
@@ -113,6 +127,16 @@ private func fgNum(_ v: Any?) -> Double {
     if let i = v as? Int { return Double(i) }
     if let n = v as? NSNumber { return n.doubleValue }
     return .nan
+}
+
+private let flameGraphTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let values = params.value as? [Any], values.count > 4 else { return "" }
+    let samples = fgNum(values[2]) - fgNum(values[1])
+    let percent = (fgNum(values[4]) * 100).rounded() / 100
+    let marker: String
+    if case .string(let value)? = params.marker { marker = value }
+    else { marker = "" }
+    return "\(marker) \(values[3]): (\(format.addCommas(samples)) samples, \(percent)%)"
 }
 
 // Upstream `renderItem`, statement for statement. Typed EXACTLY `CustomSeriesRenderItem` so
@@ -384,7 +408,30 @@ option = {
     }
   ]
 };
+
+myChart.on('click', (params) => {
+  const data = recursionJson(stackTrace, params.data.name);
+  const rootValue = data[0].value[2];
+  myChart.setOption({
+    xAxis: { max: rootValue },
+    series: [{ data }]
+  });
+});
 """#,
+        drive: { chart in
+            chart.on("click") { params in
+                guard let item = params.data as? [String: Any],
+                      let id = item["name"] as? String else { return }
+                let data = flameGraphRecursionJSON(flameGraphStackTrace, id: id)
+                guard let values = data.first?["value"] as? [Any], values.count > 2 else { return }
+                let rootValue = fgNum(values[2])
+                guard rootValue.isFinite else { return }
+                chart.setOption([
+                    "xAxis": ["max": rootValue] as [String: Any],
+                    "series": [["data": data as [Any]] as [String: Any]]
+                ], notMerge: false)
+            }
+        },
         option: [
             "backgroundColor": [
                 "type": "linear",
@@ -394,10 +441,9 @@ option = {
                     ["offset": 0.95, "color": "#eeeeb0"] as [String: Any]
                 ]
             ] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure renders
-            // `<marker> <frameName>: (<end - start, comma-grouped> samples, <pct, 2dp>%)`, i.e. it reads
-            // value[1..4] of the datum. The tooltip itself stays enabled (default formatter).
-            "tooltip": [:] as [String: Any],
+            "tooltip": [
+                "formatter": flameGraphTooltipFormatter
+            ] as [String: Any],
             "title": [
                 [
                     "text": "Flame Graph",

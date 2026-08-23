@@ -1,0 +1,41 @@
+{
+  "id": "official-flame-graph-hover-cleanup",
+  "demo": "official-flame-graph",
+  "checks": [
+    "At every cross-block hover frame exactly the current target may retain the black emphasis outline; all previously hovered rectangles and their text must already be normal.",
+    "After pointerMove plus globalOut and the tooltip hide delay, no flame block may retain a black outline, emphasized text stroke, altered opacity, or tooltip.",
+    "Each restored frame must agree semantically with the baseline in both Native and Web.",
+    "Repeated hover transitions must not accumulate outlines on the ancestor chain or unrelated neighboring rectangles.",
+    "Ignore font antialiasing and subpixel border differences that do not represent a retained interaction state."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "29509a5f-d6bc-47c9-8828-f93f5bc71d6b"},
+    {"action": "settle", "capture": "hover-root"},
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "87f4e512-d5aa-47a0-be9f-93458bc76970"},
+    {"action": "settle", "capture": "switch-root-to-unix"},
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "f245eca3-a5c1-460d-a6d4-0e16f9f4dcc4"},
+    {"action": "settle", "capture": "switch-unix-to-open"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "first-chain-restored"},
+
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "9ccf9a48-f596-4087-bd18-5d223b5bf114"},
+    {"action": "settle", "capture": "hover-fop-lookup"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "fop-lookup-restored"},
+
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "ca17bc13-9201-4055-9fd6-e24fcd19c32a"},
+    {"action": "settle", "capture": "hover-lofs-lookup"},
+    {"action": "hoverData", "seriesIndex": 0, "dataName": "29509a5f-d6bc-47c9-8828-f93f5bc71d6b"},
+    {"action": "settle", "capture": "switch-lofs-to-root"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "final-restored"}
+  ]
+}

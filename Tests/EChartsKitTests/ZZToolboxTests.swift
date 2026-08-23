@@ -240,4 +240,33 @@ final class ZZToolboxTests: XCTestCase {
         view.ec.dispatchAction(Payload(type: "restore"))
         XCTAssertEqual(seriesType(view), "line", "restore must reset the series back to type:'line'")
     }
+
+    func testRestorePreservesInitialDataZoomWindow() {
+        let view = EChartsView(width: 460, height: 300)
+        view.setOption([
+            "toolbox": ["feature": ["restore": [String: Any]()]] as [String: Any],
+            "dataZoom": [["type": "inside", "start": 30.0, "end": 70.0] as [String: Any]],
+            "xAxis": ["type": "category", "data": ["A", "B", "C", "D", "E"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "line", "data": [5.0, 9, 7, 12, 6]] as [String: Any]]
+        ])
+
+        func range() -> [Double]? {
+            (view.ec.getModel()?.getComponent("dataZoom") as? DataZoomModel)?.getPercentRange()
+        }
+        XCTAssertEqual(range() ?? [], [30, 70])
+
+        var zoom = Payload(type: "dataZoom")
+        zoom.other["dataZoomIndex"] = 0.0
+        zoom.other["start"] = 10.0
+        zoom.other["end"] = 90.0
+        view.ec.dispatchAction(zoom)
+        XCTAssertEqual(range() ?? [], [10, 90])
+
+        view.ec.dispatchAction(Payload(type: "restore"))
+        XCTAssertNotNil(view.ec.getModel()?.getComponent("dataZoom"),
+                        "restore recreated option keys: \(String(describing: view.ec.getModel()?.option))")
+        XCTAssertEqual(range() ?? [], [30, 70],
+                       "restore must recreate the option's initial window, not default to [0,100]")
+    }
 }

@@ -140,12 +140,17 @@ final class EChartsHostView: NSView {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: .zero,
-            options: [.activeInActiveApp, .mouseMoved, .inVisibleRect], owner: self))
+            options: [.activeInActiveApp, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self))
     }
 
     override func mouseMoved(with event: NSEvent) {
         // Pointer moves are forwarded directly; ZRenderView's per-frame coalescing is not ported here.
         proxy.mousemove(makeMouseEvent("mousemove", event, which: 0))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        proxy.mouseout(makeMouseEvent("mouseout", event, which: 0))
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -238,6 +243,14 @@ extension EChartsHostView: EChartsDemoChart {
         p.other = payload.filter { $0.key != "type" }
         echartsView.ec.dispatchAction(p)
         echartsView.syncAfterAction()   // the action mutated the model; pull it back into the zr scene
+    }
+
+    func convertToPixel(_ finder: ModelFinder, _ value: CoordinateSystemDataCoord) -> Any? {
+        echartsView.ec.convertToPixel(finder, value)
+    }
+
+    func convertFromPixel(_ finder: ModelFinder, _ value: [Double]) -> Any? {
+        echartsView.ec.convertFromPixel(finder, value)
     }
 
     /// The example's `myChart.on('click', params => ...)`. Forwards to the ported chart event bus

@@ -1125,9 +1125,21 @@ open class Path: Displayable {
 
     internal override func _innerSaveToNormal(_ toState: ElementState) {  // upstream: protected
         super._innerSaveToNormal(toState)
-        // PORT-NOTE: not the live path — state save/apply routes through Element's useState→_stateApply→
-        //   animateTo (mirrors Displayable's siblings). Upstream's faithful body clones the current `shape`
-        //   into `_normalState.shape` (`extend({}, this.shape)`) when the target state changes shape.
+        // A Swift dictionary cannot retain a key whose value is nil. For optional Path colors that is
+        // significant: an emphasis-only `stroke` must restore to "no stroke", but the generic normal
+        // snapshot above otherwise drops the key and `_computeRestoreTarget` leaves black emphasis on
+        // the path forever. ZRender treats the explicit color string `none` exactly like a nil paint,
+        // while preserving the key needed by the state restore target.
+        if let targetStyle = toState.style, let normalState = self._normalState {
+            var normalStyle = (normalState.props["style"] as? [String: Any]) ?? [:]
+            for key in ["fill", "stroke"]
+            where targetStyle[key] != nil
+                && normalStyle[key] == nil
+                && self.pathStyle?.animationGet(key) == nil {
+                normalStyle[key] = "none"
+            }
+            normalState.props["style"] = normalStyle
+        }
     }
 
     internal override func _applyStateObj(  // upstream: protected

@@ -2486,7 +2486,14 @@ public final class ECharts: EChartsType {
             componentView.render(model, ecModel, api, payload)
             // upstream echarts.ts renderComponents runs `updateZ(model, view)` after each render — set
             //   every rendered element's z/zlevel from the model. Coordinate components default z:0.
-            updateZ(model, componentView.group, 0)
+            // Components such as `graphic` and marker models author element-level z values
+            // themselves (for example the invisible draggable handles in line-draggable use
+            // z:100). Upstream's `preventAutoZ` contract preserves those values. Applying the
+            // component model's default z here would flatten them back to zero and let series
+            // symbols steal their pointer events.
+            if !model.preventAutoZ {
+                updateZ(model, componentView.group, 0)
+            }
             // upstream renderComponents `updateStates(model, view)` (echarts.ts:2464) — save each
             //   emphasis-capable element's normal fill so hover lifts it (see updateRenderedStates).
             updateRenderedStates(model, componentView.eachRendered)
@@ -2838,7 +2845,15 @@ public final class ECharts: EChartsType {
             case "updateVisual":    updateVisual()
             case "updateLayout":    updateLayout()
             case "updateTransform": updateTransform()
-            default:                update()   // 'update' / 'prepareAndUpdate'
+            case "prepareAndUpdate":
+                // Actions such as toolbox restore recreate the GlobalModel's component and
+                // series instances. Their scheduler pipelines and overall stage tasks must be
+                // rebuilt before the full update; reusing the old pipelines leaves recreated
+                // dataZoom models without AxisProxy state and silently expands them to [0,100].
+                _scheduler.restorePipelines(nil, ecModel)
+                _scheduler.prepareStageTasks()
+                update()
+            default:                update()
             }
         }
 
