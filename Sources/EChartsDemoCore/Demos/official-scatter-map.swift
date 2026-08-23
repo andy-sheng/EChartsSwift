@@ -17,7 +17,7 @@
 //     its 8 `境界线` features get the disambiguated name + `properties.echartsStyle` (z/silent/no-label,
 //     dashed border) that china.js applies before its own registerMap call. Both panes read
 //     `properties.echartsStyle` (echarts natively; EChartsKit in coord/geo/geoCreator.swift).
-//   - tooltip.formatter is a JS closure; the web pane runs it, the native option omits it (PORT-NOTE below).
+//   - tooltip.formatter is represented by the native TooltipCallbackDataParams callback seam.
 //   - `convertData()` is likewise JS-only: the native option carries its RESULT, computed in Swift from the
 //     same two inputs (`scatterMapGeoCoordMap` + `scatterMapPM25`) by the same lookup-and-skip rule.
 //   - `title.x: 'center'` is the ec2 layout alias for `left`. Kept VERBATIM on both panes: real echarts
@@ -431,6 +431,25 @@ private let scatterMapPM25: [(String, Double)] = [
 private let scatterMapData: [[String: Any]] = scatterMapPM25.compactMap { city, value in
     guard let coord = scatterMapGeoCoordMap[city] else { return nil }
     return ["name": city, "value": [coord[0], coord[1], value]]
+}
+
+private func scatterMapTooltipValueText(_ value: Any?) -> String {
+    if let value = value as? Double {
+        return value.rounded() == value ? String(Int(value)) : String(value)
+    }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? NSNumber {
+        let number = value.doubleValue
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    }
+    return String(describing: value ?? "")
+}
+
+private let scatterMapTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let values = params.value as? [Any], values.count > 2 else {
+        return params.name
+    }
+    return "\(params.name) : \(scatterMapTooltipValueText(values[2]))"
 }
 
 extension EChartsDemoRegistry {
@@ -924,10 +943,8 @@ option = {
                     ] as [String: Any]
                 ] as [String: Any],
                 "tooltip": [
-                    "trigger": "item"
-                    // PORT-NOTE: tooltip.formatter omitted — the JS closure returned
-                    // `params.name + ' : ' + params.value[2]`, i.e. the city name and its PM2.5 reading
-                    // (value dimension 2, the third element of the [lng, lat, reading] triple).
+                    "trigger": "item",
+                    "formatter": scatterMapTooltipFormatter
                 ] as [String: Any],
                 "legend": [
                     "orient": "vertical",
