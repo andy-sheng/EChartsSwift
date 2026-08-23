@@ -19,9 +19,8 @@
 //     carries a `baseOption` (only baseOption/options/timeline/media are read off the root), so the web
 //     pane would otherwise snapshot a half-grown scatter. Turned off inside `baseOption` instead — the
 //     harness's intent, restored, not a change to the chart.
-//   - native bubble size: the JS `sizeFunction(val[2])` closure is represented by the typed native
-//     callback seam, preserving the population-to-diameter mapping. `tooltip.formatter` remains omitted
-//     because it does not affect the static comparison frame.
+//   - native callbacks: the JS bubble-size and tooltip closures are represented by typed native callback
+//     seams, preserving the population-to-diameter mapping and every displayed tooltip dimension.
 //   - native title/series text: JS pushes the raw NUMBER `data.timeline[n]` into `title.text` and
 //     `series.name`; the Swift option carries its string form ("1800"), which is what JS renders anyway.
 import Foundation
@@ -91,6 +90,25 @@ private let lifeExpectancyColors: [String] = {
     return colors + colors
 }()
 
+private func lifeExpectancyValueText(_ value: Any?) -> String {
+    if let value = value as? String { return value }
+    let number: Double?
+    if let value = value as? Double { number = value }
+    else if let value = value as? Int { number = Double(value) }
+    else if let value = value as? NSNumber { number = value.doubleValue }
+    else { number = nil }
+    guard let number else { return "" }
+    return number.rounded() == number ? String(Int(number)) : String(number)
+}
+
+private let lifeExpectancyTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let value = params.value as? [Any], value.count > 3 else { return "" }
+    return "国家：\(lifeExpectancyValueText(value[3]))<br>"
+        + "人均寿命：\(lifeExpectancyValueText(value[1]))岁<br>"
+        + "人均收入：\(lifeExpectancyValueText(value[0]))美元<br>"
+        + "总人口：\(lifeExpectancyValueText(value[2]))<br>"
+}
+
 // The `for (var n = 0; ...)` loop's output: one option snapshot per timeline tick.
 private let lifeExpectancyTimelineOptions: [[String: Any]] = lifeExpectancyDataset.series.indices.map { n in
     [
@@ -148,10 +166,8 @@ private let lifeExpectancyBaseOption: [String: Any] = [
     ],
     "tooltip": [
         "padding": 5.0,
-        "borderWidth": 1.0
-        // PORT-NOTE: tooltip.formatter omitted — JS closure over the `schema` table; it renders the hovered
-        //   row as 国家/人均寿命(岁)/人均收入(美元)/总人口, one `<br>`-separated line each, reading
-        //   value[3]/value[1]/value[0]/value[2].
+        "borderWidth": 1.0,
+        "formatter": lifeExpectancyTooltipFormatter
     ] as [String: Any],
     "grid": [
         "top": 100.0,
