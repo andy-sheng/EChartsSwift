@@ -48,4 +48,14 @@ final class OfficialScatterTooltipInteractionTests: XCTestCase {
         XCTAssertTrue(text.contains("人均收入：1050美元"), text)
         XCTAssertTrue(text.contains("总人口：30294378"), text)
     }
+
+    func testWorldPopulationTooltipPreservesOfficialArrayFormatting() throws {
+        let text = try formattedTooltip(
+            demo: EChartsDemoRegistry.official_scatter_world_population,
+            seriesIndex: 0,
+            dataIndex: 84
+        )
+        XCTAssertTrue(text.contains("Kyrgyzstan"), text)
+        XCTAssertTrue(text.contains("75,41,5,392,580.undefined"), text)
+    }
 }

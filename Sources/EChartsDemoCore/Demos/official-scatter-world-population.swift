@@ -17,7 +17,7 @@
 //    lon/lat, and `worldPopulationPoints` assembles the identical data items. The web pane still runs
 //    the real `.map()` over the verbatim `latlong` + `mapData`.
 //  - `visualMap.max`: the JS scans mapData for `max`; the Swift option inlines the result (1347565324 — China).
-//  - `tooltip.formatter` omitted from the native option (a JS closure) — see PORT-NOTE.
+//  - The JS tooltip closure is represented by the typed native callback seam.
 // Everything else (backgroundColor, title, geo styling incl. roam + emphasis, per-datum emphasis label
 // and itemStyle) is carried verbatim by both panes.
 import Foundation
@@ -218,6 +218,40 @@ private let worldPopulationPoints: [[String: Any]] = worldPopulationRows.map { r
         ] as [String: Any],
         "itemStyle": ["color": row.color] as [String: Any]
     ]
+}
+
+private func worldPopulationValueText(_ value: Any?) -> String {
+    if let value = value as? String { return value }
+    if let value = value as? Double {
+        return value.rounded() == value ? String(Int(value)) : String(value)
+    }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? NSNumber {
+        let number = value.doubleValue
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    }
+    return ""
+}
+
+// Preserve the official formatter exactly, including its observable array-to-string behavior:
+// `[75, 41, 5392580] + ''` becomes `75,41,5392580`, then the regex groups the last integer and the
+// missing fractional split element is rendered as the literal `undefined` by JavaScript.
+private let worldPopulationTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    let raw: String
+    if let values = params.value as? [Any] {
+        raw = values.map(worldPopulationValueText).joined(separator: ",")
+    } else {
+        raw = worldPopulationValueText(params.value)
+    }
+    let parts = raw.components(separatedBy: ".")
+    let head = parts.first ?? ""
+    let range = NSRange(head.startIndex..<head.endIndex, in: head)
+    let regex = try? NSRegularExpression(pattern: #"(\d{1,3})(?=(?:\d{3})+(?!\d))"#)
+    let grouped = regex?.stringByReplacingMatches(
+        in: head, range: range, withTemplate: "$1,"
+    ) ?? head
+    let tail = parts.count > 1 ? parts[1] : "undefined"
+    return "\(params.seriesName ?? "")<br/>\(params.name) : \(grouped).\(tail)"
 }
 
 extension EChartsDemoRegistry {
@@ -756,11 +790,9 @@ option = {
                     "top": "top",
                     "textStyle": ["color": "#fff"] as [String: Any]
                 ] as [String: Any],
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure splits `params.value` on '.',
-                // thousands-separates the integer part with a regex, and renders
-                // "<seriesName><br/><countryName> : <formatted value>". Not expressible in the Swift option.
                 "tooltip": [
-                    "trigger": "item"
+                    "trigger": "item",
+                    "formatter": worldPopulationTooltipFormatter
                 ] as [String: Any],
                 "visualMap": [
                     "show": false,
