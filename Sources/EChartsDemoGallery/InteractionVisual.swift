@@ -213,6 +213,7 @@ private func dragInteractiveElement(
 @MainActor
 private final class InteractionVisualChart: EChartsDemoChart {
     let view: EChartsView
+    private var intervalBodies: [@MainActor () -> Void] = []
 
     init(_ view: EChartsView) { self.view = view }
 
@@ -225,8 +226,16 @@ private final class InteractionVisualChart: EChartsDemoChart {
         view.syncAfterAction()
     }
 
-    func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {}
+    func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        intervalBodies.append(body)
+    }
     func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {}
+
+    func runIntervalTick() -> Int {
+        let bodies = intervalBodies
+        for body in bodies { body() }
+        return bodies.count
+    }
 
     func dispatch(_ payload: [String: Any]) {
         guard let type = payload["type"] as? String else { return }
@@ -619,6 +628,15 @@ private func writeOfficialInteractionScenarios(
             }
         }
 
+        if demo.drive != nil {
+            for tick in 1...2 {
+                steps += [
+                    ["action": "driveTick"],
+                    ["action": "settle", "capture": "drive-tick-\(tick)"],
+                ]
+            }
+        }
+
         var scenario: [String: Any] = [
             "id": "\(category)-all-\(demo.name)",
             "demo": demo.name,
@@ -627,6 +645,7 @@ private func writeOfficialInteractionScenarios(
                 "Every requested hit-testable legend item must toggle its corresponding series off and back on in the same instance; the restored frame must recover all series, symbols, labels and annotations.",
                 "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
                 "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
+                "Timer-driven examples must reach the same settled state after each explicit logical interval tick in Native and Web.",
                 "Native and Web must agree semantically after every interaction; ignore font antialiasing and subpixel stroke differences.",
             ],
             "steps": steps,
@@ -835,6 +854,15 @@ func runNativeInteractionVisual(
             record["resolvedPoint"] = [x, y]
         case "globalOut":
             view._injectGlobalOutForTest()
+        case "driveTick":
+            let count = chart.runIntervalTick()
+            guard count > 0 else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): demo did not register an interval callback\n".utf8)
+                )
+                return false
+            }
+            record["intervalCallbacks"] = count
         case "wait":
             let milliseconds = max(0, step.milliseconds ?? 0)
             RunLoop.current.run(until: Date(timeIntervalSinceNow: milliseconds / 1_000))
@@ -1375,6 +1403,14 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: x, y: y };
     },
+    driveTick: function () {
+      pointerOutside = false;
+      var callbacks = (window.__capturedIntervals || []).slice();
+      for (var i = 0; i < callbacks.length; i++) { callbacks[i](); }
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { intervalCallbacks: callbacks.length };
+    },
     globalOut: function () {
       pointerOutside = true;
       var chartDom = myChart.getDom();
@@ -1486,6 +1522,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.drag('timeline',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "pointerMove":
             script = "(function(a){return window.__interactionVisual.pointerMove(a.x,a.y);})(\(json))"
+        case "driveTick": script = "window.__interactionVisual.driveTick()"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
         default:
             fail("step \(currentIndex): unknown action \(step.action)")
@@ -1570,7 +1607,7 @@ func startWebInteractionVisual(
     // Interaction screenshots compare settled semantic states. Disable ordinary series entrance/
     // update animation on the Web oracle just like --compare; emphasis state transitions are still
     // driven explicitly by the scenario's `settle` steps.
-    guard let page = echartsHTMLPage(demo, snapshot: true) else {
+    guard let page = echartsHTMLPage(demo, snapshot: true, captureIntervals: true) else {
         FileHandle.standardError.write(Data("could not build web page\n".utf8))
         return false
     }

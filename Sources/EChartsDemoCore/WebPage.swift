@@ -46,7 +46,8 @@ public enum Upstream {
 public func echartsHTMLPage(
     _ demo: EChartsDemo,
     snapshot: Bool = false,
-    freezeEntranceAnimation: Bool = false
+    freezeEntranceAnimation: Bool = false,
+    captureIntervals: Bool = false
 ) -> String? {
     guard let dist = try? String(contentsOf: Upstream.echartsDistJS, encoding: .utf8) else { return nil }
     // The example script: either the official example's verbatim JS (which may drive `myChart` and
@@ -93,6 +94,8 @@ public func echartsHTMLPage(
       var __applied = false;   // did the example apply an option itself?
       var __snapshot = \(snapshot);
       var __freezeEntranceAnimation = \(freezeEntranceAnimation);
+      var __captureIntervals = \(captureIntervals);
+      window.__capturedIntervals = [];
       window.__entranceStage = 'page-script';
       window.__entranceError = '';
       window.addEventListener('error', function (event) {
@@ -121,7 +124,16 @@ public func echartsHTMLPage(
         if (__freezeEntranceAnimation) { myChart.getZr().animation.stop(); }
         return result;
       };
-      if (__snapshot || __freezeEntranceAnimation) {
+      if (__captureIntervals) {
+        // Deterministic interaction captures advance demo-owned repeating callbacks explicitly.
+        // This avoids depending on throttled WKWebView wall-clock/RAF behaviour while still running
+        // the official callback body and its real setOption/dispatchAction calls.
+        window.setInterval = function (body) {
+          window.__capturedIntervals.push(body);
+          return window.__capturedIntervals.length;
+        };
+      }
+      else if (__snapshot || __freezeEntranceAnimation) {
         // A repeating example would otherwise race the snapshot. setTimeout stays real: echarts
         // schedules its own throttle / lazy-update work on it.
         window.setInterval = function () { return 0; };
