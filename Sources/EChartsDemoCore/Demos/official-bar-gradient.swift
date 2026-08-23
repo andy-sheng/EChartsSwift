@@ -21,11 +21,6 @@
 //      `new echarts.graphic.LinearGradient(0, 0, 0, 1, [...])` — echarts accepts both, and it is the
 //      only form a `[String: Any]` can carry. webOptionJS keeps the `new echarts.graphic...` calls
 //      verbatim.
-//   4. NATIVE PANE: the gradient does not render as a gradient. EChartsKit's `barStyleFromDict`
-//      (BarView.swift) bridges only SOLID colors to the ZRenderKit path style — a gradient fill is
-//      dropped, so the native columns fall back to the painter's default fill instead of the blue
-//      ramp. Same gap as official-area-stack-gradient.swift, on the bar path. Geometry (20 columns,
-//      the showBackground tracks, the inside-drawn white axis labels, the bare y-axis) all match.
 //   The example's `dataShadow` array (a vestige of the pre-`showBackground` version) is computed and
 //   never read in the official source; webOptionJS keeps that loop verbatim, the Swift option omits it.
 //   No closures anywhere in this option, so nothing is omitted from the Swift port for that reason.

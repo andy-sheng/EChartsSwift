@@ -1125,7 +1125,7 @@ func updateStyle(
     // upstream: el.useStyle(style)
     // PORT-NOTE: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
     //   `useStyle` takes a typed `PathStyleProps`. `barStyleFromDict` bridges the common paint keys
-    //   (this is what colors the bar) and decal. Gradient/pattern fills and lineDash are not bridged yet.
+    //   (this is what colors the bar), gradients/patterns, lineDash and decal.
     el.useStyle(barStyleFromDict(style))
 
     let cursorStyle = itemModel.getShallow("cursor") as? String
@@ -1220,6 +1220,19 @@ func updateStyle(
     let isDisabled = (emphasisModel.get("disabled") as? Bool) ?? false
     states.toggleHoverEmphasis(el, focus, blurScope, isDisabled)
     states.setStatesStylesFromModel(el, itemModel)
+    // `getItemStyle()` leaves option paint values in EChartsKit's dynamic representation. Normal bar
+    // style already crosses the `barStyleFromDict` bridge above, but emphasis/blur/select flow later
+    // through ZRenderKit's state animator and therefore need ZRenderKit paint values in their raw
+    // state bags. Without this conversion a gradient emphasis fill is silently ignored on hover.
+    for stateName in states.SPECIAL_STATES {
+        guard let state = el.states[stateName], var stateStyle = state.style else { continue }
+        for paintKey in ["fill", "stroke"] {
+            if let paint = zrPaintFromStyleValue(stateStyle[paintKey]) {
+                stateStyle[paintKey] = paint
+            }
+        }
+        state.style = stateStyle
+    }
     // upstream (BarView.ts:1066-1074):
     //   if (isZeroOnPolar(layout as SectorLayout)) {
     //       el.style.fill = 'none';
