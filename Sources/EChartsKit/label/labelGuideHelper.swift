@@ -774,10 +774,12 @@ public enum labelGuideHelper {
                     setLabelLineState(newLine, true, "normal", normalModel)
                 }
 
-                // Use same state proxy.
-                if let stateProxy = targetEl.stateProxy {
-                    newLine.stateProxy = stateProxy
-                }
+                // Bind the default proxy to the newly-created guide line itself. The host proxy may
+                // not have been installed yet at this render phase, so conditionally copying it (as
+                // the dynamic JavaScript implementation does) can leave the guide without any proxy.
+                // The element-bound proxy supplies the default 0.1 blur opacity and lets non-focused
+                // leader lines fade together with their labels.
+                states.setDefaultStateProxy(newLine)
             }
 
             // `labelLine` is non-nil here (either pre-existing or just created above); bind it so the
@@ -788,6 +790,11 @@ public enum labelGuideHelper {
         }
 
         if let labelLine = labelLine {
+            // LabelManager may pre-create the guide before this helper runs, bypassing the creation
+            // branch above. Ensure those guides also receive their own default-state proxy.
+            if labelLine.stateProxy == nil {
+                states.setDefaultStateProxy(labelLine)
+            }
             // upstream: defaults(labelLine.style, defaultStyle);
             // (`pathStyle` is an IUO always populated by `Path.init` via useStyle/createStyle. The `??`
             //  fallback keeps the mandatory `fill = nil` below on the UNCONDITIONAL path — upstream has
