@@ -1548,6 +1548,36 @@ public final class EChartsView {
         zr.handler.mousewheel(raw)
     }
 
+    /// Headless visual-oracle seam for a calculable continuous visualMap. Targets the requested
+    /// component view and handle thumb by ownership, then drives the same Handler/Draggable path as
+    /// a user drag. This avoids screen-position heuristics when a chart has multiple visualMaps.
+    @discardableResult
+    public func _injectVisualMapHandleDragForTest(
+        componentIndex: Int,
+        handleIndex: Int,
+        deltaX: Double,
+        deltaY: Double
+    ) -> [Double]? {
+        let views = ec._componentsViews.compactMap { $0 as? ContinuousView }
+        guard views.indices.contains(componentIndex),
+              let handle = views[componentIndex]._handleThumbForTest(handleIndex) else { return nil }
+        _ = zr.storage.getDisplayList(true)
+        let start = handle.transformCoordToGlobal(0, 0)
+        _injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
+        _injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
+        for fraction in [0.25, 0.5, 0.75, 1.0] {
+            _injectPointerForTest(
+                type: "mousemove",
+                zrX: start[0] + deltaX * fraction,
+                zrY: start[1] + deltaY * fraction
+            )
+        }
+        _injectPointerForTest(
+            type: "mouseup", zrX: start[0] + deltaX, zrY: start[1] + deltaY
+        )
+        return start
+    }
+
     /// Coerce a JS-number-ish payload value (Int or Double) to Double (small numbers box as `Int`).
     private func _viewAsDouble(_ v: Any?) -> Double? {
         if let d = v as? Double { return d }

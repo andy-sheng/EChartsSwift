@@ -106,6 +106,19 @@ final class ZZVisualMapContinuousInteractionTests: XCTestCase {
         XCTAssertLessThanOrEqual(after[1], 100)
     }
 
+    func testExternalVisualHarnessTargetsOwnedHandle() {
+        let view = makeView()
+        let before = (model(view)?.getSelected() as? [Double]) ?? []
+
+        let point = view._injectVisualMapHandleDragForTest(
+            componentIndex: 0, handleIndex: 1, deltaX: 0, deltaY: 60
+        )
+
+        XCTAssertNotNil(point)
+        let after = (model(view)?.getSelected() as? [Double]) ?? []
+        XCTAssertNotEqual(after, before)
+    }
+
     func testNullEndTextRendersAsEmptyString() {
         let view = EChartsView(width: 480, height: 360)
         view.setOption([

@@ -29,6 +29,8 @@ struct InteractionVisualStep: Decodable {
     let deltaX: Double?
     let deltaY: Double?
     let deltaPercent: Double?
+    let componentIndex: Double?
+    let handleIndex: Double?
     let allowMissing: Bool?
     let capture: String?
 }
@@ -601,6 +603,32 @@ private func writeOfficialInteractionScenarios(
                 ["action": "settle", "capture": "datazoom-drag-cleared"],
             ]
         }
+        let calculableVisualMaps = ecModel
+            .findComponents(QueryConditionKindA(mainType: "visualMap"))
+            .filter {
+                $0.subType == "continuous" && ($0.get("calculable") as? Bool) == true
+            }
+        for (visualMapIndex, visualMapModel) in calculableVisualMaps.enumerated() {
+            let horizontal = (visualMapModel.get("orient") as? String) == "horizontal"
+            let dx = horizontal ? -30.0 : 0.0
+            let dy = horizontal ? 0.0 : 30.0
+            steps += [
+                [
+                    "action": "dragVisualMap", "componentIndex": Double(visualMapIndex),
+                    "handleIndex": 1.0, "deltaX": dx, "deltaY": dy,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "visualmap-\(visualMapIndex)-dragged"],
+                [
+                    "action": "dragVisualMap", "componentIndex": Double(visualMapIndex),
+                    "handleIndex": 1.0, "deltaX": -dx, "deltaY": -dy,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "visualmap-\(visualMapIndex)-restored"],
+            ]
+        }
         let hasGeoRoam = demo.name != "official-scatter-map-brush"
             && ecModel.findComponents(QueryConditionKindA(mainType: "geo"))
             .contains {
@@ -718,6 +746,7 @@ private func writeOfficialInteractionScenarios(
             "legendInteractionCount": interactiveLegendNames.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
             "hasRestore": hasRestore, "hasGeoRoam": hasGeoRoam,
+            "calculableVisualMapCount": calculableVisualMaps.count,
             "coverageNotes": coverageNotes,
         ])
         view.dispose()
@@ -878,6 +907,27 @@ func runNativeInteractionVisual(
                 return false
             }
             record["resolvedPoint"] = point
+            record["deltaX"] = dx
+            record["deltaY"] = dy
+        case "dragVisualMap":
+            let componentIndex = Int(step.componentIndex ?? 0)
+            let handleIndex = Int(step.handleIndex ?? 1)
+            let dx = step.deltaX ?? 0
+            let dy = step.deltaY ?? 30
+            guard let point = view._injectVisualMapHandleDragForTest(
+                componentIndex: componentIndex,
+                handleIndex: handleIndex,
+                deltaX: dx,
+                deltaY: dy
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): visualMap handle was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["componentIndex"] = componentIndex
+            record["handleIndex"] = handleIndex
             record["deltaX"] = dx
             record["deltaY"] = dy
         case "dragDataZoom", "dragGraphic", "dragAxisPointer", "dragTimeline":
@@ -1273,6 +1323,18 @@ private let webInteractionHarnessJS = #"""
     }
     throw new Error('roaming geo was not available');
   }
+  function visualMapHandleHit(componentIndex, handleIndex) {
+    var views = (myChart._componentsViews || []).filter(function (view) {
+      return view.type === 'visualMap.continuous';
+    });
+    var view = views[componentIndex];
+    var thumbs = view && view._shapes && view._shapes.handleThumbs;
+    var target = thumbs && thumbs[handleIndex];
+    if (!target || !target.transformCoordToGlobal) {
+      throw new Error('visualMap handle was not available');
+    }
+    return { point: target.transformCoordToGlobal(0, 0), target: target };
+  }
   var pointerOutside = false;
   function hideTooltipHost() {
     myChart.dispatchAction({ type: 'hideTip' });
@@ -1500,6 +1562,24 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
     },
+    dragVisualMap: function (componentIndex, handleIndex, deltaX, deltaY) {
+      pointerOutside = false;
+      var hit = visualMapHandleHit(componentIndex, handleIndex);
+      var start = hit.point;
+      var handler = myChart.getZr().handler;
+      handler.mousemove(raw(start));
+      handler.mousedown(raw(start));
+      [0.25, 0.5, 0.75, 1].forEach(function (fraction) {
+        handler.mousemove(raw([
+          start[0] + deltaX * fraction,
+          start[1] + deltaY * fraction
+        ]));
+      });
+      handler.mouseup(raw([start[0] + deltaX, start[1] + deltaY]));
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
+    },
     globalOut: function () {
       pointerOutside = true;
       var chartDom = myChart.getDom();
@@ -1585,6 +1665,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "deltaX": step.deltaX ?? 48,
             "deltaY": step.deltaY ?? 0,
             "deltaPercent": step.deltaPercent ?? NSNull(),
+            "componentIndex": step.componentIndex ?? 0,
+            "handleIndex": step.handleIndex ?? 1,
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(data: data, encoding: .utf8)!
@@ -1614,6 +1696,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "driveTick": script = "window.__interactionVisual.driveTick()"
         case "dragGeoRoam":
             script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
+        case "dragVisualMap":
+            script = "(function(a){return window.__interactionVisual.dragVisualMap(a.componentIndex,a.handleIndex,a.deltaX,a.deltaY);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
         default:
             fail("step \(currentIndex): unknown action \(step.action)")
