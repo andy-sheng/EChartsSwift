@@ -521,6 +521,7 @@ private func makeShapeElement(_ graphicType: String?) -> Path? {
     switch graphicType {
     case "rect": return Rect()
     case "circle": return Circle()
+    case "ellipse": return Ellipse()
     case "sector": return Sector()
     case "ring": return Ring()
     case "arc": return Arc()
@@ -706,6 +707,11 @@ private func applyShape(_ path: Path, _ graphicType: String?, _ s: [String: Any]
         var shape = CircleShape()
         shape.cx = num("cx"); shape.cy = num("cy"); shape.r = num("r")
         _ = path.setShape(shape)
+    case "ellipse":
+        var shape = EllipseShape()
+        shape.cx = num("cx"); shape.cy = num("cy")
+        shape.rx = num("rx"); shape.ry = num("ry")
+        _ = path.setShape(shape)
     case "sector":
         var shape = SectorShape()
         shape.cx = num("cx"); shape.cy = num("cy")
@@ -766,6 +772,12 @@ private func applyStyle(_ el: Element, _ s: [String: Any]) {
     else if let path = el as? Path {
         let bridged = bridgePathStyle(s)
         path.useStyle(bridged)
+        // `null` is an authored paint value in custom renderItem output: it means no paint, while an
+        // omitted key inherits the shape/default style. Swift option bags preserve that distinction as
+        // NSNull, but the optional ZRColor bridge cannot. Re-apply explicit null after useStyle so a
+        // stroked ellipse/polygon does not inherit Path's generic black fill.
+        if s["fill"] is NSNull { path.pathStyle.fill = nil }
+        if s["stroke"] is NSNull { path.pathStyle.stroke = nil }
         // FRAMEWORK GAP (fill-less stroke shapes: polyline/line/bezierCurve/arc/rose/trochoid): upstream
         //   `useStyle` merges onto a PROTOTYPE (`Object.create(DEFAULT_PATH_STYLE)`), so a shape class's
         //   own `getDefaultStyle()` (these declare `fill: null`) keeps shadowing the generic `fill:'#000'`
@@ -776,7 +788,7 @@ private func applyStyle(_ el: Element, _ s: [String: Any]) {
         //   `fill` — official-custom-hexbin's court lines) would paint solid BLACK instead of unfilled.
         //   Re-assert the shape's OWN default when the bridged style resolved no real fill (mirrors the
         //   one-time correction Path._init() already does).
-        if bridged.fill == nil, let ownDefault = path.getDefaultStyle() {
+        if s["fill"] == nil, bridged.fill == nil, let ownDefault = path.getDefaultStyle() {
             path.pathStyle.fill = ownDefault.fill
         }
     }

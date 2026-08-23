@@ -126,6 +126,42 @@ final class CustomRenderTests: XCTestCase {
         XCTAssertEqual(Set(fills), ["#5470c6"], "custom rects use the renderItem-specified fill")
     }
 
+    func testCustomRenderItemMaterializesEllipseShape() {
+        let ec = ECharts(width: 240, height: 160)
+        let renderItem: CustomSeriesRenderItem = { _, _ in
+            [
+                "type": "ellipse",
+                "shape": ["cx": 90.0, "cy": 70.0, "rx": 42.0, "ry": 18.0] as [String: Any],
+                "style": [
+                    "fill": NSNull(), "stroke": "#bbb",
+                    "lineWidth": 4.0, "lineDash": [4.0, 4.0],
+                ] as [String: Any],
+            ] as [String: Any]
+        }
+        ec.setOption([
+            "animation": false,
+            "series": [[
+                "type": "custom", "coordinateSystem": "none",
+                "renderItem": renderItem, "data": [1.0],
+            ] as [String: Any]],
+        ])
+
+        var rendered: Ellipse?
+        _ = ec.getRoot().traverse { element in
+            if let ellipse = element as? Ellipse { rendered = ellipse }
+            return false
+        }
+        guard let shape = rendered?.shape as? EllipseShape else {
+            return XCTFail("custom ellipse must materialize as a typed Ellipse")
+        }
+        XCTAssertEqual(shape.cx, 90)
+        XCTAssertEqual(shape.cy, 70)
+        XCTAssertEqual(shape.rx, 42)
+        XCTAssertEqual(shape.ry, 18)
+        XCTAssertEqual(rendered?.pathStyle?.lineWidth, 4)
+        XCTAssertNil(rendered?.pathStyle?.fill, "authored fill:null must remain unfilled")
+    }
+
     func testDeprecatedAPIStyleBridgesSeriesLabelToAttachedText() {
         let ec = ECharts(width: 400, height: 300)
         let renderItem: CustomSeriesRenderItem = { _, api in
