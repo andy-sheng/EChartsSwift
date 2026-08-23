@@ -1162,21 +1162,43 @@ func resolveDeterministicDataHit(
     let seriesIndex = (action["seriesIndex"] as? NSNumber)?.doubleValue ?? 0
     let dataIndex = (action["dataIndex"] as? NSNumber)?.doubleValue ?? 0
     let displayList = view.zr.storage.getDisplayList(true)
-    var candidates = displayList.filter { displayable in
-        let ecData = innerStore.getECData(displayable)
-        return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
-            && displayable.states["emphasis"] != nil
-    }
+    var candidates: [Displayable] = []
     if let dataRoot = ec.getModel()?.getSeriesByIndex(seriesIndex)?.getData()
         .getItemGraphicEl(Int(dataIndex)) {
         candidates.append(contentsOf: interactiveDisplayables(in: dataRoot))
     }
+    candidates.append(contentsOf: displayList.filter { displayable in
+        let ecData = innerStore.getECData(displayable)
+        return ecData.seriesIndex == seriesIndex && ecData.dataIndex == dataIndex
+            && displayable.states["emphasis"] != nil
+    })
+    var seenCandidates = Set<ObjectIdentifier>()
+    candidates = candidates.filter { seenCandidates.insert(ObjectIdentifier($0)).inserted }
     var resolved: (Displayable, [Double])?
     for candidate in candidates {
         if let point = deterministicHoverPoint(candidate, accepting: { point in
             view.zr.handler.findHover(point[0], point[1]).target === candidate
         }) {
             resolved = (candidate, point)
+            break
+        }
+    }
+    if resolved == nil {
+        let requestedIndex = Int(dataIndex)
+        for path in displayList.compactMap({ $0 as? LargeSymbolPath }) {
+            guard innerStore.getECData(path).seriesIndex == seriesIndex,
+                  let shape = path.shape as? LargeSymbolPathShape else { continue }
+            let startIndex = path.startIndex ?? 0
+            let localIndex = requestedIndex - startIndex
+            guard localIndex >= 0, localIndex * 2 + 1 < shape.points.count else { continue }
+            let localX = shape.points[localIndex * 2]
+            let localY = shape.points[localIndex * 2 + 1]
+            guard localX.isFinite, localY.isFinite else { continue }
+            let point = path.transformCoordToGlobal(localX, localY)
+            let hovered = view.zr.handler.findHover(point[0], point[1])
+            guard hovered.target === path,
+                  path.hoverDataIdx + startIndex == requestedIndex else { continue }
+            resolved = (path, point)
             break
         }
     }
@@ -1409,6 +1431,24 @@ func runCLI() -> Bool {
             exit(2)
         }
         exit(writeBarInteractionScenarios(outputDirectory: args[1]) ? 0 : 1)
+
+    case "--interaction-generate-pie":
+        guard args.count >= 2 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-generate-pie <scenario-dir>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(writePieInteractionScenarios(outputDirectory: args[1]) ? 0 : 1)
+
+    case "--interaction-generate-scatter":
+        guard args.count >= 2 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-generate-scatter <scenario-dir>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(writeScatterInteractionScenarios(outputDirectory: args[1]) ? 0 : 1)
 
     case "--interaction-web":
         // Web oracle for --interaction-native. It resolves the current LegendView after every

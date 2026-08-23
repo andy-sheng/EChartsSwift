@@ -288,7 +288,7 @@ private func interactionSlug(_ value: String) -> String {
 @MainActor
 private func writeOfficialInteractionScenarios(
     category: String,
-    seriesSubtype: String,
+    seriesSubtypes: Set<String>,
     outputDirectory: String
 ) -> Bool {
     guard let section = demoSections(.official).first(where: {
@@ -315,10 +315,15 @@ private func writeOfficialInteractionScenarios(
 
         var steps: [[String: Any]] = [["action": "settle", "capture": "baseline"]]
         var selectedSeries: [SeriesModel] = []
+        var hitIndexBySeries: [Int: Int] = [:]
+        var hoverInteractionCount = 0
         let matchingSeries = ecModel.getSeries().filter {
-            $0.subType == seriesSubtype && ($0.get("silent") as? Bool) != true
+            seriesSubtypes.contains($0.subType) && ($0.get("silent") as? Bool) != true
         }
-        for position in [0, matchingSeries.count / 2, max(0, matchingSeries.count - 1)]
+        let samplePositions = matchingSeries.count <= 4
+            ? Array(matchingSeries.indices)
+            : [0, matchingSeries.count / 2, max(0, matchingSeries.count - 1)]
+        for position in samplePositions
         where !matchingSeries.isEmpty {
             let series = matchingSeries[position]
             if !selectedSeries.contains(where: { $0 === series }) { selectedSeries.append(series) }
@@ -329,7 +334,11 @@ private func writeOfficialInteractionScenarios(
             guard count > 0 else { continue }
             let middle = count / 2
             let index: Int
-            if seriesSubtype == "line" {
+            if category == "pie", demo.name == "official-pie-rich-text",
+               data.indexOfName("CityE") >= 0 {
+                index = data.indexOfName("CityE")
+            }
+            else if series.subType == "line" {
                 guard let points = data.getLayout("points") as? [Double] else { continue }
                 let candidates = (0..<min(count, points.count / 2)).sorted {
                     abs($0 - middle) < abs($1 - middle)
@@ -345,6 +354,12 @@ private func writeOfficialInteractionScenarios(
                     if middle - offset >= 0 { candidates.append(middle - offset) }
                     if middle + offset < count { candidates.append(middle + offset) }
                 }
+                if count > 65 {
+                    for bucket in 0..<64 {
+                        let candidate = (count - 1) * bucket / 63
+                        if !candidates.contains(candidate) { candidates.append(candidate) }
+                    }
+                }
                 if !candidates.contains(0) { candidates.append(0) }
                 if !candidates.contains(count - 1) { candidates.append(count - 1) }
                 guard let hitIndex = candidates.first(where: { candidate in
@@ -356,15 +371,17 @@ private func writeOfficialInteractionScenarios(
                 index = hitIndex
             }
             let seriesIndex = Int(series.seriesIndex)
+            hitIndexBySeries[seriesIndex] = index
             steps.append([
-                "action": seriesSubtype == "line" ? "hoverSeries" : "hoverData",
+                "action": series.subType == "line" ? "hoverSeries" : "hoverData",
                 "seriesIndex": Double(seriesIndex),
                 "dataIndex": Double(index)
             ])
             steps.append(["action": "wait", "milliseconds": 120.0])
             steps.append(["action": "settle", "capture": "hover-series-\(seriesIndex)"])
+            hoverInteractionCount += 1
         }
-        if !selectedSeries.isEmpty {
+        if hoverInteractionCount > 0 {
             steps += [
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
@@ -373,8 +390,46 @@ private func writeOfficialInteractionScenarios(
             ]
         }
 
+        if category == "pie", demo.name == "official-dataset-link" {
+            let linkedLines = ecModel.getSeries().filter {
+                $0.subType == "line" && ($0.get("silent") as? Bool) != true
+            }
+            let linkedPositions = linkedLines.count <= 4
+                ? Array(linkedLines.indices)
+                : [0, linkedLines.count / 2, max(0, linkedLines.count - 1)]
+            var linkedHoverCount = 0
+            for position in linkedPositions where !linkedLines.isEmpty {
+                let series = linkedLines[position]
+                let data = series.getData()
+                guard data.count() > 0 else { continue }
+                let index = min(3, data.count() - 1)
+                guard resolveDeterministicDataHit([
+                    "seriesIndex": Double(series.seriesIndex), "dataIndex": Double(index),
+                ], ec: view.ec, view: view) != nil else { continue }
+                let seriesIndex = Int(series.seriesIndex)
+                steps += [
+                    [
+                        "action": "hoverData", "seriesIndex": Double(seriesIndex),
+                        "dataIndex": Double(index),
+                    ],
+                    ["action": "wait", "milliseconds": 120.0],
+                    ["action": "settle", "capture": "linked-line-hover-series-\(seriesIndex)"],
+                ]
+                linkedHoverCount += 1
+            }
+            if linkedHoverCount > 0 {
+                steps += [
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "linked-line-hover-restored"],
+                ]
+            }
+        }
+
         var legendNames: [String] = []
         var seenLegendNames = Set<String>()
+        var coverageNotes: [String] = []
         func hasLegendProvider(_ name: String) -> Bool {
             ecModel.getSeries().contains { series in
                 if series.name == name { return true }
@@ -386,12 +441,28 @@ private func writeOfficialInteractionScenarios(
             guard let legend = component as? LegendModel,
                   (legend.get("show") as? Bool) != false,
                   (legend.get("selectedMode") as? Bool) != false else { continue }
+            var componentNames: [String] = []
+            var authoredItemCount = 0
             for item in legend.getData() {
                 guard let name = model.convertOptionIdName(item.get("name", true), nil),
-                      !name.isEmpty, hasLegendProvider(name),
+                      !name.isEmpty else { continue }
+                authoredItemCount += 1
+                guard hasLegendProvider(name),
                       seenLegendNames.insert(name).inserted else { continue }
-                legendNames.append(name)
+                componentNames.append(name)
             }
+            if authoredItemCount > 0, componentNames.isEmpty {
+                coverageNotes.append(
+                    "legend has authored items but none matches a live series or data provider"
+                )
+            }
+            if legend.subType == "scroll", componentNames.count > 3 {
+                coverageNotes.append(
+                    "scroll legend samples its first 3 visible items; page navigation is not exercised"
+                )
+                componentNames = Array(componentNames.prefix(3))
+            }
+            legendNames.append(contentsOf: componentNames)
         }
         // This official option positions its horizontal slider directly under the legend. Their live
         // hit regions overlap, so a pointer click at the visible legend swatch is received by the
@@ -401,6 +472,7 @@ private func writeOfficialInteractionScenarios(
             && demo.name == "official-mix-zoom-on-value"
             ? "legend hit regions overlap the horizontal dataZoom slider; pointer clicks resolve to the slider"
             : nil
+        if let skippedLegendReason { coverageNotes.append(skippedLegendReason) }
         let interactiveLegendNames = skippedLegendReason == nil ? legendNames : []
         for name in interactiveLegendNames {
             let slug = interactionSlug(name)
@@ -415,6 +487,33 @@ private func writeOfficialInteractionScenarios(
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "legend-\(slug)-restored"],
+            ]
+        }
+
+        if category == "pie",
+           let selectable = matchingSeries.first(where: { series in
+               let selectedMode = series.get("selectedMode")
+               return selectedMode != nil && (selectedMode as? Bool) != false
+                   && hitIndexBySeries[Int(series.seriesIndex)] != nil
+           }), let index = hitIndexBySeries[Int(selectable.seriesIndex)] {
+            let seriesIndex = Int(selectable.seriesIndex)
+            steps += [
+                [
+                    "action": "clickData", "seriesIndex": Double(seriesIndex),
+                    "dataIndex": Double(index), "movePointer": true,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "pie-selection-toggled"],
+                [
+                    "action": "clickData", "seriesIndex": Double(seriesIndex),
+                    "dataIndex": Double(index), "movePointer": true,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "pie-selection-restored"],
             ]
         }
 
@@ -493,8 +592,8 @@ private func writeOfficialInteractionScenarios(
             ],
             "steps": steps,
         ]
-        if let skippedLegendReason {
-            scenario["coverageNotes"] = [skippedLegendReason]
+        if !coverageNotes.isEmpty {
+            scenario["coverageNotes"] = coverageNotes
         }
         let file = "\(category)-all-\(demo.name).json"
         do {
@@ -510,9 +609,9 @@ private func writeOfficialInteractionScenarios(
         manifest.append([
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
             "legendInteractionCount": interactiveLegendNames.count,
-            "hoverSeriesCount": selectedSeries.count, "hasSlider": hasSlider,
+            "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
             "hasRestore": hasRestore,
-            "coverageNotes": skippedLegendReason.map { [$0] } ?? [],
+            "coverageNotes": coverageNotes,
         ])
         view.dispose()
         print("wrote \(file)")
@@ -532,14 +631,29 @@ private func writeOfficialInteractionScenarios(
 @MainActor
 func writeLineInteractionScenarios(outputDirectory: String) -> Bool {
     writeOfficialInteractionScenarios(
-        category: "line", seriesSubtype: "line", outputDirectory: outputDirectory
+        category: "line", seriesSubtypes: ["line"], outputDirectory: outputDirectory
     )
 }
 
 @MainActor
 func writeBarInteractionScenarios(outputDirectory: String) -> Bool {
     writeOfficialInteractionScenarios(
-        category: "bar", seriesSubtype: "bar", outputDirectory: outputDirectory
+        category: "bar", seriesSubtypes: ["bar"], outputDirectory: outputDirectory
+    )
+}
+
+@MainActor
+func writePieInteractionScenarios(outputDirectory: String) -> Bool {
+    writeOfficialInteractionScenarios(
+        category: "pie", seriesSubtypes: ["pie"], outputDirectory: outputDirectory
+    )
+}
+
+@MainActor
+func writeScatterInteractionScenarios(outputDirectory: String) -> Bool {
+    writeOfficialInteractionScenarios(
+        category: "scatter", seriesSubtypes: ["scatter", "effectScatter"],
+        outputDirectory: outputDirectory
     )
 }
 
@@ -741,6 +855,14 @@ private let webInteractionHarnessJS = #"""
     }
     return false;
   }
+  function belongsTo(target, owner) {
+    var current = target;
+    while (current) {
+      if (current === owner) { return true; }
+      current = current.__hostTarget || current.parent;
+    }
+    return false;
+  }
   function legendHit(name) {
     var zr = myChart.getZr();
     zr.refreshImmediately(true);
@@ -760,7 +882,9 @@ private let webInteractionHarnessJS = #"""
           rect.y + rect.height / 2
         );
         var hovered = zr.handler.findHover(point[0], point[1]);
-        if (hovered && hovered.target) { return { point: point, hovered: hovered }; }
+        if (hovered && belongsTo(hovered.target, items[ii])) {
+          return { point: point, hovered: hovered };
+        }
       }
     }
     throw new Error('legend item was not hit-testable: ' + name);
@@ -848,7 +972,40 @@ private let webInteractionHarnessJS = #"""
     if (dataName) { dataIndex = data ? data.indexOfName(dataName) : -1; }
     if (dataIndex < 0) { throw new Error('data item not found by name: ' + dataName); }
     var el = data && data.getItemGraphicEl(dataIndex);
-    if (!el) { throw new Error('data item not found: ' + seriesIndex + '/' + dataIndex); }
+    if (!el) {
+      var chartView = null;
+      var chartViews = myChart._chartsViews || [];
+      for (var cv = 0; cv < chartViews.length; cv++) {
+        if (chartViews[cv].__model === series) { chartView = chartViews[cv]; break; }
+      }
+      var largePaths = [];
+      function collectLarge(item) {
+        if (!item) { return; }
+        if (item.shape && item.shape.points
+            && typeof item.hoverDataIdx === 'number') {
+          largePaths.push(item);
+        }
+        var nested = children(item);
+        for (var li = 0; li < nested.length; li++) { collectLarge(nested[li]); }
+      }
+      collectLarge(chartView && chartView.group);
+      for (var lp = 0; lp < largePaths.length; lp++) {
+        var large = largePaths[lp];
+        var largeStart = large.startIndex || 0;
+        var localIndex = dataIndex - largeStart;
+        var points = large.shape.points;
+        if (localIndex < 0 || localIndex * 2 + 1 >= points.length) { continue; }
+        var largePoint = large.transformCoordToGlobal(
+          points[localIndex * 2], points[localIndex * 2 + 1]
+        );
+        var largeHovered = zr.handler.findHover(largePoint[0], largePoint[1]);
+        if (largeHovered && largeHovered.target === large
+            && large.hoverDataIdx + largeStart === dataIndex) {
+          return { point: largePoint, hovered: largeHovered };
+        }
+      }
+      throw new Error('data item not found: ' + seriesIndex + '/' + dataIndex);
+    }
     if (!el.contain && el.traverse) {
       var childTarget = null;
       el.traverse(function (child) {
@@ -858,6 +1015,15 @@ private let webInteractionHarnessJS = #"""
       if (childTarget) { el = childTarget; }
     }
     var point;
+    var hovered;
+    function accepts(candidate) {
+      var candidateHovered = zr.handler.findHover(candidate[0], candidate[1]);
+      if (candidateHovered && belongsTo(candidateHovered.target, el)) {
+        hovered = candidateHovered;
+        return true;
+      }
+      return false;
+    }
     var shape = el.shape || {};
     if (shape.cx != null && shape.cy != null && shape.r != null
         && shape.startAngle != null && shape.endAngle != null) {
@@ -865,7 +1031,7 @@ private let webInteractionHarnessJS = #"""
       var radius = ((shape.r0 || 0) + shape.r) / 2;
       point = el.transformCoordToGlobal(shape.cx + Math.cos(angle) * radius,
                                         shape.cy + Math.sin(angle) * radius);
-      if (!el.contain(point[0], point[1])) { point = null; }
+      if (!el.contain(point[0], point[1]) || !accepts(point)) { point = null; }
     }
     if (!point) {
       var bounds = el.getBoundingRect();
@@ -875,13 +1041,17 @@ private let webInteractionHarnessJS = #"""
             bounds.x + bounds.width * gx / 20,
             bounds.y + bounds.height * gy / 20
           );
-          if (el.contain(candidate[0], candidate[1])) { point = candidate; break; }
+          if (el.contain(candidate[0], candidate[1]) && accepts(candidate)) {
+            point = candidate;
+            break;
+          }
         }
       }
     }
     if (!point) { throw new Error('data item has no contained hit point'); }
-    var hovered = zr.handler.findHover(point[0], point[1]);
-    if (!hovered || !hovered.target) { throw new Error('data item was not hit-testable'); }
+    if (!hovered || !belongsTo(hovered.target, el)) {
+      throw new Error('data item was not hit-testable');
+    }
     return { point: point, hovered: hovered };
   }
   function seriesPoint(seriesIndex, dataIndex, dataName) {

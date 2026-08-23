@@ -76,6 +76,9 @@ otherwise a missing handler can be mistaken for a passing non-interactive chart.
 The generated manifest records `legendInteractionCount` and `coverageNotes`. A visible control whose
 hit region is obscured by another interactive component is reported as a coverage gap instead of
 being replaced with `dispatchAction`, because the latter would stop testing real pointer routing.
+Scrollable legends sample their first three visible items and record that page navigation remains a
+coverage gap. Pie scenarios also click and restore a live sector when `selectedMode` is enabled, and
+scatter scenarios include both `scatter` and `effectScatter` series.
 
 The orchestrating agent owns the final gate:
 

@@ -1477,34 +1477,42 @@ public final class EChartsView {
     /// `legendToggleSelect` action directly.
     @discardableResult
     public func _injectLegendClickForTest(name: String, movePointer: Bool = true) -> [Double]? {
-        guard let legendView = ec._componentsViews.compactMap({ $0 as? LegendView }).first,
-              let item = legendView.getContentGroup().children().compactMap({ $0 as? Group }).first(where: { group in
-                  var matched = false
-                  group.traverse { element in
-                      if let text = element as? ZRText, text.textStyle?.text == name {
-                          matched = true
-                      }
-                  }
-                  return matched
-              }),
-              let hitTarget = item.children().last,
-              let rect = hitTarget.getBoundingRect() else {
-            return nil
-        }
-
         _ = zr.storage.getDisplayList(true)
-        let point = hitTarget.transformCoordToGlobal(
-            rect.x + rect.width / 2,
-            rect.y + rect.height / 2
-        )
-        guard zr.handler.findHover(point[0], point[1]).target != nil else { return nil }
-        if movePointer {
-            _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        for legendView in ec._componentsViews.compactMap({ $0 as? LegendView }) {
+            guard let item = legendView.getContentGroup().children().compactMap({ $0 as? Group })
+                .first(where: { group in
+                    var matched = false
+                    group.traverse { element in
+                        if let text = element as? ZRText, text.textStyle?.text == name {
+                            matched = true
+                        }
+                    }
+                    return matched
+                }), let hitTarget = item.children().last,
+                let rect = hitTarget.getBoundingRect() else { continue }
+            let point = hitTarget.transformCoordToGlobal(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2
+            )
+            var belongsToItem = false
+            var current = zr.handler.findHover(point[0], point[1]).target
+            while let element = current {
+                if element === item {
+                    belongsToItem = true
+                    break
+                }
+                current = element.__hostTarget ?? (element.parent as? Element)
+            }
+            guard belongsToItem else { continue }
+            if movePointer {
+                _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+            }
+            _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+            return point
         }
-        _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
-        _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
-        _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
-        return point
+        return nil
     }
 
     /// Emit the global-out form used when a pointer leaves the renderer entirely.
