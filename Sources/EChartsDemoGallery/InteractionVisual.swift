@@ -1191,6 +1191,25 @@ private let webInteractionHarnessJS = #"""
     }
     return { tooltipViews: found };
   }
+  function settleTooltipHost() {
+    var views = myChart._componentsViews || [];
+    var found = 0;
+    for (var vi = 0; vi < views.length; vi++) {
+      var content = views[vi]._tooltipContent;
+      var el = content && content.el;
+      if (!el || !el.style) { continue; }
+      found++;
+      // WKWebView can leave an HTML tooltip's CSS position transition suspended while the
+      // offscreen oracle is being snapshotted. The inline left/top values already describe the
+      // requested hover target, so remove only the host transition and force layout to capture
+      // that final semantic state, matching the Native renderer's settled capture contract.
+      el.style.transition = 'none';
+      el.style.transitionProperty = 'none';
+      el.style.transitionDuration = '0s';
+      void el.offsetWidth;
+    }
+    return found;
+  }
   function drainProgressive() {
     var frames = 0;
     var scheduler = myChart._scheduler;
@@ -1241,9 +1260,14 @@ private let webInteractionHarnessJS = #"""
     }
     progressiveFrames += drainProgressive();
     if (pointerOutside) { hideTooltipHost(); }
+    var tooltipViews = settleTooltipHost();
     zr.animation.stop();
     zr.refreshImmediately(true);
-    return { clips: clips.length, progressiveFrames: progressiveFrames };
+    return {
+      clips: clips.length,
+      progressiveFrames: progressiveFrames,
+      tooltipViews: tooltipViews
+    };
   }
   window.__interactionVisual = {
     settle: finishAnimations,
