@@ -137,7 +137,7 @@ private func dragInteractiveElement(
 ) -> [Double]? {
     let height = view.ec.getHeight()
     let width = view.ec.getWidth()
-    let candidates = view.zr.storage.getDisplayList(true).filter { element in
+    var candidates = view.zr.storage.getDisplayList(true).filter { element in
         guard element.draggable != .false else { return false }
         guard let bounds = element.getBoundingRect() else { return false }
         let center = element.transformCoordToGlobal(
@@ -152,6 +152,20 @@ private func dragInteractiveElement(
                 && center[1] >= height * 0.68 && center[1] < height * 0.92
         }
         return center[0] >= width * 0.08 && center[0] <= width * 0.85 && center[1] < height * 0.68
+    }
+    if kind == "dataZoom" {
+        func globalWidth(_ element: Element) -> Double {
+            guard let bounds = element.getBoundingRect() else { return 0 }
+            let left = element.transformCoordToGlobal(bounds.x, bounds.y)
+            let right = element.transformCoordToGlobal(bounds.x + bounds.width, bounds.y)
+            return abs(right[0] - left[0])
+        }
+        // A semantic percentage pan must grab the selected-window filler. When the slider covers
+        // 0...100%, however, moving that filler is clamped and changes nothing, so the generic
+        // resize probe deliberately grabs the narrowest hit-testable handle instead.
+        candidates.sort {
+            deltaPercent == nil ? globalWidth($0) < globalWidth($1) : globalWidth($0) > globalWidth($1)
+        }
     }
     for candidate in candidates {
         guard let start = deterministicHoverPoint(candidate, accepting: { point in
@@ -396,7 +410,7 @@ private func writeOfficialInteractionScenarios(
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "legend-\(slug)-off"],
-                ["action": "clickLegend", "name": name, "movePointer": false],
+                ["action": "clickLegend", "name": name, "movePointer": true],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
@@ -885,16 +899,18 @@ private let webInteractionHarnessJS = #"""
     }
     return { point: [points[offset], points[offset + 1]], hovered: { target: null } };
   }
-  function draggableHit(kind) {
+  function draggableHit(kind, preferWindow) {
     var zr = myChart.getZr();
     zr.refreshImmediately(true);
     var list = zr.storage.getDisplayList(true);
     var height = myChart.getHeight();
     var width = myChart.getWidth();
+    var hits = [];
     for (var i = 0; i < list.length; i++) {
       var el = list[i];
       if (!el || !el.draggable || !el.getBoundingRect || !el.contain) { continue; }
       var bounds = el.getBoundingRect();
+      var found = null;
       for (var gy = 1; gy < 20; gy++) {
         for (var gx = 1; gx < 20; gx++) {
           var point = el.transformCoordToGlobal(
@@ -910,10 +926,22 @@ private let webInteractionHarnessJS = #"""
               : point[0] >= width * 0.08 && point[0] <= width * 0.85 && point[1] < height * 0.68);
           if (!inRegion || !el.contain(point[0], point[1])) { continue; }
           var hovered = zr.handler.findHover(point[0], point[1]);
-          if (hovered && hovered.target === el) { return { point: point, target: el }; }
+          if (hovered && hovered.target === el) { found = point; break; }
         }
+        if (found) { break; }
+      }
+      if (found) {
+        var left = el.transformCoordToGlobal(bounds.x, bounds.y);
+        var right = el.transformCoordToGlobal(bounds.x + bounds.width, bounds.y);
+        hits.push({ point: found, target: el, globalWidth: Math.abs(right[0] - left[0]) });
       }
     }
+    if (kind === 'dataZoom' && hits.length) {
+      hits.sort(function (a, b) {
+        return preferWindow ? b.globalWidth - a.globalWidth : a.globalWidth - b.globalWidth;
+      });
+    }
+    if (hits.length) { return hits[0]; }
     throw new Error(kind + ' draggable target was not hit-testable');
   }
   var pointerOutside = false;
@@ -1038,7 +1066,7 @@ private let webInteractionHarnessJS = #"""
     },
     drag: function (kind, deltaX, deltaY, deltaPercent) {
       pointerOutside = false;
-      var hit = draggableHit(kind);
+      var hit = draggableHit(kind, typeof deltaPercent === 'number');
       var handler = myChart.getZr().handler;
       var start = hit.point;
       var dx = deltaX;
