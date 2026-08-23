@@ -58,4 +58,19 @@ final class OfficialScatterTooltipInteractionTests: XCTestCase {
         XCTAssertTrue(text.contains("Kyrgyzstan"), text)
         XCTAssertTrue(text.contains("75,41,5,392,580.undefined"), text)
     }
+
+    func testAnscombeStringFormatterUsesJavaScriptArrayCoercion() throws {
+        let demo = EChartsDemoRegistry.official_scatter_anscombe_quartet
+        let view = EChartsView(width: demo.width, height: demo.height)
+        defer { view.dispose() }
+        view.setOption(demo.option)
+
+        let expected = ["14,9.96", "14,8.1", "14,8.84", "8,7.04"]
+        for seriesIndex in expected.indices {
+            let series = try XCTUnwrap(
+                view.ec.getModel()?.getSeriesByIndex(Double(seriesIndex))
+            )
+            XCTAssertEqual(format._str(series.getDataParams(5).value), expected[seriesIndex])
+        }
+    }
 }

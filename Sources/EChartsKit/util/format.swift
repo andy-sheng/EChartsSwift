@@ -503,13 +503,24 @@ public enum format {
     }
     // Coercion that preserves nil (so `encodeHTML(nil)` can mirror `source == null ? '' : ...`).
     static func _strOrNil(_ v: Any?) -> String? {
-        switch v {
-        case nil: return nil
+        guard var value: Any = v else { return nil }
+        // An `Any` option bag can retain one or more Optional wrappers (notably a dictionary subscript
+        // around SeriesData.getRawValue()). JavaScript has no Optional container: unwrap it before
+        // coercion so formatter templates never expose Swift's `Optional(...)` debug description.
+        while Mirror(reflecting: value).displayStyle == .optional {
+            guard let child = Mirror(reflecting: value).children.first else { return nil }
+            value = child.value
+        }
+        switch value {
         case let s as String: return s
         case let d as Double: return number.jsNumberString(d)
         case let b as Bool: return b ? "true" : "false"
         case let i as Int: return String(i)
-        default: return String(describing: v!)
+        // JS `String(array)` / `'' + array` joins elements with commas, recursively coercing each item;
+        // this is what `{c}` relies on for multi-dimensional scatter values.
+        case let values as [Any]: return values.map { _strOrNil($0) ?? "" }.joined(separator: ",")
+        case let n as NSNumber: return number.jsNumberString(n.doubleValue)
+        default: return String(describing: value)
         }
     }
 
