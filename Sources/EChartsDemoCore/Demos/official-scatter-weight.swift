@@ -7,9 +7,12 @@
 //   - The official source is TypeScript: `function (params: any)` — the `: any` annotation is dropped
 //     so the reference pane's classic script parses (otherwise the whole page is a SyntaxError).
 //     Nothing else in webOptionJS is altered; the data is inline upstream, so nothing is fetched.
-//   - Native pane: `tooltip.formatter` is a JS closure and cannot be expressed as a Swift option, so
-//     it is omitted there (see PORT-NOTE). The two `axisLabel.formatter`s are STRING templates
-//     ('{value} cm' / '{value} kg'), not closures, and are carried over as-is.
+//   - Native pane: the JS tooltip closure is represented by the typed native callback seam. The two
+//     `axisLabel.formatter`s are STRING templates ('{value} cm' / '{value} kg') and are carried over
+//     as-is.
+import Foundation
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_scatter_weight = EChartsDemo(
         name: "official-scatter-weight", category: "scatter",
@@ -304,9 +307,7 @@ option = {
             "tooltip": [
                 // PORT-NOTE: trigger: 'axis' is commented out in the official source; kept commented here too.
                 "showDelay": 0.0,
-                // PORT-NOTE: formatter omitted — a JS closure returning "<seriesName> :<br/>{cm} {kg}"
-                // for 2-element [height, weight] values, and "<seriesName> :<br/>{name} : {value}kg"
-                // for the scalar fallback. Swift cannot carry a function through the option dict.
+                "formatter": scatterWeightTooltipFormatter,
                 "axisPointer": [
                     "show": true,
                     "type": "cross",
@@ -445,6 +446,28 @@ option = {
                 ] as [String: Any]
             ]
         ])
+}
+
+private func scatterWeightValueText(_ value: Any?) -> String {
+    let number: Double?
+    if let value = value as? Double { number = value }
+    else if let value = value as? Int { number = Double(value) }
+    else if let value = value as? NSNumber { number = value.doubleValue }
+    else { number = nil }
+    guard let number else { return "" }
+    return number.rounded() == number ? String(Int(number)) : String(number)
+}
+
+// Upstream tooltip.formatter, expressed through the native callback seam. Keep its two branches so
+// markPoint/scalar data receives the same fallback text as echarts.js.
+private let scatterWeightTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    let seriesName = params.seriesName ?? ""
+    if let values = params.value as? [Any], values.count > 1 {
+        return "\(seriesName) :<br/>\(scatterWeightValueText(values[0]))cm "
+            + "\(scatterWeightValueText(values[1]))kg "
+    }
+    return "\(seriesName) :<br/>\(params.name) : "
+        + "\(scatterWeightValueText(params.value))kg "
 }
 
 // [height cm, weight kg] — inline in the official source; hoisted out of the option literal so
