@@ -1054,9 +1054,8 @@ public final class ECharts: EChartsType {
         //   registerComponentView(ScrollableLegendView) + legendScrollActions (page-flip action). The
         //   subtype defaulter above resolves a bare `legend: {...}` (no `type`) to 'plain'; an explicit
         //   `legend: {type: 'scroll'}` resolves via `option.type` → 'legend.scroll' → this model/view.
-        //   The page-flip ACTION ('legendScroll') is DEFERRED (needs the live-view host); the STATIC
-        //   pagination layout (first page + clip + page controls) is what renders here.
         ComponentModel.registerClass(ScrollableLegendModel.self)
+        installScrollableLegendAction(ECharts._registers)
 
         // -- component/visualMap/installCommon.ts + typeDefaulter.ts + preprocessor.ts + visualEncoding.ts --
         //   registerComponentModel(ContinuousModel/PiecewiseModel) + registerComponentView(ContinuousView/

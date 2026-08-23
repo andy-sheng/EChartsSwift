@@ -1523,6 +1523,79 @@ public final class EChartsView {
         return nil
     }
 
+    /// Click the live pagePrev/pageNext control owned by a scrollable legend.
+    @discardableResult
+    public func _injectScrollableLegendPageClickForTest(
+        name: String,
+        movePointer: Bool = true
+    ) -> [Double]? {
+        guard name == "pagePrev" || name == "pageNext" else { return nil }
+        _ = zr.storage.getDisplayList(true)
+        for legendView in ec._componentsViews.compactMap({ $0 as? ScrollableLegendView }) {
+            var control: Path?
+            legendView.group.traverse { element in
+                if let path = element as? Path, path.name == name { control = path }
+                return false
+            }
+            guard let control, let rect = control.getBoundingRect() else { continue }
+            let point = control.transformCoordToGlobal(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2
+            )
+            guard zr.handler.findHover(point[0], point[1]).target === control else { continue }
+            if movePointer {
+                _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+            }
+            _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+            return point
+        }
+        return nil
+    }
+
+    /// Click an item that is actually visible on the current page of a scrollable legend. Off-page
+    /// children remain in the content group, so the Handler hit-test is the source of truth here.
+    @discardableResult
+    public func _injectVisibleScrollableLegendItemClickForTest(
+        visibleIndex: Int,
+        movePointer: Bool = true
+    ) -> [Double]? {
+        guard visibleIndex >= 0 else { return nil }
+        _ = zr.storage.getDisplayList(true)
+        for legendView in ec._componentsViews.compactMap({ $0 as? ScrollableLegendView }) {
+            var visible: [(Group, Element, [Double])] = []
+            for item in legendView.getContentGroup().children().compactMap({ $0 as? Group }) {
+                guard let target = item.children().last,
+                      let rect = target.getBoundingRect() else { continue }
+                let point = target.transformCoordToGlobal(
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2
+                )
+                var belongsToItem = false
+                var current = zr.handler.findHover(point[0], point[1]).target
+                while let element = current {
+                    if element === item {
+                        belongsToItem = true
+                        break
+                    }
+                    current = element.__hostTarget ?? (element.parent as? Element)
+                }
+                if belongsToItem { visible.append((item, target, point)) }
+            }
+            guard visible.indices.contains(visibleIndex) else { continue }
+            let point = visible[visibleIndex].2
+            if movePointer {
+                _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+            }
+            _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+            _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+            return point
+        }
+        return nil
+    }
+
     /// Emit the global-out form used when a pointer leaves the renderer entirely.
     public func _injectGlobalOutForTest() {
         let raw = ZRRawEvent()
@@ -1576,6 +1649,44 @@ public final class EChartsView {
             type: "mouseup", zrX: start[0] + deltaX, zrY: start[1] + deltaY
         )
         return start
+    }
+
+    /// Headless visual-oracle seam for a selectable piecewise visualMap. Resolves the requested
+    /// component and model-piece index to its live rendered symbol, then clicks it through Handler.
+    @discardableResult
+    public func _injectPiecewiseVisualMapClickForTest(
+        componentIndex: Int,
+        pieceIndex: Int,
+        movePointer: Bool = true
+    ) -> [Double]? {
+        let views = ec._componentsViews.compactMap { $0 as? PiecewiseVisualMapView }
+        guard views.indices.contains(componentIndex),
+              let symbol = views[componentIndex]._viewPieceSymbolsForTest.first(where: {
+                  $0.indexInModelPieceList == pieceIndex
+              })?.symbol,
+              let rect = symbol.getBoundingRect() else { return nil }
+        _ = zr.storage.getDisplayList(true)
+        let point = symbol.transformCoordToGlobal(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2
+        )
+        var belongsToSymbol = false
+        var current = zr.handler.findHover(point[0], point[1]).target
+        while let element = current {
+            if element === symbol {
+                belongsToSymbol = true
+                break
+            }
+            current = element.__hostTarget ?? (element.parent as? Element)
+        }
+        guard belongsToSymbol else { return nil }
+        if movePointer {
+            _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        _injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        _injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        _injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+        return point
     }
 
     /// Coerce a JS-number-ish payload value (Int or Double) to Double (small numbers box as `Int`).

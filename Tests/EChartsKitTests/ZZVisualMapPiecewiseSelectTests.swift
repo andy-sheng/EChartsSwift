@@ -158,6 +158,21 @@ final class ZZVisualMapPiecewiseSelectTests: XCTestCase {
             "toggling a piece off must re-encode (dim) the cells in that value range")
     }
 
+    func testExternalVisualHarnessTargetsOwnedPiece() {
+        let view = makeView()
+        guard let mdl = model(view), let pv = piecewiseView(view),
+              let entry = pv._viewPieceSymbolsForTest.first else {
+            return XCTFail("piecewise visualMap did not render a selectable piece")
+        }
+        let piece = mdl.getPieceList()[entry.indexInModelPieceList]
+        let key = mdl.getSelectedMapKey(piece)
+        XCTAssertNotNil(view._injectPiecewiseVisualMapClickForTest(
+            componentIndex: 0, pieceIndex: entry.indexInModelPieceList
+        ))
+        let selected = (model(view)?.option as? [String: Any])?["selected"] as? [String: Any]
+        XCTAssertEqual(selected?[key] as? Bool, false)
+    }
+
     // ---- headless dispatch parity: dispatching selectDataRange directly flips the same visual state ----
     func testDispatchSelectDataRangeMapsPieceToOutOfRange() {
         let view = makeView()

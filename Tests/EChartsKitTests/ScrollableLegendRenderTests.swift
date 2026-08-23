@@ -119,6 +119,28 @@ final class ScrollableLegendRenderTests: XCTestCase {
         }
     }
 
+    func testExternalVisualHarnessPagesAndClicksOnlyVisibleItems() {
+        let view = EChartsView(width: 400, height: 300)
+        view.setOption([
+            "legend": [
+                "type": "scroll",
+                "orient": "horizontal",
+                "left": "center",
+                "width": 120.0
+            ] as [String: Any],
+            "xAxis": ["type": "category", "data": ["A", "B", "C"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": baseSeries()
+        ])
+        XCTAssertNotNil(view._injectScrollableLegendPageClickForTest(name: "pageNext"))
+        let model = view.ec.getModel()?.getComponent("legend", 0) as? ScrollableLegendModel
+        let scrollIndex = ((model?.option as? [String: Any])?["scrollDataIndex"] as? NSNumber)?
+            .doubleValue
+        XCTAssertGreaterThan(scrollIndex ?? 0, 0)
+        XCTAssertNotNil(view._injectVisibleScrollableLegendItemClickForTest(visibleIndex: 0))
+        XCTAssertNotNil(view._injectScrollableLegendPageClickForTest(name: "pagePrev"))
+    }
+
     func testPlainLegendIsUnchangedNoControlsNoClip() {
         let ec = ECharts(width: 400, height: 300)
         ec.setOption([

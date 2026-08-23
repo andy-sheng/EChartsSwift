@@ -31,6 +31,7 @@ struct InteractionVisualStep: Decodable {
     let deltaPercent: Double?
     let componentIndex: Double?
     let handleIndex: Double?
+    let pieceIndex: Double?
     let allowMissing: Bool?
     let capture: String?
 }
@@ -479,6 +480,7 @@ private func writeOfficialInteractionScenarios(
         var legendNames: [String] = []
         var seenLegendNames = Set<String>()
         var coverageNotes: [String] = []
+        var hasScrollableLegend = false
         func hasLegendProvider(_ name: String) -> Bool {
             ecModel.getSeries().contains { series in
                 if series.name == name { return true }
@@ -506,9 +508,7 @@ private func writeOfficialInteractionScenarios(
                 )
             }
             if legend.subType == "scroll", componentNames.count > 3 {
-                coverageNotes.append(
-                    "scroll legend samples its first 3 visible items; page navigation is not exercised"
-                )
+                hasScrollableLegend = true
                 componentNames = Array(componentNames.prefix(3))
             }
             legendNames.append(contentsOf: componentNames)
@@ -536,6 +536,26 @@ private func writeOfficialInteractionScenarios(
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "legend-\(slug)-restored"],
+            ]
+        }
+        if hasScrollableLegend {
+            steps += [
+                ["action": "clickLegendPage", "name": "pageNext"],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "legend-page-next"],
+                ["action": "clickVisibleLegendItem", "dataIndex": 0.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "legend-page-item-off"],
+                ["action": "clickVisibleLegendItem", "dataIndex": 0.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "legend-page-item-restored"],
+                ["action": "clickLegendPage", "name": "pagePrev"],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "legend-page-restored"],
             ]
         }
 
@@ -627,6 +647,43 @@ private func writeOfficialInteractionScenarios(
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "settle", "capture": "visualmap-\(visualMapIndex)-restored"],
+            ]
+        }
+        let selectablePiecewiseVisualMaps = ecModel
+            .findComponents(QueryConditionKindA(mainType: "visualMap"))
+            .compactMap { $0 as? PiecewiseModel }
+            .filter {
+                ($0.get("show") as? Bool) != false
+                    && ($0.get("selectedMode") as? Bool) != false
+            }
+        for (visualMapIndex, visualMapModel) in selectablePiecewiseVisualMaps.enumerated() {
+            let pieces = visualMapModel.getPieceList()
+            guard !pieces.isEmpty else { continue }
+            let pieceIndex = pieces.count / 2
+            let piece = pieces[pieceIndex]
+            let label = (piece["text"] as? String)
+                ?? (piece["value"] as? String)
+                ?? (piece["value"] as? NSNumber)?.stringValue
+                ?? ""
+            steps += [
+                [
+                    "action": "clickVisualMapPiece",
+                    "componentIndex": Double(visualMapIndex),
+                    "pieceIndex": Double(pieceIndex),
+                    "dataName": label,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "visualmap-piece-\(visualMapIndex)-off"],
+                [
+                    "action": "clickVisualMapPiece",
+                    "componentIndex": Double(visualMapIndex),
+                    "pieceIndex": Double(pieceIndex),
+                    "dataName": label,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "settle", "capture": "visualmap-piece-\(visualMapIndex)-restored"],
             ]
         }
         let hasGeoRoam = demo.name != "official-scatter-map-brush"
@@ -842,6 +899,28 @@ func runNativeInteractionVisual(
             }
             record["name"] = name
             record["resolvedPoint"] = point
+        case "clickLegendPage":
+            guard let name = step.name,
+                  let point = view._injectScrollableLegendPageClickForTest(name: name) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): scroll legend page control was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["name"] = name
+            record["resolvedPoint"] = point
+        case "clickVisibleLegendItem":
+            let visibleIndex = Int(step.dataIndex ?? 0)
+            guard let point = view._injectVisibleScrollableLegendItemClickForTest(
+                visibleIndex: visibleIndex
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): visible scroll legend item was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["visibleIndex"] = visibleIndex
+            record["resolvedPoint"] = point
         case "hoverData":
             guard let action = resolvedDataAction(step, view: view) else {
                 FileHandle.standardError.write(
@@ -930,6 +1009,23 @@ func runNativeInteractionVisual(
             record["handleIndex"] = handleIndex
             record["deltaX"] = dx
             record["deltaY"] = dy
+        case "clickVisualMapPiece":
+            let componentIndex = Int(step.componentIndex ?? 0)
+            let pieceIndex = Int(step.pieceIndex ?? 0)
+            guard let point = view._injectPiecewiseVisualMapClickForTest(
+                componentIndex: componentIndex,
+                pieceIndex: pieceIndex,
+                movePointer: step.movePointer ?? true
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): piecewise visualMap item was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["componentIndex"] = componentIndex
+            record["pieceIndex"] = pieceIndex
+            if let dataName = step.dataName { record["dataName"] = dataName }
         case "dragDataZoom", "dragGraphic", "dragAxisPointer", "dragTimeline":
             let dx = step.deltaX ?? 48
             let dy = step.deltaY ?? 0
@@ -1067,6 +1163,65 @@ private let webInteractionHarnessJS = #"""
       }
     }
     throw new Error('legend item was not hit-testable: ' + name);
+  }
+  function scrollLegendPageHit(name) {
+    var zr = myChart.getZr();
+    zr.refreshImmediately(true);
+    zr.storage.getDisplayList(true);
+    var views = myChart._componentsViews || [];
+    var target = null;
+    function visit(item) {
+      if (!item || target) { return; }
+      if (item.type === 'path' && item.name === name) { target = item; return; }
+      var nested = children(item);
+      for (var i = 0; i < nested.length; i++) { visit(nested[i]); }
+    }
+    for (var vi = 0; vi < views.length; vi++) {
+      if (views[vi].type !== 'legend.scroll') { continue; }
+      visit(views[vi].group);
+      if (target) { break; }
+    }
+    if (!target || !target.getBoundingRect) {
+      throw new Error('scroll legend page control was not available: ' + name);
+    }
+    var rect = target.getBoundingRect();
+    var point = target.transformCoordToGlobal(
+      rect.x + rect.width / 2, rect.y + rect.height / 2
+    );
+    var hovered = zr.handler.findHover(point[0], point[1]);
+    if (!hovered || hovered.target !== target) {
+      throw new Error('scroll legend page control was not hit-testable: ' + name);
+    }
+    return { point: point, hovered: hovered };
+  }
+  function visibleScrollLegendItemHit(visibleIndex) {
+    var zr = myChart.getZr();
+    zr.refreshImmediately(true);
+    zr.storage.getDisplayList(true);
+    var views = myChart._componentsViews || [];
+    var visible = [];
+    for (var vi = 0; vi < views.length; vi++) {
+      if (views[vi].type !== 'legend.scroll') { continue; }
+      var content = views[vi].getContentGroup && views[vi].getContentGroup();
+      var items = children(content);
+      for (var ii = 0; ii < items.length; ii++) {
+        var targets = children(items[ii]);
+        var target = targets[targets.length - 1];
+        if (!target || !target.getBoundingRect) { continue; }
+        var rect = target.getBoundingRect();
+        var point = target.transformCoordToGlobal(
+          rect.x + rect.width / 2, rect.y + rect.height / 2
+        );
+        var hovered = zr.handler.findHover(point[0], point[1]);
+        if (hovered && belongsTo(hovered.target, items[ii])) {
+          visible.push({ point: point, hovered: hovered });
+        }
+      }
+    }
+    if (!visible[visibleIndex]) {
+      throw new Error('visible scroll legend item was not hit-testable: ' + visibleIndex);
+    }
+    return visible[visibleIndex];
   }
   function toolboxHit(name) {
     var zr = myChart.getZr();
@@ -1335,6 +1490,44 @@ private let webInteractionHarnessJS = #"""
     }
     return { point: target.transformCoordToGlobal(0, 0), target: target };
   }
+  function piecewiseVisualMapHit(componentIndex, pieceIndex, label) {
+    var zr = myChart.getZr();
+    zr.refreshImmediately(true);
+    zr.storage.getDisplayList(true);
+    var views = (myChart._componentsViews || []).filter(function (view) {
+      return view.type === 'visualMap.piecewise';
+    });
+    var view = views[componentIndex];
+    var items = children(view && view.group);
+    var owner = null;
+    if (label) {
+      for (var i = 0; i < items.length; i++) {
+        if (containsText(items[i], label)) { owner = items[i]; break; }
+      }
+    }
+    if (!owner) {
+      var itemGroups = items.filter(function (item) {
+        return children(item).some(function (child) {
+          return child && child.type === 'path' && child.getBoundingRect;
+        });
+      });
+      owner = itemGroups[pieceIndex];
+    }
+    var targets = children(owner);
+    for (var ti = 0; ti < targets.length; ti++) {
+      var target = targets[ti];
+      if (!target || target.type !== 'path' || !target.getBoundingRect) { continue; }
+      var rect = target.getBoundingRect();
+      var point = target.transformCoordToGlobal(
+        rect.x + rect.width / 2, rect.y + rect.height / 2
+      );
+      var hovered = zr.handler.findHover(point[0], point[1]);
+      if (hovered && belongsTo(hovered.target, owner)) {
+        return { point: point, hovered: hovered };
+      }
+    }
+    throw new Error('piecewise visualMap item was not available: ' + componentIndex + '/' + pieceIndex);
+  }
   var pointerOutside = false;
   function hideTooltipHost() {
     myChart.dispatchAction({ type: 'hideTip' });
@@ -1436,6 +1629,32 @@ private let webInteractionHarnessJS = #"""
     clickLegend: function (name, movePointer) {
       pointerOutside = false;
       var hit = legendHit(name);
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+    },
+    clickLegendPage: function (name, movePointer) {
+      pointerOutside = false;
+      var hit = scrollLegendPageHit(name);
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+    },
+    clickVisibleLegendItem: function (visibleIndex, movePointer) {
+      pointerOutside = false;
+      var hit = visibleScrollLegendItemHit(visibleIndex);
       var handler = myChart.getZr().handler;
       var event = raw(hit.point);
       if (movePointer) { handler.mousemove(event); }
@@ -1580,6 +1799,19 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
     },
+    clickVisualMapPiece: function (componentIndex, pieceIndex, label, movePointer) {
+      pointerOutside = false;
+      var hit = piecewiseVisualMapHit(componentIndex, pieceIndex, label);
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+    },
     globalOut: function () {
       pointerOutside = true;
       var chartDom = myChart.getDom();
@@ -1667,6 +1899,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "deltaPercent": step.deltaPercent ?? NSNull(),
             "componentIndex": step.componentIndex ?? 0,
             "handleIndex": step.handleIndex ?? 1,
+            "pieceIndex": step.pieceIndex ?? 0,
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(data: data, encoding: .utf8)!
@@ -1675,6 +1908,10 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "settle": script = "window.__interactionVisual.settle()"
         case "clickLegend":
             script = "(function(a){return window.__interactionVisual.clickLegend(a.name,a.movePointer);})(\(json))"
+        case "clickLegendPage":
+            script = "(function(a){return window.__interactionVisual.clickLegendPage(a.name,a.movePointer);})(\(json))"
+        case "clickVisibleLegendItem":
+            script = "(function(a){return window.__interactionVisual.clickVisibleLegendItem(a.dataIndex,a.movePointer);})(\(json))"
         case "hoverData":
             script = "(function(a){return window.__interactionVisual.hoverData(a.seriesIndex,a.dataIndex,a.dataName);})(\(json))"
         case "hoverSeries":
@@ -1698,6 +1935,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
         case "dragVisualMap":
             script = "(function(a){return window.__interactionVisual.dragVisualMap(a.componentIndex,a.handleIndex,a.deltaX,a.deltaY);})(\(json))"
+        case "clickVisualMapPiece":
+            script = "(function(a){return window.__interactionVisual.clickVisualMapPiece(a.componentIndex,a.pieceIndex,a.dataName,a.movePointer);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
         default:
             fail("step \(currentIndex): unknown action \(step.action)")
