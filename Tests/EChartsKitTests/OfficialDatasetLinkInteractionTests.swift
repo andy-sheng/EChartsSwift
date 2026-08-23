@@ -146,6 +146,54 @@ final class OfficialDatasetLinkInteractionTests: XCTestCase {
         XCTAssertEqual(hoveredAxisValue ?? -1, 3.0, accuracy: 1e-9,
                        "hovering the 2015 symbol must publish axis category index 3")
     }
+
+    func testAxisPointerRemainsVisibleWhenListenerSynchronouslyMergesPieOption() throws {
+        let view = EChartsView(width: 640, height: 420)
+        view.setOption(EChartsDemoRegistry.official_dataset_link.option)
+        _ = view.zr.storage.getDisplayList(true)
+
+        view.on("updateAxisPointer") { event in
+            guard let axesInfo = event["axesInfo"] as? [[String: Any]],
+                  let rawValue = axesInfo.first?["value"] else { return }
+            let value = (rawValue as? Double) ?? (rawValue as? Int).map(Double.init) ?? 0
+            let dimension = Int(value) + 1
+            view.setOption([
+                "series": [[
+                    "id": "pie",
+                    "label": ["formatter": "{b}: {@[\(dimension)]} ({d}%)"] as [String: Any],
+                    "encode": ["value": Double(dimension)] as [String: Any]
+                ] as [String: Any]]
+            ])
+        }
+
+        let line = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(0))
+        let symbol = try XCTUnwrap(line.getData().getItemGraphicEl(3))
+        let bounds = try XCTUnwrap(symbol.getBoundingRect())
+        let point = symbol.transformCoordToGlobal(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2
+        )
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+
+        let verticalPointers = view.zr.storage.getDisplayList(true).compactMap { $0 as? Line }
+            .compactMap { $0.shape as? LineShape }
+            .filter {
+                abs($0.x1 - point[0]) < 1 && abs($0.x2 - point[0]) < 1
+                    && abs($0.y2 - $0.y1) > 100
+            }
+        XCTAssertFalse(verticalPointers.isEmpty,
+                       "the 2015 axisPointer must survive the synchronous pie setOption merge")
+
+        view._injectGlobalOutForTest()
+        let remainingPointers = view.zr.storage.getDisplayList(true).compactMap { $0 as? Line }
+            .compactMap { $0.shape as? LineShape }
+            .filter {
+                abs($0.x1 - point[0]) < 1 && abs($0.x2 - point[0]) < 1
+                    && abs($0.y2 - $0.y1) > 100
+            }
+        XCTAssertTrue(remainingPointers.isEmpty,
+                      "the linked axisPointer must be hidden after global-out cleanup")
+    }
 }
 
 @MainActor

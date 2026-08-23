@@ -682,11 +682,12 @@ public final class EChartsView {
             payload.other["dispatchAction"] = dispatchAction
             // Do not call axisTrigger directly: upstream dispatches the registered updateAxisPointer
             // action, whose public event is observable by examples such as official-dataset-link.
-            // Its listener may synchronously setOption, so re-read the model before drawing pointers.
+            // The `ec.on("updateAxisPointer")` hook below renders the pointer while the action's updated
+            // model is still current. Do not render it a second time after dispatch returns: a public
+            // event listener may synchronously call setOption (official-dataset-link does), whose newly
+            // collected axisPointer starts hidden. A second render would erase the just-drawn pointer.
+            // This also matches upstream ordering: action views update before the public event callback.
             self.ec.dispatchAction(payload)
-            if let updatedModel = self.ec.getModel() {
-                self._updateAxisPointers(updatedModel)
-            }
         })
 
         // Handle drag: `BaseAxisPointer._doDispatchAxisPointer` dispatches `updateAxisPointer`, whose
