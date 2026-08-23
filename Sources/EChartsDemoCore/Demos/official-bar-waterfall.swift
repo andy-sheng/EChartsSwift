@@ -6,7 +6,9 @@
 //   - webOptionJS: the official source is TypeScript — its `function (params: any)` type annotation is
 //     stripped (a classic <script> cannot parse it), and the trailing `export {};` is dropped. Nothing
 //     else changed; no data fetch, no timers.
-//   - native option: `tooltip.formatter` is a JS closure and cannot be expressed in Swift (see PORT-NOTE).
+//   - native option: the JS `tooltip.formatter` is represented by an equivalent Swift closure.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_bar_waterfall = EChartsDemo(
         name: "official-bar-waterfall", category: "bar",
@@ -83,10 +85,8 @@ option = {
                 "trigger": "axis",
                 "axisPointer": [
                     "type": "shadow"
-                ] as [String: Any]
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure took the axis-trigger params
-                // array, picked params[1] (the visible "Life Cost" bar, skipping the transparent
-                // placeholder) and rendered `<name><br/><seriesName> : <value>`.
+                ] as [String: Any],
+                "formatter": barWaterfallTooltipFormatter
             ] as [String: Any],
             "grid": [
                 "left": "3%",
@@ -137,3 +137,15 @@ option = {
 private let barWaterfallPlaceholderData: [Double] = [0, 1700, 1400, 1200, 300, 0]
 // The visible bars: total, then the components that sum to it.
 private let barWaterfallLifeCostData: [Double] = [2900, 1200, 300, 200, 900, 300]
+
+private let barWaterfallTooltipFormatter: ([TooltipCallbackDataParams]) -> String = { params in
+    guard let target = params.first(where: { $0.seriesName != "Placeholder" }) else { return "" }
+    return "\(target.name)<br/>\(target.seriesName ?? "") : \(barWaterfallValueText(target.value))"
+}
+
+private func barWaterfallValueText(_ value: Any) -> String {
+    if let value = value as? String { return value }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? Double, value.rounded() == value { return String(Int(value)) }
+    return String(describing: value)
+}

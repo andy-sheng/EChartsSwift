@@ -6,11 +6,13 @@
 // DEVIATIONS:
 //   - webOptionJS: the TS type annotation in `function (params: any)` is dropped (the reference pane
 //     is a classic <script>; `: any` is a SyntaxError there). Otherwise verbatim, minus `export {};`.
-//   - option (native): `tooltip.formatter` is omitted — it is a JS closure (see PORT-NOTE below).
+//   - option (native): the JS `tooltip.formatter` is represented by an equivalent Swift closure.
 //   - option (native): the four series' `data.map(...)` calls are precomputed into file-scope arrays
 //     (same numbers); inline closures inside the option literal stall Swift's type-checker.
 //   - Canvas bumped to 720x520 (official shotWidth is 800): the polar plot needs room under the
 //     title/subtitle and above the bottom legend.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_bar_polar_real_estate = EChartsDemo(
         name: "official-bar-polar-real-estate", category: "bar",
@@ -145,10 +147,8 @@ option = {
                 "data": barPolarRealEstateCities
             ] as [String: Any],
             "tooltip": [
-                "show": true
-                // PORT-NOTE: tooltip.formatter omitted — a JS closure that looked the hovered
-                // params.dataIndex up in the raw table and rendered an HTML block
-                // "<city><br>Lowest：<min><br>Highest：<max><br>Average：<avg>".
+                "show": true,
+                "formatter": barPolarRealEstateTooltipFormatter
             ] as [String: Any],
             "radiusAxis": [:] as [String: Any],
             "polar": [:] as [String: Any],
@@ -230,3 +230,18 @@ private let barPolarRealEstateLowest: [Double] = barPolarRealEstateData.map { $0
 private let barPolarRealEstateRange: [Double] = barPolarRealEstateData.map { $0[1] - $0[0] }
 private let barPolarRealEstateAvgBase: [Double] = barPolarRealEstateData.map { $0[2] - barPolarRealEstateBarHeight }
 private let barPolarRealEstateAvgBand: [Double] = barPolarRealEstateData.map { _ in barPolarRealEstateBarHeight * 2 }
+
+private let barPolarRealEstateTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    let index = Int(params.dataIndex)
+    guard barPolarRealEstateCities.indices.contains(index),
+          barPolarRealEstateData.indices.contains(index) else { return "" }
+    let row = barPolarRealEstateData[index]
+    return "\(barPolarRealEstateCities[index])"
+        + "<br>Lowest：\(barPolarRealEstateValueText(row[0]))"
+        + "<br>Highest：\(barPolarRealEstateValueText(row[1]))"
+        + "<br>Average：\(barPolarRealEstateValueText(row[2]))"
+}
+
+private func barPolarRealEstateValueText(_ value: Double) -> String {
+    value.rounded() == value ? String(Int(value)) : String(value)
+}

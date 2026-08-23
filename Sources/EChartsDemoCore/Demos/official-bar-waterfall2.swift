@@ -6,8 +6,10 @@
 //   - The official source is TypeScript; the web pane drops the `params: any` annotation (a type
 //     annotation is a SyntaxError in the classic <script> the reference pane runs) and the trailing
 //     `export {};`. Everything else in webOptionJS is verbatim, including the xAxis IIFE.
-//   - Native pane: `tooltip.formatter` (a JS closure) is omitted — see PORT-NOTE. The xAxis IIFE is
-//     evaluated in Swift into the same 'Nov 1'…'Nov 11' list.
+//   - Native pane: the JS `tooltip.formatter` is represented by an equivalent Swift closure. The
+//     xAxis IIFE is evaluated in Swift into the same 'Nov 1'…'Nov 11' list.
+import EChartsKit
+
 extension EChartsDemoRegistry {
     static let official_bar_waterfall2 = EChartsDemo(
         name: "official-bar-waterfall2", category: "bar",
@@ -106,11 +108,8 @@ option = {
                 "trigger": "axis",
                 "axisPointer": [
                     "type": "shadow"
-                ] as [String: Any]
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure picked whichever of the two
-                // visible series (params[1] = Income, params[2] = Expenses) had a real value at this
-                // category (skipping the '-' placeholder) and rendered "<name><br/><seriesName> : <value>",
-                // hiding the invisible 'Placeholder' series from the tooltip.
+                ] as [String: Any],
+                "formatter": barWaterfall2TooltipFormatter
             ] as [String: Any],
             "legend": [
                 "data": ["Expenses", "Income"]
@@ -179,3 +178,17 @@ private let waterfall2Placeholder: [Double] = [0, 900, 1245, 1530, 1376, 1376, 1
 // '-' = no bar on that day (echarts treats the string '-' as empty).
 private let waterfall2Income: [Any] = [900.0, 345.0, 393.0, "-", "-", 135.0, 178.0, 286.0, "-", "-", "-"]
 private let waterfall2Expenses: [Any] = ["-", "-", "-", 108.0, 154.0, "-", "-", "-", 119.0, 361.0, 203.0]
+
+private let barWaterfall2TooltipFormatter: ([TooltipCallbackDataParams]) -> String = { params in
+    guard let target = params.first(where: {
+        $0.seriesName != "Placeholder" && barWaterfall2ValueText($0.value) != "-"
+    }) else { return "" }
+    return "\(target.name)<br/>\(target.seriesName ?? "") : \(barWaterfall2ValueText(target.value))"
+}
+
+private func barWaterfall2ValueText(_ value: Any) -> String {
+    if let value = value as? String { return value }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? Double, value.rounded() == value { return String(Int(value)) }
+    return String(describing: value)
+}
