@@ -350,6 +350,14 @@ private func writeOfficialInteractionScenarios(
             }
             else {
                 var candidates = [middle]
+                // The web reference keeps only the first progressive chunk attached to the live
+                // display tree. Later chunks are painted incrementally and cannot be reached by a
+                // real pointer hit even though the data and coordinate layout still exist. Prefer
+                // an early, retained datum for large progressive series so Native and Web exercise
+                // the same genuinely hit-testable symbol.
+                if count > 2_000 {
+                    candidates = Array(0..<min(32, count)) + candidates
+                }
                 for offset in 1...min(32, max(1, count - 1)) {
                     if middle - offset >= 0 { candidates.append(middle - offset) }
                     if middle + offset < count { candidates.append(middle + offset) }
@@ -497,18 +505,33 @@ private func writeOfficialInteractionScenarios(
                    && hitIndexBySeries[Int(series.seriesIndex)] != nil
            }), let index = hitIndexBySeries[Int(selectable.seriesIndex)] {
             let seriesIndex = Int(selectable.seriesIndex)
+            var initialSingleSelection: Int?
+            if (selectable.get("selectedMode") as? String) == "single" {
+                initialSingleSelection = (0..<selectable.getData().count()).first {
+                    selectable.isSelected(Double($0))
+                }
+            }
             steps += [
                 [
                     "action": "clickData", "seriesIndex": Double(seriesIndex),
                     "dataIndex": Double(index), "movePointer": true,
                 ],
+            ]
+            steps += [
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "pie-selection-toggled"],
+            ]
+            let restoreIndex = initialSingleSelection.flatMap { initial in
+                initial != index && resolveDeterministicDataHit([
+                    "seriesIndex": Double(seriesIndex), "dataIndex": Double(initial),
+                ], ec: view.ec, view: view) != nil ? initial : nil
+            } ?? index
+            steps += [
                 [
                     "action": "clickData", "seriesIndex": Double(seriesIndex),
-                    "dataIndex": Double(index), "movePointer": true,
+                    "dataIndex": Double(restoreIndex), "movePointer": true,
                 ],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
@@ -985,10 +1008,10 @@ private let webInteractionHarnessJS = #"""
             && typeof item.hoverDataIdx === 'number') {
           largePaths.push(item);
         }
-        var nested = children(item);
-        for (var li = 0; li < nested.length; li++) { collectLarge(nested[li]); }
       }
-      collectLarge(chartView && chartView.group);
+      var chartGroup = chartView && chartView.group;
+      collectLarge(chartGroup);
+      if (chartGroup && chartGroup.traverse) { chartGroup.traverse(collectLarge); }
       for (var lp = 0; lp < largePaths.length; lp++) {
         var large = largePaths[lp];
         var largeStart = large.startIndex || 0;
@@ -1002,6 +1025,23 @@ private let webInteractionHarnessJS = #"""
         if (largeHovered && largeHovered.target === large
             && large.hoverDataIdx + largeStart === dataIndex) {
           return { point: largePoint, hovered: largeHovered };
+        }
+      }
+      var itemPoint = data && data.getItemLayout && data.getItemLayout(dataIndex);
+      if ((!itemPoint || itemPoint.length < 2) && data && data.getLayout) {
+        var layoutPoints = data.getLayout('points');
+        var layoutOffset = dataIndex * 2;
+        if (layoutPoints && layoutOffset + 1 < layoutPoints.length) {
+          itemPoint = [layoutPoints[layoutOffset], layoutPoints[layoutOffset + 1]];
+        }
+      }
+      if (itemPoint && itemPoint.length >= 2
+          && isFinite(itemPoint[0]) && isFinite(itemPoint[1])) {
+        var progressivePoint = [itemPoint[0], itemPoint[1]];
+        var progressiveHovered = zr.handler.findHover(progressivePoint[0], progressivePoint[1]);
+        if (progressiveHovered && progressiveHovered.target
+            && chartGroup && belongsTo(progressiveHovered.target, chartGroup)) {
+          return { point: progressivePoint, hovered: progressiveHovered };
         }
       }
       throw new Error('data item not found: ' + seriesIndex + '/' + dataIndex);
