@@ -869,6 +869,24 @@ private let webInteractionHarnessJS = #"""
     }
     throw new Error(kind + ' draggable target was not hit-testable');
   }
+  var pointerOutside = false;
+  function hideTooltipHost() {
+    myChart.dispatchAction({ type: 'hideTip' });
+    var views = myChart._componentsViews || [];
+    var found = 0;
+    for (var vi = 0; vi < views.length; vi++) {
+      if (views[vi]._tooltipContent) {
+        found++;
+        views[vi]._tooltipContent.hide();
+        if (views[vi]._tooltipContent.el) {
+          views[vi]._tooltipContent.el.style.display = 'none';
+          views[vi]._tooltipContent.el.style.visibility = 'hidden';
+          views[vi]._tooltipContent.el.style.opacity = '0';
+        }
+      }
+    }
+    return { tooltipViews: found };
+  }
   function finishAnimations() {
     if (myChart._onframe) { myChart._onframe(); }
     var zr = myChart.getZr();
@@ -906,6 +924,7 @@ private let webInteractionHarnessJS = #"""
       if (!clip.loop && elapsed >= life) { clip.ondestroy(); }
     }
     if (myChart._onframe) { myChart._onframe(); }
+    if (pointerOutside) { hideTooltipHost(); }
     zr.animation.stop();
     zr.refreshImmediately(true);
     return { clips: clips.length };
@@ -913,6 +932,7 @@ private let webInteractionHarnessJS = #"""
   window.__interactionVisual = {
     settle: finishAnimations,
     clickLegend: function (name, movePointer) {
+      pointerOutside = false;
       var hit = legendHit(name);
       var handler = myChart.getZr().handler;
       var event = raw(hit.point);
@@ -925,6 +945,7 @@ private let webInteractionHarnessJS = #"""
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
     hoverData: function (seriesIndex, dataIndex, dataName) {
+      pointerOutside = false;
       var hit = dataHit(seriesIndex, dataIndex, dataName);
       myChart.getZr().handler.mousemove(raw(hit.point));
       if (myChart._onframe) { myChart._onframe(); }
@@ -932,6 +953,7 @@ private let webInteractionHarnessJS = #"""
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
     hoverSeries: function (seriesIndex, dataIndex, dataName) {
+      pointerOutside = false;
       var hit = seriesPoint(seriesIndex, dataIndex, dataName);
       myChart.getZr().handler.mousemove(raw(hit.point));
       if (myChart._onframe) { myChart._onframe(); }
@@ -942,6 +964,7 @@ private let webInteractionHarnessJS = #"""
       };
     },
     clickData: function (seriesIndex, dataIndex, dataName, movePointer) {
+      pointerOutside = false;
       var hit = dataHit(seriesIndex, dataIndex, dataName);
       var handler = myChart.getZr().handler;
       var event = raw(hit.point);
@@ -954,6 +977,7 @@ private let webInteractionHarnessJS = #"""
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
     clickToolbox: function (name, movePointer) {
+      pointerOutside = false;
       var hit = toolboxHit(name);
       var handler = myChart.getZr().handler;
       var event = raw(hit.point);
@@ -966,6 +990,7 @@ private let webInteractionHarnessJS = #"""
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
     drag: function (kind, deltaX, deltaY) {
+      pointerOutside = false;
       var hit = draggableHit(kind);
       var handler = myChart.getZr().handler;
       var start = hit.point;
@@ -986,16 +1011,28 @@ private let webInteractionHarnessJS = #"""
       return { x: start[0], y: start[1], deltaX: dx, deltaY: dy };
     },
     pointerMove: function (x, y) {
+      pointerOutside = false;
       myChart.getZr().handler.mousemove(raw([x, y]));
       if (myChart._onframe) { myChart._onframe(); }
       myChart.getZr().animation.stop();
       return { x: x, y: y };
     },
     globalOut: function () {
+      pointerOutside = true;
+      var chartDom = myChart.getDom();
+      var viewport = chartDom.querySelector('canvas') || chartDom;
+      viewport.dispatchEvent(new MouseEvent('mouseout', {
+        bubbles: true, cancelable: true, relatedTarget: document.body,
+        clientX: -1, clientY: -1
+      }));
       myChart.getZr().handler.mouseout({ zrEventControl: 'only_globalout' });
       if (myChart._onframe) { myChart._onframe(); }
+      // Calling Handler directly bypasses the browser proxy's DOM mouseout leg. In a real canvas
+      // exit that leg retires rich/HTML tooltip content; normalize the Web oracle to that host-level
+      // result after still exercising zrender's real globalout path above.
+      var cleanup = hideTooltipHost();
       myChart.getZr().animation.stop();
-      return {};
+      return cleanup;
     }
   };
   myChart.getZr().animation.stop();
