@@ -358,13 +358,10 @@ open class ToolboxView: ComponentView {
                 ]
             )
 
-            // Hover-title reveal — the port's faithful adaptation of upstream's mouseover
-            //   (`textContent.setStyle({fill, backgroundColor}); textContent.ignore = !showTitle;
-            //    api.enterEmphasis(this)`) / mouseout (`api.leaveEmphasis(this); textContent.hide()`):
-            //   attach an EMPHASIS state to the title text that is VISIBLE (`ignore: false`) and coloured,
-            //   while its normal state stays hidden. `Element.useState`/`useStates` propagates the icon's
-            //   state down to its `textContent` (Element.swift:983/1051), so the title appears exactly when
-            //   the icon enters emphasis and hides again on downplay — no per-element mouse handlers needed.
+            // Hover-title styling. Visibility must be controlled by the actual pointer handlers below,
+            // not by the icon's emphasis state: toolbox features also persist `iconStatus: emphasis` to
+            // mark an active tool (brush rect/polygon, dataZoom), and that active state must recolour the
+            // icon without leaving its hover title visible after the pointer has gone.
             let hoverStyle = iconStyleEmphasisModel.getItemStyle()
             // fill: iconStyleEmphasisModel.get('textFill') || hoverStyle.fill || hoverStyle.stroke
             //       || tokens.color.neutral99
@@ -379,7 +376,6 @@ open class ToolboxView: ComponentView {
             }
             let textEmphasisState = textContent.ensureState("emphasis")
             textEmphasisState.textStyle = emphasisTextStyle
-            textEmphasisState.ignore = false    // upstream: shown on hover (`!showTitle` → false here)
 
             // Title default position. Upstream sets `path.setTextConfig({position})` on mouseover; the
             //   default is bottom (horizontal) / right (vertical) unless the toolbox is anchored there.
@@ -398,6 +394,18 @@ open class ToolboxView: ComponentView {
             //   enters emphasis (recolouring the icon + revealing the title). Replaces upstream's per-icon
             //   mouseover/mouseout handlers with the ported states-engine hover binding (EChartsView).
             states.toggleHoverEmphasis(path, nil, nil, false)
+
+            // Upstream owns title visibility in the icon's mouseover/mouseout callbacks independently
+            // from `iconStatus`. Keep that separation so an active tool can stay emphasized while its
+            // title is hidden. The chart-level hover binding still owns enter/leave-emphasis and refresh.
+            path.on("mouseover", { _, _ in
+                textContent.show()
+                return nil
+            })
+            path.on("mouseout", { _, _ in
+                textContent.hide()
+                return nil
+            })
 
             // (featureModel.get(['iconStatus', iconName]) === 'emphasis' ? enterEmphasis : leaveEmphasis)(path);
             //   Apply the persisted icon status (e.g. magicType's active type is kept in `emphasis`).

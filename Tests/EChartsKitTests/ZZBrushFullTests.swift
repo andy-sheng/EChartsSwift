@@ -348,6 +348,26 @@ final class ZZBrushFullTests: XCTestCase {
         XCTAssertNotNil(area["coordRange"], "the dragged pixel range must be converted back to a data coordRange")
     }
 
+    func testExternalVisualHarnessDragsInsideOwnedGrid() {
+        let view = makeScatterView()
+        var arm = Payload(type: "takeGlobalCursor")
+        arm.other["key"] = "brush"
+        arm.other["brushOption"] = [
+            "brushType": "rect", "brushMode": "single",
+        ] as [String: Any]
+        view.ec.dispatchAction(arm)
+
+        XCTAssertNotNil(view._injectBrushDragForTest(
+            targetType: "grid", componentIndex: 0, brushType: "rect"
+        ))
+        var brushModel: BrushModel?
+        view.ec.getModel()?.eachComponent("brush") { model, _ in
+            brushModel = model as? BrushModel
+        }
+        XCTAssertEqual(brushModel?.areas.first?["brushType"] as? String, "rect")
+        XCTAssertNotNil(brushModel?.areas.first?["coordRange"])
+    }
+
     // ---- (9) the toolbox brush BUTTON is what arms the cursor in the official examples ----
     //   `brush: { toolbox: [...] }` -> brushPreprocessor injects toolbox.feature.brush.type ->
     //   ToolboxBrushFeature renders those icons -> clicking one dispatches `takeGlobalCursor`.

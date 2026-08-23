@@ -1689,6 +1689,72 @@ public final class EChartsView {
         return point
     }
 
+    /// Drive a real BrushController gesture inside an owned grid or geo panel. The fractions are
+    /// resolved against the current coordinate-system rectangle, so the same scenario survives
+    /// layout and canvas-size differences without bypassing pointer hit testing.
+    @discardableResult
+    public func _injectBrushDragForTest(
+        targetType: String,
+        componentIndex: Int = 0,
+        brushType: String = "rect",
+        fromXFraction: Double = 0.18,
+        fromYFraction: Double = 0.2,
+        toXFraction: Double = 0.55,
+        toYFraction: Double = 0.72
+    ) -> [Double]? {
+        let rect: BoundingRect
+        if targetType == "geo" {
+            let models = ec.getModel()?.findComponents(
+                QueryConditionKindA(mainType: "geo")
+            ).compactMap { $0 as? GeoModel } ?? []
+            guard models.indices.contains(componentIndex),
+                  let geo = models[componentIndex].coordinateSystem as? Geo else { return nil }
+            rect = geo.getViewRect()
+        }
+        else if targetType == "grid" {
+            let models = ec.getModel()?.findComponents(
+                QueryConditionKindA(mainType: "grid")
+            ).compactMap { $0 as? GridModel } ?? []
+            guard models.indices.contains(componentIndex),
+                  let grid = models[componentIndex].coordinateSystem as? Grid else { return nil }
+            let gridRect = grid.getRect()
+            rect = BoundingRect(gridRect.x, gridRect.y, gridRect.width, gridRect.height)
+        }
+        else {
+            return nil
+        }
+        guard rect.width > 0, rect.height > 0 else { return nil }
+        let start = [
+            rect.x + rect.width * fromXFraction,
+            rect.y + rect.height * fromYFraction,
+        ]
+        let end = [
+            rect.x + rect.width * toXFraction,
+            rect.y + rect.height * toYFraction,
+        ]
+        _injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
+        _injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
+        let points: [[Double]]
+        if brushType == "polygon" {
+            points = [
+                [end[0], start[1]], [end[0], end[1]], [start[0], end[1]], start,
+            ]
+        }
+        else {
+            points = [0.25, 0.5, 0.75, 1.0].map { fraction in
+                [
+                    start[0] + (end[0] - start[0]) * fraction,
+                    start[1] + (end[1] - start[1]) * fraction,
+                ]
+            }
+        }
+        for point in points {
+            _injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        _injectPointerForTest(type: "mouseup", zrX: end[0], zrY: end[1])
+        return start + end
+    }
+
     /// Coerce a JS-number-ish payload value (Int or Double) to Double (small numbers box as `Int`).
     private func _viewAsDouble(_ v: Any?) -> Double? {
         if let d = v as? Double { return d }

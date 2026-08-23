@@ -192,12 +192,8 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertEqual(iconsWithText, 3, "every toolbox icon should carry a title textContent")
     }
 
-    // ---- (1e) hovering (highlight) an icon enters emphasis + reveals its title; downplay hides it ----
-    //   Faithful wiring test: the toolbox icon is a highDown dispatcher whose title textContent is
-    //   hidden normally (ignore=true) and visible in its emphasis state (ignore=false). Entering
-    //   emphasis on the icon propagates the state to the textContent (Element.useState→textContent),
-    //   so the title appears; leaving emphasis restores the hidden normal state.
-    func testIconHoverEntersEmphasisAndRevealsTitle() {
+    // ---- (1e) pointer hover reveals the title, while a persisted active emphasis does not ----
+    func testIconTitleVisibilityTracksPointerRatherThanActiveEmphasis() {
         let view = makeChart()
 
         // Grab the first toolbox icon path (the only SVGPaths that carry a title textContent).
@@ -214,15 +210,26 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertTrue(title.ignore, "title text is hidden before hover")
         XCTAssertFalse(path.currentStates.contains("emphasis"), "icon is not emphasized initially")
 
-        // Hover / highlight the icon (same primitive the live-host mouseover fires).
+        // A persisted active-tool emphasis recolours the icon but must not reveal the hover title.
         view.ec.api.enterEmphasis(path)
-        XCTAssertTrue(path.currentStates.contains("emphasis"), "icon enters emphasis on hover")
-        XCTAssertFalse(title.ignore, "title text is revealed while the icon is emphasized")
+        XCTAssertTrue(path.currentStates.contains("emphasis"), "icon enters its active emphasis")
+        XCTAssertTrue(title.ignore, "active icon status alone must not reveal the hover title")
 
-        // Downplay hides the title again.
+        // The actual element pointer handlers own title visibility independently.
+        let over = ElementEvent()
+        over.type = .mouseover
+        over.target = path
+        _ = path.trigger("mouseover", over)
+        XCTAssertFalse(title.ignore, "pointer hover reveals the title")
+        let out = ElementEvent()
+        out.type = .mouseout
+        out.target = path
+        _ = path.trigger("mouseout", out)
+        XCTAssertTrue(title.ignore, "pointer exit hides the title even while the icon is active")
+
         view.ec.api.leaveEmphasis(path)
         XCTAssertFalse(path.currentStates.contains("emphasis"), "icon leaves emphasis on downplay")
-        XCTAssertTrue(title.ignore, "title text is hidden again after downplay")
+        XCTAssertTrue(title.ignore, "title remains hidden after downplay")
     }
 
     // ---- (2) restore resets a magicType swap back to the original option ----

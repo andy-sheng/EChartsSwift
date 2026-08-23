@@ -11,11 +11,9 @@
 // the 'statistic' title ('平均: …').
 //
 // DEVIATIONS from the official source:
-//   - STATIC NATIVE FRAME. The official script dispatches one fixed polygon immediately and its event handler
-//     derives a fixed selected-city list, mean and bar ranking. The headless comparison intentionally does not
-//     run demo timers/actions, so the native option carries that exact deterministic post-action state. The
-//     regular brush visual pipeline receives the same coordRange; a silent geo custom series draws the same
-//     cover in the bare-root renderer where the interactive BrushController has no host ZRender.
+//   - The zero-delay initial brush is dispatched synchronously from `drive` after the option is applied. Its
+//     `brushselected` listener otherwise mirrors the official callback: every later user brush and clear
+//     recomputes the ranking, mean and bar data from the live selected indices.
 //   - MAP ASSET. The example assumes a 'china' map is already registered (the official editor injects it); it
 //     is NOT in the echarts-examples asset mirror. assets/geo/china.json is the repo's own vendored, ASF-
 //     licensed map, extracted from upstream/echarts/test/data/map/js/china.js — 42 features (34 provinces/
@@ -214,33 +212,6 @@ private let scatterMapBrushPolygon: [[Double]] = [
     [121.64,34.08]
 ]
 
-private func scatterMapBrushContains(_ point: [Double]) -> Bool {
-    guard point.count >= 2 else { return false }
-    var inside = false
-    var j = scatterMapBrushPolygon.count - 1
-    for i in scatterMapBrushPolygon.indices {
-        let a = scatterMapBrushPolygon[i], b = scatterMapBrushPolygon[j]
-        if ((a[1] > point[1]) != (b[1] > point[1]))
-            && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0] {
-            inside.toggle()
-        }
-        j = i
-    }
-    return inside
-}
-
-private let scatterMapBrushSelected: [(name: String, value: Double)] = scatterMapBrushRawData
-    .filter { item in
-        guard let coord = scatterMapBrushGeoCoordMap[item.name] else { return false }
-        return scatterMapBrushContains(coord)
-    }
-    .sorted { $0.value < $1.value }
-
-private let scatterMapBrushAverage: Double = {
-    guard !scatterMapBrushSelected.isEmpty else { return 0 }
-    return scatterMapBrushSelected.reduce(0) { $0 + $1.value } / Double(scatterMapBrushSelected.count)
-}()
-
 private let scatterMapBrushSymbolSize: SymbolSizeCallback<CallbackDataParams> = { rawValue, _ in
     let row: [Any]
     if let value = rawValue as? [Any] { row = value }
@@ -251,34 +222,78 @@ private let scatterMapBrushSymbolSize: SymbolSizeCallback<CallbackDataParams> = 
     return max(pm25 / 10, 8)
 }
 
-private func scatterMapBrushValuePoint(_ value: Any) -> [Double] {
-    guard let row = value as? [Any], row.count >= 2 else { return [] }
-    let x = (row[0] as? Double) ?? (row[0] as? Int).map(Double.init)
-    let y = (row[1] as? Double) ?? (row[1] as? Int).map(Double.init)
-    guard let x, let y else { return [] }
-    return [x, y]
+private func scatterMapBrushContains(_ point: [Double]) -> Bool {
+    guard point.count >= 2 else { return false }
+    var inside = false
+    var previous = scatterMapBrushPolygon.count - 1
+    for index in scatterMapBrushPolygon.indices {
+        let currentPoint = scatterMapBrushPolygon[index]
+        let previousPoint = scatterMapBrushPolygon[previous]
+        if ((currentPoint[1] > point[1]) != (previousPoint[1] > point[1]))
+            && point[0] < (previousPoint[0] - currentPoint[0])
+                * (point[1] - currentPoint[1]) / (previousPoint[1] - currentPoint[1])
+                + currentPoint[0] {
+            inside.toggle()
+        }
+        previous = index
+    }
+    return inside
 }
 
-private let scatterMapBrushScatterColor: (CallbackDataParams) -> EChartsKit.ZRColor = { params in
-    .color(scatterMapBrushContains(scatterMapBrushValuePoint(params.value)) ? "#ddb926" : "#abc")
+@MainActor
+private func scatterMapBrushUpdateRanking(_ chart: EChartsDemoChart, _ rawIndices: [Int]) {
+    let chosen = rawIndices.compactMap { index -> (name: String, value: Double)? in
+        guard scatterMapBrushRawData.indices.contains(index) else { return nil }
+        return scatterMapBrushRawData[index]
+    }.sorted { $0.value < $1.value }
+    let visible = Array(chosen.prefix(30))
+    let average = chosen.isEmpty
+        ? "" : String(format: "平均: %.4f", chosen.reduce(0) { $0 + $1.value } / Double(chosen.count))
+    chart.setOption([
+        "yAxis": ["data": visible.map(\.name)] as [String: Any],
+        "xAxis": ["axisLabel": ["show": !chosen.isEmpty] as [String: Any]] as [String: Any],
+        "title": ["id": "statistic", "text": average] as [String: Any],
+        "series": ["id": "bar", "data": visible.map(\.value)] as [String: Any],
+    ], notMerge: false)
 }
 
-private let scatterMapBrushEffectColor: (CallbackDataParams) -> EChartsKit.ZRColor = { params in
-    .color(scatterMapBrushContains(scatterMapBrushValuePoint(params.value)) ? "#f4e925" : "#abc")
-}
-
-private let scatterMapBrushCoverRenderItem: CustomSeriesRenderItem = { params, api in
-    guard params.dataIndexInside == 0 else { return nil }
-    return [
-        "type": "polygon",
-        "shape": ["points": scatterMapBrushPolygon.map { api.coord($0, nil) }] as [String: Any],
-        "style": [
-            "fill": "rgba(0,0,0,0.2)",
-            "stroke": "rgba(0,0,0,0.5)",
-            "lineWidth": 2.0
-        ] as [String: Any],
-        "silent": true
-    ] as [String: Any]
+@MainActor
+private func installScatterMapBrushInteraction(_ chart: EChartsDemoChart) {
+    chart.on("brushselected") { [weak chart] params in
+        guard let chart, let event = params as? ECActionEvent,
+              let batches = event.eventData["batch"] as? [[String: Any]],
+              let selected = batches.first?["selected"] as? [[String: Any]],
+              let mainSeries = selected.first(where: { item in
+                  let value = item["seriesIndex"]
+                  return (value as? Int) == 0 || (value as? Double) == 0
+              }) else { return }
+        let rawIndices: [Int]
+        if let values = mainSeries["dataIndex"] as? [Int] {
+            rawIndices = values
+        }
+        else if let values = mainSeries["dataIndex"] as? [Double] {
+            rawIndices = values.map(Int.init)
+        }
+        else {
+            rawIndices = []
+        }
+        scatterMapBrushUpdateRanking(chart, rawIndices)
+    }
+    let initialIndices = scatterMapBrushRawData.indices.filter { index in
+        guard let coord = scatterMapBrushGeoCoordMap[scatterMapBrushRawData[index].name] else {
+            return false
+        }
+        return scatterMapBrushContains(coord)
+    }
+    scatterMapBrushUpdateRanking(chart, initialIndices)
+    chart.dispatch([
+        "type": "brush",
+        "areas": [[
+            "geoIndex": 0.0,
+            "brushType": "polygon",
+            "coordRange": scatterMapBrushPolygon,
+        ] as [String: Any]],
+    ])
 }
 
 extension EChartsDemoRegistry {
@@ -1121,6 +1136,7 @@ function renderBrushed(params) {
 }
 """#,
         entranceSetupDelayMs: 400,
+        drive: installScatterMapBrushInteraction,
         option: {
             // Register the 'china' map before the option is consumed — the web pane gets the SAME GeoJSON
             // via mapRegistrations (WebPage.swift → echarts.registerMap).
@@ -1142,7 +1158,7 @@ function renderBrushed(params) {
                     ] as [String: Any],
                     [
                         "id": "statistic",
-                        "text": String(format: "平均: %.4f", scatterMapBrushAverage),
+                        "text": "",
                         "right": 120.0,
                         "top": 40.0,
                         "width": 100.0,
@@ -1165,12 +1181,7 @@ function renderBrushed(params) {
                     "seriesIndex": [0.0, 1.0],
                     "throttleType": "debounce",
                     "throttleDelay": 300.0,
-                    "geoIndex": 0.0,
-                    "areas": [[
-                        "geoIndex": 0.0,
-                        "brushType": "polygon",
-                        "coordRange": scatterMapBrushPolygon
-                    ] as [String: Any]]
+                    "geoIndex": 0.0
                 ] as [String: Any],
                 "geo": [
                     "map": "china",
@@ -1212,7 +1223,7 @@ function renderBrushed(params) {
                     "axisLine": ["show": false, "lineStyle": ["color": "#ddd"] as [String: Any]] as [String: Any],
                     "axisTick": ["show": false, "lineStyle": ["color": "#ddd"] as [String: Any]] as [String: Any],
                     "axisLabel": ["interval": 0.0, "color": "#ddd"] as [String: Any],
-                    "data": Array(scatterMapBrushSelected.prefix(30)).map(\.name)
+                    "data": [String]()
                 ] as [String: Any],
                 "series": [
                     [
@@ -1227,7 +1238,7 @@ function renderBrushed(params) {
                             "show": false
                         ] as [String: Any],
                         "itemStyle": [
-                            "color": scatterMapBrushScatterColor as (CallbackDataParams) -> EChartsKit.ZRColor
+                            "color": "#ddb926"
                         ] as [String: Any],
                         "emphasis": [
                             "label": ["show": true] as [String: Any]
@@ -1248,7 +1259,7 @@ function renderBrushed(params) {
                             "show": true
                         ] as [String: Any],
                         "itemStyle": [
-                            "color": scatterMapBrushEffectColor as (CallbackDataParams) -> EChartsKit.ZRColor,
+                            "color": "#f4e925",
                             "shadowBlur": 10.0,
                             "shadowColor": "#333"
                         ] as [String: Any],
@@ -1259,19 +1270,10 @@ function renderBrushed(params) {
                         "zlevel": 2.0,
                         "type": "bar",
                         "itemStyle": ["color": "#ddb926"] as [String: Any],
-                        "data": Array(scatterMapBrushSelected.prefix(30)).map(\.value)
-                    ] as [String: Any],
-                    [
-                        "id": "native-brush-cover",
-                        "type": "custom",
-                        "coordinateSystem": "geo",
-                        "geoIndex": 0.0,
-                        "renderItem": scatterMapBrushCoverRenderItem,
-                        "silent": true,
-                        "z": 100.0,
-                        "data": [0.0]
+                        "data": [Double]()
                     ] as [String: Any]
                 ]
             ]
-        }())
+        }()
+    )
 }

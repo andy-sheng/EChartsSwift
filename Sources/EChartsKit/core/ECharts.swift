@@ -1668,6 +1668,15 @@ public final class ECharts: EChartsType {
     public func updateVisual() {
         guard let ecModel = _model else { return }
         let api = _api!
+        // Upstream's first visual-stage task is created with `useClearVisual`, so every light
+        // `updateVisual` starts from the series' base visuals. This is essential for pointer-driven
+        // brush updates: the first (degenerate) drag frame can mark every datum outOfBrush, and the
+        // next frame must be able to restore inBrush items to their palette/itemStyle colour.
+        // Our direct stage runner bypasses Scheduler.seriesTaskReset, where `clearAllVisual()` normally
+        // happens, so mirror that reset explicitly before rebuilding the visual pipeline.
+        ecModel.eachRawSeries { seriesModel, _ in
+            seriesModel.getData().clearAllVisual()
+        }
         performVisualStage(ecModel, api)
         performCoordlessSeriesVisualStage(ecModel, api)
         performVisualMapStage(ecModel, api)

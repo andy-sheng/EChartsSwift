@@ -32,6 +32,7 @@ struct InteractionVisualStep: Decodable {
     let componentIndex: Double?
     let handleIndex: Double?
     let pieceIndex: Double?
+    let targetType: String?
     let allowMissing: Bool?
     let capture: String?
 }
@@ -686,6 +687,58 @@ private func writeOfficialInteractionScenarios(
                 ["action": "settle", "capture": "visualmap-piece-\(visualMapIndex)-restored"],
             ]
         }
+        let brushModels = ecModel.findComponents(QueryConditionKindA(mainType: "brush"))
+            .compactMap { $0 as? BrushModel }
+        let toolboxNames = Set(view.zr.storage.getDisplayList(true).compactMap {
+            innerStore.getECData($0).tooltipConfig?.name
+        })
+        if let brushModel = brushModels.first,
+           toolboxNames.contains("rect"), toolboxNames.contains("clear") {
+            let targetType = brushModel.get("geoIndex") != nil ? "geo" : "grid"
+            if !brushModel.areas.isEmpty {
+                steps += [
+                    ["action": "clickToolbox", "name": "clear", "movePointer": true],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 500.0],
+                    ["action": "settle", "capture": "brush-initial-cleared"],
+                ]
+            }
+            steps += [
+                ["action": "clickToolbox", "name": "rect", "movePointer": true],
+                [
+                    "action": "dragBrush", "name": "rect", "targetType": targetType,
+                    "componentIndex": 0.0,
+                ],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 500.0],
+                ["action": "settle", "capture": "brush-rect"],
+                ["action": "clickToolbox", "name": "clear", "movePointer": true],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 500.0],
+                ["action": "settle", "capture": "brush-rect-cleared"],
+            ]
+            if toolboxNames.contains("polygon") {
+                steps += [
+                    ["action": "clickToolbox", "name": "polygon", "movePointer": true],
+                    [
+                        "action": "dragBrush", "name": "polygon", "targetType": targetType,
+                        "componentIndex": 0.0,
+                    ],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 500.0],
+                    ["action": "settle", "capture": "brush-polygon"],
+                    ["action": "clickToolbox", "name": "clear", "movePointer": true],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 500.0],
+                    ["action": "settle", "capture": "brush-polygon-cleared"],
+                ]
+            }
+        }
         let hasGeoRoam = demo.name != "official-scatter-map-brush"
             && ecModel.findComponents(QueryConditionKindA(mainType: "geo"))
             .contains {
@@ -1026,6 +1079,24 @@ func runNativeInteractionVisual(
             record["componentIndex"] = componentIndex
             record["pieceIndex"] = pieceIndex
             if let dataName = step.dataName { record["dataName"] = dataName }
+        case "dragBrush":
+            let targetType = step.targetType ?? "grid"
+            let componentIndex = Int(step.componentIndex ?? 0)
+            let brushType = step.name ?? "rect"
+            guard let points = view._injectBrushDragForTest(
+                targetType: targetType,
+                componentIndex: componentIndex,
+                brushType: brushType
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): brush target was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoints"] = points
+            record["targetType"] = targetType
+            record["componentIndex"] = componentIndex
+            record["brushType"] = brushType
         case "dragDataZoom", "dragGraphic", "dragAxisPointer", "dragTimeline":
             let dx = step.deltaX ?? 48
             let dy = step.deltaY ?? 0
@@ -1264,6 +1335,10 @@ private let webInteractionHarnessJS = #"""
           var types = featureModel.get('type') || [];
           names = types.filter(function (n) { return icons && icons[n]; });
         }
+        else if (featureName === 'brush') {
+          var brushTypes = featureModel.get('type') || [];
+          names = brushTypes.filter(function (n) { return icons && icons[n]; });
+        }
         Array.prototype.push.apply(iconNames, names);
       });
       var ordinal = iconNames.indexOf(name);
@@ -1477,6 +1552,17 @@ private let webInteractionHarnessJS = #"""
       return [rect.x + rect.width / 2, rect.y + rect.height / 2];
     }
     throw new Error('roaming geo was not available');
+  }
+  function brushTargetRect(targetType, componentIndex) {
+    var model = myChart.getModel().getComponent(targetType, componentIndex);
+    var coord = model && model.coordinateSystem;
+    var rect = targetType === 'geo'
+      ? (coord && coord.getViewRect && coord.getViewRect())
+      : (coord && coord.getRect && coord.getRect());
+    if (!rect || !(rect.width > 0) || !(rect.height > 0)) {
+      throw new Error('brush target was not available: ' + targetType + '/' + componentIndex);
+    }
+    return rect;
   }
   function visualMapHandleHit(componentIndex, handleIndex) {
     var views = (myChart._componentsViews || []).filter(function (view) {
@@ -1812,6 +1898,28 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
+    dragBrush: function (targetType, componentIndex, brushType) {
+      pointerOutside = false;
+      var rect = brushTargetRect(targetType, componentIndex);
+      var start = [rect.x + rect.width * 0.18, rect.y + rect.height * 0.2];
+      var end = [rect.x + rect.width * 0.55, rect.y + rect.height * 0.72];
+      var points = brushType === 'polygon'
+        ? [[end[0], start[1]], end, [start[0], end[1]], start]
+        : [0.25, 0.5, 0.75, 1].map(function (fraction) {
+            return [
+              start[0] + (end[0] - start[0]) * fraction,
+              start[1] + (end[1] - start[1]) * fraction
+            ];
+          });
+      var handler = myChart.getZr().handler;
+      handler.mousemove(raw(start));
+      handler.mousedown(raw(start));
+      for (var i = 0; i < points.length; i++) { handler.mousemove(raw(points[i])); }
+      handler.mouseup(raw(end));
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { start: start, end: end, targetType: targetType, brushType: brushType };
+    },
     globalOut: function () {
       pointerOutside = true;
       var chartDom = myChart.getDom();
@@ -1900,6 +2008,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "componentIndex": step.componentIndex ?? 0,
             "handleIndex": step.handleIndex ?? 1,
             "pieceIndex": step.pieceIndex ?? 0,
+            "targetType": step.targetType ?? "grid",
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(data: data, encoding: .utf8)!
@@ -1937,6 +2046,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.dragVisualMap(a.componentIndex,a.handleIndex,a.deltaX,a.deltaY);})(\(json))"
         case "clickVisualMapPiece":
             script = "(function(a){return window.__interactionVisual.clickVisualMapPiece(a.componentIndex,a.pieceIndex,a.dataName,a.movePointer);})(\(json))"
+        case "dragBrush":
+            script = "(function(a){return window.__interactionVisual.dragBrush(a.targetType,a.componentIndex,a.name);})(\(json))"
         case "globalOut": script = "window.__interactionVisual.globalOut()"
         default:
             fail("step \(currentIndex): unknown action \(step.action)")
