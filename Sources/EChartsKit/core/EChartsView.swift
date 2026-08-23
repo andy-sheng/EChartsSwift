@@ -575,12 +575,18 @@ public final class EChartsView {
         // A pointer leaving the entire native canvas can be reported as `globalout` without an
         // element target (`zrEventControl == only_globalout`). Retire the last dispatcher through
         // the same path as an ordinary element mouseout so blur/emphasis cannot remain stranded.
+        // Component items (geo regions, legend items, ...) can own a tooltip without being a
+        // high-down dispatcher, so tooltip/indicator cleanup must not be gated on that dispatcher.
         _ = zr.on("globalout", { [weak self] _, args in
-            guard let self = self,
-                  let dispatcher = self._lastHighDownDispatcher,
-                  let e = args.first as? ElementEvent else { return nil }
-            states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+            guard let self = self, let e = args.first as? ElementEvent else { return nil }
+            if let dispatcher = self._lastHighDownDispatcher {
+                states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+            }
             self._lastHighDownDispatcher = nil
+            self.tooltipView?.hide()
+            for cv in self.ec._componentsViews {
+                (cv as? ContinuousView)?._hideIndicator()
+            }
             self.zr.refresh()
             return nil
         }, nil)

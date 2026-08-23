@@ -129,6 +129,18 @@ final class ZZTooltipComponentItemTests: XCTestCase {
         XCTAssertNil(tooltipText(view), "hovering empty canvas must not show a component tooltip")
     }
 
+    func testGlobalOutHidesComponentTooltipWithoutHighDownDispatcher() {
+        let stamped = stampComponentItem(legendTooltip: ["show": true], itemName: "MapRegion")
+        XCTAssertEqual(showComponentTooltip(stamped), "MapRegion")
+
+        stamped.view._injectGlobalOutForTest()
+
+        XCTAssertNil(tooltipText(stamped.view),
+                     "leaving the canvas must hide a component tooltip even when its element is not "
+                     + "a high-down dispatcher")
+        XCTAssertFalse(stamped.view.tooltipView?._shownAsCmptItem ?? true)
+    }
+
     // ------------------------------------------------------------------------
     // (1b) THE AXIS RACE. With `tooltip.trigger:'axis'` (the most common tooltip config) the axis leg
     //   runs `axisTrigger` on EVERY zr mousemove; over a legend item — outside any coordinate system —
