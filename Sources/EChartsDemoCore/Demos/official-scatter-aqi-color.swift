@@ -9,11 +9,12 @@
 //   - The TypeScript parameter annotation (`param: any`) is dropped from the web pane's tooltip formatter:
 //     the page is a classic script, and an annotation there is a SyntaxError. The closure body is verbatim.
 //   - The trailing `export {};` is dropped (a bare export is a SyntaxError in a classic script).
-//   - Native pane: `tooltip.formatter` is omitted (a JS closure the Swift option cannot carry); it only
-//     affects hover, not the static frame we render. See the PORT-NOTE below.
+//   - Native pane: the JS tooltip closure is represented by the typed native callback seam. Its HTML
+//     header styling is flattened to rich text while preserving the same header and seven data lines.
 //   - Data is inlined in both panes exactly as upstream inlines it — no fetch, no timers, no animated
 //     re-setOption; the official example is a single static frame already.
 import Foundation
+import EChartsKit
 
 extension EChartsDemoRegistry {
     static let official_scatter_aqi_color = EChartsDemo(
@@ -291,11 +292,8 @@ option = {
                 "bottom": "10%"
             ] as [String: Any],
             "tooltip": [
-                "backgroundColor": "rgba(255,255,255,0.7)"
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure built an HTML card from the
-                // raw 8-element row: a header line "<seriesName> <day>日：<级别>" (value[0], value[7])
-                // above one "<schema[i].text>：<value[i]><br>" line per pollutant dimension 1…6
-                // (AQI指数 / PM2.5 / PM10 / CO / NO2 / SO2). Hover-only; the static frame is unaffected.
+                "backgroundColor": "rgba(255,255,255,0.7)",
+                "formatter": scatterAqiColorTooltipFormatter
             ] as [String: Any],
             "xAxis": [
                 "type": "value",
@@ -396,6 +394,31 @@ option = {
                 ] as [String: Any]
             ]
         ])
+}
+
+private func scatterAqiColorValueText(_ value: Any?) -> String {
+    if let value = value as? String { return value }
+    if let value = value as? Double {
+        return value.rounded() == value ? String(Int(value)) : String(value)
+    }
+    if let value = value as? Int { return String(value) }
+    if let value = value as? NSNumber {
+        let number = value.doubleValue
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    }
+    return ""
+}
+
+private let scatterAqiColorTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let value = params.value as? [Any], value.count > 7 else { return "" }
+    return "\(params.seriesName ?? "") \(scatterAqiColorValueText(value[0]))日："
+        + "\(scatterAqiColorValueText(value[7]))<br>"
+        + "AQI指数：\(scatterAqiColorValueText(value[1]))<br>"
+        + "PM2.5：\(scatterAqiColorValueText(value[2]))<br>"
+        + "PM10：\(scatterAqiColorValueText(value[3]))<br>"
+        + "一氧化碳（CO）：\(scatterAqiColorValueText(value[4]))<br>"
+        + "二氧化氮（NO2）：\(scatterAqiColorValueText(value[5]))<br>"
+        + "二氧化硫（SO2）：\(scatterAqiColorValueText(value[6]))<br>"
 }
 
 // Shared by all three series upstream (the `itemStyle` const).

@@ -73,4 +73,19 @@ final class OfficialScatterTooltipInteractionTests: XCTestCase {
             XCTAssertEqual(format._str(series.getDataParams(5).value), expected[seriesIndex])
         }
     }
+
+    func testAqiTooltipPreservesEveryPollutantDimension() throws {
+        let text = try formattedTooltip(
+            demo: EChartsDemoRegistry.official_scatter_aqi_color,
+            seriesIndex: 1,
+            dataIndex: 15
+        )
+        XCTAssertTrue(text.contains("上海 16日：轻度污染"), text)
+        XCTAssertTrue(text.contains("AQI指数：134"), text)
+        XCTAssertTrue(text.contains("PM2.5：83"), text)
+        XCTAssertTrue(text.contains("PM10：167"), text)
+        XCTAssertTrue(text.contains("一氧化碳（CO）：1.16"), text)
+        XCTAssertTrue(text.contains("二氧化氮（NO2）：57"), text)
+        XCTAssertTrue(text.contains("二氧化硫（SO2）：43"), text)
+    }
 }
