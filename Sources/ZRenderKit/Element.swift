@@ -1017,6 +1017,25 @@ open class Element: Transformable, AnimationTarget {
         return target
     }
 
+    // `textConfig` lives outside the generic `props` bag, so it cannot participate in
+    // `_computeRestoreTarget`. Track whether the states being replaced own it, which lets the
+    // state paths restore the saved normal config without erasing an unrelated live config.
+    private func _statesTouchTextConfig(_ stateNames: [String]) -> Bool {
+        for stateName in stateNames {
+            var stateObj: ElementState?
+            if let proxy = self.stateProxy {
+                stateObj = proxy(stateName, stateNames)
+            }
+            if stateObj == nil {
+                stateObj = self.states[stateName]
+            }
+            if stateObj?.textConfig != nil {
+                return true
+            }
+        }
+        return false
+    }
+
     // Apply a state target. With a transition it animates (tagging the animators with the state name,
     // exactly like `_transitionState`); otherwise it jumps via a duration-0 transition.
     private func _stateApply(_ stateName: String, _ target: [String: Any], _ transition: Bool) {
@@ -1080,6 +1099,7 @@ open class Element: Transformable, AnimationTarget {
         let toNormalState = (stateName == PRESERVED_NORMAL_STATE)
         let hasStates = self.hasState()
         let keep = keepCurrentStates ?? false
+        let previousStatesTouchTextConfig = self._statesTouchTextConfig(self.currentStates)
 
         // Switching from normal to normal — nothing to do.
         if !hasStates && toNormalState {
@@ -1120,6 +1140,18 @@ open class Element: Transformable, AnimationTarget {
             target = self._computeRestoreTarget([state!])      // sole state: over normal, restore others
         }
         self._stateApply(stateName, target, canTransition)
+
+        if toNormalState {
+            if previousStatesTouchTextConfig {
+                self.textConfig = self._normalState?.textConfig
+            }
+        }
+        else if let stateTextConfig = state?.textConfig {
+            self.textConfig = stateTextConfig
+        }
+        else if !keep && previousStatesTouchTextConfig {
+            self.textConfig = self._normalState?.textConfig
+        }
 
         // upstream Element.useState (Element.ts:1006-1014): propagate the state to the attached
         //   `textContent` (and `textGuide`) so a labeled element's LABEL restyles per its
@@ -1188,10 +1220,17 @@ open class Element: Transformable, AnimationTarget {
 
         let mergedState = self._mergeStates(stateObjects)
         let canTransition = !(noAnimation ?? false) && (self.stateTransition?.duration ?? 0) > 0
+        let previousStatesTouchTextConfig = self._statesTouchTextConfig(self.currentStates)
 
         self.saveCurrentToNormalState(mergedState)
         let target = self._computeRestoreTarget(stateObjects)
         self._stateApply(states.joined(separator: ","), target, canTransition)
+        if let stateTextConfig = mergedState.textConfig {
+            self.textConfig = stateTextConfig
+        }
+        else if previousStatesTouchTextConfig {
+            self.textConfig = self._normalState?.textConfig
+        }
 
         // upstream Element.useStates (Element.ts:1113-1119): propagate to the attached text content /
         //   guide (same seam as `useState` above — this is the primary path the interaction layer hits,

@@ -249,4 +249,38 @@ final class StateMachineryTests: XCTestCase {
         XCTAssertTrue(label.currentStates.isEmpty)
         XCTAssertEqual(label.textStyle.fill, "black", "clearing states restores the label")
     }
+
+    func test_host_useStates_applies_and_restores_stateTextConfig() {
+        let (host, _) = makeLabeledHost()
+        var normal = ElementTextConfig()
+        normal.position = "center"
+        host.setTextConfig(normal)
+
+        var emphasis = ElementTextConfig()
+        emphasis.position = "right"
+        host.ensureState("emphasis").textConfig = emphasis
+
+        host.useStates(["emphasis"])
+        XCTAssertEqual(host.textConfig?.position as? String, "right")
+
+        host.useStates([])
+        XCTAssertEqual(host.textConfig?.position as? String, "center")
+    }
+
+    func test_host_useState_applies_and_restores_stateTextConfig() {
+        let (host, _) = makeLabeledHost()
+        var normal = ElementTextConfig()
+        normal.position = "center"
+        host.setTextConfig(normal)
+
+        var emphasis = ElementTextConfig()
+        emphasis.position = "right"
+        host.ensureState("emphasis").textConfig = emphasis
+
+        _ = host.useState("emphasis")
+        XCTAssertEqual(host.textConfig?.position as? String, "right")
+
+        host.clearStates()
+        XCTAssertEqual(host.textConfig?.position as? String, "center")
+    }
 }
