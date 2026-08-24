@@ -1,6 +1,7 @@
 import XCTest
 @testable import EChartsDemoCore
 @testable import EChartsKit
+@testable import ZRenderKit
 
 @MainActor
 private final class ScatterMapBrushTestChart: EChartsDemoChart {
@@ -26,6 +27,56 @@ private final class ScatterMapBrushTestChart: EChartsDemoChart {
 }
 
 final class OfficialScatterMapInteractionTests: XCTestCase {
+    func testGeoRegionTooltipFloatsAboveEffectScatterZLevel() throws {
+        let demo = EChartsDemoRegistry.official_effectscatter_map
+        for (name, data) in demo.mapRegistrations { ECharts.registerMap(name, data) }
+        let view = EChartsView(width: demo.width, height: demo.height)
+        defer { view.dispose() }
+        view.setOption(demo.option)
+        _ = view.zr.storage.getDisplayList(true)
+
+        let geoModel = try XCTUnwrap(
+            view.ec.getModel()?.findComponents(QueryConditionKindA(mainType: "geo")).first as? GeoModel
+        )
+        let geo = try XCTUnwrap(geoModel.coordinateSystem as? Geo)
+        var hitPoint: [Double]?
+        for region in geo.regions {
+            guard let point = geo.dataToPoint(region.getCenter(), false) else { continue }
+            var current = view.zr.handler.findHover(point[0], point[1]).target
+            while let element = current {
+                if let eventData = innerStore.getECData(element).eventData,
+                   (eventData["componentType"] as? String) == "geo",
+                   (eventData["name"] as? String) == region.name {
+                    hitPoint = point
+                    break
+                }
+                current = element.__hostTarget ?? (element.parent as? Element)
+            }
+            if hitPoint != nil { break }
+        }
+        let point = try XCTUnwrap(hitPoint, "the official geo must expose a real hit-testable region")
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+
+        let tooltip = try XCTUnwrap(view.tooltipView?.contentEl)
+        XCTAssertTrue(view.tooltipView?.isShown() == true)
+        func belongsToTooltip(_ element: Element) -> Bool {
+            var current: Element? = element
+            while let candidate = current {
+                if candidate === tooltip { return true }
+                current = candidate.__hostTarget ?? (candidate.parent as? Element)
+            }
+            return false
+        }
+        let highestChartZLevel = view.zr.storage.getDisplayList(true)
+            .filter { !belongsToTooltip($0) }
+            .map(\.zlevel)
+            .max() ?? 0
+        XCTAssertGreaterThan(
+            tooltip.zlevel, highestChartZLevel,
+            "native rich-text tooltip must emulate the Web HTML overlay and stay above effectScatter zlevel"
+        )
+    }
+
     func testTooltipUsesPM25DimensionInsteadOfLatitude() throws {
         let view = EChartsView(width: 640, height: 420)
         defer { view.dispose() }

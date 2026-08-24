@@ -164,6 +164,13 @@ public final class TooltipRichContent {
         let el = ZRText()
         el.useStyle(style)
         el.z = dbl(tooltipModel.get("z")) ?? 0
+        // The native host has no DOM tooltip layer: rich text is inserted into the same zrender
+        // storage as the chart. A series may use a positive zlevel (effectScatter commonly uses 1),
+        // which otherwise wins before `z` is considered and paints symbols/labels over the tooltip.
+        // Place the native tooltip one zlevel above the current scene to preserve the browser HTML
+        // overlay contract while keeping the option's `z` ordering within that top layer.
+        let highestSceneZLevel = self._zr.storage.getDisplayList(true).map(\.zlevel).max() ?? 0
+        el.zlevel = highestSceneZLevel + 1
         self.el = el
 
         self._zr.add(el)
