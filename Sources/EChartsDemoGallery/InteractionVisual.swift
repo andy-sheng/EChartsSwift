@@ -462,6 +462,7 @@ private func writeOfficialInteractionScenarios(
         var selectedSeries: [SeriesModel] = []
         var hitIndexBySeries: [Int: Int] = [:]
         var hoverInteractionCount = 0
+        var treeExpandCollapseCount = 0
         var coverageNotes: [String] = []
         let noVisibleSeriesHoverDemos: Set<String> = [
             "official-lines-ny",
@@ -552,6 +553,51 @@ private func writeOfficialInteractionScenarios(
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "hover-restored"],
             ]
+        }
+
+        if category == "tree" {
+            for series in selectedSeries where series.subType == "tree"
+                && (series.get("expandAndCollapse") as? Bool) != false {
+                let data = series.getData()
+                guard let tree = data.tree else { continue }
+                var nameCounts: [String: Int] = [:]
+                for dataIndex in 0..<data.count() {
+                    nameCounts[data.getName(dataIndex), default: 0] += 1
+                }
+                let candidates = (0..<data.count()).compactMap { dataIndex -> (Int, Int)? in
+                    let name = data.getName(dataIndex)
+                    guard let node = tree.getNodeByDataIndex(dataIndex), node.isExpand,
+                          !node.children.isEmpty, !name.isEmpty, nameCounts[name] == 1,
+                          resolveDeterministicDataHit([
+                              "seriesIndex": Double(series.seriesIndex),
+                              "dataIndex": Double(dataIndex),
+                          ], ec: view.ec, view: view) != nil else { return nil }
+                    return (dataIndex, node.children.count)
+                }
+                guard let target = candidates.max(by: { $0.1 < $1.1 }) else { continue }
+                let seriesIndex = Int(series.seriesIndex)
+                let targetName = data.getName(target.0)
+                let capturePrefix = "tree-series-\(seriesIndex)"
+                steps += [
+                    [
+                        "action": "clickData", "seriesIndex": Double(seriesIndex),
+                        "dataIndex": Double(target.0), "dataName": targetName,
+                        "movePointer": false,
+                    ],
+                    // Official tree demos animate updates for 750 ms. Capture after the authored
+                    // animation has naturally reached its final state.
+                    ["action": "wait", "milliseconds": 900.0],
+                    ["action": "snapshot", "capture": "\(capturePrefix)-collapsed"],
+                    [
+                        "action": "clickData", "seriesIndex": Double(seriesIndex),
+                        "dataIndex": Double(target.0), "dataName": targetName,
+                        "movePointer": false,
+                    ],
+                    ["action": "wait", "milliseconds": 900.0],
+                    ["action": "snapshot", "capture": "\(capturePrefix)-restored"],
+                ]
+                treeExpandCollapseCount += 1
+            }
         }
 
         if category == "pie", demo.name == "official-dataset-link" {
@@ -1035,17 +1081,23 @@ private func writeOfficialInteractionScenarios(
             }
         }
 
+        var checks = [
+            "Every requested \(category)-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
+            "Every requested hit-testable legend item must toggle to the opposite of its authored initial state and back in the same instance; the restored frame must recover the initial series, symbols, labels and annotations.",
+            "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
+            "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
+            "Timer-driven examples must reach the same settled state after each explicit logical interval tick in Native and Web.",
+            "Native and Web must agree semantically after every interaction; ignore font antialiasing and subpixel stroke differences.",
+        ]
+        if category == "tree" {
+            checks.append(
+                "For collapsed tree frames, compare collapsed-node state and descendant node/label visibility. ECharts 6.1.0 Web is independently verified to retain orphan exit-edge shapes after its animation reports finished; do not require Native to reproduce those orphan edges."
+            )
+        }
         var scenario: [String: Any] = [
             "id": "\(category)-all-\(demo.name)",
             "demo": demo.name,
-            "checks": [
-                "Every requested \(category)-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
-                "Every requested hit-testable legend item must toggle to the opposite of its authored initial state and back in the same instance; the restored frame must recover the initial series, symbols, labels and annotations.",
-                "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
-                "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
-                "Timer-driven examples must reach the same settled state after each explicit logical interval tick in Native and Web.",
-                "Native and Web must agree semantically after every interaction; ignore font antialiasing and subpixel stroke differences.",
-            ],
+            "checks": checks,
             "steps": steps,
         ]
         if !coverageNotes.isEmpty {
@@ -1066,6 +1118,7 @@ private func writeOfficialInteractionScenarios(
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
             "legendInteractionCount": interactiveLegends.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
+            "treeExpandCollapseCount": treeExpandCollapseCount,
             "hasRestore": hasRestore, "hasGeoRoam": !roamingGeos.isEmpty,
             "hasGeoRegionHover": geoRegionHit != nil,
             "calculableVisualMapCount": calculableVisualMaps.count,
@@ -1513,6 +1566,9 @@ func runNativeInteractionVisual(
                 return false
             }
             record["afterCallbacks"] = count
+        case "snapshot":
+            // Capture the naturally elapsed animation state without forcing animator callbacks.
+            break
         case "wait":
             let milliseconds = max(0, step.milliseconds ?? 0)
             RunLoop.current.run(until: Date(timeIntervalSinceNow: milliseconds / 1_000))
@@ -2201,6 +2257,10 @@ private let webInteractionHarnessJS = #"""
       clip.onframe(clip.easingFunc ? clip.easingFunc(percent) : percent);
       if (!clip.loop && elapsed >= life) { clip.ondestroy(); }
     }
+    // The clips above were completed manually rather than through Animation.update(), so they are
+    // still linked from Animation._head. Drop that completed chain before a later interaction starts
+    // fresh update animations; otherwise stale entrance clips can interfere with leave callbacks.
+    zr.animation.clear();
     progressiveFrames += drainProgressive();
     if (pointerOutside) { hideTooltipHost(); }
     var tooltipViews = settleTooltipHost();
@@ -2230,6 +2290,12 @@ private let webInteractionHarnessJS = #"""
     };
   }
   window.__interactionVisual = {
+    snapshot: function () {
+      var zr = myChart.getZr();
+      if (pointerOutside) { hideTooltipHost(); }
+      zr.refreshImmediately(true);
+      return { animationFinished: zr.animation.isFinished() };
+    },
     settle: finishAnimations,
     clickLegend: function (name, movePointer) {
       pointerOutside = false;
@@ -2291,6 +2357,13 @@ private let webInteractionHarnessJS = #"""
     },
     clickData: function (seriesIndex, dataIndex, dataName, movePointer) {
       pointerOutside = false;
+      var clickedSeries = myChart.getModel().getSeriesByIndex(seriesIndex);
+      var clickedData = clickedSeries && clickedSeries.getData();
+      var resolvedDataIndex = dataName && clickedData ? clickedData.indexOfName(dataName) : dataIndex;
+      var clickedNode = clickedData && clickedData.tree
+        && clickedData.tree.getNodeByDataIndex(resolvedDataIndex);
+      var beforeExpanded = clickedNode ? clickedNode.isExpand : null;
+      var childCount = clickedNode && clickedNode.children ? clickedNode.children.length : null;
       var hit = dataHit(seriesIndex, dataIndex, dataName);
       var handler = myChart.getZr().handler;
       var event = raw(hit.point);
@@ -2299,8 +2372,15 @@ private let webInteractionHarnessJS = #"""
       handler.mouseup(event);
       handler.click(event);
       if (myChart._onframe) { myChart._onframe(); }
-      myChart.getZr().animation.stop();
-      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+      // Baseline settling stops the global animation loop. Restart it after a real data click so
+      // update/exit animations can reach the scenario's explicit wait before the next settle.
+      myChart.getZr().animation.start();
+      return {
+        x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '',
+        resolvedDataIndex: resolvedDataIndex, dataName: dataName,
+        childCount: childCount, beforeExpanded: beforeExpanded,
+        afterExpanded: clickedNode ? clickedNode.isExpand : null
+      };
     },
     clickToolbox: function (name, movePointer) {
       pointerOutside = false;
@@ -2631,6 +2711,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         let script: String
         switch step.action {
         case "settle": script = "window.__interactionVisual.settle()"
+        case "snapshot": script = "window.__interactionVisual.snapshot()"
         case "clickLegend":
             script = "(function(a){return window.__interactionVisual.clickLegend(a.name,a.movePointer);})(\(json))"
         case "clickLegendPage":
