@@ -324,6 +324,7 @@ private func wheelRoamingGeo(delta: Double, view: EChartsView) -> [Double]? {
 private final class InteractionVisualChart: EChartsDemoChart {
     let view: EChartsView
     private var intervalBodies: [@MainActor () -> Void] = []
+    private var afterBodies: [@MainActor () -> Void] = []
 
     init(_ view: EChartsView) { self.view = view }
 
@@ -339,7 +340,9 @@ private final class InteractionVisualChart: EChartsDemoChart {
     func every(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
         intervalBodies.append(body)
     }
-    func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {}
+    func after(_ seconds: Double, _ body: @escaping @MainActor () -> Void) {
+        afterBodies.append(body)
+    }
 
     func runIntervalTick() -> Int {
         let bodies = intervalBodies
@@ -347,7 +350,15 @@ private final class InteractionVisualChart: EChartsDemoChart {
         return bodies.count
     }
 
+    func runAfterTick() -> Int {
+        let bodies = afterBodies
+        afterBodies.removeAll()
+        for body in bodies { body() }
+        return bodies.count
+    }
+
     var registeredIntervalCount: Int { intervalBodies.count }
+    var registeredAfterCount: Int { afterBodies.count }
 
     func dispatch(_ payload: [String: Any]) {
         guard let type = payload["type"] as? String else { return }
@@ -429,18 +440,34 @@ private func writeOfficialInteractionScenarios(
     var manifest: [[String: Any]] = []
     for demo in section.demos where demo.nativeSupported {
         let view = EChartsView(width: demo.width, height: demo.height)
-        view.setOption(demo.option)
+        view.setOption(demo.liveOption ?? demo.option)
         let chart = InteractionVisualChart(view)
         demo.drive?(chart)
         settleInteractionAnimations(view.ec.getRoot())
         guard let ecModel = view.ec.getModel() else { return false }
 
-        var steps: [[String: Any]] = [["action": "settle", "capture": "baseline"]]
+        var steps: [[String: Any]]
+        if demo.liveOption != nil, chart.registeredAfterCount > 0 {
+            // The Web demo and Native demo both expose the first asynchronous data arrival through
+            // the logical one-shot clock. Advance that first callback before taking the baseline so
+            // neither side is compared while one still has an empty series.
+            steps = [
+                ["action": "driveAfterTick"],
+                ["action": "settle", "capture": "baseline"],
+            ]
+        }
+        else {
+            steps = [["action": "settle", "capture": "baseline"]]
+        }
         var selectedSeries: [SeriesModel] = []
         var hitIndexBySeries: [Int: Int] = [:]
         var hoverInteractionCount = 0
         var coverageNotes: [String] = []
-        let hasUserVisibleSeriesHover = demo.name != "official-matrix-stock"
+        let noVisibleSeriesHoverDemos: Set<String> = [
+            "official-lines-ny",
+            "official-matrix-stock",
+        ]
+        let hasUserVisibleSeriesHover = !noVisibleSeriesHoverDemos.contains(demo.name)
         if !hasUserVisibleSeriesHover {
             coverageNotes.append(
                 "series have no authored tooltip or visually distinguishable hover state"
@@ -990,6 +1017,23 @@ private func writeOfficialInteractionScenarios(
                 ]
             }
         }
+        if demo.liveOption != nil, chart.registeredAfterCount > 0 {
+            // The first link was advanced before the baseline. Advance the remaining links, settle
+            // each appended progressive batch, but retain screenshots only at the meaningful midpoint
+            // and completed stream.
+            for tick in 1..<32 {
+                steps.append(["action": "driveAfterTick"])
+                if tick == 15 {
+                    steps.append(["action": "settle", "capture": "stream-midpoint-16"])
+                }
+                else if tick == 31 {
+                    steps.append(["action": "settle", "capture": "stream-complete-32"])
+                }
+                else {
+                    steps.append(["action": "settle"])
+                }
+            }
+        }
 
         var scenario: [String: Any] = [
             "id": "\(category)-all-\(demo.name)",
@@ -1120,7 +1164,7 @@ func runNativeInteractionVisual(
     }
 
     let view = EChartsView(width: demo.width, height: demo.height)
-    view.setOption(demo.option)
+    view.setOption(demo.liveOption ?? demo.option)
     let chart = InteractionVisualChart(view)
     demo.drive?(chart)
     var presentedDataView: ToolboxDataViewPresentation?
@@ -1160,6 +1204,18 @@ func runNativeInteractionVisual(
         switch step.action {
         case "settle":
             settleInteractionAnimations(view.ec.getRoot())
+            record["seriesDataCounts"] = view.ec.getModel()?.getSeries().map {
+                $0.getData().count()
+            } ?? []
+            let largeLinePaths = view.zr.storage.getDisplayList(true).compactMap {
+                $0 as? LargeLinesPath
+            }
+            record["largeLines"] = [
+                "pathCount": largeLinePaths.count,
+                "segmentValueCount": largeLinePaths.reduce(0) {
+                    $0 + (($1.shape as? LargeLinesPathShape)?.segs.count ?? 0)
+                },
+            ]
         case "clickLegend":
             guard let name = step.name,
                   let point = view._injectLegendClickForTest(
@@ -1448,6 +1504,15 @@ func runNativeInteractionVisual(
                 return false
             }
             record["intervalCallbacks"] = count
+        case "driveAfterTick":
+            let count = chart.runAfterTick()
+            guard count > 0 else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): demo did not register a one-shot callback\n".utf8)
+                )
+                return false
+            }
+            record["afterCallbacks"] = count
         case "wait":
             let milliseconds = max(0, step.milliseconds ?? 0)
             RunLoop.current.run(until: Date(timeIntervalSinceNow: milliseconds / 1_000))
@@ -1732,7 +1797,7 @@ private let webInteractionHarnessJS = #"""
       var largePaths = [];
       function collectLarge(item) {
         if (!item) { return; }
-        if (item.shape && item.shape.points
+        if (item.shape && (item.shape.points || item.shape.segs)
             && typeof item.hoverDataIdx === 'number') {
           largePaths.push(item);
         }
@@ -1742,17 +1807,74 @@ private let webInteractionHarnessJS = #"""
       if (chartGroup && chartGroup.traverse) { chartGroup.traverse(collectLarge); }
       for (var lp = 0; lp < largePaths.length; lp++) {
         var large = largePaths[lp];
-        var largeStart = large.startIndex || 0;
+        var isLargeLines = !!large.shape.segs;
+        var largeStart = isLargeLines ? (large.__startIndex || 0) : (large.startIndex || 0);
         var localIndex = dataIndex - largeStart;
+        if (localIndex < 0) { continue; }
+        var largeLocalPoints = [];
         var points = large.shape.points;
-        if (localIndex < 0 || localIndex * 2 + 1 >= points.length) { continue; }
-        var largePoint = large.transformCoordToGlobal(
-          points[localIndex * 2], points[localIndex * 2 + 1]
-        );
-        var largeHovered = zr.handler.findHover(largePoint[0], largePoint[1]);
-        if (largeHovered && largeHovered.target === large
-            && large.hoverDataIdx + largeStart === dataIndex) {
-          return { point: largePoint, hovered: largeHovered };
+        if (points) {
+          if (localIndex * 2 + 1 >= points.length) { continue; }
+          largeLocalPoints.push([points[localIndex * 2], points[localIndex * 2 + 1]]);
+        }
+        else {
+          var segs = large.shape.segs;
+          var fractions = [0.25, 0.5, 0.75];
+          function addLinePoints(x0, y0, x1, y1) {
+            for (var fi = 0; fi < fractions.length; fi++) {
+              var t = fractions[fi];
+              largeLocalPoints.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]);
+            }
+          }
+          if (large.shape.polyline) {
+            var item = 0;
+            var cursor = 0;
+            while (cursor < segs.length) {
+              var pointCount = segs[cursor++];
+              if (item === localIndex) {
+                if (pointCount >= 2) {
+                  var px0 = segs[cursor];
+                  var py0 = segs[cursor + 1];
+                  for (var pi = 1; pi < pointCount; pi++) {
+                    var po = cursor + pi * 2;
+                    addLinePoints(px0, py0, segs[po], segs[po + 1]);
+                  }
+                }
+                break;
+              }
+              cursor += pointCount * 2;
+              item++;
+            }
+          }
+          else {
+            var so = localIndex * 4;
+            if (so + 3 < segs.length) {
+              var sx0 = segs[so], sy0 = segs[so + 1];
+              var sx1 = segs[so + 2], sy1 = segs[so + 3];
+              var curveness = large.shape.curveness || 0;
+              if (curveness > 0) {
+                var cx = (sx0 + sx1) / 2 - (sy0 - sy1) * curveness;
+                var cy = (sy0 + sy1) / 2 - (sx1 - sx0) * curveness;
+                for (var qi = 0; qi < fractions.length; qi++) {
+                  var qt = fractions[qi], qu = 1 - qt;
+                  largeLocalPoints.push([
+                    qu * qu * sx0 + 2 * qu * qt * cx + qt * qt * sx1,
+                    qu * qu * sy0 + 2 * qu * qt * cy + qt * qt * sy1
+                  ]);
+                }
+              }
+              else { addLinePoints(sx0, sy0, sx1, sy1); }
+            }
+          }
+        }
+        for (var lpi = 0; lpi < largeLocalPoints.length; lpi++) {
+          var localPoint = largeLocalPoints[lpi];
+          var largePoint = large.transformCoordToGlobal(localPoint[0], localPoint[1]);
+          var largeHovered = zr.handler.findHover(largePoint[0], largePoint[1]);
+          if (largeHovered && largeHovered.target === large
+              && large.hoverDataIdx + largeStart === dataIndex) {
+            return { point: largePoint, hovered: largeHovered };
+          }
         }
       }
       var itemPoint = data && data.getItemLayout && data.getItemLayout(dataIndex);
@@ -2027,8 +2149,15 @@ private let webInteractionHarnessJS = #"""
   function drainProgressive() {
     var frames = 0;
     var scheduler = myChart._scheduler;
+    var zr = myChart.getZr();
     while (scheduler && scheduler.unfinished && frames < 10000) {
       if (myChart._onframe) { myChart._onframe(); }
+      // A real animation frame flushes ZRender immediately after ECharts' `_onframe` callback.
+      // `_onframe` only flushes itself on the FINAL progressive batch; calling it directly without
+      // this intermediate flush drops every earlier incremental canvas batch from the visual oracle.
+      // That made dense progressive lines (official-lines-ny) look much dimmer on Web than they do
+      // after the same scheduler has actually finished in a browser.
+      if (scheduler.unfinished) { zr.flush(); }
       frames++;
     }
     if (scheduler && scheduler.unfinished) {
@@ -2077,10 +2206,27 @@ private let webInteractionHarnessJS = #"""
     var tooltipViews = settleTooltipHost();
     zr.animation.stop();
     zr.refreshImmediately(true);
+    var settledList = zr.storage.getDisplayList(true);
+    var largeLinePathCount = 0;
+    var largeLineSegmentValueCount = 0;
+    for (var si = 0; si < settledList.length; si++) {
+      var settledShape = settledList[si] && settledList[si].shape;
+      if (settledShape && settledShape.segs) {
+        largeLinePathCount++;
+        largeLineSegmentValueCount += settledShape.segs.length;
+      }
+    }
     return {
       clips: clips.length,
       progressiveFrames: progressiveFrames,
-      tooltipViews: tooltipViews
+      tooltipViews: tooltipViews,
+      seriesDataCounts: myChart.getModel().getSeries().map(function (series) {
+        return series.getData().count();
+      }),
+      largeLines: {
+        pathCount: largeLinePathCount,
+        segmentValueCount: largeLineSegmentValueCount
+      }
     };
   }
   window.__interactionVisual = {
@@ -2290,6 +2436,16 @@ private let webInteractionHarnessJS = #"""
       if (myChart._onframe) { myChart._onframe(); }
       myChart.getZr().animation.stop();
       return { intervalCallbacks: callbacks.length };
+    },
+    driveAfterTick: function () {
+      pointerOutside = false;
+      var queue = window.__capturedDemoAfters || [];
+      var callback = queue.shift();
+      if (!callback) { throw new Error('demo did not register a one-shot callback'); }
+      callback();
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { afterCallbacks: 1, pendingAfterCallbacks: queue.length };
     },
     dragGeoRoam: function (deltaX, deltaY) {
       pointerOutside = false;
@@ -2504,6 +2660,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "pointerMove":
             script = "(function(a){return window.__interactionVisual.pointerMove(a.x,a.y);})(\(json))"
         case "driveTick": script = "window.__interactionVisual.driveTick()"
+        case "driveAfterTick": script = "window.__interactionVisual.driveAfterTick()"
         case "dragGeoRoam":
             script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
         case "wheelGeoRoam":

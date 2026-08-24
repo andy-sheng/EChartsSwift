@@ -596,6 +596,58 @@ final class CALayerPainterSmokeTests: XCTestCase {
         XCTAssertLessThan(try redChannelOfDot(nil), 0.5, "source-over replaces red with green")
     }
 
+    /// zrender paints ordinary displayables carrying a non-zero `incremental` id into a transparent
+    /// incremental canvas, then source-overs that canvas onto the chart background. Painting the same
+    /// low-opacity `lighter` stroke directly onto the opaque background changes its energy in Core
+    /// Graphics and makes dense progressive line maps (official-lines-ny) much too bright.
+    func testIncrementalPathCompositesThroughTransparentLayer() throws {
+        func fullRect(incremental: Double) -> Rect {
+            var shape = RectShape(); shape.x = 0; shape.y = 0; shape.width = 40; shape.height = 40
+            let rect = Rect(); rect.setShape(shape); rect.incremental = incremental
+            var style = PathStyleProps()
+            style.fill = .string("orange")
+            style.opacity = 0.3
+            style.blend = "lighter"
+            rect.useStyle(style)
+            return rect
+        }
+        func contentsImage(_ painter: CALayerPainter) throws -> CGImage {
+            let cf = try XCTUnwrap(painter.rootLayer.contents) as CFTypeRef
+            XCTAssertEqual(CFGetTypeID(cf), CGImage.typeID)
+            return cf as! CGImage
+        }
+
+        let background = CGColor(
+            srgbRed: 17.0 / 255.0, green: 17.0 / 255.0, blue: 17.0 / 255.0, alpha: 1
+        )
+
+        // Product path under test: the painter must notice the incremental id and isolate the path.
+        let actualPainter = CALayerPainter(
+            size: CGSize(width: 40, height: 40), dpr: 1, backgroundColor: background
+        )
+        actualPainter.refresh([fullRect(incremental: 1)])
+        let actual = try pixelRGBA(contentsImage(actualPainter), 20, 20)
+
+        // Explicit upstream-equivalent reference: render onto transparent pixels first, then source-over
+        // that finished bitmap onto #111 in raw device space.
+        let foregroundPainter = CALayerPainter(size: CGSize(width: 40, height: 40), dpr: 1)
+        foregroundPainter.refresh([fullRect(incremental: 0)])
+        let foreground = try contentsImage(foregroundPainter)
+        let referenceContext = try XCTUnwrap(CGContext(
+            data: nil, width: 40, height: 40, bitsPerComponent: 8, bytesPerRow: 40 * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        referenceContext.setFillColor(background)
+        referenceContext.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+        referenceContext.draw(foreground, in: CGRect(x: 0, y: 0, width: 40, height: 40))
+        let expected = try pixelRGBA(try XCTUnwrap(referenceContext.makeImage()), 20, 20)
+
+        XCTAssertEqual(actual.r, expected.r, accuracy: 1.0 / 255.0)
+        XCTAssertEqual(actual.g, expected.g, accuracy: 1.0 / 255.0)
+        XCTAssertEqual(actual.b, expected.b, accuracy: 1.0 / 255.0)
+    }
+
     /// Read one pixel's straight (un-premultiplied via opaque-red assumption) RGBA in 0...1 from a
     /// CGImage by blitting it into a known RGBA8 buffer.
     private func pixelRGBA(_ image: CGImage, _ x: Int, _ y: Int)

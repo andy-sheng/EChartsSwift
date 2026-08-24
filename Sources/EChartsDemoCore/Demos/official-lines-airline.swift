@@ -20,7 +20,6 @@
 //    `geo.map: 'world'`. We must be explicit: assets/geo/world.json is handed to BOTH panes via
 //    `mapRegistrations` (WebPage.swift injects `echarts.registerMap('world', ...)` before the option script;
 //    the native pane registers the same GeoJSON).
-//  - `tooltip.formatter` omitted from the native option (a JS closure) — see PORT-NOTE. The web pane keeps it.
 //  - In snapshot mode the Web pane holds `__echartsSnapshotReady` until the ZRender display list contains
 //    all route-segment values, then waits two paint frames. This makes the progressive 65k-route capture
 //    deterministic; both ECharts' public `finished` event and the scheduler's `unfinished` flag can briefly
@@ -80,6 +79,24 @@ private let airlineRoutes: [[[Double]]] = {
     }
     return out
 }()
+
+// Native spelling of the official `tooltip.formatter(param)` closure. Callback closures are valid
+// option values in EChartsKit, so the hovered global route index can resolve the same source/destination
+// city names as the Web example instead of falling back to generic "-  -" markup.
+private let airlineTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    guard let airports = flightsData["airports"] as? [[Any]],
+          let routes = flightsData["routes"] as? [[Any]] else { return "" }
+    let routeIndex = Int(params.dataIndex)
+    guard routeIndex >= 0, routeIndex < routes.count, routes[routeIndex].count >= 3,
+          let sourceIndex = (routes[routeIndex][1] as? NSNumber)?.intValue,
+          let destinationIndex = (routes[routeIndex][2] as? NSNumber)?.intValue,
+          sourceIndex >= 0, sourceIndex < airports.count,
+          destinationIndex >= 0, destinationIndex < airports.count else { return "" }
+    let sourceCity = airports[sourceIndex].count > 1 ? String(describing: airports[sourceIndex][1]) : ""
+    let destinationCity = airports[destinationIndex].count > 1
+        ? String(describing: airports[destinationIndex][1]) : ""
+    return "\(sourceCity) > \(destinationCity)"
+}
 
 extension EChartsDemoRegistry {
     static let official_lines_airline = EChartsDemo(
@@ -177,10 +194,7 @@ option = {
                     "textStyle": ["color": "#eee"] as [String: Any]
                 ] as [String: Any],
                 "backgroundColor": "#003",
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure looks the hovered route up in the
-                // raw `data.routes[param.dataIndex]` triple and renders "<src airport city> > <dst airport
-                // city>" from `data.airports`. Not expressible in the Swift option.
-                "tooltip": [:] as [String: Any],
+                "tooltip": ["formatter": airlineTooltipFormatter] as [String: Any],
                 "geo": [
                     "map": "world",
                     "left": 0.0,

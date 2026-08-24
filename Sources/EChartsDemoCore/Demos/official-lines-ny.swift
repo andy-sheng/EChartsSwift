@@ -223,7 +223,16 @@ function fetchData(idx) {
 
   dataCount += addedDataCount;
 
-  fetchData(idx + 1);
+  if (idx + 1 < CHUNK_COUNT) {
+    if (window.__captureDemoAfter) {
+      // The interaction oracle advances the official async chunk chain on a logical clock. Do not
+      // replace global setTimeout: ECharts' own scheduler still needs its internal timers.
+      window.__capturedDemoAfters.push(function () { fetchData(idx + 1); });
+    }
+    else {
+      fetchData(idx + 1);
+    }
+  }
 }
 
 option = {
@@ -268,7 +277,14 @@ option = {
 // synchronous, so apply it here — appendData needs the series to exist already.
 myChart.setOption(option);
 
-fetchData(0);
+if (window.__captureDemoAfter) {
+  // Keep the first chunk on the same explicit logical clock as Native. The interaction scenario
+  // advances it before the baseline, then advances the remaining queued chunks one at a time.
+  window.__capturedDemoAfters.push(function () { fetchData(0); });
+}
+else {
+  fetchData(0);
+}
 
 // The default snapshot delay is intentionally short for ordinary charts, but this example paints
 // 624k polylines progressively. Hold the reference capture until ZRender has stopped producing paint

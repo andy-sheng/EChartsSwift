@@ -96,6 +96,10 @@ public func echartsHTMLPage(
       var __freezeEntranceAnimation = \(freezeEntranceAnimation);
       var __captureIntervals = \(captureIntervals);
       window.__capturedIntervals = [];
+      // Demo-owned one-shot chains can opt into the same logical-clock harness without replacing
+      // global setTimeout (which ECharts itself needs for throttling and lazy work).
+      window.__captureDemoAfter = __captureIntervals;
+      window.__capturedDemoAfters = [];
       window.__entranceStage = 'page-script';
       window.__entranceError = '';
       window.addEventListener('error', function (event) {

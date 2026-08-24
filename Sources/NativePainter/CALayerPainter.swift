@@ -118,8 +118,72 @@ public func flattenDisplayList(_ root: Element) -> [Displayable] {
 /// `Path`, Text (`TSpan`) and `Image` displayables are all painted (see `drawDisplayable`).
 public func renderScene(_ root: Element, into renderer: CGRenderer) {
     let list = flattenDisplayList(root)
-    for el in list {
-        drawDisplayable(el, into: renderer)
+    drawDisplayListRespectingIncrementalLayers(list, into: renderer) { el, target in
+        drawDisplayable(el, into: target)
+    }
+}
+
+/// zrender splits each zlevel containing ordinary `Displayable.incremental != 0` elements into three
+/// physical canvases: normal-below, one transparent incremental canvas, and normal-above. This is
+/// visually observable with low-opacity additive strokes: drawing every incremental batch directly
+/// onto an opaque chart background makes Core Graphics produce a brighter result. Reconstruct those
+/// three layers inside the final bitmap so both live rendering and deterministic snapshots preserve
+/// CanvasPainter's composition semantics.
+private func drawDisplayListRespectingIncrementalLayers(
+    _ list: [Displayable],
+    into renderer: CGRenderer,
+    drawOne: (Displayable, CGRenderer) -> Void
+) {
+    func isOrdinaryIncremental(_ element: Displayable) -> Bool {
+        element.incremental != 0 && !(element is IncrementalDisplayable)
+    }
+
+    func drawIncrementalLayer(_ elements: [Displayable]) {
+        guard !elements.isEmpty else { return }
+        let width = renderer.ctx.width
+        let height = renderer.ctx.height
+        guard width > 0, height > 0,
+              let layerContext = CGContext(
+                data: nil, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return }
+
+        // Match the destination's complete base transform (canvas y-down flip + DPR). Element-local
+        // transforms and clips are then applied by drawDisplayable exactly as on the main context.
+        layerContext.concatenate(renderer.ctx.ctm)
+        let layerRenderer = CGRenderer(layerContext, flipped: renderer.flipped)
+        for element in elements { drawOne(element, layerRenderer) }
+
+        guard let image = layerContext.makeImage() else { return }
+        renderer.ctx.saveGState()
+        renderer.ctx.concatenate(renderer.ctx.ctm.inverted())
+        renderer.ctx.setAlpha(1)
+        renderer.ctx.setBlendMode(.normal)
+        renderer.ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        renderer.ctx.restoreGState()
+    }
+
+    var start = 0
+    while start < list.count {
+        let zlevel = list[start].zlevel
+        var end = start + 1
+        while end < list.count, list[end].zlevel == zlevel { end += 1 }
+        let level = Array(list[start..<end])
+
+        if let firstIncremental = level.firstIndex(where: isOrdinaryIncremental) {
+            for element in level[..<firstIncremental] { drawOne(element, renderer) }
+            drawIncrementalLayer(level.filter(isOrdinaryIncremental))
+            for element in level[firstIncremental...]
+                where !isOrdinaryIncremental(element) {
+                drawOne(element, renderer)
+            }
+        }
+        else {
+            for element in level { drawOne(element, renderer) }
+        }
+        start = end
     }
 }
 
@@ -683,7 +747,9 @@ extension CALayerPainter: LayerHostedPainter {
     private func _singleLayerRefresh(_ displayList: [Displayable]) {
         let renderer = beginFrame()
         if let cg = renderer as? CGRenderer {
-            for el in displayList { _drawOne(el, into: cg) }
+            drawDisplayListRespectingIncrementalLayers(displayList, into: cg) { el, target in
+                self._drawOne(el, into: target)
+            }
         }
         endFrame()
     }
@@ -750,7 +816,9 @@ extension CALayerPainter: LayerHostedPainter {
             ctx.translateBy(x: 0, y: CGFloat(pxH))
             ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
             let cg = CGRenderer(ctx, flipped: true)
-            for el in byZ[z]! { _drawOne(el, into: cg) }
+            drawDisplayListRespectingIncrementalLayers(byZ[z]!, into: cg) { el, target in
+                self._drawOne(el, into: target)
+            }
 
             guard let image = ctx.makeImage() else { continue }
             _zLastFrame[z] = (cfg?.motionBlur ?? false) ? image : nil

@@ -1206,6 +1206,27 @@ func resolveDeterministicDataHit(
             break
         }
     }
+    if resolved == nil {
+        let requestedIndex = Int(dataIndex)
+        for path in displayList.compactMap({ $0 as? LargeLinesPath }) {
+            guard innerStore.getECData(path).seriesIndex == seriesIndex else { continue }
+            let localIndex = requestedIndex - path.__startIndex
+            guard localIndex >= 0 else { continue }
+            for localPoint in path.representativePointsForDataIndex(localIndex) {
+                guard localPoint.count >= 2,
+                      localPoint[0].isFinite, localPoint[1].isFinite else { continue }
+                let point = path.transformCoordToGlobal(localPoint[0], localPoint[1])
+                guard point[0] >= 0, point[0] <= ec.getWidth(),
+                      point[1] >= 0, point[1] <= ec.getHeight() else { continue }
+                let hovered = view.zr.handler.findHover(point[0], point[1])
+                guard hovered.target === path,
+                      path.hoverDataIdx + path.__startIndex == requestedIndex else { continue }
+                resolved = (path, point)
+                break
+            }
+            if resolved != nil { break }
+        }
+    }
     return resolved
 }
 

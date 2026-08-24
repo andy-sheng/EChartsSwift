@@ -214,6 +214,63 @@ public final class LargeLinesPath: Path {
         return -1
     }
 
+    /// Stable local-space points on one datum's visible stroke. The interaction visual harness uses
+    /// these to drive the real Handler for large lines, whose data items do not own individual graphic
+    /// elements. Several fractions are returned because a crossing line from a later progressive batch
+    /// can be the topmost hit at any single point.
+    public func representativePointsForDataIndex(_ dataIndex: Int) -> [[Double]] {
+        guard dataIndex >= 0 else { return [] }
+        let shape = (self.shape as? LargeLinesPathShape) ?? LargeLinesPathShape()
+        let segs = shape.segs
+        let fractions = [0.25, 0.5, 0.75]
+
+        func pointsOnLine(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) -> [[Double]] {
+            fractions.map { t in [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t] }
+        }
+
+        if shape.polyline {
+            var item = 0
+            var cursor = 0
+            while cursor < segs.count {
+                let count = Int(segs[cursor]); cursor += 1
+                guard count >= 0, cursor + count * 2 <= segs.count else { return [] }
+                if item == dataIndex {
+                    guard count >= 2 else { return [] }
+                    let x0 = segs[cursor], y0 = segs[cursor + 1]
+                    var result: [[Double]] = []
+                    // Match findDataIndex/upstream: test chords from the FIRST point to every later one.
+                    for pointIndex in 1..<count {
+                        let offset = cursor + pointIndex * 2
+                        result.append(contentsOf: pointsOnLine(
+                            x0, y0, segs[offset], segs[offset + 1]
+                        ))
+                    }
+                    return result
+                }
+                cursor += count * 2
+                item += 1
+            }
+            return []
+        }
+
+        let offset = dataIndex * 4
+        guard offset + 3 < segs.count else { return [] }
+        let x0 = segs[offset], y0 = segs[offset + 1]
+        let x1 = segs[offset + 2], y1 = segs[offset + 3]
+        if shape.curveness > 0 {
+            let cx = (x0 + x1) / 2 - (y0 - y1) * shape.curveness
+            let cy = (y0 + y1) / 2 - (x1 - x0) * shape.curveness
+            return fractions.map { t in
+                let u = 1 - t
+                return [
+                    u * u * x0 + 2 * u * t * cx + t * t * x1,
+                    u * u * y0 + 2 * u * t * cy + t * t * y1,
+                ]
+            }
+        }
+        return pointsOnLine(x0, y0, x1, y1)
+    }
+
     // upstream: contain(x, y) — hit-test in local coords via `findDataIndex`, caching hoverDataIdx.
     public override func contain(_ x: Double, _ y: Double) -> Bool {
         let localPos = self.transformCoordToLocal(x, y)
@@ -313,6 +370,7 @@ public final class LargeLineDraw {
             }
         }
 
+        var itemOffset = 0
         for segs in mergedChunks {
             let lineEl = self._create()
             // Upstream creates every progressive LargeLinesPath through incrementalUpdate and stamps
@@ -324,10 +382,12 @@ public final class LargeLineDraw {
             if progressive > 0, data.count() > threshold {
                 lineEl.incremental = 1
             }
+            lineEl.__startIndex = itemOffset
             var shape = (lineEl.shape as? LargeLinesPathShape) ?? LargeLinesPathShape()
             shape.segs = segs
             _ = lineEl.setShape(shape)
             self._setCommon(lineEl, data)
+            itemOffset += largeLineItemCount(segs, polyline: polyline)
         }
     }
 
@@ -509,4 +569,16 @@ private func splitLargeLineSegs(
     }
     if chunkStart < segs.count { chunks.append(Array(segs[chunkStart..<segs.count])) }
     return chunks
+}
+
+private func largeLineItemCount(_ segs: [Double], polyline: Bool) -> Int {
+    if !polyline { return segs.count / 4 }
+    var count = 0
+    var cursor = 0
+    while cursor < segs.count {
+        let pointCount = Swift.max(0, Int(segs[cursor]))
+        cursor = Swift.min(cursor + 1 + pointCount * 2, segs.count)
+        count += 1
+    }
+    return count
 }

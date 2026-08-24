@@ -103,6 +103,9 @@ final class LinesLargeDrawTests: XCTestCase {
                        "completed static render should preserve the two progressive batch strokes")
         XCTAssertEqual((paths[0].shape as? LargeLinesPathShape)?.segs.count, 5_001 * 4)
         XCTAssertEqual((paths[1].shape as? LargeLinesPathShape)?.segs.count, 2 * 4)
+        XCTAssertEqual(paths[0].__startIndex, 0)
+        XCTAssertEqual(paths[1].__startIndex, 5_001,
+                       "each completed progressive path keeps its global datum offset for hover")
     }
 
     func testCompletedProgressiveLargePolylineKeepsBatchPaths() {
@@ -123,6 +126,27 @@ final class LinesLargeDrawTests: XCTestCase {
                        "completed polyline render should preserve progressive additive batches")
         XCTAssertEqual((paths[0].shape as? LargeLinesPathShape)?.segs.count, 5_001 * 5)
         XCTAssertEqual((paths[1].shape as? LargeLinesPathShape)?.segs.count, 2 * 5)
+        XCTAssertEqual(paths[1].__startIndex, 5_001)
+    }
+
+    func testLargePathExposesRepresentativeHitPointsForLineAndPolylineData() {
+        let straight = LargeLinesPath()
+        var straightShape = LargeLinesPathShape()
+        straightShape.segs = [0, 0, 8, 4, 10, 10, 14, 18]
+        straight.setShape(straightShape)
+        XCTAssertEqual(straight.representativePointsForDataIndex(1), [
+            [11, 12], [12, 14], [13, 16]
+        ])
+
+        let polyline = LargeLinesPath()
+        var polylineShape = LargeLinesPathShape()
+        polylineShape.polyline = true
+        polylineShape.segs = [3, 0, 0, 4, 0, 4, 4, 2, 10, 10, 14, 10]
+        polyline.setShape(polylineShape)
+        XCTAssertEqual(polyline.representativePointsForDataIndex(1), [
+            [11, 10], [12, 10], [13, 10]
+        ])
+        XCTAssertTrue(polyline.representativePointsForDataIndex(2).isEmpty)
     }
 
     // An item with a coord count OTHER than 2 must NOT shift the packing: upstream's fixed-size
