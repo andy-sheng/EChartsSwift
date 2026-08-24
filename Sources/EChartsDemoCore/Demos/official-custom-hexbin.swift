@@ -28,6 +28,10 @@
 //     `bins[i].points.length`, so maxBinLen is just the BIN COUNT). Kept verbatim in the web pane; the
 //     native `renderItem` reproduces the same buggy value as `hexbinMaxBinLen = hexbinSeriesData.count`
 //     (one data row == one bin) rather than re-deriving it from a second loop.
+//   - visualMap is scoped to seriesIndex 0. Without that constraint ECharts also targets the silent
+//     one-dimensional court-outline custom series; dragging the calculable handle then makes the
+//     upstream hover-link read dimension 3 from that series and throw. The colour dimension belongs
+//     only to the hexbin series, so the explicit target preserves the intended interaction.
 //   - The `legend: { data: ['bar', 'error'] }` entry is vestigial upstream (no series is named `bar` or
 //     `error`); kept verbatim in both panes.
 import Foundation
@@ -465,6 +469,7 @@ option = {
     align: 'bottom',
     text: [null, 'FG:   '],
     dimension: 3,
+    seriesIndex: 0,
     calculable: true,
     textStyle: {
       color: '#eee'
@@ -549,6 +554,7 @@ myChart.setOption(option);
                     "align": "bottom",
                     "text": [NSNull(), "FG:   "] as [Any],
                     "dimension": 3.0,
+                    "seriesIndex": 0.0,
                     "calculable": true,
                     "textStyle": ["color": "#eee"] as [String: Any],
                     // PORT-NOTE: visualMap.formatter kept — '{value} %' is a template STRING upstream,

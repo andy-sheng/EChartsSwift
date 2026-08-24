@@ -469,7 +469,8 @@ private func writeOfficialInteractionScenarios(
         var hitIndexBySeries: [Int: Int] = [:]
         var hoverInteractionCount = 0
         let matchingSeries = ecModel.getSeries().filter {
-            seriesSubtypes.contains($0.subType) && ($0.get("silent") as? Bool) != true
+            (seriesSubtypes.isEmpty || seriesSubtypes.contains($0.subType))
+                && ($0.get("silent") as? Bool) != true
         }
         let samplePositions = matchingSeries.count <= 4
             ? Array(matchingSeries.indices)
@@ -586,7 +587,13 @@ private func writeOfficialInteractionScenarios(
             }
         }
 
+        struct LegendInteraction {
+            var name: String
+            var singleMode: Bool
+            var initialName: String?
+        }
         var legendNames: [String] = []
+        var legendInteractions: [LegendInteraction] = []
         var seenLegendNames = Set<String>()
         var coverageNotes: [String] = []
         var hasScrollableLegend = false
@@ -621,6 +628,11 @@ private func writeOfficialInteractionScenarios(
                 componentNames = Array(componentNames.prefix(3))
             }
             legendNames.append(contentsOf: componentNames)
+            let singleMode = (legend.get("selectedMode") as? String) == "single"
+            let initialName = singleMode ? componentNames.first(where: { legend.isSelected($0) }) : nil
+            legendInteractions.append(contentsOf: componentNames.map {
+                LegendInteraction(name: $0, singleMode: singleMode, initialName: initialName)
+            })
         }
         // This official option positions its horizontal slider directly under the legend. Their live
         // hit regions overlap, so a pointer click at the visible legend swatch is received by the
@@ -631,16 +643,32 @@ private func writeOfficialInteractionScenarios(
             ? "legend hit regions overlap the horizontal dataZoom slider; pointer clicks resolve to the slider"
             : nil
         if let skippedLegendReason { coverageNotes.append(skippedLegendReason) }
-        let interactiveLegendNames = skippedLegendReason == nil ? legendNames : []
-        for name in interactiveLegendNames {
+        let interactiveLegends = skippedLegendReason == nil ? legendInteractions : []
+        for interaction in interactiveLegends {
+            let name = interaction.name
             let slug = interactionSlug(name)
             steps += [
                 ["action": "clickLegend", "name": name, "movePointer": true],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
-                ["action": "settle", "capture": "legend-\(slug)-off"],
-                ["action": "clickLegend", "name": name, "movePointer": true],
+                [
+                    "action": "settle",
+                    "capture": interaction.singleMode
+                        ? "legend-\(slug)-selected" : "legend-\(slug)-off"
+                ],
+            ]
+            if interaction.singleMode {
+                if let initialName = interaction.initialName, initialName != name {
+                    steps.append([
+                        "action": "clickLegend", "name": initialName, "movePointer": true
+                    ])
+                }
+            }
+            else {
+                steps.append(["action": "clickLegend", "name": name, "movePointer": true])
+            }
+            steps += [
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
@@ -749,6 +777,7 @@ private func writeOfficialInteractionScenarios(
                 ],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "visualmap-\(visualMapIndex)-dragged"],
                 [
                     "action": "dragVisualMap", "componentIndex": Double(visualMapIndex),
@@ -756,6 +785,7 @@ private func writeOfficialInteractionScenarios(
                 ],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "visualmap-\(visualMapIndex)-restored"],
             ]
         }
@@ -936,7 +966,7 @@ private func writeOfficialInteractionScenarios(
                 ["action": "settle", "capture": "toolbox-dataview-refreshed"],
             ]
         }
-        if hasRestore && (hasSlider || !interactiveLegendNames.isEmpty || completesPieToolbox) {
+        if hasRestore && (hasSlider || !interactiveLegends.isEmpty || completesPieToolbox) {
             steps += [
                 ["action": "clickToolbox", "name": "restore", "movePointer": true],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
@@ -1007,7 +1037,7 @@ private func writeOfficialInteractionScenarios(
         }
         manifest.append([
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
-            "legendInteractionCount": interactiveLegendNames.count,
+            "legendInteractionCount": interactiveLegends.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
             "hasRestore": hasRestore, "hasGeoRoam": !roamingGeos.isEmpty,
             "hasGeoRegionHover": geoRegionHit != nil,
@@ -1055,6 +1085,16 @@ func writeScatterInteractionScenarios(outputDirectory: String) -> Bool {
     writeOfficialInteractionScenarios(
         category: "scatter", seriesSubtypes: ["scatter", "effectScatter"],
         outputDirectory: outputDirectory
+    )
+}
+
+@MainActor
+func writeMapInteractionScenarios(outputDirectory: String) -> Bool {
+    // Map demos deliberately mix map/geo with pie, scatter, lines, graph, bar, and custom
+    // series. An empty subtype filter exercises every non-silent interactive series instead
+    // of silently dropping the overlays that make these demos useful interaction fixtures.
+    writeOfficialInteractionScenarios(
+        category: "map", seriesSubtypes: [], outputDirectory: outputDirectory
     )
 }
 
