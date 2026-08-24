@@ -128,10 +128,21 @@ public enum states {
     // ───────────────────────────── low-level helpers ─────────────────────────────
 
     // upstream: `hasFillOrStroke(fillOrStroke)` — treats null / 'none' as "no paint".
-    static func hasFillOrStroke(_ c: ZRenderKit.ZRColor?) -> Bool {
-        guard let c = c else { return false }
-        if case let .string(s) = c { return s != "none" }
-        return true   // gradient / pattern → has paint
+    static func hasFillOrStroke(_ paint: Any?) -> Bool {
+        guard let paint = paint else { return false }
+        if let string = paint as? String { return string != "none" }
+        if let color = paint as? ZRenderKit.ZRColor {
+            if case let .string(string) = color { return string != "none" }
+            return true
+        }
+        // Gradients and patterns are carried as objects/dictionaries in option-derived state bags.
+        return !(paint is NSNull)
+    }
+
+    static func statePaint(_ paint: Any?) -> ZRenderKit.ZRColor? {
+        if let color = paint as? ZRenderKit.ZRColor { return color }
+        if let string = paint as? String { return .string(string) }
+        return nil
     }
 
     // upstream: `doChangeHoverState(el, stateName, hoverStateEnum)`.
@@ -267,13 +278,13 @@ public enum states {
                     if let f = fromFill { emphasisStyle["fill"] = f }
                 }
                 // Apply default color lift
-                else if !hasFillOrStroke(emphasisStyle["fill"] as? ZRenderKit.ZRColor) && hasFillOrStroke(fromFill) {
+                else if !hasFillOrStroke(emphasisStyle["fill"]) && hasFillOrStroke(fromFill) {
                     cloned = true
                     // Already being applied 'emphasis'. DON'T lift color multiple times.
                     if let f = liftZRColor(fromFill) { emphasisStyle["fill"] = f }
                 }
                 // Not highlight stroke if fill has been highlighted.
-                else if !hasFillOrStroke(emphasisStyle["stroke"] as? ZRenderKit.ZRColor) && hasFillOrStroke(fromStroke) {
+                else if !hasFillOrStroke(emphasisStyle["stroke"]) && hasFillOrStroke(fromStroke) {
                     if let s = liftZRColor(fromStroke) { emphasisStyle["stroke"] = s }
                 }
                 state!.style = emphasisStyle
@@ -402,8 +413,8 @@ public enum states {
         store.normalFill = el.pathStyle?.fill
         store.normalStroke = el.pathStyle?.stroke
         let selectState = el.states["select"]
-        store.selectFill = selectState?.style?["fill"] as? ZRenderKit.ZRColor
-        store.selectStroke = selectState?.style?["stroke"] as? ZRenderKit.ZRColor
+        store.selectFill = statePaint(selectState?.style?["fill"])
+        store.selectStroke = statePaint(selectState?.style?["stroke"])
     }
 
     // Bridge: upstream `liftColor(fill as ColorString)` only lifts STRING colors. `Path`'s `ZRColor`

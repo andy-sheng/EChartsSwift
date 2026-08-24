@@ -238,6 +238,68 @@ private func dragRoamingGeo(
     return start
 }
 
+private func geoRegionEventData(at point: [Double], view: EChartsView) -> ECEventData? {
+    var current = view.zr.handler.findHover(point[0], point[1]).target
+    while let element = current {
+        if let eventData = innerStore.getECData(element).eventData,
+           (eventData["componentType"] as? String) == "geo" {
+            return eventData
+        }
+        current = element.__hostTarget ?? (element.parent as? Element)
+    }
+    return nil
+}
+
+@MainActor
+private func firstHitTestableGeoRegion(view: EChartsView) -> (name: String, point: [Double])? {
+    let geos = view.ec.getModel()?
+        .findComponents(QueryConditionKindA(mainType: "geo"))
+        .compactMap { ($0 as? GeoModel)?.coordinateSystem as? Geo } ?? []
+    for geo in geos {
+        for region in geo.regions {
+            guard let point = geo.dataToPoint(region.getCenter(), false),
+                  point.count >= 2, point[0].isFinite, point[1].isFinite,
+                  let eventData = geoRegionEventData(at: point, view: view),
+                  (eventData["name"] as? String) == region.name else { continue }
+            return (region.name, point)
+        }
+    }
+    return nil
+}
+
+@MainActor
+private func hoverGeoRegion(name: String, view: EChartsView) -> [Double]? {
+    let geos = view.ec.getModel()?
+        .findComponents(QueryConditionKindA(mainType: "geo"))
+        .compactMap { ($0 as? GeoModel)?.coordinateSystem as? Geo } ?? []
+    for geo in geos {
+        guard let region = geo.getRegion(name),
+              let point = geo.dataToPoint(region.getCenter(), false),
+              point.count >= 2,
+              (geoRegionEventData(at: point, view: view)?["name"] as? String) == name else {
+            continue
+        }
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        return point
+    }
+    return nil
+}
+
+@MainActor
+private func wheelRoamingGeo(delta: Double, view: EChartsView) -> [Double]? {
+    guard let geoModel = view.ec.getModel()?
+        .findComponents(QueryConditionKindA(mainType: "geo"))
+        .compactMap({ $0 as? GeoModel })
+        .first(where: {
+            let roam = $0.get("roam")
+            return (roam as? Bool) == true || ((roam as? String).map { $0 != "move" } ?? false)
+        }), let geo = geoModel.coordinateSystem as? Geo else { return nil }
+    let rect = geo.getViewRect()
+    let point = [rect.x + rect.width / 2, rect.y + rect.height / 2]
+    view._injectWheelForTest(zrDelta: delta, zrX: point[0], zrY: point[1])
+    return point
+}
+
 /// Minimal live-chart adapter for deterministic interaction scenarios. Timers are intentionally
 /// inert: this runner advances only the explicit scenario steps, while event subscriptions and
 /// synchronous setOption/dispatch calls remain live exactly as they are in the gallery host.
@@ -739,12 +801,30 @@ private func writeOfficialInteractionScenarios(
                 ]
             }
         }
-        let hasGeoRoam = demo.name != "official-scatter-map-brush"
-            && ecModel.findComponents(QueryConditionKindA(mainType: "geo"))
-            .contains {
+        let geoRegionHit = firstHitTestableGeoRegion(view: view)
+        if let geoRegionHit {
+            steps += [
+                ["action": "hoverGeoRegion", "name": geoRegionHit.name],
+                ["action": "wait", "milliseconds": 120.0],
+                ["action": "settle", "capture": "geo-region-hover"],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "geo-region-hover-restored"],
+            ]
+        }
+        let roamingGeos = demo.name == "official-scatter-map-brush"
+            ? []
+            : ecModel.findComponents(QueryConditionKindA(mainType: "geo")).filter {
                 ($0.get("roam") as? Bool) == true || ($0.get("roam") as? String) != nil
             }
-        if hasGeoRoam {
+        let canPanGeo = roamingGeos.contains {
+            ($0.get("roam") as? Bool) == true || ($0.get("roam") as? String) != "scale"
+        }
+        let canZoomGeo = roamingGeos.contains {
+            ($0.get("roam") as? Bool) == true || ($0.get("roam") as? String) != "move"
+        }
+        if canPanGeo {
             steps += [
                 ["action": "dragGeoRoam", "deltaX": 36.0, "deltaY": 24.0],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
@@ -756,6 +836,20 @@ private func writeOfficialInteractionScenarios(
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "geo-pan-restored"],
+            ]
+        }
+        if canZoomGeo {
+            steps += [
+                ["action": "wheelGeoRoam", "deltaY": 3.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "geo-zoomed"],
+                ["action": "wheelGeoRoam", "deltaY": -3.0],
+                ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                ["action": "globalOut"],
+                ["action": "wait", "milliseconds": 700.0],
+                ["action": "settle", "capture": "geo-zoom-restored"],
             ]
         }
         if let timeline = ecModel.findComponents(QueryConditionKindA(mainType: "timeline")).first,
@@ -855,7 +949,8 @@ private func writeOfficialInteractionScenarios(
             "demo": demo.name, "scenario": file, "legendCount": legendNames.count,
             "legendInteractionCount": interactiveLegendNames.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
-            "hasRestore": hasRestore, "hasGeoRoam": hasGeoRoam,
+            "hasRestore": hasRestore, "hasGeoRoam": !roamingGeos.isEmpty,
+            "hasGeoRegionHover": geoRegionHit != nil,
             "calculableVisualMapCount": calculableVisualMaps.count,
             "coverageNotes": coverageNotes,
         ])
@@ -1041,6 +1136,26 @@ func runNativeInteractionVisual(
             record["resolvedPoint"] = point
             record["deltaX"] = dx
             record["deltaY"] = dy
+        case "wheelGeoRoam":
+            let delta = step.deltaY ?? 3
+            guard let point = wheelRoamingGeo(delta: delta, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): zoomable geo was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["delta"] = delta
+        case "hoverGeoRegion":
+            guard let name = step.name,
+                  let point = hoverGeoRegion(name: name, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): geo region was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["name"] = name
         case "dragVisualMap":
             let componentIndex = Int(step.componentIndex ?? 0)
             let handleIndex = Int(step.handleIndex ?? 1)
@@ -1553,6 +1668,19 @@ private let webInteractionHarnessJS = #"""
     }
     throw new Error('roaming geo was not available');
   }
+  function geoRegionHit(name) {
+    var models = myChart.getModel().queryComponents({mainType: 'geo'});
+    for (var i = 0; i < models.length; i++) {
+      var geo = models[i].coordinateSystem;
+      var region = geo && geo.getRegion && geo.getRegion(name);
+      var center = region && region.getCenter && region.getCenter();
+      var point = center && geo.dataToPoint && geo.dataToPoint(center);
+      if (!point || !isFinite(point[0]) || !isFinite(point[1])) { continue; }
+      var hovered = myChart.getZr().handler.findHover(point[0], point[1]);
+      if (hovered && hovered.target) { return { point: point, hovered: hovered }; }
+    }
+    throw new Error('geo region was not hit-testable: ' + name);
+  }
   function brushTargetRect(targetType, componentIndex) {
     var model = myChart.getModel().getComponent(targetType, componentIndex);
     var coord = model && model.coordinateSystem;
@@ -1867,6 +1995,25 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
     },
+    wheelGeoRoam: function (delta) {
+      pointerOutside = false;
+      var point = roamingGeoHit();
+      var event = raw(point);
+      event.zrDelta = delta;
+      event.wheelDelta = delta;
+      myChart.getZr().handler.mousewheel(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: point[0], y: point[1], delta: delta };
+    },
+    hoverGeoRegion: function (name) {
+      pointerOutside = false;
+      var hit = geoRegionHit(name);
+      myChart.getZr().handler.mousemove(raw(hit.point));
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], name: name };
+    },
     dragVisualMap: function (componentIndex, handleIndex, deltaX, deltaY) {
       pointerOutside = false;
       var hit = visualMapHandleHit(componentIndex, handleIndex);
@@ -2042,6 +2189,10 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "driveTick": script = "window.__interactionVisual.driveTick()"
         case "dragGeoRoam":
             script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
+        case "wheelGeoRoam":
+            script = "(function(a){return window.__interactionVisual.wheelGeoRoam(a.deltaY);})(\(json))"
+        case "hoverGeoRegion":
+            script = "(function(a){return window.__interactionVisual.hoverGeoRegion(a.name);})(\(json))"
         case "dragVisualMap":
             script = "(function(a){return window.__interactionVisual.dragVisualMap(a.componentIndex,a.handleIndex,a.deltaX,a.deltaY);})(\(json))"
         case "clickVisualMapPiece":
