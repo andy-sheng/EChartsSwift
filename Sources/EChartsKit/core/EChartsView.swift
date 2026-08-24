@@ -1036,21 +1036,10 @@ public final class EChartsView {
     private func _bindBrush() {
         _ = zr.on("mousedown", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
-            // Arm a rect drag when a brush component exists (minimal cursor-mode stand-in) OR the toolbox
-            //   dataZoom box-select is armed (`takeGlobalCursor` set `dataZoomSelectActive`). The mouseup
-            //   dispatches a `brush` action or a `dataZoom` box-select accordingly (see `_finishBrushDrag`).
-            guard self.ec.getModel()?.getComponent("brush") != nil || self.ec.dataZoomSelectActive else {
-                return nil
-            }
-            // STAND DOWN when the REAL brush is armed: the ported BrushView owns a BrushController that
-            //   paints the cover and dispatches `brush`/`brushEnd` with a proper `coordRange` (via
-            //   BrushTargetManager.setOutputRanges). This block predates that controller and is only the
-            //   fallback for a brush component whose paint cursor was never armed (no `takeGlobalCursor`);
-            //   running both would dispatch twice and clobber the controller's areas with a pixel-only rect.
-            if let brushModel = self.ec.getModel()?.getComponent("brush") as? BrushModel,
-               brushModel.brushType != nil {
-                return nil
-            }
+            // The full BrushController owns every brush-component gesture. This legacy host bridge is
+            // retained only for toolbox dataZoom box-select. Treating an inactive brush component as
+            // globally armed makes unrelated drags (notably a slider handle) create a zero-height brush.
+            guard self.ec.dataZoomSelectActive else { return nil }
             self._brushDrag = (startX: e.offsetX, startY: e.offsetY)
             return nil
         }, nil)
@@ -1619,6 +1608,89 @@ public final class EChartsView {
         raw.zrDelta = zrDelta
         raw.which = 1
         zr.handler.mousewheel(raw)
+    }
+
+    /// Headless visual-oracle seam for slider dataZoom. Resolves the draggable from its owning
+    /// `SliderZoomView`, so sliders positioned at the top or side of a chart are not missed and a
+    /// nearby axisPointer/graphic handle cannot be mistaken for the zoom control.
+    @discardableResult
+    public func _injectSliderDataZoomDragForTest(
+        componentIndex: Int = 0,
+        deltaX: Double,
+        deltaY: Double,
+        deltaPercent: Double? = nil
+    ) -> [Double]? {
+        let views = ec._componentsViews.compactMap { $0 as? SliderZoomView }
+        guard views.indices.contains(componentIndex) else { return nil }
+        let zoomView = views[componentIndex]
+        let displayables = zoomView._displayables
+        let candidates: [Displayable]
+        if deltaPercent != nil {
+            let dragTarget = (zoomView.dataZoomModel.get("brushSelect") as? Bool) ?? true
+                ? displayables.moveZone : displayables.filler
+            candidates = [dragTarget].compactMap { $0 }
+        }
+        else {
+            // Always resize the start edge. Display-list order is renderer-dependent and can put
+            // the end handle first, which makes Native/Web visual-oracle inputs incomparable.
+            candidates = [displayables.handles.first ?? nil].compactMap { $0 }
+        }
+        _ = zr.storage.getDisplayList(true)
+
+        func belongsTo(_ target: Element?, _ owner: Element) -> Bool {
+            var current = target
+            while let element = current {
+                if element === owner { return true }
+                current = element.__hostTarget ?? (element.parent as? Element)
+            }
+            return false
+        }
+        func hitPoint(_ candidate: Displayable) -> [Double]? {
+            guard let bounds = candidate.getBoundingRect() else { return nil }
+            for gy in 1..<20 {
+                for gx in 1..<20 {
+                    let point = candidate.transformCoordToGlobal(
+                        bounds.x + bounds.width * Double(gx) / 20,
+                        bounds.y + bounds.height * Double(gy) / 20
+                    )
+                    if candidate.contain(point[0], point[1]),
+                       belongsTo(zr.handler.findHover(point[0], point[1]).target, candidate) {
+                        return point
+                    }
+                }
+            }
+            return nil
+        }
+
+        for candidate in candidates {
+            guard let start = hitPoint(candidate) else { continue }
+            var dx = deltaX
+            var dy = deltaY
+            if let deltaPercent,
+               let bounds = candidate.getBoundingRect(),
+               let range = zoomView.dataZoomModel.getPercentRange() {
+                let left = candidate.transformCoordToGlobal(bounds.x, bounds.y)
+                let right = candidate.transformCoordToGlobal(bounds.x + bounds.width, bounds.y)
+                let rangeSpan = abs(range[1] - range[0])
+                if rangeSpan > 0 {
+                    dx = abs(right[0] - left[0]) * abs(deltaPercent) / rangeSpan
+                }
+            }
+            if dx != 0, start[0] > ec.getWidth() * 0.72 { dx = -abs(dx) }
+            if start[0] + dx < 2 || start[0] + dx > ec.getWidth() - 2 { dx = -dx }
+            if start[1] + dy < 2 || start[1] + dy > ec.getHeight() - 2 { dy = -dy }
+
+            _injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
+            _injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
+            // A realtime dataZoom rebuild can replace the handle after the first move. Send the
+            // requested displacement once so both renderers consume the same complete drag.
+            _injectPointerForTest(
+                type: "mousemove", zrX: start[0] + dx, zrY: start[1] + dy
+            )
+            _injectPointerForTest(type: "mouseup", zrX: start[0] + dx, zrY: start[1] + dy)
+            return start
+        }
+        return nil
     }
 
     /// Headless visual-oracle seam for a calculable continuous visualMap. Targets the requested

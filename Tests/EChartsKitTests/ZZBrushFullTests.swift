@@ -454,4 +454,49 @@ final class ZZBrushFullTests: XCTestCase {
         guard let data = seriesData(view) else { XCTFail("no series after dispatch"); return }
         XCTAssertNotEqual(fill(data, 2), paletteFill, "candle 2 outside the rect is dimmed")
     }
+
+    func testSliderDataZoomDoesNotCreateAnEmptyBrushSelection() throws {
+        let view = EChartsView(width: 500, height: 320)
+        let categories = (0..<40).map { "D\($0)" }
+        let candles: [[Double]] = (0..<40).map { index in
+            let value = Double(index + 20)
+            return [value, value + 2, value - 3, value + 4]
+        }
+        view.setOption([
+            "animation": false,
+            "grid": ["left": 50.0, "top": 20.0, "width": 400.0, "height": 210.0]
+                as [String: Any],
+            "brush": [
+                "xAxisIndex": "all", "brushLink": "all",
+                "outOfBrush": ["colorAlpha": 0.1] as [String: Any],
+            ] as [String: Any],
+            "dataZoom": [
+                ["type": "inside", "start": 80.0, "end": 100.0] as [String: Any],
+                ["type": "slider", "start": 80.0, "end": 100.0,
+                 "top": 255.0, "height": 20.0] as [String: Any],
+            ],
+            "xAxis": ["type": "category", "data": categories] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "candlestick", "data": candles] as [String: Any]],
+        ])
+
+        var brush: BrushModel?
+        view.ec.getModel()?.eachComponent("brush") { model, _ in brush = model as? BrushModel }
+        XCTAssertEqual(brush?.areas.count, 0)
+        XCTAssertEqual(brush?.brushTargetManager?.makePanelOpts(view.ec.api).count, 1,
+                       "xAxisIndex: all must resolve to the cartesian grid panel")
+        let initialFill = try XCTUnwrap(fill(try XCTUnwrap(seriesData(view)), 35))
+
+        XCTAssertNotNil(view._injectSliderDataZoomDragForTest(
+            componentIndex: 0, deltaX: -48, deltaY: 0
+        ))
+
+        let unexpectedAreas = String(describing: brush?.areas)
+        XCTAssertEqual(brush?.areas.count, 0,
+                       "slider drag must not create a brush area: \(unexpectedAreas)")
+        let updatedFill = try XCTUnwrap(fill(try XCTUnwrap(seriesData(view)), 35))
+        XCTAssertEqual(updatedFill, initialFill,
+                       "an empty brush must not apply outOfBrush alpha after dataZoom")
+        view.dispose()
+    }
 }

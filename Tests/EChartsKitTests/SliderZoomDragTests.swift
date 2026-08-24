@@ -102,4 +102,47 @@ final class SliderZoomDragTests: XCTestCase {
         XCTAssertTrue(brushRect == nil || brushRect!.ignore,
                       "the rubber band must be hidden after the brush commits")
     }
+
+    func testOwnedDragHelperFindsSliderAtTheTopOfTheChart() throws {
+        let v = EChartsView(width: 480, height: 360)
+        let dates: [String] = (0..<20).map { "c\($0)" }
+        let candles: [[Double]] = (0..<20).map { i -> [Double] in
+            let value = Double(i)
+            return [value, value + 2, value - 1, value + 3]
+        }
+        let option: [String: Any] = [
+            "animation": false,
+            "grid": [
+                ["top": 110.0, "height": 120.0] as [String: Any],
+                ["top": 250.0, "height": 50.0] as [String: Any],
+            ],
+            "xAxis": [
+                ["type": "category", "data": dates] as [String: Any],
+                ["type": "category", "gridIndex": 1.0,
+                 "data": dates,
+                 "axisPointer": ["handle": ["show": true] as [String: Any]] as [String: Any]]
+                    as [String: Any],
+            ],
+            "yAxis": [
+                ["type": "value"] as [String: Any],
+                ["type": "value", "gridIndex": 1.0] as [String: Any],
+            ],
+            "dataZoom": [[
+                "type": "slider", "xAxisIndex": [0.0, 1.0],
+                "start": 20.0, "end": 70.0, "top": 65.0, "height": 20.0,
+            ] as [String: Any]],
+            "series": [[
+                "type": "candlestick", "data": candles
+            ] as [String: Any]],
+        ]
+        v.setOption(option)
+
+        let point = try XCTUnwrap(v._injectSliderDataZoomDragForTest(deltaX: 32, deltaY: 0))
+        XCTAssertLessThan(point[1], 100, "the owned top slider handle must be selected")
+        let slider = try XCTUnwrap(v.ec._componentsViews.compactMap { $0 as? SliderZoomView }.first)
+        let range = try XCTUnwrap(slider.dataZoomModel.getPercentRange())
+        XCTAssertNotEqual(range[0], 20, "the real Handler drag must move the start edge")
+        XCTAssertEqual(range[1], 70, accuracy: 0.01, "the end edge must stay fixed")
+        v.dispose()
+    }
 }

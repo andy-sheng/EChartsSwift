@@ -1241,13 +1241,23 @@ private func determineBrushType(_ brushType: BrushTypeUncertain, _ panel: BrushP
 //   (bound onto the zr in `_mountHandlers`.)
 
 // mousedown
+private func hasDraggableTargetOrAncestor(_ target: Element?) -> Bool {
+    var current = target
+    var visited = Set<ObjectIdentifier>()
+    while let element = current, visited.insert(ObjectIdentifier(element)).inserted {
+        if element.draggable == .true { return true }
+        current = element.__hostTarget ?? (element.parent as? Element)
+    }
+    return false
+}
+
 private func pointerHandlerMousedown(_ controller: BrushController, _ e: ElementEvent) {
     if controller._dragging {
         // In case some browser do not support globalOut,
         // and release mouse out side the browser.
         handleDragEnd(controller, e)
     }
-    else if e.target == nil || e.target!.draggable == .false {
+    else if !hasDraggableTargetOrAncestor(e.target) {
 
         preventDefault(e)
 

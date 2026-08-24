@@ -108,10 +108,14 @@ final class ZZBrushTests: XCTestCase {
         let cut = (b1.x + b1.width + b2.x) / 2.0
         let paletteFill = fill(data0, 0)
 
-        // Drag a rectangle from (left of bar0, top) to (cut, bottom) — the live `_bindBrush` state machine.
-        view._injectPointerForTest(type: "mousedown", zrX: b0.x - 5.0, zrY: 10.0)
-        view._injectPointerForTest(type: "mousemove", zrX: cut, zrY: 250.0)
-        view._injectPointerForTest(type: "mouseup", zrX: cut, zrY: 250.0)
+        // Arm the real BrushController, then drag within its grid panel.
+        var arm = Payload(type: "takeGlobalCursor")
+        arm.other["key"] = "brush"
+        arm.other["brushOption"] = ["brushType": "rect", "brushMode": "single"] as [String: Any]
+        view.ec.dispatchAction(arm)
+        view._injectPointerForTest(type: "mousedown", zrX: b0.x - 5.0, zrY: 25.0)
+        view._injectPointerForTest(type: "mousemove", zrX: cut, zrY: 215.0)
+        view._injectPointerForTest(type: "mouseup", zrX: cut, zrY: 215.0)
 
         guard let data = seriesData(view) else { XCTFail("no series after drag"); return }
         XCTAssertEqual(fill(data, 0), paletteFill, "in-brush bar 0 keeps its palette fill after a live drag")

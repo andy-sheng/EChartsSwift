@@ -1459,6 +1459,17 @@ func runCLI() -> Bool {
         }
         exit(writeMapInteractionScenarios(outputDirectory: args[1]) ? 0 : 1)
 
+    case "--interaction-generate-category":
+        guard args.count >= 3 else {
+            FileHandle.standardError.write(
+                Data("usage: --interaction-generate-category <category> <scenario-dir>\n".utf8)
+            )
+            exit(2)
+        }
+        exit(writeCategoryInteractionScenarios(
+            category: args[1], outputDirectory: args[2]
+        ) ? 0 : 1)
+
     case "--interaction-web":
         // Web oracle for --interaction-native. It resolves the current LegendView after every
         // rebuild and sends the same pointer sequence through zrender's Handler.

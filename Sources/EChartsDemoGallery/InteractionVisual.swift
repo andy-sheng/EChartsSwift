@@ -185,18 +185,19 @@ private func resolvedSeriesPoint(
 private func dragInteractiveElement(
     kind: String, deltaX: Double, deltaY: Double, deltaPercent: Double?, view: EChartsView
 ) -> [Double]? {
+    if kind == "dataZoom" {
+        return view._injectSliderDataZoomDragForTest(
+            deltaX: deltaX, deltaY: deltaY, deltaPercent: deltaPercent
+        )
+    }
     let height = view.ec.getHeight()
     let width = view.ec.getWidth()
-    var candidates = view.zr.storage.getDisplayList(true).filter { element in
+    let candidates = view.zr.storage.getDisplayList(true).filter { element in
         guard element.draggable != .false else { return false }
         guard let bounds = element.getBoundingRect() else { return false }
         let center = element.transformCoordToGlobal(
             bounds.x + bounds.width / 2, bounds.y + bounds.height / 2
         )
-        if kind == "dataZoom" {
-            return center[0] >= width * 0.08 && center[0] <= width * 0.92
-                && center[1] >= height * 0.68
-        }
         if kind == "axisPointer" {
             return center[0] >= width * 0.08 && center[0] <= width * 0.92
                 && center[1] >= height * 0.68 && center[1] < height * 0.92
@@ -204,47 +205,17 @@ private func dragInteractiveElement(
         if kind == "timeline" { return true }
         return center[0] >= width * 0.08 && center[0] <= width * 0.85 && center[1] < height * 0.68
     }
-    if kind == "dataZoom" {
-        func globalWidth(_ element: Element) -> Double {
-            guard let bounds = element.getBoundingRect() else { return 0 }
-            let left = element.transformCoordToGlobal(bounds.x, bounds.y)
-            let right = element.transformCoordToGlobal(bounds.x + bounds.width, bounds.y)
-            return abs(right[0] - left[0])
-        }
-        // A semantic percentage pan must grab the selected-window filler. When the slider covers
-        // 0...100%, however, moving that filler is clamped and changes nothing, so the generic
-        // resize probe deliberately grabs the narrowest hit-testable handle instead.
-        candidates.sort {
-            deltaPercent == nil ? globalWidth($0) < globalWidth($1) : globalWidth($0) > globalWidth($1)
-        }
-    }
     for candidate in candidates {
         guard let start = deterministicHoverPoint(candidate, accepting: { point in
             view.zr.handler.findHover(point[0], point[1]).target === candidate
         }) else { continue }
         var dx = deltaX
         var dy = deltaY
-        if kind == "dataZoom", let deltaPercent,
-           let bounds = candidate.getBoundingRect(),
-           let range = view.ec.getModel()?
-            .findComponents(QueryConditionKindA(mainType: "dataZoom"))
-            .compactMap({ ($0 as? DataZoomModel)?.getPercentRange() }).first {
-            let left = candidate.transformCoordToGlobal(bounds.x, bounds.y)
-            let right = candidate.transformCoordToGlobal(bounds.x + bounds.width, bounds.y)
-            let rangeSpan = abs(range[1] - range[0])
-            if rangeSpan > 0 {
-                dx = abs(right[0] - left[0]) * abs(deltaPercent) / rangeSpan
-            }
-        }
-        if kind == "dataZoom", dx != 0, start[0] > width * 0.72 {
-            dx = -abs(dx)
-        }
         if start[0] + dx < 2 || start[0] + dx > view.ec.getWidth() - 2 { dx = -dx }
         if start[1] + dy < 2 || start[1] + dy > view.ec.getHeight() - 2 { dy = -dy }
         view._injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
         view._injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
-        let fractions = deltaPercent == nil ? [0.25, 0.5, 0.75, 1.0] : [1.0]
-        for fraction in fractions {
+        for fraction in [0.25, 0.5, 0.75, 1.0] {
             view._injectPointerForTest(
                 type: "mousemove", zrX: start[0] + dx * fraction, zrY: start[1] + dy * fraction
             )
@@ -468,15 +439,21 @@ private func writeOfficialInteractionScenarios(
         var selectedSeries: [SeriesModel] = []
         var hitIndexBySeries: [Int: Int] = [:]
         var hoverInteractionCount = 0
-        let matchingSeries = ecModel.getSeries().filter {
+        var coverageNotes: [String] = []
+        let hasUserVisibleSeriesHover = demo.name != "official-matrix-stock"
+        if !hasUserVisibleSeriesHover {
+            coverageNotes.append(
+                "series have no authored tooltip or visually distinguishable hover state"
+            )
+        }
+        let matchingSeries = hasUserVisibleSeriesHover ? ecModel.getSeries().filter {
             (seriesSubtypes.isEmpty || seriesSubtypes.contains($0.subType))
                 && ($0.get("silent") as? Bool) != true
-        }
+        } : []
         let samplePositions = matchingSeries.count <= 4
             ? Array(matchingSeries.indices)
             : [0, matchingSeries.count / 2, max(0, matchingSeries.count - 1)]
-        for position in samplePositions
-        where !matchingSeries.isEmpty {
+        for position in samplePositions where !matchingSeries.isEmpty {
             let series = matchingSeries[position]
             if !selectedSeries.contains(where: { $0 === series }) { selectedSeries.append(series) }
         }
@@ -595,7 +572,6 @@ private func writeOfficialInteractionScenarios(
         var legendNames: [String] = []
         var legendInteractions: [LegendInteraction] = []
         var seenLegendNames = Set<String>()
-        var coverageNotes: [String] = []
         var hasScrollableLegend = false
         func hasLegendProvider(_ name: String) -> Bool {
             ecModel.getSeries().contains { series in
@@ -1095,6 +1071,20 @@ func writeMapInteractionScenarios(outputDirectory: String) -> Bool {
     // of silently dropping the overlays that make these demos useful interaction fixtures.
     writeOfficialInteractionScenarios(
         category: "map", seriesSubtypes: [], outputDirectory: outputDirectory
+    )
+}
+
+@MainActor
+func writeCategoryInteractionScenarios(category: String, outputDirectory: String) -> Bool {
+    guard EChartsDemoRegistry.officialCategoryOrder.contains(category) else {
+        FileHandle.standardError.write(Data("unknown official category: \(category)\n".utf8))
+        return false
+    }
+    // The remaining official sections are not type-pure: a category may include overlays from
+    // lines, scatter, custom, graph, pie, or another series family. Exercise every non-silent
+    // rendered series so the generic sweep cannot miss a user-reachable overlay interaction.
+    return writeOfficialInteractionScenarios(
+        category: category, seriesSubtypes: [], outputDirectory: outputDirectory
     )
 }
 
@@ -1846,6 +1836,24 @@ private let webInteractionHarnessJS = #"""
     var list = zr.storage.getDisplayList(true);
     var height = myChart.getHeight();
     var width = myChart.getWidth();
+    var sliderViews = (myChart._componentsViews || []).filter(function (view) {
+      return view.type === 'dataZoom.slider';
+    });
+    var sliderGroups = sliderViews.map(function (view) { return view.group; });
+    if (kind === 'dataZoom') {
+      var sliderView = sliderViews[0];
+      var displayables = sliderView && sliderView._displayables;
+      var target = null;
+      if (displayables) {
+        target = preferWindow
+          ? (sliderView.dataZoomModel.get('brushSelect')
+            ? displayables.moveZone : displayables.filler)
+          : (displayables.handles && displayables.handles[0]);
+      }
+      // Pin both renderers to the same semantic target. Display-list order can put handle 1
+      // before handle 0, producing different zoom windows even though both drags succeed.
+      list = target ? [target] : [];
+    }
     var hits = [];
     for (var i = 0; i < list.length; i++) {
       var el = list[i];
@@ -1862,7 +1870,7 @@ private let webInteractionHarnessJS = #"""
             ? true
             : (kind === 'dataZoom'
             ? point[0] >= width * 0.08 && point[0] <= width * 0.92
-              && point[1] >= height * 0.68
+              && sliderGroups.some(function (group) { return belongsTo(el, group); })
             : (kind === 'axisPointer'
               ? point[0] >= width * 0.08 && point[0] <= width * 0.92
                 && point[1] >= height * 0.68 && point[1] < height * 0.92
@@ -2242,7 +2250,10 @@ private let webInteractionHarnessJS = #"""
       if (start[1] + dy < 2 || start[1] + dy > myChart.getHeight() - 2) { dy = -dy; }
       handler.mousemove(raw(start));
       handler.mousedown(raw(start));
-      (typeof deltaPercent === 'number' ? [1] : [0.25, 0.5, 0.75, 1]).forEach(function (fraction) {
+      // A realtime dataZoom rebuild can replace the handle after the first move. Send the full
+      // displacement once so Native and Web consume the same complete drag.
+      var fractions = kind === 'dataZoom' ? [1] : [0.25, 0.5, 0.75, 1];
+      fractions.forEach(function (fraction) {
         handler.mousemove(raw([start[0] + dx * fraction, start[1] + dy * fraction]));
       });
       if (kind !== 'axisPointer') {
