@@ -568,6 +568,7 @@ private func writeOfficialInteractionScenarios(
             var name: String
             var singleMode: Bool
             var initialName: String?
+            var initiallySelected: Bool
         }
         var legendNames: [String] = []
         var legendInteractions: [LegendInteraction] = []
@@ -607,7 +608,12 @@ private func writeOfficialInteractionScenarios(
             let singleMode = (legend.get("selectedMode") as? String) == "single"
             let initialName = singleMode ? componentNames.first(where: { legend.isSelected($0) }) : nil
             legendInteractions.append(contentsOf: componentNames.map {
-                LegendInteraction(name: $0, singleMode: singleMode, initialName: initialName)
+                LegendInteraction(
+                    name: $0,
+                    singleMode: singleMode,
+                    initialName: initialName,
+                    initiallySelected: legend.isSelected($0)
+                )
             })
         }
         // This official option positions its horizontal slider directly under the legend. Their live
@@ -631,7 +637,8 @@ private func writeOfficialInteractionScenarios(
                 [
                     "action": "settle",
                     "capture": interaction.singleMode
-                        ? "legend-\(slug)-selected" : "legend-\(slug)-off"
+                        ? "legend-\(slug)-selected"
+                        : "legend-\(slug)-\(interaction.initiallySelected ? "off" : "on")"
                 ],
             ]
             if interaction.singleMode {
@@ -989,7 +996,7 @@ private func writeOfficialInteractionScenarios(
             "demo": demo.name,
             "checks": [
                 "Every requested \(category)-series hover must resolve on the live chart; moving out must clear tooltip, axisPointer and emphasis without stale state.",
-                "Every requested hit-testable legend item must toggle its corresponding series off and back on in the same instance; the restored frame must recover all series, symbols, labels and annotations.",
+                "Every requested hit-testable legend item must toggle to the opposite of its authored initial state and back in the same instance; the restored frame must recover the initial series, symbols, labels and annotations.",
                 "When a slider dataZoom exists, a real Handler drag must change the visible window consistently in Native and Web, and pointer cleanup must remove temporary handle state.",
                 "Interactive \(category) examples must react to their scenario-specific click or drag action consistently in Native and Web.",
                 "Timer-driven examples must reach the same settled state after each explicit logical interval tick in Native and Web.",
