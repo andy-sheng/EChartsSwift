@@ -745,6 +745,20 @@ public final class EChartsView {
             self.zr.refresh()
         }
 
+        // Legend filtering can replace the active series without another host `setOption`. The roam
+        // controllers live on this host (the chart views themselves are zr-less), so rebind them to the
+        // newly visible series after the legend action has rebuilt the model/views. Without this, a
+        // single-select legend leaves treemap/tree/graph gestures dispatching to the previously visible
+        // series id and the newly displayed chart does not pan or zoom.
+        ec.on("legendselectchanged") { [weak self] _ in
+            guard let self else { return }
+            self._setupGraphRoam()
+            self._setupGeoRoam()
+            self._setupTreeRoam()
+            self._setupTreemapRoam()
+            self._setupSankeyRoam()
+        }
+
         // Upstream `ecInstance.dispatchAction` re-renders and repaints the DRIVER's own zr. Here the driver
         //   (`ec`) is zr-less and the DISPLAY zr is a separate copy of `ec.getRoot()` (a stable Group,
         //   mutated in place by each re-render). An INTERNAL `api.dispatchAction` — a legend toggle, a

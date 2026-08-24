@@ -317,6 +317,99 @@ private func wheelRoamingGeo(delta: Double, view: EChartsView) -> [Double]? {
     return point
 }
 
+@MainActor
+private func dragRoamingSeries(
+    _ action: [String: Any], deltaX: Double, deltaY: Double, view: EChartsView
+) -> [Double]? {
+    guard let (_, start) = resolveDeterministicDataHit(action, ec: view.ec, view: view) else {
+        return nil
+    }
+    view._injectPointerForTest(type: "mousemove", zrX: start[0], zrY: start[1])
+    view._injectPointerForTest(type: "mousedown", zrX: start[0], zrY: start[1])
+    for fraction in [0.25, 0.5, 0.75, 1.0] {
+        view._injectPointerForTest(
+            type: "mousemove",
+            zrX: start[0] + deltaX * fraction,
+            zrY: start[1] + deltaY * fraction
+        )
+    }
+    view._injectPointerForTest(
+        type: "mouseup", zrX: start[0] + deltaX, zrY: start[1] + deltaY
+    )
+    return start
+}
+
+@MainActor
+private func wheelRoamingSeries(
+    _ action: [String: Any], delta: Double, view: EChartsView
+) -> [Double]? {
+    guard let (_, point) = resolveDeterministicDataHit(action, ec: view.ec, view: view) else {
+        return nil
+    }
+    view._injectWheelForTest(zrDelta: delta, zrX: point[0], zrY: point[1])
+    return point
+}
+
+@MainActor
+private func clickTreemapRootBreadcrumb(view: EChartsView, movePointer: Bool) -> [Double]? {
+    let candidates = view.zr.storage.getDisplayList(true).compactMap { displayable -> (Displayable, Int)? in
+        guard let eventData = innerStore.getECData(displayable).eventData,
+              (eventData["selfType"] as? String) == "breadcrumb",
+              let nodeData = eventData["nodeData"] as? [String: Any] else { return nil }
+        let dataIndex = (nodeData["dataIndex"] as? NSNumber)?.intValue
+            ?? (nodeData["dataIndex"] as? Int) ?? Int.max
+        return (displayable, dataIndex)
+    }.sorted { lhs, rhs in
+        if (lhs.1 < 0) != (rhs.1 < 0) { return lhs.1 < 0 }
+        return lhs.0.getBoundingRect()?.x ?? .greatestFiniteMagnitude
+            < rhs.0.getBoundingRect()?.x ?? .greatestFiniteMagnitude
+    }
+    for (candidate, _) in candidates {
+        guard let point = deterministicHoverPoint(candidate, accepting: { point in
+            let target = view.zr.handler.findHover(point[0], point[1]).target
+            var current = target
+            while let element = current {
+                if element === candidate { return true }
+                current = element.__hostTarget ?? (element.parent as? Element)
+            }
+            return false
+        }) else { continue }
+        if movePointer {
+            view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+        return point
+    }
+    return nil
+}
+
+@MainActor
+private func clickTreemapDrillDownNode(view: EChartsView, movePointer: Bool) -> (String, [Double])? {
+    let labels = view.zr.storage.getDisplayList(true).compactMap { $0 as? TSpan }.filter {
+        $0.tspanStyle?.text?.hasPrefix("▶") ?? false
+    }
+    for label in labels {
+        guard let point = deterministicHoverPoint(label, accepting: { point in
+            var current = view.zr.handler.findHover(point[0], point[1]).target
+            while let element = current {
+                if element === label { return true }
+                current = element.__hostTarget ?? (element.parent as? Element)
+            }
+            return false
+        }) else { continue }
+        if movePointer {
+            view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        }
+        view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+        return (label.tspanStyle?.text ?? "", point)
+    }
+    return nil
+}
+
 /// Minimal live-chart adapter for deterministic interaction scenarios. Timers are intentionally
 /// inert: this runner advances only the explicit scenario steps, while event subscriptions and
 /// synchronous setOption/dispatch calls remain live exactly as they are in the gallery host.
@@ -463,6 +556,9 @@ private func writeOfficialInteractionScenarios(
         var hitIndexBySeries: [Int: Int] = [:]
         var hoverInteractionCount = 0
         var treeExpandCollapseCount = 0
+        var treemapNodeClickCount = 0
+        var treemapPanCount = 0
+        var treemapZoomCount = 0
         var coverageNotes: [String] = []
         let noVisibleSeriesHoverDemos: Set<String> = [
             "official-lines-ny",
@@ -506,7 +602,8 @@ private func writeOfficialInteractionScenarios(
                 index = pointIndex
             }
             else {
-                var candidates = [middle]
+                var candidates = demo.name == "official-treemap-sunburst-transition"
+                    ? [0, middle] : [middle]
                 // The web reference keeps only the first progressive chunk attached to the live
                 // display tree. Later chunks are painted incrementally and cannot be reached by a
                 // real pointer hit even though the data and coordinate layout still exist. Prefer
@@ -597,6 +694,119 @@ private func writeOfficialInteractionScenarios(
                     ["action": "snapshot", "capture": "\(capturePrefix)-restored"],
                 ]
                 treeExpandCollapseCount += 1
+            }
+        }
+
+        if category == "treemap" {
+            for series in selectedSeries where series.subType == "treemap" {
+                let seriesIndex = Int(series.seriesIndex)
+                guard let hitIndex = hitIndexBySeries[seriesIndex] else { continue }
+                let data = series.getData()
+                let nodeClick = series.get("nodeClick")
+                let nodeClickEnabled = nodeClick != nil
+                    && !(nodeClick is NSNull)
+                    && (nodeClick as? Bool) != false
+                    && (nodeClick as? String) != ""
+                if nodeClickEnabled, let tree = data.tree {
+                    let authoredLeafDepth = (series.get("leafDepth") as? NSNumber)?.doubleValue
+                        ?? (series.get("leafDepth") as? Double)
+                    let viewRootDepth = (series as? TreemapSeriesModel)?.getViewRoot()?.depth ?? 0
+                    var nameCounts: [String: Int] = [:]
+                    for dataIndex in 0..<data.count() {
+                        nameCounts[data.getName(dataIndex), default: 0] += 1
+                    }
+                    let candidates = (0..<data.count()).compactMap { dataIndex -> (Int, Int, Bool)? in
+                        let name = data.getName(dataIndex)
+                        guard let node = tree.getNodeByDataIndex(dataIndex),
+                              !node.children.isEmpty, !name.isEmpty, nameCounts[name] == 1,
+                              resolveDeterministicDataHit([
+                                  "seriesIndex": Double(seriesIndex),
+                                  "dataIndex": Double(dataIndex),
+                              ], ec: view.ec, view: view) != nil else { return nil }
+                        let isLeafRoot = ((node.getLayout() as? [String: Any])?["isLeafRoot"] as? Bool)
+                            ?? authoredLeafDepth.map { node.depth >= viewRootDepth + $0 } ?? false
+                        return (dataIndex, node.children.count, isLeafRoot)
+                    }
+                    let leafRootCandidates = candidates.filter { $0.2 }
+                    let target = (leafRootCandidates.isEmpty ? candidates : leafRootCandidates)
+                        .max(by: { $0.1 < $1.1 }) ?? (hitIndex, 0, false)
+                    if target.0 >= 0, target.0 < data.count() {
+                        let dataName = data.getName(target.0)
+                        let prefix = "treemap-series-\(seriesIndex)"
+                        var clickStep: [String: Any]
+                        if authoredLeafDepth != nil {
+                            clickStep = [
+                                "action": "clickTreemapDrillDownNode", "movePointer": false,
+                            ]
+                        }
+                        else {
+                            clickStep = [
+                                "action": "clickData", "seriesIndex": Double(seriesIndex),
+                                "dataIndex": Double(target.0), "movePointer": false,
+                            ]
+                            if !dataName.isEmpty, nameCounts[dataName] == 1 {
+                                clickStep["dataName"] = dataName
+                            }
+                        }
+                        steps += [
+                            clickStep,
+                            ["action": "wait", "milliseconds": 1_200.0],
+                            ["action": "settle", "capture": "\(prefix)-node-clicked"],
+                            ["action": "clickTreemapBreadcrumbRoot", "movePointer": false],
+                            ["action": "wait", "milliseconds": 1_200.0],
+                            ["action": "settle", "capture": "\(prefix)-breadcrumb-restored"],
+                        ]
+                        treemapNodeClickCount += 1
+                    }
+                }
+
+                let roam = series.get("roam")
+                let canPan = (roam as? Bool) == true
+                    || ((roam as? String).map { $0 != "scale" } ?? false)
+                let canZoom = (roam as? Bool) == true
+                    || ((roam as? String).map { $0 != "move" } ?? false)
+                if canPan {
+                    steps += [
+                        [
+                            "action": "dragSeriesRoam", "seriesIndex": Double(seriesIndex),
+                            "dataIndex": Double(hitIndex), "deltaX": 28.0, "deltaY": 18.0,
+                        ],
+                        ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                        ["action": "globalOut"],
+                        ["action": "wait", "milliseconds": 700.0],
+                        ["action": "settle", "capture": "treemap-series-\(seriesIndex)-panned"],
+                        [
+                            "action": "dragSeriesRoam", "seriesIndex": Double(seriesIndex),
+                            "dataIndex": Double(hitIndex), "deltaX": -28.0, "deltaY": -18.0,
+                        ],
+                        ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                        ["action": "globalOut"],
+                        ["action": "wait", "milliseconds": 700.0],
+                        ["action": "settle", "capture": "treemap-series-\(seriesIndex)-pan-restored"],
+                    ]
+                    treemapPanCount += 1
+                }
+                if canZoom {
+                    steps += [
+                        [
+                            "action": "wheelSeriesRoam", "seriesIndex": Double(seriesIndex),
+                            "dataIndex": Double(hitIndex), "deltaY": 3.0,
+                        ],
+                        ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                        ["action": "globalOut"],
+                        ["action": "wait", "milliseconds": 700.0],
+                        ["action": "settle", "capture": "treemap-series-\(seriesIndex)-zoomed"],
+                        [
+                            "action": "wheelSeriesRoam", "seriesIndex": Double(seriesIndex),
+                            "dataIndex": Double(hitIndex), "deltaY": -3.0,
+                        ],
+                        ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                        ["action": "globalOut"],
+                        ["action": "wait", "milliseconds": 700.0],
+                        ["action": "settle", "capture": "treemap-series-\(seriesIndex)-zoom-restored"],
+                    ]
+                    treemapZoomCount += 1
+                }
             }
         }
 
@@ -714,6 +924,72 @@ private func writeOfficialInteractionScenarios(
                         : "legend-\(slug)-\(interaction.initiallySelected ? "off" : "on")"
                 ],
             ]
+            if category == "treemap", demo.name == "official-treemap-obama",
+               interaction.singleMode, interaction.initialName != name,
+               let modeSeries = ecModel.getSeries().first(where: {
+                   $0.subType == "treemap" && $0.name == name
+               }), modeSeries.getData().indexOfName("Agriculture") >= 0 {
+                let seriesIndex = Int(modeSeries.seriesIndex)
+                let targetName = "Agriculture"
+                let prefix = "treemap-mode-\(slug)"
+                steps += [
+                    [
+                        "action": "hoverData", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName,
+                    ],
+                    ["action": "wait", "milliseconds": 120.0],
+                    ["action": "settle", "capture": "\(prefix)-hover"],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "\(prefix)-hover-restored"],
+                    [
+                        "action": "clickData", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName, "movePointer": false,
+                    ],
+                    ["action": "wait", "milliseconds": 1_200.0],
+                    ["action": "settle", "capture": "\(prefix)-node-clicked"],
+                    ["action": "clickTreemapBreadcrumbRoot", "movePointer": false],
+                    ["action": "wait", "milliseconds": 1_200.0],
+                    ["action": "settle", "capture": "\(prefix)-breadcrumb-restored"],
+                    [
+                        "action": "dragSeriesRoam", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName, "deltaX": 28.0, "deltaY": 18.0,
+                    ],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "\(prefix)-panned"],
+                    [
+                        "action": "dragSeriesRoam", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName, "deltaX": -28.0, "deltaY": -18.0,
+                    ],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "\(prefix)-pan-restored"],
+                    [
+                        "action": "wheelSeriesRoam", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName, "deltaY": 3.0,
+                    ],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "\(prefix)-zoomed"],
+                    [
+                        "action": "wheelSeriesRoam", "seriesIndex": Double(seriesIndex),
+                        "dataName": targetName, "deltaY": -3.0,
+                    ],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "\(prefix)-zoom-restored"],
+                ]
+                hoverInteractionCount += 1
+                treemapNodeClickCount += 1
+                treemapPanCount += 1
+                treemapZoomCount += 1
+            }
             if interaction.singleMode {
                 if let initialName = interaction.initialName, initialName != name {
                     steps.append([
@@ -1055,12 +1331,37 @@ private func writeOfficialInteractionScenarios(
         }
 
         if chart.registeredIntervalCount > 0 {
-            let tickCount = demo.name == "official-scatter-symbol-morph" ? 11 : 2
-            for tick in 1...tickCount {
+            if demo.name == "official-treemap-sunburst-transition",
+               let hitIndex = hitIndexBySeries[0] {
                 steps += [
                     ["action": "driveTick"],
-                    ["action": "settle", "capture": "drive-tick-\(tick)"],
+                    ["action": "wait", "milliseconds": 450.0],
+                    ["action": "snapshot", "capture": "drive-tick-1-mid-transition"],
+                    ["action": "wait", "milliseconds": 750.0],
+                    ["action": "settle", "capture": "drive-tick-1"],
+                    [
+                        "action": "hoverData", "seriesIndex": 0.0,
+                        "dataIndex": Double(hitIndex),
+                    ],
+                    ["action": "wait", "milliseconds": 120.0],
+                    ["action": "settle", "capture": "sunburst-hover-series-0"],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 700.0],
+                    ["action": "settle", "capture": "sunburst-hover-restored"],
+                    ["action": "driveTick"],
+                    ["action": "wait", "milliseconds": 1_200.0],
+                    ["action": "settle", "capture": "drive-tick-2"],
                 ]
+            }
+            else {
+                let tickCount = demo.name == "official-scatter-symbol-morph" ? 11 : 2
+                for tick in 1...tickCount {
+                    steps += [
+                        ["action": "driveTick"],
+                        ["action": "settle", "capture": "drive-tick-\(tick)"],
+                    ]
+                }
             }
         }
         if demo.liveOption != nil, chart.registeredAfterCount > 0 {
@@ -1094,6 +1395,11 @@ private func writeOfficialInteractionScenarios(
                 "For collapsed tree frames, compare collapsed-node state and descendant node/label visibility. ECharts 6.1.0 Web is independently verified to retain orphan exit-edge shapes after its animation reports finished; do not require Native to reproduce those orphan edges."
             )
         }
+        if category == "treemap" {
+            checks.append(
+                "For treemap node clicks, the selected internal node must zoom or become the view root consistently, and a real click on the root breadcrumb must restore the authored hierarchy. Pan and wheel actions must move or scale tiles, labels and borders together, then their inverse actions must restore the pre-roam geometry without stale hover state."
+            )
+        }
         var scenario: [String: Any] = [
             "id": "\(category)-all-\(demo.name)",
             "demo": demo.name,
@@ -1119,6 +1425,8 @@ private func writeOfficialInteractionScenarios(
             "legendInteractionCount": interactiveLegends.count,
             "hoverSeriesCount": hoverInteractionCount, "hasSlider": hasSlider,
             "treeExpandCollapseCount": treeExpandCollapseCount,
+            "treemapNodeClickCount": treemapNodeClickCount,
+            "treemapPanCount": treemapPanCount, "treemapZoomCount": treemapZoomCount,
             "hasRestore": hasRestore, "hasGeoRoam": !roamingGeos.isEmpty,
             "hasGeoRegionHover": geoRegionHit != nil,
             "calculableVisualMapCount": calculableVisualMaps.count,
@@ -1260,6 +1568,37 @@ func runNativeInteractionVisual(
             record["seriesDataCounts"] = view.ec.getModel()?.getSeries().map {
                 $0.getData().count()
             } ?? []
+            let sunburstNodeFills: [[String: Any]] = view.zr.storage.getDisplayList(true).compactMap {
+                guard let piece = $0 as? SunburstPiece,
+                      let node = piece.node,
+                      node.depth == 1,
+                      case let .string(fill)? = piece.pathStyle?.fill else { return nil }
+                return ["name": node.name, "fill": fill, "depth": node.depth]
+            }
+            if !sunburstNodeFills.isEmpty {
+                record["sunburstNodeFills"] = sunburstNodeFills
+            }
+            let sunburstDataFills: [[String: Any]] = view.ec.getModel()?.getSeries().flatMap { series -> [[String: Any]] in
+                guard series.subType == "sunburst" else { return [] }
+                let data = series.getData()
+                return (0..<data.count()).compactMap { dataIndex in
+                    guard let node = data.tree?.getNodeByDataIndex(dataIndex), node.depth == 1,
+                          let style = data.getItemVisual(dataIndex, "style") as? [String: Any]
+                    else { return nil }
+                    let fill: String
+                    if case let .color(value)? = style["fill"] as? EChartsKit.ZRColor {
+                        fill = value
+                    }
+                    else if case let .string(value)? = style["fill"] as? ZRenderKit.ZRColor {
+                        fill = value
+                    }
+                    else { return nil }
+                    return ["name": data.getName(dataIndex), "fill": fill, "depth": node.depth]
+                }
+            } ?? []
+            if !sunburstDataFills.isEmpty {
+                record["sunburstDataFills"] = sunburstDataFills
+            }
             let largeLinePaths = view.zr.storage.getDisplayList(true).compactMap {
                 $0 as? LargeLinesPath
             }
@@ -1345,6 +1684,27 @@ func runNativeInteractionVisual(
             record["seriesIndex"] = step.seriesIndex ?? 0
             record["dataIndex"] = action["dataIndex"]
             if let dataName = step.dataName { record["dataName"] = dataName }
+            record["resolvedPoint"] = point
+        case "clickTreemapBreadcrumbRoot":
+            guard let point = clickTreemapRootBreadcrumb(
+                view: view, movePointer: step.movePointer ?? true
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): treemap root breadcrumb was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+        case "clickTreemapDrillDownNode":
+            guard let (label, point) = clickTreemapDrillDownNode(
+                view: view, movePointer: step.movePointer ?? true
+            ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): treemap drill-down label was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["label"] = label
             record["resolvedPoint"] = point
         case "clickToolbox":
             guard let name = step.name,
@@ -1442,6 +1802,30 @@ func runNativeInteractionVisual(
             guard let point = wheelRoamingGeo(delta: delta, view: view) else {
                 FileHandle.standardError.write(
                     Data("step \(stepIndex): zoomable geo was not available\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["delta"] = delta
+        case "dragSeriesRoam":
+            let dx = step.deltaX ?? 28
+            let dy = step.deltaY ?? 18
+            guard let action = resolvedDataAction(step, view: view),
+                  let point = dragRoamingSeries(action, deltaX: dx, deltaY: dy, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): roaming series was not hit-testable\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["deltaX"] = dx
+            record["deltaY"] = dy
+        case "wheelSeriesRoam":
+            let delta = step.deltaY ?? 3
+            guard let action = resolvedDataAction(step, view: view),
+                  let point = wheelRoamingSeries(action, delta: delta, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): zoomable series was not hit-testable\n".utf8)
                 )
                 return false
             }
@@ -1829,6 +2213,62 @@ private let webInteractionHarnessJS = #"""
     if (!hovered || !hovered.target) { throw new Error('toolbox feature was not hit-testable'); }
     return { point: point, hovered: hovered };
   }
+  function treemapRootBreadcrumbHit() {
+    var zr = myChart.getZr();
+    zr.refreshImmediately(true);
+    zr.storage.getDisplayList(true);
+    var views = myChart._chartsViews || [];
+    var candidates = [];
+    function visit(item) {
+      if (!item) { return; }
+      if (item.getBoundingRect && item.contain && (item.z2 || 0) >= 100000) {
+        var bounds = item.getBoundingRect();
+        var point = item.transformCoordToGlobal(
+          bounds.x + bounds.width / 2, bounds.y + bounds.height / 2
+        );
+        var hovered = zr.handler.findHover(point[0], point[1]);
+        if (hovered && belongsTo(hovered.target, item)) {
+          candidates.push({ point: point, hovered: hovered, target: item });
+        }
+      }
+      var nested = children(item);
+      for (var ci = 0; ci < nested.length; ci++) { visit(nested[ci]); }
+    }
+    for (var vi = 0; vi < views.length; vi++) {
+      if (views[vi].type === 'treemap') { visit(views[vi].group); }
+    }
+    candidates.sort(function (a, b) { return a.point[0] - b.point[0]; });
+    if (!candidates.length) { throw new Error('treemap root breadcrumb was not hit-testable'); }
+    return candidates[0];
+  }
+  function treemapDrillDownHit() {
+    var zr = myChart.getZr();
+    zr.refreshImmediately(true);
+    var list = zr.storage.getDisplayList(true);
+    for (var i = 0; i < list.length; i++) {
+      var label = list[i];
+      var text = label && label.style && label.style.text;
+      if (typeof text !== 'string' || text.indexOf('▶') !== 0) { continue; }
+      var target = (label.__hostTarget && label.__hostTarget.getBoundingRect)
+        ? label.__hostTarget : label;
+      if (!target || !target.getBoundingRect || !target.contain) { continue; }
+      var bounds = target.getBoundingRect();
+      for (var gy = 1; gy < 20; gy++) {
+        for (var gx = 1; gx < 20; gx++) {
+          var point = target.transformCoordToGlobal(
+            bounds.x + bounds.width * gx / 20,
+            bounds.y + bounds.height * gy / 20
+          );
+          var hovered = zr.handler.findHover(point[0], point[1]);
+          if (target.contain(point[0], point[1]) && hovered
+              && belongsTo(hovered.target, target)) {
+            return { point: point, hovered: hovered, label: text };
+          }
+        }
+      }
+    }
+    throw new Error('treemap drill-down label was not hit-testable');
+  }
   function raw(point) {
     return {
       zrX: point[0], zrY: point[1], offsetX: point[0], offsetY: point[1], which: 1,
@@ -1952,47 +2392,52 @@ private let webInteractionHarnessJS = #"""
       }
       throw new Error('data item not found: ' + seriesIndex + '/' + dataIndex);
     }
-    if (!el.contain && el.traverse) {
-      var childTarget = null;
+    var dataCandidates = [];
+    if (el.contain) { dataCandidates.push(el); }
+    if (el.traverse) {
       el.traverse(function (child) {
-        if (!childTarget && child && child.contain
-            && child.states && child.states.emphasis) { childTarget = child; }
+        if (child && child.contain && child.states && child.states.emphasis) {
+          dataCandidates.push(child);
+        }
       });
-      if (childTarget) { el = childTarget; }
     }
     var point;
     var hovered;
-    function accepts(candidate) {
-      var candidateHovered = zr.handler.findHover(candidate[0], candidate[1]);
-      if (candidateHovered && belongsTo(candidateHovered.target, el)) {
-        hovered = candidateHovered;
-        return true;
+    for (var dci = 0; dci < dataCandidates.length && !point; dci++) {
+      var candidateEl = dataCandidates[dci];
+      function accepts(candidate) {
+        var candidateHovered = zr.handler.findHover(candidate[0], candidate[1]);
+        if (candidateHovered && belongsTo(candidateHovered.target, candidateEl)) {
+          hovered = candidateHovered;
+          return true;
+        }
+        return false;
       }
-      return false;
-    }
-    var shape = el.shape || {};
-    if (shape.cx != null && shape.cy != null && shape.r != null
-        && shape.startAngle != null && shape.endAngle != null) {
-      var angle = (shape.startAngle + shape.endAngle) / 2;
-      var radius = ((shape.r0 || 0) + shape.r) / 2;
-      point = el.transformCoordToGlobal(shape.cx + Math.cos(angle) * radius,
-                                        shape.cy + Math.sin(angle) * radius);
-      if (!el.contain(point[0], point[1]) || !accepts(point)) { point = null; }
-    }
-    if (!point) {
-      var bounds = el.getBoundingRect();
-      for (var gy = 1; gy < 20 && !point; gy++) {
-        for (var gx = 1; gx < 20; gx++) {
-          var candidate = el.transformCoordToGlobal(
-            bounds.x + bounds.width * gx / 20,
-            bounds.y + bounds.height * gy / 20
-          );
-          if (el.contain(candidate[0], candidate[1]) && accepts(candidate)) {
-            point = candidate;
-            break;
+      var shape = candidateEl.shape || {};
+      if (shape.cx != null && shape.cy != null && shape.r != null
+          && shape.startAngle != null && shape.endAngle != null) {
+        var angle = (shape.startAngle + shape.endAngle) / 2;
+        var radius = ((shape.r0 || 0) + shape.r) / 2;
+        point = candidateEl.transformCoordToGlobal(shape.cx + Math.cos(angle) * radius,
+                                                   shape.cy + Math.sin(angle) * radius);
+        if (!candidateEl.contain(point[0], point[1]) || !accepts(point)) { point = null; }
+      }
+      if (!point) {
+        var bounds = candidateEl.getBoundingRect();
+        for (var gy = 1; gy < 20 && !point; gy++) {
+          for (var gx = 1; gx < 20; gx++) {
+            var candidate = candidateEl.transformCoordToGlobal(
+              bounds.x + bounds.width * gx / 20,
+              bounds.y + bounds.height * gy / 20
+            );
+            if (candidateEl.contain(candidate[0], candidate[1]) && accepts(candidate)) {
+              point = candidate;
+              break;
+            }
           }
         }
       }
+      if (point) { el = candidateEl; }
     }
     if (!point) { throw new Error('data item has no contained hit point'); }
     if (!hovered || !belongsTo(hovered.target, el)) {
@@ -2276,10 +2721,24 @@ private let webInteractionHarnessJS = #"""
         largeLineSegmentValueCount += settledShape.segs.length;
       }
     }
+    var sunburstNodeFills = [];
+    myChart.getModel().eachSeriesByType('sunburst', function (series) {
+      var data = series.getData();
+      data.each(function (dataIndex) {
+        var style = data.getItemVisual(dataIndex, 'style') || {};
+        var node = data.tree && data.tree.getNodeByDataIndex(dataIndex);
+        if (node && node.depth === 1) {
+          sunburstNodeFills.push({
+            name: data.getName(dataIndex), fill: style.fill || '', depth: node.depth
+          });
+        }
+      });
+    });
     return {
       clips: clips.length,
       progressiveFrames: progressiveFrames,
       tooltipViews: tooltipViews,
+      sunburstNodeFills: sunburstNodeFills,
       seriesDataCounts: myChart.getModel().getSeries().map(function (series) {
         return series.getData().count();
       }),
@@ -2380,6 +2839,35 @@ private let webInteractionHarnessJS = #"""
         resolvedDataIndex: resolvedDataIndex, dataName: dataName,
         childCount: childCount, beforeExpanded: beforeExpanded,
         afterExpanded: clickedNode ? clickedNode.isExpand : null
+      };
+    },
+    clickTreemapBreadcrumbRoot: function (movePointer) {
+      pointerOutside = false;
+      var hit = treemapRootBreadcrumbHit();
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.start();
+      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+    },
+    clickTreemapDrillDownNode: function (movePointer) {
+      pointerOutside = false;
+      var hit = treemapDrillDownHit();
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.start();
+      return {
+        x: hit.point[0], y: hit.point[1], label: hit.label,
+        targetType: hit.hovered.target.type || ''
       };
     },
     clickToolbox: function (name, movePointer) {
@@ -2514,7 +3002,7 @@ private let webInteractionHarnessJS = #"""
       var callbacks = (window.__capturedIntervals || []).slice();
       for (var i = 0; i < callbacks.length; i++) { callbacks[i](); }
       if (myChart._onframe) { myChart._onframe(); }
-      myChart.getZr().animation.stop();
+      myChart.getZr().animation.start();
       return { intervalCallbacks: callbacks.length };
     },
     driveAfterTick: function () {
@@ -2554,6 +3042,35 @@ private let webInteractionHarnessJS = #"""
       if (myChart._onframe) { myChart._onframe(); }
       myChart.getZr().animation.stop();
       return { x: point[0], y: point[1], delta: delta };
+    },
+    dragSeriesRoam: function (seriesIndex, dataIndex, dataName, deltaX, deltaY) {
+      pointerOutside = false;
+      var hit = dataHit(seriesIndex, dataIndex, dataName);
+      var start = hit.point;
+      var handler = myChart.getZr().handler;
+      handler.mousemove(raw(start));
+      handler.mousedown(raw(start));
+      [0.25, 0.5, 0.75, 1].forEach(function (fraction) {
+        handler.mousemove(raw([
+          start[0] + deltaX * fraction,
+          start[1] + deltaY * fraction
+        ]));
+      });
+      handler.mouseup(raw([start[0] + deltaX, start[1] + deltaY]));
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: start[0], y: start[1], deltaX: deltaX, deltaY: deltaY };
+    },
+    wheelSeriesRoam: function (seriesIndex, dataIndex, dataName, delta) {
+      pointerOutside = false;
+      var hit = dataHit(seriesIndex, dataIndex, dataName);
+      var event = raw(hit.point);
+      event.zrDelta = delta;
+      event.wheelDelta = delta;
+      myChart.getZr().handler.mousewheel(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], delta: delta };
     },
     hoverGeoRegion: function (name) {
       pointerOutside = false;
@@ -2724,6 +3241,10 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.hoverSeries(a.seriesIndex,a.dataIndex,a.dataName);})(\(json))"
         case "clickData":
             script = "(function(a){return window.__interactionVisual.clickData(a.seriesIndex,a.dataIndex,a.dataName,a.movePointer);})(\(json))"
+        case "clickTreemapBreadcrumbRoot":
+            script = "(function(a){return window.__interactionVisual.clickTreemapBreadcrumbRoot(a.movePointer);})(\(json))"
+        case "clickTreemapDrillDownNode":
+            script = "(function(a){return window.__interactionVisual.clickTreemapDrillDownNode(a.movePointer);})(\(json))"
         case "clickToolbox":
             script = "(function(a){return window.__interactionVisual.clickToolbox(a.name,a.movePointer);})(\(json))"
         case "editDataView":
@@ -2746,6 +3267,10 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.dragGeoRoam(a.deltaX,a.deltaY);})(\(json))"
         case "wheelGeoRoam":
             script = "(function(a){return window.__interactionVisual.wheelGeoRoam(a.deltaY);})(\(json))"
+        case "dragSeriesRoam":
+            script = "(function(a){return window.__interactionVisual.dragSeriesRoam(a.seriesIndex,a.dataIndex,a.dataName,a.deltaX,a.deltaY);})(\(json))"
+        case "wheelSeriesRoam":
+            script = "(function(a){return window.__interactionVisual.wheelSeriesRoam(a.seriesIndex,a.dataIndex,a.dataName,a.deltaY);})(\(json))"
         case "hoverGeoRegion":
             script = "(function(a){return window.__interactionVisual.hoverGeoRegion(a.name);})(\(json))"
         case "dragVisualMap":

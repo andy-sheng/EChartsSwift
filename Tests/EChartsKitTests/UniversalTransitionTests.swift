@@ -14,6 +14,60 @@ import XCTest
 
 final class UniversalTransitionTests: XCTestCase {
 
+    private func sunburstDataFills(_ ec: ECharts) -> [String: String] {
+        var fills: [String: String] = [:]
+        guard let series = ec.getModel()?.getSeries().first(where: { $0.subType == "sunburst" }) else {
+            return fills
+        }
+        let data = series.getData()
+        for dataIndex in 0..<data.count() {
+            guard let style = data.getItemVisual(dataIndex, "style") as? [String: Any],
+                  case let .color(fill)? = style["fill"] as? EChartsKit.ZRColor else { continue }
+            fills[data.getName(dataIndex)] = fill
+        }
+        return fills
+    }
+
+    func test_treemap_to_sunburst_transition_preserves_final_palette_by_node() throws {
+        let data: [Any] = [
+            ["name": "Smallest", "value": 30.0],
+            ["name": "Largest", "value": 90.0, "children": [
+                ["name": "Largest A", "value": 50.0],
+                ["name": "Largest B", "value": 40.0]
+            ]] as [String: Any],
+            ["name": "Middle", "value": 60.0, "children": [
+                ["name": "Middle A", "value": 35.0],
+                ["name": "Middle B", "value": 25.0]
+            ]] as [String: Any]
+        ]
+        func option(_ type: String, _ universalTransition: Bool) -> [String: Any] {
+            [
+                "animation": true,
+                "series": [[
+                    "id": "tree",
+                    "type": type,
+                    "animationDurationUpdate": 1000.0,
+                    "universalTransition": universalTransition,
+                    "data": data
+                ] as [String: Any]]
+            ]
+        }
+
+        let direct = EChartsView(width: 520, height: 320)
+        direct.setOption(option("sunburst", false))
+        let expected = ["Largest": "#5070dd", "Middle": "#b6d634", "Smallest": "#505372"]
+        let directTopLevel = sunburstDataFills(direct.ec).filter { expected[$0.key] != nil }
+        XCTAssertEqual(directTopLevel, expected,
+                       "sunburst palette assignment must follow its value-sorted layout order")
+
+        let transitioned = EChartsView(width: 520, height: 320)
+        transitioned.setOption(option("treemap", true))
+        transitioned.setOption(option("sunburst", true))
+        let transitionedTopLevel = sunburstDataFills(transitioned.ec).filter { expected[$0.key] != nil }
+        XCTAssertEqual(transitionedTopLevel, expected,
+                       "universalTransition must finish on the authored sunburst palette for each node")
+    }
+
     // 3 side-by-side square regions (same shape as GeoRenderTests' toy map).
     private func makeToyGeoJSON() -> [String: Any] {
         func feature(_ name: String, _ lng0: Double, _ lng1: Double) -> [String: Any] {

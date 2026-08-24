@@ -216,7 +216,35 @@ open class TreemapView: ChartView {
         guard let layoutInfo = seriesModel.layoutInfo else {
             return
         }
-        // const isInit = !this._oldTree;  -> consumed by the deferred animation routing.
+        // const isInit = !this._oldTree;
+        let isInit = self._oldTree == nil
+        var breadcrumbTargetInfo = targetInfo
+        if breadcrumbTargetInfo == nil, !isInit {
+            let roamState = viewGroupRoamState(seriesModel)
+            let isIdentityRoam = abs(roamState.panX) < 1e-9
+                && abs(roamState.panY) < 1e-9
+                && abs(roamState.zoom - 1) < 1e-9
+            if payload.type == "treemapRoam" {
+                if payload.other["zoom"] != nil, isIdentityRoam,
+                   let viewRoot = seriesModel.getViewRoot() {
+                    // Returning from a wheel zoom to the authored identity clears the transient center
+                    // path in the browser reference instead of leaving the last zoomed child visible.
+                    breadcrumbTargetInfo = FoundTargetInfo(node: viewRoot)
+                }
+                else {
+                    // Upstream derives the breadcrumb target from the display list that existed when the
+                    // roam event began. Capture it before rebuilding/applying the new transform; doing it
+                    // afterwards makes Native one interaction ahead of Web (pan and inverse-pan paths swap).
+                    breadcrumbTargetInfo = self.findTarget(api.getWidth() / 2, api.getHeight() / 2)
+                }
+            }
+            else if payload.type.hasPrefix("legend"), isIdentityRoam,
+                    let viewRoot = seriesModel.getViewRoot() {
+                // A single-select legend can reveal a previously hidden named treemap. Its untouched
+                // viewport starts at the named root, matching a freshly displayed browser series.
+                breadcrumbTargetInfo = FoundTargetInfo(node: viewRoot)
+            }
+        }
         // const thisStorage = this._storage;  -> `self._storage` exists and is LIVE (it is the persistent
         //   morph storage written by `renderNode`); only its use by the deferred reRoot descriptor below
         //   is unported.
@@ -257,7 +285,7 @@ open class TreemapView: ChartView {
         viewGroupRoamApplyStateToGroup(seriesModel, containerGroup, layoutInfo.x, layoutInfo.y)
 
         // this._renderBreadcrumb(seriesModel, api, targetInfo);
-        self._renderBreadcrumb(seriesModel, api, targetInfo)
+        self._renderBreadcrumb(seriesModel, api, breadcrumbTargetInfo, isInit)
     }
 
     // L3 Roam: the pointer-check element (upstream Treemap._resetController isInSelf reads the container
@@ -414,18 +442,22 @@ open class TreemapView: ChartView {
         })
     }
 
-    private func _renderBreadcrumb(_ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI, _ targetInfoIn: FoundTargetInfo?) {
+    private func _renderBreadcrumb(
+        _ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI,
+        _ targetInfoIn: FoundTargetInfo?, _ isInit: Bool
+    ) {
         var targetInfo = targetInfoIn
         // if (!targetInfo) { targetInfo = leafDepth != null ? {node: getViewRoot()} : findTarget(center); }
         if targetInfo == nil {
             // `getViewRoot()` is `TreeNode?` in the sibling port (upstream is non-null).
             let leafDepth = seriesModel.get("leafDepth", true)
             let explicitSeriesName = seriesModel.get("name", true) as? String
-            if let explicitSeriesName = explicitSeriesName, !explicitSeriesName.isEmpty,
+            if isInit, let explicitSeriesName, !explicitSeriesName.isEmpty,
                let viewRoot = seriesModel.getViewRoot() {
-                // Named treemaps use their named view root as the initial breadcrumb tail. This is
-                // what produces a stable root crumb such as `ALL` / `Disk Usage` in the reference;
-                // anonymous treemaps instead derive the tail from the tile under the viewport center.
+                // On the first render the browser reference has no prior display-list transforms for
+                // `findTarget(center)` and falls back to the named root. Later renders (including roam)
+                // use the real center tile. Scope this stabilization to init so a named series does not
+                // pin every subsequent breadcrumb to its root.
                 targetInfo = FoundTargetInfo(node: viewRoot)
             }
             else if leafDepth != nil, !(leafDepth is NSNull), let viewRoot = seriesModel.getViewRoot() {

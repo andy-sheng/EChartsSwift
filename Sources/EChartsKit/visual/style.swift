@@ -1,5 +1,6 @@
 // Ported from echarts/src/visual/style.ts — keep in sync with upstream
 
+import Foundation
 import ZRenderKit
 // import { isFunction, extend, createHashMap } from 'zrender/src/core/util';
 //   -> util.isFunction / util.extend (ZRenderKit); createHashMap (EChartsKit modelUtil shim)
@@ -101,8 +102,13 @@ let seriesStyleTask: StageHandler = {
         // TODO style callback
         let colorCallback: ColorCallback? = util.isFunction(color) ? (color as? ColorCallback) : nil
         let hasAutoColor = (globalStyle["fill"] as? String) == "auto" || (globalStyle["stroke"] as? String) == "auto"
+        // JS `== null` accepts both undefined and null. Option defaults in the Swift model encode an
+        // authored/default `null` as NSNull (treemap itemStyle.color is one example), so treating only
+        // Swift nil as absent leaves the series visual fill as NSNull. Legend symbols then fall through
+        // to zrender's black default instead of receiving their palette colour.
+        let colorUnset = globalStyle[colorKey] == nil || globalStyle[colorKey] is NSNull
         // Get from color palette by default.
-        if globalStyle[colorKey] == nil || colorCallback != nil || hasAutoColor {
+        if colorUnset || colorCallback != nil || hasAutoColor {
             // Note: If some series has color specified (e.g., by itemStyle.color), we DO NOT
             // make it effect palette. Because some scenarios users need to make some series
             // transparent or as background, which should better not effect the palette.
@@ -110,7 +116,7 @@ let seriesStyleTask: StageHandler = {
                 // TODO series count changed.
                 seriesModel.name, nil, ecModel.getSeriesCount()
             )
-            if globalStyle[colorKey] == nil {
+            if colorUnset {
                 globalStyle[colorKey] = colorPalette
                 data.setVisual("colorFromPalette", true)
             }

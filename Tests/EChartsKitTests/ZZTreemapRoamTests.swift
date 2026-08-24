@@ -46,6 +46,39 @@ final class ZZTreemapRoamTests: XCTestCase {
         return v._containerGroupForTest
     }
 
+    private func treemapGroup(_ view: EChartsView, seriesIndex: Int) -> Group? {
+        guard let sm = view.ec.getModel()?.getSeriesByIndex(Double(seriesIndex)) as? TreemapSeriesModel,
+              let v = view.ec.api.getViewOfSeriesModel(sm) as? TreemapView else { return nil }
+        return v._containerGroupForTest
+    }
+
+    private func legendSwatchFill(_ view: EChartsView, name: String) -> String? {
+        for legendView in view.ec._componentsViews.compactMap({ $0 as? LegendView }) {
+            for item in legendView.getContentGroup().children().compactMap({ $0 as? Group }) {
+                var matches = false
+                item.traverse { element in
+                    if let text = element as? ZRText, text.textStyle?.text == name { matches = true }
+                    return false
+                }
+                guard matches else { continue }
+                for path in item.children().compactMap({ $0 as? Path }) {
+                    if case let .string(fill)? = path.pathStyle.fill { return fill }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func breadcrumbTail(_ view: EChartsView) -> String? {
+        view.zr.storage.getDisplayList(true).compactMap { displayable -> (Double, String)? in
+            guard let eventData = innerStore.getECData(displayable).eventData,
+                  (eventData["selfType"] as? String) == "breadcrumb",
+                  let nodeData = eventData["nodeData"] as? [String: Any],
+                  let name = nodeData["name"] as? String else { return nil }
+            return (displayable.getBoundingRect()?.x ?? -.infinity, name)
+        }.max(by: { $0.0 < $1.0 })?.1
+    }
+
     // A drag over the treemap must shift its container group by exactly the drag delta (pan).
     func testDragPansGroup() {
         let view = makeTreemapView()   // roam defaults true for treemap.
@@ -91,5 +124,90 @@ final class ZZTreemapRoamTests: XCTestCase {
         guard let after = treemapGroup(view) else { return XCTFail("treemap container group must still exist") }
         XCTAssertEqual(after.x, beforeX, accuracy: 1e-6, "roam:false treemap must not pan (x)")
         XCTAssertEqual(after.y, beforeY, accuracy: 1e-6, "roam:false treemap must not pan (y)")
+    }
+
+    func testNamedTreemapBreadcrumbTailTracksViewportCenter() throws {
+        let view = EChartsView(width: 400, height: 400)
+        view.setOption(["series": [[
+            "type": "treemap", "name": "Named Tree",
+            "left": 20.0, "top": 20.0, "width": 360.0, "height": 320.0,
+            "data": [
+                ["name": "left", "value": 10.0],
+                ["name": "right", "value": 30.0, "children": [
+                    ["name": "right-a", "value": 20.0],
+                    ["name": "right-b", "value": 10.0]
+                ]] as [String: Any]
+            ]
+        ] as [String: Any]]])
+        _ = view.zr.storage.getDisplayList(true)
+
+        XCTAssertEqual(breadcrumbTail(view), "Named Tree",
+                       "the first frame must use the named view root as the stable breadcrumb tail")
+
+        let series = try XCTUnwrap(treemapSeries(view))
+        let treemapView = try XCTUnwrap(view.ec.api.getViewOfSeriesModel(series) as? TreemapView)
+        let preRoamCenterNode = try XCTUnwrap(treemapView.findTarget(200, 200)?.node)
+        XCTAssertFalse(preRoamCenterNode.name.isEmpty,
+                       "the pre-roam viewport center must resolve to a concrete tile")
+
+        view._injectPointerForTest(type: "mousedown", zrX: 200, zrY: 200)
+        view._injectPointerForTest(type: "mousemove", zrX: 230, zrY: 220)
+        view._injectPointerForTest(type: "mouseup", zrX: 230, zrY: 220)
+        _ = view.zr.storage.getDisplayList(true)
+
+        XCTAssertEqual(breadcrumbTail(view), preRoamCenterNode.name,
+                       "roam render breadcrumbs must use the prior display-list center like the browser")
+
+        view._injectPointerForTest(type: "mousedown", zrX: 230, zrY: 220)
+        view._injectPointerForTest(type: "mousemove", zrX: 200, zrY: 200)
+        view._injectPointerForTest(type: "mouseup", zrX: 200, zrY: 200)
+
+        view._injectWheelForTest(zrDelta: 3, zrX: 200, zrY: 200)
+        view._injectWheelForTest(zrDelta: -3, zrX: 200, zrY: 200)
+        _ = view.zr.storage.getDisplayList(true)
+        XCTAssertEqual(breadcrumbTail(view), "Named Tree",
+                       "an inverse zoom that restores identity must clear the transient deep breadcrumb")
+    }
+
+    func testLegendSwitchRebindsRoamControllerToVisibleTreemapSeries() throws {
+        let view = EChartsView(width: 500, height: 400)
+        view.setOption([
+            "legend": [
+                "selectedMode": "single",
+                "selected": ["First": true, "Second": false]
+            ] as [String: Any],
+            "series": [
+                [
+                    "type": "treemap", "name": "First",
+                    "left": 20.0, "top": 50.0, "width": 460.0, "height": 320.0,
+                    "data": [["name": "first-node", "value": 10.0]]
+                ] as [String: Any],
+                [
+                    "type": "treemap", "name": "Second",
+                    "left": 20.0, "top": 50.0, "width": 460.0, "height": 320.0,
+                    "data": [["name": "second-node", "value": 20.0]]
+                ] as [String: Any]
+            ]
+        ])
+        _ = view.zr.storage.getDisplayList(true)
+
+        let firstBefore = try XCTUnwrap(treemapGroup(view, seriesIndex: 0)).x
+        XCTAssertNotNil(view._injectLegendClickForTest(name: "Second"),
+                        "the second legend item must be clicked through the real hit-tested path")
+        _ = view.zr.storage.getDisplayList(true)
+        XCTAssertEqual(legendSwatchFill(view, name: "Second"), "#b6d634",
+                       "the newly active legend swatch must retain the second series palette colour")
+        XCTAssertEqual(breadcrumbTail(view), "Second",
+                       "switching to an untouched named treemap must show its root breadcrumb")
+        let secondBefore = try XCTUnwrap(treemapGroup(view, seriesIndex: 1)).x
+
+        view._injectPointerForTest(type: "mousedown", zrX: 250, zrY: 220)
+        view._injectPointerForTest(type: "mousemove", zrX: 285, zrY: 200)
+        view._injectPointerForTest(type: "mouseup", zrX: 285, zrY: 200)
+
+        XCTAssertEqual(try XCTUnwrap(treemapGroup(view, seriesIndex: 0)).x, firstBefore,
+                       accuracy: 1e-6, "the hidden first series must stay untouched")
+        XCTAssertEqual(try XCTUnwrap(treemapGroup(view, seriesIndex: 1)).x - secondBefore, 35,
+                       accuracy: 0.5, "roam must follow the newly visible second series")
     }
 }
