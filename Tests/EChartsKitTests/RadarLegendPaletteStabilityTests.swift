@@ -57,4 +57,93 @@ final class RadarLegendPaletteStabilityTests: XCTestCase {
         XCTAssertEqual(colorOf(ec, name: "B"), bBefore, "restored B keeps its original color")
         XCTAssertEqual(colorOf(ec, name: "C"), cBefore, "C keeps its color after restore")
     }
+
+    func testRadarSymbolNoneStillUsesRoundRectLegendIcon() {
+        let ec = ECharts(width: 440, height: 360)
+        ec.setOption([
+            "legend": ["data": ["AQI"]] as [String: Any],
+            "radar": ["indicator": [
+                ["name": "S", "max": 100.0] as [String: Any],
+                ["name": "T", "max": 100.0] as [String: Any],
+                ["name": "U", "max": 100.0] as [String: Any]
+            ]] as [String: Any],
+            "series": [[
+                "name": "AQI",
+                "type": "radar",
+                "symbol": "none",
+                "data": [["name": "AQI", "value": [80.0, 70.0, 60.0]] as [String: Any]]
+            ] as [String: Any]]
+        ])
+
+        var legendText: ZRText?
+        _ = ec.getRoot().traverse { element in
+            if let text = element as? ZRText, text.textStyle?.text == "AQI" {
+                legendText = text
+            }
+            return false
+        }
+        guard let itemGroup = legendText?.parent as? Group,
+              let legendPath = itemGroup.childAt(0) as? SymbolPath,
+              let legendShape = legendPath.shape as? SymbolShape else {
+            return XCTFail("radar legend must render a visible symbol path beside its text")
+        }
+        XCTAssertEqual(legendShape.symbolType, "roundRect")
+        XCTAssertEqual(
+            ec.getModel()?.getSeriesByIndex(0)?.getData().getVisual("legendIcon") as? String,
+            "roundRect",
+            "chart rendering must not erase the icon needed by later component-only legend updates"
+        )
+    }
+
+    func testInitiallyFilteredRadarKeepsSymbolNoneLegendIcon() {
+        let ec = ECharts(width: 440, height: 360)
+        let radar = ["indicator": [
+            ["name": "S", "max": 100.0] as [String: Any],
+            ["name": "T", "max": 100.0] as [String: Any],
+            ["name": "U", "max": 100.0] as [String: Any]
+        ]] as [String: Any]
+        func series(_ name: String, _ values: [Double]) -> [String: Any] {
+            ["name": name, "type": "radar", "symbol": "none", "data": [values]]
+        }
+        ec.setOption([
+            "legend": [
+                "selectedMode": "single",
+                "data": ["Active", "Initially filtered"]
+            ] as [String: Any],
+            "radar": radar,
+            "series": [
+                series("Active", [80, 70, 60]),
+                series("Initially filtered", [60, 80, 70])
+            ]
+        ])
+
+        func renderedLegendSymbol(_ name: String) -> String? {
+            var legendText: ZRText?
+            _ = ec.getRoot().traverse { element in
+                if let text = element as? ZRText, text.textStyle?.text == name {
+                    legendText = text
+                }
+                return false
+            }
+            guard let itemGroup = legendText?.parent as? Group,
+                  let path = itemGroup.childAt(0) as? SymbolPath,
+                  let shape = path.shape as? SymbolShape else { return nil }
+            return shape.symbolType
+        }
+
+        XCTAssertEqual(renderedLegendSymbol("Active"), "roundRect")
+        XCTAssertEqual(
+            renderedLegendSymbol("Initially filtered"),
+            "none",
+            "a radar series filtered before its first chart visual pass must not gain an inactive swatch"
+        )
+        XCTAssertEqual(
+            ec.getModel()?.getSeriesByIndex(0)?.getData().getVisual("legendIcon") as? String,
+            "roundRect"
+        )
+        XCTAssertEqual(
+            ec.getModel()?.getSeriesByIndex(1)?.getData().getVisual("legendIcon") as? String,
+            "none"
+        )
+    }
 }

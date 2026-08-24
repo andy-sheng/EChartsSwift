@@ -104,6 +104,13 @@ public final class ContinuousView: VisualMapView {
         return _shapes.handleThumbs.indices.contains(i) ? _shapes.handleThumbs[i] : nil
     }
     internal var _dataIntervalForTest: [Double] { return _dataInterval }
+    internal func _showIndicatorForTest(_ value: Double) {
+        _showIndicator(value, value)
+    }
+    internal var _indicatorLabelForTest: (text: String?, x: Double?, y: Double?) {
+        let style = _shapes.indicatorLabel?.textStyle
+        return (style?.text, style?.x, style?.y)
+    }
 
     // upstream: doRender(visualMapModel, ecModel, api, payload: {type, from})
     public override func doRender(
@@ -733,6 +740,11 @@ public final class ContinuousView: VisualMapView {
             s.text = (rangeSymbol ?? "") + visualMapModel.formatValueText(textValue)
             s.verticalAlign = isHorizontal ? TextVerticalAlign(rawValue: alignDir) : .middle
             s.align = isHorizontal ? .center : TextAlign(rawValue: alignDir)
+            // ZRText's nested style animation is not advanced by the native painter, so animating
+            // `{style: {x, y}}` leaves the label stranded at the preceding hover value. Commit the
+            // semantic label position immediately; the indicator symbol itself can still animate.
+            s.x = textPoint[0]
+            s.y = textPoint[1]
             indicatorLabel.useStyle(s)
         }
 
@@ -749,22 +761,12 @@ public final class ContinuousView: VisualMapView {
                 ["x": x, "y": y, "style": ["fill": color] as [String: Any]],
                 animationCfg
             )
-            shapes.indicatorLabel?.animateTo(
-                ["style": ["x": textPoint[0], "y": textPoint[1]] as [String: Any]],
-                animationCfg
-            )
         }
         else {
             indicator.x = x
             indicator.y = y
             indicator.pathStyle.fill = .string(color)
             indicator.dirtyStyle()
-            if let indicatorLabel = shapes.indicatorLabel {
-                var s = indicatorLabel.textStyle!
-                s.x = textPoint[0]
-                s.y = textPoint[1]
-                indicatorLabel.useStyle(s)
-            }
         }
 
         self._firstShowIndicator = false

@@ -236,8 +236,8 @@ option = {
                 "bottom": 5.0,
                 "data": [
                     "Beijing",
-                    ["name": "Shanghai", "icon": "none"] as [String: Any],
-                    ["name": "Guangzhou", "icon": "none"] as [String: Any]
+                    "Shanghai",
+                    "Guangzhou"
                 ] as [Any],
                 "itemGap": 20.0,
                 "textStyle": [

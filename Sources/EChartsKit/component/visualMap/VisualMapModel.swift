@@ -337,7 +337,7 @@ open class VisualMapModel: ComponentModel {
             if val == dataBound[1] { return "max" }
             // (+val).toFixed(Math.min(precision, 20))
             let digits = Int(Swift.min(precision, 20))
-            return String(format: "%.\(digits)f", val)
+            return number.roundStr(val, Double(digits))
         }
 
         // const textValue = isCategory ? value : (isMinMax ? [toFixed(v[0]), toFixed(v[1])] : toFixed(v))

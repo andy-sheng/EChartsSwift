@@ -892,8 +892,8 @@ public final class ECharts: EChartsType {
         //   feed the IndicatorAxes the coord builds. `_coordSysMgr.create`/`.update` (update() stages 3/5)
         //   build + update each Radar; the radarLayout stage (run in render()) stores each datum's closed
         //   point ring, which RadarView reads back. The backwardCompat preprocessor runs in setOption.
-        //   registerVisual(legendIcon 'roundRect') → PORT-NOTE (deferred): requires the component/radar/install.ts
-        //     legendIcon visual stage (sets each datum's legendIcon='roundRect'); the visual-stage registry is not wired here.
+        //   registerVisual(legendIcon 'roundRect') is mirrored in `performVisualStage`, after the global
+        //   symbol tasks and on active radar series only.
         CoordinateSystemManager.register("radar", RadarCoordinateSystemCreator()) // registerCoordinateSystem('radar', Radar)
         ComponentModel.registerClass(RadarModel.self)                             // registerComponentModel(RadarModel)
         ComponentModel.registerClass(RadarSeriesModel.self)                       // registerSeriesModel(RadarSeries)
@@ -1763,6 +1763,14 @@ public final class ECharts: EChartsType {
         runOverallStageHandler(dataColorPaletteTask, ecModel, api)
         ecModel.eachRawSeries { seriesModel, _ in
             symbolVisual.dataSymbolTask(seriesModel, ecModel)
+        }
+        // component/radar/install.ts registers a chart visual that overwrites the plotted symbol's
+        // legend icon with `roundRect`. It runs after the global symbol tasks and only on currently
+        // active radar series: this distinction is visible with selectedMode:'single', where radar
+        // series filtered before their first visual pass keep `symbol:'none'` and show no inactive
+        // swatch, exactly like upstream.
+        ecModel.eachSeriesByType(SERIES_TYPE_RADAR) { seriesModel, _ in
+            seriesModel.getData().setVisual("legendIcon", "roundRect")
         }
 
         // VISUAL — graph node/edge colours. Upstream registers `categoryVisual` + `edgeVisual` as normal

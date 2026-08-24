@@ -144,4 +144,47 @@ final class ZZVisualMapContinuousInteractionTests: XCTestCase {
         XCTAssertFalse(texts.contains("<null>"), "JSON null end text must stay visually empty")
         XCTAssertTrue(texts.contains("FG:   "))
     }
+
+    func testHoverIndicatorUsesJavaScriptToFixedRounding() {
+        let view = makeView()
+        guard let visualMap = model(view) else {
+            return XCTFail("continuous visualMap model must render")
+        }
+
+        XCTAssertEqual(
+            visualMap.formatValueText(0.5),
+            "1",
+            "default precision is zero and JavaScript (0.5).toFixed(0) is '1'"
+        )
+        XCTAssertEqual(visualMap.formatValueText(112.5), "113")
+    }
+
+    func testConsecutiveHoverIndicatorsMoveTheirLabelsImmediately() {
+        let view = makeView()
+        guard let continuous = continuousView(view) else {
+            return XCTFail("continuous visualMap view must render")
+        }
+
+        continuous._showIndicatorForTest(5)
+        let low = continuous._indicatorLabelForTest
+        continuous._showIndicatorForTest(70)
+        let high = continuous._indicatorLabelForTest
+
+        XCTAssertEqual(high.text, "70")
+        XCTAssertNotEqual(
+            high.y,
+            low.y,
+            "a second animated hover must not leave the value label at the previous indicator position"
+        )
+
+        continuous._showIndicatorForTest(100)
+        let maximum = continuous._indicatorLabelForTest
+        continuous._showIndicatorForTest(150)
+        let aboveMaximum = continuous._indicatorLabelForTest
+        XCTAssertEqual(
+            aboveMaximum.y,
+            maximum.y,
+            "an out-of-range hover value must clamp its label beside the maximum-end indicator"
+        )
+    }
 }

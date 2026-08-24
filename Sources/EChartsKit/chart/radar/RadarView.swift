@@ -92,6 +92,12 @@ open class RadarView: ChartView {
         // series-level defaults and per-data-item overrides before building the vertex groups.
         symbolVisual.seriesSymbolTask(seriesModel, ecModel)
         symbolVisual.dataSymbolTask(seriesModel, ecModel)
+        // The generic symbol fallback above rewrites `legendIcon` from `symbol` (often `none`). The
+        // scheduler normally leaves the radar chart visual's roundRect result in place; because this
+        // slim port repeats symbol resolution inside the view, restore that result here as well. It
+        // must survive component-only updates such as scroll-legend paging, which do not rerun the
+        // full visual stage before LegendView reads the data visual again.
+        seriesModel.getData().setVisual("legendIcon", "roundRect")
 
         // const polar = seriesModel.coordinateSystem;  — the radar coord, read for the collapse-to-center
         //   entrance (`getInitialPoints`). The final vertex positions come from `data.getItemLayout(idx)`.
