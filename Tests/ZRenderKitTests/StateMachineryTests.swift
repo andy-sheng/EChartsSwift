@@ -254,6 +254,8 @@ final class StateMachineryTests: XCTestCase {
         let (host, _) = makeLabeledHost()
         var normal = ElementTextConfig()
         normal.position = "center"
+        normal.local = true
+        normal.distance = 7
         host.setTextConfig(normal)
 
         var emphasis = ElementTextConfig()
@@ -262,6 +264,8 @@ final class StateMachineryTests: XCTestCase {
 
         host.useStates(["emphasis"])
         XCTAssertEqual(host.textConfig?.position as? String, "right")
+        XCTAssertEqual(host.textConfig?.local, true, "partial state must preserve normal positioning fields")
+        XCTAssertEqual(host.textConfig?.distance, 7)
 
         host.useStates([])
         XCTAssertEqual(host.textConfig?.position as? String, "center")
@@ -271,6 +275,8 @@ final class StateMachineryTests: XCTestCase {
         let (host, _) = makeLabeledHost()
         var normal = ElementTextConfig()
         normal.position = "center"
+        normal.local = true
+        normal.distance = 7
         host.setTextConfig(normal)
 
         var emphasis = ElementTextConfig()
@@ -279,6 +285,8 @@ final class StateMachineryTests: XCTestCase {
 
         _ = host.useState("emphasis")
         XCTAssertEqual(host.textConfig?.position as? String, "right")
+        XCTAssertEqual(host.textConfig?.local, true, "partial state must preserve normal positioning fields")
+        XCTAssertEqual(host.textConfig?.distance, 7)
 
         host.clearStates()
         XCTAssertEqual(host.textConfig?.position as? String, "center")

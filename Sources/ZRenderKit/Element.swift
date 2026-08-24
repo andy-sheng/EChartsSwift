@@ -1036,6 +1036,30 @@ open class Element: Transformable, AnimationTarget {
         return false
     }
 
+    // Upstream state text configs are partial objects and are extended over the saved normal
+    // config. Assigning the Swift struct wholesale drops fields such as `local` and `layoutRect`,
+    // which makes an emphasized attached label fall back to canvas coordinates.
+    private func _mergeTextConfig(
+        _ base: ElementTextConfig?,
+        _ overlay: ElementTextConfig
+    ) -> ElementTextConfig {
+        var result = base ?? ElementTextConfig()
+        if let value = overlay.position { result.position = value }
+        if let value = overlay.rotation { result.rotation = value }
+        if let value = overlay.layoutRect { result.layoutRect = value }
+        if let value = overlay.offset { result.offset = value }
+        if let value = overlay.origin { result.origin = value }
+        if let value = overlay.distance { result.distance = value }
+        if let value = overlay.local { result.local = value }
+        if let value = overlay.insideFill { result.insideFill = value }
+        if let value = overlay.insideStroke { result.insideStroke = value }
+        if let value = overlay.outsideFill { result.outsideFill = value }
+        if let value = overlay.outsideStroke { result.outsideStroke = value }
+        if let value = overlay.inside { result.inside = value }
+        if let value = overlay.autoOverflowArea { result.autoOverflowArea = value }
+        return result
+    }
+
     // Apply a state target. With a transition it animates (tagging the animators with the state name,
     // exactly like `_transitionState`); otherwise it jumps via a duration-0 transition.
     private func _stateApply(_ stateName: String, _ target: [String: Any], _ transition: Bool) {
@@ -1147,7 +1171,7 @@ open class Element: Transformable, AnimationTarget {
             }
         }
         else if let stateTextConfig = state?.textConfig {
-            self.textConfig = stateTextConfig
+            self.textConfig = self._mergeTextConfig(self._normalState?.textConfig, stateTextConfig)
         }
         else if !keep && previousStatesTouchTextConfig {
             self.textConfig = self._normalState?.textConfig
@@ -1226,7 +1250,7 @@ open class Element: Transformable, AnimationTarget {
         let target = self._computeRestoreTarget(stateObjects)
         self._stateApply(states.joined(separator: ","), target, canTransition)
         if let stateTextConfig = mergedState.textConfig {
-            self.textConfig = stateTextConfig
+            self.textConfig = self._mergeTextConfig(self._normalState?.textConfig, stateTextConfig)
         }
         else if previousStatesTouchTextConfig {
             self.textConfig = self._normalState?.textConfig
@@ -1324,7 +1348,7 @@ open class Element: Transformable, AnimationTarget {
         for state in states {
             self._deepMergeProps(&mergedState.props, state.props)
             if let tc = state.textConfig {
-                mergedTextConfig = tc   // PORT-NOTE: upstream `extend`s textConfig; last-wins here (demos set none).
+                mergedTextConfig = self._mergeTextConfig(mergedTextConfig, tc)
             }
         }
         mergedState.textConfig = mergedTextConfig
