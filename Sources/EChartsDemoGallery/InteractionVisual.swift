@@ -3,6 +3,7 @@
 #if canImport(AppKit)
 
 import AppKit
+import ImageIO
 import WebKit
 import EChartsKit
 import EChartsDemoCore
@@ -85,6 +86,51 @@ private func writeResolvedInteraction(
         return
     }
     try? data.write(to: url)
+}
+
+private func incrementFirstDataValuePerDataViewBlock(_ content: String) -> String {
+    let separator = String(repeating: "-", count: 59)
+    return content.components(separatedBy: separator).map { block in
+        var lines = block.components(separatedBy: "\n")
+        guard lines.count > 1 else { return block }
+        for index in 1..<lines.count {
+            var fields = lines[index].components(separatedBy: "\t")
+            guard let last = fields.last, let value = Double(last) else { continue }
+            fields[fields.count - 1] = String(format: "%g", value + 1)
+            lines[index] = fields.joined(separator: "\t")
+            break
+        }
+        return lines.joined(separator: "\n")
+    }.joined(separator: separator)
+}
+
+@MainActor
+private func interactionPNGData(_ view: EChartsView, options: [String: Any]) -> Data? {
+    let ratio = (options["pixelRatio"] as? NSNumber)?.doubleValue ?? 1
+    guard let image = renderInteractionView(
+        view,
+        size: CGSize(width: view.ec.getWidth(), height: view.ec.getHeight()),
+        dpr: ratio,
+        backgroundColor: CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+    ) else { return nil }
+    return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+}
+
+private func pngMetadata(_ data: Data, filename: String) -> [String: Any]? {
+    guard Array(data.prefix(4)) == [0x89, 0x50, 0x4e, 0x47],
+          let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    else { return nil }
+    return [
+        "emitted": true,
+        "callbackCount": 1,
+        "filename": filename,
+        "mimeType": "image/png",
+        "byteCount": data.count,
+        "signatureHex": "89504e47",
+        "pixelWidth": properties[kCGImagePropertyPixelWidth] ?? 0,
+        "pixelHeight": properties[kCGImagePropertyPixelHeight] ?? 0,
+    ]
 }
 
 @MainActor
@@ -666,9 +712,10 @@ private func writeOfficialInteractionScenarios(
 
         let hasSlider = ecModel.findComponents(QueryConditionKindA(mainType: "dataZoom"))
             .contains { $0.subType == "slider" && ($0.get("show") as? Bool) != false }
-        let hasRestore = view.zr.storage.getDisplayList(true).contains {
-            innerStore.getECData($0).tooltipConfig?.name == "restore"
-        }
+        let toolboxNames = Set(view.zr.storage.getDisplayList(true).compactMap {
+            innerStore.getECData($0).tooltipConfig?.name
+        })
+        let hasRestore = toolboxNames.contains("restore")
         if hasSlider {
             let usesSemanticZoomDelta = category == "bar"
                 && demo.name == "official-mix-zoom-on-value"
@@ -751,9 +798,6 @@ private func writeOfficialInteractionScenarios(
         }
         let brushModels = ecModel.findComponents(QueryConditionKindA(mainType: "brush"))
             .compactMap { $0 as? BrushModel }
-        let toolboxNames = Set(view.zr.storage.getDisplayList(true).compactMap {
-            innerStore.getECData($0).tooltipConfig?.name
-        })
         if let brushModel = brushModels.first,
            toolboxNames.contains("rect"), toolboxNames.contains("clear") {
             let targetType = brushModel.get("geoIndex") != nil ? "geo" : "grid"
@@ -882,14 +926,30 @@ private func writeOfficialInteractionScenarios(
                 "action": "settle", "capture": "axis-pointer-handle-dragged"
             ]]
         }
-        if hasRestore && (hasSlider || !interactiveLegendNames.isEmpty) {
+        let completesPieToolbox = category == "pie"
+            && (demo.name == "official-pie-roseType"
+                || demo.name == "official-pie-roseType-simple")
+        if completesPieToolbox && toolboxNames.contains("dataView") {
+            steps += [
+                ["action": "editDataView"],
+                ["action": "wait", "milliseconds": 180.0],
+                ["action": "settle", "capture": "toolbox-dataview-refreshed"],
+            ]
+        }
+        if hasRestore && (hasSlider || !interactiveLegendNames.isEmpty || completesPieToolbox) {
             steps += [
                 ["action": "clickToolbox", "name": "restore", "movePointer": true],
                 ["action": "pointerMove", "x": 1.0, "y": 1.0],
                 ["action": "globalOut"],
                 ["action": "wait", "milliseconds": 700.0],
-                ["action": "settle", "capture": "final-restored"],
+                [
+                    "action": "settle",
+                    "capture": completesPieToolbox ? "toolbox-restored" : "final-restored",
+                ],
             ]
+        }
+        if completesPieToolbox && toolboxNames.contains("saveAsImage") {
+            steps += [["action": "saveToolboxImage"]]
         }
 
         if category == "bar", demo.name.contains("drilldown"),
@@ -1026,6 +1086,34 @@ func runNativeInteractionVisual(
     view.setOption(demo.option)
     let chart = InteractionVisualChart(view)
     demo.drive?(chart)
+    var presentedDataView: ToolboxDataViewPresentation?
+    var dataViewCallbackCount = 0
+    view.ec.onPresentDataView = { presentation in
+        dataViewCallbackCount += 1
+        presentedDataView = presentation
+    }
+    var savedImageData: Data?
+    var savedImageFilename: String?
+    var saveCallbackCount = 0
+    var saveRenderOptions: [String: Any] = [:]
+    view.ec.getRenderedImage = { [weak view] options in
+        guard let view else { return nil }
+        saveRenderOptions = options
+        return interactionPNGData(view, options: options)
+    }
+    view.ec.onSaveImage = { data, filename in
+        saveCallbackCount += 1
+        savedImageData = data
+        savedImageFilename = filename
+    }
+    func firstSeriesValues() -> [Any] {
+        view.ec.getModel()?.getSeries().map { series -> Any in
+            let item = series.getData().getRawDataItem(0)
+            if let dict = item as? [String: Any] { return dict["value"] ?? NSNull() }
+            if let array = item as? [Any] { return array.first ?? NSNull() }
+            return item
+        } ?? []
+    }
     let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
     var captureIndex = 0
     var records: [[String: Any]] = []
@@ -1124,6 +1212,73 @@ func runNativeInteractionVisual(
             }
             record["name"] = name
             record["resolvedPoint"] = point
+            if name == "restore" {
+                record["hostOutput"] = [
+                    "feature": "restore",
+                    "emitted": true,
+                    "seriesFirstValues": firstSeriesValues(),
+                ]
+            }
+        case "editDataView":
+            presentedDataView = nil
+            let callbackCountBefore = dataViewCallbackCount
+            let valuesBefore = firstSeriesValues()
+            guard let point = injectDeterministicToolboxClick(
+                featureName: "dataView", view: view, movePointer: true
+            ), let presentation = presentedDataView else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): dataView presentation callback was not emitted\n".utf8)
+                )
+                return false
+            }
+            let edited = incrementFirstDataValuePerDataViewBlock(presentation.content)
+            guard edited != presentation.content else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): dataView did not expose editable numeric rows\n".utf8)
+                )
+                return false
+            }
+            do { try presentation.refresh(edited) }
+            catch {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): dataView refresh failed: \(error)\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["hostOutput"] = [
+                "feature": "dataView",
+                "emitted": true,
+                "invocationCount": dataViewCallbackCount - callbackCountBefore,
+                "title": presentation.title,
+                "readOnly": presentation.readOnly,
+                "contentLength": presentation.content.count,
+                "blockCount": presentation.content
+                    .components(separatedBy: String(repeating: "-", count: 59)).count,
+                "seriesNames": view.ec.getModel()?.getSeries().map(\.name) ?? [],
+                "valuesBefore": valuesBefore,
+                "valuesAfter": firstSeriesValues(),
+                "refreshed": true,
+            ]
+        case "saveToolboxImage":
+            savedImageData = nil
+            savedImageFilename = nil
+            saveRenderOptions = [:]
+            let callbackCountBefore = saveCallbackCount
+            guard let point = injectDeterministicToolboxClick(
+                featureName: "saveAsImage", view: view, movePointer: true
+            ), let data = savedImageData, let filename = savedImageFilename,
+                  var metadata = pngMetadata(data, filename: filename) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): saveAsImage did not emit a valid PNG\n".utf8)
+                )
+                return false
+            }
+            metadata["callbackCount"] = saveCallbackCount - callbackCountBefore
+            metadata["feature"] = "saveAsImage"
+            metadata["excludeComponents"] = saveRenderOptions["excludeComponents"] ?? []
+            record["resolvedPoint"] = point
+            record["hostOutput"] = metadata
         case "dragGeoRoam":
             let dx = step.deltaX ?? 36
             let dy = step.deltaY ?? 24
@@ -1300,6 +1455,41 @@ func runNativeInteractionVisual(
 
 private let webInteractionHarnessJS = #"""
 (function () {
+  var interceptedDownload = null;
+  var interceptedDownloadCount = 0;
+  var originalAnchorDispatchEvent = HTMLAnchorElement.prototype.dispatchEvent;
+  HTMLAnchorElement.prototype.dispatchEvent = function (event) {
+    if (event && event.type === 'click' && this.download
+        && typeof this.href === 'string' && this.href.indexOf('data:image/') === 0) {
+      interceptedDownloadCount++;
+      interceptedDownload = { filename: this.download, href: this.href };
+      return true;
+    }
+    return originalAnchorDispatchEvent.call(this, event);
+  };
+  function firstSeriesValues() {
+    return myChart.getModel().getSeries().map(function (series) {
+      var item = series.getRawData().getRawDataItem(0);
+      if (item && typeof item === 'object' && !Array.isArray(item)) { return item.value; }
+      return Array.isArray(item) ? item[0] : item;
+    });
+  }
+  function incrementFirstDataValuePerBlock(content) {
+    var separator = new Array(60).join('-');
+    return content.split(separator).map(function (block) {
+      var lines = block.split('\n');
+      for (var i = 1; i < lines.length; i++) {
+        var fields = lines[i].split('\t');
+        var value = Number(fields[fields.length - 1]);
+        if (!Number.isNaN(value) && fields[fields.length - 1].trim() !== '') {
+          fields[fields.length - 1] = String(value + 1);
+          lines[i] = fields.join('\t');
+          break;
+        }
+      }
+      return lines.join('\n');
+    }).join(separator);
+  }
   function children(el) {
     if (!el || !el.children) { return []; }
     var result = el.children();
@@ -1922,7 +2112,72 @@ private let webInteractionHarnessJS = #"""
       handler.click(event);
       if (myChart._onframe) { myChart._onframe(); }
       myChart.getZr().animation.stop();
-      return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+      var result = { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
+      if (name === 'restore') {
+        result.hostOutput = {
+          feature: 'restore', emitted: true, seriesFirstValues: firstSeriesValues()
+        };
+      }
+      return result;
+    },
+    editDataView: function () {
+      var callbackCountBefore = document.querySelectorAll('#main textarea').length;
+      var valuesBefore = firstSeriesValues();
+      var hit = window.__interactionVisual.clickToolbox('dataView', true);
+      var textarea = document.querySelector('#main textarea');
+      if (!textarea || textarea.readOnly) { throw new Error('dataView editable textarea was not presented'); }
+      var original = textarea.value;
+      var edited = incrementFirstDataValuePerBlock(original);
+      if (edited === original) { throw new Error('dataView did not expose editable numeric rows'); }
+      textarea.value = edited;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      var buttonContainer = textarea.parentElement && textarea.parentElement.nextElementSibling;
+      var refresh = buttonContainer && buttonContainer.children[0];
+      if (!refresh) { throw new Error('dataView refresh button was not presented'); }
+      refresh.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      if (document.querySelector('#main textarea')) { throw new Error('dataView refresh did not close the editor'); }
+      return {
+        x: hit.x, y: hit.y,
+        hostOutput: {
+          feature: 'dataView', emitted: true,
+          invocationCount: callbackCountBefore === 0 ? 1 : 0,
+          title: 'Data View', readOnly: false,
+          contentLength: original.length,
+          blockCount: original.split(new Array(60).join('-')).length,
+          seriesNames: myChart.getModel().getSeries().map(function (series) { return series.name; }),
+          valuesBefore: valuesBefore, valuesAfter: firstSeriesValues(), refreshed: true
+        }
+      };
+    },
+    saveToolboxImage: function () {
+      interceptedDownload = null;
+      var countBefore = interceptedDownloadCount;
+      var hit = window.__interactionVisual.clickToolbox('saveAsImage', true);
+      if (!interceptedDownload) { throw new Error('saveAsImage did not dispatch a download anchor click'); }
+      var comma = interceptedDownload.href.indexOf(',');
+      var payload = comma >= 0 ? interceptedDownload.href.slice(comma + 1) : '';
+      var bytes = atob(payload);
+      var signature = '';
+      for (var i = 0; i < Math.min(4, bytes.length); i++) {
+        signature += ('0' + bytes.charCodeAt(i).toString(16)).slice(-2);
+      }
+      if (signature !== '89504e47') { throw new Error('saveAsImage emitted a non-PNG payload'); }
+      var featureModel = myChart.getModel().getComponent('toolbox')
+        .getModel(['feature', 'saveAsImage']);
+      var ratio = Number(featureModel.get('pixelRatio')) || 1;
+      return {
+        x: hit.x, y: hit.y,
+        hostOutput: {
+          feature: 'saveAsImage', emitted: true,
+          callbackCount: interceptedDownloadCount - countBefore,
+          filename: interceptedDownload.filename,
+          mimeType: 'image/png', byteCount: bytes.length,
+          signatureHex: signature,
+          pixelWidth: myChart.getWidth() * ratio,
+          pixelHeight: myChart.getHeight() * ratio,
+          excludeComponents: ['toolbox']
+        }
+      };
     },
     drag: function (kind, deltaX, deltaY, deltaPercent) {
       pointerOutside = false;
@@ -2176,6 +2431,10 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.clickData(a.seriesIndex,a.dataIndex,a.dataName,a.movePointer);})(\(json))"
         case "clickToolbox":
             script = "(function(a){return window.__interactionVisual.clickToolbox(a.name,a.movePointer);})(\(json))"
+        case "editDataView":
+            script = "window.__interactionVisual.editDataView()"
+        case "saveToolboxImage":
+            script = "window.__interactionVisual.saveToolboxImage()"
         case "dragDataZoom":
             script = "(function(a){return window.__interactionVisual.drag('dataZoom',a.deltaX,a.deltaY,a.deltaPercent);})(\(json))"
         case "dragGraphic":

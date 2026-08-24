@@ -23,14 +23,138 @@ import Foundation
 import ZRenderKit
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// feature/DataView.ts — on-canvas feature shell
+// feature/DataView.ts — on-canvas feature + native host presentation seam
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// The browser implementation opens an editable DOM table. Native hosts do not have that DOM
-// overlay, but the feature itself (icon, title and layout slot) is still part of the canvas UI.
+private let DATA_VIEW_BLOCK_SPLITTER = String(repeating: "-", count: 59)
+private let DATA_VIEW_ITEM_SPLITTER = "\t"
+
+public enum ToolboxDataViewError: Error {
+    case invalidFormat(String)
+}
+
+/// Native-host equivalent of the browser data-view overlay. The feature owns content generation and
+/// parsing; the app owns presentation (sheet/popover/editor) and calls `refresh` with edited text.
+public final class ToolboxDataViewPresentation {
+    public let title: String
+    public let lang: [String]
+    public let readOnly: Bool
+    public let content: String
+    private let refreshHandler: (String) throws -> Void
+
+    public init(
+        title: String, lang: [String], readOnly: Bool, content: String,
+        refresh: @escaping (String) throws -> Void
+    ) {
+        self.title = title
+        self.lang = lang
+        self.readOnly = readOnly
+        self.content = content
+        self.refreshHandler = refresh
+    }
+
+    public func refresh(_ editedContent: String) throws {
+        guard !readOnly else { return }
+        try refreshHandler(editedContent)
+    }
+}
+
+private func dataViewString(_ value: Any?) -> String {
+    guard let value, !(value is NSNull) else { return "" }
+    if let string = value as? String { return string }
+    if let numberValue = value as? NSNumber {
+        return number.jsNumberString(numberValue.doubleValue)
+    }
+    return String(describing: value)
+}
+
+private func dataViewValues(_ value: Any?) -> [String] {
+    if let values = value as? [Any] { return values.map(dataViewString) }
+    if let values = value as? [Double] { return values.map { number.jsNumberString($0) } }
+    if let values = value as? [Int] { return values.map(String.init) }
+    return [dataViewString(value)]
+}
+
+private func dataViewContent(_ ecModel: GlobalModel) -> String {
+    var blocks: [String] = []
+    ecModel.eachRawSeries { series, _ in
+        let data = series.getRawData()
+        var lines = [series.name]
+        for index in 0..<data.count() {
+            let raw = data.getRawDataItem(index)
+            let name: String
+            let value: Any?
+            if let item = raw as? [String: Any] {
+                name = (item["name"] as? String) ?? data.getName(index)
+                value = item["value"]
+            }
+            else {
+                name = data.getName(index)
+                value = raw
+            }
+            let valueText = dataViewValues(value).joined(separator: DATA_VIEW_ITEM_SPLITTER)
+            lines.append(name.isEmpty ? valueText : name + DATA_VIEW_ITEM_SPLITTER + valueText)
+        }
+        blocks.append(lines.joined(separator: "\n"))
+    }
+    return blocks.joined(separator: "\n\n\(DATA_VIEW_BLOCK_SPLITTER)\n\n")
+}
+
+private func parseDataViewContent(_ content: String) throws -> [String: Any] {
+    let blocks = content.components(separatedBy: DATA_VIEW_BLOCK_SPLITTER)
+    var seriesOptions: [[String: Any]] = []
+    for rawBlock in blocks {
+        let block = rawBlock.trimmingCharacters(in: .whitespacesAndNewlines)
+        if block.isEmpty { continue }
+        var lines = block.split(whereSeparator: \Character.isNewline).map(String.init)
+        guard !lines.isEmpty else { continue }
+        let seriesName = lines.removeFirst().trimmingCharacters(in: .whitespaces)
+        guard !seriesName.isEmpty else {
+            throw ToolboxDataViewError.invalidFormat("series name is empty")
+        }
+        var data: [Any] = []
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            var items = line.components(separatedBy: DATA_VIEW_ITEM_SPLITTER)
+                .filter { !$0.isEmpty }
+            guard !items.isEmpty else { continue }
+            let hasName = Double(items[0]) == nil
+            let name = hasName ? items.removeFirst() : nil
+            let values = try items.map { token -> Double in
+                guard let value = Double(token.trimmingCharacters(in: .whitespaces)) else {
+                    throw ToolboxDataViewError.invalidFormat("non-numeric value: \(token)")
+                }
+                return value
+            }
+            guard !values.isEmpty else {
+                throw ToolboxDataViewError.invalidFormat("data row has no values")
+            }
+            let value: Any = values.count == 1 ? values[0] : values
+            if let name { data.append(["name": name, "value": value] as [String: Any]) }
+            else { data.append(value) }
+        }
+        seriesOptions.append(["name": seriesName, "data": data] as [String: Any])
+    }
+    guard !seriesOptions.isEmpty else {
+        throw ToolboxDataViewError.invalidFormat("no series blocks")
+    }
+    return ["series": seriesOptions]
+}
+
 open class ToolboxDataViewFeature: ToolboxFeature {
     open override func onclick(_ ecModel: GlobalModel, _ api: ExtensionAPI, _ type: String) {
-        PortStub.hit("toolboxFeatures.DataView",
-                     "native host has no data-view table overlay; the toolbox icon is display-only")
+        let model = self.model!
+        let lang = (model.get("lang") as? [String]) ?? []
+        let title = lang.first ?? (model.get("title") as? String) ?? "Data View"
+        let readOnly = (model.get("readOnly") as? Bool) ?? false
+        let presentation = ToolboxDataViewPresentation(
+            title: title, lang: lang, readOnly: readOnly, content: dataViewContent(ecModel)
+        ) { editedContent in
+            var payload = Payload(type: "changeDataView")
+            payload.other["newOption"] = try parseDataViewContent(editedContent)
+            api.dispatchAction(payload)
+        }
+        api.presentDataView(presentation)
     }
 
     public static func getDefaultOption(_ ecModel: GlobalModel) -> [String: Any] {

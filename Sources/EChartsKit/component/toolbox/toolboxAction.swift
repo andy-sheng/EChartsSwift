@@ -75,6 +75,16 @@ public func installToolboxActions(_ registers: EChartsExtensionInstallRegisters)
         }
         return nil
     }
+
+    var dataViewInfo = ActionInfo(type: "changeDataView")
+    dataViewInfo.event = "dataViewChanged"
+    dataViewInfo.update = "prepareAndUpdate"
+    registerAction(dataViewInfo) { payload, ecModel, _ in
+        if let newOption = payload.other["newOption"] as? [String: Any] {
+            ecModel.mergeOption(newOption)
+        }
+        return nil
+    }
 }
 
 // upstream: MagicType.onclick — builds the `newOption` that swaps each convertible series to `targetType`

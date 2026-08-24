@@ -185,6 +185,10 @@ open class ExtensionAPI {
     //   data URL via a DOM `<a download>` in the browser. Headless has no download, so the encoded bytes
     //   are handed to the host via this seam (forwarded to `ECharts.onSaveImage`). Default no-op.
     open func saveAsImage(_ data: Data, _ filename: String) { }
+
+    // PORT SEAM: the browser DataView feature owns a DOM overlay. Native hosts receive the same
+    // generated editable content through this presentation request and decide how to display it.
+    open func presentDataView(_ presentation: ToolboxDataViewPresentation) { }
 }
 
 // upstream return type: `ChartView | ComponentView`. Swift has no union types; the two view

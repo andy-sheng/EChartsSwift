@@ -24,9 +24,8 @@ import ZRenderKit
 
 // class ToolboxModel extends ComponentModel<ToolboxOption>
 //   The toolbox component. Its `feature` sub-option enables per-feature buttons (restore / magicType /
-//   dataZoom / saveAsImage / dataView / brush). This port wires the DATA/ACTION core of the option-
-//   expressible features (`restore`, `magicType`) via `toolboxAction.swift`; the on-canvas icon VIEW +
-//   the host-dependent features (saveAsImage → canvas export, dataView → HTML overlay) are DEFERRED.
+//   dataZoom / saveAsImage / dataView / brush). This port wires the on-canvas icon view, the
+//   option-expressible actions, and native host seams for saveAsImage bytes + editable dataView content.
 public typealias ToolboxOption = [String: Any]
 
 open class ToolboxModel: ComponentModel {

@@ -1145,13 +1145,11 @@ public final class ECharts: EChartsType {
         ComponentModel.registerClass(BrushModel.self)                       // registerComponentModel(BrushModel)
         installBrushAction(ECharts._registers)                          // registerAction('brush'/'brushSelect'/'brushEnd')
 
-        // -- component/toolbox/install.ts (Phase 49, ACTION core) -- registerComponentModel(ToolboxModel) +
-        //   the `restore` (ecModel.resetOption('recreate')) + `changeMagicType` (ecModel.mergeOption) action
-        //   handlers. The on-canvas icon VIEW + host-dependent features (saveAsImage/dataView/dataZoom-select/
-        //   brush button) are DEFERRED; the option-expressible feature DATA cores are wired.
+        // -- component/toolbox/install.ts -- register the model, canvas icons, actions and native host
+        //   seams for saveAsImage/dataView. DataZoom-select and brush use their native interaction paths.
         ComponentModel.registerClass(ToolboxModel.self)                     // registerComponentModel(ToolboxModel)
-        registerToolboxFeatures()                                           // registerFeature('saveAsImage'/'magicType'/'dataZoom'/'restore')
-        installToolboxActions(ECharts._registers)                       // registerAction('restore'/'changeMagicType')
+        registerToolboxFeatures()       // saveAsImage/magicType/dataZoom/restore/dataView
+        installToolboxActions(ECharts._registers) // restore/changeMagicType/changeDataView
 
         // component/legend/legendAction.ts `installLegendAction` — registerAction('legendToggleSelect'/
         //   'legendSelect'/'legendUnSelect'/'legendAllSelect'/'legendInverseSelect', update:'update'). A
@@ -3647,6 +3645,7 @@ public final class ECharts: EChartsType {
     //   onclick stays faithful (build the URL via the api, hand the bytes to the host).
     public var getRenderedImage: ((_ opts: [String: Any]) -> Data?)?
     public var onSaveImage: ((_ data: Data, _ filename: String) -> Void)?
+    public var onPresentDataView: ((_ presentation: ToolboxDataViewPresentation) -> Void)?
 
     // ------------------------------------------------------------------------
     // Toolbox DataZoom box-select arm state (component/toolbox/feature/DataZoom.ts). Upstream the feature
@@ -3752,6 +3751,9 @@ final class EChartsExtensionAPI: ExtensionAPI {
     //   bytes to the host's `ECharts.onSaveImage` callback.
     override func saveAsImage(_ data: Data, _ filename: String) {
         ec.onSaveImage?(data, filename)
+    }
+    override func presentDataView(_ presentation: ToolboxDataViewPresentation) {
+        ec.onPresentDataView?(presentation)
     }
     // Toolbox DataZoom box-select arm state (see ECharts.dataZoomSelectActive). Read by the feature's
     //   `zoom` onclick (so the toggle survives the feature being rebuilt each render) + written by the
