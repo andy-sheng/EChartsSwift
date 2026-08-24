@@ -562,6 +562,23 @@ open class HeatmapView: ChartView {
                     ],
                     seriesModel, idx
                 )
+                // Upstream re-applies setLabelStyle on every render, including a visualMap range
+                // update. The reused-cell morph path used to skip it, so an outOfRange cell reached
+                // opacity 0 while its attached value label retained the previous opacity 1.
+                let labelStatesModels = labelStyle.getLabelStatesModels(stateModel)
+                var defaultLabelText = "-"
+                if let rawArr = seriesModel.getRawValue(Double(idx)) as? [Any],
+                   rawArr.count > 2,
+                   !(rawArr[2] is NSNull),
+                   let s = format._strOrNil(rawArr[2]) {
+                    defaultLabelText = s
+                }
+                var labelOpt = SetLabelStyleOpt()
+                labelOpt.labelFetcher = seriesModel
+                labelOpt.labelDataIndex = Double(idx)
+                labelOpt.defaultOpacity = cellStyle.opacity
+                labelOpt.defaultText = defaultLabelText
+                labelStyle.setLabelStyle(rect, labelStatesModels, labelOpt)
                 // Keep the reused cell's hover wiring current (upstream re-runs the state block each
                 //   render pass — HeatmapView.ts:329-333).
                 states.setStatesStylesFromModel(rect, stateModel)

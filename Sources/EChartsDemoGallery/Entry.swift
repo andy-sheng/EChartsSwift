@@ -1177,7 +1177,9 @@ func resolveDeterministicDataHit(
     var resolved: (Displayable, [Double])?
     for candidate in candidates {
         if let point = deterministicHoverPoint(candidate, accepting: { point in
-            view.zr.handler.findHover(point[0], point[1]).target === candidate
+            point[0] >= 0 && point[0] <= ec.getWidth()
+                && point[1] >= 0 && point[1] <= ec.getHeight()
+                && view.zr.handler.findHover(point[0], point[1]).target === candidate
         }) {
             resolved = (candidate, point)
             break
@@ -1195,6 +1197,8 @@ func resolveDeterministicDataHit(
             let localY = shape.points[localIndex * 2 + 1]
             guard localX.isFinite, localY.isFinite else { continue }
             let point = path.transformCoordToGlobal(localX, localY)
+            guard point[0] >= 0, point[0] <= ec.getWidth(),
+                  point[1] >= 0, point[1] <= ec.getHeight() else { continue }
             let hovered = view.zr.handler.findHover(point[0], point[1])
             guard hovered.target === path,
                   path.hoverDataIdx + startIndex == requestedIndex else { continue }

@@ -20,7 +20,7 @@
 //     one-per-calendar-day set.)
 //   - `export {};` and the TS type annotations are dropped (a bare export is a SyntaxError in the
 //     reference page's classic script).
-//   - see the PORT-NOTE below: `tooltip.formatter` is a JS closure, so the native option cannot carry it.
+//   - the JavaScript `tooltip.formatter` is represented by an equivalent typed Swift closure.
 //
 // CANVAS SIZE (a gallery knob, not part of the option): 900×560, the example's own `shotWidth: 900`.
 // Calendars 0 and 1 are ~1060px tall at their default 20px cells and are therefore CROPPED at the bottom
@@ -28,6 +28,7 @@
 // the diff stays honest for the visible part. Width 900 is what the option demands: the visualMap sits at
 // `left: '670'` and needs its bar + labels to the right of that.
 import Foundation
+import EChartsKit
 
 // The rows that `getVirtualData(year)` would have produced, made deterministic: a fixed-seed LCG stands in
 // for Math.random(). Element shape is the upstream `[string, number]` pair.
@@ -139,10 +140,16 @@ option = {
 """#,
         option: [
             "tooltip": [
-                "position": "top"
-                // PORT-NOTE: tooltip.formatter omitted — a JS closure that re-formatted the row's date
-                // through `echarts.time.format(p.data[0], '{yyyy}-{MM}-{dd}', false)` and returned
-                // "<date>: <value>". Tooltips are not rendered in the static snapshot anyway.
+                "position": "top",
+                "formatter": { (params: CallbackDataParams) -> String in
+                    guard let row = params.data as? [Any], row.count > 1,
+                          let date = row[0] as? String,
+                          let number = row[1] as? NSNumber else { return "" }
+                    let value = number.doubleValue
+                    let valueText = value.rounded() == value
+                        ? String(Int(value)) : String(value)
+                    return "\(date): \(valueText)"
+                } as (CallbackDataParams) -> String
             ] as [String: Any],
             "visualMap": [
                 "min": 0.0,
