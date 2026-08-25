@@ -11,9 +11,8 @@
 //     at assets/data/confidence-band.json and read via Upstream.repoRoot: the web pane gets the raw JSON
 //     text spliced in as `var data = ...` (the callback BODY is otherwise verbatim), the native pane gets
 //     it parsed into typed arrays. `myChart.showLoading()/hideLoading()` and the `$.get` wrapper are gone.
-//   - NATIVE PANE: the two axis-label formatters and y-axis-pointer formatter are represented by the
-//     equivalent Swift callback types. The tooltip formatter remains omitted because it is not part of
-//     the static comparison path.
+//   - NATIVE PANE: the tooltip, two axis-label and y-axis-pointer formatters are represented by the
+//     equivalent Swift callback types.
 import Foundation
 import EChartsKit
 
@@ -68,6 +67,11 @@ private let confidenceBandYAxisFormatter: AxisLabelValueFormatter = { value, _, 
 private let confidenceBandYAxisPointerFormatter: ([String: Any]) -> String = { params in
     let value = (params["value"] as? Double) ?? 0
     return String(format: "%.1f%%", (value - confidenceBandBase) * 100)
+}
+
+private let confidenceBandTooltipFormatter: ([TooltipCallbackDataParams]) -> String = { params in
+    guard params.count > 2, let value = params[2].value as? Double else { return "" }
+    return "\(params[2].name)<br />\(String(format: "%.1f%%", (value - confidenceBandBase) * 100))"
 }
 
 extension EChartsDemoRegistry {
@@ -211,10 +215,8 @@ option = {
                         "shadowOffsetY": 0.0,
                         "color": "#222"
                     ] as [String: Any]
-                ] as [String: Any]
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure returned the third series'
-                // category name plus `((params[2].value - base) * 100).toFixed(1) + '%'`, i.e. the
-                // actual (un-shifted) value as a one-decimal percentage.
+                ] as [String: Any],
+                "formatter": confidenceBandTooltipFormatter
             ] as [String: Any],
             "grid": [
                 "left": "3%",

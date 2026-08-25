@@ -32,7 +32,10 @@ final class ZZTopologyFocusTests: XCTestCase {
     }
 
     private func isBlurred(_ el: Element?) -> Bool {
-        el?.currentStates.contains("blur") ?? false
+        guard let el else { return false }
+        var found = el.currentStates.contains("blur")
+        el.traverse { child in found = found || child.currentStates.contains("blur") }
+        return found
     }
 
     // MARK: - Graph focus:'adjacency' — highlight n0 (linked to n1) → n2/n3 blur, n1 stays bright.

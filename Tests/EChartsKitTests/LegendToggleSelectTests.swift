@@ -56,15 +56,21 @@ final class LegendToggleSelectTests: XCTestCase {
 
         var hi = Payload(type: "highlight"); hi.other["seriesName"] = "Beta"
         ec.dispatchAction(hi)
+        func containsEmphasis(_ el: Element?) -> Bool {
+            guard let el else { return false }
+            var found = el.currentStates.contains("emphasis")
+            el.traverse { child in found = found || child.currentStates.contains("emphasis") }
+            return found
+        }
         let anyEmphasis = (0..<betaData.count()).contains { idx in
-            (betaData.getItemGraphicEl(idx)?.currentStates.contains("emphasis")) ?? false
+            containsEmphasis(betaData.getItemGraphicEl(idx))
         }
         XCTAssertTrue(anyEmphasis, "legend hover highlight(seriesName) must emphasize the series' data")
 
         var lo = Payload(type: "downplay"); lo.other["seriesName"] = "Beta"
         ec.dispatchAction(lo)
         let stillEmphasis = (0..<betaData.count()).contains { idx in
-            (betaData.getItemGraphicEl(idx)?.currentStates.contains("emphasis")) ?? false
+            containsEmphasis(betaData.getItemGraphicEl(idx))
         }
         XCTAssertFalse(stillEmphasis, "legend mouseout (downplay) must clear the emphasis")
     }

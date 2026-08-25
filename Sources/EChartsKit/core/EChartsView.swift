@@ -529,6 +529,8 @@ public final class EChartsView {
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
                 self._lastHighDownDispatcher = dispatcher
                 states.handleGlobalMouseOverForHighDown(dispatcher, e, self.ec.api)
+                self.ec.markStatusToUpdate()
+                self.ec.applyChangedStates()
                 self.zr.refresh()
             }
             // Phase 34: ALSO drive the tooltip. Independent of the emphasis dispatcher walk (upstream the
@@ -551,6 +553,8 @@ public final class EChartsView {
             //   `allLeaveBlur` + leaveEmphasisWhenMouseOut.
             if let dispatcher = self.findDispatcher(e.target, returnFirstMatch: false) {
                 states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+                self.ec.markStatusToUpdate()
+                self.ec.applyChangedStates()
                 if self._lastHighDownDispatcher === dispatcher {
                     self._lastHighDownDispatcher = nil
                 }
@@ -581,6 +585,8 @@ public final class EChartsView {
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
             if let dispatcher = self._lastHighDownDispatcher {
                 states.handleGlobalMouseOutForHighDown(dispatcher, e, self.ec.api)
+                self.ec.markStatusToUpdate()
+                self.ec.applyChangedStates()
             }
             self._lastHighDownDispatcher = nil
             self.tooltipView?.hide()

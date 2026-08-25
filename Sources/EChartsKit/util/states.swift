@@ -33,20 +33,11 @@
 //   import Path, { PathStyleProps } from 'zrender/src/graphic/Path';                   → ZRenderKit.Path
 //   import ExtensionAPI, { getViewOfComponentOrSeries } from '../core/ExtensionAPI';   → core/ExtensionAPI.swift
 //
-// ───────────────────────────── PORT DEVIATION (the two-phase collapse) ─────────────────────────────
-// Upstream is TWO-PHASE: `singleEnterEmphasis`/etc. ONLY set a flag (`el.hoverState` / `el.selected`)
-// and note "States will be applied in the echarts.ts in next frame" — the render loop later reads
-// those flags in `applyChangedStates` and calls `el.useState('emphasis')` / `useStates([...])`.
-//
-// The scene-graph `Element` here does NOT carry the echarts-internal `hoverState` / `selected` /
-// `__highByOuter` / `__highDownDispatcher` fields (they live on the `ECElement` protocol in
-// util/types.swift, which `Element` does not conform to). So those extended props are held in a
-// per-element side store (`getHighDownInner`, built with `model.makeInner`, exactly like `getECData`).
-// AND — because there is no live per-frame `applyChangedStates` host yet — this port COLLAPSES the two
-// phases: after mutating the flag, `singleEnter*/singleLeave*` immediately re-derive and apply the ZR
-// state list via `applyElementStates(el)` → `el.useStates([...])`. Same observable result (the element
-// ends in the emphasis/blur/select ZR state), one frame earlier. When the live render-loop host lands,
-// `applyElementStates` moves into `applyChangedStates` and the `singleEnter*` bodies revert to flag-only.
+// The scene-graph `Element` does not carry ECharts' extended `hoverState` / `selected` /
+// `__highByOuter` / `__highDownDispatcher` fields, so they live in the per-element side store below.
+// State timing otherwise follows upstream exactly: the singleEnter/singleLeave helpers only mutate
+// those flags; core/ECharts.swift's `applyChangedStates` traverses storage and applies the derived ZR
+// state list after the event/action phase.
 
 import Foundation
 import ZRenderKit
@@ -147,35 +138,47 @@ public enum states {
 
     // upstream: `doChangeHoverState(el, stateName, hoverStateEnum)`.
     static func doChangeHoverState(_ el: Element, _ stateName: DisplayState, _ hoverStateEnum: Double) {
-        // `blurSeries` also invokes the single-state helpers directly while traversing a chart group,
-        // so keep the removed-element guard at this shared hover-state seam as well as in
-        // `updateElementState` below.
-        if isElementRemoved(el) { return }
         let inner = getHighDownInner(el)
         if let cb = inner.onHoverStateChange, inner.hoverState != hoverStateEnum {
             cb(stateName)
         }
         inner.hoverState = hoverStateEnum
-        // PORT DEVIATION (see header): apply the derived ZR state list now instead of next frame.
-        applyElementStates(el)
     }
 
-    // The collapsed `applyChangedStates`: derive the ZR state name list from the element's flags and
-    //   apply it via the ZRenderKit `useStates` API. `select` can coexist with `emphasis`/`blur`;
+    // upstream: `applyElementStates(el)` — preserve non-interaction states, then derive the three
+    //   interaction states from the element flags. `select` can coexist with `emphasis`/`blur`;
     //   `emphasis` (2) and `blur` (1) are mutually exclusive (both live on the single `hoverState`).
-    //   Emphasis is applied LAST so its z2 lift / style wins in the merge.
+    //   Only append a state that exists on the element, exactly like upstream.
     static func applyElementStates(_ el: Element) {
+        // const newStates = [];
+        var newStates: [String] = []
+
+        // const oldStates = el.currentStates;
+        let oldStates = el.currentStates
+        // Keep other states.
+        for stateName in oldStates {
+            if stateName != "emphasis" && stateName != "blur" && stateName != "select" {
+                newStates.append(stateName)
+            }
+        }
+
+        // Only use states when it's exists.
         let inner = getHighDownInner(el)
-        var stateList: [String] = []
-        if inner.selected { stateList.append("select") }
-        if inner.hoverState == HOVER_STATE_EMPHASIS { stateList.append("emphasis") }
-        else if inner.hoverState == HOVER_STATE_BLUR { stateList.append("blur") }
-        el.useStates(stateList)
+        if inner.selected && el.states["select"] != nil {
+            newStates.append("select")
+        }
+        if inner.hoverState == HOVER_STATE_EMPHASIS && el.states["emphasis"] != nil {
+            newStates.append("emphasis")
+        }
+        else if inner.hoverState == HOVER_STATE_BLUR && el.states["blur"] != nil {
+            newStates.append("blur")
+        }
+        el.useStates(newStates)
     }
 
     // upstream: `singleEnterEmphasis` / `singleLeaveEmphasis` / `singleEnterBlur` / `singleLeaveBlur` /
     //   `singleEnterSelect` / `singleLeaveSelect`. Upstream only flips the flag (states applied next
-    //   frame); here `doChangeHoverState` also applies (header deviation).
+    //   frame).
     static func singleEnterEmphasis(_ el: Element) {
         doChangeHoverState(el, .emphasis, HOVER_STATE_EMPHASIS)
     }
@@ -194,22 +197,14 @@ public enum states {
     }
     static func singleEnterSelect(_ el: Element) {
         getHighDownInner(el).selected = true
-        applyElementStates(el)
     }
     static func singleLeaveSelect(_ el: Element) {
         getHighDownInner(el).selected = false
-        applyElementStates(el)
     }
 
     // upstream: `updateElementState(el, updater, commonParam)` — the `commonParam` generic is unused by
     //   every call site's updater in scope, so it is dropped (the updaters take only `el`).
     static func updateElementState(_ el: Element, _ updater: (Element) -> Void) {
-        // A displayable kept in the group solely for its leave animation no longer represents live
-        // data. Applying a later legend-click highlight/blur to it would start a competing style
-        // transition, abort the leave opacity clip, and make the item jump to 10% opacity at t=0.
-        // Upstream defers state application and removed elements do not reach that repaint pass; this
-        // port applies states immediately, so make the same exclusion explicit here.
-        if isElementRemoved(el) { return }
         updater(el)
     }
 

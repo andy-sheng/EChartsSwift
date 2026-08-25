@@ -14,6 +14,13 @@ import ZRenderKit
 
 final class ZZRadarParallelHoverTests: XCTestCase {
 
+    private func containsState(_ el: Element?, _ state: String) -> Bool {
+        guard let el else { return false }
+        var found = el.currentStates.contains(state)
+        el.traverse { child in found = found || child.currentStates.contains(state) }
+        return found
+    }
+
     // ---- RADAR: each item Group is a dispatcher; highlight enters emphasis, downplay clears ----
     func testRadarPolygonHoverEntersEmphasis() {
         let ec = ECharts(width: 460, height: 360)
@@ -51,23 +58,23 @@ final class ZZRadarParallelHoverTests: XCTestCase {
 
         XCTAssertTrue(states.isHighDownDispatcher(target!),
                       "RadarView must mark each item Group a highDown dispatcher")
-        XCTAssertTrue(target!.currentStates.isEmpty, "no emphasis before highlight")
+        XCTAssertFalse(containsState(target, "emphasis"), "no emphasis before highlight")
 
         var hp = Payload(type: "highlight")
         hp.other["seriesIndex"] = 0.0
         hp.other["dataIndexInside"] = 0
         ec.dispatchAction(hp)
 
-        XCTAssertTrue(target!.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(target, "emphasis"),
                       "highlight must enter emphasis on the radar item at data index 0")
-        XCTAssertTrue(other!.currentStates.isEmpty,
+        XCTAssertFalse(containsState(other, "emphasis"),
                       "sibling radar polygon at a different dataIndex must NOT enter emphasis")
 
         var dp = Payload(type: "downplay")
         dp.other["seriesIndex"] = 0.0
         dp.other["dataIndexInside"] = 0
         ec.dispatchAction(dp)
-        XCTAssertTrue(target!.currentStates.isEmpty, "downplay must clear the radar emphasis")
+        XCTAssertFalse(containsState(target, "emphasis"), "downplay must clear the radar emphasis")
     }
 
     // ---- PARALLEL: each data Polyline is a dispatcher; highlight enters emphasis, downplay clears ----

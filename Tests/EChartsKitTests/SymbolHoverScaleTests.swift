@@ -41,6 +41,7 @@ final class SymbolHoverScaleTests: XCTestCase {
         XCTAssertEqual(rest, 5.0, accuracy: 1e-9, "resting symbol scaleX should be symbolSize/2")
 
         group.highlight()
+        states.applyElementStates(path)
         finishStateTransition(path)
         let hovered = path.scaleX
         XCTAssertTrue(hovered.isFinite, "emphasis scaleX must not be NaN")
@@ -48,6 +49,7 @@ final class SymbolHoverScaleTests: XCTestCase {
         XCTAssertEqual(hovered, 5.5, accuracy: 1e-9, "emphasis scaleX = halfSize * hoverScale (5 * 1.1)")
 
         group.downplay()
+        states.applyElementStates(path)
         finishStateTransition(path)
         let restored = path.scaleX
         XCTAssertTrue(restored.isFinite, "downplay scaleX must not be NaN")

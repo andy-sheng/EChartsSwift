@@ -63,8 +63,14 @@ final class ZZTreeNodeEmphasisTests: XCTestCase {
         p.other["dataIndexInside"] = dataIndex
         view.ec.dispatchAction(p)
     }
-    private func isBlurred(_ el: Element?) -> Bool { el?.currentStates.contains("blur") ?? false }
-    private func isEmphasized(_ el: Element?) -> Bool { el?.currentStates.contains("emphasis") ?? false }
+    private func containsState(_ el: Element?, _ state: String) -> Bool {
+        guard let el else { return false }
+        var found = el.currentStates.contains(state)
+        el.traverse { child in found = found || child.currentStates.contains(state) }
+        return found
+    }
+    private func isBlurred(_ el: Element?) -> Bool { containsState(el, "blur") }
+    private func isEmphasized(_ el: Element?) -> Bool { containsState(el, "emphasis") }
 
     private func idx(_ view: EChartsView, _ name: String) -> Int? {
         let data = view.ec.getModel()!.getSeriesByIndex(0)!.getData()

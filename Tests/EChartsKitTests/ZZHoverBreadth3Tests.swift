@@ -18,6 +18,12 @@ import ZRenderKit
 
 final class ZZHoverBreadth3Tests: XCTestCase {
 
+    private func containsState(_ el: Element, _ state: String) -> Bool {
+        var found = el.currentStates.contains(state)
+        el.traverse { child in found = found || child.currentStates.contains(state) }
+        return found
+    }
+
     override func setUp() {
         super.setUp()
         // Series model classes are auto-registered by ECharts; re-registering is idempotent/harmless.
@@ -65,17 +71,17 @@ final class ZZHoverBreadth3Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "GraphView must mark each node symbol a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "graph node 3 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "graph node 3 must not be in emphasis before any hover")
 
         _ = view.zr.storage.getDisplayList(true)
         guard let (cx, cy) = globalCenter(el) else { XCTFail("no bounding rect"); return }
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over graph node 3 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off graph node 3 must clear its emphasis via the mouseout leg")
     }
 
@@ -108,7 +114,7 @@ final class ZZHoverBreadth3Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "TreeView must mark each node symbol a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "tree leaf node must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "tree leaf node must not be in emphasis before any hover")
 
         _ = view.zr.storage.getDisplayList(true)
         guard let (cx, cy) = globalCenter(el) else { XCTFail("no bounding rect"); return }
@@ -121,11 +127,11 @@ final class ZZHoverBreadth3Tests: XCTestCase {
         let offX = cx + r.width * 0.30
 
         view._injectPointerForTest(type: "mousemove", zrX: offX, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over the tree leaf node must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off the tree leaf node must clear its emphasis via the mouseout leg")
     }
 
@@ -152,18 +158,18 @@ final class ZZHoverBreadth3Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "SankeyView must mark each node rect a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "sankey node 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "sankey node 0 must not be in emphasis before any hover")
 
         // Node rects carry z2:10 (above the edge ribbons), so the bounding-center hit resolves the node.
         _ = view.zr.storage.getDisplayList(true)
         guard let (cx, cy) = globalCenter(el) else { XCTFail("no bounding rect"); return }
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over sankey node 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off sankey node 0 must clear its emphasis via the mouseout leg")
     }
 }

@@ -15,6 +15,12 @@ import ZRenderKit
 
 final class ZZHoverBreadthTests: XCTestCase {
 
+    private func containsState(_ el: Element, _ state: String) -> Bool {
+        var found = el.currentStates.contains(state)
+        el.traverse { child in found = found || child.currentStates.contains(state) }
+        return found
+    }
+
     override func setUp() {
         super.setUp()
         ComponentModel.registerClass(ScatterSeriesModel.self)
@@ -56,17 +62,17 @@ final class ZZHoverBreadthTests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "ScatterView must mark each symbol a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "scatter point 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "scatter point 0 must not be in emphasis before any hover")
 
         guard let (cx, cy) = boundingCenter(el) else { XCTFail("no bounding rect"); return }
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over scatter point 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off scatter point 0 must clear its emphasis via the mouseout leg")
     }
 
@@ -91,7 +97,7 @@ final class ZZHoverBreadthTests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(sector),
                       "PieView must mark each sector a highDown dispatcher")
-        XCTAssertTrue(sector.currentStates.isEmpty, "pie sector 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(sector, "emphasis"), "pie sector 0 must not be in emphasis before any hover")
 
         // A guaranteed-inside point: mid-angle, mid-radius. Sector points are (cx+r·cos θ, cy+r·sin θ).
         let s = sector.shape as! SectorShape
@@ -102,12 +108,12 @@ final class ZZHoverBreadthTests: XCTestCase {
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(sector.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(sector, "emphasis"),
                       "an injected pointer over pie sector 0 must drive it into emphasis")
 
         // (1,1) is inside the canvas but far from the pie center → resolves no sector.
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(sector.currentStates.isEmpty,
+        XCTAssertFalse(containsState(sector, "emphasis"),
                       "moving off pie sector 0 must clear its emphasis via the mouseout leg")
     }
 
@@ -130,17 +136,17 @@ final class ZZHoverBreadthTests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "LineView must mark each data-point symbol a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "line symbol 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "line symbol 0 must not be in emphasis before any hover")
 
         guard let (cx, cy) = boundingCenter(el) else { XCTFail("no bounding rect"); return }
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over line symbol 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off line symbol 0 must clear its emphasis via the mouseout leg")
     }
 }

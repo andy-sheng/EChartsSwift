@@ -15,6 +15,12 @@ import ZRenderKit
 
 final class ZZHoverBreadth2Tests: XCTestCase {
 
+    private func containsState(_ el: Element, _ state: String) -> Bool {
+        var found = el.currentStates.contains(state)
+        el.traverse { child in found = found || child.currentStates.contains(state) }
+        return found
+    }
+
     override func setUp() {
         super.setUp()
         // Series model classes (idempotent global registry). RadarModel (the radar coord host component)
@@ -67,17 +73,17 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "CandlestickView must mark each candle a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "candle 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "candle 0 must not be in emphasis before any hover")
 
         guard let (cx, cy) = boundingCenter(el) else { XCTFail("no bounding rect"); return }
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over candle 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off candle 0 must clear its emphasis via the mouseout leg")
     }
 
@@ -102,17 +108,17 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "BoxplotView must mark each box a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "box 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "box 0 must not be in emphasis before any hover")
 
         guard let (cx, cy) = boundingCenter(el) else { XCTFail("no bounding rect"); return }
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over box 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off box 0 must clear its emphasis via the mouseout leg")
     }
 
@@ -136,17 +142,17 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "FunnelView must mark each piece a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "funnel piece 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "funnel piece 0 must not be in emphasis before any hover")
 
         guard let (cx, cy) = boundingCenter(el) else { XCTFail("no bounding rect"); return }
         _ = view.zr.storage.getDisplayList(true)
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over funnel piece 0 must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off funnel piece 0 must clear its emphasis via the mouseout leg")
     }
 
@@ -174,7 +180,7 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "RadarView must mark each series itemGroup a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "radar row 0 must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "radar row 0 must not be in emphasis before any hover")
 
         // Hover a vertex symbol. Its path is local and its final position is supplied by element
         // transforms, so boundingCenter converts the local center into viewport coordinates. The Handler
@@ -188,11 +194,11 @@ final class ZZHoverBreadth2Tests: XCTestCase {
         }
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over a radar vertex must drive the itemGroup into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off the radar vertex must clear the itemGroup emphasis via the mouseout leg")
     }
 }

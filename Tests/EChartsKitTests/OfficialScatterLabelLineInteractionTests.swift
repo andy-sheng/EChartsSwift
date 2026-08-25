@@ -27,11 +27,13 @@ final class OfficialScatterLabelLineInteractionTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(resolvedBlur.style?["opacity"] as? Double), 0.1, accuracy: 0.0001)
 
         states.enterBlur(target)
+        states.applyElementStates(target)
         _ = labelLine.stopAnimation(nil, true)
         XCTAssertTrue(labelLine.currentStates.contains("blur"))
         XCTAssertEqual(try XCTUnwrap(labelLine.pathStyle?.opacity), 0.1, accuracy: 0.0001)
 
         states.leaveBlur(target)
+        states.applyElementStates(target)
         _ = labelLine.stopAnimation(nil, true)
         XCTAssertFalse(labelLine.currentStates.contains("blur"))
         XCTAssertEqual(try XCTUnwrap(labelLine.pathStyle?.opacity), 1, accuracy: 0.0001)

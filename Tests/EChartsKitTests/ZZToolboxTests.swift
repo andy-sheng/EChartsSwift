@@ -212,6 +212,7 @@ final class ZZToolboxTests: XCTestCase {
 
         // A persisted active-tool emphasis recolours the icon but must not reveal the hover title.
         view.ec.api.enterEmphasis(path)
+        view.ec.applyChangedStates()
         XCTAssertTrue(path.currentStates.contains("emphasis"), "icon enters its active emphasis")
         XCTAssertTrue(title.ignore, "active icon status alone must not reveal the hover title")
 
@@ -228,6 +229,7 @@ final class ZZToolboxTests: XCTestCase {
         XCTAssertTrue(title.ignore, "pointer exit hides the title even while the icon is active")
 
         view.ec.api.leaveEmphasis(path)
+        view.ec.applyChangedStates()
         XCTAssertFalse(path.currentStates.contains("emphasis"), "icon leaves emphasis on downplay")
         XCTAssertTrue(title.ignore, "title remains hidden after downplay")
     }

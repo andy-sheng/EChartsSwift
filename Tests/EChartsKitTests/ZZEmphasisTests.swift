@@ -2,7 +2,7 @@
 // dispatchAction round-trip (interaction layer, Phase 30).
 //
 // Proves, headlessly (no UIView / pointer host), that:
-//   (1) the ported `states` engine actually pushes/pops the ZR "emphasis" state on an element, and
+//   (1) the ported `states` engine marks emphasis and the frame-state pass pushes/pops the ZR state, and
 //   (2) `ec.dispatchAction(Payload(type:"highlight"))` -> doDispatchAction -> updateDirectly ->
 //       ChartView.highlight -> toggleHighlight -> elSetState -> states.enterEmphasis LANDS the
 //       emphasis state on the targeted data element, and `downplay` returns it to normal.
@@ -39,13 +39,16 @@ final class ZZEmphasisTests: XCTestCase {
     // Independent of the dispatcher gate and the full round-trip — proves util/states.swift itself works.
     func testStatesEngineEnterLeaveEmphasis() {
         let el = Group()
+        _ = el.ensureState("emphasis")
         XCTAssertFalse(el.hasState(), "fresh element has no state")
 
         states.enterEmphasis(el)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.contains("emphasis"), "enterEmphasis must push the emphasis state")
         XCTAssertTrue(el.hasState())
 
         states.leaveEmphasis(el)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.isEmpty, "leaveEmphasis must clear the emphasis state")
         XCTAssertFalse(el.hasState())
     }
@@ -54,15 +57,19 @@ final class ZZEmphasisTests: XCTestCase {
     // must NOT drop emphasis while another digit still holds it (states.ts leaveEmphasis semantics).
     func testEnterEmphasisIsRefCountedByDigit() {
         let el = Group()
+        _ = el.ensureState("emphasis")
         states.enterEmphasis(el, 0)
         states.enterEmphasis(el, 1)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.contains("emphasis"))
 
         states.leaveEmphasis(el, 0)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.contains("emphasis"),
                       "still highlighted by digit 1 — must remain in emphasis")
 
         states.leaveEmphasis(el, 1)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.isEmpty, "last digit cleared — now leaves emphasis")
     }
 
@@ -119,18 +126,24 @@ final class ZZEmphasisTests: XCTestCase {
         let api = EChartsExtensionAPI(ec: ec)
 
         api.enterEmphasis(el, nil)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.contains("emphasis"), "api.enterEmphasis forwards to states.enterEmphasis")
         api.leaveEmphasis(el, nil)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.isEmpty, "api.leaveEmphasis forwards to states.leaveEmphasis")
 
         api.enterBlur(el)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.contains("blur"), "api.enterBlur forwards to states.enterBlur")
         api.leaveBlur(el)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.isEmpty)
 
         api.enterSelect(el)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.contains("select"), "api.enterSelect forwards to states.enterSelect")
         api.leaveSelect(el)
+        ec.applyChangedStates()
         XCTAssertTrue(el.currentStates.isEmpty)
 
         // allLeaveBlur walks every view; must not hit an abstract method (formerly fatalError).

@@ -54,10 +54,12 @@ final class MapSVGTests: XCTestCase {
 
         // A highlight lands the "emphasis" state on the region (the same call a highlight dispatch makes).
         states.enterEmphasis(el)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.contains("emphasis"),
                       "highlighting a named SVG region must drive it into emphasis")
 
         states.leaveEmphasis(el)
+        states.applyElementStates(el)
         XCTAssertTrue(el.currentStates.isEmpty, "downplay must clear the region emphasis")
     }
 

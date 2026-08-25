@@ -408,6 +408,9 @@ public final class ECharts: EChartsType {
     /// Re-entrancy guard: true while inside the update cycle (`doDispatchAction`). Upstream stores this
     /// under the symbol-ish key `IN_EC_CYCLE_KEY` (`'__flagInMainProcess'`).
     private var _inEcCycle = false
+    /// Upstream `STATUS_NEEDS_UPDATE_KEY`: interaction helpers mutate only ECharts state flags;
+    /// `applyChangedStates` applies them to the zrender elements in one storage traversal.
+    private var _statusNeedsUpdate = false
     /// Instance lifecycle flag (upstream: `private _disposed: boolean`). Set by `dispose()`; guards the
     /// public API entry points (upstream logs `disposedWarning` and early-returns when set).
     private var _disposed = false
@@ -2440,45 +2443,62 @@ public final class ECharts: EChartsType {
         }
     }
 
-    // upstream `updateStates(model, view)` (echarts.ts:2697): AFTER render, for each rendered element that
-    //   has an emphasis state, save its NORMAL fill/stroke via `savePathStates`. This is the seam that
-    //   makes hover-emphasis VISIBLE: the default-emphasis stateProxy (`createEmphasisDefaultState`) LIFTS
-    //   (brightens) the saved normal fill when a datum has no explicit `emphasis.itemStyle`. Without this
-    //   save, `getSavedStates(el).normalFill` is nil, the lift is skipped, the emphasis style stays empty,
-    //   and hovering enters the emphasis state but the element is visually unchanged (the "no hover effect"
-    //   bug). Runs after `clearRenderedStates` reset each element to normal, so `pathStyle.fill` is the
-    //   normal (un-lifted) colour here. Skips elements fading out (a leave-scoped animator).
+    // upstream `updateStates(model, view)` (echarts.ts:2697): AFTER render, save each emphasis-capable
+    //   Path's NORMAL fill/stroke, restore its pre-render states without animation, install the model's
+    //   state transition, then re-derive interaction states from the persistent selected/hover flags.
+    //   The restore + re-apply legs are load-bearing when a full update happens under a stationary
+    //   pointer: the state remains emphasis, but its style must be rebuilt from the newly rendered visual.
     private func updateRenderedStates(
         _ model: Model,
         _ eachRendered: (@escaping (Element) -> Bool) -> Void
     ) {
-        // upstream `updateStates(model, view)`: interaction states use the model's inherited
-        // `stateAnimation` config (global default: 300ms cubicOut). Without assigning this transition,
-        // `useStates` still reaches emphasis/blur/select but applies the target style immediately.
+        // const stateAnimationModel = (model as SeriesModel).getModel('stateAnimation');
+        let stateAnimationModel = model.getModel("stateAnimation")
+        // const enableAnimation = model.isAnimationEnabled();
+        let enableAnimation = model.isAnimationEnabled() == true
+        // const duration = stateAnimationModel.get('duration');
+        let duration = zNum(stateAnimationModel.get("duration")) ?? 0
+        // const stateTransition = duration > 0 ? {...} : null;
         var stateTransition: ElementAnimateConfig?
-        if model.isAnimationEnabled() == true {
-            let stateAnimationModel = model.getModel("stateAnimation")
-            let duration = zNum(stateAnimationModel.get("duration")) ?? 0
-            if duration > 0 {
-                var transition = ElementAnimateConfig()
-                transition.duration = duration
-                transition.delay = zNum(stateAnimationModel.get("delay")) ?? 0
-                if let easing = stateAnimationModel.get("easing") as? String {
-                    transition.easing = .named(easing)
-                }
-                else if let easing = stateAnimationModel.get("easing") as? AnimationEasing {
-                    transition.easing = easing
-                }
-                stateTransition = transition
+        if duration > 0 {
+            var transition = ElementAnimateConfig()
+            transition.duration = duration
+            transition.delay = zNum(stateAnimationModel.get("delay")) ?? 0
+            if let easing = stateAnimationModel.get("easing") as? String {
+                transition.easing = .named(easing)
             }
+            else if let easing = stateAnimationModel.get("easing") as? AnimationEasing {
+                transition.easing = easing
+            }
+            stateTransition = transition
         }
         eachRendered { el in
             guard el.states["emphasis"] != nil else { return false }
-            if el.animators.contains(where: { $0.scope == "leave" }) { return false }
+            // Not applied on removed elements, it may still in fading.
+            if isElementRemoved(el) { return false }
             if let p = el as? Path { states.savePathStates(p) }
-            el.stateTransition = stateTransition
-            el.getTextContent()?.stateTransition = stateTransition
-            el.getTextGuideLine()?.stateTransition = stateTransition
+
+            // Only updated on changed element. In case element is incremental and don't want to rerender.
+            // TODO, a more proper way?
+            if el.__dirty != 0, let prevStates = el.prevStates {
+                // Restore states without animation.
+                el.useStates(prevStates)
+            }
+
+            // Update state transition and enable animation again.
+            if enableAnimation {
+                el.stateTransition = stateTransition
+                let textContent = el.getTextContent()
+                let textGuide = el.getTextGuideLine()
+                // TODO Is it necessary to animate label?
+                textContent?.stateTransition = stateTransition
+                textGuide?.stateTransition = stateTransition
+            }
+
+            // Use highlighted and selected flag to toggle states.
+            if el.__dirty != 0 {
+                states.applyElementStates(el)
+            }
             return false
         }
     }
@@ -2728,6 +2748,11 @@ public final class ECharts: EChartsType {
 
         flushPendingActions(silent)
 
+        // Upstream applies marked states from `_onframe`. This platform driver owns no ECharts
+        // animation-frame callback, so the end of the synchronous public action turn is its frame
+        // boundary.
+        applyChangedStates()
+
         triggerUpdatedEvent(silent)
     }
 
@@ -2815,13 +2840,13 @@ public final class ECharts: EChartsType {
                     ? (pre.queryOptionMap.keys().first ?? "series")
                     : "series"
                 updateDirectly(updateMethod, batchItem, componentMainType)
-                // markStatusToUpdate(this); — PORT-NOTE: no status-needs-update flag tracked in the
-                //   driver; the dispatch caller repaints via the full `update()` when needed.
+                markStatusToUpdate()
             }
             else if isSelectChange {
                 // At present `dispatchAction({ type: 'select', ... })` is not supported on components.
                 // geo still uses 'geoselect'.
                 updateDirectly(updateMethod, batchItem, "series")
+                markStatusToUpdate()
             }
             else if cptType != nil {
                 updateDirectly(updateMethod, batchItem, cptType!.main, cptType!.sub)
@@ -2903,6 +2928,24 @@ public final class ECharts: EChartsType {
             let payload = _pendingActions.removeFirst()   // pendingActions.shift()
             doDispatchAction(payload, silent)
         }
+    }
+
+    /// Ported from `markStatusToUpdate` (echarts.ts). `wakeUp()` belongs to EChartsView's event host;
+    /// action dispatches are flushed synchronously at the public dispatch boundary above.
+    func markStatusToUpdate() {
+        _statusNeedsUpdate = true
+    }
+
+    /// Ported from `applyChangedStates` + `applyElementStates` (echarts.ts). Removed elements can stay
+    /// in storage for their leave animation and must not receive a new interaction state.
+    func applyChangedStates() {
+        guard _statusNeedsUpdate else { return }
+        storage.traverse { el in
+            if !isElementRemoved(el) {
+                states.applyElementStates(el)
+            }
+        }
+        _statusNeedsUpdate = false
     }
 
     /// Ported from `triggerUpdatedEvent` (echarts.ts:2282-2284).
@@ -3767,20 +3810,26 @@ final class EChartsExtensionAPI: ExtensionAPI {
 
     override func enterEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
         states.enterEmphasis(el, highlightDigit)
+        ec.markStatusToUpdate()
     }
     override func leaveEmphasis(_ el: Element, _ highlightDigit: Double? = nil) {
         states.leaveEmphasis(el, highlightDigit)
+        ec.markStatusToUpdate()
     }
     override func enterBlur(_ el: Element) {
         states.enterBlur(el)
+        ec.markStatusToUpdate()
     }
     override func leaveBlur(_ el: Element) {
         states.leaveBlur(el)
+        ec.markStatusToUpdate()
     }
     override func enterSelect(_ el: Element) {
         states.enterSelect(el)
+        ec.markStatusToUpdate()
     }
     override func leaveSelect(_ el: Element) {
         states.leaveSelect(el)
+        ec.markStatusToUpdate()
     }
 }

@@ -17,6 +17,14 @@ import ZRenderKit
 
 final class MapTreemapHoverTests: XCTestCase {
 
+    private func containsState(_ el: Element, _ state: String) -> Bool {
+        var found = el.currentStates.contains(state)
+        el.traverse { child in
+            found = found || child.currentStates.contains(state)
+        }
+        return found
+    }
+
     // Elements sit under a series group translated to the layout origin. The element's world `transform`
     // (composed after getDisplayList(true)) maps its local bounding-rect center to the GLOBAL pixel the
     // Handler hit-tests against.
@@ -78,17 +86,17 @@ final class MapTreemapHoverTests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "MapView must mark each region group a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "map region must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "map region must not be in emphasis before any hover")
 
         _ = view.zr.storage.getDisplayList(true)
         guard let (cx, cy) = globalCenter(el) else { XCTFail("no bounding rect"); return }
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over the map region must drive it into emphasis")
 
         view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off the map region must clear its emphasis via the mouseout leg")
     }
 
@@ -129,18 +137,18 @@ final class MapTreemapHoverTests: XCTestCase {
         }
         XCTAssertTrue(states.isHighDownDispatcher(el),
                       "TreemapView must mark each leaf tile group a highDown dispatcher")
-        XCTAssertTrue(el.currentStates.isEmpty, "treemap tile must not be in emphasis before any hover")
+        XCTAssertFalse(containsState(el, "emphasis"), "treemap tile must not be in emphasis before any hover")
 
         _ = view.zr.storage.getDisplayList(true)
         guard let (cx, cy) = globalCenter(el) else { XCTFail("no bounding rect"); return }
 
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: cy)
-        XCTAssertTrue(el.currentStates.contains("emphasis"),
+        XCTAssertTrue(containsState(el, "emphasis"),
                       "an injected pointer over the treemap tile must drive it into emphasis")
 
         // Move into the empty margin (x > 400) — off every tile — to fire the mouseout leg.
         view._injectPointerForTest(type: "mousemove", zrX: 470, zrY: 470)
-        XCTAssertTrue(el.currentStates.isEmpty,
+        XCTAssertFalse(containsState(el, "emphasis"),
                       "moving off the treemap tile must clear its emphasis via the mouseout leg")
     }
 }
