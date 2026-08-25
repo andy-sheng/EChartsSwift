@@ -13,8 +13,8 @@
 #      simulator triple and stage a launchable .app bundle into ./build/.
 #
 # Usage:
-#   scripts/build-echarts-gallery-ios.sh              build (release) -> build/EChartsDemoGalleryiOS.app
-#   scripts/build-echarts-gallery-ios.sh --debug      build the debug config instead
+#   scripts/build-echarts-gallery-ios.sh              fast development build (debug)
+#   scripts/build-echarts-gallery-ios.sh --release    optimized release build
 #   scripts/build-echarts-gallery-ios.sh --run        install + launch in a booted iPhone simulator
 #                                                     (boots the newest available iPhone if none is)
 #   scripts/build-echarts-gallery-ios.sh --out <dir>  stage into <dir> instead of ./build
@@ -29,8 +29,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="$ROOT/upstream/echarts/dist/echarts.js"
 TRIPLE="arm64-apple-ios15.0-simulator"
 BUNDLE_ID="com.ios-chart.echartskit.EChartsDemoGalleryiOS"
+# Keep cross-compiled artifacts and SwiftPM's build database separate from the
+# host galleries. Sharing .build makes alternating iOS/macOS builds invalidate
+# each other's build descriptions and incremental cache.
+SCRATCH_PATH="$ROOT/build/swiftpm-ios"
 
-CONFIG="release"
+CONFIG="debug"
 RUN=0
 OUT="$ROOT/build"
 
@@ -73,9 +77,9 @@ echo "ok      dist present ($(cd "$ROOT" && du -h "$DIST" | cut -f1)) — $DIST"
 say "3/3  Building EChartsDemoGalleryiOS ($CONFIG, $TRIPLE) and staging .app into ${OUT#$ROOT/}"
 SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 swift build --package-path "$ROOT" -c "$CONFIG" --product EChartsDemoGalleryiOS \
-  --triple "$TRIPLE" --sdk "$SDK_PATH"
+  --scratch-path "$SCRATCH_PATH" --triple "$TRIPLE" --sdk "$SDK_PATH"
 BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --product EChartsDemoGalleryiOS \
-  --triple "$TRIPLE" --sdk "$SDK_PATH" --show-bin-path | tail -1)"
+  --scratch-path "$SCRATCH_PATH" --triple "$TRIPLE" --sdk "$SDK_PATH" --show-bin-path | tail -1)"
 BIN="$BIN_DIR/EChartsDemoGalleryiOS"
 [ -x "$BIN" ] || { echo "ERROR: built binary not found at $BIN" >&2; exit 1; }
 

@@ -14,8 +14,8 @@
 #      bundle into ./build/ (gitignored).
 #
 # Usage:
-#   scripts/build-echarts-gallery.sh                build (release) -> build/EChartsDemoGallery.app
-#   scripts/build-echarts-gallery.sh --debug        build the debug config instead
+#   scripts/build-echarts-gallery.sh                fast development build (debug)
+#   scripts/build-echarts-gallery.sh --release      optimized release build
 #   scripts/build-echarts-gallery.sh --run          launch the app after building
 #   scripts/build-echarts-gallery.sh --out <dir>    stage into <dir> instead of ./build
 #   scripts/build-echarts-gallery.sh -h | --help
@@ -30,7 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EC_DIR="$ROOT/upstream/echarts"
 DIST="$EC_DIR/dist/echarts.js"
 
-CONFIG="release"
+CONFIG="debug"
 RUN=0
 OUT="$ROOT/build"
 

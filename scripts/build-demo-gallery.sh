@@ -13,8 +13,8 @@
 #      into ./build/ (gitignored).
 #
 # Usage:
-#   scripts/build-demo-gallery.sh                build (release) -> build/DemoGallery.app
-#   scripts/build-demo-gallery.sh --debug        build the debug config instead
+#   scripts/build-demo-gallery.sh                fast development build (debug)
+#   scripts/build-demo-gallery.sh --release      optimized release build
 #   scripts/build-demo-gallery.sh --build-zrender force-rebuild upstream zrender's dist via npm
 #   scripts/build-demo-gallery.sh --run          launch the app after building
 #   scripts/build-demo-gallery.sh --out <dir>    stage into <dir> instead of ./build
@@ -30,7 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ZR_DIR="$ROOT/upstream/zrender"
 DIST="$ZR_DIR/dist/zrender.js"
 
-CONFIG="release"
+CONFIG="debug"
 BUILD_ZRENDER=0
 RUN=0
 OUT="$ROOT/build"

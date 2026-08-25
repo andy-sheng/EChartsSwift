@@ -98,6 +98,12 @@ scripts/build-echarts-gallery.sh
 scripts/build-echarts-gallery-ios.sh
 ```
 
+The demo build scripts default to Debug so incremental development builds only recompile
+affected files. Pass `--release` when an optimized binary is specifically needed; Release uses
+whole-module optimization and is substantially slower after source changes. The iOS gallery uses
+an isolated `build/swiftpm-ios` scratch directory so cross-compilation does not invalidate the
+macOS galleries' incremental build cache.
+
 ## Recommended change workflow
 
 1. Locate the Swift symbol and its exact TypeScript source named by the file header.
