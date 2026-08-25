@@ -524,6 +524,18 @@ private func mergeTextStyleFromDict(_ s: inout TextStyleProps, _ d: [String: Any
         case "fillOpacity": s.fillOpacity = dbl(v)
         case "strokeOpacity": s.strokeOpacity = dbl(v)
         case "lineWidth": s.lineWidth = dbl(v)
+        case "lineDash":
+            if let a = dblArray(v) { s.lineDash = .values(a) }
+            else if let x = v as? String {
+                switch x {
+                case "solid": s.lineDash = .solid
+                case "dashed": s.lineDash = .dashed
+                case "dotted": s.lineDash = .dotted
+                default: break
+                }
+            }
+            else if let x = v as? Bool, !x { s.lineDash = .false }
+        case "lineDashOffset": s.lineDashOffset = dbl(v)
         case "lineHeight": s.lineHeight = dbl(v)
         case "width": s.width = dbl(v)
         case "height": s.height = dbl(v)

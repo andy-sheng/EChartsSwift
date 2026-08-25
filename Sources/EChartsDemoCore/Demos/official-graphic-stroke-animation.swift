@@ -5,10 +5,10 @@
 // `lineDashOffset` from [0, 200] to [200, 0] so the glyph outlines draw themselves, dwells, then
 // tweens the fill from transparent to black.
 //
-// DEVIATION from the official source:
-//   - The upstream graphic loops forever, so the two independent renderers are necessarily captured at
-//     different animation phases. For deterministic native/web gallery comparison, both panes freeze at
-//     the 70% keyframe: the complete outline is visible with transparent fill.
+// The option is the official example verbatim. Its animation lives entirely in `keyframeAnimation`:
+// there is no timer or `myChart` callback, so no native `drive` hook is needed. Deterministic animation
+// comparisons must sample both panes at the same logical timestamps; replacing the option with a frozen
+// keyframe would remove the behavior this example exists to demonstrate.
 extension EChartsDemoRegistry {
     static let official_graphic_stroke_animation = EChartsDemo(
         name: "official-graphic-stroke-animation", category: "graphic",
@@ -29,12 +29,39 @@ option = {
           text: 'Apache ECharts',
           fontSize: 80,
           fontWeight: 'bold',
-          lineDash: [200, 0],
-          lineDashOffset: 200,
+          lineDash: [0, 200],
+          lineDashOffset: 0,
           fill: 'transparent',
           stroke: '#000',
           lineWidth: 1
         },
+        keyframeAnimation: {
+          duration: 3000,
+          loop: true,
+          keyframes: [
+            {
+              percent: 0.7,
+              style: {
+                fill: 'transparent',
+                lineDashOffset: 200,
+                lineDash: [200, 0]
+              }
+            },
+            {
+              // Stop for a while.
+              percent: 0.8,
+              style: {
+                fill: 'transparent'
+              }
+            },
+            {
+              percent: 1,
+              style: {
+                fill: 'black'
+              }
+            }
+          ]
+        }
       }
     ]
   }
@@ -51,11 +78,37 @@ option = {
                             "text": "Apache ECharts",
                             "fontSize": 80.0,
                             "fontWeight": "bold",
-                            "lineDash": [200.0, 0.0],
-                            "lineDashOffset": 200.0,
+                            "lineDash": [0.0, 200.0],
+                            "lineDashOffset": 0.0,
                             "fill": "transparent",
                             "stroke": "#000",
                             "lineWidth": 1.0
+                        ] as [String: Any],
+                        "keyframeAnimation": [
+                            "duration": 3000.0,
+                            "loop": true,
+                            "keyframes": [
+                                [
+                                    "percent": 0.7,
+                                    "style": [
+                                        "fill": "transparent",
+                                        "lineDashOffset": 200.0,
+                                        "lineDash": [200.0, 0.0]
+                                    ] as [String: Any]
+                                ] as [String: Any],
+                                [
+                                    "percent": 0.8,
+                                    "style": [
+                                        "fill": "transparent"
+                                    ] as [String: Any]
+                                ] as [String: Any],
+                                [
+                                    "percent": 1.0,
+                                    "style": [
+                                        "fill": "black"
+                                    ] as [String: Any]
+                                ] as [String: Any]
+                            ]
                         ] as [String: Any]
                     ] as [String: Any]
                 ]

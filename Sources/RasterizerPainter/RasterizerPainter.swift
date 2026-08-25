@@ -709,7 +709,15 @@ public final class RasterizerPainter {
         }
         func emitTextStroke() {
             if let stroke = textStyle.stroke, textStyle.lineWidth > 0 {
-                sink(PaintOp(path: raPath, ctm: ctm, paint: solidPaint(stroke, alpha: alpha),
+                var strokePath = raPath
+                if let dash = textStyle.lineDash, !dash.isEmpty {
+                    let lengths = dash.count % 2 == 0 ? dash : dash + dash
+                    strokePath = raPath.dashedCopy(
+                        withPhase: textStyle.lineDashOffset,
+                        lengths: lengths.map { NSNumber(value: $0) }
+                    )
+                }
+                sink(PaintOp(path: strokePath, ctm: ctm, paint: solidPaint(stroke, alpha: alpha),
                              isFill: false,
                              width: textStyle.lineWidth,
                              clipRect: clip.rect, clipPath: clip.path))

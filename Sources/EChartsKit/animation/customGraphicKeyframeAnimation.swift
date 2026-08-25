@@ -174,6 +174,16 @@ public func applyKeyframeAnimation(_ el: Element, _ animationOptsAny: Any?, _ an
                 // upstream: el.animate(targetPropName, animationOpts.loop, true). Pass nil for the root
                 //   pass so `targetName` is not set (JS treats '' as falsy — see Element.animate).
                 animator = el.animate(targetPropName.isEmpty ? nil : targetPropName, loop, true)
+                // Upstream `Element.animate('style'|'shape'|'extra')` constructs the Animator with
+                // that sub-object itself as its target. Swift's Element.animate keeps the host element
+                // as a deferred target because the concrete style/shape bags are value types; point the
+                // keyframe animator at the reference accessor now so it can read the initial values and
+                // write every sampled frame. `_updateAnimationTargets` still re-points this accessor if
+                // a later state application swaps the underlying bag.
+                if !targetPropName.isEmpty,
+                   let target = el.animationGet(targetPropName) {
+                    animator!.changeTarget(target)
+                }
                 animator!.scope = "keyframe"
             }
             // Stop all other (non-keyframe) animators driving the same tracks on the same target.

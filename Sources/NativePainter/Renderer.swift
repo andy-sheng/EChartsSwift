@@ -99,6 +99,9 @@ public struct TextStyle {
     public var fill: CGColor?
     public var stroke: CGColor?
     public var lineWidth: Double = 1
+    /// Resolved canvas text-stroke dash pattern. `nil` means a solid outline.
+    public var lineDash: [Double]?
+    public var lineDashOffset: Double = 0
 
     /// Canvas `textAlign` ('left'|'right'|'center'|'start'|'end') / `textBaseline`
     /// ('top'|'hanging'|'middle'|'alphabetic'|'ideographic'|'bottom').

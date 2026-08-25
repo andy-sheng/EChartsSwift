@@ -388,6 +388,10 @@ public final class CGRenderer: Renderer {
                 self.ctx.setTextDrawingMode(.stroke)
                 self.ctx.setStrokeColor(stroke)
                 self.ctx.setLineWidth(CGFloat(style.lineWidth))
+                self.ctx.setLineDash(
+                    phase: CGFloat(style.lineDashOffset),
+                    lengths: (style.lineDash ?? []).map { CGFloat($0) }
+                )
                 self.ctx.textPosition = CGPoint(x: px, y: py)
                 CTLineDraw(line, self.ctx)
             }
@@ -676,6 +680,17 @@ public extension TextStyle {
         // PORT-NOTE (deferred): gradient/pattern text fill (s.fill == .linearGradient/.radialGradient/.pattern)
         //   is not painted — resolveColor returns nil for those arms (canvas supports it, deferred).
         out.lineWidth = s.lineWidth ?? 1
+        out.lineDashOffset = s.lineDashOffset ?? 0
+        switch s.lineDash {
+        case .some(.values(let values)) where !values.isEmpty:
+            out.lineDash = values
+        case .some(.dashed) where out.lineWidth > 0:
+            out.lineDash = [4 * out.lineWidth, 2 * out.lineWidth]
+        case .some(.dotted) where out.lineWidth > 0:
+            out.lineDash = [out.lineWidth]
+        default:
+            break
+        }
         out.textAlign = s.textAlign
         out.textBaseline = s.textBaseline
         out.strokeFirst = s.strokeFirst ?? false
