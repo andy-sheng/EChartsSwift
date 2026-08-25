@@ -1,0 +1,23 @@
+{
+  "id": "official-candlestick-sh-2015-rapid-wheel",
+  "demo": "official-candlestick-sh-2015",
+  "checks": [
+    "Five synchronous mouse-wheel events use one fixed pointer anchor and preserve the complete accumulated dataZoom range.",
+    "Candlesticks and all four moving-average lines remain geometrically aligned in the immediate, intermediate, and settled frames.",
+    "Native and upstream Web agree on the zoomed data window and rendered series geometry; ignore font antialiasing and subpixel differences."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+
+    {"action": "wheelAt", "x": 320, "y": 100, "deltaY": 1},
+    {"action": "wheelAt", "x": 320, "y": 100, "deltaY": 1},
+    {"action": "wheelAt", "x": 320, "y": 100, "deltaY": 1},
+    {"action": "wheelAt", "x": 320, "y": 100, "deltaY": 1},
+    {"action": "wheelAt", "x": 320, "y": 100, "deltaY": 1},
+    {"action": "snapshot", "capture": "rapid-wheel-immediate"},
+    {"action": "wait", "milliseconds": 60},
+    {"action": "snapshot", "capture": "rapid-wheel-mid-transition"},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "rapid-wheel-settled"}
+  ]
+}

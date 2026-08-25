@@ -63,6 +63,14 @@ public final class HeadlessPainter: PainterBase {
     // type / ssrOnly / getViewportRoot / configLayer use the PainterBase protocol defaults.
 }
 
+// Port-local storage for upstream `roams.ts`'s per-coordinate-system `CoordSysRecord`. The live zr
+// belongs to `EChartsView`, so the record is hosted here rather than on the zr-less component view.
+private final class InsideZoomCoordSysRecord {
+    var rangeByDataZoomUID: [String: [Double]] = [:]
+    var pendingBatchByDataZoomID: [String: PayloadItem] = [:]
+    var dispatchAction: ThrottledFunction?
+}
+
 // ============================================================================
 // EChartsView — the echarts ↔ live ZRender host binding.
 // ============================================================================
@@ -131,6 +139,11 @@ public final class EChartsView {
     //   mouseout/globalListener drag gates).
     // ------------------------------------------------------------------------
     private var _insideZoomDrag: (lastX: Double, lastY: Double)?
+
+    // Upstream `roams.ts` creates one record + throttled dispatch per coordinate-system model, while
+    // `InsideZoomView.range` advances on every input even when the action itself is throttled. Keying by
+    // `GridModel.uid` matches upstream's `coordSysRecordMap` and survives coordinate-system recreation.
+    private var _insideZoomCoordSysRecords: [String: InsideZoomCoordSysRecord] = [:]
 
     // ------------------------------------------------------------------------
     // Phase 44 — RECT brush drag (mousedown → mousemove → mouseup draws a selection rectangle).
@@ -226,6 +239,7 @@ public final class EChartsView {
     //   Here: forward to the driver, then sync `ec.getRoot()` into the zr storage + `zr.refresh()`.
     // ------------------------------------------------------------------------
     public func setOption(_ option: [String: Any]) {
+        _clearInsideZoomCoordSysRecords()
         ec.setOption(option)
         _afterSetOption()
     }
@@ -234,6 +248,7 @@ public final class EChartsView {
     /// it. Examples that swap one chart for another over time (map-bar-morph flips a `map` series and a
     /// `bar` series every 2s) pass true; merging would keep the outgoing series' components alive.
     public func setOption(_ option: [String: Any], notMerge: Bool) {
+        _clearInsideZoomCoordSysRecords()
         ec.setOption(option, notMerge: notMerge)
         _afterSetOption()
     }
@@ -242,6 +257,7 @@ public final class EChartsView {
     /// `dispatchAction` (a brush selection, a highlight). Upstream the driver repaints itself through
     /// its update loop; here the zr scene is a copy of `ec.getRoot()`, so it has to be re-pulled.
     public func syncAfterAction() {
+        _clearInsideZoomCoordSysRecords()
         _afterSetOption()
     }
 
@@ -798,9 +814,7 @@ public final class EChartsView {
     //   PORT-NOTE (deferred, mirroring upstream `RoamController`/`roams`):
     //     - wheel-scroll-move (`moveOnMouseWheel` → getRangeHandlers.scrollMove) and pinch/touch zoom
     //       (`_pinchHandler`). (pan/drag → getRangeHandlers.pan is now wired — Phase 39, `_bindInsidePan`.)
-    //     - the full `RoamController` state machine + `throttleUtil.createOrUpdate` throttle + the
-    //       `{easing:'cubicOut', duration:100}` animated dataZoom transition (the driver renders the
-    //       new window synchronously, so no animated tween yet).
+    //     - the full `RoamController` state machine.
     //     - polar / singleAxis coord systems (`getDirectionInfo.polar` / `.singleAxis`): only the grid
     //       (cartesian) direction info is ported here.
     //     - the SliderZoomView on-screen slider widget.
@@ -832,10 +846,9 @@ public final class EChartsView {
         let factor: Double = absWheelDelta > 3 ? 1.4 : absWheelDelta > 1 ? 1.2 : 1.1
         let scale = wheelDelta > 0 ? factor : 1 / factor
 
-        // Collect one batch item per affected inside-dataZoom (upstream `roams`' per-coordSys batch),
-        //   then dispatch ONCE after the walk so the mid-iteration `update()` cannot invalidate the models
-        //   we are still iterating.
-        var batch: [PayloadItem] = []
+        // Upstream creates one record per coordinate system. Each record owns the continuously-updated
+        // `InsideZoomView.range` values and one fix-rate throttled dispatch.
+        var touchedRecords: [String: (record: InsideZoomCoordSysRecord, rate: Double?)] = [:]
 
         ecModel.eachComponent("dataZoom") { modelItem, _ in
             guard let dzModel = modelItem as? InsideZoomModel else { return }
@@ -846,28 +859,86 @@ public final class EChartsView {
             if (dzModel.get("zoomOnMouseWheel", true) as? Bool) == false { return }
             if dzModel.noTarget() { return }
 
+            guard let geom = self._resolveInsideZoomGeom(dzModel) else { return }
+            // upstream `coordSysRecordMap` key: `coordSysModel.uid` (stable across recreated Grid instances).
+            let coordSysKey = geom.grid.gridModel.uid
+            let record = self._insideZoomCoordSysRecords[coordSysKey] ?? InsideZoomCoordSysRecord()
+            self._insideZoomCoordSysRecords[coordSysKey] = record
+
+            guard let modelRange = dzModel.getPercentRange(), modelRange.count == 2 else { return }
+            let lastRange = record.rangeByDataZoomUID[dzModel.uid] ?? modelRange
             guard let newRange = self._computeInsideZoomRange(
-                dzModel, originX: originX, originY: originY, scale: scale
+                dzModel, geom: geom, lastRange: lastRange,
+                originX: originX, originY: originY, scale: scale
             ) else { return }
+            record.rangeByDataZoomUID[dzModel.uid] = newRange
+
             var item = PayloadItem()
             item.other["dataZoomId"] = dzModel.id
             item.other["start"] = newRange[0]
             item.other["end"] = newRange[1]
-            batch.append(item)
+            record.pendingBatchByDataZoomID[dzModel.id] = item
+
+            if touchedRecords[coordSysKey] == nil {
+                touchedRecords[coordSysKey] = (
+                    record,
+                    self._insideZoomNumber(dzModel.get("throttle", true))
+                )
+            }
         }
 
-        if !batch.isEmpty {
-            // upstream `roams.dispatchAction`: `{type:'dataZoom', animation:{easing:'cubicOut',
-            //   duration:100}, batch}`. The driver renders the new window synchronously (no animated
-            //   dataZoom tween yet — PORT-NOTE (deferred)), so the animation part is omitted; the batch is faithful.
-            var payload = Payload(type: "dataZoom")
-            payload.batch = batch
-            ec.dispatchAction(payload)
-            // A re-render rebuilt `ec.getRoot()`'s children (stable Group identity); re-flatten the zr
-            //   display list + repaint so the live zr reflects the new (shrunk/grown) data window.
-            _ = zr.storage.getDisplayList(true)
-            zr.refresh()
+        for (_, entry) in touchedRecords {
+            entry.record.dispatchAction = throttleUtil.createOrUpdate(
+                existing: entry.record.dispatchAction,
+                origin: { [weak self, weak record = entry.record] in
+                    guard let self, let record else { return }
+                    self._dispatchInsideZoomAction(record)
+                },
+                rate: entry.rate,
+                throttleType: .fixRate
+            )
+            if let throttled = entry.record.dispatchAction {
+                throttled()
+            }
+            else {
+                _dispatchInsideZoomAction(entry.record)
+            }
         }
+    }
+
+    /// Upstream `roams.dispatchAction`: this method is the origin wrapped by
+    /// `throttleUtil.createOrUpdate(..., 'fixRate')` for one coordinate-system record.
+    private func _dispatchInsideZoomAction(_ record: InsideZoomCoordSysRecord) {
+        let batch = Array(record.pendingBatchByDataZoomID.values)
+        record.pendingBatchByDataZoomID.removeAll()
+        if batch.isEmpty || ec.isDisposed() { return }
+
+        var payload = Payload(type: "dataZoom")
+        var animation = PayloadAnimationPart()
+        animation.easing = .named("cubicOut")
+        animation.duration = 100
+        payload.animation = animation
+        payload.batch = batch
+        ec.dispatchAction(payload)
+
+        // A re-render rebuilt `ec.getRoot()`'s children (stable Group identity); re-flatten the zr
+        // display list + repaint so the live zr reflects the new window.
+        _ = zr.storage.getDisplayList(true)
+        zr.refresh()
+    }
+
+    private func _clearInsideZoomCoordSysRecords() {
+        for (_, record) in _insideZoomCoordSysRecords {
+            record.dispatchAction = throttleUtil.clear(record.dispatchAction)
+        }
+        _insideZoomCoordSysRecords.removeAll()
+    }
+
+    private func _insideZoomNumber(_ value: Any?) -> Double? {
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return Double(i) }
+        if let n = value as? NSNumber { return n.doubleValue }
+        return nil
     }
 
     /// Compute the new [start, end] percent window for ONE inside-dataZoom, or `nil` if the cursor is
@@ -883,18 +954,17 @@ public final class EChartsView {
     /// `axisModels[0]`. PORT-NOTE (deferred): multi-axis-per-grid grouping + polar/single coord systems.
     private func _computeInsideZoomRange(
         _ dzModel: InsideZoomModel,
+        geom g: InsideZoomGeom,
+        lastRange: [Double],
         originX: Double,
         originY: Double,
         scale: Double
     ) -> [Double]? {
-        guard let g = _resolveInsideZoomGeom(dzModel) else { return nil }
-
         // containPoint gate — upstream `roams.containsPoint` = `coordSysModel.coordinateSystem.containPoint`.
         //   Narrowed to the CONCRETE Cartesian2D that hosts this axis (see the geom resolver).
         guard g.cart.containPoint([originX, originY]) else { return nil }
 
-        // `this.range` — the current [start, end] percents (upstream saves it in `render`; here read live).
-        guard let lastRange = dzModel.getPercentRange(), lastRange.count == 2 else { return nil }
+        // `this.range` — advanced for every input even when dispatch is throttled.
         var range = lastRange
 
         // getDirectionInfo['grid'] (roams.ts) with oldPoint = [0, 0], newPoint = [originX, originY].
@@ -941,6 +1011,7 @@ public final class EChartsView {
         let pixelStart: Double
         let signal: Double
         let cart: Cartesian2D
+        let grid: Grid
         let proxy: AxisProxy
     }
 
@@ -966,7 +1037,7 @@ public final class EChartsView {
         let signal: Double = isX ? (axis.inverse ? 1 : -1) : (axis.inverse ? -1 : 1)
         return InsideZoomGeom(
             isX: isX, pixelLength: pixelLength, pixelStart: pixelStart,
-            signal: signal, cart: cart, proxy: proxy
+            signal: signal, cart: cart, grid: grid, proxy: proxy
         )
     }
 
@@ -1857,6 +1928,7 @@ public final class EChartsView {
     /// Dispose the chart model/views before its live zr. The ordering matters: component disposal can
     /// still consult `api.getZr()`, while `zr.dispose()` removes that connection.
     public func dispose() {
+        _clearInsideZoomCoordSysRecords()
         _disposeAxisPointers()
         ec.dispose()
         zr.dispose()
@@ -1878,6 +1950,7 @@ public final class EChartsView {
     //   not retain the zr (+ its storage/animation clock) after the view is gone. Reachable only once the
     //   zr↔handler↔eventful↔self cycle is broken (all `_initEvents` listeners bind ctx `nil`, not `self`).
     deinit {
+        _clearInsideZoomCoordSysRecords()
         _disposeAxisPointers()
         ec.dispose()
         zr.dispose()

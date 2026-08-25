@@ -110,4 +110,34 @@ final class CandlestickGrowTests: XCTestCase {
         XCTAssertFalse(allEqual(pts, 0), "box at final: spans the category (x) dim")
         XCTAssertFalse(allEqual(pts, 1), "box at final: spans the value (y) dim")
     }
+
+    // UPDATE: upstream `CandlestickView._renderNormal` reuses the existing box and calls
+    // `graphic.updateProps(el, {shape: {points: itemLayout.ends}}, seriesModel, newIdx)`, so a value
+    // update must morph the 8-point geometry through the keyed shape animator rather than replace the
+    // whole Swift shape value synchronously.
+    func test_update_morphs_reused_box_points() {
+        let ec = makeChart(animation: true)
+        guard let boxBefore = firstBox(ec) else { return XCTFail("no NormalBoxPath candle rendered") }
+
+        _ = ec.getRoot().traverse { el in
+            _ = el.stopAnimation(nil)
+            return false
+        }
+
+        ec.setOption([
+            "series": [[
+                "type": "candlestick",
+                "data": [[24.0, 40.0, 20.0, 44.0], [40.0, 30.0, 27.0, 46.0],
+                         [30.0, 48.0, 28.0, 52.0], [48.0, 41.0, 38.0, 54.0],
+                         [41.0, 56.0, 39.0, 61.0], [56.0, 49.0, 46.0, 64.0]]
+            ] as [String: Any]]
+        ])
+
+        guard let boxAfter = firstBox(ec) else { return XCTFail("updated candle disappeared") }
+        XCTAssertTrue(boxBefore === boxAfter, "same-index candle must reuse its upstream graphic element")
+        XCTAssertNotNil(
+            boxAfter.animators.first { $0.targetName == "shape" && $0.getTrack("points") != nil },
+            "upstream updateProps({shape:{points}}) must morph the reused candle geometry"
+        )
+    }
 }

@@ -351,6 +351,13 @@ private func wheelRoamingSeries(
 }
 
 @MainActor
+private func wheelAt(x: Double, y: Double, delta: Double, view: EChartsView) -> [Double]? {
+    guard x >= 0, x <= view.ec.getWidth(), y >= 0, y <= view.ec.getHeight() else { return nil }
+    view._injectWheelForTest(zrDelta: delta, zrX: x, zrY: y)
+    return [x, y]
+}
+
+@MainActor
 private func clickTreemapRootBreadcrumb(view: EChartsView, movePointer: Bool) -> [Double]? {
     let candidates = view.zr.storage.getDisplayList(true).compactMap { displayable -> (Displayable, Int)? in
         guard let eventData = innerStore.getECData(displayable).eventData,
@@ -1831,6 +1838,18 @@ func runNativeInteractionVisual(
             }
             record["resolvedPoint"] = point
             record["delta"] = delta
+        case "wheelAt":
+            let x = step.x ?? demo.width / 2
+            let y = step.y ?? demo.height / 2
+            let delta = step.deltaY ?? 1
+            guard let point = wheelAt(x: x, y: y, delta: delta, view: view) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): wheel point was outside the chart\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["delta"] = delta
         case "hoverGeoRegion":
             guard let name = step.name,
                   let point = hoverGeoRegion(name: name, view: view) else {
@@ -3072,6 +3091,16 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: hit.point[0], y: hit.point[1], delta: delta };
     },
+    wheelAt: function (x, y, delta) {
+      pointerOutside = false;
+      var event = raw([x, y]);
+      event.zrDelta = delta;
+      event.wheelDelta = delta;
+      myChart.getZr().handler.mousewheel(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: x, y: y, delta: delta };
+    },
     hoverGeoRegion: function (name) {
       pointerOutside = false;
       var hit = geoRegionHit(name);
@@ -3271,6 +3300,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.dragSeriesRoam(a.seriesIndex,a.dataIndex,a.dataName,a.deltaX,a.deltaY);})(\(json))"
         case "wheelSeriesRoam":
             script = "(function(a){return window.__interactionVisual.wheelSeriesRoam(a.seriesIndex,a.dataIndex,a.dataName,a.deltaY);})(\(json))"
+        case "wheelAt":
+            script = "(function(a){return window.__interactionVisual.wheelAt(a.x,a.y,a.deltaY);})(\(json))"
         case "hoverGeoRegion":
             script = "(function(a){return window.__interactionVisual.hoverGeoRegion(a.name);})(\(json))"
         case "dragVisualMap":

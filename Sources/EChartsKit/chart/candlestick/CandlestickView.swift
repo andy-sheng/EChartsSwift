@@ -26,7 +26,7 @@ import ZRenderKit
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
 //   import * as graphic from '../../util/graphic';                   -> ZRenderKit shapes + graphic shims.
 //     `initProps` / `updateProps` resolve to the shared `animation/basicTransition.swift` module
-//     functions (see PORT-NOTE at the call sites re: struct-shape snap-to-final deviation);
+//     functions;
 //     `traverseElements` is not used here.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //     -> util/states.swift (`states.setStatesStylesFromModel` / `states.toggleHoverEmphasis`), wired in setBoxCommon.
@@ -226,12 +226,11 @@ open class CandlestickView: ChartView {
                     el = createNormalBox(itemLayout, newIdx, transPointDim)
                 }
                 else {
-                    var shape = NormalBoxPathShape()
-                    shape.points = itemLayout.ends
-                    // PORT-NOTE (deferred): same struct-shape snap-to-final deviation as the `initProps`
-                    //   call above — see comment there. Deferred until NormalBoxPathShape supports per-key
-                    //   `points` animation.
-                    updateProps(el!, ["shape": shape as PathShape], seriesModel, newIdx)
+                    updateProps(el!, [
+                        "shape": [
+                            "points": itemLayout.ends
+                        ] as [String: Any]
+                    ], seriesModel, newIdx)
 
                     saveOldStyle(el!)
                 }
