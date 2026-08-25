@@ -99,10 +99,11 @@ scripts/build-echarts-gallery-ios.sh
 ```
 
 The demo build scripts default to Debug so incremental development builds only recompile
-affected files. Pass `--release` when an optimized binary is specifically needed; Release uses
-whole-module optimization and is substantially slower after source changes. The iOS gallery uses
-an isolated `build/swiftpm-ios` scratch directory so cross-compilation does not invalidate the
-macOS galleries' incremental build cache.
+affected files. Pass `--release` for an optimized (`-O`) build that retains file-level incremental
+compilation, or `--release-wmo` when maximum whole-module optimization is specifically needed.
+Incremental and WMO Release builds use separate caches so switching modes does not trigger an
+avoidable rebuild. The iOS gallery also uses an isolated `build/swiftpm-ios` scratch directory so
+cross-compilation does not invalidate the macOS galleries' build cache.
 
 ## Recommended change workflow
 

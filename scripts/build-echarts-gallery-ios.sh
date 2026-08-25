@@ -14,7 +14,8 @@
 #
 # Usage:
 #   scripts/build-echarts-gallery-ios.sh              fast development build (debug)
-#   scripts/build-echarts-gallery-ios.sh --release    optimized release build
+#   scripts/build-echarts-gallery-ios.sh --release    optimized, incremental release build
+#   scripts/build-echarts-gallery-ios.sh --release-wmo maximum-optimization release build
 #   scripts/build-echarts-gallery-ios.sh --run        install + launch in a booted iPhone simulator
 #                                                     (boots the newest available iPhone if none is)
 #   scripts/build-echarts-gallery-ios.sh --out <dir>  stage into <dir> instead of ./build
@@ -35,22 +36,36 @@ BUNDLE_ID="com.ios-chart.echartskit.EChartsDemoGalleryiOS"
 SCRATCH_PATH="$ROOT/build/swiftpm-ios"
 
 CONFIG="debug"
+WMO=0
 RUN=0
 OUT="$ROOT/build"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --debug)   CONFIG="debug" ;;
-    --release) CONFIG="release" ;;
+    --debug)       CONFIG="debug"; WMO=0 ;;
+    --release)     CONFIG="release"; WMO=0 ;;
+    --release-wmo) CONFIG="release"; WMO=1 ;;
     --run)     RUN=1 ;;
     --out)     shift; OUT="${1:?--out needs a path}" ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^$/p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
 done
 
 case "$OUT" in /*) ;; *) OUT="$ROOT/$OUT" ;; esac
+
+SWIFT_ARGS=(--scratch-path "$SCRATCH_PATH")
+BUILD_MODE="$CONFIG"
+if [ "$CONFIG" = "release" ]; then
+  if [ "$WMO" = 1 ]; then
+    BUILD_MODE="release, WMO"
+    SWIFT_ARGS=(--scratch-path "$ROOT/build/swiftpm-ios-wmo")
+  else
+    BUILD_MODE="release, incremental -O"
+    SWIFT_ARGS+=( -Xswiftc -no-whole-module-optimization -Xswiftc -incremental )
+  fi
+fi
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
 
@@ -74,12 +89,12 @@ echo "ok      dist present ($(cd "$ROOT" && du -h "$DIST" | cut -f1)) — $DIST"
 # ---------------------------------------------------------------------------
 # 3. Cross-compile for the simulator and stage a launchable iOS .app.
 # ---------------------------------------------------------------------------
-say "3/3  Building EChartsDemoGalleryiOS ($CONFIG, $TRIPLE) and staging .app into ${OUT#$ROOT/}"
+say "3/3  Building EChartsDemoGalleryiOS ($BUILD_MODE, $TRIPLE) and staging .app into ${OUT#$ROOT/}"
 SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 swift build --package-path "$ROOT" -c "$CONFIG" --product EChartsDemoGalleryiOS \
-  --scratch-path "$SCRATCH_PATH" --triple "$TRIPLE" --sdk "$SDK_PATH"
+  "${SWIFT_ARGS[@]}" --triple "$TRIPLE" --sdk "$SDK_PATH"
 BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --product EChartsDemoGalleryiOS \
-  --scratch-path "$SCRATCH_PATH" --triple "$TRIPLE" --sdk "$SDK_PATH" --show-bin-path | tail -1)"
+  "${SWIFT_ARGS[@]}" --triple "$TRIPLE" --sdk "$SDK_PATH" --show-bin-path | tail -1)"
 BIN="$BIN_DIR/EChartsDemoGalleryiOS"
 [ -x "$BIN" ] || { echo "ERROR: built binary not found at $BIN" >&2; exit 1; }
 

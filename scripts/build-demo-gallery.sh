@@ -14,7 +14,8 @@
 #
 # Usage:
 #   scripts/build-demo-gallery.sh                fast development build (debug)
-#   scripts/build-demo-gallery.sh --release      optimized release build
+#   scripts/build-demo-gallery.sh --release      optimized, incremental release build
+#   scripts/build-demo-gallery.sh --release-wmo  maximum-optimization release build
 #   scripts/build-demo-gallery.sh --build-zrender force-rebuild upstream zrender's dist via npm
 #   scripts/build-demo-gallery.sh --run          launch the app after building
 #   scripts/build-demo-gallery.sh --out <dir>    stage into <dir> instead of ./build
@@ -31,18 +32,20 @@ ZR_DIR="$ROOT/upstream/zrender"
 DIST="$ZR_DIR/dist/zrender.js"
 
 CONFIG="debug"
+WMO=0
 BUILD_ZRENDER=0
 RUN=0
 OUT="$ROOT/build"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --debug)         CONFIG="debug" ;;
-    --release)       CONFIG="release" ;;
+    --debug)         CONFIG="debug"; WMO=0 ;;
+    --release)       CONFIG="release"; WMO=0 ;;
+    --release-wmo)   CONFIG="release"; WMO=1 ;;
     --build-zrender) BUILD_ZRENDER=1 ;;
     --run)           RUN=1 ;;
     --out)           shift; OUT="${1:?--out needs a path}" ;;
-    -h|--help)       sed -n '2,25p' "$0"; exit 0 ;;
+    -h|--help)       sed -n '2,/^$/p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -50,6 +53,18 @@ done
 
 # OUT may be relative — anchor it to the repo root if so.
 case "$OUT" in /*) ;; *) OUT="$ROOT/$OUT" ;; esac
+
+SWIFT_ARGS=()
+BUILD_MODE="$CONFIG"
+if [ "$CONFIG" = "release" ]; then
+  if [ "$WMO" = 1 ]; then
+    BUILD_MODE="release, WMO"
+  else
+    BUILD_MODE="release, incremental -O"
+    SWIFT_ARGS=(--scratch-path "$ROOT/build/swiftpm-release-optimized"
+                -Xswiftc -no-whole-module-optimization -Xswiftc -incremental)
+  fi
+fi
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
 
@@ -86,9 +101,10 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Build the DemoGallery product and stage a launchable .app into ./build.
 # ---------------------------------------------------------------------------
-say "3/3  Building DemoGallery ($CONFIG) and staging .app into ${OUT#$ROOT/}"
-swift build --package-path "$ROOT" -c "$CONFIG" --product DemoGallery
-BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --product DemoGallery --show-bin-path | tail -1)"
+say "3/3  Building DemoGallery ($BUILD_MODE) and staging .app into ${OUT#$ROOT/}"
+swift build --package-path "$ROOT" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} --product DemoGallery
+BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} \
+  --product DemoGallery --show-bin-path | tail -1)"
 BIN="$BIN_DIR/DemoGallery"
 [ -x "$BIN" ] || { echo "ERROR: built binary not found at $BIN" >&2; exit 1; }
 
