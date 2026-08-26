@@ -799,7 +799,14 @@ public final class ZRText: Displayable, GroupLike {
         }
         var target = normal
         for name in self.currentStates {
-            if let stateTextStyle = self.states[name]?.textStyle {
+            let state = self.states[name]
+            // Upstream `extend(targetStyle, state.style)` treats an authored `null` as a value, so
+            // custom text emphasis can clear normal truncation (`overflow: null`). The typed optional
+            // cannot distinguish that from an omitted key; preserve the raw state bag's distinction.
+            if state?.style?["overflow"] is NSNull {
+                target.overflow = nil
+            }
+            if let stateTextStyle = state?.textStyle {
                 extendTextStyle(&target, stateTextStyle)   // upstream `_mergeStyle` == `extend`
             }
         }

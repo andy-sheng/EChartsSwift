@@ -482,6 +482,66 @@ final class CustomRenderTests: XCTestCase {
             "attached custom labels must paint above their opaque host")
     }
 
+    // A renderItem textContent state is part of the attached ZRText, not the host shape. The official
+    // circle-packing example relies on this exact path to enlarge the hovered leaf label.
+    // Dropping the textContent emphasis state leaves the circle emphasized while its label stays small.
+    func testCustomAttachedTextAppliesEmphasisStyle() throws {
+        let ec = ECharts(width: 240, height: 160)
+        var includesEmphasis = true
+        let renderItem: CustomSeriesRenderItem = { _, _ in
+            var textContent: [String: Any] = [
+                "type": "text",
+                "style": ["text": "leaf", "fontSize": 8.0] as [String: Any]
+            ]
+            if includesEmphasis {
+                textContent["emphasis"] = [
+                    "style": ["fontSize": 24.0, "fill": "#111111"] as [String: Any]
+                ] as [String: Any]
+            }
+            return [
+                "type": "circle",
+                "shape": ["cx": 120.0, "cy": 80.0, "r": 32.0] as [String: Any],
+                "textConfig": ["position": "inside"] as [String: Any],
+                "textContent": textContent
+            ] as [String: Any]
+        }
+        let option: [String: Any] = [
+            "animation": false,
+            "series": [[
+                "type": "custom", "coordinateSystem": "none",
+                "renderItem": renderItem, "data": [1.0]
+            ] as [String: Any]]
+        ]
+        ec.setOption(option)
+
+        var host: Circle?
+        _ = ec.getRoot().traverse { element in
+            if let circle = element as? Circle, circle.getTextContent() != nil { host = circle }
+            return false
+        }
+        let label = try XCTUnwrap(host?.getTextContent())
+        let emphasis = try XCTUnwrap(label.states[DisplayState.emphasis.rawValue])
+        guard case let .number(storedSize)? = emphasis.textStyle?.fontSize else {
+            return XCTFail("textContent.emphasis.style.fontSize must be stored on the attached text")
+        }
+        XCTAssertEqual(storedSize, 24.0)
+
+        _ = label.useState(DisplayState.emphasis.rawValue, false, true)
+        guard case let .number(appliedSize)? = label.textStyle?.fontSize else {
+            return XCTFail("entering emphasis must apply the attached text fontSize")
+        }
+        XCTAssertEqual(appliedSize, 24.0)
+        XCTAssertEqual(label.textStyle?.fill, "#111111")
+
+        label.clearStates()
+        includesEmphasis = false
+        ec.setOption(option)
+        let updatedLabel = try XCTUnwrap(host?.getTextContent())
+        XCTAssertTrue(updatedLabel === label, "the custom element update must reuse its attached text")
+        XCTAssertNil(updatedLabel.states[DisplayState.emphasis.rawValue]?.textStyle,
+                     "omitting a reused text state must clear the previous typed style")
+    }
+
     #if canImport(CoreGraphics) && canImport(ImageIO)
     // `style.decal` on a custom path resolves through createOrUpdatePatternFromDecal into a real Pattern.
     func testCustomStyleDecalResolvesToPattern() {

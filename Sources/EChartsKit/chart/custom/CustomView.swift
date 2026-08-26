@@ -817,11 +817,18 @@ private func updateElOnState(
         if let styleFalse = styleOpt as? Bool, styleFalse == false {
             if let existingEmphasisState = elDisplayable.getState(state) {
                 existingEmphasisState.style = nil
+                if elDisplayable is ZRText { existingEmphasisState.textStyle = nil }
             }
         }
         else {
             // style is needed to enable default emphasis.
             stateObj.style = styleOpt as? [String: Any]
+            // Upstream ZRText uses the same untyped `state.style` bag as every Displayable. The Swift
+            // port stores live text style in a typed side channel, so bridge the identical authored bag
+            // there as well; ZRText.useState reads it back when emphasis/blur/select is applied.
+            if elDisplayable is ZRText {
+                stateObj.textStyle = (styleOpt as? [String: Any]).map(bridgeTextStyle)
+            }
         }
         // upstream: if (txCfgOpt) stateObj.textConfig = txCfgOpt;
         if let txCfgOpt = txCfgOpt {
@@ -1495,35 +1502,27 @@ private func doCreateOrUpdateAttachedTx(
         return
     }
 
-    // upstream: processTxInfo(normal) then processTxInfo(EMPHASIS); legacy ec4 conversion — DEFERRED.
-    // PORT-NOTE (deferred): legacy ec4-style detection + per-state (emphasis/blur/select) text config are
-    //   deferred. Only `elOption.textContent` (normal) is honored as a basic text child.
-    //
-    // The NORMAL-state half of `processTxInfo(elOption, null, attachedTxInfo)` IS wired here: for the
-    //   normal state `stateOpt` is `elOption` itself, so `txCfg = stateOpt.textConfig` — i.e. a plain
-    //   `elOption.textConfig` (e.g. `{position: 'insideLeft'}`) must reach `attachedTxInfo.normal.cfg`,
-    //   which `updateElNormal` (above, on the HOST el) reads to call `el.setTextConfig(txCfgOpt)`. Without
-    //   this, `setTextConfig` is never called and `Element.updateInnerText` has no `textConfig.position`
-    //   to lay the attached text out from, so every attached text renders at its default (0,0) — caught
-    //   porting official-flame-graph (535 frame-name labels all stacked at the canvas origin), and it is
-    //   what positions the nested labels in official-circle-packing-with-d3.
-    attachedTxInfo.normal.cfg = bridgeCustomElementTextConfig(elOption["textConfig"] as? [String: Any])
+    // Upstream calls normal before emphasis for legacy-style detection. The explicit textContent /
+    // textConfig path is kept verbatim here; EC4 style conversion remains in customNormalizeLegacyText.
+    processTxInfo(elOption, nil, attachedTxInfo)
+    processTxInfo(elOption, EMPHASIS, attachedTxInfo)
 
-    var txConOptNormal = elOption["textContent"]
+    var txConOptNormal = attachedTxInfo.normal.conOpt
+    let txConOptEmphasis = attachedTxInfo.emphasis.conOpt
+    let txConOptBlur = attachedTxInfo.blur.conOpt
+    let txConOptSelect = attachedTxInfo.select.conOpt
 
-    // upstream: if (txConOptNormal != null || ...emphasis/blur/select...) { textContent handling }
-    if txConOptNormal != nil {
+    if txConOptNormal != nil || txConOptEmphasis != nil || txConOptBlur != nil || txConOptSelect != nil {
         if txConOptNormal as? Bool == false {
-            // upstream: txConOptNormal === false → remove textContent.
             if el.getTextContent() != nil {
                 el.removeTextContent()
             }
         }
         else {
-            // `textContent: {type:'text'}` — the type is easy to miss, tolerate it.
             var conOpt = (txConOptNormal as? [String: Any]) ?? ["type": "text"]
             if conOpt["type"] == nil { conOpt["type"] = "text" }
             txConOptNormal = conOpt
+            attachedTxInfo.normal.conOpt = conOpt
 
             var textContent = el.getTextContent()
             if textContent == nil {
@@ -1531,19 +1530,57 @@ private func doCreateOrUpdateAttachedTx(
                 if let tc = textContent { el.setTextContent(tc) }
             }
             else {
-                // textContent.clearStates();  — states DEFERRED.
+                textContent?.clearStates()
             }
             if let tc = textContent {
                 updateElNormal(nil, tc, dataIndex, conOpt, nil, seriesModel, isInit)
-                // per-state text config — DEFERRED.
+                for stateName in STATES where stateName != NORMAL {
+                    let stateOption = attachedTxInfo[stateName].conOpt
+                    updateElOnState(
+                        stateName,
+                        tc,
+                        stateOption,
+                        retrieveStyleOptionOnState(conOpt, stateOption, stateName),
+                        nil
+                    )
+                }
                 tc.markRedraw()
             }
         }
     }
 }
 
-// upstream: function processTxInfo(...) — the per-state legacy detection is DEFERRED; the normal-state
-//   `info.cfg = stateOpt.textConfig` assignment is inlined in doCreateOrUpdateAttachedTx (above).
+// Explicit half of upstream processTxInfo. `customNormalizeLegacyText` runs before this function and
+// performs this port's EC4-compatible style conversion, so the state extraction below can remain the
+// same normal/emphasis lookup used by Web CustomView.
+private func processTxInfo(
+    _ elOption: [String: Any],
+    _ state: String?,
+    _ attachedTxInfo: AttachedTxInfo
+) {
+    let stateOption: [String: Any]?
+    if let state {
+        stateOption = retrieveStateOption(elOption, state) as? [String: Any]
+    }
+    else {
+        stateOption = elOption
+    }
+    let normalTextContent = elOption["textContent"]
+    let textContentOption: Any?
+    if state == nil {
+        textContentOption = normalTextContent
+    }
+    else if let normal = normalTextContent as? [String: Any], let state {
+        textContentOption = retrieveStateOption(normal, state)
+    }
+    else {
+        textContentOption = nil
+    }
+
+    let info = state.map { attachedTxInfo[$0] } ?? attachedTxInfo.normal
+    info.cfg = bridgeCustomElementTextConfig(stateOption?["textConfig"] as? [String: Any])
+    info.conOpt = textContentOption
+}
 
 // Bridge a renderItem `textConfig` bag (`[String: Any]`) → `ElementTextConfig`. Upstream passes the raw
 //   object to `el.setTextConfig`; here it is mapped field-by-field onto the struct ZRenderKit consumes.

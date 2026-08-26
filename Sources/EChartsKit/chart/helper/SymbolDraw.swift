@@ -45,6 +45,9 @@ public struct SymbolDrawUpdateOpt {
     public var isIgnore: ((Int) -> Bool)?
     public var clipShape: SymbolClipShape?
     public var getSymbolPoint: ((Int) -> [Double]?)?
+    /// Optional view-owned removal path. TreeView needs its upstream source-node move plus edge leave
+    /// animation; all ordinary SymbolDraw consumers keep the default fade/remove behavior.
+    public var removeSymbol: ((SeriesData, Int, Symbol, Group) -> Void)?
     /// Per-symbol opts the caller wants applied on BOTH diff branches.
     ///
     /// Upstream views own their `SymbolClz` instances and hand the SAME opts bag to `new SymbolClz(...)`
@@ -57,12 +60,14 @@ public struct SymbolDrawUpdateOpt {
     public var symbolOpts: SymbolOpts?
     public init(disableAnimation: Bool? = nil, isIgnore: ((Int) -> Bool)? = nil,
                 clipShape: SymbolClipShape? = nil, getSymbolPoint: ((Int) -> [Double]?)? = nil,
-                symbolOpts: SymbolOpts? = nil) {
+                symbolOpts: SymbolOpts? = nil,
+                removeSymbol: ((SeriesData, Int, Symbol, Group) -> Void)? = nil) {
         self.disableAnimation = disableAnimation
         self.isIgnore = isIgnore
         self.clipShape = clipShape
         self.getSymbolPoint = getSymbolPoint
         self.symbolOpts = symbolOpts
+        self.removeSymbol = removeSymbol
     }
 }
 
@@ -195,7 +200,14 @@ public final class SymbolDraw {
 
                 let point = getSymbolPoint(newIdx)
                 if !symbolNeedsDraw(data, point, newIdx, opt) {
-                    if let symbolEl = symbolEl { _ = group.remove(symbolEl) }
+                    if let symbolEl = symbolEl, let oldData = oldData {
+                        if let removeSymbol = opt.removeSymbol {
+                            removeSymbol(oldData, oldIdx, symbolEl, group)
+                        }
+                        else {
+                            _ = group.remove(symbolEl)
+                        }
+                    }
                     return
                 }
                 let point2 = point!
@@ -228,7 +240,12 @@ public final class SymbolDraw {
             })
             .remove({ oldIdx in
                 if let el = oldData?.getItemGraphicEl(oldIdx) as? Symbol {
-                    el.fadeOut({ _ = group.remove(el) }, seriesModel)
+                    if let removeSymbol = opt.removeSymbol, let oldData = oldData {
+                        removeSymbol(oldData, oldIdx, el, group)
+                    }
+                    else {
+                        el.fadeOut({ _ = group.remove(el) }, seriesModel)
+                    }
                 }
             })
             .execute()

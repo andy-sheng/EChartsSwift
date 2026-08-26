@@ -1,4 +1,4 @@
-// Ported (STATIC SUBSET) from echarts/src/chart/tree/TreeView.ts — keep in sync with upstream.
+// Ported from echarts/src/chart/tree/TreeView.ts — keep in sync with upstream.
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -23,18 +23,15 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';               -> `util.*` (ZRenderKit).
-//   import * as graphic from '../../util/graphic';                 -> `Group` / `BezierCurve` (ZRenderKit shapes).
-//       PORT-NOTE (deferred): util/graphic's updateProps/removeElement (== animation/basicTransition,
-//       ported) are not used HERE — this static render sets final geometry directly (same deviation as
-//       FunnelView/PieView/SunburstView); the enter/update/remove tween is deferred for this view.
+//   import * as graphic from '../../util/graphic';                 -> `Group` / `BezierCurve` plus
+//       animation/basicTransition's updateProps/removeElement.
 //   import {getECData} from '../../util/innerStore';               -> `innerStore.getECData` (ported).
 //   import SymbolClz from '../helper/Symbol';                      -> `Symbol` (chart/helper/SymbolElement.swift).
 //       PORT NOTE: the node symbols are routed through the shared `SymbolDraw` (chart/helper/SymbolDraw),
 //       mirroring the port's GraphView — each node becomes a `Symbol` (Group) carrying colour, the
 //       useNameLabel node label, emphasis hover-scale, symbolRotate/offset and the entrance scale-in.
-//       `TreeSymbol`'s `__edge`/`__radial*`/`__old*` augmentation (used only by the DEFERRED enter/update/
-//       remove animation + radial label rotation) has no Swift analogue; the edge blur-forward that
-//       `__edge` powers is reproduced via the symbol Path's `onHoverStateChange` hook (see decorateNode).
+//       `TreeSymbol.__edge` is represented by TreeView's `_edges` registry; source-old position snapshots
+//       are local TreeNodeLayout values. Edge blur-forward is reproduced on the symbol Path.
 //   import {radialCoordinate} from './layoutHelper';               -> `layoutHelper.radialCoordinate` (sibling).
 //   import * as bbox from 'zrender/src/core/bbox';                 -> `bbox.fromPoints` (ZRenderKit), used by
 //       _updateViewCoordSys.
@@ -76,13 +73,11 @@ private let tokens_color_neutral00 = "#fff"
 // upstream:
 //   type TreeSymbol = SymbolClz & { __edge; __radialOldRawX; __radialOldRawY; __radialRawX; __radialRawY;
 //     __oldX; __oldY };
-// PORT-NOTE: SymbolClz (upstream chart/helper/Symbol) IS ported as `Symbol` (chart/helper/SymbolElement.swift);
-//   the augmented `TreeSymbol` (edge back-pointer +
-//   radial/old raw-coordinate caches used only by the DEFERRED enter/update/remove animation) has no
-//   Swift analogue. The static render adds node symbols + edges to the group directly.
+// PORT-NOTE: SymbolClz (upstream chart/helper/Symbol) IS ported as `Symbol`; `_edges` mirrors `__edge`
+//   by symbol identity and Symbol carries the four radial old/current raw-coordinate fields.
 
 // upstream: class TreeEdgeShape { parentPoint; childPoints; orient; forkPosition; }
-//   Conforms to `PathShape` (the per-subclass shape marker). Keyed animation is inert (deferred).
+//   Conforms to `PathShape`; parent/child point arrays are exposed to keyed animation.
 final class TreeEdgeShape: PathShape {
     var parentPoint: [Double] = []
     var childPoints: [[Double]] = []
@@ -92,6 +87,29 @@ final class TreeEdgeShape: PathShape {
     var forkPosition: Any?
 
     init() {}
+
+    func animationGet(_ key: String) -> Any? {
+        switch key {
+        case "parentPoint": return parentPoint
+        case "childPoints": return childPoints
+        default: return nil
+        }
+    }
+
+    func animationSet(_ key: String, _ value: Any?) {
+        switch key {
+        case "parentPoint":
+            if let point = value as? [Double] { parentPoint = point }
+        case "childPoints":
+            if let points = value as? [[Double]] { childPoints = points }
+        default:
+            break
+        }
+    }
+
+    func animationProps() -> [String: Any] {
+        ["parentPoint": parentPoint, "childPoints": childPoints]
+    }
 }
 
 // upstream: interface TreeEdgePathProps extends PathProps { shape?: Partial<TreeEdgeShape> }
@@ -202,10 +220,9 @@ open class TreeView: ChartView {
 
     // PORT: the tree EDGES (links) are drawn inline (LineDraw not ported). Upstream caches each edge on its
     //   node symbol (`TreeSymbol.__edge`) and `updateProps` it on refresh; the port has no `__edge` field, so
-    //   the edges are retained here in a registry keyed by the node's dataIndex — reused + `updateProps`-tweened
-    //   on refresh, and removed when their node leaves / collapses (so no stale edge survives the no-removeAll
-    //   render). Keeps edge element identity stable across renders (the reset fix for the links).
-    private var _edges: [Int: Path] = [:]
+    //   the edges are retained here by their owning Symbol identity, which is the Swift equivalent of
+    //   `symbolEl.__edge`. Identity (rather than dataIndex) is required because data.diff can remap indices.
+    private var _edges: [ObjectIdentifier: Path] = [:]
 
     // upstream: private _min: number[];  /  private _max: number[];
     //   The last computed node bounding box — kept so a collapse-after-roam that degenerates the box to a
@@ -319,6 +336,67 @@ open class TreeView: ChartView {
             self._symbolDraw = symbolDraw
             _ = group.add(symbolDraw.group)
         }
+        let oldData = self._data
+        let entranceRootLayout = data.tree?.root.children.first.flatMap { treeNodeLayout($0.getLayout()) }
+        var oldIndexByNew: [Int: Int] = [:]
+        var enteringIndices = Set<Int>()
+        var enteringStartLayouts: [Int: TreeNodeLayout] = [:]
+        var disappearingIndices: [Int] = []
+        data.diff(oldData)
+            .add { newIndex in
+                if symbolNeedsDraw(data, newIndex) { enteringIndices.insert(newIndex) }
+            }
+            .update { newIndex, oldIndex in
+                oldIndexByNew[newIndex] = oldIndex
+                let oldSymbol = oldData?.getItemGraphicEl(oldIndex) as? Symbol
+                if symbolNeedsDraw(data, newIndex) {
+                    if oldSymbol == nil { enteringIndices.insert(newIndex) }
+                }
+                else if oldSymbol != nil {
+                    disappearingIndices.append(newIndex)
+                }
+            }
+            .execute()
+        func enteringStartLayout(_ dataIndex: Int, _ visiting: inout Set<Int>) -> TreeNodeLayout? {
+            if let cached = enteringStartLayouts[dataIndex] { return cached }
+            guard visiting.insert(dataIndex).inserted,
+                  let node = data.tree?.getNodeByDataIndex(dataIndex) else { return nil }
+            defer { visiting.remove(dataIndex) }
+            if self._firstRender, let root = entranceRootLayout {
+                enteringStartLayouts[dataIndex] = root
+                return root
+            }
+            let virtualRoot = data.tree!.root
+            let source = node.parentNode === virtualRoot ? node : (node.parentNode ?? node)
+            guard let sourceLayout = treeNodeLayout(source.getLayout()) else { return nil }
+            let oldSourceIndex = oldIndexByNew[source.dataIndex]
+            let start: TreeNodeLayout
+            if let oldSourceIndex,
+               let oldSource = oldData?.getItemGraphicEl(oldSourceIndex) as? Symbol {
+                start = TreeNodeLayout(
+                    x: oldSource.x, y: oldSource.y,
+                    rawX: oldSource.__radialRawX ?? sourceLayout.rawX,
+                    rawY: oldSource.__radialRawY ?? sourceLayout.rawY
+                )
+            }
+            else if source !== node,
+                    enteringIndices.contains(source.dataIndex),
+                    let sourceStart = enteringStartLayout(source.dataIndex, &visiting) {
+                // Web has already created the new parent at its own sourceOldLayout before it creates
+                // the child, so a wholly inserted subtree grows from one shared retained ancestor.
+                start = sourceStart
+            }
+            else {
+                start = sourceLayout
+            }
+            enteringStartLayouts[dataIndex] = start
+            return start
+        }
+        for dataIndex in enteringIndices {
+            var visiting = Set<Int>()
+            _ = enteringStartLayout(dataIndex, &visiting)
+        }
+
         var opt = SymbolDrawUpdateOpt()
         // Same bag the ctor closure applies, so `useNameLabel` survives the `.update()` diff branch too —
         //   upstream hands the identical opts to `new SymbolClz(...)` (TreeView.ts:357) and to
@@ -333,50 +411,60 @@ open class TreeView: ChartView {
                   let x = layout["x"] as? Double, let y = layout["y"] as? Double else { return nil }
             return [x, y]
         }
+        // Upstream TreeView routes both an update that loses layout and a real diff removal through
+        // removeNode(oldData,...). Keep SymbolDraw's shared lifecycle, but delegate only this removal
+        // seam back to TreeView so the exact source-node node/label/edge leave animation is preserved.
+        opt.removeSymbol = { [weak self] oldData, oldIndex, symbolEl, symbolGroup in
+            self?.removeTreeNode(
+                oldData, oldIndex, symbolEl, symbolGroup, group, seriesModel
+            )
+        }
         symbolDraw.updateData(data, opt)
-
-        // Upstream tree entry starts every node at the real root and expands the hierarchy to its laid-out
-        // position. SymbolDraw already animates each node's child path scale/opacity; animate the containing
-        // Symbol group's position independently so the topology itself grows rather than appearing in its
-        // final geometry on frame zero.
-        let entranceRootLayout = data.tree?.root.children.first.flatMap { treeNodeLayout($0.getLayout()) }
-        if self._firstRender, let root = entranceRootLayout {
-            for dataIndex in 0..<data.count() where symbolNeedsDraw(data, dataIndex) {
-                guard let symbolEl = data.getItemGraphicEl(dataIndex) as? Symbol else { continue }
-                let finalX = symbolEl.x
-                let finalY = symbolEl.y
-                symbolEl.x = root.x
-                symbolEl.y = root.y
-                // TreeView upstream deliberately uses updateProps even for a newly-created node, so
-                // hierarchy motion follows animationDurationUpdate/animationEasingUpdate while the
-                // symbol path's scale/opacity still follows the enter configuration.
-                updateProps(symbolEl, ["x": finalX, "y": finalY], seriesModel, dataIndex)
-            }
+        // In upstream the collapsed NEW SeriesData never receives the old graphic element: removeNode
+        // operates on oldData only. SeriesData instances in this port can share the graphic-element slot,
+        // so clear the new side explicitly after SymbolDraw invokes the old-data removal callback.
+        for dataIndex in disappearingIndices {
+            data.setItemGraphicEl(dataIndex, nil)
         }
 
-        // Per-node decoration the shared Symbol does not cover: the tree's outward label side, the parent/
-        //   child EDGE (drawn inline + retained in `_edges`), the topology `emphasis.focus` index set, and
-        //   the edge blur-forward. Track which node indices still own an edge this render so stale edges
-        //   (nodes that left or collapsed) can be removed from the un-wiped group afterward.
-        var liveEdges = Set<Int>()
+        // Web creates every new/re-expanded node at sourceOldLayout, then updateProps-tweens it to its
+        // target. On the first render all source-old coordinates resolve to the real root.
+        for (dataIndex, start) in enteringStartLayouts {
+            guard let symbolEl = data.getItemGraphicEl(dataIndex) as? Symbol,
+                  let target = treeNodeLayout(data.getItemLayout(dataIndex)) else { continue }
+            symbolEl.x = start.x
+            symbolEl.y = start.y
+            updateProps(symbolEl, ["x": target.x, "y": target.y], seriesModel, dataIndex)
+        }
+
+        // Per-node decoration the shared Symbol does not cover. Retain each edge by the owning Symbol,
+        // exactly like upstream's `symbolEl.__edge`, so data-index reordering cannot swap edge identity.
+        var liveEdges = Set<ObjectIdentifier>()
         for newIdx in 0..<data.count() {
-            if symbolNeedsDraw(data, newIdx) {
+            if symbolNeedsDraw(data, newIdx),
+               let symbolEl = data.getItemGraphicEl(newIdx) as? Symbol,
+               let targetLayout = treeNodeLayout(data.getItemLayout(newIdx)) {
+                symbolEl.__radialOldRawX = symbolEl.__radialRawX
+                symbolEl.__radialOldRawY = symbolEl.__radialRawY
+                symbolEl.__radialRawX = targetLayout.rawX
+                symbolEl.__radialRawY = targetLayout.rawY
+                let owner = ObjectIdentifier(symbolEl)
                 let edge = decorateNode(
-                    data, newIdx, group, seriesModel, self._edges[newIdx],
-                    self._firstRender, entranceRootLayout
+                    data, newIdx, group, seriesModel, self._edges[owner],
+                    enteringStartLayouts[newIdx]
                 )
                 if let edge = edge {
-                    self._edges[newIdx] = edge
-                    liveEdges.insert(newIdx)
+                    self._edges[owner] = edge
+                    liveEdges.insert(owner)
                 }
-                else if let stale = self._edges[newIdx] {
+                else if let stale = self._edges[owner] {
                     // The node exists but no longer draws an edge (e.g. a now-collapsed polyline source).
                     _ = group.remove(stale)
-                    self._edges[newIdx] = nil
+                    self._edges[owner] = nil
                 }
             }
         }
-        // Remove edges whose node vanished / collapsed out this render (no live edge for that index).
+        // Remove edges whose owning symbol vanished / collapsed out this render.
         for (k, edge) in self._edges where !liveEdges.contains(k) {
             _ = group.remove(edge)
             self._edges[k] = nil
@@ -530,6 +618,110 @@ open class TreeView: ChartView {
 
     // upstream: _updateNodeAndLinkScale(seriesModel)  — PORT-NOTE: setSymbolScale (roam) DEFERRED.
 
+    private func removeTreeNode(
+        _ data: SeriesData,
+        _ dataIndex: Int,
+        _ symbolEl: Symbol,
+        _ symbolGroup: Group,
+        _ edgeGroup: Group,
+        _ seriesModel: TreeSeriesModel
+    ) {
+        guard let node = data.tree?.getNodeByDataIndex(dataIndex),
+              let (_, sourceLayout) = treeSourceNode(data.tree!.root, node) else { return }
+
+        var removeAnimation = AnimationOption()
+        removeAnimation.duration = treeToDouble(seriesModel.get("animationDurationUpdate", false))
+        if let easing = seriesModel.get("animationEasingUpdate", false) as? String {
+            removeAnimation.easing = .named(easing)
+        }
+
+        removeElement(
+            symbolEl,
+            ["x": sourceLayout.x + 1.0, "y": sourceLayout.y + 1.0],
+            seriesModel,
+            AnimateOrSetPropsOption(
+                dataIndex: dataIndex,
+                cb: { [weak symbolEl, weak symbolGroup, weak data] in
+                    if let symbolEl { _ = symbolGroup?.remove(symbolEl) }
+                    data?.setItemGraphicEl(dataIndex, nil)
+                },
+                removeOpt: removeAnimation
+            )
+        )
+        symbolEl.fadeOut(
+            nil,
+            data.hostModel as? TreeSeriesModel,
+            SymbolFadeOutOpt(fadeLabel: true, animation: removeAnimation)
+        )
+
+        for child in node.children {
+            removeTreeNodeEdge(child, data, edgeGroup, seriesModel, removeAnimation)
+        }
+        removeTreeNodeEdge(node, data, edgeGroup, seriesModel, removeAnimation)
+    }
+
+    private func removeTreeNodeEdge(
+        _ node: TreeNode,
+        _ data: SeriesData,
+        _ group: Group,
+        _ seriesModel: TreeSeriesModel,
+        _ removeAnimation: AnimationOption
+    ) {
+        guard let tree = data.tree,
+              let (source, sourceLayout) = treeSourceNode(tree.root, node) else { return }
+
+        let symbolEl = data.getItemGraphicEl(node.dataIndex) as? Symbol
+        let sourceSymbolEl = data.getItemGraphicEl(source.dataIndex) as? Symbol
+        let nodeOwner = symbolEl.map(ObjectIdentifier.init)
+        let sourceOwner = sourceSymbolEl.map(ObjectIdentifier.init)
+        let sourceEdge = sourceOwner.flatMap { self._edges[$0] }
+        let owner: ObjectIdentifier?
+        if let nodeOwner, self._edges[nodeOwner] != nil {
+            owner = nodeOwner
+        }
+        else if source.isExpand == false || source.children.count == 1, sourceEdge != nil {
+            owner = sourceOwner
+        }
+        else {
+            owner = nil
+        }
+        guard let owner, let edge = self._edges[owner] else { return }
+        self._edges[owner] = nil
+
+        let edgeShape = (seriesModel.get("edgeShape", false) as? String) ?? "curve"
+        let layout = (seriesModel.get("layout", false) as? String) ?? "orthogonal"
+        let orient = seriesModel.getOrient()
+        let curvature = treeToDouble(seriesModel.get(["lineStyle", "curveness"], false))
+        let targetShape: [String: Any]
+        if edgeShape == "curve" {
+            targetShape = bezierShapeDict(
+                getEdgeShape(layout, orient, curvature, sourceLayout, sourceLayout)
+            )
+        }
+        else if edgeShape == "polyline", layout == "orthogonal" {
+            targetShape = [
+                "parentPoint": [sourceLayout.x, sourceLayout.y],
+                "childPoints": [[sourceLayout.x, sourceLayout.y]]
+            ]
+        }
+        else {
+            return
+        }
+
+        removeElement(
+            edge,
+            ["shape": targetShape, "style": ["opacity": 0.0] as [String: Any]],
+            seriesModel,
+            AnimateOrSetPropsOption(
+                dataIndex: node.dataIndex,
+                cb: { [weak edge, weak group] in
+                    if let edge { _ = group?.remove(edge) }
+                },
+                removeOpt: removeAnimation
+            )
+        )
+    }
+
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // PORT-NOTE (deferred): RoamController.dispose DEFERRED (roam not wired into this view).
@@ -544,6 +736,18 @@ open class TreeView: ChartView {
         self._symbolDraw = nil
         self._edges = [:]
     }
+}
+
+private func treeSourceNode(
+    _ virtualRoot: TreeNode,
+    _ node: TreeNode
+) -> (source: TreeNode, layout: TreeNodeLayout)? {
+    var source = node.parentNode === virtualRoot ? node : (node.parentNode ?? node)
+    while treeNodeLayout(source.getLayout()) == nil {
+        source = source.parentNode === virtualRoot ? source : (source.parentNode ?? source)
+    }
+    guard let layout = treeNodeLayout(source.getLayout()) else { return nil }
+    return (source, layout)
 }
 
 // upstream: function symbolNeedsDraw(data: SeriesData, dataIndex: number)
@@ -571,8 +775,7 @@ private func decorateNode(
     _ group: Group,
     _ seriesModel: TreeSeriesModel,
     _ existingEdge: Path?,
-    _ isEntering: Bool,
-    _ entranceRootLayout: TreeNodeLayout?
+    _ sourceOldLayout: TreeNodeLayout?
 ) -> Path? {
     // const node = data.tree.getNodeByDataIndex(dataIndex);
     guard let node = data.tree?.getNodeByDataIndex(dataIndex) else { return nil }
@@ -587,7 +790,6 @@ private func decorateNode(
     // const source = node.parentNode === virtualRoot ? node : node.parentNode || node;
     let source: TreeNode = node.parentNode === virtualRoot ? node : (node.parentNode ?? node)
     // const sourceLayout = source.getLayout() as TreeNodeLayout;
-    //   (sourceOldLayout — the animation snapshot — is DEFERRED; the static render uses sourceLayout.)
     let sourceLayout = treeNodeLayout(source.getLayout())
     // const targetLayout = node.getLayout();
     guard let targetLayout = treeNodeLayout(node.getLayout()) else { return nil }
@@ -705,7 +907,7 @@ private func decorateNode(
     //   `symbolEl.__edge` cache); a nil return means this node draws no edge this render.
     let edgeEl = drawEdge(
         seriesModel, node, virtualRoot, sourceLayout, targetLayout, group, existingEdge,
-        isEntering, entranceRootLayout
+        sourceOldLayout
     )
 
     // Phase 48: `symbolEl.__edge` blur propagation (upstream TreeView.ts:464-477). Tree edges are anonymous
@@ -735,8 +937,8 @@ private func decorateNode(
 //     sourceLayout, targetLayout, group)
 //   `symbolEl.__edge` is reproduced by the caller's `_edges` registry: an `existingEdge` (the node's edge
 //   from the previous render) is REUSED and `updateProps`-tweened to the new shape (upstream's
-//   `graphic.updateProps(edge, { shape })`) instead of building a fresh one; on first appearance the edge is
-//   built directly at its final shape (the sourceOldLayout collapse-and-grow enter tween stays deferred).
+//   `graphic.updateProps(edge, { shape })`) instead of building a fresh one; new edges start collapsed at
+//   sourceOldLayout and tween to their target shape.
 @discardableResult
 private func drawEdge(
     _ seriesModel: TreeSeriesModel,
@@ -746,8 +948,7 @@ private func drawEdge(
     _ targetLayout: TreeNodeLayout,
     _ group: Group,
     _ existingEdge: Path?,
-    _ isEntering: Bool,
-    _ entranceRootLayout: TreeNodeLayout?
+    _ sourceOldLayout: TreeNodeLayout?
 ) -> Path? {
     let itemModel = node.getModel()
     // const edgeShape = seriesModel.get('edgeShape');
@@ -779,23 +980,16 @@ private func drawEdge(
             }
             else {
                 var props: ElementProps = [:]
-                if isEntering, let root = entranceRootLayout {
-                    var collapsed = BezierCurveShape()
-                    collapsed.x1 = root.x
-                    collapsed.y1 = root.y
-                    collapsed.x2 = root.x
-                    collapsed.y2 = root.y
-                    collapsed.cpx1 = root.x
-                    collapsed.cpy1 = root.y
-                    collapsed.cpx2 = root.x
-                    collapsed.cpy2 = root.y
-                    props["shape"] = collapsed as PathShape
+                if let sourceOldLayout {
+                    props["shape"] = getEdgeShape(
+                        layout, orient, curvature, sourceOldLayout, sourceOldLayout
+                    ) as PathShape
                 }
                 else {
                     props["shape"] = target as PathShape
                 }
                 edge = BezierCurve(props)
-                if let edge = edge, isEntering {
+                if let edge = edge, sourceOldLayout != nil {
                     updateProps(edge, ["shape": bezierShapeDict(target)], seriesModel, node.dataIndex)
                 }
             }
@@ -819,27 +1013,22 @@ private func drawEdge(
                 shape.childPoints = childPoints
                 shape.orient = orient
                 shape.forkPosition = edgeForkPosition
-                // REUSE the node's retained TreePath if present (its TreeEdgeShape keyed animation is inert —
-                //   see the TreeEdgeShape note — so the new fork geometry is assigned directly; the element
-                //   IDENTITY is what matters for the reset fix), else build a fresh TreePath.
                 if let existing = existingEdge as? TreePath {
-                    _ = existing.setShape(shape)
-                    existing.dirtyShape()
+                    updateProps(existing, ["shape": treeEdgeShapeDict(shape)], seriesModel, node.dataIndex)
                     edge = existing
                 }
                 else {
-                    var props: ElementProps = [:]
-                    props["shape"] = shape as PathShape
-                    edge = TreePath(props)
-                    // TreeEdgeShape contains arrays and cannot be interpolated key-by-key. A scale from
-                    // the real root preserves the exact final polyline while matching the root-outward
-                    // entrance topology used by the Web renderer.
-                    if let edge = edge, isEntering, let root = entranceRootLayout {
-                        edge.originX = root.x
-                        edge.originY = root.y
-                        edge.scaleX = 0
-                        edge.scaleY = 0
-                        updateProps(edge, ["scaleX": 1.0, "scaleY": 1.0], seriesModel, node.dataIndex)
+                    // Upstream initializes a new/re-expanded polyline at its owning parent and then
+                    // grows the fork out to all children. This applies even when the parent symbol was
+                    // retained while collapsed, so it must not depend on a newly-entering node layout.
+                    let collapsed = TreeEdgeShape()
+                    collapsed.parentPoint = [targetLayout.x, targetLayout.y]
+                    collapsed.childPoints = [[targetLayout.x, targetLayout.y]]
+                    collapsed.orient = orient
+                    collapsed.forkPosition = edgeForkPosition
+                    edge = TreePath(["shape": collapsed as PathShape])
+                    if let edge = edge {
+                        updateProps(edge, ["shape": treeEdgeShapeDict(shape)], seriesModel, node.dataIndex)
                     }
                 }
             }
@@ -882,12 +1071,6 @@ private func drawEdge(
     }
     return nil
 }
-
-// PORT-NOTE (deferred): function removeNodeEdge / getSourceNode / removeNode — the enter/update/remove ANIMATION
-//   subsystem (graphic.removeElement, fadeOut, removeAnimationOpt) is DEFERRED per CONVENTIONS §5. The
-//   static render rebuilds the group each pass, so per-node removal animation is not needed. `getSourceNode`
-//   (walks up to the first ancestor with a non-null layout) is subsumed by `updateNode`'s inline
-//   `source` computation for the static case.
 
 // upstream: function getEdgeShape(layoutOpt, orient, curvature, sourceLayout, targetLayout)
 //   Returns the BezierCurve shape (x1/y1/x2/y2 + control points cpx1/cpy1/cpx2/cpy2).
@@ -980,6 +1163,10 @@ private func bezierShapeDict(_ s: BezierCurveShape) -> [String: Any] {
     if let cpx2 = s.cpx2 { d["cpx2"] = cpx2 }
     if let cpy2 = s.cpy2 { d["cpy2"] = cpy2 }
     return d
+}
+
+private func treeEdgeShapeDict(_ shape: TreeEdgeShape) -> [String: Any] {
+    ["parentPoint": shape.parentPoint, "childPoints": shape.childPoints]
 }
 
 // Reads the `{ x, y, rawX, rawY }` layout bag stored by treeLayout (setItemLayout) into a

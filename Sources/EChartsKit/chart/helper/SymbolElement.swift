@@ -76,6 +76,13 @@ open class Symbol: Group {
     ///   can strip them. Defaults false (a normal SymbolDraw symbol is not temporary).
     public var __temp: Bool = false
 
+    // TreeView's `TreeSymbol` extension fields. They cache the previous/current radial layout exactly
+    // like upstream so newly-entering radial nodes and edges can start at the source's old angle.
+    var __radialOldRawX: Double?
+    var __radialOldRawY: Double?
+    var __radialRawX: Double?
+    var __radialRawY: Double?
+
     public init(_ data: SeriesData, _ idx: Int,
                 _ seriesScope: SymbolDrawSeriesScope? = nil, _ opts: SymbolOpts? = nil) {
         super.init()

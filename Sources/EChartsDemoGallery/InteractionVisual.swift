@@ -487,7 +487,7 @@ private final class InteractionVisualChart: EChartsDemoChart {
 }
 
 @MainActor
-private func settleInteractionAnimations(_ root: Element) {
+private func interactionAnimationElements(_ root: Element) -> [Element] {
     var elements: [Element] = []
     var seenElements = Set<ObjectIdentifier>()
     func collect(_ element: Element) {
@@ -500,6 +500,12 @@ private func settleInteractionAnimations(_ root: Element) {
         }
     }
     collect(root)
+    return elements
+}
+
+@MainActor
+private func settleInteractionAnimations(_ root: Element) {
+    let elements = interactionAnimationElements(root)
 
     var seenClips = Set<ObjectIdentifier>()
     for clip in elements.flatMap(\.animators).compactMap({ $0.getClip() }) where
@@ -507,7 +513,44 @@ private func settleInteractionAnimations(_ root: Element) {
         clip.resetForDeterministicSampling()
         if clip.sampleForDeterministicRendering(at: 1_000_000_000) {
             clip.ondestroy()
+            clip.animation?.removeClip(clip)
         }
+    }
+}
+
+@MainActor
+private func waitForInteractionAnimations(_ view: EChartsView, milliseconds: Double) {
+    // HeadlessPainter has no display link. Give every clip in one logical frame the SAME timestamp,
+    // as zrender's Animation.update does for one requestAnimationFrame. Driving the shared linked
+    // list with wall-clock work here can initialize late-list clips on later iterations when a large
+    // tree has hundreds of simultaneous node/edge tweens, so a nominal 900ms wait captures some
+    // 750ms clips near their source position. Traverse the live element animators instead; this is
+    // the same Clip.step/ondestroy/removeClip lifecycle, sampled at Web's 60Hz logical cadence.
+    let root = view.ec.getRoot()
+    let frame = 1_000.0 / 60.0
+    let start = getTime()
+    var elapsed = 0.0
+
+    func tick(_ logicalTime: Double, _ delta: Double) {
+        let elements = interactionAnimationElements(root)
+        var seenClips = Set<ObjectIdentifier>()
+        let clips = elements.flatMap(\.animators).compactMap { $0.getClip() }.filter {
+            seenClips.insert(ObjectIdentifier($0)).inserted
+        }
+        for clip in clips where clip.step(logicalTime, delta) {
+            clip.ondestroy()
+            clip.animation?.removeClip(clip)
+        }
+    }
+
+    tick(start, 0)
+    while elapsed < milliseconds {
+        let delta = min(frame, milliseconds - elapsed)
+        elapsed += delta
+        tick(start + elapsed, delta)
+        // Keep demo/component timers (notably tooltip hide delays) on their normal wall-clock path.
+        // Headless animation clips themselves remain on the shared logical RAF timestamp above.
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: delta / 1_000))
     }
 }
 
@@ -1974,7 +2017,7 @@ func runNativeInteractionVisual(
             break
         case "wait":
             let milliseconds = max(0, step.milliseconds ?? 0)
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: milliseconds / 1_000))
+            waitForInteractionAnimations(view, milliseconds: milliseconds)
             record["milliseconds"] = milliseconds
         default:
             FileHandle.standardError.write(Data("step \(stepIndex): unknown action \(step.action)\n".utf8))

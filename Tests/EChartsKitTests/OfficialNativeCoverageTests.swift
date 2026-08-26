@@ -40,6 +40,79 @@ final class OfficialNativeCoverageTests: XCTestCase {
             "custom params.context must reset per setOption so d3 shape transitions are not suppressed")
     }
 
+    func testCirclePackingHighlightEnlargesTheAttachedLeafLabel() throws {
+        let demo = try XCTUnwrap(EChartsDemoRegistry.byName("official-circle-packing-with-d3"))
+        let view = EChartsView(width: demo.width, height: demo.height)
+        view.setOption(demo.option)
+        _ = view.ec.getRoot().traverse { element in
+            _ = element.stopAnimation(nil, true)
+            return false
+        }
+
+        let series = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(0))
+        let host = try XCTUnwrap(series.getData().getItemGraphicEl(263))
+        let circle = try XCTUnwrap(host as? Circle)
+        let label = try XCTUnwrap(host.getTextContent())
+        XCTAssertEqual(label.textStyle?.text, "align")
+        guard case let .number(normalFontSize)? = label.textStyle?.fontSize else {
+            return XCTFail("the official leaf label must start with a numeric fontSize")
+        }
+        XCTAssertEqual(label.textStyle?.overflow, "truncate")
+
+        let bounds = try XCTUnwrap(host.getBoundingRect())
+        var hitPoint: [Double]?
+        for y in 1..<20 where hitPoint == nil {
+            for x in 1..<20 {
+                let candidate = host.transformCoordToGlobal(
+                    bounds.x + bounds.width * Double(x) / 20,
+                    bounds.y + bounds.height * Double(y) / 20
+                )
+                if view.zr.handler.findHover(candidate[0], candidate[1]).target === host {
+                    hitPoint = candidate
+                    break
+                }
+            }
+        }
+        let point = try XCTUnwrap(hitPoint)
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        settleOfficialInteractionAnimations(view.ec.getRoot())
+
+        XCTAssertTrue(label.currentStates.contains(DisplayState.emphasis.rawValue),
+                      "host highlight must propagate emphasis to its attached text")
+        XCTAssertFalse(label.currentStates.contains(DisplayState.blur.rawValue),
+                       "the focused label must leave blur before entering emphasis")
+        XCTAssertEqual(label.textStyle?.opacity ?? 1, 1,
+                       "leaving focus blur must restore the attached label opacity before emphasis")
+        guard case let .number(fontSize)? = label.textStyle?.fontSize else {
+            return XCTFail("the highlighted attached text must retain a numeric fontSize")
+        }
+        XCTAssertEqual(fontSize, 12.0,
+                       "the official renderItem emphasis enlarges this leaf label to max(r / 3, 12)")
+        XCTAssertNil(label.textStyle?.overflow,
+                     "the official emphasis overflow: null must clear normal truncation like Web")
+        _ = view.zr.storage.getDisplayList(true)
+        let span = try XCTUnwrap(label.childrenRef().compactMap { $0 as? TSpan }.first)
+        XCTAssertEqual(span.tspanStyle.fontSize, 12.0,
+                       "the emphasized font size must reach the painted text span")
+        XCTAssertEqual(span.tspanStyle.opacity ?? 1, 1,
+                       "the painted text span must not retain blur opacity")
+        XCTAssertGreaterThanOrEqual(span.z2, circle.z2,
+                                    "the emphasized attached text must paint above its host")
+
+        view._injectGlobalOutForTest()
+        settleOfficialInteractionAnimations(view.ec.getRoot())
+        XCTAssertTrue(label.currentStates.isEmpty)
+        guard case let .number(restoredFontSize)? = label.textStyle?.fontSize else {
+            return XCTFail("globalOut must restore the normal numeric fontSize")
+        }
+        XCTAssertEqual(restoredFontSize, normalFontSize)
+        XCTAssertEqual(label.textStyle?.overflow, "truncate")
+        XCTAssertEqual(label.textStyle?.opacity ?? 1, 1)
+        _ = view.zr.storage.getDisplayList(true)
+        let restoredSpan = try XCTUnwrap(label.childrenRef().compactMap { $0 as? TSpan }.first)
+        XCTAssertEqual(restoredSpan.tspanStyle.fontSize, normalFontSize)
+    }
+
     func testFixedImagePictorialBarClipsForegroundAndFormatsBackgroundLabel() {
         let onePixelPNG =
             "image://data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
@@ -179,6 +252,27 @@ final class OfficialNativeCoverageTests: XCTestCase {
         click(ECElementEvent(type: "click"))
         XCTAssertEqual(chart.lastSeriesIDs, ["detail-heatmap", "detail-scatter"])
         XCTAssertEqual(chart.lastSeriesDataCount, 256)
+    }
+}
+
+private func settleOfficialInteractionAnimations(_ root: Element) {
+    var elements: [Element] = []
+    var seen = Set<ObjectIdentifier>()
+    func collect(_ element: Element) {
+        guard seen.insert(ObjectIdentifier(element)).inserted else { return }
+        elements.append(element)
+        if let text = element.getTextContent() { collect(text) }
+        if let guide = element.getTextGuideLine() { collect(guide) }
+        if let group = element as? Group {
+            for child in group.children() { collect(child) }
+        }
+    }
+    collect(root)
+    var clips = Set<ObjectIdentifier>()
+    for clip in elements.flatMap(\.animators).compactMap({ $0.getClip() }) where
+        clips.insert(ObjectIdentifier(clip)).inserted {
+        clip.resetForDeterministicSampling()
+        if clip.sampleForDeterministicRendering(at: 1_000_000_000) { clip.ondestroy() }
     }
 }
 
