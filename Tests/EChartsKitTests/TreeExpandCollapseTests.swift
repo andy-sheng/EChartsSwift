@@ -169,6 +169,40 @@ final class TreeExpandCollapseTests: XCTestCase {
                        "a re-expanded descendant starts at sourceOldLayout.y")
     }
 
+    // The line must not animate independently at its destination. Sample every active clip with the
+    // same logical clock and prove that the child endpoint remains attached to the moving child.
+    func testCurveEdgeFollowsChildThroughoutReexpand() throws {
+        let view = makeTreeView()
+        settleAnimations(view.ec.getRoot())
+        var series = try XCTUnwrap(treeSeries(view))
+        let aIndex = try XCTUnwrap(dataIndex(series, name: "A"))
+
+        var action = Payload(type: "treeExpandAndCollapse")
+        action.other["seriesId"] = series.id
+        action.other["dataIndex"] = aIndex
+        view.ec.dispatchAction(action)
+        settleAnimations(view.ec.getRoot())
+
+        series = try XCTUnwrap(treeSeries(view))
+        action.other["seriesId"] = series.id
+        action.other["dataIndex"] = aIndex
+        view.ec.dispatchAction(action)
+
+        let expanded = try XCTUnwrap(treeSeries(view))
+        let a1Index = try XCTUnwrap(dataIndex(expanded, name: "A1"))
+        let a1 = try XCTUnwrap(expanded.getData().getItemGraphicEl(a1Index) as? Symbol)
+        let edge = try XCTUnwrap(curveWithUpdateAnimator(ownedBy: a1, in: view.ec.getRoot()))
+
+        for timestamp in [0.0, 187.5, 375.0, 562.5, 750.0] {
+            sampleAnimations(view.ec.getRoot(), at: timestamp)
+            let shape = try XCTUnwrap(edge.shape as? BezierCurveShape)
+            XCTAssertEqual(shape.x2, a1.x, accuracy: 1e-6,
+                           "the curve child endpoint must follow A1 at t=\(timestamp)")
+            XCTAssertEqual(shape.y2, a1.y, accuracy: 1e-6,
+                           "the curve child endpoint must follow A1 at t=\(timestamp)")
+        }
+    }
+
     func testPolylineReexpandGrowsTheParentForkOutward() throws {
         let view = makeTreeView(edgeShape: "polyline")
         settleAnimations(view.ec.getRoot())
@@ -339,6 +373,31 @@ final class TreeExpandCollapseTests: XCTestCase {
             clip.resetForDeterministicSampling()
             if clip.sampleForDeterministicRendering(at: 1_000_000_000) { clip.ondestroy() }
         }
+    }
+
+    private func sampleAnimations(_ root: Element, at timestamp: Double) {
+        var clips: [Clip] = []
+        root.traverse { element in
+            clips.append(contentsOf: element.animators.compactMap { $0.getClip() })
+        }
+        for clip in clips {
+            clip.resetForDeterministicSampling()
+            _ = clip.sampleForDeterministicRendering(at: timestamp)
+        }
+    }
+
+    private func curveWithUpdateAnimator(ownedBy symbol: Symbol, in root: Element) -> BezierCurve? {
+        var found: BezierCurve?
+        root.traverse { element in
+            guard found == nil,
+                  let curve = element as? BezierCurve,
+                  curve.animators.contains(where: { $0.scope == "update" }),
+                  let shape = curve.shape as? BezierCurveShape,
+                  abs(shape.x2 - symbol.x) < 1e-6,
+                  abs(shape.y2 - symbol.y) < 1e-6 else { return }
+            found = curve
+        }
+        return found
     }
 
     private func curveEnding(atX x: Double, y: Double, in root: Element) -> BezierCurve? {
