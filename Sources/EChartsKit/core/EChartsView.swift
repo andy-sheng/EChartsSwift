@@ -1395,9 +1395,25 @@ public final class EChartsView {
     /// `none` (official-scatter-nutrients-matrix).
     private func _isAxisTrigger(_ ecModel: GlobalModel) -> Bool {
         guard let tooltip = ecModel.getComponent("tooltip") else { return false }
-        return (tooltip.get("trigger") as? String) == "axis"
+        if (tooltip.get("trigger") as? String) == "axis"
             || (tooltip.get(["axisPointer", "type"]) as? String) == "cross"
-            || (ecModel.getComponent("axisPointer")?.get("show") as? Bool) == true
+            || (ecModel.getComponent("axisPointer")?.get("show") as? Bool) == true {
+            return true
+        }
+        // Upstream's global listener always lets `axisTrigger` consult the collected axes. A coord-sys
+        // model may override the global item tooltip — e.g. each grid in matrix-grid-layout declares
+        // `grid.tooltip.trigger: 'axis'`. Gating only on the GLOBAL tooltip suppresses that valid path
+        // before `axisTrigger` can see it, so also honor a collected axis whose coordinate-system model
+        // explicitly owns that local axis trigger. The model check excludes handle-only axes, which
+        // dispatch their own updateAxisPointer actions and must not enable the ordinary mousemove path.
+        if let axisPointer = ecModel.getComponent("axisPointer") as? AxisPointerModel,
+           let collected = axisPointer.coordSysAxesInfo as? CollectionResult {
+            return collected.axesInfo.values.contains {
+                $0.triggerTooltip
+                    && ($0.coordSys.model?.get(["tooltip", "trigger"]) as? String) == "axis"
+            }
+        }
+        return false
     }
 
     /// The `realDispatch` seam handed to `globalListener.register`: the merged showTip/hideTip (and any

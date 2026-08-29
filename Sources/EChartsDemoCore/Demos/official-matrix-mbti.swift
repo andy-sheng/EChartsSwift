@@ -15,9 +15,9 @@
 //     this demo's 720x460 canvas: size 414, left 153, top 50, and the <=700 font branch (group 16,
 //     item 11, value 12). getColor()'s lightness/group logic is deterministic, so every color the JS closures
 //     compute is precomputed in Swift and baked into the data — colors are NOT a deviation.
-//   - Function-valued keys cross to Native as typed Swift callbacks. The tooltip uses plain text rather
-//     than HTML spans because the native tooltip renderer is rich-text/canvas based; its content is the
-//     same "<B> / <A> : NN%" value. Cell percentages are identical on both panes.
+//   - Function-valued keys cross to Native as typed Swift callbacks. The Web tooltip's colored HTML
+//     spans are expressed with equivalent Native rich-text tokens; content, group colors and bold weight
+//     remain the same "<B> / <A> : NN%" value. Cell percentages are identical on both panes.
 //   - NATIVE PANE: enabled. Matrix heatmap/scatter placement, nested group headers, per-cell decal
 //     patterns, opacity visualMap, percentage formatter callbacks, and click-to-toggle grouping are
 //     all wired.
@@ -738,7 +738,9 @@ private let mbtiCellLabelFormatter: (CallbackDataParams) -> String = { params in
 
 private let mbtiTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
     guard let row = params.value as? [Any], row.count > 2 else { return "" }
-    return "\(row[1]) / \(row[0]) : \(mbtiPercent(row))"
+    let y = String(describing: row[1])
+    let x = String(describing: row[0])
+    return "{mbti\(mbtiGroup(y))|\(y)} / {mbti\(mbtiGroup(x))|\(x)} : \(mbtiPercent(row))"
 }
 
 /// 256 heatmap cells `{ value: [a, b, v], itemStyle: { decal, borderColor } }` — the detail series.
@@ -927,7 +929,15 @@ private let matrixMbtiOption: [String: Any] = [
     "tooltip": [
         "formatter": mbtiTooltipFormatter,
         "borderColor": "#eee",
-        "padding": [2.0, 8.0]
+        "padding": [2.0, 8.0],
+        "textStyle": [
+            "rich": [
+                "mbtiNF": ["color": mbtiGetColor("NF"), "fontWeight": "bold"] as [String: Any],
+                "mbtiNT": ["color": mbtiGetColor("NT"), "fontWeight": "bold"] as [String: Any],
+                "mbtiSJ": ["color": mbtiGetColor("SJ"), "fontWeight": "bold"] as [String: Any],
+                "mbtiSP": ["color": mbtiGetColor("SP"), "fontWeight": "bold"] as [String: Any]
+            ] as [String: Any]
+        ] as [String: Any]
     ] as [String: Any],
     "matrix": [
         "x": [

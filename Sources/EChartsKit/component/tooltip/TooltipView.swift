@@ -271,6 +271,10 @@ public final class TooltipView {
     //   (`tryShow`, `_showAxisTooltip`, `hide()`), and read by `_realDispatchAxisPointer`'s `hideTip`
     //   arm to skip the hide.
     public private(set) var _shownAsCmptItem: Bool = false
+    // The item-tooltip listener is dispatched separately from the axisPointer global-listener fan-out
+    // in the Native host. Remember which leg owns the current box so its later `_hide` cannot erase an
+    // axis tooltip (including a coord-system-local `grid.tooltip.trigger: 'axis'`) from the same move.
+    private var _shownAsAxisItem: Bool = false
 
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
@@ -413,17 +417,9 @@ public final class TooltipView {
     //     THIS port's item leg is not in that fan-out (it is driven from the zr `mouseover` leg in
     //     `EChartsView`, one dispatch later than the `mousemove` that drives axisTrigger), so a literal
     //     `hide()` here would tear down the axis tooltip that the same pointer move had just put up, and
-    //     it would stay down until the next mousemove. The equivalent-outcome guard is therefore to make
-    //     the item leg's hide a no-op while the GLOBAL trigger is 'axis' — the case where the axis leg
-    //     owns the box and is the one that hides it. Every other hide path (zr `mouseout`, `hideTip`,
-    //     `manuallyHideTip`) still calls `hide()` directly and is unaffected.
-    //     PRECONDITION (load-bearing, in ANOTHER file): because this guard reads the GLOBAL `trigger`
-    //     and not "which leg owns the box on screen", under `trigger:'axis'` a COMPONENT-item box (put
-    //     up by `_showComponentItemTooltip`, which by upstream's own comment ignores `trigger`) cannot
-    //     be retired through the item leg at all — the only path that takes it down is the zr `mouseout`
-    //     leg's direct `hide()` (`EChartsView._bindZrListeners`, core/EChartsView.swift:541). Do not
-    //     "simplify" that mouseout leg into `_hide()` without replacing this guard with a real
-    //     box-ownership flag first.
+    //     it would stay down until the next mousemove. Native therefore records which leg owns the
+    //     visible box: the item leg's delayed hide is a no-op while the axis or component leg owns it.
+    //     Every real hide path (zr `mouseout`, `hideTip`, `manuallyHideTip`) still calls `hide()` directly.
     // ------------------------------------------------------------------------
     private func _hide() {
         // upstream `_hide` (TooltipView.ts:1040-1041) nulls BOTH memo fields unconditionally, before it
@@ -433,8 +429,7 @@ public final class TooltipView {
         //   against a torn-down box.
         _lastDataByCoordSys = nil
         _cbParamsList = nil
-        if let globalTooltipModel = self._globalTooltipModel,
-           (globalTooltipModel.get("trigger") as? String) == "axis" {
+        if _shownAsAxisItem || _shownAsCmptItem {
             return
         }
         hide()
@@ -547,16 +542,10 @@ public final class TooltipView {
         //   guard that lives in `_showSeriesItemTooltip`).
         self._lastDataByCoordSys = nil
         self._cbParamsList = nil
-        // The SERIES-item leg replaces whatever the component-item leg put on screen — drop the
-        //   `from: this.uid` stand-in so the axis leg's `hideTip` is honoured again (see the field).
-        self._shownAsCmptItem = false
-
-        // --- buildTooltipModel (SLIM cascade): series `tooltip` merged OVER the global tooltip model. -
+        // --- buildTooltipModel cascade -------------------------------------------------------------
         // upstream cascades [data.getItemModel(dataIndex), seriesModel, coordSys.model] over the global
-        //   model (TooltipView.ts:680). The per-data-item + coord-system layers are DEFERRED; the series
-        //   `tooltip` option (read with ignoreParent by `buildTooltipModel`'s `Model` arm) is layered over
-        //   the global model so `.get(...)` falls through to the registered global defaults (show /
-        //   trigger / textStyle / order / …).
+        //   model (TooltipView.ts:680). The coordinate-system layer is load-bearing when a grid locally
+        //   overrides the global item tooltip with `grid.tooltip.trigger:'axis'`.
         //
         // The cascade itself now goes through the REAL ported `buildTooltipModel` (file scope, upstream
         //   TooltipView.ts:1071) rather than an inline expansion of it — one definition per upstream
@@ -564,8 +553,11 @@ public final class TooltipView {
         //   function. `positionDefault` is upstream's only user of its `defaultTooltipOption` argument:
         //   that option becomes the model at the BOTTOM of the cascade with the GLOBAL option re-parented
         //   onto it, i.e. every explicitly-configured layer outranks the default.
+        let data = seriesModel.getData(dataType)
+        let dataModel = data.getItemModel(Int(dataIndex))
+        let coordSysModel = (seriesModel.coordinateSystem as? CoordinateSystem)?.model
         let tooltipModel: Model = buildTooltipModel(
-            [seriesModel],
+            [dataModel, seriesModel, coordSysModel],
             globalTooltipModel,
             positionDefault.map { ["position": $0] }
         )
@@ -577,6 +569,12 @@ public final class TooltipView {
             //   (`_showAxisTooltip`) and reached via the axisTrigger path (EChartsView), not from here.
             return
         }
+
+        // This leg is now known to own the visible box. Drop the component/axis ownership markers only
+        // after the trigger guard; an item attempt suppressed by a local axis trigger must leave the
+        // axis box and its later-hide protection intact.
+        self._shownAsCmptItem = false
+        self._shownAsAxisItem = false
 
         // --- build markup (upstream TooltipView.ts:695-717) -----------------------------------------
         // upstream: `const params = dataModel.getDataParams(dataIndex, dataType)` (TooltipView.ts:695).
@@ -709,6 +707,7 @@ public final class TooltipView {
         // The AXIS leg is about to replace whatever the component-item leg put on screen — drop the
         //   `from: this.uid` stand-in (see the field) so a later `hideTip` hides this axis box.
         self._shownAsCmptItem = false
+        self._shownAsAxisItem = true
         let renderMode = self._renderMode
         let markupStyleCreator = TooltipMarkupStyleCreator()
         // upstream: buildTooltipModel([e.tooltipOption], globalTooltipModel). Slim: the global model.
@@ -745,8 +744,26 @@ public final class TooltipView {
                 //   — hoisted to the per-AXIS scope, above the `seriesDataIndices` loop.
                 let axisValueParsed = rawAxis?.scale.parse(axisValue)
 
-                // upstream: axisValueLabel = axisPointerViewHelper.getValueLabel(...). Slim: scale label.
-                let axisValueLabel = _axisValueLabel(axisValue, axis, axisItem.valueLabelPrecision)
+                // upstream: axisPointerViewHelper.getValueLabel(value, axis, ecModel,
+                //   seriesDataIndices, { precision, formatter }). Use the shared full helper so TimeScale
+                //   headers and an axisPointer label formatter are preserved; the old Axis2D-only fallback
+                //   returned an empty header for matrix-placed time axes.
+                let axisValueLabel: String
+                if let rawAxis = rawAxis {
+                    axisValueLabel = viewHelper.getValueLabel(
+                        axisValue,
+                        rawAxis,
+                        ecModel,
+                        axisItem.seriesDataIndices,
+                        viewHelper.GetValueLabelOpt(
+                            precision: axisItem.valueLabelPrecision,
+                            formatter: axisItem.valueLabelFormatter
+                        )
+                    )
+                }
+                else {
+                    axisValueLabel = _axisValueLabel(axisValue, axis, axisItem.valueLabelPrecision)
+                }
                 let axisSectionMarkup = createTooltipMarkup("section", TooltipMarkupSection(
                     header: axisValueLabel,
                     noHeader: axisValueLabel.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -816,7 +833,6 @@ public final class TooltipView {
         }
         let blockBreak = renderMode == .richText ? "\n\n" : "<br/>"
         let allMarkupText = markupTextArrLegacy.joined(separator: blockBreak)
-
         // upstream (TooltipView.ts:637-650):
         //   this._showOrMove(singleTooltipModel, function () {
         //       if (this._updateContentNotChangedOnAxis(dataByCoordSys, cbParamsList)) {
@@ -1057,6 +1073,7 @@ public final class TooltipView {
         //   UNCONDITIONALLY at upstream's exact call site, i.e. even when `_showOrMove` only armed a
         //   `showDelay` timer — upstream dispatches there too.
         self._shownAsCmptItem = true
+        self._shownAsAxisItem = false
     }
 
     // ------------------------------------------------------------------------
@@ -1659,6 +1676,7 @@ public final class TooltipView {
         // A real hide (mouseout, `manuallyHideTip`, …) also retires the `from: this.uid` stand-in — only
         //   the axis leg's own `hideTip` is suppressed by it, and that arm never reaches here.
         _shownAsCmptItem = false
+        _shownAsAxisItem = false
         _tooltipContent.hideLater(_globalTooltipModel.flatMap { asDouble($0.get("hideDelay")) })
     }
 

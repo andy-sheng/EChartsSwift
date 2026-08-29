@@ -253,6 +253,85 @@ final class OfficialNativeCoverageTests: XCTestCase {
         XCTAssertEqual(chart.lastSeriesIDs, ["detail-heatmap", "detail-scatter"])
         XCTAssertEqual(chart.lastSeriesDataCount, 256)
     }
+
+    @MainActor
+    func testMatrixGridLayoutUsesPerGridAxisTooltipOnRealHover() throws {
+        let demo = try XCTUnwrap(EChartsDemoRegistry.byName("official-matrix-grid-layout"))
+        let view = EChartsView(width: demo.width, height: demo.height)
+        view.setOption(demo.option)
+
+        let axisPointer = try XCTUnwrap(
+            view.ec.getModel()?.getComponent("axisPointer") as? AxisPointerModel
+        )
+        let collected = try XCTUnwrap(axisPointer.coordSysAxesInfo as? CollectionResult)
+        let tooltipAxes = collected.axesInfo.values.filter { $0.triggerTooltip }
+        XCTAssertEqual(tooltipAxes.count, 4,
+                       "each matrix-placed grid must contribute one base tooltip axis")
+        XCTAssertTrue(tooltipAxes.allSatisfy { !$0.seriesModels.isEmpty },
+                      "every per-grid tooltip axis must retain its own series")
+
+        let cases: [(seriesIndex: Double, dataIndex: Double, date: String, value: String)] = [
+            (0, 50, "2026-04-20", "205"),
+            (1, 5, "2025-06-09 00:00:00", "0"),
+            (2, 50, "2026-04-20", "284"),
+            (3, 5, "2025-06-09 00:00:00", "311")
+        ]
+        for item in cases {
+            let series = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(item.seriesIndex))
+            let data = series.getData()
+            let point: [Double]
+            if let points = data.getLayout("points") as? [Double] {
+                let offset = Int(item.dataIndex) * 2
+                point = [points[offset], points[offset + 1]]
+            }
+            else {
+                let host = try XCTUnwrap(data.getItemGraphicEl(Int(item.dataIndex)))
+                let bounds = try XCTUnwrap(host.getBoundingRect())
+                point = host.transformCoordToGlobal(
+                    bounds.x + bounds.width / 2,
+                    bounds.y + bounds.height / 2
+                )
+            }
+            view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+            RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+
+            let tooltip = try XCTUnwrap(view.tooltipView?.contentEl,
+                                        "hovering series \(item.seriesIndex) must create its grid axis tooltip")
+            XCTAssertEqual(view.tooltipView?.isShown(), true,
+                           "the item-tooltip leg must not hide a per-grid axis tooltip after its delay")
+            XCTAssertFalse(tooltip.ignore)
+            let content = tooltip.textStyle?.text ?? ""
+            XCTAssertTrue(content.contains(item.date),
+                          "series \(item.seriesIndex) time-axis header is missing: \(content)")
+            XCTAssertTrue(content.contains(item.value),
+                          "series \(item.seriesIndex) value is missing: \(content)")
+        }
+    }
+
+    @MainActor
+    func testMatrixMbtiTooltipMatchesWebValueOrderAndColorSemantics() throws {
+        let demo = try XCTUnwrap(EChartsDemoRegistry.byName("official-matrix-mbti"))
+        let view = EChartsView(width: demo.width, height: demo.height)
+        view.setOption(demo.option)
+
+        let series = try XCTUnwrap(view.ec.getModel()?.getSeriesByIndex(0))
+        let host = try XCTUnwrap(series.getData().getItemGraphicEl(128))
+        let bounds = try XCTUnwrap(host.getBoundingRect())
+        let point = host.transformCoordToGlobal(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+
+        let tooltip = try XCTUnwrap(view.tooltipView?.contentEl)
+        let content = tooltip.textStyle?.text ?? ""
+        XCTAssertTrue(content.contains("ENFJ") && content.contains("INFJ") && content.contains("74%"),
+                      "tooltip must use Web's y / x : percent ordering: \(content)")
+        XCTAssertTrue(content.contains("{mbtiNF|"),
+                      "Native rich text must preserve Web's colored bold MBTI names: \(content)")
+        let nfStyle = try XCTUnwrap(tooltip.textStyle?.rich?["mbtiNF"])
+        XCTAssertEqual(nfStyle.fill, "#2D9A69")
+        guard case .bold? = nfStyle.fontWeight else {
+            return XCTFail("the two MBTI names must preserve Web's bold emphasis")
+        }
+    }
 }
 
 private func settleOfficialInteractionAnimations(_ root: Element) {

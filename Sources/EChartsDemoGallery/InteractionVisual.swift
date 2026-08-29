@@ -1146,7 +1146,9 @@ private func writeOfficialInteractionScenarios(
         let calculableVisualMaps = ecModel
             .findComponents(QueryConditionKindA(mainType: "visualMap"))
             .filter {
-                $0.subType == "continuous" && ($0.get("calculable") as? Bool) == true
+                $0.subType == "continuous"
+                    && ($0.get("calculable") as? Bool) == true
+                    && ($0.get("show") as? Bool) != false
             }
         for (visualMapIndex, visualMapModel) in calculableVisualMaps.enumerated() {
             let horizontal = (visualMapModel.get("orient") as? String) == "horizontal"

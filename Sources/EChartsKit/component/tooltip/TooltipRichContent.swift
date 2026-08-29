@@ -124,8 +124,20 @@ public final class TooltipRichContent {
         //   on the struct BEFORE useStyle, then applied in one shot.
         var style = TextStyleProps()
         // upstream `rich: markupStyleCreator.richTextStyles` — the `{styleName|text}` token style map.
-        //   richTextStyles is [String: [String: Any]]; convert each style bag into a TextStylePropsPart.
-        style.rich = richTextStylesToParts(markupStyleCreator.richTextStyles)
+        // Native formatter callbacks may return rich-text tokens in place of Web-only HTML spans, so
+        // also retain authored `tooltip.textStyle.rich` entries. Generated marker/layout styles win on
+        // collision, matching their role as the final markup-owned styles for this tooltip instance.
+        var richTextStyles = (textStyleModel.get("rich") as? [String: Any])?.reduce(
+            into: [String: [String: Any]]()
+        ) { result, entry in
+            if let bag = entry.value as? [String: Any] {
+                result[entry.key] = bag
+            }
+        } ?? [:]
+        for (name, bag) in markupStyleCreator.richTextStyles {
+            richTextStyles[name] = bag
+        }
+        style.rich = richTextStylesToParts(richTextStyles)
         // The browser examples commonly return HTML line breaks from formatter callbacks. This
         // native host is intentionally rich-text-only, so leaving `<br/>` untouched paints the tag
         // literally. Preserve the formatter's line structure by translating every HTML break spelling
@@ -332,7 +344,7 @@ private func richTextStylesToParts(_ styles: [String: [String: Any]]) -> [String
     for (name, bag) in styles {
         var part = TextStylePropsPart()
         if let v = bag["fontSize"] { part.fontSize = numberOrString(v) }
-        part.fill = str(bag["fill"])
+        part.fill = str(bag["fill"]) ?? str(bag["color"])
         if let v = bag["fontWeight"] { part.fontWeight = fontWeight(v) }
         if let v = bag["fontStyle"], let s = v as? String { part.fontStyle = FontStyle(rawValue: s) }
         if let v = bag["fontFamily"] as? String { part.fontFamily = v }
