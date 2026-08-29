@@ -177,6 +177,65 @@ final class ZZMarkerTests: XCTestCase {
                              "markLine end label must reach the final endpoint at animation end")
     }
 
+    func testMarkLineArrowFollowsRelayoutAnimationAfterLegendToggle() {
+        let view = EChartsView(width: 640, height: 420)
+        view.setOption([
+            "animationDuration": 0.0,
+            "animationDurationUpdate": 1000.0,
+            "legend": [:] as [String: Any],
+            "xAxis": ["type": "category", "data": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [
+                ["name": "Highest", "type": "line", "data": [10.0, 11, 13, 11, 12, 12, 9]] as [String: Any],
+                [
+                    "name": "Lowest", "type": "line", "data": [1.0, -2, 2, 5, 3, 2, 0],
+                    "markLine": ["data": [["type": "average"] as [String: Any]] as [Any]]
+                ] as [String: Any]
+            ]
+        ])
+
+        var toggle = Payload(type: "legendToggleSelect")
+        toggle.other["name"] = "Highest"
+        view.ec.dispatchAction(toggle)
+
+        guard let lowest = view.ec.getModel()?.getSeriesByIndex(1),
+              let model = MarkerModel.getMarkerModelFromSeries(lowest, "markLine"),
+              let lineGroup = model.getData().getItemGraphicEl(0) as? ECLine,
+              let line = lineGroup.getLinePath() as? Line,
+              let arrow = lineGroup.childOfName("to") as? Path,
+              let animator = line.animators.first(where: { $0.targetName == "shape" }),
+              let clip = animator.getClip() else {
+            return XCTFail("legend relayout must keep an animated markLine and its to-arrow")
+        }
+
+        _ = clip.step(0, 0)
+        let start = line.pointAt(1)
+        XCTAssertEqual(arrow.x, start[0], accuracy: 1e-6,
+                       "at animation start the arrow x must stay on the current line endpoint")
+        XCTAssertEqual(arrow.y, line.pointAt(1)[1], accuracy: 1e-6,
+                       "at animation start the arrow must stay on the current line endpoint")
+
+        _ = clip.step(500, 500)
+        let middle = line.pointAt(1)
+        XCTAssertEqual(arrow.x, middle[0], accuracy: 1e-6,
+                       "during relayout the arrow x must follow the animated line endpoint")
+        XCTAssertEqual(arrow.y, middle[1], accuracy: 1e-6,
+                       "during relayout the arrow must follow the animated line endpoint")
+
+        _ = clip.step(1000, 500)
+        let end = line.pointAt(1)
+        XCTAssertEqual(arrow.x, end[0], accuracy: 1e-6,
+                       "at animation end the arrow x must reach the final line endpoint")
+        XCTAssertEqual(arrow.y, end[1], accuracy: 1e-6,
+                       "at animation end the arrow must reach the final line endpoint")
+        XCTAssertGreaterThan(abs(end[1] - start[1]), 1,
+                             "legend toggle must produce a genuine markLine relayout")
+        XCTAssertGreaterThan(middle[1], min(start[1], end[1]),
+                             "500ms must be a genuine midpoint, not the start or end")
+        XCTAssertLessThan(middle[1], max(start[1], end[1]),
+                          "500ms must be a genuine midpoint, not the start or end")
+    }
+
     func testPairedStatisticMarkLineRenders() {
         let view = makeChart(["data": [[
             ["symbol": "none", "x": "90%", "yAxis": "max"] as [String: Any],

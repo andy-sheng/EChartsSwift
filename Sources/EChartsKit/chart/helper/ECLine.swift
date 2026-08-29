@@ -34,10 +34,9 @@ import ZRenderKit
 //
 // PORT-NOTE (beforeUpdate): upstream places the from/to symbols + label along the line EVERY frame in
 //   `Element#beforeUpdate`. `beforeUpdate` is `public` (not `open`) in ZRenderKit and cannot be
-//   overridden from this module, so the placement is computed at build/update time in
-//   `_positionEndsAndLabel` (from the FINAL layout points) — the same reduction MarkLineView's former
-//   stand-in used. The enter GROW effect (symbols scaling in + the `to` symbol riding the growing line)
-//   is preserved via the `initProps` `during` callback.
+//   overridden from this module, so `_positionEndsAndLabel` is driven from the `initProps`/`updateProps`
+//   `during` callbacks instead. This preserves the enter GROW effect and keeps symbols/labels attached
+//   to a reused line while its coordinates tween during relayout.
 
 // upstream: const SYMBOL_CATEGORIES = ['fromSymbol', 'toSymbol'];  — these are the VISUAL-key prefixes
 //   (getItemVisual(idx, 'fromSymbol' / 'fromSymbolSize' / …), matching upstream + the markLine visuals).
@@ -264,7 +263,15 @@ public final class ECLine: Group {
                 setLineShapePoints(&shape, linePoints)
                 target = ["x1": shape.x1, "y1": shape.y1, "x2": shape.x2, "y2": shape.y2, "percent": 1.0]
             }
-            updateProps(line, ["shape": target], seriesModel, idx)
+            // Upstream `Line.beforeUpdate` repositions both end symbols and the label from the
+            // line's LIVE shape on every animation frame. Mirror that hook through updateProps'
+            // `during` callback so a legend-driven axis relayout cannot leave the arrow at the
+            // target endpoint while the line itself is still tweening from the old layout.
+            let during: (Double) -> Void = { [weak self, weak line] _ in
+                guard let self, let line else { return }
+                self._growEnds(line, childPercent(line))
+            }
+            updateProps(line, ["shape": target], seriesModel, idx, nil, during)
         }
 
         for symbolCategory in SYMBOL_CATEGORIES {
@@ -281,7 +288,8 @@ public final class ECLine: Group {
 
         self._updateCommonStl(lineData, idx, seriesScope)
         self._positionEndsAndLabel(linePoints)
-        // Symbols/label ride to their FINAL layout — the reused line morphs underneath (updateProps).
+        // Keep the synchronous final state expected after `setToFinal`; the update `during` callback
+        // rewinds these dependants to the live line shape as soon as the animation starts.
         _growEnds(self.childOfName("line") as? Path, 1)
     }
 
