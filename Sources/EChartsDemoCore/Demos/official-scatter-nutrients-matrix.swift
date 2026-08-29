@@ -52,6 +52,13 @@ private let nutrientsConfig: [String: String] = [
     "xAxisRight": "potassium", "yAxisBottom": "fiber"
 ]
 
+private let nutrientsColorBySchema: [String: String] = [
+    "carbohydrate": "#2A8339",
+    "potassium": "#367DA6",
+    "calcium": "#A68B36",
+    "fiber": "#BD5692"
+]
+
 // The raw asset text, spliced verbatim into the web pane (which cannot read the filesystem).
 private let nutrientsRawJSON: String = {
     let url = Upstream.repoRoot.appendingPathComponent("assets/data/nutrients.json")
@@ -207,13 +214,17 @@ private let nutrientsTooltipFormatter: ([TooltipCallbackDataParams]) -> String =
     ]
     var output: [String] = []
     for (names, heading) in sections where !names.isEmpty {
-        var lines = ["POINTS ON \(heading)"]
+        var lines = ["{heading|POINTS ON \(heading)}"]
         for foodName in foodOrder where names.contains(foodName) {
             guard let food = foods[foodName] else { continue }
             lines.append("")
             lines.append(foodName)
             for key in food.keyOrder {
-                lines.append("\(key): \(nutrientsTooltipValueText(food.values[key]))")
+                // Upstream colors only the schema name inside <span>; punctuation and value inherit
+                // the tooltip's white text color. The leading newline combines with the array join's
+                // separator to create the rich-text line holder consumed by the colored span; this is
+                // the exact one-line equivalent of the preceding HTML <br/> without an empty row.
+                lines.append("\n{\(key)|\(key)}: \(nutrientsTooltipValueText(food.values[key]))")
             }
         }
         output.append(lines.joined(separator: "\n"))
@@ -237,7 +248,17 @@ private let nutrientsTooltip: [String: Any] = [
     "backgroundColor": "rgba(0,0,0,0.7)",
     "transitionDuration": 0.0,
     "extraCssText": "width: 300px; white-space: normal",
-    "textStyle": ["color": "#fff", "fontSize": 12.0] as [String: Any],
+    "textStyle": [
+        "color": "#fff",
+        "fontSize": 12.0,
+        "rich": [
+            "heading": ["color": "#aaa", "fontSize": 16.0] as [String: Any],
+            "carbohydrate": ["color": nutrientsColorBySchema["carbohydrate"] ?? "#2A8339"] as [String: Any],
+            "potassium": ["color": nutrientsColorBySchema["potassium"] ?? "#367DA6"] as [String: Any],
+            "calcium": ["color": nutrientsColorBySchema["calcium"] ?? "#A68B36"] as [String: Any],
+            "fiber": ["color": nutrientsColorBySchema["fiber"] ?? "#BD5692"] as [String: Any]
+        ] as [String: Any]
+    ] as [String: Any],
     "position": nutrientsTooltipPosition,
     "formatter": nutrientsTooltipFormatter
 ]

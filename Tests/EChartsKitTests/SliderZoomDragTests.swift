@@ -145,4 +145,39 @@ final class SliderZoomDragTests: XCTestCase {
         XCTAssertEqual(range[1], 70, accuracy: 0.01, "the end edge must stay fixed")
         v.dispose()
     }
+
+    func testRealtimeDragCoalescesRapidHandlerMovesAtUpstreamThrottleRate() throws {
+        let v = EChartsView(width: 640, height: 420)
+        defer { v.dispose() }
+        v.setOption([
+            "animation": true,
+            "xAxis": ["type": "category", "data": (0..<5000).map(String.init)] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "dataZoom": [[
+                "type": "slider", "start": 10.0, "end": 70.0,
+                "realtime": true, "throttle": 100.0
+            ] as [String: Any]],
+            "series": [["type": "line", "data": (0..<5000).map { Double($0 % 101) }] as [String: Any]]
+        ])
+        _ = v.zr.storage.getDisplayList(true)
+
+        let zoomView = try XCTUnwrap(v.ec._componentsViews.compactMap { $0 as? SliderZoomView }.first)
+        let moveZone = try XCTUnwrap(zoomView._displayables.moveZone)
+        let center = globalCenter(moveZone)
+        var dispatchCount = 0
+        v.on("dataZoom") { _ in dispatchCount += 1 }
+
+        v._injectPointerForTest(type: "mousedown", zrX: center.0, zrY: center.1)
+        for step in 1...60 {
+            v._injectPointerForTest(
+                type: "mousemove",
+                zrX: center.0 + Double(step) * 0.5,
+                zrY: center.1
+            )
+        }
+        v._injectPointerForTest(type: "mouseup", zrX: center.0 + 30, zrY: center.1)
+
+        XCTAssertLessThanOrEqual(dispatchCount, 2,
+                                 "upstream fixRate throttle must coalesce a synchronous drag burst instead of rendering 60 updates")
+    }
 }

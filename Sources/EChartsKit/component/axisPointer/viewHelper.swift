@@ -81,20 +81,24 @@ public enum viewHelper {
 
     // upstream: buildElStyle(axisPointerModel): PathStyleProps
     //   getLineStyle()/getAreaStyle() return the dynamic `[String: Any]` style bag (LINE/AREA_STYLE_KEY_MAP
-    //   keyed); mapped onto the typed `PathStyleProps` the pointer Path consumes. `style.fill = null`
-    //   (line) / `style.stroke = null` (shadow) are inert here — the mappers never populate the opposite
-    //   paint (line has no `fill`, shadow has no `stroke`), so those fields are already nil.
+    //   keyed); mapped onto the typed `PathStyleProps` the pointer Path consumes. Preserve upstream's
+    //   explicit `fill = null` / `stroke = null` with zrender's `none` paint sentinel: a Swift nil is
+    //   indistinguishable from an omitted field and Path.createStyle would restore its black default.
     public static func buildElStyle(_ axisPointerModel: Model) -> PathStyleProps? {
         let axisPointerType = axisPointerModel.get("type") as? String
         // getModel(axisPointerType + 'Style')  -> 'lineStyle' | 'shadowStyle'
         let styleModel = axisPointerModel.getModel((axisPointerType ?? "") + "Style")
         if axisPointerType == "line" {
             // style = styleModel.getLineStyle(); style.fill = null;
-            return pathStyleFromLineStyleDict(styleModel.getLineStyle())
+            var style = pathStyleFromLineStyleDict(styleModel.getLineStyle())
+            style.fill = .string("none")
+            return style
         }
         else if axisPointerType == "shadow" {
             // style = styleModel.getAreaStyle(); style.stroke = null;
-            return pathStyleFromAreaStyleDict(styleModel.getAreaStyle())
+            var style = pathStyleFromAreaStyleDict(styleModel.getAreaStyle())
+            style.stroke = .string("none")
+            return style
         }
         return nil
     }
@@ -297,16 +301,19 @@ public enum viewHelper {
     }
 
     // upstream: makeSectorShape(cx, cy, r0, r, startAngle, endAngle)
-    //   PORT-NOTE: polar-only (Circle/Sector pointer). CartesianAxisPointer never calls this; kept faithful
-    //   as a plain object for when PolarAxisPointer lands (no `SectorShape` bridge needed yet).
     public static func makeSectorShape(
         _ cx: Double, _ cy: Double, _ r0: Double, _ r: Double,
         _ startAngle: Double, _ endAngle: Double
-    ) -> [String: Any] {
-        return [
-            "cx": cx, "cy": cy, "r0": r0, "r": r,
-            "startAngle": startAngle, "endAngle": endAngle, "clockwise": true
-        ]
+    ) -> SectorShape {
+        var shape = SectorShape()
+        shape.cx = cx
+        shape.cy = cy
+        shape.r0 = r0
+        shape.r = r
+        shape.startAngle = startAngle
+        shape.endAngle = endAngle
+        shape.clockwise = true
+        return shape
     }
 
     // upstream: calcAxisPointerShadowBandWidth(axis, seriesDataIndices, ecModel): number

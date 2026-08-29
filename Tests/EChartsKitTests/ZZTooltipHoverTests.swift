@@ -7,10 +7,9 @@
 //
 //     EChartsView._injectPointerForTest("mousemove", x, y)
 //       -> zr.handler.mousemove(ZRRawEvent)          (ZRenderKit Handler)
-//       -> handler.findHover(x, y) hit-tests the bar -> element "mouseover" trigger
-//       -> EChartsView._initEvents' "mouseover" listener
-//       -> EChartsView._showTooltipForHover(e)       (reads the bar's ECData)
-//       -> TooltipView.tryShow(seriesModel, dataIndex, point)
+//       -> handler.findHover(x, y) hit-tests the bar
+//       -> globalListener('itemTooltip') receives every mousemove
+//       -> TooltipView._tryShow(...) reads the live target ECData
 //       -> TooltipRichContent.setContent(...) + show()  (a ZRText box added to the LIVE zr)
 //
 // It does NOT call tryShow directly — the tooltip MUST be produced by the injected pointer travelling
@@ -25,6 +24,7 @@ final class ZZTooltipHoverTests: XCTestCase {
     override func setUp() {
         super.setUp()
         ComponentModel.registerClass(BarSeriesModel.self)
+        ComponentModel.registerClass(PieSeriesModel.self)
         ComponentModel.registerClass(TooltipModel.self)
     }
 
@@ -137,6 +137,72 @@ final class ZZTooltipHoverTests: XCTestCase {
 
         XCTAssertNil(view.tooltipView,
             "triggerOn:'none' must not create an item tooltip from ordinary pointer hover")
+    }
+
+    func testTooltipFollowsEveryMousemoveWithinTheSamePieSector() {
+        let view = EChartsView(width: 420, height: 320)
+        view.setOption([
+            "tooltip": ["trigger": "item", "hideDelay": 0.0] as [String: Any],
+            "series": [[
+                "type": "pie",
+                "radius": ["20%", "70%"],
+                "data": [
+                    ["value": 60.0, "name": "A"],
+                    ["value": 40.0, "name": "B"]
+                ]
+            ] as [String: Any]]
+        ])
+
+        let data = view.ec.getModel()!.getSeriesByIndex(0)!.getData()
+        guard let sector = data.getItemGraphicEl(0) as? Sector,
+              let shape = sector.shape as? SectorShape else {
+            XCTFail("pie render must populate a Sector for the first datum")
+            return
+        }
+
+        let angle = (shape.startAngle + shape.endAngle) / 2
+        func point(_ ratio: Double) -> [Double] {
+            let radius = shape.r0 + (shape.r - shape.r0) * ratio
+            return [shape.cx + cos(angle) * radius, shape.cy + sin(angle) * radius]
+        }
+        let firstPoint = point(0.35)
+        let secondPoint = point(0.80)
+        _ = view.zr.storage.getDisplayList(true)
+
+        view._injectPointerForTest(type: "mousemove", zrX: firstPoint[0], zrY: firstPoint[1])
+        guard let firstContent = view.tooltipView?.contentEl else {
+            XCTFail("the first real pie mousemove must show the item tooltip")
+            return
+        }
+        let firstPosition = [firstContent.x, firstContent.y]
+
+        // The target element remains the same Sector, so zrender emits no second `mouseover`. Upstream
+        // TooltipView still receives this through globalListener('itemTooltip') on every mousemove.
+        view._injectPointerForTest(type: "mousemove", zrX: secondPoint[0], zrY: secondPoint[1])
+        guard let secondContent = view.tooltipView?.contentEl else {
+            XCTFail("the second mousemove within the same sector must keep the tooltip visible")
+            return
+        }
+        let secondPosition = [secondContent.x, secondContent.y]
+
+        XCTAssertTrue(view.tooltipView?.isShown() ?? false)
+        XCTAssertTrue(secondContent.silent,
+                      "enterable:false must preserve upstream pointer-events:none semantics")
+        XCTAssertGreaterThan(hypot(secondPosition[0] - firstPosition[0],
+                                   secondPosition[1] - firstPosition[1]), 10,
+                             "tooltip position must follow an intra-sector mousemove, not freeze at element-enter")
+
+        let box = secondContent.getBoundingRect()!
+        let expectedLeft = secondPoint[0] + box.width + 22 > 420
+            ? secondPoint[0] - box.width - 20
+            : secondPoint[0] + 20
+        let expectedTop = secondPoint[1] + box.height + 20 > 320
+            ? secondPoint[1] - box.height - 20
+            : secondPoint[1] + 20
+        XCTAssertEqual(secondContent.x, expectedLeft + 1, accuracy: 1e-6,
+                       "renderMode:auto must use TooltipHTMLContent placement without shadow offset")
+        XCTAssertEqual(secondContent.y, expectedTop + 1, accuracy: 1e-6,
+                       "renderMode:auto must use TooltipHTMLContent placement without shadow offset")
     }
 
     // ------------------------------------------------------------------------

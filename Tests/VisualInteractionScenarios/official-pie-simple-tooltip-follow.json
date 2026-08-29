@@ -1,0 +1,22 @@
+{
+  "id": "official-pie-simple-tooltip-follow",
+  "demo": "official-pie-simple",
+  "checks": [
+    "The item tooltip must follow every real Handler mousemove within the same pie sector, not only element-enter.",
+    "Moving out and globalOut must restore the baseline without tooltip or emphasis residue.",
+    "Native and Web must agree semantically after each capture; ignore font antialiasing and subpixel differences."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "hoverData", "seriesIndex": 0, "dataIndex": 2},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-center"},
+    {"action": "pointerMove", "x": 250, "y": 255},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-same-sector-moved"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "restored"}
+  ]
+}

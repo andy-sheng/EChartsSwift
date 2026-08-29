@@ -127,7 +127,7 @@ public final class EChartsView {
     //   path is gated on `_isAxisTrigger`; enabling axisPointer-only needs the mousemove→hideTip guard
     //   reworked so it does not fight the trigger:"item" tooltip — see `_bindAxisPointerListeners`).
     // ------------------------------------------------------------------------
-    private var _axisPointers: [String: CartesianAxisPointer] = [:]
+    private var _axisPointers: [String: BaseAxisPointer] = [:]
 
     // ------------------------------------------------------------------------
     // Phase 39 — inside-dataZoom PAN (drag-to-roam). Mirrors `RoamController._dragging` + `_x`/`_y`.
@@ -549,10 +549,6 @@ public final class EChartsView {
                 self.ec.applyChangedStates()
                 self.zr.refresh()
             }
-            // Phase 34: ALSO drive the tooltip. Independent of the emphasis dispatcher walk (upstream the
-            //   tooltip trigger reads the hovered element's ECData directly), so a hover fires BOTH the
-            //   emphasis highlight AND the tooltip-on-hover.
-            self._showTooltipForHover(e)
             // visualMap continuous hoverLink FROM series: hovering a data point shows the indicator on the
             //   bar (upstream ContinuousView binds `api.getZr().on('mouseover', _hoverLinkFromSeriesMouseOver)`;
             //   the ExtensionAPI has no live getZr, so the host drives it here — see ContinuousView).
@@ -718,6 +714,37 @@ public final class EChartsView {
             self.ec.dispatchAction(payload)
         })
 
+        // upstream TooltipView._initGlobalListener registers the item leg in the SAME global-listener
+        // fan-out as axisPointer. Consequently `_tryShow` runs for every configured mousemove/click,
+        // including repeated moves inside one unchanged sector or symbol; this is what keeps an item
+        // tooltip attached to the pointer instead of only updating on element-enter.
+        globalListener.register("itemTooltip", zr, realDispatch: { [weak self] payload in
+            self?._realDispatchAxisPointer(payload)
+        }, handler: { [weak self] currTrigger, event, dispatchAction in
+            guard let self = self,
+                  self._insideZoomDrag == nil,
+                  self._brushDrag == nil,
+                  let tooltipModel = self.ec.getModel()?.getComponent("tooltip"),
+                  let triggerOn = tooltipModel.get("triggerOn") as? String,
+                  triggerOn != "none" else { return }
+
+            if triggerOn.contains(currTrigger), let event {
+                self._ensureTooltipView()?._tryShow(
+                    TryShowParams(
+                        target: event.target,
+                        offsetX: event.offsetX,
+                        offsetY: event.offsetY
+                    ),
+                    dispatchAction: dispatchAction
+                )
+                self.zr.refresh()
+            }
+            else if currTrigger == "leave" {
+                self.tooltipView?.hide()
+                self.zr.refresh()
+            }
+        })
+
         // Handle drag: `BaseAxisPointer._doDispatchAxisPointer` dispatches `updateAxisPointer`, whose
         //   `axisTrigger` handler mutates the axisPointer models. Upstream re-draws the crosshair+handle
         //   through the `:updateAxisPointer` view broadcast; here (no live AxisView — see ECharts install
@@ -743,6 +770,11 @@ public final class EChartsView {
         ec.on("showTip") { [weak self] params in
             guard let self = self, let ecModel = self.ec.getModel() else { return }
             guard let e = params as? ECActionEvent else { return }
+            // upstream TooltipView.manuallyShowTip returns immediately for payload.from === this.uid.
+            if let from = e.eventData["from"] as? String,
+               from == self.tooltipView?.uid {
+                return
+            }
             // A pointer-driven axis tooltip is merged and delivered by `globalListener`, but an
             // axisPointer HANDLE dispatches `updateAxisPointer` directly through the chart API. Its
             // resulting showTip therefore reaches this public action event with `dataByCoordSys`.
@@ -750,7 +782,8 @@ public final class EChartsView {
                 let x = _viewAsDouble(e.eventData["x"]) ?? 0
                 let y = _viewAsDouble(e.eventData["y"]) ?? 0
                 self._ensureTooltipView()?._tryShow(
-                    TryShowParams(offsetX: x, offsetY: y, dataByCoordSys: list)
+                    TryShowParams(offsetX: x, offsetY: y, dataByCoordSys: list),
+                    dispatchAction: { [weak self] payload in self?.ec.dispatchAction(payload) }
                 )
                 self.zr.refresh()
                 return
@@ -1359,17 +1392,20 @@ public final class EChartsView {
               let result = apModel.coordSysAxesInfo as? CollectionResult else { return }
         let api = ec.api
         for (key, axisInfo) in result.axesInfo {
-            // Only cartesian (Axis2D) axes get a Line/shadow crosshair (polar/single deferred).
-            guard axisInfo.axis is Axis2D else { continue }
+            guard axisInfo.axis is Axis2D || axisInfo.axis is AngleAxis || axisInfo.axis is RadiusAxis else {
+                continue
+            }
             let axisModelOpt: AxisBaseModel? = axisInfo.axis.model
             guard let axisModel = axisModelOpt else { continue }
 
-            let pointer: CartesianAxisPointer
+            let pointer: BaseAxisPointer
             if let existing = _axisPointers[key] {
                 pointer = existing
             }
             else {
-                let p = CartesianAxisPointer()
+                let p: BaseAxisPointer = axisInfo.axis is Axis2D
+                    ? CartesianAxisPointer()
+                    : PolarAxisPointer()
                 // HOST SEAM (see BaseAxisPointer): host the crosshair group on the LIVE zr — floats above
                 //   ec.getRoot() so a re-render does not wipe it (silent=true → never blocks findHover).
                 //   [weak self] + no self capture in ctx (Phase-33 retain-cycle rule).
@@ -1422,31 +1458,24 @@ public final class EChartsView {
     private func _realDispatchAxisPointer(_ payload: Payload) {
         switch payload.type {
         case "showTip":
-            // Only the trigger:"axis" showTip carries `dataByCoordSys` (built by axisTrigger). A bare
-            //   data-driven showTip (item path) is not routed through this seam.
-            guard let list = payload.other["dataByCoordSys"] as? [DataByCoordSys] else { return }
+            guard let list = payload.other["dataByCoordSys"] as? [DataByCoordSys] else {
+                // Item/component showTip is the action selected by the same pending merge. Forward it
+                // through the chart action bus just like upstream api.dispatchAction.
+                ec.dispatchAction(payload)
+                return
+            }
             let x = _viewAsDouble(payload.other["x"]) ?? 0
             let y = _viewAsDouble(payload.other["y"]) ?? 0
             // upstream `manuallyShowTip` (TooltipView.ts:341): a showTip carrying `dataByCoordSys` goes
             //   through `this._tryShow({x, y, dataByCoordSys}, dispatchAction)`, NOT straight to
             //   `_showAxisTooltip` — so `_tryShow` stays the single funnel (and records `_lastX/_lastY`).
             _ensureTooltipView()?._tryShow(
-                TryShowParams(offsetX: x, offsetY: y, dataByCoordSys: list)
+                TryShowParams(offsetX: x, offsetY: y, dataByCoordSys: list),
+                dispatchAction: { [weak self] action in self?.ec.dispatchAction(action) }
             )
             zr.refresh()
         case "hideTip":
-            // upstream `manuallyHideTip` early-outs on `payload.from === this.uid` — the tooltip view
-            //   ignores a hideTip that races its OWN `_showComponentItemTooltip` showTip ("If not
-            //   dispatch showTip, tip may be hide triggered by axis.", TooltipView.ts:806). This port's
-            //   axis leg bypasses the ec action bus, so the same protection is the view's
-            //   `_shownAsCmptItem` flag: while a COMPONENT-item tooltip (legend / graphic / toolbox /
-            //   matrix / geo region / …) is the box on screen, the axis leg's per-mousemove hideTip —
-            //   which `axisTrigger` dispatches for every pointer position outside a coordinate system —
-            //   must not tear it down. A real leave still hides it: zr `mouseout` calls `hide()`
-            //   directly (which also clears the flag), as does any axis/series tooltip replacing it.
-            if tooltipView?._shownAsCmptItem == true { return }
-            tooltipView?.hide()
-            zr.refresh()
+            ec.dispatchAction(payload)
         default:
             // highlight/downplay from axisTrigger's high-down fan-out already go to the real api directly
             //   (dispatchHighDownActually uses api.dispatchAction); forward any other merged action too.
@@ -1473,36 +1502,6 @@ public final class EChartsView {
             cur = el.__hostTarget ?? (el.parent as? Element)
         }
         return found
-    }
-
-    // ------------------------------------------------------------------------
-    // _showTooltipForHover — the host's hover leg into the tooltip. Upstream this is
-    //   `TooltipView._initGlobalListener`'s `globalListener.register('itemTooltip', …)` callback, which
-    //   just forwards the pointer event: `this._tryShow(e, dispatchAction)`. Same here — the ancestor
-    //   walk, the `tooltipDisabled` / `ssrType === 'legend'` guards and the series-vs-component-vs-hide
-    //   routing ALL live in `TooltipView._tryShow` (upstream TooltipView.ts:453), which is where
-    //   upstream keeps them; this host used to re-roll a slimmed copy of that det here and pre-resolve
-    //   the `seriesModel`/`dataIndex` for `tryShow`, which is exactly the duplication PORTING.md §2
-    //   forbids (and it silently dropped the `tooltipDisabled` and `ssrType` guards).
-    //
-    //   `e.offsetX`/`e.offsetY` are the zr coords (see Handler.makeEventPacket), i.e. upstream's
-    //   `TryShowParams.offsetX/offsetY` verbatim.
-    //   PORT-NOTE (divergence, WIRING): upstream's fan-out runs on `mousemove`, in the same
-    //     `globalListener` pass as axisTrigger; this port drives it from the zr `mouseover` leg (see
-    //     `_bindZrListeners`). That ordering is why `TooltipView._hide` needs its documented
-    //     showTip-beats-hideTip stand-in — see the PORT-NOTE there before changing either side.
-    // ------------------------------------------------------------------------
-    private func _showTooltipForHover(_ e: ElementEvent) {
-        // Upstream registers the item-tooltip global listener with the configured `triggerOn` and only
-        // forwards matching zrender events. This host drives the item path from `mouseover`, so mirror
-        // the mousemove gate here; `triggerOn: 'none'` (official-line-tooltip-touch) must leave ordinary
-        // series hover to emphasis only while its axisPointer handle drives tooltip actions explicitly.
-        guard let tooltipModel = ec.getModel()?.getComponent("tooltip"),
-              let triggerOn = tooltipModel.get("triggerOn") as? String,
-              triggerOn.contains("mousemove") else { return }
-        guard let tooltip = _ensureTooltipView() else { return }
-        tooltip._tryShow(TryShowParams(target: e.target, offsetX: e.offsetX, offsetY: e.offsetY))
-        zr.refresh()
     }
 
     // ------------------------------------------------------------------------

@@ -138,19 +138,15 @@ final class ZZTooltipComponentItemTests: XCTestCase {
         XCTAssertNil(tooltipText(stamped.view),
                      "leaving the canvas must hide a component tooltip even when its element is not "
                      + "a high-down dispatcher")
-        XCTAssertFalse(stamped.view.tooltipView?._shownAsCmptItem ?? true)
     }
 
     // ------------------------------------------------------------------------
     // (1b) THE AXIS RACE. With `tooltip.trigger:'axis'` (the most common tooltip config) the axis leg
     //   runs `axisTrigger` on EVERY zr mousemove; over a legend item — outside any coordinate system —
-    //   `dispatchTooltipActually` dispatches `hideTip`, which `EChartsView._realDispatchAxisPointer`
-    //   turns into `tooltipView.hide()`. zrender fires `mouseover` only when the target CHANGES, so the
-    //   component tooltip goes up on the first move and, without upstream's `showTip`/`from: this.uid`
-    //   protection, is destroyed on the second and never comes back.
+    //   `dispatchTooltipActually` dispatches `hideTip`. The component tooltip listener also dispatches
+    //   `showTip` for that mousemove, and upstream's shared pending merge gives showTip precedence.
     //   Upstream: `_showComponentItemTooltip` ends with `dispatchAction({type:'showTip', from: this.uid})`
-    //   ("If not dispatch showTip, tip may be hide triggered by axis."); this port's stand-in is
-    //   `TooltipView._shownAsCmptItem`, read by the `hideTip` arm.
+    //   ("If not dispatch showTip, tip may be hide triggered by axis.").
     // ------------------------------------------------------------------------
     func testComponentTooltipSurvivesTheAxisLegHideTipUnderTriggerAxis() {
         let view = makeLegendView(
@@ -182,11 +178,9 @@ final class ZZTooltipComponentItemTests: XCTestCase {
         view._injectPointerForTest(type: "mousemove", zrX: center[0] + 2, zrY: center[1])
         XCTAssertEqual(tooltipText(view), "Alpha")
 
-        // Leaving the element DOES hide it (zr `mouseout` calls `hide()` directly, which also clears the
-        //   `_shownAsCmptItem` stand-in) — the guard must not strand a visible box.
+        // Leaving the element DOES hide it; the pending merge must not strand a visible box.
         view._injectPointerForTest(type: "mouseout", zrX: 2, zrY: 292)
-        XCTAssertFalse(view.tooltipView?._shownAsCmptItem ?? false,
-                       "leaving the component item must retire the `from: this.uid` stand-in")
+        XCTAssertNil(tooltipText(view))
     }
 
     // ------------------------------------------------------------------------

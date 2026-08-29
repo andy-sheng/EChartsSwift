@@ -1,0 +1,18 @@
+{
+  "id": "official-scatter-polar-punchcard-tooltip",
+  "demo": "official-scatter-polar-punchCard",
+  "checks": [
+    "Hovering dataIndex 84 must show exactly the official semantic content: 7 commits in 12p of Wednesday.",
+    "Moving out and globalOut must restore the baseline without tooltip or emphasis residue."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "hoverData", "seriesIndex": 0, "dataIndex": 84},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-wednesday-12p"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "restored"}
+  ]
+}

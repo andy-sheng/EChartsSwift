@@ -10,10 +10,11 @@
 //     same axis value hovered twice  -> `tooltipView.contentEl` is the SAME ZRText instance (only moved)
 //     a different axis value hovered -> `tooltipView.contentEl` is a NEW ZRText instance
 //
-// Test 1 drives the REAL chain (injected pointer -> globalListener -> axisTrigger -> showTip ->
-// `_showAxisTooltip`), like ZZAxisTooltipTests. Test 2 calls `_showAxisTooltip` directly with hand-built
-// payload trees, which isolates the recursive comparison itself (equivalent-but-distinct tree, then a
-// tree that differs in exactly one compared field).
+// Test 1 drives the REAL chain (injected pointer -> globalListener axisPointer + itemTooltip fan-out).
+// Upstream TooltipView._tryShow runs on every mousemove; over empty grid it clears the axis memo before
+// the pending axis showTip is delivered, so even the same category rebuilds while still following the
+// pointer. Test 2 calls `_showAxisTooltip` directly with hand-built payload trees, which isolates the
+// recursive comparison itself when no competing itemTooltip listener invalidates it.
 import XCTest
 import ZRenderKit
 @testable import EChartsKit
@@ -50,9 +51,9 @@ final class ZZAxisTooltipNotChangedTests: XCTestCase {
     }
 
     // ------------------------------------------------------------------------
-    // 1) Through the live pointer chain: re-hovering the SAME category must not rebuild the content.
+    // 1) Through the live pointer chain: upstream itemTooltip invalidates the memo on every mousemove.
     // ------------------------------------------------------------------------
-    func testHoveringTheSameAxisValueTwiceDoesNotRebuildTheContent() {
+    func testHoveringTheSameAxisValueTwiceFollowsUpstreamGlobalListenerInvalidation() {
         let view = makeAxisBarView()
         _ = view.zr.storage.getDisplayList(true)
 
@@ -77,15 +78,19 @@ final class ZZAxisTooltipNotChangedTests: XCTestCase {
         let firstX = firstEl.x
 
         // ---- second hover, SAME category "B" (a few px right, still inside the same band) ----
-        //   `_updateContentNotChangedOnAxis` must return true → only `_updatePosition` runs.
+        // Upstream's itemTooltip record runs in the same globalListener fan-out and `_tryShow` clears
+        // `_lastDataByCoordSys` when there is no target. The subsequently delivered axis showTip must
+        // therefore rebuild the content, while using the new pointer position.
         view._injectPointerForTest(type: "mousemove", zrX: bx + 3, zrY: gy)
 
-        XCTAssertTrue(tv.contentEl === firstEl,
-                      "re-hovering the SAME axis value must NOT rebuild the tooltip content "
-                      + "(_updateContentNotChangedOnAxis should have taken the position-only branch)")
-        XCTAssertTrue(tv.isShown(), "the tooltip must still be shown after the position-only update")
-        XCTAssertNotEqual(firstEl.x, firstX,
-                          "the position-only branch must still have MOVED the box")
+        guard let secondEl = tv.contentEl else {
+            XCTFail("the tooltip must remain present after the second mousemove"); return
+        }
+        XCTAssertFalse(secondEl === firstEl,
+                       "upstream itemTooltip _tryShow invalidates the axis memo on every empty-grid move")
+        XCTAssertTrue(tv.isShown(), "the tooltip must still be shown after the repeated mousemove")
+        XCTAssertNotEqual(secondEl.x, firstX,
+                          "the rebuilt box must still follow the new pointer position")
 
         // ---- third hover on a DIFFERENT category "C": the content MUST be rebuilt ----
         view._injectPointerForTest(type: "mousemove", zrX: cx, zrY: gy)

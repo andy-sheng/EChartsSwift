@@ -88,4 +88,13 @@ final class OfficialScatterTooltipInteractionTests: XCTestCase {
         XCTAssertTrue(text.contains("二氧化氮（NO2）：57"), text)
         XCTAssertTrue(text.contains("二氧化硫（SO2）：43"), text)
     }
+
+    func testPolarPunchCardTooltipPreservesOfficialSentence() throws {
+        let text = try formattedTooltip(
+            demo: EChartsDemoRegistry.official_scatter_polar_punchcard,
+            seriesIndex: 0,
+            dataIndex: 84
+        )
+        XCTAssertEqual(text, "7 commits in 12p of Wednesday")
+    }
 }

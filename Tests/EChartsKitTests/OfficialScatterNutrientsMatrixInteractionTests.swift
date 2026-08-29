@@ -38,11 +38,11 @@ final class OfficialScatterNutrientsMatrixInteractionTests: XCTestCase {
         let text = formatter([xParam, yParam])
         let data = try XCTUnwrap(xParam.data as? [Any])
         let foodName = try XCTUnwrap(data[3] as? String)
-        XCTAssertTrue(text.contains("POINTS ON CROSS"))
+        XCTAssertTrue(text.contains("{heading|POINTS ON CROSS}"))
         XCTAssertTrue(text.contains(foodName))
-        XCTAssertTrue(text.contains("carbohydrate:"))
-        XCTAssertTrue(text.contains("calcium:"))
-        XCTAssertTrue(text.contains("fiber:"))
+        XCTAssertTrue(text.contains("\n{carbohydrate|carbohydrate}:"))
+        XCTAssertTrue(text.contains("\n{calcium|calcium}:"))
+        XCTAssertTrue(text.contains("\n{fiber|fiber}:"))
     }
 
     func testTooltipPositionPinsToOppositeCorner() throws {
@@ -75,5 +75,41 @@ final class OfficialScatterNutrientsMatrixInteractionTests: XCTestCase {
 
         XCTAssertEqual(view.tooltipView?.isShown(), true)
         XCTAssertTrue(view.tooltipView?.contentEl?.textStyle?.text?.contains("POINTS ON") == true)
+
+        let tooltip = try XCTUnwrap(view.tooltipView?.contentEl)
+        XCTAssertTrue(tooltip.silent,
+                      "enterable:false must be hit-test transparent like upstream pointer-events:none")
+        XCTAssertEqual(tooltip.textStyle?.width, 300)
+        XCTAssertEqual(tooltip.textStyle?.overflow, "break")
+        XCTAssertEqual(tooltip.textStyle?.lineHeight, 18,
+                       "native rich host must preserve TooltipHTMLContent's computed line-height")
+        XCTAssertEqual(tooltip.textStyle?.rich?["heading"]?.fill, "#aaa")
+        guard case let .number(headingSize)? = tooltip.textStyle?.rich?["heading"]?.fontSize else {
+            XCTFail("heading rich style must carry the upstream numeric fontSize")
+            return
+        }
+        XCTAssertEqual(headingSize, 16)
+        XCTAssertEqual(tooltip.textStyle?.rich?["carbohydrate"]?.fill, "#2A8339")
+        XCTAssertEqual(tooltip.textStyle?.rich?["potassium"]?.fill, "#367DA6")
+        XCTAssertEqual(tooltip.textStyle?.rich?["calcium"]?.fill, "#A68B36")
+        XCTAssertEqual(tooltip.textStyle?.rich?["fiber"]?.fill, "#BD5692")
+
+        _ = tooltip.getBoundingRect()
+        let spans = tooltip.childrenRef().compactMap { $0 as? TSpan }
+        let nutrientSpans = spans.filter {
+            ["carbohydrate", "potassium", "calcium", "fiber"].contains($0.tspanStyle.text ?? "")
+        }
+        XCTAssertFalse(nutrientSpans.isEmpty)
+        for nutrient in nutrientSpans {
+            let rowY = nutrient.tspanStyle.y
+            let followingValue = spans.first {
+                ($0.tspanStyle.text ?? "").hasPrefix(": ") && $0.tspanStyle.y == rowY
+            }
+            XCTAssertNotNil(followingValue,
+                            "each upstream colored <span> name must share one row with its white value")
+        }
+        let distinctRows = Set(nutrientSpans.compactMap { $0.tspanStyle.y })
+        XCTAssertGreaterThan(distinctRows.count, 1,
+                             "upstream <br/> boundaries must keep nutrients on separate rows")
     }
 }

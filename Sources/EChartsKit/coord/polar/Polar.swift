@@ -91,11 +91,12 @@ public final class Polar: CoordinateSystemMaster {
     public var axisPointerEnabled: Bool? = true
 
     // upstream: model: PolarModel;
-    //   Injected outside (by polarCreator). PORT-NOTE: `PolarModel` is ported (coord/polar/PolarModel.swift).
-    //   NOTE: `CoordinateSystemMaster.model` requires `ComponentModel?`; when PolarModel lands (a
-    //   `ComponentModel` subclass) this concrete property both stores the model and witnesses that
-    //   requirement.
-    public var model: PolarModel!
+    //   The protocol requirement is `ComponentModel?`. Swift does not allow a mutable property with the
+    //   narrower `PolarModel!` type to witness it covariantly; doing so silently selected the protocol
+    //   extension's nil-returning default whenever Polar was used as `CoordinateSystemMaster`, which made
+    //   upstream axis-pointer collection skip every polar coordinate system. Keep the existential slot
+    //   at the protocol's exact type, just as Grid/Single do; polarCreator still injects a PolarModel.
+    public var model: ComponentModel?
 
     // upstream: boxCoordinateSystem?: CoordinateSystem  (CoordinateSystemMaster requirement).
     //   Not used by Polar; satisfies the protocol (upstream leaves it unset → undefined).

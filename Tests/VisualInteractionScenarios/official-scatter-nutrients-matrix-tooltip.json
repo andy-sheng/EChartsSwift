@@ -1,0 +1,29 @@
+{
+  "id": "official-scatter-nutrients-matrix-tooltip",
+  "demo": "official-scatter-nutrients-matrix",
+  "checks": [
+    "The tooltip heading and four nutrient names must use the official gray heading and axis colors.",
+    "The tooltip must retain the official 300px width and normal wrapping semantics.",
+    "With enterable false the tooltip must remain hit-test transparent, so consecutive hovers reach all four grids.",
+    "Moving out and globalOut must restore the baseline without tooltip, axisPointer or emphasis residue."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "hoverData", "seriesIndex": 0, "dataIndex": 0},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-top-left"},
+    {"action": "hoverData", "seriesIndex": 1, "dataIndex": 500},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-bottom-left"},
+    {"action": "hoverData", "seriesIndex": 2, "dataIndex": 0},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-top-right"},
+    {"action": "hoverData", "seriesIndex": 3, "dataIndex": 498},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-bottom-right"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "restored"}
+  ]
+}

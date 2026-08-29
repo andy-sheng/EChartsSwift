@@ -51,12 +51,9 @@
 //     DEFERRED: it is ported below with its `_lastDataByCoordSys`/`_cbParamsList` memo, at upstream's
 //     exact call site inside `_showAxisTooltip`'s `_showOrMove` callback. NOTE the memo IS cleared by
 //     the item leg exactly as upstream does it (`_tryShow`'s `else if let el` / `else` arms both null
-//     it) — but on a different CLOCK: upstream's item leg is the per-MOUSEMOVE
-//     `globalListener('itemTooltip')` fan-out, while this port drives `_tryShow` from the zr
-//     `mouseover` (element ENTER) leg, so the memo survives intra-band pointer motion and the branch is
-//     genuinely live here. That WIRING divergence is documented in full on
-//     `_updateContentNotChangedOnAxis`, with the resulting staleness window closed by
-//     `clearAxisTooltipMemo()`.)
+//     it). The item leg is registered through the same per-mousemove `globalListener('itemTooltip')`
+//     fan-out as upstream, so intra-element movement updates position and clears this memo on the
+//     same clock.)
 //   - the HTML content host (`TooltipHTMLContent`) — this port is native, renderMode is FORCED 'richText'
 //   - `transitionDuration` animation + throttled `_updatePosition` (`createOrUpdate`/`clear`)
 //   - the `position` option — NO LONGER DEFERRED. Every upstream form is ported in `_updatePosition`:
@@ -199,6 +196,10 @@ public final class TooltipView {
     // upstream: `type = 'tooltip'`
     public static let type = "tooltip"
 
+    // Upstream TooltipView inherits ComponentView and uses its uid to prevent a showTip/hideTip action
+    // emitted by this view from being re-dispatched by the same view.
+    public let uid: String = component.getUID("viewComponent")
+
     // upstream: `private _renderMode: TooltipRenderMode;` — FORCED richText (native; no DOM host).
     private let _renderMode: TooltipRenderMode = .richText
 
@@ -253,29 +254,6 @@ public final class TooltipView {
     // upstream: `private _cbParamsList: TooltipCallbackDataParams[];` (TooltipView.ts:162)
     private var _cbParamsList: [TooltipCallbackDataParams]?
 
-    // PORT-NOTE (adaptation, NO upstream field — the port-local stand-in for upstream's
-    //   `dispatchAction({type: 'showTip', from: this.uid})`). Upstream `_showComponentItemTooltip` ends
-    //   with that dispatch, commented "If not dispatch showTip, tip may be hide triggered by axis." — it
-    //   exists because the component-item leg deliberately does NOT gate on `trigger` ("Do not check
-    //   whether `trigger` is 'none' here"), so it is the one leg exposed to the axis leg's per-mousemove
-    //   `hideTip`. Upstream's globalListener pend/merge stage lets that `showTip` beat the `hideTip`, and
-    //   `manuallyHideTip` additionally early-outs on `payload.from === this.uid`.
-    //   In THIS port the axis leg does not go through the ec action bus: `axisTrigger` dispatches
-    //   `hideTip` whenever nothing resolved (axisTrigger.swift `dispatchTooltipActually`) and
-    //   `EChartsView._realDispatchAxisPointer` turns it straight into `tooltipView.hide()`. Without a
-    //   guard, hovering a legend/graphic/toolbox/matrix item under `tooltip.trigger:'axis'` shows the
-    //   component tooltip on `mouseover` and destroys it on the very next `mousemove` (and no further
-    //   `mouseover` fires while the pointer stays on the same element), i.e. the feature is dead under
-    //   the most common tooltip config. This flag IS the `from: this.uid` early-out: set when the
-    //   component-item box goes up, cleared by every path that legitimately replaces or hides it
-    //   (`tryShow`, `_showAxisTooltip`, `hide()`), and read by `_realDispatchAxisPointer`'s `hideTip`
-    //   arm to skip the hide.
-    public private(set) var _shownAsCmptItem: Bool = false
-    // The item-tooltip listener is dispatched separately from the axisPointer global-listener fan-out
-    // in the Native host. Remember which leg owns the current box so its later `_hide` cannot erase an
-    // axis tooltip (including a coord-system-local `grid.tooltip.trigger: 'axis'`) from the same move.
-    private var _shownAsAxisItem: Bool = false
-
     // ------------------------------------------------------------------------
     // init — upstream `TooltipView.init(ecModel, api)` (TooltipView.ts:164): reads the global tooltip
     //   model, resolves renderMode, and builds `new TooltipRichContent(api)`. Here the live `zr` is passed
@@ -316,15 +294,13 @@ public final class TooltipView {
     //   (the det nulls both slots and stops the walk). `if (seriesDispatcher || cmptDispatcher) return;`
     //   is what makes the INNERMOST dispatcher of either kind win.
     //
-    //   PORT-NOTE (signature): upstream is `private _tryShow(e, dispatchAction)`. Like `_showAxisTooltip`
-    //     / `_showComponentItemTooltip` (same reason — this view is NOT a `ComponentView`; the host
-    //     `EChartsView` owns it and drives the pointer, see ARCHITECTURE) it is `public` here, and the
-    //     `dispatchAction` seam has no analogue: its only two uses in this subtree are the `showTip`
-    //     re-dispatch (`_showSeriesItemTooltip`'s trailing `dispatchAction({type:'showTip', …})`, whose
-    //     purpose upstream is the axis/item race — see `_shownAsCmptItem`) and `_hide(dispatchAction)`,
-    //     which in this port is the direct `_hide()` below.
+    //   `dispatchAction` is the pending-action closure supplied by axisPointer/globalListener, exactly
+    //   like upstream. The public single-argument overload below exists only for focused unit tests.
     // ------------------------------------------------------------------------
-    public func _tryShow(_ e: TryShowParams) {
+    public func _tryShow(
+        _ e: TryShowParams,
+        dispatchAction: @escaping (Payload) -> Void
+    ) {
         let el = e.target
         // upstream: `const tooltipModel = this._tooltipModel; if (!tooltipModel) { return; }`
         guard self._globalTooltipModel != nil else {
@@ -378,7 +354,7 @@ public final class TooltipView {
             }, true)
 
             if let seriesDispatcher = seriesDispatcher {
-                self._showSeriesItemTooltip(e, seriesDispatcher)
+                self._showSeriesItemTooltip(e, seriesDispatcher, dispatchAction)
             }
             else if let cmptDispatcher = cmptDispatcher {
                 // upstream: `this._showComponentItemTooltip(e, cmptDispatcher, dispatchAction)`. This
@@ -386,53 +362,39 @@ public final class TooltipView {
                 self._showComponentItemTooltip(
                     el: cmptDispatcher,
                     point: [e.offsetX ?? 0, e.offsetY ?? 0],
-                    positionDefault: e.positionDefault
+                    positionDefault: e.positionDefault,
+                    dispatchAction: dispatchAction
                 )
             }
             else {
-                self._hide()
+                self._hide(dispatchAction)
             }
         }
         else {
             self._lastDataByCoordSys = nil
             self._cbParamsList = nil
-            self._hide()
+            self._hide(dispatchAction)
+        }
+    }
+
+    public func _tryShow(_ e: TryShowParams) {
+        _tryShow(e) { [weak self] payload in
+            guard let self else { return }
+            if payload.type == "hideTip" { self.hide() }
         }
     }
 
     // ------------------------------------------------------------------------
-    // _hide — upstream `_hide(dispatchAction)` (TooltipView.ts:1034). Upstream only DISPATCHES
-    //   `{type:'hideTip', from: this.uid}`; the content hide happens one hop later in `manuallyHideTip`.
-    //   In this port that second hop is `hide()` (see the long PORT-NOTE there), so `_hide` is `hide()`
-    //   plus the one thing the dispatch bought upstream and a direct call does not:
-    //
-    //   PORT-NOTE (adaptation — the `globalListener` pend/merge stand-in; read before "simplifying" this
-    //     to a plain `hide()`): upstream's `_hide` hideTip does NOT go straight to the tooltip. It is
-    //     pushed into `globalListener`'s per-mousemove `pendings` bag alongside whatever the axisPointer
-    //     handler dispatched in the SAME fan-out, and the final stage picks `pendings.showTip` over
-    //     `pendings.hideTip` (component/axisPointer/globalListener.swift). So under `trigger:'axis'` the
-    //     item leg's `_hide` — which fires on every pointer move that is not over a dispatcher — is
-    //     SWALLOWED by the axis leg's showTip whenever the pointer is inside a coordinate system, and
-    //     only takes effect outside one, where the axis leg dispatches its own hideTip anyway.
-    //     THIS port's item leg is not in that fan-out (it is driven from the zr `mouseover` leg in
-    //     `EChartsView`, one dispatch later than the `mousemove` that drives axisTrigger), so a literal
-    //     `hide()` here would tear down the axis tooltip that the same pointer move had just put up, and
-    //     it would stay down until the next mousemove. Native therefore records which leg owns the
-    //     visible box: the item leg's delayed hide is a no-op while the axis or component leg owns it.
-    //     Every real hide path (zr `mouseout`, `hideTip`, `manuallyHideTip`) still calls `hide()` directly.
+    // _hide — upstream `_hide(dispatchAction)` (TooltipView.ts:1034): clear both axis memo fields and
+    // enqueue hideTip into the current global-listener pending set. A showTip from another handler in
+    // the same mousemove wins during dispatchTooltipFinally.
     // ------------------------------------------------------------------------
-    private func _hide() {
-        // upstream `_hide` (TooltipView.ts:1040-1041) nulls BOTH memo fields unconditionally, before it
-        //   does anything else. Kept above the guard below so this function is faithful for EVERY
-        //   caller: today both `_tryShow` arms that reach here already nulled them one frame earlier, but
-        //   a future caller that does not must never leave `_updateContentNotChangedOnAxis` matching
-        //   against a torn-down box.
+    private func _hide(_ dispatchAction: @escaping (Payload) -> Void) {
         _lastDataByCoordSys = nil
         _cbParamsList = nil
-        if _shownAsAxisItem || _shownAsCmptItem {
-            return
-        }
-        hide()
+        var payload = Payload(type: "hideTip")
+        payload.other["from"] = uid
+        dispatchAction(payload)
     }
 
     // ------------------------------------------------------------------------
@@ -455,7 +417,11 @@ public final class TooltipView {
     //     too — no regression, but the marker's own `tooltip`/`formatTooltip` is not consulted. Fixing
     //     it needs `DataModel` to expose its `Model` (e.g. a `var asModel: Model { get }` requirement).
     // ------------------------------------------------------------------------
-    private func _showSeriesItemTooltip(_ e: TryShowParams, _ dispatcher: Element) {
+    private func _showSeriesItemTooltip(
+        _ e: TryShowParams,
+        _ dispatcher: Element,
+        _ dispatchAction: @escaping (Payload) -> Void
+    ) {
         guard let ecModel = self._ecModel else {
             return
         }
@@ -479,7 +445,7 @@ public final class TooltipView {
         }
         let dataType = ecData.dataType
 
-        tryShow(
+        guard tryShow(
             seriesModel: seriesModel,
             dataIndex: dataIndex,
             dataType: dataType,
@@ -488,7 +454,15 @@ public final class TooltipView {
             //   to the dispatcher when the caller did not carry one.
             target: e.target ?? dispatcher,
             positionDefault: e.positionDefault
-        )
+        ) else { return }
+
+        let data = seriesModel.getData(dataType)
+        var payload = Payload(type: "showTip")
+        payload.other["dataIndexInside"] = dataIndex
+        payload.other["dataIndex"] = data.getRawIndex(Int(dataIndex))
+        payload.other["seriesIndex"] = seriesIndex
+        payload.other["from"] = uid
+        dispatchAction(payload)
     }
 
     // ------------------------------------------------------------------------
@@ -519,6 +493,7 @@ public final class TooltipView {
     //                   `defaultTooltipOption` — the BASE model UNDER the global option, so an explicit
     //                   `tooltip.position` (or a series-level one) still wins.
     // ------------------------------------------------------------------------
+    @discardableResult
     public func tryShow(
         seriesModel: SeriesModel,
         dataIndex: Double,
@@ -526,12 +501,12 @@ public final class TooltipView {
         point: [Double],
         target: Element? = nil,
         positionDefault: String? = nil
-    ) {
+    ) -> Bool {
         // upstream `_showSeriesItemTooltip` passes `e.target` down as `el`; every caller resolves it
         //   (hover: `_showSeriesItemTooltip`; action: `pointInfo.el`), so `target` is the only source.
         let el: Element? = target
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
-            return
+            return false
         }
 
         // upstream `_tryShow`, the `else if (el)` (item) branch (TooltipView.ts:477):
@@ -567,14 +542,8 @@ public final class TooltipView {
         if let t = tooltipTrigger, t != "item" {
             // PORT-NOTE: this item-only entry bails on trigger:'axis'; the axis tooltip IS ported
             //   (`_showAxisTooltip`) and reached via the axisTrigger path (EChartsView), not from here.
-            return
+            return false
         }
-
-        // This leg is now known to own the visible box. Drop the component/axis ownership markers only
-        // after the trigger guard; an item attempt suppressed by a local axis trigger must leave the
-        // axis box and its later-hide protection intact.
-        self._shownAsCmptItem = false
-        self._shownAsAxisItem = false
 
         // --- build markup (upstream TooltipView.ts:695-717) -----------------------------------------
         // upstream: `const params = dataModel.getDataParams(dataIndex, dataType)` (TooltipView.ts:695).
@@ -611,7 +580,7 @@ public final class TooltipView {
         guard let html = markupText else {
             // No content → nothing to show (upstream would still call show with an empty string; a nil
             //   markup here means `formatTooltip` produced no fragment/text, so we bail).
-            return
+            return false
         }
 
         // upstream: `const asyncTicket = 'item_' + dataModel.name + '_' + dataIndex;` (TooltipView.ts:719)
@@ -638,6 +607,7 @@ public final class TooltipView {
                 markupStyleCreator: markupStyleCreator
             )
         }
+        return true
     }
 
     // ------------------------------------------------------------------------
@@ -704,10 +674,6 @@ public final class TooltipView {
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
             return
         }
-        // The AXIS leg is about to replace whatever the component-item leg put on screen — drop the
-        //   `from: this.uid` stand-in (see the field) so a later `hideTip` hides this axis box.
-        self._shownAsCmptItem = false
-        self._shownAsAxisItem = true
         let renderMode = self._renderMode
         let markupStyleCreator = TooltipMarkupStyleCreator()
         // upstream: buildTooltipModel([e.tooltipOption], globalTooltipModel). Slim: the global model.
@@ -924,20 +890,14 @@ public final class TooltipView {
     //     the pieces of `TryShowParams` this port threads: `el` (upstream's `cmptDispatcher`), the
     //     pointer `point` (`e.offsetX`/`e.offsetY`) and `positionDefault`. `e.position` (the
     //     per-dispatch override) is not threaded — the same PORT-TODO as `tryShow`, see `manuallyShowTip`.
-    //   PORT-NOTE (adaptation): upstream ends with `dispatchAction({type: 'showTip', from: this.uid})`
-    //     ("If not dispatch showTip, tip may be hide triggered by axis."). That dispatch is NOT droppable
-    //     here the way `tryShow`'s is: `tryShow` self-gates on `trigger == 'axis'` and returns, whereas
-    //     this leg deliberately does not check `trigger` at all (upstream: "Do not check whether
-    //     `trigger` is 'none' here"), so it is the one leg the axis leg's per-mousemove `hideTip` can
-    //     destroy. This port has no `uid`/`dispatchAction` seam on the view AND its axis leg bypasses the
-    //     ec action bus (`axisTrigger` → `EChartsView._realDispatchAxisPointer` → `tooltipView.hide()`),
-    //     so the guard is expressed as the `_shownAsCmptItem` flag set below — the exact stand-in for
-    //     upstream's `payload.from === this.uid` early-out. See the field for the full rationale.
+    //   The dispatchAction seam is the same pending merge closure used upstream. The component leg's
+    //   trailing showTip therefore wins over an axis hideTip produced by the same mousemove.
     // ------------------------------------------------------------------------
     public func _showComponentItemTooltip(
         el: Element,
         point: [Double],
-        positionDefault: String? = nil
+        positionDefault: String? = nil,
+        dispatchAction: @escaping (Payload) -> Void = { _ in }
     ) {
         guard let ecModel = self._ecModel, let globalTooltipModel = self._globalTooltipModel else {
             return
@@ -1066,14 +1026,10 @@ public final class TooltipView {
             )
         }
 
-        // upstream:
-        //   // If not dispatch showTip, tip may be hide triggered by axis.
-        //   dispatchAction({ type: 'showTip', from: this.uid });
-        //   Ported as the flag (see the PORT-NOTE on the signature and on `_shownAsCmptItem`): set
-        //   UNCONDITIONALLY at upstream's exact call site, i.e. even when `_showOrMove` only armed a
-        //   `showDelay` timer — upstream dispatches there too.
-        self._shownAsCmptItem = true
-        self._shownAsAxisItem = false
+        // If not dispatch showTip, tip may be hidden by the axis handler in this same fan-out.
+        var payload = Payload(type: "showTip")
+        payload.other["from"] = uid
+        dispatchAction(payload)
     }
 
     // ------------------------------------------------------------------------
@@ -1536,21 +1492,9 @@ public final class TooltipView {
     //     identity is unrepresentable for the non-class cases; `tooltipStrictEquals` therefore compares
     //     them STRUCTURALLY (and by `===` when the item really is a class instance), which preserves
     //     upstream's intent — "the datum behind this tooltip line changed" — for the shapes this produces.
-    //   PORT-NOTE (DIVERGENCE, wiring — read before trusting this memo): upstream this no-change branch is
-    //     nearly unreachable for real pointer motion. Upstream registers the ITEM leg through
-    //     `globalListener('itemTooltip')`, so `_tryShow` runs on EVERY mousemove, and both of its non-axis
-    //     branches (`else if (el)` TooltipView.ts:477, `else` :511) null `_lastDataByCoordSys` BEFORE the
-    //     pending axis `showTip` is dispatched — hence upstream's own `// FIXME Should we remove this`.
-    //     THIS port ports those two nulling arms verbatim (`_tryShow` below), but wires `_tryShow` to zr
-    //     `mouseover` (element ENTER) rather than to a per-mousemove fan-out, so the memo survives a
-    //     mousemove within one band and the branch is genuinely live. That is a deliberate divergence, not parity, and it
-    //     has one observable consequence: while the pointer stays within one axis band, a `tooltip.
-    //     formatter` callback is not re-invoked and content changed by a `setOption` (formatter/textStyle/
-    //     valueFormatter, or data whose `getRawDataItem` is nil on both sides) would stay stale. The
-    //     staleness window is closed from the RENDER side by `clearAxisTooltipMemo()` (see it below),
-    //     which `EChartsView._afterSetOption()` calls on every setOption / post-action re-sync. It must
-    //     NOT be done in `setModel(_:)`: `EChartsView._ensureTooltipView()` calls that immediately before
-    //     every `_showAxisTooltip`, which would kill the feature outright.
+    //   The item leg is registered through `globalListener('itemTooltip')`, matching upstream: `_tryShow`
+    //   runs on every mousemove and its non-axis branches clear `_lastDataByCoordSys` before the pending
+    //   axis showTip is merged. `clearAxisTooltipMemo()` additionally invalidates render-side changes.
     // ------------------------------------------------------------------------
     private func _updateContentNotChangedOnAxis(
         _ dataByCoordSys: [DataByCoordSys],
@@ -1673,10 +1617,6 @@ public final class TooltipView {
         _lastY = nil
         _lastDataByCoordSys = nil
         _cbParamsList = nil
-        // A real hide (mouseout, `manuallyHideTip`, …) also retires the `from: this.uid` stand-in — only
-        //   the axis leg's own `hideTip` is suppressed by it, and that arm never reaches here.
-        _shownAsCmptItem = false
-        _shownAsAxisItem = false
         _tooltipContent.hideLater(_globalTooltipModel.flatMap { asDouble($0.get("hideDelay")) })
     }
 
@@ -1777,9 +1717,8 @@ public final class TooltipView {
     //   (see the PORT-NOTEs there), which ALSO performs upstream's
     //   `this._lastX = this._lastY = this._lastDataByCoordSys = null; this._cbParamsList = null;` reset
     //   (TooltipView.ts:401-402) — all four fields, since `hide()` stands in for both hops.
-    //   The ONLY part with no analogue is the `if (payload.from !== this.uid) { this._hide(…) }`
-    //   re-dispatch: this port has no per-view action routing (and no view `uid`), so there is no second
-    //   `hideTip` to guard against.
+    //   The upstream second hideTip dispatch is unnecessary in this host because the action listener is
+    //   already the terminal view-routing hop; the `from` uid is still preserved on pending actions.
     public func manuallyHideTip(payload: Payload, ecModel: GlobalModel, api: ExtensionAPI?) {
         _ = (payload, ecModel, api)
         hide()
@@ -2124,14 +2063,13 @@ private func isCenterAlign(_ align: String) -> Bool {
 }
 
 // upstream `shouldTooltipConfine` (component/tooltip/helper.ts:27): honour the explicit `confine`
-//   option, else confine in richText mode (the outside part is not visible). This port forces
-//   richText, so absent `confine` → confine.
+// option, else confine only when the authored renderMode is richText. The native drawing transport
+// is ZRText, but Web `auto` resolves to HTML and must retain HTML's default `confine: false` semantics.
 private func shouldTooltipConfine(_ tooltipModel: Model) -> Bool {
     if let confine = tooltipModel.get("confine") as? Bool {
         return confine
     }
-    // richText mode (forced in this native port).
-    return true
+    return tooltipModel.get("renderMode") as? String == "richText"
 }
 
 // Bridge the typed `CallbackDataParams` to the dynamic `[String: Any]` bag `formatTpl` reads by

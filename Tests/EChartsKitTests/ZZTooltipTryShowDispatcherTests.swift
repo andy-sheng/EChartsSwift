@@ -253,37 +253,28 @@ final class ZZTooltipTryShowDispatcherTests: XCTestCase {
         XCTAssertNil(tooltipText(view), "_tryShow with no target must hide too")
     }
 
-    // ========================================================================
-    // The `_hide` divergence: under `trigger:'axis'` the item leg's hide is suppressed, standing in for
-    // upstream's globalListener pend/merge where the axis leg's showTip beats the item leg's hideTip
-    // (see the PORT-NOTE on `TooltipView._hide`). Without it, the zr `mouseover` leg would tear down the
-    // axis tooltip the same pointer move had just put up.
-    // ========================================================================
-    func testItemLegHideIsSuppressedUnderAxisTrigger() {
+    func testTryShowEmitsUpstreamPendingActions() {
         let view = makeView(trigger: "axis")
         let tv = TooltipView(zr: view.zr, ecModel: view.ec.getModel()!)
-        // Put an axis tooltip on screen the way axisTrigger does, then have the item leg fail to match.
-        guard let bar = findSeriesEl(view, dataIndex: 0) else {
-            XCTFail("the bar series must render an element carrying ecData.dataIndex")
-            return
-        }
-        // The series leg self-gates on `trigger != 'item'`, so nothing is shown — but crucially the
-        //   no-dispatcher arm must NOT hide either.
-        tv._tryShow(TryShowParams(target: bar, offsetX: 100, offsetY: 100))
+        var actions: [Payload] = []
         let plain = Rect()
-        tv._tryShow(TryShowParams(target: plain, offsetX: 100, offsetY: 100))
-        XCTAssertFalse(tv._shownAsCmptItem)
-        // The observable assertion: `_hide` did not run, so a component-item box put up by the SAME
-        //   view survives a subsequent no-dispatcher `_tryShow`.
+        tv._tryShow(
+            TryShowParams(target: plain, offsetX: 100, offsetY: 100),
+            dispatchAction: { actions.append($0) }
+        )
+        XCTAssertEqual(actions.last?.type, "hideTip")
+        XCTAssertEqual(actions.last?.other["from"] as? String, tv.uid)
+
         guard let hitRect = findTooltipConfigEl(view, named: "Alpha") else {
             XCTFail("LegendView must stamp an ecData.tooltipConfig on the 'Alpha' item")
             return
         }
-        tv._tryShow(TryShowParams(target: hitRect, offsetX: 100, offsetY: 100))
+        tv._tryShow(
+            TryShowParams(target: hitRect, offsetX: 100, offsetY: 100),
+            dispatchAction: { actions.append($0) }
+        )
         XCTAssertTrue(tv.isShown(), "the component-item branch ignores `trigger` (upstream comment)")
-        tv._tryShow(TryShowParams(target: plain, offsetX: 100, offsetY: 100))
-        XCTAssertTrue(tv.isShown(),
-                      "under trigger:'axis' the item leg's _hide must be suppressed — the axis leg owns "
-                      + "the box and is the one that hides it")
+        XCTAssertEqual(actions.last?.type, "showTip")
+        XCTAssertEqual(actions.last?.other["from"] as? String, tv.uid)
     }
 }

@@ -21,6 +21,7 @@ final class ZZAxisCrosshairTests: XCTestCase {
     override func setUp() {
         super.setUp()
         ComponentModel.registerClass(BarSeriesModel.self)
+        ComponentModel.registerClass(ScatterSeriesModel.self)
         ComponentModel.registerClass(TooltipModel.self)
         ComponentModel.registerClass(AxisPointerModel.self)
     }
@@ -167,5 +168,91 @@ final class ZZAxisCrosshairTests: XCTestCase {
                         "axisPointer type:'cross' must react even when tooltip.trigger is 'none'")
         XCTAssertFalse(view.tooltipView?.isShown() ?? false,
                        "cross-only pointer must not invent a floating axis tooltip")
+    }
+
+    func testPolarCrossAxisPointerRendersAngleLineAndRadiusCircle() {
+        let view = EChartsView(width: 420, height: 360)
+        view.setOption([
+            "tooltip": [
+                "trigger": "axis",
+                "axisPointer": ["type": "cross"] as [String: Any]
+            ] as [String: Any],
+            "polar": [
+                "center": ["50%", "54%"],
+                "radius": "70%"
+            ] as [String: Any],
+            "angleAxis": ["type": "value", "startAngle": 0.0] as [String: Any],
+            "radiusAxis": ["type": "value", "min": 0.0, "max": 10.0] as [String: Any],
+            "series": [[
+                "type": "scatter",
+                "coordinateSystem": "polar",
+                "data": [[2.0, 0.0], [4.0, 90.0], [6.0, 180.0], [8.0, 270.0]]
+            ] as [String: Any]]
+        ])
+
+        let polar = view.ec.getModel()!.getSeriesByIndex(0)!.coordinateSystem as! Polar
+        let hoverPoint = polar.coordToPoint([
+            polar.getRadiusAxis().dataToCoord(4.0),
+            polar.getAngleAxis().dataToCoord(90.0)
+        ])
+        let beforeHover = Set(view.zr.storage.getDisplayList(true).map(ObjectIdentifier.init))
+        view._injectPointerForTest(type: "mousemove", zrX: hoverPoint[0], zrY: hoverPoint[1])
+
+        let displayList = view.zr.storage.getDisplayList(true)
+        let axisStates: [String] = ((view.ec.getModel()!.getComponent("axisPointer") as? AxisPointerModel)?
+            .coordSysAxesInfo as? CollectionResult)?.axesInfo.values.map {
+                "\($0.axis.dim):\(String(describing: $0.axisPointerModel.get("status"))):\(String(describing: $0.axisPointerModel.get("value"))):series=\($0.seriesModels.count):trigger=\($0.triggerTooltip)"
+            } ?? []
+        let pointerLines = displayList.compactMap { $0 as? Line }.filter { line in
+            guard !beforeHover.contains(ObjectIdentifier(line)) else { return false }
+            guard let shape = line.shape as? LineShape else { return false }
+            let dx = shape.x2 - shape.x1
+            let dy = shape.y2 - shape.y1
+            let length = hypot(dx, dy)
+            guard length > 20 else { return false }
+            let cross = abs((polar.cx - shape.x1) * dy - (polar.cy - shape.y1) * dx)
+            return cross / length < 1.0
+        }
+        let pointerCircles = displayList.compactMap { $0 as? ZRenderKit.Circle }.filter { circle in
+            guard !beforeHover.contains(ObjectIdentifier(circle)) else { return false }
+            guard let shape = circle.shape as? CircleShape else { return false }
+            return abs(shape.cx - polar.cx) < 0.5
+                && abs(shape.cy - polar.cy) < 0.5
+                && shape.r > 0
+                && shape.r < polar.getRadiusAxis().getExtent().max()!
+        }
+
+        XCTAssertFalse(pointerLines.isEmpty,
+                       "polar angle axis pointer must render the upstream center-spanning Line; states=\(axisStates), hover=\(hoverPoint), center=[\(polar.cx),\(polar.cy)]")
+        XCTAssertFalse(pointerCircles.isEmpty,
+                       "polar radius axis pointer must render the upstream concentric Circle")
+        if let pointerLine = pointerLines.first {
+            guard case let .string(fill)? = pointerLine.pathStyle.fill else {
+                XCTFail("the upstream polar line pointer must carry an explicit fill:'none'")
+                return
+            }
+            XCTAssertEqual(fill, "none")
+        }
+        if let pointerCircle = pointerCircles.first {
+            guard case let .string(fill)? = pointerCircle.pathStyle.fill else {
+                XCTFail("the upstream polar radius pointer must carry an explicit fill:'none'")
+                return
+            }
+            XCTAssertEqual(fill, "none",
+                           "a radius-axis pointer is an outlined circle, never a default black disk")
+        }
+        XCTAssertTrue(view.tooltipView?.isShown() ?? false,
+                      "the same real polar mousemove must also show the axis tooltip; states=\(axisStates)")
+
+        view._injectPointerForTest(type: "mousemove", zrX: 1, zrY: 1)
+        let afterLeave = view.zr.storage.getDisplayList(true)
+        if let pointerLine = pointerLines.first {
+            XCTAssertFalse(afterLeave.contains { $0 === pointerLine },
+                           "moving outside the polar area must hide the angle pointer group")
+        }
+        if let pointerCircle = pointerCircles.first {
+            XCTAssertFalse(afterLeave.contains { $0 === pointerCircle },
+                           "moving outside the polar area must hide the radius pointer group")
+        }
     }
 }

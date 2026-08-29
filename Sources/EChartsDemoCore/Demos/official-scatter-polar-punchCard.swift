@@ -8,8 +8,8 @@
 //   - webOptionJS: the TS type annotation on the tooltip formatter (`function (params: any)`) is
 //     dropped — the reference pane runs the script as classic JS, where `: any` is a SyntaxError.
 //     Everything else (hours/days/data consts, all three closures) is verbatim.
-//   - native pane uses the typed symbol-size callback seam; animation delay and tooltip formatting do
-//     not affect the static comparison frame.
+//   - native pane uses the typed symbol-size and tooltip formatter callback seams.
+import Foundation
 import EChartsKit
 
 extension EChartsDemoRegistry {
@@ -103,10 +103,7 @@ option = {
                 "left": "right"
             ] as [String: Any],
             "polar": [:] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure rendered
-            // "<count> commits in <hour> of <day>" from params.value[2]/[1]/[0]. It was the
-            // tooltip's only key, so the tooltip stays on with echarts' default formatter.
-            "tooltip": [:] as [String: Any],
+            "tooltip": ["formatter": punchCardTooltipFormatter] as [String: Any],
             "angleAxis": [
                 "type": "category",
                 "data": punchCardHours,
@@ -142,6 +139,31 @@ option = {
                 ] as [String: Any]
             ]
         ])
+}
+
+private let punchCardTooltipFormatter: (TooltipCallbackDataParams) -> String = { params in
+    let values: [Double]
+    if let row = params.value as? [Double] {
+        values = row
+    }
+    else if let row = params.value as? [Any] {
+        values = row.compactMap {
+            if let value = $0 as? Double { return value }
+            if let value = $0 as? Int { return Double(value) }
+            if let value = $0 as? NSNumber { return value.doubleValue }
+            return nil
+        }
+    }
+    else {
+        return ""
+    }
+    guard values.count > 2 else { return "" }
+    let dayIndex = Int(values[0])
+    let hourIndex = Int(values[1])
+    guard punchCardDays.indices.contains(dayIndex), punchCardHours.indices.contains(hourIndex) else {
+        return ""
+    }
+    return "\(Int(values[2])) commits in \(punchCardHours[hourIndex]) of \(punchCardDays[dayIndex])"
 }
 
 private let punchCardHours: [String] = [

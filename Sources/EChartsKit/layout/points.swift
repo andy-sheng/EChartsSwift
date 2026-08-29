@@ -117,8 +117,11 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
 
                 if useTypedArray {
                     if offset + 1 < points.count {
-                        points[offset] = point.count > 0 ? point[0] : Double.nan
-                        points[offset + 1] = point.count > 1 ? point[1] : Double.nan
+                        // Upstream stores this stage in a Float32Array. Quantize at the assignment
+                        // boundary so degenerate polar points and hit-derived axis values follow the
+                        // same IEEE-754 path as Web rather than retaining Swift Double precision.
+                        points[offset] = point.count > 0 ? Double(Float(point[0])) : Double.nan
+                        points[offset + 1] = point.count > 1 ? Double(Float(point[1])) : Double.nan
                     }
                     offset += 2
                 }

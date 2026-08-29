@@ -63,6 +63,11 @@ public final class TooltipRichContent {
 
     private var _hideDelay: Double = 0
 
+    // The native host always paints through ZRText, but the authored/rendered Web mode still controls
+    // box measurement and placement. `auto` resolves to HTML in the browser; only an explicit
+    // `richText` option uses TooltipRichContent's shadow-inclusive geometry.
+    private var _usesRichTextLayout = false
+
     // upstream: el: ZRText (public). Created lazily by setContent.
     public var el: ZRText!
 
@@ -116,9 +121,12 @@ public final class TooltipRichContent {
         }
 
         let textStyleModel = tooltipModel.getModel("textStyle")
+        self._usesRichTextLayout = str(tooltipModel.get("renderMode")) == "richText"
 
-        // upstream: new ZRText({ style: { rich, text, lineHeight: 22, borderWidth: 1, borderColor,
-        //   textShadowColor, fill, padding, verticalAlign: 'top', align: 'left' }, z })
+        // Native has no DOM-backed TooltipHTMLContent, so ZRText is also the host for the Web
+        // default `renderMode: 'html'`. Keep the upstream HTML renderer's computed line-height
+        // (`retrieve2(textStyle.lineHeight, Math.round(fontSize * 3 / 2))`) instead of the 22px
+        // constant used only by upstream's explicitly selected richText renderer.
         // NOTE (port): TextStyleProps is a value type — useStyle copies it — so ALL style fields
         //   (including the ones upstream mutates AFTER construction via `this.el.style[...]=`) are set
         //   on the struct BEFORE useStyle, then applied in one shot.
@@ -147,7 +155,13 @@ public final class TooltipRichContent {
             with: "\n",
             options: .regularExpression
         )
-        style.lineHeight = 22
+        if self._usesRichTextLayout {
+            style.lineHeight = 22
+        }
+        else {
+            let fontSize = dbl(textStyleModel.get("fontSize")) ?? 14
+            style.lineHeight = dbl(textStyleModel.get("lineHeight")) ?? (fontSize * 3 / 2).rounded()
+        }
         style.borderWidth = 1
         style.borderColor = borderColor
         style.textShadowColor = str(textStyleModel.get("textShadowColor"))
@@ -155,6 +169,26 @@ public final class TooltipRichContent {
         style.padding = numberOrNumberArray(getPaddingFromTooltipModel(tooltipModel, .richText))
         style.verticalAlign = .top
         style.align = .left
+
+        // TooltipHTMLContent appends `extraCssText` to the element style verbatim. Native rich text has
+        // no CSS engine, but zrender exposes the equivalent fixed-width + wrapping primitives. Preserve
+        // those upstream semantics generically for the supported CSS declarations instead of treating
+        // any demo specially.
+        if let extraCssText = tooltipModel.get("extraCssText") as? String {
+            for declaration in extraCssText.split(separator: ";") {
+                let pair = declaration.split(separator: ":", maxSplits: 1).map {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                }
+                guard pair.count == 2 else { continue }
+                if pair[0] == "width" {
+                    let raw = pair[1].replacingOccurrences(of: "px", with: "")
+                    if let width = Double(raw) { style.width = width }
+                }
+                else if pair[0] == "white-space" && pair[1] == "normal" {
+                    style.overflow = "break"
+                }
+            }
+        }
 
         // upstream each(['backgroundColor', 'borderRadius', 'shadowColor', 'shadowBlur',
         //   'shadowOffsetX', 'shadowOffsetY'], propName => el.style[propName] = tooltipModel.get(propName))
@@ -175,6 +209,10 @@ public final class TooltipRichContent {
 
         let el = ZRText()
         el.useStyle(style)
+        // HTML mode appends `pointer-events:none` whenever enterable is false. Rich-text mode uses a
+        // zrender element instead of a DOM node, so `silent` is the exact hit-test/event-routing
+        // equivalent: data graphics underneath remain reachable while the tooltip is visible.
+        el.silent = !self._enterable
         el.z = dbl(tooltipModel.get("z")) ?? 0
         // The native host has no DOM tooltip layer: rich text is inserted into the same zrender
         // storage as the chart. A series may use a positive zlevel (effectScatter commonly uses 1),
@@ -214,12 +252,18 @@ public final class TooltipRichContent {
 
     public func setEnterable(_ enterable: Bool?) {
         self._enterable = enterable ?? false
+        self.el?.silent = !self._enterable
     }
 
     // upstream: getSize(): [number, number]
     public func getSize() -> [Double] {
         let el = self.el!
         let bounding = el.getBoundingRect()
+        if !self._usesRichTextLayout {
+            // TooltipHTMLContent.getSize(): DOM offsetWidth/offsetHeight include the border box but
+            // exclude the CSS box shadow.
+            return [bounding?.width ?? 0, bounding?.height ?? 0]
+        }
         // bounding rect does not include shadow. For renderMode richText,
         // if overflow, it will be cut. So calculate them accurately.
         let shadowOuterSize = calcShadowOuterSize(el.textStyle)
@@ -238,7 +282,9 @@ public final class TooltipRichContent {
         y = self._styleCoord[1]
         let style = el.textStyle!
         let borderWidth = mathMaxWith0(style.borderWidth ?? 0)
-        let shadowOuterSize = calcShadowOuterSize(style)
+        let shadowOuterSize = self._usesRichTextLayout
+            ? calcShadowOuterSize(style)
+            : (left: 0, right: 0, top: 0, bottom: 0)
         // rich text x, y do not include border.
         el.x = x + borderWidth + shadowOuterSize.left
         el.y = y + borderWidth + shadowOuterSize.top

@@ -1,0 +1,25 @@
+{
+  "id": "official-line-polar2-hover",
+  "demo": "official-line-polar2",
+  "checks": [
+    "Hover a non-zero-radius rose point through the real Handler; Native and Web must show the same angle and radius axisPointer labels and tooltip.",
+    "The radius pointer must be an outlined circle rather than a filled disk.",
+    "Moving out and globalOut must clear the tooltip and both polar pointers without residue."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "hoverSeries", "seriesIndex": 0, "dataIndex": 22},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "hover-visible-petal"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "hover-restored"},
+    {"action": "clickLegend", "name": "line", "movePointer": true},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "legend-line-off"},
+    {"action": "clickLegend", "name": "line", "movePointer": true},
+    {"action": "wait", "milliseconds": 700},
+    {"action": "settle", "capture": "legend-line-restored"}
+  ]
+}
