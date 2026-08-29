@@ -130,8 +130,14 @@ final class L5ViewReuseSafetyTests: XCTestCase {
     }
     func testTree() {
         assertNoDuplication("tree",
-            ["series": [["type": "tree", "data": [["name": "root", "children": [["name": "a"], ["name": "b"]]]]]]],
-            update: ["series": [["type": "tree", "data": [["name": "root", "children": [["name": "a"], ["name": "c"]]]]]]])
+            ["series": [["type": "tree",
+                          "data": [["name": "root", "children": [
+                            ["name": "a", "value": 1], ["name": "b", "value": 2]
+                          ]]]]]],
+            update: ["series": [["type": "tree",
+                                  "data": [["name": "root", "children": [
+                                    ["name": "a", "value": 3], ["name": "b", "value": 4]
+                                  ]]]]]])
     }
     func testTreemap() {
         assertNoDuplication("treemap",

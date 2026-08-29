@@ -192,6 +192,27 @@ final class AnimationSmokeTests: XCTestCase {
         assertChannels(channels, [30, 50, 70, 1], "color.lerp(0.5) must be the channel-wise midpoint")
     }
 
+    func test_2d_array_interpolation_preserves_the_live_output_tail_like_upstream() throws {
+        let source = [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]
+        let target = TweenTarget(["points": source])
+        let animator = Animator<TweenTarget>(target, false)
+        animator.when(duration, ["points": [[0.0, 0.0]]])
+        animator.start(.named("linear"))
+        let clip = try XCTUnwrap(animator.getClip())
+
+        _ = clip.step(0, 0)
+        XCTAssertEqual(target.animationGet("points") as? [[Double]], source,
+                       "t=0 must keep every row in the live output array")
+
+        _ = clip.step(duration / 2, duration / 2)
+        let mid = try XCTUnwrap(target.animationGet("points") as? [[Double]])
+        XCTAssertEqual(mid.count, source.count,
+                       "upstream interpolate2DArray overwrites a prefix without truncating out")
+        XCTAssertEqual(mid[0], [5.0, 10.0])
+        XCTAssertEqual(Array(mid.dropFirst()), Array(source.dropFirst()),
+                       "rows outside the interpolated prefix stay in the live output buffer")
+    }
+
     // MARK: - helpers
 
     /// The Track's number interpolation: (p1 - p0) * percent + p0.

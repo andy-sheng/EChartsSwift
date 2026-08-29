@@ -76,8 +76,11 @@ open class Symbol: Group {
     ///   can strip them. Defaults false (a normal SymbolDraw symbol is not temporary).
     public var __temp: Bool = false
 
-    // TreeView's `TreeSymbol` extension fields. They cache the previous/current radial layout exactly
-    // like upstream so newly-entering radial nodes and edges can start at the source's old angle.
+    // TreeView's `TreeSymbol` extension fields. Upstream stores these directly on SymbolClz; keeping
+    // them on the Swift Symbol preserves the same element-owned identity and leave-animation lifetime.
+    var __edge: Path?
+    var __oldX: Double?
+    var __oldY: Double?
     var __radialOldRawX: Double?
     var __radialOldRawY: Double?
     var __radialRawX: Double?

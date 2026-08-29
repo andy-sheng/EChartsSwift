@@ -242,6 +242,44 @@ final class TreeExpandCollapseTests: XCTestCase {
                        "Web re-expands a polyline from its retained parent point")
     }
 
+    // Upstream retains the polyline on `symbolEl.__edge` while removeNodeEdge owns its leave tween.
+    // Sweeping the edge during render removes the entire fork before the first transition frame.
+    func testPolylineCollapseRetainsParentForkForLeaveAnimation() throws {
+        let view = makeTreeView(edgeShape: "polyline")
+        settleAnimations(view.ec.getRoot())
+        let series = try XCTUnwrap(treeSeries(view))
+        let aIndex = try XCTUnwrap(dataIndex(series, name: "A"))
+        let a = try XCTUnwrap(series.getData().getItemGraphicEl(aIndex) as? Symbol)
+        let fork = try XCTUnwrap(a.__edge as? TreePath)
+        let expandedShape = try XCTUnwrap(fork.shape as? TreeEdgeShape)
+        let expandedChildPoints = expandedShape.childPoints
+        XCTAssertGreaterThan(expandedChildPoints.count, 1)
+
+        var action = Payload(type: "treeExpandAndCollapse")
+        action.other["seriesId"] = series.id
+        action.other["dataIndex"] = aIndex
+        view.ec.dispatchAction(action)
+
+        XCTAssertTrue(a.__edge === fork,
+                      "collapse keeps the upstream Symbol-owned edge identity")
+        XCTAssertNotNil(fork.parent,
+                        "the parent fork stays attached until the leave callback")
+        XCTAssertNotNil(fork.animators.first { $0.scope == "leave" },
+                        "removeNodeEdge drives the parent fork through a leave animation")
+
+        sampleAnimations(view.ec.getRoot(), at: 0)
+        let startShape = try XCTUnwrap(fork.shape as? TreeEdgeShape)
+        XCTAssertEqual(startShape.childPoints, expandedChildPoints,
+                       "upstream array interpolation preserves the complete fork at collapse t=0")
+
+        sampleAnimations(view.ec.getRoot(), at: 375)
+        let midShape = try XCTUnwrap(fork.shape as? TreeEdgeShape)
+        XCTAssertEqual(midShape.childPoints.count, expandedChildPoints.count,
+                       "upstream writes into the live childPoints array without truncating its tail")
+        XCTAssertEqual(Array(midShape.childPoints.dropFirst()), Array(expandedChildPoints.dropFirst()),
+                       "only the interpolated prefix moves while the remaining fork branches persist")
+    }
+
     func testInsertedNodeUsesDataDiffIdentityAndStartsAtItsParent() throws {
         let view = EChartsView(width: 400, height: 300)
         func option(_ children: [[String: Any]]) -> [String: Any] {

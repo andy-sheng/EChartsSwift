@@ -82,23 +82,32 @@ fileprivate func interpolateNumber(_ p0: Double, _ p1: Double, _ percent: Double
     return (p1 - p0) * percent + p0
 }
 
-// out-param dropped, value-returning per CONVENTIONS §3.
+// Swift returns the updated value instead of mutating an `out` reference, but the caller must seed
+// `out` with the live target array. Upstream only overwrites the interpolated prefix and deliberately
+// leaves any longer tail in `out` intact. TreePath relies on that when a many-child polyline leaves
+// toward one collapsed child point: the fork stays orthogonal until the edge is detached.
 fileprivate func interpolate1DArray(
+    _ outValue: [Double],
     _ p0: [Double],
     _ p1: [Double],
     _ percent: Double
 ) -> [Double] {
     // TODO Handling different length TypedArray
     let len = p0.count
-    var out = [Double](repeating: 0, count: len)
+    var out = outValue
+    if out.count < len {
+        out.append(contentsOf: repeatElement(0, count: len - out.count))
+    }
     for i in 0..<len {
         out[i] = interpolateNumber(p0[i], p1[i], percent)
     }
     return out
 }
 
-// out-param dropped, value-returning per CONVENTIONS §3.
+// Same live-output semantics as upstream `interpolate2DArray(out, p0, p1, percent)`: grow missing
+// rows/cells, overwrite only the p0-sized prefix, and never truncate existing rows or columns.
 fileprivate func interpolate2DArray(
+    _ outValue: [[Double]],
     _ p0: [[Double]],
     _ p1: [[Double]],
     _ percent: Double
@@ -106,13 +115,15 @@ fileprivate func interpolate2DArray(
     let len = p0.count
     // TODO differnt length on each item?
     let len2 = len != 0 ? p0[0].count : 0
-    var out = [[Double]]()
+    var out = outValue
     for i in 0..<len {
-        var row = [Double](repeating: 0, count: len2)
-        for j in 0..<len2 {
-            row[j] = interpolateNumber(p0[i][j], p1[i][j], percent)
+        if out.count <= i { out.append([]) }
+        if out[i].count < len2 {
+            out[i].append(contentsOf: repeatElement(0, count: len2 - out[i].count))
         }
-        out.append(row)
+        for j in 0..<len2 {
+            out[i][j] = interpolateNumber(p0[i][j], p1[i][j], percent)
+        }
     }
     return out
 }
@@ -629,11 +640,6 @@ public final class Track {
             w = easingFunc(w)
         }
 
-        // upstream seeds a scratch `targetArr` (= isAdditive ? _additiveValue : isValueColor ?
-        //   tmpRgba : target[propName]) for the array/color interpolation out-param. Under §3
-        //   value-returning interpolation this scratch is unneeded; each branch assigns the
-        //   returned value to `_additiveValue` (additive) or to target[propName] directly.
-
         // PORT-NOTE: see AnimationTarget — Element / the style & shape bags now conform, so keyed
         //   set/get routes through them; a non-conforming target still no-ops (safe default).
         let t = target as? AnimationTarget
@@ -643,9 +649,16 @@ public final class Track {
             t?.animationSet(propName, w < 1 ? frame.rawValue : nextFrame.rawValue)
         }
         else if isArrayValueType(valType) {
+            // Upstream passes the live `target[propName]` as the interpolation output buffer. Do the
+            // same with a value copy, then write it back, preserving any tail not covered by p0.
+            let liveOutput = isAdditive ? self._additiveValue : t?.animationGet(propName)
             let out: Any = valType == VALUE_TYPE_1D_ARRAY
-                ? interpolate1DArray(asArray1D(valOf(frame)), asArray1D(valOf(nextFrame)), w)
-                : interpolate2DArray(asArray2D(valOf(frame)), asArray2D(valOf(nextFrame)), w)
+                ? interpolate1DArray(
+                    asArray1D(liveOutput), asArray1D(valOf(frame)), asArray1D(valOf(nextFrame)), w
+                )
+                : interpolate2DArray(
+                    asArray2D(liveOutput), asArray2D(valOf(frame)), asArray2D(valOf(nextFrame)), w
+                )
             if isAdditive {
                 self._additiveValue = out
             }
@@ -671,7 +684,7 @@ public final class Track {
                     return [
                         "offset": interpolateNumber(colorStop.offset, nextColorStop.offset, w),
                         "color": rgba2String(interpolate1DArray(
-                            colorStop.color, nextColorStop.color, w
+                            [], colorStop.color, nextColorStop.color, w
                         ))
                     ]
                 },
@@ -689,7 +702,7 @@ public final class Track {
             t?.animationSet(propName, output)
         }
         else if isValueColor {
-            tmpRgba = interpolate1DArray(asArray1D(valOf(frame)), asArray1D(valOf(nextFrame)), w)
+            tmpRgba = interpolate1DArray(tmpRgba, asArray1D(valOf(frame)), asArray1D(valOf(nextFrame)), w)
             if isAdditive {
                 self._additiveValue = tmpRgba
             }
