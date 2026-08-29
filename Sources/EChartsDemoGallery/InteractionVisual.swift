@@ -799,17 +799,26 @@ private func writeOfficialInteractionScenarios(
                         "dataIndex": Double(target.0), "dataName": targetName,
                         "movePointer": false,
                     ],
-                    // Official tree demos animate updates for 750 ms. Capture after the authored
-                    // animation has naturally reached its final state.
-                    ["action": "wait", "milliseconds": 900.0],
-                    ["action": "snapshot", "capture": "\(capturePrefix)-collapsed"],
+                    // Drive the real update clips at identical normalized phases on both renderers.
+                    // Tree parity depends on the source position and the complete node/edge
+                    // trajectory, not only on the settled layout.
+                    ["action": "sampleAnimations", "phase": 0.0,
+                     "capture": "\(capturePrefix)-collapse-start"],
+                    ["action": "sampleAnimations", "phase": 0.5,
+                     "capture": "\(capturePrefix)-collapse-mid"],
+                    ["action": "sampleAnimations", "phase": 1.0],
+                    ["action": "settle", "capture": "\(capturePrefix)-collapsed"],
                     [
                         "action": "clickData", "seriesIndex": Double(seriesIndex),
                         "dataIndex": Double(target.0), "dataName": targetName,
                         "movePointer": false,
                     ],
-                    ["action": "wait", "milliseconds": 900.0],
-                    ["action": "snapshot", "capture": "\(capturePrefix)-restored"],
+                    ["action": "sampleAnimations", "phase": 0.0,
+                     "capture": "\(capturePrefix)-expand-start"],
+                    ["action": "sampleAnimations", "phase": 0.5,
+                     "capture": "\(capturePrefix)-expand-mid"],
+                    ["action": "sampleAnimations", "phase": 1.0],
+                    ["action": "settle", "capture": "\(capturePrefix)-restored"],
                 ]
                 treeExpandCollapseCount += 1
             }
@@ -1532,6 +1541,9 @@ private func writeOfficialInteractionScenarios(
         if category == "tree" {
             checks.append(
                 "For collapsed tree frames, compare collapsed-node state and descendant node/label visibility. ECharts 6.1.0 Web is independently verified to retain orphan exit-edge shapes after its animation reports finished; do not require Native to reproduce those orphan edges."
+            )
+            checks.append(
+                "For each collapse and expansion, compare start, midpoint and completion. Nodes and every attached edge endpoint must continuously interpolate from the same parent/source layout as Web; appearing directly at the target layout is a failure."
             )
         }
         if category == "treemap" {
