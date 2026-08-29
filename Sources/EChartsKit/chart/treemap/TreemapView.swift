@@ -135,13 +135,33 @@ public struct FoundTargetInfo {
     }
 }
 
-// upstream: RenderResult / ReRoot / LastCfg / inner(makeInner) — DEFERRED (animation/diff subsystem).
-// PORT-NOTE (deferred): the animation storage (`lastsForAnimation`, `willDeleteEls`, `willInvisibleEls`,
-//   `renderFinally`), the reRoot drill/roll descriptor, and `inner(el).{nodeWidth,nodeHeight,willDelete}`
-//   are not ported — the static render rebuilds the group each pass (SunburstView/PieView convention).
+// The port keeps the upstream transition semantics with a raw-index keyed storage and a geometry
+// snapshot: matching elements start at their previous geometry, entering tiles grow from zero, and
+// leaving tiles fade before removal. The internal upstream DataDiffer/ReRoot helper types remain
+// collapsed into the Swift traversal below.
 
 // upstream: class TreemapView extends ChartView
 open class TreemapView: ChartView {
+
+    private struct GroupAnimationState {
+        var x: Double
+        var y: Double
+    }
+
+    private struct RectAnimationState {
+        var shape: RectShape
+        var opacity: Double
+        var invisible: Bool
+    }
+
+    private struct AnimationSnapshot {
+        var nodeGroup: [Int: GroupAnimationState] = [:]
+        var background: [Int: RectAnimationState] = [:]
+        var content: [Int: RectAnimationState] = [:]
+        var nodeGroupElements: [Int: Group] = [:]
+        var backgroundElements: [Int: Rect] = [:]
+        var contentElements: [Int: Rect] = [:]
+    }
 
     // static type = 'treemap';  /  type = TreemapView.type;
     public static let treemapType = "treemap"
@@ -268,13 +288,30 @@ open class TreemapView: ChartView {
 
         // const containerGroup = this._giveContainerGroup(layoutInfo);
         let containerGroup = self._giveContainerGroup(layoutInfo)
-        // const hasAnimation = seriesModel.get('animation');  -> DEFERRED (animation not ported).
+        // const hasAnimation = seriesModel.get('animation');
+        let hasAnimation = (seriesModel.get("animation") as? Bool) != false
+        let payloadType = payload.type
+        let shouldAnimate = hasAnimation && !isInit && (
+            payloadType.isEmpty
+                || payloadType == "treemapZoomToNode"
+                || payloadType == "treemapRootToNode"
+        )
+        let animationSnapshot = shouldAnimate ? self._captureAnimationSnapshot() : nil
 
         // const renderResult = this._doRender(containerGroup, seriesModel, reRoot);
-        self._doRender(containerGroup, seriesModel)
-        // PORT-NOTE (deferred): (hasAnimation && !isInit && ...) ? this._doAnimation(...) : renderResult.renderFinally();
-        //   Animation + `renderFinally` (deferred removal / invisible flagging) DEFERRED — the static
-        //   rebuild already reflects the final state.
+        let removedElements = self._doRender(containerGroup, seriesModel)
+        if let animationSnapshot = animationSnapshot {
+            // Upstream renders the final geometry first, restores each reused element to its recorded
+            // old geometry, and only then starts the shared animation wrap. Doing the restore before
+            // returning from render is observable: the first painted frame remains the source layout
+            // instead of flashing/jumping to the destination until the first animation tick.
+            self._animateFromSnapshot(animationSnapshot, removedElements, seriesModel)
+        }
+        else {
+            for element in removedElements {
+                if let parent = element.parent as? Group { _ = parent.remove(element) }
+            }
+        }
 
         // this._resetController(api);
         //   The RoamController is wired live by EChartsView._setupTreemapRoam (the TreemapView is
@@ -314,43 +351,42 @@ open class TreemapView: ChartView {
         return containerGroup!
     }
 
-    private func _doRender(_ containerGroup: Group, _ seriesModel: TreemapSeriesModel) {
+    private func _doRender(_ containerGroup: Group, _ seriesModel: TreemapSeriesModel) -> [Element] {
         // const thisTree = seriesModel.getData().tree;
         guard let thisTree = seriesModel.getData().tree else {
-            return
+            return []
         }
 
         // ------------------------------------------------------------------------------------------
-        // REUSE render deviation (batch-A morph idiom): upstream builds new/old element storage, runs a
-        //   hierarchical `DataDiffer` (`dualTravel`) that reuses graphic elements by rawIndex/id and
-        //   records `lastsForAnimation` for `_doAnimation`, then defers removal via `renderFinally`. The
-        //   full diff + `_doAnimation` (fade/drill re-root) are still DEFERRED, but the per-node elements
-        //   in `_storage` now PERSIST so a same-node-count value change MORPHS: each nodeGroup animates
-        //   to its new (x,y) and its bg/content rect resizes to the new layout slot (renderNode reuses by
-        //   rawIndex and `updateProps` the shape). A node-count change (or the first render) rebuilds
-        //   fresh — the container is wiped and the storage reset (SunburstView/PieView convention).
+        // Upstream builds old/new storage and runs a hierarchical DataDiffer. Here the traversal keeps
+        // the same essential raw-index identity mapping: matching groups/rects are reused, unmatched
+        // new elements enter, and unmatched old elements remain attached until the transition ends.
         // ------------------------------------------------------------------------------------------
-        // Count the view nodes of the new tree (structure is stable for a value-only merge). Compared to
-        //   the previous render's count to gate morph-vs-rebuild — consistent with `_prevNodeCount`
-        //   being stored as this same count below.
+        // Keep the visible-node count for diagnostics/removal bookkeeping; unlike the old implementation,
+        // it does not gate morphing because drill-down naturally changes the visible count.
         func countNodes(_ node: TreeNode) -> Int {
             var n = 1
             for child in node.viewChildren { n += countNodes(child) }
             return n
         }
         let newNodeCount = countNodes(thisTree.root)
-        // Morph iff we already hold persistent node elements AND the node count is unchanged (values
-        //   changed → the layout re-laid the same tiles). Else rebuild fresh.
-        let canMorph = !self._storage.nodeGroup.isEmpty && self._prevNodeCount == newNodeCount
+        let oldStorage = self._storage
+        let nextStorage = RenderElementStorage()
+        // Upstream diffs by raw index/id even when the visible node count changes during drill-down.
+        // Rebuilding on a count change discards the source geometry and makes the transition start from
+        // an empty/target layout. Reuse every matching raw index and treat only unmatched entries as
+        // enter/leave elements.
+        let canMorph = !oldStorage.nodeGroup.isEmpty
 
         if !canMorph {
             _ = containerGroup.removeAll()
-            self._storage = RenderElementStorage()
         }
 
         // dualTravel([thisTree.root], ...) collapsed to a static pre-order travel.
         func travel(_ thisNode: TreeNode, _ parentGroup: Group, _ depth: Double) {
-            let group = self.renderNode(seriesModel, thisNode, parentGroup, depth, canMorph)
+            let group = self.renderNode(
+                seriesModel, thisNode, parentGroup, depth, canMorph, oldStorage, nextStorage
+            )
             // group && dualTravel(thisNode.viewChildren || [], group, depth + 1);
             if let group = group {
                 for child in thisNode.viewChildren {
@@ -363,11 +399,197 @@ open class TreemapView: ChartView {
         // this._oldTree = thisTree; this._storage = thisStorage;
         self._oldTree = thisTree
         self._prevNodeCount = newNodeCount
+        self._storage = nextStorage
+
+        var removed: [Element] = []
+        for (rawIndex, element) in oldStorage.nodeGroup where nextStorage.nodeGroup[rawIndex] == nil {
+            removed.append(element)
+        }
+        for (rawIndex, element) in oldStorage.background where nextStorage.background[rawIndex] == nil {
+            removed.append(element)
+        }
+        for (rawIndex, element) in oldStorage.content where nextStorage.content[rawIndex] == nil {
+            removed.append(element)
+        }
+        return removed
     }
 
-    // upstream: _doAnimation(...) — DEFERRED (util/animation not ported; static render is the final state).
-    // PORT-NOTE (deferred): delete/other animations (fade-out to corner, drill/roll re-root transitions,
-    //   fade-in) are not ported.
+    private func _captureAnimationSnapshot() -> AnimationSnapshot {
+        var snapshot = AnimationSnapshot()
+        snapshot.nodeGroupElements = self._storage.nodeGroup
+        snapshot.backgroundElements = self._storage.background
+        snapshot.contentElements = self._storage.content
+        for (rawIndex, group) in self._storage.nodeGroup {
+            snapshot.nodeGroup[rawIndex] = GroupAnimationState(
+                x: group.x,
+                y: group.y
+            )
+        }
+        for (rawIndex, rect) in self._storage.background {
+            if let shape = rect.shape as? RectShape {
+                snapshot.background[rawIndex] = RectAnimationState(
+                    shape: shape,
+                    opacity: rect.pathStyle.opacity ?? 1,
+                    invisible: rect.invisible
+                )
+            }
+        }
+        for (rawIndex, rect) in self._storage.content {
+            if let shape = rect.shape as? RectShape {
+                snapshot.content[rawIndex] = RectAnimationState(
+                    shape: shape,
+                    opacity: rect.pathStyle.opacity ?? 1,
+                    invisible: rect.invisible
+                )
+            }
+        }
+        return snapshot
+    }
+
+    private func _animateFromSnapshot(
+        _ snapshot: AnimationSnapshot,
+        _ removedElements: [Element],
+        _ seriesModel: TreemapSeriesModel
+    ) {
+        struct GroupAction {
+            var element: Group
+            var old: GroupAnimationState
+            var targetX: Double
+            var targetY: Double
+        }
+        struct RectAction {
+            var element: Rect
+            var old: RectAnimationState
+            var target: RectAnimationState
+        }
+
+        var groupActions: [GroupAction] = []
+        var rectActions: [RectAction] = []
+        var exitActions: [Rect] = []
+        for (rawIndex, group) in self._storage.nodeGroup {
+            guard let old = snapshot.nodeGroup[rawIndex], old.x != group.x || old.y != group.y else {
+                continue
+            }
+            groupActions.append(GroupAction(
+                element: group,
+                old: old,
+                targetX: group.x,
+                targetY: group.y
+            ))
+        }
+        func collectRects(_ current: [Int: Rect], _ old: [Int: RectAnimationState]) {
+            for (rawIndex, rect) in current {
+                guard let targetShape = rect.shape as? RectShape else { continue }
+                let target = RectAnimationState(
+                    shape: targetShape,
+                    opacity: rect.pathStyle.opacity ?? 1,
+                    invisible: rect.invisible
+                )
+                var collapsed = RectShape()
+                collapsed.x = 0
+                collapsed.y = 0
+                collapsed.width = 0
+                collapsed.height = 0
+                let oldState = old[rawIndex] ?? RectAnimationState(
+                    shape: collapsed,
+                    opacity: 0,
+                    invisible: false
+                )
+                if oldState.shape.x != target.shape.x || oldState.shape.y != target.shape.y
+                    || oldState.shape.width != target.shape.width
+                    || oldState.shape.height != target.shape.height
+                    || oldState.opacity != target.opacity
+                    || oldState.invisible != target.invisible {
+                    rectActions.append(RectAction(element: rect, old: oldState, target: target))
+                }
+            }
+        }
+        collectRects(self._storage.background, snapshot.background)
+        collectRects(self._storage.content, snapshot.content)
+
+        let removedIDs = Set(removedElements.map(ObjectIdentifier.init))
+        exitActions = (Array(snapshot.backgroundElements.values) + Array(snapshot.contentElements.values))
+            .filter { removedIDs.contains(ObjectIdentifier($0)) && !$0.invisible }
+
+        var remaining = groupActions.count + rectActions.count + exitActions.count
+        guard remaining > 0 else {
+            for element in removedElements {
+                if let parent = element.parent as? Group { _ = parent.remove(element) }
+            }
+            self._state = "ready"
+            return
+        }
+
+        let durationRaw = seriesModel.get("animationDurationUpdate")
+        let duration = (durationRaw as? Double)
+            ?? (durationRaw as? Int).map(Double.init)
+            ?? (durationRaw as? NSNumber)?.doubleValue
+            ?? 0
+        let easing = (seriesModel.get("animationEasing") as? String).map(AnimationEasing.named)
+            ?? .named("cubicOut")
+        self._state = "animating"
+        let finishOne: () -> Void = { [weak self] in
+            remaining -= 1
+            if remaining == 0 {
+                for action in rectActions {
+                    action.element.invisible = action.target.invisible
+                    action.element.markRedraw()
+                }
+                for element in removedElements {
+                    if let parent = element.parent as? Group { _ = parent.remove(element) }
+                }
+                self?._state = "ready"
+            }
+        }
+        func animationConfig() -> ElementAnimateConfig {
+            var config = ElementAnimateConfig()
+            config.duration = duration
+            config.delay = 0
+            config.easing = easing
+            // Web does not paint between restoring the source values and the first RAF sample. Native
+            // can paint synchronously after dispatch, so retaining the source values here is the visual
+            // equivalent; the clip still reaches the same target on its terminal frame.
+            config.setToFinal = false
+            config.scope = "treemap-transition"
+            config.done = finishOne
+            config.aborted = finishOne
+            return config
+        }
+
+        for action in groupActions {
+            _ = action.element.stopAnimation("update")
+            action.element.x = action.old.x
+            action.element.y = action.old.y
+            action.element.markRedraw()
+            action.element.animateTo(
+                ["x": action.targetX, "y": action.targetY],
+                animationConfig()
+            )
+        }
+        for action in rectActions {
+            _ = action.element.stopAnimation("update")
+            _ = action.element.setShape(action.old.shape)
+            action.element.setStyle("opacity", action.old.opacity)
+            action.element.invisible = action.old.invisible
+            action.element.markRedraw()
+            action.element.animateTo([
+                "shape": [
+                    "x": action.target.shape.x,
+                    "y": action.target.shape.y,
+                    "width": action.target.shape.width,
+                    "height": action.target.shape.height,
+                ] as [String: Any],
+                "style": ["opacity": action.target.opacity] as [String: Any],
+            ], animationConfig())
+        }
+        for element in exitActions {
+            _ = element.stopAnimation("update")
+            element.animateTo(
+                ["style": ["opacity": 0.0] as [String: Any]],
+                animationConfig()
+            )
+        }
+    }
 
     // upstream: _resetController(api) / _clearController() / _onPan(e) / _onZoom(e) — DEFERRED.
     // PORT-NOTE (deferred): RoamController re-layout (pan/zoom roam → treemapMove/treemapRender dispatchAction)
@@ -599,14 +821,16 @@ open class TreemapView: ChartView {
      */
     // upstream: function renderNode(seriesModel, thisStorage, oldStorage, reRoot, lastsForAnimation,
     //   willInvisibleEls, thisNode, oldNode, parentGroup, depth): Group
-    // STATIC form: the diff/animation params (oldStorage, reRoot, lastsForAnimation, willInvisibleEls,
-    //   oldNode) are dropped; elements are freshly created into `self._storage` each render.
+    // The upstream diff/animation helper parameters are represented by old/new storage and the
+    // snapshot-driven shared transition in `_animateFromSnapshot`.
     private func renderNode(
         _ seriesModel: TreemapSeriesModel,
         _ thisNode: TreeNode,
         _ parentGroup: Group,
         _ depth: Double,
-        _ canMorph: Bool = false
+        _ canMorph: Bool = false,
+        _ oldStorage: RenderElementStorage,
+        _ nextStorage: RenderElementStorage
     ) -> Group? {
         // Whether under viewRoot. (Static: thisNode is always non-null.)
 
@@ -637,12 +861,10 @@ open class TreemapView: ChartView {
 
         let thisRawIndex = thisNode.getRawIndex()
 
-        // MORPH reuse: on a same-node-count value change the storage persists, so the prior render's
-        //   node group / bg / content for this rawIndex are still present — capture them BEFORE the
-        //   creation blocks overwrite the storage slots, then animate (rather than recreate) them.
-        let oldGroup = canMorph ? self._storage.nodeGroup[thisRawIndex] : nil
-        let oldBg = canMorph ? self._storage.background[thisRawIndex] : nil
-        let oldContent = canMorph ? self._storage.content[thisRawIndex] : nil
+        // Reuse the prior node group / bg / content for this rawIndex before writing the new storage.
+        let oldGroup = canMorph ? oldStorage.nodeGroup[thisRawIndex] : nil
+        let oldBg = canMorph ? oldStorage.background[thisRawIndex] : nil
+        let oldContent = canMorph ? oldStorage.content[thisRawIndex] : nil
 
         // const thisViewChildren = thisNode.viewChildren;
         let thisViewChildren = thisNode.viewChildren
@@ -682,13 +904,14 @@ open class TreemapView: ChartView {
         }
         else {
             group = Group()
-            self._storage.nodeGroup[thisRawIndex] = group
+            nextStorage.nodeGroup[thisRawIndex] = group
             // parentGroup.add(group);
             _ = parentGroup.add(group)
             group.x = layoutX
             group.y = layoutY
             group.markRedraw()
         }
+        nextStorage.nodeGroup[thisRawIndex] = group
         // inner(group).nodeWidth = thisWidth; inner(group).nodeHeight = thisHeight;  -> DEFERRED (animation).
 
         // if (thisLayout.isAboveViewRoot) { return group; }
@@ -709,9 +932,10 @@ open class TreemapView: ChartView {
         else {
             bg = Rect()
             bg.z2 = calculateZ2(depth, Z2_BG)
-            self._storage.background[thisRawIndex] = bg
+            nextStorage.background[thisRawIndex] = bg
             bgReuse = false
         }
+        nextStorage.background[thisRawIndex] = bg
         // bg && renderBackground(group, bg, isParent && thisLayout.upperLabelHeight);
         let upperLabelHeight = (thisLayout["upperLabelHeight"] as? Double) ?? 0
         renderBackground(group, bg, isParent && upperLabelHeight != 0, bgReuse)
@@ -752,9 +976,10 @@ open class TreemapView: ChartView {
             else {
                 content = Rect()
                 content.z2 = calculateZ2(depth, Z2_CONTENT)
-                self._storage.content[thisRawIndex] = content
+                nextStorage.content[thisRawIndex] = content
                 contentReuse = false
             }
+            nextStorage.content[thisRawIndex] = content
             // content && renderContent(group, content);
             renderContent(group, content, contentReuse)
 
