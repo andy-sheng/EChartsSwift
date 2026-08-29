@@ -475,11 +475,15 @@ public final class EChartsView {
         let controller: RoamController
         if let existing = _treemapRoamController { controller = existing }
         else { controller = RoamController(zr); _treemapRoamController = controller }
-        updateTreemapRoamControllerSimply(seriesModel, ec.api, controller, { [weak self] in
-            guard let self = self else { return }
-            _ = self.zr.storage.getDisplayList(true)
-            self.zr.refresh()
-        })
+        guard let treemapView = ec.api.getViewOfSeriesModel(seriesModel) as? TreemapView else {
+            controller.disable()
+            return
+        }
+        // Upstream `TreemapView._onPan` / `_onZoom` only dispatch the action. In particular it does
+        // not synchronously rebuild zrender's display list between the consecutive pointer events in
+        // one drag. Keep that render-time transform-cache lifecycle intact: the normal `updated` event
+        // below schedules the repaint, while the next zrender frame updates transforms.
+        treemapView.resetRoamController(controller, ec.api)
     }
 
     private func _setupSankeyRoam() {

@@ -21,34 +21,24 @@
 import Foundation
 import ZRenderKit
 
-// This file ports the VIEW-GROUP slice of roamHelper — the shared roam machinery for the tree, treemap
-//   and sankey series (the graph slice lives in roamHelperGraph.swift, the geo/map slice in roamHelperGeo).
+// This file ports the VIEW-GROUP slice of roamHelper — the shared roam machinery for the tree and
+//   sankey series (the graph slice lives in roamHelperGraph.swift, the geo/map slice in roamHelperGeo).
 //
-//   Upstream (echarts v6) lays tree/treemap/sankey out on a `View` VIEW_COORD_SYS and applies the roam
-//   center/zoom to that coord sys (`updateRoamControllerSimply` + `registerRoamActionSimply('series',<sub>)`
-//   → `treeRoam` / `sankeyRoam`; treemap historically dispatches `treemapMove`/`treemapRender` with a
-//   `rootRect` that RE-LAYS-OUT the tiles). The `View` sync-back / rootRect-relayout machinery stays
-//   DEFERRED (these views are not wired onto `coord/View`, though `View.swift` is ported). Instead —
-//   exactly as the task frames it — these three views are
-//   NOT on a coord system in the port: each renders into a single VIEW GROUP (`_mainGroup` for tree/sankey,
-//   `_containerGroup` for treemap) placed at `layoutInfo.x/y`. This slice ports the roam as a TRANSFORM on
-//   that view group:
+//   Upstream lays tree/sankey out on a `View` coordinate system and applies roam through
+//   `updateRoamControllerSimply` + `registerRoamActionSimply`. These two views are not wired onto that
+//   coordinate system in the port, so this helper applies the equivalent accumulated transform to their
+//   rendered group. Treemap is deliberately excluded: its upstream view dispatches `treemapMove` and
+//   `treemapRender` rootRect actions and re-lays out tiles instead of transforming the group.
 //     - `updateRoamControllerSimply` → `updateViewGroupRoamControllerSimply` (controller.enable + the
 //        pan/zoom → dispatchAction glue), with thin per-chart wrappers below.
 //     - `registerRoamActionSimply('series',<sub>)` → `registerViewGroupRoamAction(actionType, seriesType)`
-//        (the `treeRoam` / `treemapRoam` / `sankeyRoam` action that accumulates the pan/zoom payload into
+//        (the `treeRoam` / `sankeyRoam` action that accumulates the pan/zoom payload into
 //        the per-series roam state).
 //     - `createIsInSelfByPointerCheckerEl(this.group)` → `viewGroupRoamPointerRect` (the view-group's
 //        transformed bounding-rect pointer checker).
 //   The roam state persists in a per-series inner store (below) that survives the full-`update()` rebuild
 //   the roam action triggers, and the view re-applies it to the group each render (same architecture as the
 //   graph/geo slices).
-//
-//   DEVIATION (treemap): upstream treemap re-lays-out the tiles into a shifted/scaled `rootRect`, which
-//   keeps tile border widths and label sizes constant under zoom. The port instead scales the whole view
-//   group (borders/labels scale with it) and dispatches a `treemapRoam` action (not `treemapMove`/
-//   `treemapRender`). This is the authorized "translate+scale the VIEW GROUP directly" simplification; the
-//   rootRect relayout + `DRAG_THRESHOLD` pan gate stay DEFERRED.
 
 // ---------------------------------------------------------------------------------------------------
 // Roam state — the single source of truth for a view-group host's (pan, zoom), carried across update()
@@ -285,8 +275,7 @@ public func registerViewGroupRoamAction(_ actionType: String, _ seriesType: Stri
 
 // ---------------------------------------------------------------------------------------------------
 // Per-chart thin wrappers (upstream: each view's own `updateRoamControllerSimply(...)` call + install's
-//   `registerRoamActionSimply(registers,'series',<sub>)`). Action types match upstream where it uses the
-//   unified helper (`treeRoam`, `sankeyRoam`); treemap uses a port-specific `treemapRoam` (see DEVIATION).
+//   `registerRoamActionSimply(registers,'series',<sub>)`).
 // ---------------------------------------------------------------------------------------------------
 
 // TREE — upstream TreeView.render: `updateRoamControllerSimply(seriesModel, api, this._controller,
@@ -301,18 +290,6 @@ public func updateTreeRoamControllerSimply(
     updateViewGroupRoamControllerSimply(seriesModel, "treeRoam", isInSelf, api, controller, onDispatched)
 }
 public func registerTreeRoamAction() { registerViewGroupRoamAction("treeRoam", "tree") }
-
-// TREEMAP — upstream Treemap._resetController isInSelf reads the container group's bounding rect.
-public func updateTreemapRoamControllerSimply(
-    _ seriesModel: TreemapSeriesModel,
-    _ api: ExtensionAPI,
-    _ controller: RoamController,
-    _ onDispatched: (() -> Void)? = nil
-) {
-    let isInSelf = viewGroupRoamPointerRect((api.getViewOfSeriesModel(seriesModel) as? TreemapView)?.roamPointerCheckerGroup())
-    updateViewGroupRoamControllerSimply(seriesModel, "treemapRoam", isInSelf, api, controller, onDispatched)
-}
-public func registerTreemapRoamAction() { registerViewGroupRoamAction("treemapRoam", "treemap") }
 
 // SANKEY — upstream SankeyView.render: `updateRoamControllerSimply(seriesModel, api, this._controller, ...)`.
 public func updateSankeyRoamControllerSimply(

@@ -1219,14 +1219,12 @@ public final class ECharts: EChartsType {
         registerGeoRoamAction()
 
         // -- chart/tree/install.ts + chart/sankey/install.ts `registerRoamActionSimply(registers,'series',
-        //   <sub>)` (→ 'treeRoam' / 'sankeyRoam') + the port's 'treemapRoam' (upstream treemap re-lays-out
-        //   via 'treemapMove'/'treemapRender'; the port applies a view-group TRANSFORM — see
-        //   roamHelperViewGroup.swift). All three accumulate pan/zoom onto the per-series roam state.
+        //   <sub>)` (→ 'treeRoam' / 'sankeyRoam'). Treemap intentionally does not use this helper:
+        //   upstream TreemapView dispatches `treemapMove` / `treemapRender` rootRect actions directly.
         // -- chart/tree/install.ts `installTreeAction(registers)` — registerAction('treeExpandAndCollapse')
         //   (node click → toggle node.isExpand, update:'update' re-lays-out) + registerTreeRoamAction()
         //   (the 'treeRoam' view-group roam action). See chart/tree/treeAction.swift.
         installTreeAction(ECharts._registers)
-        registerTreemapRoamAction()
         // -- chart/treemap/treemapAction.ts `installTreemapAction(registers)` — registers the three noop
         //   actions ('treemapZoomToNode'/'treemapRender'/'treemapMove', update:'updateView') so they are
         //   dispatchable, plus the real 'treemapRootToNode' handler (retrieveTargetInfo → model.resetViewRoot,
@@ -2413,7 +2411,10 @@ public final class ECharts: EChartsType {
                 i += 1
             }
             else if !v.__alive {
-                v.remove(ecModel, api)
+                // Upstream prepareView's dead-view sweep removes the view root from zrender and calls
+                // dispose; it does NOT call ChartView.remove. Keeping the old element hierarchy intact
+                // is required by universalTransition: the saved old SeriesData still references those
+                // paths and their parent transforms until `series:transition` consumes them.
                 _ = root.remove(v.group)
                 storage.delRoot(v.group)
                 v.dispose(ecModel, api)

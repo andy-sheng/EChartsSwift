@@ -67,4 +67,26 @@ final class TreemapLabelStyleTests: XCTestCase {
         }
         XCTAssertTrue(matched, "a leaf tile label text should equal its datum name (default label)")
     }
+
+    // Upstream installs `textEl.beforeUpdate` and derives the truncation box from the tile's current
+    // animated shape on every frame. A one-time width snapshot makes labels lag zoom/re-root motion.
+    func test_leaf_label_box_tracks_current_animated_tile_shape() throws {
+        let ec = ECharts(width: 400, height: 400)
+        ec.setOption(option())
+
+        var tiles: [ZRenderKit.Rect] = []
+        labeledTiles(ec.getRoot(), &tiles)
+        let tile = try XCTUnwrap(tiles.first { $0.getTextContent()?.textStyle?.width != nil })
+        let text = try XCTUnwrap(tile.getTextContent())
+        let originalWidth = try XCTUnwrap(text.textStyle?.width)
+        var shape = try XCTUnwrap(tile.shape as? RectShape)
+        shape.width = Swift.max(originalWidth / 2, 1)
+        tile.shape = shape
+
+        _ = ec.getStorage().getDisplayList(true)
+
+        let updatedWidth = try XCTUnwrap(text.textStyle?.width)
+        XCTAssertLessThan(updatedWidth, originalWidth,
+                          "treemap label width must be recalculated from the current tile frame")
+    }
 }

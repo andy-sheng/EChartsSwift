@@ -68,6 +68,69 @@ final class UniversalTransitionTests: XCTestCase {
                        "universalTransition must finish on the authored sunburst palette for each node")
     }
 
+    func test_treemap_to_sunburst_keeps_the_old_authored_container_transform_for_morph_source() throws {
+        let data: [Any] = [
+            ["name": "A", "value": 60.0],
+            ["name": "B", "value": 40.0]
+        ]
+        let view = EChartsView(width: 520, height: 360)
+        view.setOption([
+            "animation": true,
+            "series": [[
+                "id": "tree", "type": "treemap",
+                "left": 40.0, "top": 100.0, "width": 440.0, "height": 180.0,
+                "animationDurationUpdate": 1000.0,
+                "universalTransition": true,
+                "data": data
+            ] as [String: Any]]
+        ])
+
+        let treemap = try XCTUnwrap(
+            view.ec.getModel()?.getSeriesByIndex(0) as? TreemapSeriesModel
+        )
+        let aIndex = treemap.getData().indexOfName("A")
+        let aGroup = try XCTUnwrap(treemap.getData().getItemGraphicEl(aIndex) as? Group)
+        var oldContent: Rect?
+        _ = aGroup.traverse { element in
+            if let rect = element as? Rect, !getMorphInner(rect).disableMorphing {
+                oldContent = rect
+            }
+            return false
+        }
+        let source = try XCTUnwrap(oldContent)
+        _ = source.getComputedTransform()
+        let before = source.transformCoordToGlobal(0, 0)
+        XCTAssertGreaterThanOrEqual(before[0], 40,
+                                    "the treemap source must include its authored left offset")
+        XCTAssertGreaterThanOrEqual(before[1], 100,
+                                    "the treemap source must include its authored top offset")
+
+        view.setOption([
+            "animation": true,
+            "series": [[
+                "id": "tree", "type": "sunburst",
+                "radius": ["20%", "90%"],
+                "animationDurationUpdate": 1000.0,
+                "universalTransition": true,
+                "data": data
+            ] as [String: Any]]
+        ], notMerge: true)
+
+        // Upstream prepareView removes the dead ChartView root and calls dispose; it does not call
+        // ChartView.remove. Universal transition still owns the old SeriesData and reads each source
+        // path through its complete parent transform chain. Clearing TreemapView's container here
+        // detached the old node hierarchy and made the official transition start at (0, 0).
+        _ = source.getComputedTransform()
+        let after = source.transformCoordToGlobal(0, 0)
+        XCTAssertEqual(after[0], before[0], accuracy: 1e-6)
+        XCTAssertEqual(after[1], before[1], accuracy: 1e-6)
+
+        let incoming = paths(view.ec, Sector.self)
+        XCTAssertFalse(incoming.isEmpty)
+        XCTAssertTrue(incoming.contains { isMorphing($0) || isCombineMorphing($0) },
+                      "the preserved treemap paths must be consumed by the incoming sunburst morph")
+    }
+
     // 3 side-by-side square regions (same shape as GeoRenderTests' toy map).
     private func makeToyGeoJSON() -> [String: Any] {
         func feature(_ name: String, _ lng0: Double, _ lng1: Double) -> [String: Any] {

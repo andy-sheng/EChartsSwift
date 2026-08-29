@@ -26,8 +26,8 @@ import ZRenderKit
 //   import { Payload } from '../../util/types';                              -> Payload (util/types.swift).
 //   import TreemapSeriesModel from './TreemapSeries';                        -> sibling TreemapSeries.swift.
 //   import { TreeNode } from '../../data/Tree';                              -> TreeNode (data/Tree.swift).
-//   import { RectLike } from 'zrender/src/core/BoundingRect';                -> RectLike (ZRenderKit); only used by the
-//       deferred payload interfaces below (rootRect never read by the ported handlers).
+//   import { RectLike } from 'zrender/src/core/BoundingRect';                -> RectLike (ZRenderKit); the dynamic
+//       rootRect payload is consumed by treemapLayout.
 //   import { EChartsExtensionInstallRegisters } from '../../extension';      -> EChartsExtensionInstallRegisters.
 //   import { noop } from 'zrender/src/core/util';                           -> a local no-op ActionHandler (see below).
 
@@ -52,9 +52,8 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
     // for (let i = 0; i < actionTypes.length; i++) {
     //     registers.registerAction({ type: actionTypes[i], update: 'updateView' }, noop);
     // }
-    //   `treemapMove` / `treemapRender` roam is handled by the view-group RoamController (the port's
-    //   'treemapRoam' action); these noop registrations just make the three types dispatchable, with
-    //   `update:'updateView'` collapsing to the driver's updateView re-render after the (empty) handler.
+    // These noop registrations make the upstream actions dispatchable. TreemapView emits
+    // `treemapMove` / `treemapRender` with rootRect, and updateView re-runs treemapLayout for that rect.
     for actionType in treemapActionTypes {
         var info = ActionInfo(type: actionType)
         info.update = "updateView"
@@ -70,7 +69,6 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
         //   `{seriesId, seriesIndex, seriesName}` query (handling the numeric and array id/name forms of
         //   `OptionId`, which a hand-rolled `as? String` compare drops) and `eachComponent` applies it.
         //   Same idiom as `ECharts.updateDirectly`.
-        var payload = payload
         let condition = model.makeQueryConditionKindA(payload, "series", "treemap")
 
         ecModel.eachComponent(condition) { cmpt, _ in
@@ -89,19 +87,13 @@ public func installTreemapAction(_ registers: EChartsExtensionInstallRegisters) 
                 //         payload.direction = helper.aboveViewRoot(originViewRoot, targetInfo.node)
                 //             ? 'rollUp' : 'drillDown';
                 //     }
-                //   PORT-TODO: this is a DEAD WRITE. `Payload` is a value type, so `payload.other["direction"]`
-                //     mutates only this local copy and never reaches the dispatch batch or the ensuing
-                //     layout/render pass. Upstream stamps the flag on the shared payload object and reads it
-                //     back in TreemapView.render as `reRoot.direction` — not only for the drill-down/roll-up
-                //     ANIMATION (TreemapView.ts:199/378) but also at TreemapView.ts:1090
-                //     (`parentNode && (!reRoot || reRoot.direction === 'drillDown')`), which selects the
-                //     element's starting rect and is therefore a rendering concern too. Thread the direction
-                //     another way when TreemapView._doAnimation is ported — e.g. return it in this handler's
-                //     ECEventData, or store it on TreemapSeriesModel so render() can reconstruct `reRoot`.
-                //     The assignment is kept so the upstream line stays traceable.
                 if let originViewRoot = model.getViewRoot() {
-                    payload.other["direction"] = treeHelper.aboveViewRoot(originViewRoot, targetInfo.node)
-                        ? "rollUp" : "drillDown"
+                    // Upstream mutates the shared action payload. The port's Payload is a value type, so
+                    // carry that same one-render field on the selected model and consume it in TreemapView.
+                    model.setTreemapRootDirectionForUpdate(
+                        treeHelper.aboveViewRoot(originViewRoot, targetInfo.node)
+                            ? "rollUp" : "drillDown"
+                    )
                 }
                 //     model.resetViewRoot(targetInfo.node);
                 model.resetViewRoot(targetInfo.node)

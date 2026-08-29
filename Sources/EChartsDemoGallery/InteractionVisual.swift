@@ -36,6 +36,7 @@ struct InteractionVisualStep: Decodable {
     let pieceIndex: Double?
     let targetType: String?
     let allowMissing: Bool?
+    let freezeAnimation: Bool?
     let capture: String?
 }
 
@@ -797,7 +798,7 @@ private func writeOfficialInteractionScenarios(
                     [
                         "action": "clickData", "seriesIndex": Double(seriesIndex),
                         "dataIndex": Double(target.0), "dataName": targetName,
-                        "movePointer": false,
+                        "movePointer": false, "freezeAnimation": true,
                     ],
                     // Drive the real update clips at identical normalized phases on both renderers.
                     // Tree parity depends on the source position and the complete node/edge
@@ -811,7 +812,7 @@ private func writeOfficialInteractionScenarios(
                     [
                         "action": "clickData", "seriesIndex": Double(seriesIndex),
                         "dataIndex": Double(target.0), "dataName": targetName,
-                        "movePointer": false,
+                        "movePointer": false, "freezeAnimation": true,
                     ],
                     ["action": "sampleAnimations", "phase": 0.0,
                      "capture": "\(capturePrefix)-expand-start"],
@@ -864,12 +865,14 @@ private func writeOfficialInteractionScenarios(
                         if authoredLeafDepth != nil {
                             clickStep = [
                                 "action": "clickTreemapDrillDownNode", "movePointer": false,
+                                "freezeAnimation": true,
                             ]
                         }
                         else {
                             clickStep = [
                                 "action": "clickData", "seriesIndex": Double(seriesIndex),
                                 "dataIndex": Double(target.0), "movePointer": false,
+                                "freezeAnimation": true,
                             ]
                             if !dataName.isEmpty, nameCounts[dataName] == 1 {
                                 clickStep["dataName"] = dataName
@@ -877,10 +880,19 @@ private func writeOfficialInteractionScenarios(
                         }
                         steps += [
                             clickStep,
-                            ["action": "wait", "milliseconds": 1_200.0],
+                            ["action": "sampleAnimations", "phase": 0.0,
+                             "capture": "\(prefix)-node-click-start"],
+                            ["action": "sampleAnimations", "phase": 0.5,
+                             "capture": "\(prefix)-node-click-mid"],
+                            ["action": "sampleAnimations", "phase": 1.0],
                             ["action": "settle", "capture": "\(prefix)-node-clicked"],
-                            ["action": "clickTreemapBreadcrumbRoot", "movePointer": false],
-                            ["action": "wait", "milliseconds": 1_200.0],
+                            ["action": "clickTreemapBreadcrumbRoot", "movePointer": false,
+                             "freezeAnimation": true],
+                            ["action": "sampleAnimations", "phase": 0.0,
+                             "capture": "\(prefix)-breadcrumb-return-start"],
+                            ["action": "sampleAnimations", "phase": 0.5,
+                             "capture": "\(prefix)-breadcrumb-return-mid"],
+                            ["action": "sampleAnimations", "phase": 1.0],
                             ["action": "settle", "capture": "\(prefix)-breadcrumb-restored"],
                         ]
                         treemapNodeClickCount += 1
@@ -1483,10 +1495,12 @@ private func writeOfficialInteractionScenarios(
                let hitIndex = hitIndexBySeries[0] {
                 steps += [
                     ["action": "driveTick"],
-                    ["action": "wait", "milliseconds": 450.0],
-                    ["action": "snapshot", "capture": "drive-tick-1-mid-transition"],
-                    ["action": "wait", "milliseconds": 750.0],
-                    ["action": "settle", "capture": "drive-tick-1"],
+                    ["action": "sampleAnimations", "phase": 0.0,
+                     "capture": "drive-tick-1-start-transition"],
+                    ["action": "sampleAnimations", "phase": 0.5,
+                     "capture": "drive-tick-1-mid-transition"],
+                    ["action": "sampleAnimations", "phase": 1.0,
+                     "capture": "drive-tick-1"],
                     [
                         "action": "hoverData", "seriesIndex": 0.0,
                         "dataIndex": Double(hitIndex),
@@ -1498,8 +1512,12 @@ private func writeOfficialInteractionScenarios(
                     ["action": "wait", "milliseconds": 700.0],
                     ["action": "settle", "capture": "sunburst-hover-restored"],
                     ["action": "driveTick"],
-                    ["action": "wait", "milliseconds": 1_200.0],
-                    ["action": "settle", "capture": "drive-tick-2"],
+                    ["action": "sampleAnimations", "phase": 0.0,
+                     "capture": "drive-tick-2-start-transition"],
+                    ["action": "sampleAnimations", "phase": 0.5,
+                     "capture": "drive-tick-2-mid-transition"],
+                    ["action": "sampleAnimations", "phase": 1.0,
+                     "capture": "drive-tick-2"],
                 ]
             }
             else {
@@ -3082,7 +3100,7 @@ private let webInteractionHarnessJS = #"""
         targetType: hit.hovered.target ? (hit.hovered.target.type || '') : ''
       };
     },
-    clickData: function (seriesIndex, dataIndex, dataName, movePointer) {
+    clickData: function (seriesIndex, dataIndex, dataName, movePointer, freezeAnimation) {
       pointerOutside = false;
       var clickedSeries = myChart.getModel().getSeriesByIndex(seriesIndex);
       var clickedData = clickedSeries && clickedSeries.getData();
@@ -3099,9 +3117,10 @@ private let webInteractionHarnessJS = #"""
       handler.mouseup(event);
       handler.click(event);
       if (myChart._onframe) { myChart._onframe(); }
-      // Baseline settling stops the global animation loop. Restart it after a real data click so
-      // update/exit animations can reach the scenario's explicit wait before the next settle.
-      myChart.getZr().animation.start();
+      // Baseline settling stops the global animation loop. Phase-sampling scenarios keep the newly
+      // created real clips frozen until `sampleAnimations`; ordinary wait scenarios restart RAF.
+      if (freezeAnimation) { myChart.getZr().animation.stop(); }
+      else { myChart.getZr().animation.start(); }
       return {
         x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '',
         resolvedDataIndex: resolvedDataIndex, dataName: dataName,
@@ -3109,7 +3128,7 @@ private let webInteractionHarnessJS = #"""
         afterExpanded: clickedNode ? clickedNode.isExpand : null
       };
     },
-    clickTreemapBreadcrumbRoot: function (movePointer) {
+    clickTreemapBreadcrumbRoot: function (movePointer, freezeAnimation) {
       pointerOutside = false;
       var hit = treemapRootBreadcrumbHit();
       var handler = myChart.getZr().handler;
@@ -3119,10 +3138,11 @@ private let webInteractionHarnessJS = #"""
       handler.mouseup(event);
       handler.click(event);
       if (myChart._onframe) { myChart._onframe(); }
-      myChart.getZr().animation.start();
+      if (freezeAnimation) { myChart.getZr().animation.stop(); }
+      else { myChart.getZr().animation.start(); }
       return { x: hit.point[0], y: hit.point[1], targetType: hit.hovered.target.type || '' };
     },
-    clickTreemapDrillDownNode: function (movePointer) {
+    clickTreemapDrillDownNode: function (movePointer, freezeAnimation) {
       pointerOutside = false;
       var hit = treemapDrillDownHit();
       var handler = myChart.getZr().handler;
@@ -3132,7 +3152,8 @@ private let webInteractionHarnessJS = #"""
       handler.mouseup(event);
       handler.click(event);
       if (myChart._onframe) { myChart._onframe(); }
-      myChart.getZr().animation.start();
+      if (freezeAnimation) { myChart.getZr().animation.stop(); }
+      else { myChart.getZr().animation.start(); }
       return {
         x: hit.point[0], y: hit.point[1], label: hit.label,
         targetType: hit.hovered.target.type || ''
@@ -3514,6 +3535,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "handleIndex": step.handleIndex ?? 1,
             "pieceIndex": step.pieceIndex ?? 0,
             "targetType": step.targetType ?? "grid",
+            "freezeAnimation": step.freezeAnimation ?? false,
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(data: data, encoding: .utf8)!
@@ -3534,11 +3556,11 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         case "hoverSeries":
             script = "(function(a){return window.__interactionVisual.hoverSeries(a.seriesIndex,a.dataIndex,a.dataName);})(\(json))"
         case "clickData":
-            script = "(function(a){return window.__interactionVisual.clickData(a.seriesIndex,a.dataIndex,a.dataName,a.movePointer);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.clickData(a.seriesIndex,a.dataIndex,a.dataName,a.movePointer,a.freezeAnimation);})(\(json))"
         case "clickTreemapBreadcrumbRoot":
-            script = "(function(a){return window.__interactionVisual.clickTreemapBreadcrumbRoot(a.movePointer);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.clickTreemapBreadcrumbRoot(a.movePointer,a.freezeAnimation);})(\(json))"
         case "clickTreemapDrillDownNode":
-            script = "(function(a){return window.__interactionVisual.clickTreemapDrillDownNode(a.movePointer);})(\(json))"
+            script = "(function(a){return window.__interactionVisual.clickTreemapDrillDownNode(a.movePointer,a.freezeAnimation);})(\(json))"
         case "clickToolbox":
             script = "(function(a){return window.__interactionVisual.clickToolbox(a.name,a.movePointer);})(\(json))"
         case "editDataView":
@@ -3658,10 +3680,11 @@ func startWebInteractionVisual(
         FileHandle.standardError.write(Data("could not create output directory: \(error)\n".utf8))
         return false
     }
-    // Interaction screenshots compare settled semantic states. Disable ordinary series entrance/
-    // update animation on the Web oracle just like --compare; emphasis state transitions are still
-    // driven explicitly by the scenario's `settle` steps.
-    guard let page = echartsHTMLPage(demo, snapshot: true, captureIntervals: true) else {
+    // Keep the real Web animation configuration. The scenario's initial `settle` deterministically
+    // completes entrance clips, while later actions may explicitly freeze and phase-sample update clips.
+    // Passing snapshot:true here would set animation:false and make interaction trajectories impossible
+    // to compare with Native.
+    guard let page = echartsHTMLPage(demo, snapshot: false, captureIntervals: true) else {
         FileHandle.standardError.write(Data("could not build web page\n".utf8))
         return false
     }

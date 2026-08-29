@@ -91,6 +91,9 @@ open class TreemapSeriesModel: SeriesModel {
 
     // private _viewRoot: TreeNode;
     private var _viewRoot: TreeNode?
+    // Swift Payload is a value type, while upstream mutates the shared action object with `direction`.
+    // Preserve the identical one-update handoff on the affected series model.
+    private var _treemapRootDirectionForUpdate: String?
     // private _idIndexMap: zrUtil.HashMap<number>;
     private var _idIndexMap: [String: Int]?
     // private _idIndexMapCount: number;
@@ -100,6 +103,15 @@ open class TreemapSeriesModel: SeriesModel {
     public var zoom: Double?
     // zoomLimit: { max?: number; min?: number };
     public var zoomLimit: [String: Double]?
+
+    func setTreemapRootDirectionForUpdate(_ direction: String?) {
+        self._treemapRootDirectionForUpdate = direction
+    }
+
+    func consumeTreemapRootDirection() -> String? {
+        defer { self._treemapRootDirectionForUpdate = nil }
+        return self._treemapRootDirectionForUpdate
+    }
 
     // preventUsingHoverLayer = true;  (class-field default overriding the SeriesModel `false`.)
     //   `preventUsingHoverLayer` is a stored `var` on the base, so it cannot be overridden with a

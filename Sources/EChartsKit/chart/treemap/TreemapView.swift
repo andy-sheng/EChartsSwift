@@ -36,7 +36,8 @@ import ZRenderKit
 //       and in treemapAction.swift. Only the `reRoot` descriptor / `_doAnimation` consumers are deferred.
 //   import Breadcrumb from './Breadcrumb';                          -> sibling Breadcrumb.swift.
 //   import RoamController, { RoamEventParams } from '../../component/helper/RoamController';
-//       -> RoamController IS ported (component/helper/RoamController.swift); pan/zoom roam is still DEFERRED here.
+//       -> RoamController IS ported (component/helper/RoamController.swift); the live host owns the
+//          controller, while this view ports upstream's controller options and pan/zoom handlers.
 //   import BoundingRect, { RectLike } from 'zrender/src/core/BoundingRect';  -> `BoundingRect` (ZRenderKit).
 //   import * as matrix from 'zrender/src/core/matrix';             -> `matrix` (ZRenderKit) — used by the deferred zoom.
 //   import * as animationUtil from '../../util/animation';         -> PORT-NOTE (deferred): the treemap _doAnimation subsystem is deferred; static render is the final state.
@@ -68,7 +69,7 @@ import ZRenderKit
 
 // const Group = graphic.Group;  /  const Rect = graphic.Rect;  -> ZRenderKit `Group` / `Rect` used directly.
 
-// const DRAG_THRESHOLD = 3;  -> only used by the deferred roam pan.
+// const DRAG_THRESHOLD = 3;
 private let DRAG_THRESHOLD: Double = 3
 // const PATH_LABEL_NOAMAL = 'label';
 private let PATH_LABEL_NOAMAL = "label"
@@ -114,13 +115,41 @@ private func getItemStyleNormal(_ model: Model) -> [String: Any] {
 }
 
 // interface RenderElementStorage { nodeGroup: Group[]; background: Rect[]; content: Rect[] }
-// PORT-NOTE: upstream arrays are indexed by rawIndex and iterated by the deferred diff/animation. The
-//   static rebuild only needs by-rawIndex lookup (findTarget), so `[Int: T]` (keyed by rawIndex) is used;
-//   lookup semantics (nil when absent) match `array[rawIndex]`.
+// Swift dictionaries preserve the upstream sparse-array semantics while keeping raw-index lookup explicit.
 private final class RenderElementStorage {
     var nodeGroup: [Int: Group] = [:]
     var background: [Int: Rect] = [:]
     var content: [Int: Rect] = [:]
+}
+
+private struct LastCfg {
+    var oldX: Double?
+    var oldY: Double?
+    var oldShape: RectShape?
+    var fadein = false
+}
+
+private final class LastCfgStorage {
+    var nodeGroup: [Int: LastCfg] = [:]
+    var background: [Int: LastCfg] = [:]
+    var content: [Int: LastCfg] = [:]
+}
+
+private struct ReRoot {
+    var rootNodeGroup: Group?
+    var direction: String?
+}
+
+private struct RenderResult {
+    var lastsForAnimation: LastCfgStorage
+    var willDeleteEls: RenderElementStorage
+    var willInvisibleEls: [Rect]
+}
+
+private struct TreemapElementMeta {
+    var nodeWidth: Double = 0
+    var nodeHeight: Double = 0
+    var willDelete = false
 }
 
 // interface FoundTargetInfo { node: TreeNode; offsetX?: number; offsetY?: number }
@@ -135,33 +164,8 @@ public struct FoundTargetInfo {
     }
 }
 
-// The port keeps the upstream transition semantics with a raw-index keyed storage and a geometry
-// snapshot: matching elements start at their previous geometry, entering tiles grow from zero, and
-// leaving tiles fade before removal. The internal upstream DataDiffer/ReRoot helper types remain
-// collapsed into the Swift traversal below.
-
 // upstream: class TreemapView extends ChartView
 open class TreemapView: ChartView {
-
-    private struct GroupAnimationState {
-        var x: Double
-        var y: Double
-    }
-
-    private struct RectAnimationState {
-        var shape: RectShape
-        var opacity: Double
-        var invisible: Bool
-    }
-
-    private struct AnimationSnapshot {
-        var nodeGroup: [Int: GroupAnimationState] = [:]
-        var background: [Int: RectAnimationState] = [:]
-        var content: [Int: RectAnimationState] = [:]
-        var nodeGroupElements: [Int: Group] = [:]
-        var backgroundElements: [Int: Rect] = [:]
-        var contentElements: [Int: Rect] = [:]
-    }
 
     // static type = 'treemap';  /  type = TreemapView.type;
     public static let treemapType = "treemap"
@@ -174,7 +178,8 @@ open class TreemapView: ChartView {
     private var _containerGroup: Group?
     // private _breadcrumb: Breadcrumb;
     private var _breadcrumb: Breadcrumb?
-    // private _controller: RoamController;  -> DEFERRED (roam not ported).
+    // private _controller: RoamController;
+    // The live EChartsView owns the controller because it owns zr; its listeners are configured here.
 
     // private _oldTree: Tree;
     private var _oldTree: Tree?
@@ -182,15 +187,23 @@ open class TreemapView: ChartView {
     // private _state: 'ready' | 'animating' = 'ready';
     private var _state: String = "ready"
 
+    // In upstream, `findTarget` reads zrender transforms from the last painted frame. The Swift model
+    // update mutates the live hierarchy synchronously, so keep the center hit that belonged to that
+    // painted frame for the current pan turn. A real zrender `rendered` event advances the snapshot,
+    // preserving the same behavior when pointer moves span multiple frames.
+    private weak var _roamZr: ZRenderType?
+    private var _roamMouseDownToken: EventHandlerToken?
+    private var _roamMouseUpToken: EventHandlerToken?
+    private var _roamGlobalOutToken: EventHandlerToken?
+    private var _roamRenderedToken: EventHandlerToken?
+    private var _paintedPanBreadcrumbTarget: FoundTargetInfo?
+    private var _pendingPanBreadcrumbTarget: FoundTargetInfo?
+
     // private _storage = createStorage();
     private var _storage = RenderElementStorage()
 
-    // View REUSE (L5 fidelity, batch-A idiom): the per-node graphic elements in `_storage` PERSIST
-    //   across renders so a merge-mode setOption value change MORPHS the tiles (each node group slides
-    //   and its bg/content rect resizes to the new squarify slot) instead of rebuild-and-snap. This
-    //   holds the node count of the last render; a same-count value change morphs, a count change
-    //   rebuilds fresh (mirrors LineView's `_prevPointCount`). -1 before the first render.
-    private var _prevNodeCount: Int = -1
+    // zrender's `inner(el)` fields used by the upstream treemap animation. Kept per element identity.
+    private var _elementMeta: [ObjectIdentifier: TreemapElementMeta] = [:]
 
     // seriesModel; api; ecModel; (injected in render)
     public var seriesModel: TreemapSeriesModel?
@@ -229,7 +242,7 @@ open class TreemapView: ChartView {
         let types = ["treemapZoomToNode", "treemapRootToNode"]
         let targetInfo: FoundTargetInfo? = treeHelper.retrieveTargetInfo(payload, types, seriesModel)
             .map { FoundTargetInfo(node: $0.node) }
-        // const payloadType = payload && payload.type;  -> consumed only by the deferred animation routing.
+        // const payloadType = payload && payload.type;
         // const layoutInfo = seriesModel.layoutInfo;
         //   `seriesModel.layoutInfo` is the treemapLayout output rect (`LayoutRect?` in the sibling port;
         //   non-null upstream after the layout stage). Bail if the layout has not run.
@@ -238,99 +251,162 @@ open class TreemapView: ChartView {
         }
         // const isInit = !this._oldTree;
         let isInit = self._oldTree == nil
-        var breadcrumbTargetInfo = targetInfo
-        if breadcrumbTargetInfo == nil, !isInit {
-            let roamState = viewGroupRoamState(seriesModel)
-            let isIdentityRoam = abs(roamState.panX) < 1e-9
-                && abs(roamState.panY) < 1e-9
-                && abs(roamState.zoom - 1) < 1e-9
-            if payload.type == "treemapRoam" {
-                if payload.other["zoom"] != nil, isIdentityRoam,
-                   let viewRoot = seriesModel.getViewRoot() {
-                    // Returning from a wheel zoom to the authored identity clears the transient center
-                    // path in the browser reference instead of leaving the last zoomed child visible.
-                    breadcrumbTargetInfo = FoundTargetInfo(node: viewRoot)
-                }
-                else {
-                    // Upstream derives the breadcrumb target from the display list that existed when the
-                    // roam event began. Capture it before rebuilding/applying the new transform; doing it
-                    // afterwards makes Native one interaction ahead of Web (pan and inverse-pan paths swap).
-                    breadcrumbTargetInfo = self.findTarget(api.getWidth() / 2, api.getHeight() / 2)
-                }
-            }
-            else if payload.type.hasPrefix("legend"), isIdentityRoam,
-                    let viewRoot = seriesModel.getViewRoot() {
-                // A single-select legend can reveal a previously hidden named treemap. Its untouched
-                // viewport starts at the named root, matching a freshly displayed browser series.
-                breadcrumbTargetInfo = FoundTargetInfo(node: viewRoot)
-            }
-        }
-        // const thisStorage = this._storage;  -> `self._storage` exists and is LIVE (it is the persistent
-        //   morph storage written by `renderNode`); only its use by the deferred reRoot descriptor below
-        //   is unported.
+        // const thisStorage = this._storage;
+        let thisStorage = self._storage
 
         // Mark new root when action is treemapRootToNode.
         // const reRoot = (payloadType === 'treemapRootToNode' && targetInfo && thisStorage)
         //     ? { rootNodeGroup: thisStorage.nodeGroup[targetInfo.node.getRawIndex()], direction: payload.direction }
         //     : null;
-        // PORT-TODO (deferred): reRoot descriptor.
-        //   The `treemapRootToNode` action itself IS ported (installTreemapAction, treemapAction.swift):
-        //   dispatching it re-roots the series via `model.resetViewRoot` and this render pass rebuilds from
-        //   the new view root. Only the `reRoot` DESCRIPTOR is deferred. Its `rootNodeGroup` field IS
-        //   available today (`self._storage.nodeGroup[targetInfo.node.getRawIndex()]` — `_storage` is the
-        //   persistent morph storage, matching upstream's `this._storage` at this point). Its `direction`
-        //   field is NOT: it is the dead write noted in treemapAction.swift (`Payload` is a value type, so
-        //   the handler's `direction` stamp never reaches this pass). Since the descriptor's only consumers
-        //   are the deferred `_doAnimation` (upstream TreemapView.ts:214/:378) and the deferred
-        //   `prepareAnimationWhenNoOld` drill-down starting-rect choice (upstream TreemapView.ts:1090),
-        //   constructing it now would be dead state — port it together with `_doAnimation`, threading
-        //   `direction` per the treemapAction.swift PORT-TODO.
+        let payloadType = payload.type
+        let reRoot: ReRoot? = payloadType == "treemapRootToNode" && targetInfo != nil
+            ? ReRoot(
+                rootNodeGroup: thisStorage.nodeGroup[targetInfo!.node.getRawIndex()],
+                direction: seriesModel.consumeTreemapRootDirection()
+            )
+            : nil
 
         // const containerGroup = this._giveContainerGroup(layoutInfo);
         let containerGroup = self._giveContainerGroup(layoutInfo)
         // const hasAnimation = seriesModel.get('animation');
         let hasAnimation = (seriesModel.get("animation") as? Bool) != false
-        let payloadType = payload.type
         let shouldAnimate = hasAnimation && !isInit && (
             payloadType.isEmpty
                 || payloadType == "treemapZoomToNode"
                 || payloadType == "treemapRootToNode"
         )
-        let animationSnapshot = shouldAnimate ? self._captureAnimationSnapshot() : nil
 
         // const renderResult = this._doRender(containerGroup, seriesModel, reRoot);
-        let removedElements = self._doRender(containerGroup, seriesModel)
-        if let animationSnapshot = animationSnapshot {
-            // Upstream renders the final geometry first, restores each reused element to its recorded
-            // old geometry, and only then starts the shared animation wrap. Doing the restore before
-            // returning from render is observable: the first painted frame remains the source layout
-            // instead of flashing/jumping to the destination until the first animation tick.
-            self._animateFromSnapshot(animationSnapshot, removedElements, seriesModel)
+        let renderResult = self._doRender(containerGroup, seriesModel, reRoot)
+        if shouldAnimate {
+            self._doAnimation(containerGroup, renderResult, seriesModel, reRoot)
         }
         else {
-            for element in removedElements {
-                if let parent = element.parent as? Group { _ = parent.remove(element) }
-            }
+            self._renderFinally(renderResult)
         }
 
-        // this._resetController(api);
-        //   The RoamController is wired live by EChartsView._setupTreemapRoam (the TreemapView is
-        //   zr-less). DEVIATION: upstream treemap roam re-lays-out the tiles into a shifted/scaled
-        //   `rootRect` (`treemapMove`/`treemapRender`); the port instead applies the accumulated roam as a
-        //   TRANSFORM to the container group (see roamHelperViewGroup.swift). Base = (layoutInfo.x, .y)
-        //   (set by _giveContainerGroup); identity roam state → the container is left exactly as-is.
-        viewGroupRoamApplyStateToGroup(seriesModel, containerGroup, layoutInfo.x, layoutInfo.y)
-
         // this._renderBreadcrumb(seriesModel, api, targetInfo);
-        self._renderBreadcrumb(seriesModel, api, breadcrumbTargetInfo, isInit)
+        let breadcrumbTargetInfo: FoundTargetInfo?
+        if payloadType == "treemapMove" {
+            breadcrumbTargetInfo = self._pendingPanBreadcrumbTarget
+            self._pendingPanBreadcrumbTarget = nil
+        }
+        else {
+            breadcrumbTargetInfo = targetInfo
+        }
+        self._renderBreadcrumb(seriesModel, api, breadcrumbTargetInfo)
     }
 
-    // L3 Roam: the pointer-check element (upstream Treemap._resetController isInSelf reads the container
-    //   group's bounding rect). Returns nil before the first render (container not yet built).
-    func roamPointerCheckerGroup() -> Group? { return self._containerGroup }
-
-    // L3 Roam (test hook): the container group carrying the roam transform (position + scale).
+    // Test hook for the rendered container. Upstream roam changes the root layout rather than scaling it.
     var _containerGroupForTest: Group? { return self._containerGroup }
+
+    // Upstream `_resetController`. EChartsView supplies the live controller after the view root is attached
+    // to zr; all options, pointer containment and dispatched action payloads remain the upstream ones.
+    func resetRoamController(_ controller: RoamController, _ api: ExtensionAPI) {
+        guard let seriesModel = self.seriesModel else { controller.disable(); return }
+        controller.enable(seriesModel.get("roam"), RoamOption(
+            component: seriesModel,
+            api: api,
+            isInSelf: { [weak self] _, x, y in
+                guard let group = self?._containerGroup,
+                      let rect = group.getBoundingRect() else { return false }
+                return rect.contain(x - group.x, y - group.y)
+            },
+            isInClip: nil,
+            roamTrigger: seriesModel.get("roamTrigger") as? String
+        ))
+        controller
+            .off("pan")
+            .off("zoom")
+            .on("pan", { [weak self] event in
+                self?._onPan(event)
+            })
+            .on("zoom", { [weak self] event in
+                self?._onZoom(event)
+            })
+
+        if let zr = api.getZr(), self._roamZr !== zr {
+            self._unbindRoamFrameObservers()
+            self._roamZr = zr
+            self._roamMouseDownToken = zr.onWithToken("mousedown", { [weak self] _, _ in
+                guard let self, let seriesModel = self.seriesModel, let api = self.api else { return nil }
+                self._paintedPanBreadcrumbTarget = self._resolveBreadcrumbTarget(seriesModel, api)
+                return nil
+            })
+            let clearPanSnapshot: EventCallback = { [weak self] _, _ in
+                self?._paintedPanBreadcrumbTarget = nil
+                return nil
+            }
+            self._roamMouseUpToken = zr.onWithToken("mouseup", clearPanSnapshot)
+            self._roamGlobalOutToken = zr.onWithToken("globalout", clearPanSnapshot)
+            self._roamRenderedToken = zr.onWithToken("rendered", { [weak self, weak controller] _, _ in
+                guard let self, let controller, controller.isDragging(),
+                      let seriesModel = self.seriesModel, let api = self.api else { return nil }
+                self._paintedPanBreadcrumbTarget = self._resolveBreadcrumbTarget(seriesModel, api)
+                return nil
+            })
+        }
+    }
+
+    // Upstream `_onPan`: move the root rect and let treemapLayout re-layout every tile.
+    private func _onPan(_ event: RoamEventParams) {
+        guard self._state != "animating",
+              abs(event.dx) > DRAG_THRESHOLD || abs(event.dy) > DRAG_THRESHOLD,
+              let seriesModel = self.seriesModel,
+              let root = seriesModel.getData().tree?.root,
+              let rootLayout = root.getLayout() as? [String: Any],
+              let x = treemapNumber(rootLayout["x"]),
+              let y = treemapNumber(rootLayout["y"]),
+              let width = treemapNumber(rootLayout["width"]),
+              let height = treemapNumber(rootLayout["height"]),
+              let api = self.api else { return }
+
+        var payload = Payload(type: "treemapMove")
+        payload.other["from"] = self.uid
+        payload.other["seriesId"] = seriesModel.id
+        payload.other["rootRect"] = [
+            "x": x + event.dx, "y": y + event.dy,
+            "width": width, "height": height,
+        ] as [String: Double]
+        self._pendingPanBreadcrumbTarget = self._paintedPanBreadcrumbTarget
+            ?? self._resolveBreadcrumbTarget(seriesModel, api)
+        api.dispatchAction(payload)
+    }
+
+    // Upstream `_onZoom`: scale the current root rect about the pointer in container coordinates and
+    // dispatch `treemapRender`, preserving border and label sizes because layout is recomputed.
+    private func _onZoom(_ event: RoamEventParams) {
+        guard self._state != "animating",
+              let seriesModel = self.seriesModel,
+              let root = seriesModel.getData().tree?.root,
+              let rootLayout = root.getLayout() as? [String: Any],
+              let rootX = treemapNumber(rootLayout["x"]),
+              let rootY = treemapNumber(rootLayout["y"]),
+              let rootWidth = treemapNumber(rootLayout["width"]),
+              let rootHeight = treemapNumber(rootLayout["height"]),
+              let layoutInfo = seriesModel.layoutInfo,
+              let api = self.api else { return }
+
+        let currentZoom = calculateCurrentZoom(
+            (width: layoutInfo.width, height: layoutInfo.height),
+            (width: rootWidth, height: rootHeight)
+        )
+        let newZoom = treemapClampZoom(currentZoom * event.scale, seriesModel)
+        let zoomScale = newZoom / currentZoom
+        let mouseX = event.originX - layoutInfo.x
+        let mouseY = event.originY - layoutInfo.y
+
+        var payload = Payload(type: "treemapRender")
+        payload.other["from"] = self.uid
+        payload.other["seriesId"] = seriesModel.id
+        payload.other["rootRect"] = [
+            "x": mouseX + (rootX - mouseX) * zoomScale,
+            "y": mouseY + (rootY - mouseY) * zoomScale,
+            "width": rootWidth * zoomScale,
+            "height": rootHeight * zoomScale,
+        ] as [String: Double]
+        api.dispatchAction(payload)
+    }
 
     private func _giveContainerGroup(_ layoutInfo: LayoutRect) -> Group {
         // let containerGroup = this._containerGroup;
@@ -351,249 +427,241 @@ open class TreemapView: ChartView {
         return containerGroup!
     }
 
-    private func _doRender(_ containerGroup: Group, _ seriesModel: TreemapSeriesModel) -> [Element] {
-        // const thisTree = seriesModel.getData().tree;
+    private func _doRender(
+        _ containerGroup: Group, _ seriesModel: TreemapSeriesModel, _ reRoot: ReRoot?
+    ) -> RenderResult {
         guard let thisTree = seriesModel.getData().tree else {
-            return []
+            return RenderResult(
+                lastsForAnimation: LastCfgStorage(),
+                willDeleteEls: RenderElementStorage(),
+                willInvisibleEls: []
+            )
         }
-
-        // ------------------------------------------------------------------------------------------
-        // Upstream builds old/new storage and runs a hierarchical DataDiffer. Here the traversal keeps
-        // the same essential raw-index identity mapping: matching groups/rects are reused, unmatched
-        // new elements enter, and unmatched old elements remain attached until the transition ends.
-        // ------------------------------------------------------------------------------------------
-        // Keep the visible-node count for diagnostics/removal bookkeeping; unlike the old implementation,
-        // it does not gate morphing because drill-down naturally changes the visible count.
-        func countNodes(_ node: TreeNode) -> Int {
-            var n = 1
-            for child in node.viewChildren { n += countNodes(child) }
-            return n
-        }
-        let newNodeCount = countNodes(thisTree.root)
+        let oldTree = self._oldTree
+        let lastsForAnimation = LastCfgStorage()
+        let thisStorage = RenderElementStorage()
         let oldStorage = self._storage
-        let nextStorage = RenderElementStorage()
-        // Upstream diffs by raw index/id even when the visible node count changes during drill-down.
-        // Rebuilding on a count change discards the source geometry and makes the transition start from
-        // an empty/target layout. Reuse every matching raw index and treat only unmatched entries as
-        // enter/leave elements.
-        let canMorph = !oldStorage.nodeGroup.isEmpty
+        var willInvisibleEls: [Rect] = []
 
-        if !canMorph {
-            _ = containerGroup.removeAll()
+        func doRenderNode(
+            _ thisNode: TreeNode?, _ oldNode: TreeNode?, _ parentGroup: Group, _ depth: Double
+        ) -> Group? {
+            self.renderNode(
+                seriesModel, thisStorage, oldStorage, reRoot,
+                lastsForAnimation, &willInvisibleEls,
+                thisNode, oldNode, parentGroup, depth
+            )
         }
 
-        // dualTravel([thisTree.root], ...) collapsed to a static pre-order travel.
-        func travel(_ thisNode: TreeNode, _ parentGroup: Group, _ depth: Double) {
-            let group = self.renderNode(
-                seriesModel, thisNode, parentGroup, depth, canMorph, oldStorage, nextStorage
-            )
-            // group && dualTravel(thisNode.viewChildren || [], group, depth + 1);
-            if let group = group {
-                for child in thisNode.viewChildren {
-                    travel(child, group, depth + 1)
+        func dualTravel(
+            _ thisViewChildren: [TreeNode], _ oldViewChildrenIn: [TreeNode],
+            _ parentGroup: Group, _ sameTree: Bool, _ depth: Double
+        ) {
+            var oldViewChildren = oldViewChildrenIn
+
+            func processNode(_ newIndex: Int?, _ oldIndex: Int?) {
+                let thisNode = newIndex.map { thisViewChildren[$0] }
+                let oldNode = oldIndex.map { oldViewChildren[$0] }
+                let group = doRenderNode(thisNode, oldNode, parentGroup, depth)
+                if let group = group {
+                    dualTravel(
+                        thisNode?.viewChildren ?? [], oldNode?.viewChildren ?? [],
+                        group, sameTree, depth + 1
+                    )
                 }
             }
-        }
-        travel(thisTree.root, containerGroup, 0)
 
-        // this._oldTree = thisTree; this._storage = thisStorage;
+            if sameTree {
+                oldViewChildren = thisViewChildren
+                for (index, child) in thisViewChildren.enumerated() where !child.isRemoved() {
+                    processNode(index, index)
+                }
+            }
+            else {
+                let oldAny = oldViewChildren.map { $0 as Any }
+                let newAny = thisViewChildren.map { $0 as Any }
+                let key: DiffKeyGetter = { value, _ in (value as! TreeNode).getId() }
+                DataDiffer<Void>(oldAny, newAny, key, key)
+                    .add { processNode($0, nil) }
+                    .update { processNode($0, $1) }
+                    .remove { processNode(nil, $0) }
+                    .execute()
+            }
+        }
+
+        dualTravel(
+            [thisTree.root], oldTree.map { [$0.root] } ?? [], containerGroup,
+            oldTree == nil || oldTree === thisTree, 0
+        )
+
+        let willDeleteEls = RenderElementStorage()
+        func moveDeleted<T: Element>(_ source: inout [Int: T], _ destination: inout [Int: T]) {
+            for (rawIndex, element) in source {
+                destination[rawIndex] = element
+                var meta = self._elementMeta[ObjectIdentifier(element)] ?? TreemapElementMeta()
+                meta.willDelete = true
+                self._elementMeta[ObjectIdentifier(element)] = meta
+            }
+            source.removeAll()
+        }
+        moveDeleted(&oldStorage.nodeGroup, &willDeleteEls.nodeGroup)
+        moveDeleted(&oldStorage.background, &willDeleteEls.background)
+        moveDeleted(&oldStorage.content, &willDeleteEls.content)
+
         self._oldTree = thisTree
-        self._prevNodeCount = newNodeCount
-        self._storage = nextStorage
-
-        var removed: [Element] = []
-        for (rawIndex, element) in oldStorage.nodeGroup where nextStorage.nodeGroup[rawIndex] == nil {
-            removed.append(element)
-        }
-        for (rawIndex, element) in oldStorage.background where nextStorage.background[rawIndex] == nil {
-            removed.append(element)
-        }
-        for (rawIndex, element) in oldStorage.content where nextStorage.content[rawIndex] == nil {
-            removed.append(element)
-        }
-        return removed
+        self._storage = thisStorage
+        return RenderResult(
+            lastsForAnimation: lastsForAnimation,
+            willDeleteEls: willDeleteEls,
+            willInvisibleEls: willInvisibleEls
+        )
     }
 
-    private func _captureAnimationSnapshot() -> AnimationSnapshot {
-        var snapshot = AnimationSnapshot()
-        snapshot.nodeGroupElements = self._storage.nodeGroup
-        snapshot.backgroundElements = self._storage.background
-        snapshot.contentElements = self._storage.content
-        for (rawIndex, group) in self._storage.nodeGroup {
-            snapshot.nodeGroup[rawIndex] = GroupAnimationState(
-                x: group.x,
-                y: group.y
-            )
+    private func _renderFinally(_ renderResult: RenderResult) {
+        let allDeleted: [Element] = Array(renderResult.willDeleteEls.nodeGroup.values)
+            + Array(renderResult.willDeleteEls.background.values)
+            + Array(renderResult.willDeleteEls.content.values)
+        for element in allDeleted {
+            if let parent = element.parent as? Group { _ = parent.remove(element) }
+            self._elementMeta[ObjectIdentifier(element)] = nil
         }
-        for (rawIndex, rect) in self._storage.background {
-            if let shape = rect.shape as? RectShape {
-                snapshot.background[rawIndex] = RectAnimationState(
-                    shape: shape,
-                    opacity: rect.pathStyle.opacity ?? 1,
-                    invisible: rect.invisible
-                )
-            }
+        for element in renderResult.willInvisibleEls {
+            element.invisible = true
+            element.markRedraw()
         }
-        for (rawIndex, rect) in self._storage.content {
-            if let shape = rect.shape as? RectShape {
-                snapshot.content[rawIndex] = RectAnimationState(
-                    shape: shape,
-                    opacity: rect.pathStyle.opacity ?? 1,
-                    invisible: rect.invisible
-                )
-            }
-        }
-        return snapshot
     }
 
-    private func _animateFromSnapshot(
-        _ snapshot: AnimationSnapshot,
-        _ removedElements: [Element],
-        _ seriesModel: TreemapSeriesModel
+    private func _doAnimation(
+        _ containerGroup: Group, _ renderResult: RenderResult,
+        _ seriesModel: TreemapSeriesModel, _ reRoot: ReRoot?
     ) {
-        struct GroupAction {
-            var element: Group
-            var old: GroupAnimationState
-            var targetX: Double
-            var targetY: Double
-        }
-        struct RectAction {
-            var element: Rect
-            var old: RectAnimationState
-            var target: RectAnimationState
-        }
+        _ = containerGroup
+        let duration = treemapNumber(seriesModel.get("animationDurationUpdate")) ?? 0
+        let easing = (seriesModel.get("animationEasing") as? String).map(AnimationEasing.named)
+            ?? .named("cubicOut")
 
-        var groupActions: [GroupAction] = []
-        var rectActions: [RectAction] = []
-        var exitActions: [Rect] = []
-        for (rawIndex, group) in self._storage.nodeGroup {
-            guard let old = snapshot.nodeGroup[rawIndex], old.x != group.x || old.y != group.y else {
-                continue
-            }
-            groupActions.append(GroupAction(
-                element: group,
-                old: old,
-                targetX: group.x,
-                targetY: group.y
-            ))
+        struct PendingAnimation {
+            var element: Element
+            var target: ElementProps
         }
-        func collectRects(_ current: [Int: Rect], _ old: [Int: RectAnimationState]) {
-            for (rawIndex, rect) in current {
-                guard let targetShape = rect.shape as? RectShape else { continue }
-                let target = RectAnimationState(
-                    shape: targetShape,
-                    opacity: rect.pathStyle.opacity ?? 1,
-                    invisible: rect.invisible
-                )
-                var collapsed = RectShape()
-                collapsed.x = 0
-                collapsed.y = 0
-                collapsed.width = 0
-                collapsed.height = 0
-                let oldState = old[rawIndex] ?? RectAnimationState(
-                    shape: collapsed,
-                    opacity: 0,
-                    invisible: false
-                )
-                if oldState.shape.x != target.shape.x || oldState.shape.y != target.shape.y
-                    || oldState.shape.width != target.shape.width
-                    || oldState.shape.height != target.shape.height
-                    || oldState.opacity != target.opacity
-                    || oldState.invisible != target.invisible {
-                    rectActions.append(RectAction(element: rect, old: oldState, target: target))
+        var animations: [PendingAnimation] = []
+
+        func addDeleteAnimations<T: Element>(_ store: [Int: T], _ storageName: String) {
+            for element in store.values {
+                if let displayable = element as? Displayable, displayable.invisible { continue }
+                guard let parent = element.parent else { continue }
+                let innerStore = self._elementMeta[ObjectIdentifier(parent)] ?? TreemapElementMeta()
+                var target: ElementProps = [:]
+
+                if reRoot?.direction == "drillDown" {
+                    if parent === reRoot?.rootNodeGroup, element is Rect {
+                        target["shape"] = [
+                            "x": 0.0, "y": 0.0,
+                            "width": innerStore.nodeWidth, "height": innerStore.nodeHeight,
+                        ] as [String: Any]
+                        target["style"] = ["opacity": 0.0] as [String: Any]
+                    }
+                    else if element is Displayable {
+                        target["style"] = ["opacity": 0.0] as [String: Any]
+                    }
                 }
+                else {
+                    var targetX = 0.0
+                    var targetY = 0.0
+                    if !innerStore.willDelete {
+                        targetX = innerStore.nodeWidth / 2
+                        targetY = innerStore.nodeHeight / 2
+                    }
+                    if storageName == "nodeGroup" {
+                        target["x"] = targetX
+                        target["y"] = targetY
+                    }
+                    else {
+                        target["shape"] = [
+                            "x": targetX, "y": targetY, "width": 0.0, "height": 0.0,
+                        ] as [String: Any]
+                        target["style"] = ["opacity": 0.0] as [String: Any]
+                    }
+                }
+                if !target.isEmpty { animations.append(PendingAnimation(element: element, target: target)) }
             }
         }
-        collectRects(self._storage.background, snapshot.background)
-        collectRects(self._storage.content, snapshot.content)
+        addDeleteAnimations(renderResult.willDeleteEls.nodeGroup, "nodeGroup")
+        addDeleteAnimations(renderResult.willDeleteEls.background, "background")
+        addDeleteAnimations(renderResult.willDeleteEls.content, "content")
 
-        let removedIDs = Set(removedElements.map(ObjectIdentifier.init))
-        exitActions = (Array(snapshot.backgroundElements.values) + Array(snapshot.contentElements.values))
-            .filter { removedIDs.contains(ObjectIdentifier($0)) && !$0.invisible }
-
-        var remaining = groupActions.count + rectActions.count + exitActions.count
-        guard remaining > 0 else {
-            for element in removedElements {
-                if let parent = element.parent as? Group { _ = parent.remove(element) }
+        func addCurrentGroupAnimations(_ store: [Int: Group], _ lasts: [Int: LastCfg]) {
+            for (rawIndex, element) in store {
+                guard let last = lasts[rawIndex], let oldX = last.oldX, let oldY = last.oldY else { continue }
+                let target: ElementProps = ["x": element.x, "y": element.y]
+                element.x = oldX
+                element.y = oldY
+                element.markRedraw()
+                animations.append(PendingAnimation(element: element, target: target))
             }
+        }
+        func addCurrentRectAnimations(_ store: [Int: Rect], _ lasts: [Int: LastCfg]) {
+            for (rawIndex, element) in store {
+                guard let last = lasts[rawIndex] else { continue }
+                var target: ElementProps = [:]
+                if let oldShape = last.oldShape, let finalShape = element.shape as? RectShape {
+                    target["shape"] = [
+                        "x": finalShape.x, "y": finalShape.y,
+                        "width": finalShape.width, "height": finalShape.height,
+                    ] as [String: Any]
+                    _ = element.setShape(oldShape)
+                }
+                if last.fadein {
+                    // `Rect` stores its rich style in `pathStyle`; the inherited Displayable
+                    // `setStyle(key:value:)` writes the separate common-style bag and would leave the
+                    // painted opacity unchanged. Upstream `el.setStyle('opacity', 0)` targets pathStyle.
+                    if var style = element.pathStyle {
+                        style.opacity = 0
+                        element.pathStyle = style
+                        element.dirtyStyle()
+                    }
+                    target["style"] = ["opacity": 1.0] as [String: Any]
+                }
+                else if (element.pathStyle.opacity ?? 1) != 1 {
+                    target["style"] = ["opacity": 1.0] as [String: Any]
+                }
+                if !target.isEmpty { animations.append(PendingAnimation(element: element, target: target)) }
+            }
+        }
+        addCurrentGroupAnimations(self._storage.nodeGroup, renderResult.lastsForAnimation.nodeGroup)
+        addCurrentRectAnimations(self._storage.background, renderResult.lastsForAnimation.background)
+        addCurrentRectAnimations(self._storage.content, renderResult.lastsForAnimation.content)
+
+        guard !animations.isEmpty, duration > 0 else {
+            self._renderFinally(renderResult)
             self._state = "ready"
             return
         }
 
-        let durationRaw = seriesModel.get("animationDurationUpdate")
-        let duration = (durationRaw as? Double)
-            ?? (durationRaw as? Int).map(Double.init)
-            ?? (durationRaw as? NSNumber)?.doubleValue
-            ?? 0
-        let easing = (seriesModel.get("animationEasing") as? String).map(AnimationEasing.named)
-            ?? .named("cubicOut")
         self._state = "animating"
+        var remaining = animations.count
         let finishOne: () -> Void = { [weak self] in
             remaining -= 1
             if remaining == 0 {
-                for action in rectActions {
-                    action.element.invisible = action.target.invisible
-                    action.element.markRedraw()
-                }
-                for element in removedElements {
-                    if let parent = element.parent as? Group { _ = parent.remove(element) }
-                }
                 self?._state = "ready"
+                self?._renderFinally(renderResult)
             }
         }
-        func animationConfig() -> ElementAnimateConfig {
+        func config() -> ElementAnimateConfig {
             var config = ElementAnimateConfig()
             config.duration = duration
             config.delay = 0
             config.easing = easing
-            // Web does not paint between restoring the source values and the first RAF sample. Native
-            // can paint synchronously after dispatch, so retaining the source values here is the visual
-            // equivalent; the clip still reaches the same target on its terminal frame.
             config.setToFinal = false
             config.scope = "treemap-transition"
             config.done = finishOne
             config.aborted = finishOne
             return config
         }
-
-        for action in groupActions {
-            _ = action.element.stopAnimation("update")
-            action.element.x = action.old.x
-            action.element.y = action.old.y
-            action.element.markRedraw()
-            action.element.animateTo(
-                ["x": action.targetX, "y": action.targetY],
-                animationConfig()
-            )
-        }
-        for action in rectActions {
-            _ = action.element.stopAnimation("update")
-            _ = action.element.setShape(action.old.shape)
-            action.element.setStyle("opacity", action.old.opacity)
-            action.element.invisible = action.old.invisible
-            action.element.markRedraw()
-            action.element.animateTo([
-                "shape": [
-                    "x": action.target.shape.x,
-                    "y": action.target.shape.y,
-                    "width": action.target.shape.width,
-                    "height": action.target.shape.height,
-                ] as [String: Any],
-                "style": ["opacity": action.target.opacity] as [String: Any],
-            ], animationConfig())
-        }
-        for element in exitActions {
-            _ = element.stopAnimation("update")
-            element.animateTo(
-                ["style": ["opacity": 0.0] as [String: Any]],
-                animationConfig()
-            )
+        for animation in animations {
+            animation.element.animateTo(animation.target, config())
         }
     }
-
-    // upstream: _resetController(api) / _clearController() / _onPan(e) / _onZoom(e) — DEFERRED.
-    // PORT-NOTE (deferred): RoamController re-layout (pan/zoom roam → treemapMove/treemapRender dispatchAction)
-    //   is not ported (roam is instead applied as a container transform; see viewGroupRoamApplyStateToGroup).
 
     private func _initEvents(_ containerGroup: Group) {
         // containerGroup.on('click', (e) => { ... }, this);
@@ -666,33 +734,19 @@ open class TreemapView: ChartView {
 
     private func _renderBreadcrumb(
         _ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI,
-        _ targetInfoIn: FoundTargetInfo?, _ isInit: Bool
+        _ targetInfoIn: FoundTargetInfo?
     ) {
+        // if (!targetInfo) { ... viewport center ... root fallback }
         var targetInfo = targetInfoIn
-        // if (!targetInfo) { targetInfo = leafDepth != null ? {node: getViewRoot()} : findTarget(center); }
         if targetInfo == nil {
-            // `getViewRoot()` is `TreeNode?` in the sibling port (upstream is non-null).
             let leafDepth = seriesModel.get("leafDepth", true)
-            let explicitSeriesName = seriesModel.get("name", true) as? String
-            if isInit, let explicitSeriesName, !explicitSeriesName.isEmpty,
-               let viewRoot = seriesModel.getViewRoot() {
-                // On the first render the browser reference has no prior display-list transforms for
-                // `findTarget(center)` and falls back to the named root. Later renders (including roam)
-                // use the real center tile. Scope this stabilization to init so a named series does not
-                // pin every subsequent breadcrumb to its root.
-                targetInfo = FoundTargetInfo(node: viewRoot)
-            }
-            else if leafDepth != nil, !(leafDepth is NSNull), let viewRoot = seriesModel.getViewRoot() {
-                targetInfo = FoundTargetInfo(node: viewRoot)
-            }
-            else {
+            targetInfo = leafDepth != nil && !(leafDepth is NSNull)
+                ? seriesModel.getViewRoot().map { FoundTargetInfo(node: $0) }
                 // FIXME better way? Find breadcrumb tail on center of containerGroup.
-                targetInfo = self.findTarget(api.getWidth() / 2, api.getHeight() / 2)
-            }
+                : self.findTarget(api.getWidth() / 2, api.getHeight() / 2)
 
-            // if (!targetInfo) { targetInfo = {node: seriesModel.getData().tree.root}; }
-            if targetInfo == nil, let tree = seriesModel.getData().tree {
-                targetInfo = FoundTargetInfo(node: tree.root)
+            if targetInfo == nil {
+                targetInfo = seriesModel.getData().tree.map { FoundTargetInfo(node: $0.root) }
             }
         }
 
@@ -720,6 +774,34 @@ open class TreemapView: ChartView {
         }
     }
 
+    private func _resolveBreadcrumbTarget(
+        _ seriesModel: TreemapSeriesModel, _ api: ExtensionAPI
+    ) -> FoundTargetInfo? {
+        let leafDepth = seriesModel.get("leafDepth", true)
+        if leafDepth != nil, !(leafDepth is NSNull), let viewRoot = seriesModel.getViewRoot() {
+            return FoundTargetInfo(node: viewRoot)
+        }
+        if let target = self.findTarget(api.getWidth() / 2, api.getHeight() / 2) {
+            return target
+        }
+        return seriesModel.getData().tree.map { FoundTargetInfo(node: $0.root) }
+    }
+
+    private func _unbindRoamFrameObservers() {
+        guard let zr = self._roamZr else { return }
+        if let token = self._roamMouseDownToken { zr.off("mousedown", token: token) }
+        if let token = self._roamMouseUpToken { zr.off("mouseup", token: token) }
+        if let token = self._roamGlobalOutToken { zr.off("globalout", token: token) }
+        if let token = self._roamRenderedToken { zr.off("rendered", token: token) }
+        self._roamMouseDownToken = nil
+        self._roamMouseUpToken = nil
+        self._roamGlobalOutToken = nil
+        self._roamRenderedToken = nil
+        self._roamZr = nil
+        self._paintedPanBreadcrumbTarget = nil
+        self._pendingPanBreadcrumbTarget = nil
+    }
+
     /**
      * @override
      */
@@ -729,17 +811,16 @@ open class TreemapView: ChartView {
         _ = self._containerGroup?.removeAll()
         // this._storage = createStorage();
         self._storage = RenderElementStorage()
-        // Persistent-element reuse invariant: a cleared storage must not be treated as morphable next
-        //   render, so drop the remembered node count (a subsequent render rebuilds fresh).
-        self._prevNodeCount = -1
+        self._elementMeta.removeAll()
         // this._state = 'ready';
         self._state = "ready"
         // this._breadcrumb && this._breadcrumb.remove();
         self._breadcrumb?.remove()
+        self._unbindRoamFrameObservers()
     }
 
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // this._clearController();  -> DEFERRED (roam not ported).
+        self._unbindRoamFrameObservers()
     }
 
     // private _zoomToNode(targetInfo: FoundTargetInfo) { this.api.dispatchAction({
@@ -789,10 +870,6 @@ open class TreemapView: ChartView {
             let bgEl = self._storage.background[node.getRawIndex()]
             // If invisible, there might be no element.
             if let bgEl = bgEl {
-                // Breadcrumb rendering calls findTarget during the chart render pass, before Storage's
-                // normal display-list update has propagated parent transforms. Force that propagation
-                // here so nested node groups are hit-tested in global coordinates, matching zrender.
-                _ = bgEl.getComputedTransform()
                 // const point = bgEl.transformCoordToLocal(x, y);
                 let point = bgEl.transformCoordToLocal(x, y)
                 // const shape = bgEl.shape;
@@ -821,18 +898,20 @@ open class TreemapView: ChartView {
      */
     // upstream: function renderNode(seriesModel, thisStorage, oldStorage, reRoot, lastsForAnimation,
     //   willInvisibleEls, thisNode, oldNode, parentGroup, depth): Group
-    // The upstream diff/animation helper parameters are represented by old/new storage and the
-    // snapshot-driven shared transition in `_animateFromSnapshot`.
     private func renderNode(
         _ seriesModel: TreemapSeriesModel,
-        _ thisNode: TreeNode,
-        _ parentGroup: Group,
-        _ depth: Double,
-        _ canMorph: Bool = false,
+        _ thisStorage: RenderElementStorage,
         _ oldStorage: RenderElementStorage,
-        _ nextStorage: RenderElementStorage
+        _ reRoot: ReRoot?,
+        _ lastsForAnimation: LastCfgStorage,
+        _ willInvisibleEls: inout [Rect],
+        _ thisNodeIn: TreeNode?,
+        _ oldNode: TreeNode?,
+        _ parentGroup: Group,
+        _ depth: Double
     ) -> Group? {
-        // Whether under viewRoot. (Static: thisNode is always non-null.)
+        // Whether under viewRoot.
+        guard let thisNode = thisNodeIn else { return nil }
 
         // const thisLayout = thisNode.getLayout();
         let thisLayoutOpt = thisNode.getLayout() as? [String: Any]
@@ -860,11 +939,7 @@ open class TreemapView: ChartView {
         let thisInvisible = (thisLayout["invisible"] as? Bool) ?? false
 
         let thisRawIndex = thisNode.getRawIndex()
-
-        // Reuse the prior node group / bg / content for this rawIndex before writing the new storage.
-        let oldGroup = canMorph ? oldStorage.nodeGroup[thisRawIndex] : nil
-        let oldBg = canMorph ? oldStorage.background[thisRawIndex] : nil
-        let oldContent = canMorph ? oldStorage.content[thisRawIndex] : nil
+        let oldRawIndex = oldNode?.getRawIndex()
 
         // const thisViewChildren = thisNode.viewChildren;
         let thisViewChildren = thisNode.viewChildren
@@ -883,36 +958,93 @@ open class TreemapView: ChartView {
         //   and let makeRectShape map it to `.number`/`.array`. (`|| 0` = no rounding when falsy.)
         let borderRadius: Any? = itemStyleNormalModel.get("borderRadius")
 
+        func prepareAnimationWhenNoOld(_ isGroup: Bool) -> LastCfg {
+            var last = LastCfg()
+            if let parentNode = thisNode.parentNode,
+               reRoot == nil || reRoot?.direction == "drillDown" {
+                var parentOldX = 0.0
+                var parentOldY = 0.0
+                if reRoot == nil,
+                   let parentOldShape = lastsForAnimation.background[parentNode.getRawIndex()]?.oldShape {
+                    parentOldX = parentOldShape.width
+                    parentOldY = parentOldShape.height
+                }
+                if isGroup {
+                    last.oldX = 0
+                    last.oldY = parentOldY
+                }
+                else {
+                    var shape = RectShape()
+                    shape.x = parentOldX
+                    shape.y = parentOldY
+                    shape.width = 0
+                    shape.height = 0
+                    last.oldShape = shape
+                }
+            }
+            last.fadein = !isGroup
+            return last
+        }
+
+        func giveGroup() -> Group? {
+            var element: Group?
+            if let oldRawIndex, let reused = oldStorage.nodeGroup.removeValue(forKey: oldRawIndex) {
+                element = reused
+                lastsForAnimation.nodeGroup[thisRawIndex] = LastCfg(oldX: reused.x, oldY: reused.y)
+                var meta = self._elementMeta[ObjectIdentifier(reused)] ?? TreemapElementMeta()
+                meta.willDelete = false
+                self._elementMeta[ObjectIdentifier(reused)] = meta
+            }
+            else if !thisInvisible {
+                let created = Group()
+                element = created
+                lastsForAnimation.nodeGroup[thisRawIndex] = prepareAnimationWhenNoOld(true)
+            }
+            thisStorage.nodeGroup[thisRawIndex] = element
+            return element
+        }
+
+        func giveRect(
+            _ storageName: String, _ old: inout [Int: Rect], _ current: inout [Int: Rect]
+        ) -> Rect? {
+            var element: Rect?
+            if let oldRawIndex, let reused = old.removeValue(forKey: oldRawIndex) {
+                element = reused
+                setLastsForAnimation(storageName, LastCfg(oldShape: reused.shape as? RectShape))
+                var meta = self._elementMeta[ObjectIdentifier(reused)] ?? TreemapElementMeta()
+                meta.willDelete = false
+                self._elementMeta[ObjectIdentifier(reused)] = meta
+            }
+            else if !thisInvisible {
+                let created = Rect()
+                element = created
+                setLastsForAnimation(storageName, prepareAnimationWhenNoOld(false))
+            }
+            current[thisRawIndex] = element
+            return element
+        }
+
+        func setLastsForAnimation(_ storageName: String, _ value: LastCfg) {
+            if storageName == "background" { lastsForAnimation.background[thisRawIndex] = value }
+            else { lastsForAnimation.content[thisRawIndex] = value }
+        }
+
         // Node group
         // const group = giveGraphic('nodeGroup', Group);
         // x,y are not set when el is above view root.
         // group.x = thisLayout.x || 0; group.y = thisLayout.y || 0;
         let layoutX = (thisLayout["x"] as? Double) ?? 0
         let layoutY = (thisLayout["y"] as? Double) ?? 0
-        let group: Group
-        if let g = oldGroup {
-            // MORPH: reuse the node group (already parented in the container hierarchy) and SLIDE it to
-            //   the new layout slot via updateProps (animates x/y when the series has animation on, else
-            //   snaps). Storage slot already holds `g`.
-            group = g
-            updateProps(group, ["x": layoutX, "y": layoutY], seriesModel, thisNode.dataIndex)
-            group.markRedraw()
-        }
-        else if thisInvisible {
-            // If invisible and no old element, do not create new element (for optimizing).
-            return nil
-        }
-        else {
-            group = Group()
-            nextStorage.nodeGroup[thisRawIndex] = group
-            // parentGroup.add(group);
-            _ = parentGroup.add(group)
-            group.x = layoutX
-            group.y = layoutY
-            group.markRedraw()
-        }
-        nextStorage.nodeGroup[thisRawIndex] = group
-        // inner(group).nodeWidth = thisWidth; inner(group).nodeHeight = thisHeight;  -> DEFERRED (animation).
+        guard let group = giveGroup() else { return nil }
+        _ = parentGroup.add(group)
+        group.x = layoutX
+        group.y = layoutY
+        group.markRedraw()
+        var groupMeta = self._elementMeta[ObjectIdentifier(group)] ?? TreemapElementMeta()
+        groupMeta.nodeWidth = thisWidth
+        groupMeta.nodeHeight = thisHeight
+        groupMeta.willDelete = false
+        self._elementMeta[ObjectIdentifier(group)] = groupMeta
 
         // if (thisLayout.isAboveViewRoot) { return group; }
         if (thisLayout["isAboveViewRoot"] as? Bool) ?? false {
@@ -923,22 +1055,12 @@ open class TreemapView: ChartView {
         // const bg = giveGraphic('background', Rect, depth, Z2_BG);
         // MORPH: reuse the existing bg rect (already added to `group`) so its shape resizes rather than
         //   snapping; else create fresh.
-        let bg: Rect
-        let bgReuse: Bool
-        if let oldBg = oldBg {
-            bg = oldBg
-            bgReuse = true
-        }
-        else {
-            bg = Rect()
-            bg.z2 = calculateZ2(depth, Z2_BG)
-            nextStorage.background[thisRawIndex] = bg
-            bgReuse = false
-        }
-        nextStorage.background[thisRawIndex] = bg
+        let bgWasOld = oldRawIndex.flatMap { oldStorage.background[$0] } != nil
+        let bg = giveRect("background", &oldStorage.background, &thisStorage.background)
+        if !bgWasOld { bg?.z2 = calculateZ2(depth, Z2_BG) }
         // bg && renderBackground(group, bg, isParent && thisLayout.upperLabelHeight);
         let upperLabelHeight = (thisLayout["upperLabelHeight"] as? Double) ?? 0
-        renderBackground(group, bg, isParent && upperLabelHeight != 0, bgReuse)
+        if let bg { renderBackground(group, bg, isParent && upperLabelHeight != 0, bgWasOld) }
 
         // Phase 49 (hover-emphasis): upstream TreemapView.ts:817-825.
         //   const emphasisModel = nodeModel.getModel('emphasis');
@@ -960,42 +1082,34 @@ open class TreemapView: ChartView {
             //   (freshly-created bg is not yet a dispatcher, so the upstream `if isHighDownDispatcher(group)
             //   setAsHighDownDispatcher(group,false)` reset is a no-op here).
             // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, bg);
-            data.setItemGraphicEl(thisNode.dataIndex, bg)
-            states.toggleHoverEmphasis(bg, focusOrIndices, blurScope, isDisabled)
+            if let bg {
+                data.setItemGraphicEl(thisNode.dataIndex, bg)
+                states.toggleHoverEmphasis(bg, focusOrIndices, blurScope, isDisabled)
+            }
         }
         else {
             // const content = giveGraphic('content', Rect, depth, Z2_CONTENT);
             // MORPH: reuse the existing content rect (already added to `group`) so its shape resizes
             //   rather than snapping; else create fresh.
-            let content: Rect
-            let contentReuse: Bool
-            if let oldContent = oldContent {
-                content = oldContent
-                contentReuse = true
-            }
-            else {
-                content = Rect()
-                content.z2 = calculateZ2(depth, Z2_CONTENT)
-                nextStorage.content[thisRawIndex] = content
-                contentReuse = false
-            }
-            nextStorage.content[thisRawIndex] = content
+            let contentWasOld = oldRawIndex.flatMap { oldStorage.content[$0] } != nil
+            let content = giveRect("content", &oldStorage.content, &thisStorage.content)
+            if !contentWasOld { content?.z2 = calculateZ2(depth, Z2_CONTENT) }
             // content && renderContent(group, content);
-            renderContent(group, content, contentReuse)
+            if let content { renderContent(group, content, contentWasOld) }
 
             // (bg as ECElement).disableMorphing = true;
             //   PORT-NOTE: `ECElement` is an augmentation interface Swift cannot add stored props for;
             //   the flag lives in the `makeInner` side store (animation/morphTransitionHelper.swift),
             //   read by `getPathList` — so the node BACKGROUND rect is not a universalTransition morph
             //   endpoint (only its content rect is), exactly as upstream.
-            getMorphInner(bg).disableMorphing = true
+            if let bg { getMorphInner(bg).disableMorphing = true }
             // Leaf node: the whole node GROUP is the highDown dispatcher (upstream TreemapView.ts:852-859) —
             //   its child traverse (in enableHoverEmphasis) attaches the state proxy to the bg + content.
             // Only for enabling highlight/downplay: data.setItemGraphicEl(thisNode.dataIndex, group);
             data.setItemGraphicEl(thisNode.dataIndex, group)
 
             // const cursorStyle = nodeModel.getShallow('cursor'); cursorStyle && content.attr('cursor', cursorStyle);
-            if let cursorStyle = nodeModel.getShallow("cursor") {
+            if let content, let cursorStyle = nodeModel.getShallow("cursor") {
                 _ = content.attr("cursor", cursorStyle)
             }
             states.toggleHoverEmphasis(group, focusOrIndices, blurScope, isDisabled)
@@ -1014,20 +1128,12 @@ open class TreemapView: ChartView {
             ecData.seriesIndex = seriesModel.seriesIndex
 
             // bg.setShape({x: 0, y: 0, width: thisWidth, height: thisHeight, r: borderRadius});
-            if reuse {
-                // MORPH: keep the rect identity and RESIZE via updateProps (RectShape.animationGet/Set
-                //   tween x/y/width/height as scalar Doubles). The corner radius `r` is not tweened, so
-                //   fold it onto the current shape directly before animating.
-                applyRectRadius(bg, borderRadius)
-                updateProps(bg, ["shape": ["x": 0.0, "y": 0.0, "width": thisWidth, "height": thisHeight]], seriesModel, thisNode.dataIndex)
-            }
-            else {
-                _ = bg.setShape(makeRectShape(0, 0, thisWidth, thisHeight, borderRadius))
-            }
+            _ = reuse
+            _ = bg.setShape(makeRectShape(0, 0, thisWidth, thisHeight, borderRadius))
 
             if thisInvisible {
-                // processInvisible(bg);  -> DEFERRED (delayed-invisible is an animation concern).
-                bg.invisible = true
+                // Delay invisible until the shared transition finishes so the tile does not vanish.
+                if !bg.invisible { willInvisibleEls.append(bg) }
             }
             else {
                 bg.invisible = false
@@ -1095,17 +1201,11 @@ open class TreemapView: ChartView {
 
             content.culling = true
             // content.setShape({x: borderWidth, y: borderWidth, width, height, r: borderRadius});
-            if reuse {
-                // MORPH: resize the reused content rect (see renderBackground).
-                applyRectRadius(content, borderRadius)
-                updateProps(content, ["shape": ["x": borderWidth, "y": borderWidth, "width": contentWidth, "height": contentHeight]], seriesModel, thisNode.dataIndex)
-            }
-            else {
-                _ = content.setShape(makeRectShape(borderWidth, borderWidth, contentWidth, contentHeight, borderRadius))
-            }
+            _ = reuse
+            _ = content.setShape(makeRectShape(borderWidth, borderWidth, contentWidth, contentHeight, borderRadius))
 
             if thisInvisible {
-                content.invisible = true
+                if !content.invisible { willInvisibleEls.append(content) }
             }
             else {
                 content.invisible = false
@@ -1203,37 +1303,47 @@ open class TreemapView: ChartView {
             var textStyle = textEl.textStyle ?? TextStyleProps()
             let textPadding = treemapNormalizeCssArray4(textStyle.padding)
 
-            // upstream `textEl.beforeUpdate = function () { const width/height = (upperLabelRect ?
-            //   upperLabelRect : rectEl.shape).{width,height} - textPadding[..]; textEl.setStyle({width,
-            //   height}); }` — a per-frame hook (`Element.beforeUpdate` is a non-settable method in the
-            //   port, so no closure hook). The rect shape / upperLabelRect are already at their final
-            //   size by the time prepareText runs (renderContent/renderBackground set the shape first),
-            //   so the width/height are computed ONCE here. Without them `overflow`/`lineOverflow:
-            //   'truncate'` has no box to truncate against and the label is dropped entirely.
-            let boxWidth = upperLabelRect?.width ?? ((rectEl.shape as? RectShape)?.width ?? 0)
-            let boxHeight = upperLabelRect?.height ?? ((rectEl.shape as? RectShape)?.height ?? 0)
-            let labelWidth = Swift.max(boxWidth - textPadding[1] - textPadding[3], 0)
-            let labelHeight = Swift.max(boxHeight - textPadding[0] - textPadding[2], 0)
-            textStyle.width = labelWidth
-            textStyle.height = labelHeight
-
             // textStyle.truncateMinChar = 2; textStyle.lineOverflow = 'truncate';
             textStyle.truncateMinChar = 2
             textStyle.lineOverflow = "truncate"
 
             // addDrillDownIcon(textStyle, upperLabelRect, thisLayout): a leaf-root node (a node at
             //   `leafDepth` that still has hidden children — i.e. it is drillable) gets its label
-            //   prefixed with the series `drillDownIcon` (default '▶'). Ported for the NORMAL,
-            //   non-upperLabel label; the emphasis-state variant remains DEFERRED (states).
+            //   prefixed with the series `drillDownIcon` (default '▶').
             if upperLabelRect == nil,
                (thisLayout["isLeafRoot"] as? Bool) ?? false,
                let icon = seriesModel.get("drillDownIcon", true) as? String, !icon.isEmpty,
                let curText = textStyle.text, !curText.isEmpty {
                 textStyle.text = icon + "  " + curText
+                if let emphasisState = textEl.getState("emphasis"),
+                   var emphasisStyle = emphasisState.textStyle,
+                   let emphasisText = emphasisStyle.text, !emphasisText.isEmpty {
+                    emphasisStyle.text = icon + "  " + emphasisText
+                    emphasisState.textStyle = emphasisStyle
+                }
             }
 
             textEl.useStyle(textStyle)
             textEl.name = "treemapLabel"
+
+            // Upstream assigns `textEl.beforeUpdate` so animation, roam and re-root always use the
+            // current tile geometry for truncation. The ZRenderKit callback is the Swift equivalent
+            // of that assignable per-instance lifecycle method.
+            let updateLabelBox: () -> Void = { [weak textEl, weak rectEl] in
+                guard let textEl, let rectEl else { return }
+                var currentStyle = textEl.textStyle ?? TextStyleProps()
+                let boxWidth = upperLabelRect?.width ?? ((rectEl.shape as? RectShape)?.width ?? 0)
+                let boxHeight = upperLabelRect?.height ?? ((rectEl.shape as? RectShape)?.height ?? 0)
+                let width = Swift.max(boxWidth - textPadding[1] - textPadding[3], 0)
+                let height = Swift.max(boxHeight - textPadding[0] - textPadding[2], 0)
+                if currentStyle.width != width || currentStyle.height != height {
+                    currentStyle.width = width
+                    currentStyle.height = height
+                    textEl.useStyle(currentStyle)
+                }
+            }
+            textEl.beforeUpdateCallback = updateLabelBox
+            updateLabelBox()
 
         }
     }
@@ -1275,16 +1385,6 @@ private func rectRadiusFromOption(_ r: Any?) -> RectRadius? {
     return d != 0 ? .number(d) : nil
 }
 
-// MORPH helper: fold the (possibly changed) corner radius onto a reused rect's CURRENT shape without
-//   disturbing its x/y/width/height — those are animated separately by updateProps and must keep their
-//   current values as the tween's start. `r` is not a tweened field, so it is applied directly.
-private func applyRectRadius(_ rect: Rect, _ r: Any?) {
-    guard var shape = rect.shape as? RectShape else { return }
-    shape.r = rectRadiusFromOption(r)
-    rect.shape = shape
-    rect.dirtyShape()
-}
-
 private func makeRectLike(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> RectLike {
     // `RectLike` is a protocol (AnyObject); `BoundingRect` is the concrete conformer.
     return BoundingRect(x, y, width, height)
@@ -1319,6 +1419,16 @@ private func treemapResolveFocus(_ focus: InnerFocus?, _ node: TreeNode) -> Inne
     case "descendant": return node.getDescendantIndices()
     default:           return focus
     }
+}
+
+private func treemapNumber(_ value: Any?) -> Double? {
+    if let value = value as? Double { return value }
+    if let value = value as? Int { return Double(value) }
+    if let value = value as? NSNumber,
+       !(value === kCFBooleanTrue || value === kCFBooleanFalse) {
+        return value.doubleValue
+    }
+    return nil
 }
 
 // export default TreemapView;  -> `open class TreemapView` above.

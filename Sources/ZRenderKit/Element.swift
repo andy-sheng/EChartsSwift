@@ -480,7 +480,13 @@ open class Element: Transformable, AnimationTarget {
     }
 
     /// Hook before update
-    public func beforeUpdate() {}
+    // JavaScript permits views to replace `el.beforeUpdate` per instance. Swift methods are not
+    // assignable, so expose the equivalent hook while retaining the upstream lifecycle entry point.
+    public var beforeUpdateCallback: (() -> Void)?
+
+    public func beforeUpdate() {
+        self.beforeUpdateCallback?()
+    }
     /// Hook after update
     public func afterUpdate() {}
     /// Update each frame
