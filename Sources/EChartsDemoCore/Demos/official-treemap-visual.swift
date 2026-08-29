@@ -23,15 +23,29 @@
 //     Swift (`treemapVisualConvertData` + `treemapVisualLinearMap`, a one-to-one transcription of
 //     `echarts.number.linearMap`) rather than omitting it. Both panes therefore colour by the same
 //     numbers; only the code that produces them differs.
-//   - NATIVE PANE: `tooltip.formatter` is a JS closure and cannot be carried by a Swift option, so it is
-//     omitted (see the PORT-NOTE below) — the tooltip component stays enabled with echarts' default
-//     formatting. It is the ONLY key dropped; `option.title`, `series[0].{name,top,type,label,itemStyle,
-//     visualMin,visualMax,visualDimension,levels,data}` are all ported. (`label.formatter: '{b}'` is a
-//     string template, not a closure, so it is kept.)
+//   - NATIVE PANE: `tooltip.formatter` is represented by an equivalent typed Swift callback, using
+//     Native rich-text newlines while preserving the Web formatter's title, amounts and change value.
 //
 // The example drives NO timeline — no `setInterval`/`setTimeout`, and its only interactivity is the
 // treemap's own built-in drill-down — so there is no `drive` closure to write.
 import Foundation
+import EChartsKit
+
+private let treemapVisualTooltipFormatter: (TooltipCallbackDataParams) -> String = { info in
+    let values = info.value as? [Any] ?? []
+    func number(_ index: Int) -> Double? {
+        index < values.count ? treemapTooltipFiniteNumber(values[index]) : nil
+    }
+    let amount = number(0).map { format.addCommas($0 * 1000) + "$" } ?? "-"
+    let amount2011 = number(1).map { format.addCommas($0 * 1000) + "$" } ?? "-"
+    let change = number(2).map { String(format: "%.2f%%", $0) } ?? "-"
+    return [
+        info.name,
+        "2012 Amount:  \(amount)",
+        "2011 Amount:  \(amount2011)",
+        "Change From 2011:  \(change)",
+    ].joined(separator: "\n")
+}
 
 // MARK: - the vendored asset
 
@@ -291,13 +305,7 @@ myChart.setOption(
                 "text": "Gradient Mapping",
                 "subtext": "Growth > 0: green; Growth < 0: red; Growth = 0: grey"
             ] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — a JS closure that rendered `<div class="tooltip-title">`
-            // + the node name (echarts.format.encodeHTML), then the 2012 and 2011 amounts (value[0] /
-            // value[1], ×1000 and thousands-separated via echarts.format.addCommas, suffixed '$') and the
-            // change from 2011 (value[2].toFixed(2) + '%'), each missing number shown as '-'. The tooltip
-            // component itself is kept, so the native pane still pops a tooltip — with echarts' default
-            // formatting instead of that HTML.
-            "tooltip": [:] as [String: Any],
+            "tooltip": ["formatter": treemapVisualTooltipFormatter] as [String: Any],
             "series": [
                 [
                     "name": "ALL",

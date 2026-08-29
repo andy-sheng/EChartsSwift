@@ -15,16 +15,13 @@
 //     bracket the inlined literal instead of a request, so they pair up synchronously).
 //   - TypeScript-only text dropped, as it must be to run as a classic script: the `info: any` annotation
 //     on the tooltip formatter's parameter, and the trailing `export {};` (a bare export is a SyntaxError).
-//   - NATIVE PANE: tooltip.formatter is a JS closure and cannot be expressed in a Swift option, so it is
-//     omitted — see the PORT-NOTE. Consequence: the native tooltip shows echarts' default treemap text
-//     instead of the `<div class="tooltip-title">a/b/c</div>Disk Usage: 12,345 KB` breadcrumb the closure
-//     built from `info.treePathInfo` (`echarts.format.encodeHTML` + `addCommas`). Everything drawn on the
-//     canvas — layout, labels, upperLabels, level styling — is identical.
+//   - NATIVE PANE: tooltip.formatter is represented by the same typed Swift callback used by the disk
+//     example, preserving breadcrumb, grouped value and KB unit with Native rich-text newlines.
 //
 // The example drives NO timeline — no `setInterval`/`setTimeout`, and the treemap's own upperLabel framing
-// is drawn by echarts itself — so there is no `drive` closure to write. tooltip.formatter is the ONLY
-// function-valued key in the upstream option; every other key is present, verbatim, in the native `option`.
+// is drawn by echarts itself — so there is no `drive` closure to write.
 import Foundation
+import EChartsKit
 
 private let diskTreeAssetURL = Upstream.repoRoot.appendingPathComponent("assets/data/disk.tree.json")
 
@@ -178,11 +175,7 @@ myChart.setOption(
                 "text": "Disk Usage",
                 "left": "center"
             ] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure walked `info.treePathInfo` (skipping
-            // the virtual root) into an `a/b/c` breadcrumb, HTML-escaped it via echarts.format.encodeHTML
-            // into a `<div class="tooltip-title">`, and appended
-            // `'Disk Usage: ' + echarts.format.addCommas(info.value) + ' KB'`.
-            "tooltip": [:] as [String: Any],
+            "tooltip": ["formatter": treemapDiskTooltipFormatter] as [String: Any],
             "series": [
                 [
                     "name": "Disk Usage",

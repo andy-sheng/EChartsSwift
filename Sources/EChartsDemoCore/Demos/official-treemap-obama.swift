@@ -10,9 +10,8 @@
 //   - The 447-node budget tree is fetched at runtime from assets/data/obama_budget_proposal_2012.json
 //     (upstream `$.get(ROOT_PATH + '/data/asset/data/obama_budget_proposal_2012.json', ...)`); the web
 //     pane gets the SAME JSON spliced in verbatim, the native pane parses it via Upstream.repoRoot.
-//   - `series[].tooltip.formatter` is an HTML-producing JS closure and is omitted from the native option.
-//     `series[].label.formatter` is ported as an equivalent Swift callback, including its rich-text tokens
-//     and number formatting, so the visible chart labels remain identical.
+//   - `series[].tooltip.formatter` and `series[].label.formatter` are ported as equivalent Swift callbacks.
+//     The tooltip uses Native rich-text newlines while preserving the Web fields and number formatting.
 //   - Not dynamic (no setInterval/setTimeout; the only interaction is the legend), so no `drive`.
 import Foundation
 import EChartsKit
@@ -105,6 +104,31 @@ private func obamaLabelFormatter(_ mode: Int) -> (CallbackDataParams) -> String 
             lines.append("{household|$ \(obamaAddCommas(perThousand, maxFractionDigits: 1))} {label|per household}")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+private func obamaTooltipFormatter(_ mode: Int) -> (TooltipCallbackDataParams) -> String {
+    let amountIndex = mode == 1 ? 1 : 0
+    let amount2011Index = mode == 1 ? 0 : 1
+    return { info in
+        let values = info.value as? [Any] ?? []
+        func number(_ index: Int) -> Double? {
+            index < values.count ? treemapTooltipFiniteNumber(values[index]) : nil
+        }
+        let amount = number(amountIndex).map { format.addCommas($0 * 1000) + "$" } ?? "-"
+        let amount2011 = number(amount2011Index).map { format.addCommas($0 * 1000) + "$" } ?? "-"
+        let perHousehold = number(3).map {
+            let roundedToFourDecimals = ($0 * 10_000).rounded() / 10_000
+            return format.addCommas(roundedToFourDecimals * 1000) + "$"
+        } ?? "-"
+        let change = number(2).map { String(format: "%.2f%%", $0) } ?? "-"
+        return [
+            info.name,
+            "2012 Amount:  \(amount)",
+            "Per Household:  \(perHousehold)",
+            "2011 Amount:  \(amount2011)",
+            "Change From 2011:  \(change)",
+        ].joined(separator: "\n")
     }
 }
 
@@ -355,8 +379,7 @@ myChart.setOption(
             let series: [[String: Any]] = obamaModes.enumerated().map { (idx, mode) -> [String: Any] in
                 var s: [String: Any] = [
                     "type": "treemap",
-                    // PORT-NOTE: series.tooltip.formatter omitted — JS closure formatting the 2012/2011
-                    // amounts, per-household amount and change% into an HTML tooltip (addCommas/encodeHTML).
+                    "tooltip": ["formatter": obamaTooltipFormatter(idx)] as [String: Any],
                     "label": [
                         "position": "insideTopLeft",
                         "formatter": obamaLabelFormatter(idx),

@@ -15,15 +15,30 @@
 //     order Foundation preserves, so the `sort: 'desc'` tie-breaking order is identical in both panes).
 //   - TypeScript-only lines dropped: the `info: any` annotation on the tooltip formatter and the trailing
 //     `export {};` (a bare export is a SyntaxError in a classic script).
-//   - NATIVE PANE: `tooltip.formatter` is a JS closure and cannot be expressed in a Swift option, so it is
-//     omitted — see the PORT-NOTE. Consequence: the native tooltip shows echarts' DEFAULT treemap text
-//     instead of the breadcrumb (`treePathInfo` joined by '/') + `'Disk Usage: ' + n + ' KB'`. Nothing
-//     else differs: `label.formatter: '{b}'` is a string template (not a closure) and is carried verbatim.
+//   - NATIVE PANE: `tooltip.formatter` is represented by an equivalent Swift callback. It returns the
+//     same breadcrumb and disk-usage text with Native rich-text newlines instead of Web HTML tags.
 //
 // The example drives NO timeline — no setInterval/setTimeout, and its only interactivity (drilling into a
-// tile, the breadcrumb) is treemap's own, inside echarts — so there is no `drive` closure. Apart from the
-// omitted tooltip formatter, the native `option` below is a complete port of the web one.
+// tile, the breadcrumb) is treemap's own, inside echarts — so there is no `drive` closure. The native
+// `option` below is a complete behavioral port of the web one.
 import Foundation
+import EChartsKit
+
+func treemapTooltipFiniteNumber(_ value: Any?) -> Double? {
+    let number: Double?
+    if let value = value as? Double { number = value }
+    else if let value = value as? Int { number = Double(value) }
+    else if let value = value as? NSNumber { number = value.doubleValue }
+    else { number = nil }
+    return number?.isFinite == true ? number : nil
+}
+
+let treemapDiskTooltipFormatter: (TooltipCallbackDataParams) -> String = { info in
+    let treePath = (info.treePathInfo ?? []).dropFirst().map(\.name).joined(separator: "/")
+    let value = treemapTooltipFiniteNumber(info.value).map(format.addCommas) ?? "-"
+    let valueLine = "Disk Usage: \(value) KB"
+    return treePath.isEmpty ? valueLine : "\(treePath)\n\(valueLine)"
+}
 
 // MARK: - the vendored asset
 
@@ -153,11 +168,7 @@ myChart.setOption(
                 "text": "Disk Usage",
                 "left": "center"
             ] as [String: Any],
-            "tooltip": [:] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure built a breadcrumb from
-            // `info.treePathInfo` (every ancestor name but the root, joined by '/', HTML-escaped via
-            // echarts.format.encodeHTML) as a `<div class="tooltip-title">`, then appended
-            // 'Disk Usage: ' + echarts.format.addCommas(info.value) + ' KB' (the size, thousands-separated).
+            "tooltip": ["formatter": treemapDiskTooltipFormatter] as [String: Any],
             "series": [
                 [
                     "name": "Disk Usage",
