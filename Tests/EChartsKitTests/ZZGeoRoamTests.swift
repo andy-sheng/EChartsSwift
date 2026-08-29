@@ -54,6 +54,52 @@ final class ZZGeoRoamTests: XCTestCase {
         return view
     }
 
+    private func makeGeoComponentView(withEffectLine: Bool = false) -> EChartsView {
+        ECharts.registerMap("toyGeoComponent", makeToyGeoJSON())
+        var option: [String: Any] = [
+            "geo": [
+                "map": "toyGeoComponent",
+                "roam": true,
+                "selectedMode": "multiple",
+                "left": 40.0, "right": 40.0, "top": 40.0, "bottom": 40.0,
+                "select": ["itemStyle": ["color": "#00aa00"] as [String: Any]] as [String: Any]
+            ] as [String: Any]
+        ]
+        if withEffectLine {
+            option["series"] = [[
+                "type": "lines",
+                "coordinateSystem": "geo",
+                "effect": [
+                    "show": true, "period": 4.0, "symbol": "circle",
+                    "symbolSize": 8.0, "color": "#ff0000", "delay": 0.0,
+                    "constantSpeed": 80.0
+                ] as [String: Any],
+                "data": [["coords": [[5.0, 5.0], [25.0, 5.0]]] as [String: Any]]
+            ] as [String: Any]]
+        }
+        let view = EChartsView(width: 520, height: 320)
+        view.setOption(option)
+        _ = view.zr.storage.getDisplayList(true)
+        return view
+    }
+
+    private func findEffectSymbol(_ element: Element) -> Path? {
+        if let path = element as? Path, path.name == "effectSymbol" { return path }
+        if let group = element as? Group {
+            for child in group.children() {
+                if let found = findEffectSymbol(child) { return found }
+            }
+        }
+        return nil
+    }
+
+    private func click(_ view: EChartsView, _ point: [Double]) {
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+        view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+    }
+
     private func geo(_ view: EChartsView) -> Geo? {
         guard let sm = view.ec.getModel()?.getSeriesByType("map").first as? MapSeriesModel else { return nil }
         return sm.coordinateSystem as? Geo
@@ -124,5 +170,88 @@ final class ZZGeoRoamTests: XCTestCase {
         guard let after = project(view, [15.0, 5.0]) else { return XCTFail("coord must still project") }
         XCTAssertEqual(after.x, before.x, accuracy: 1e-6, "roam:off map must not pan")
         XCTAssertEqual(after.y, before.y, accuracy: 1e-6, "roam:off map must not pan")
+    }
+
+    func testGeoRegionClickTogglesSelectionThroughRealHandler() {
+        let view = makeGeoComponentView()
+        guard let geoModel = view.ec.getModel()?.getComponent("geo", 0) as? GeoModel,
+              let geo = geoModel.coordinateSystem as? Geo,
+              let point = geo.dataToPoint([15.0, 5.0], false) else {
+            return XCTFail("geo component and Central region point must exist")
+        }
+
+        XCTAssertFalse(geoModel.isSelected("Central"))
+        click(view, point)
+        XCTAssertTrue(geoModel.isSelected("Central"), "first region click must dispatch geoToggleSelect")
+        click(view, point)
+        XCTAssertFalse(geoModel.isSelected("Central"), "second region click must restore selection")
+    }
+
+    func testGeoRoamPreservesEffectSymbolAndAnimatorPhase() {
+        let view = makeGeoComponentView(withEffectLine: true)
+        guard let symbolBefore = findEffectSymbol(view.ec.getRoot()),
+              let clipBefore = symbolBefore.animators.first?.getClip(),
+              let geoModel = view.ec.getModel()?.getComponent("geo", 0) as? GeoModel,
+              let geo = geoModel.coordinateSystem as? Geo else {
+            return XCTFail("geo lines effect symbol, animator and geo must exist")
+        }
+
+        _ = clipBefore.step(0, 0)
+        _ = clipBefore.step(500, 500)
+        let positionBefore = (symbolBefore.x, symbolBefore.y)
+        let rect = geo.getViewRect()
+        let center = (rect.x + rect.width / 2, rect.y + rect.height / 2)
+        let dx = 36.0, dy = 24.0
+        view._injectPointerForTest(type: "mousedown", zrX: center.0, zrY: center.1)
+        view._injectPointerForTest(type: "mousemove", zrX: center.0 + dx, zrY: center.1 + dy)
+        view._injectPointerForTest(type: "mouseup", zrX: center.0 + dx, zrY: center.1 + dy)
+
+        guard let symbolAfter = findEffectSymbol(view.ec.getRoot()),
+              let clipAfter = symbolAfter.animators.first?.getClip() else {
+            return XCTFail("effect symbol must survive transform-only roam")
+        }
+        XCTAssertTrue(symbolAfter === symbolBefore, "geoRoam must preserve the effect symbol identity")
+        XCTAssertTrue(symbolAfter.ignore, "upstream hides the effect symbol until its next animation frame")
+        if clipAfter === clipBefore {
+            _ = clipAfter.step(500, 0)
+        }
+        else {
+            // Upstream uses a strict period comparison. If floating-point reprojection changed the
+            // constant-speed period, the replacement clip resumes the previous phase through negative delay.
+            _ = clipAfter.step(0, 0)
+        }
+        XCTAssertFalse(symbolAfter.ignore)
+        XCTAssertEqual(symbolAfter.x - positionBefore.0, dx, accuracy: 0.75)
+        XCTAssertEqual(symbolAfter.y - positionBefore.1, dy, accuracy: 0.75)
+    }
+
+    func testGeoZoomRecomputesConstantSpeedPeriodWithoutPhaseJump() {
+        let view = makeGeoComponentView(withEffectLine: true)
+        guard let symbolBefore = findEffectSymbol(view.ec.getRoot()),
+              let clipBefore = symbolBefore.animators.first?.getClip(),
+              let geoModel = view.ec.getModel()?.getComponent("geo", 0) as? GeoModel,
+              let geo = geoModel.coordinateSystem as? Geo else {
+            return XCTFail("constant-speed effect symbol and geo must exist")
+        }
+        _ = clipBefore.step(0, 0)
+        _ = clipBefore.step(500, 500)
+        let positionBefore = (symbolBefore.x, symbolBefore.y)
+        let rect = geo.getViewRect()
+        let center = (rect.x + rect.width / 2, rect.y + rect.height / 2)
+
+        view._injectWheelForTest(zrDelta: 3, zrX: center.0, zrY: center.1)
+
+        guard let symbolAfter = findEffectSymbol(view.ec.getRoot()),
+              let clipAfter = symbolAfter.animators.first?.getClip() else {
+            return XCTFail("effect symbol must survive zoom")
+        }
+        XCTAssertTrue(symbolAfter === symbolBefore)
+        XCTAssertFalse(clipAfter === clipBefore,
+                       "constantSpeed zoom must rebuild only the clip because the pixel-length period changed")
+        XCTAssertTrue(symbolAfter.ignore, "upstream reveals the re-laid-out symbol on the next animation frame")
+        _ = clipAfter.step(0, 0)
+        XCTAssertFalse(symbolAfter.ignore)
+        XCTAssertEqual(symbolAfter.x, center.0 + (positionBefore.0 - center.0) * 1.2, accuracy: 0.9)
+        XCTAssertEqual(symbolAfter.y, center.1 + (positionBefore.1 - center.1) * 1.2, accuracy: 0.9)
     }
 }

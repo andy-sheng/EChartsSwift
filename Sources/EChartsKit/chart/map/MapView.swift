@@ -141,18 +141,8 @@ open class MapView: ChartView {
         //         && payload.seriesId === mapModel.id)) { ... } else { mapDraw && group.add(mapDraw.group); }
         //   PORT-NOTE: the port's `Payload` is a non-Optional struct; the driver passes `Payload(type: "")`
         //   as the "no payload" sentinel, and dynamic payload fields live in `payload.other`.
-        //   PORT-NOTE (DORMANT BY DESIGN — do not "fix" in isolation): `componentType` / `seriesId` are
-        //   NOT emitted by this port. `roamHelperGeo.swift`'s `geoRoam` dispatch (see its `dispatch(_:)`,
-        //   ~line 147) stamps only `geoRoamHostId` / `geoRoamHostMainType`; nothing in Sources ever sets
-        //   `other["componentType"] = "series"`. So `isSelfRoam` is ALWAYS false today and every roam
-        //   falls into the full `mapDraw.draw` branch below — which is exactly what must happen under the
-        //   port's current routing: roamHelperGeo registers the DEFAULT `update: 'update'` instead of
-        //   upstream's `update: 'updateTransform'` (deviation documented at roamHelperGeo.swift:35-39),
-        //   so `__updateOnOwnRoam` is NEVER dispatched and the full redraw is what actually moves the map.
-        //   Re-keying this guard onto `geoRoamHostMainType`/`geoRoamHostId` (or teaching roamHelperGeo the
-        //   upstream field names) would make the branch fire and FREEZE the map on pan/zoom; it REQUIRES
-        //   the `update: 'updateTransform'` → `__updateOnOwnRoam` routing to land in the same change.
-        //   The upstream spelling is kept verbatim here so that change is a one-line switch.
+        //   roamHelperGeo now emits these exact upstream fields and invokes `__updateOnOwnRoam` before the
+        //   transform-only series pass, so a self-roam keeps the persistent MapDraw instead of rebuilding it.
         let isSelfRoam = payload.type == "geoRoam"
             && (payload.other["componentType"] as? String) == "series"
             && (payload.other["seriesId"] as? String) == mapModel.id

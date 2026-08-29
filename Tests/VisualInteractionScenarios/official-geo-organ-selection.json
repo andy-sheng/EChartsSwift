@@ -1,0 +1,22 @@
+{
+  "id": "official-geo-organ-selection",
+  "demo": "official-geo-organ",
+  "checks": [
+    "A real Handler click on large-intestine must select the SVG geo region using the upstream geoToggleSelect action and red select style.",
+    "Clicking the same region again must unselect it and restore the authored SVG color in the same chart instance.",
+    "Native and Web must agree semantically after every capture; ignore font antialiasing and subpixel differences."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "clickGeoRegion", "name": "large-intestine", "movePointer": true},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "selected"},
+    {"action": "clickGeoRegion", "name": "large-intestine", "movePointer": true},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "restored"}
+  ]
+}

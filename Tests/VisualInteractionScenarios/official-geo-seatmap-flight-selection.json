@@ -1,0 +1,22 @@
+{
+  "id": "official-geo-seatmap-flight-selection",
+  "demo": "official-geo-seatmap-flight",
+  "checks": [
+    "A real Handler click on available seat 1A must select it green while pre-taken red seats remain unchanged.",
+    "Clicking 1A again must unselect it and restore the white available-seat state in the same chart instance.",
+    "Native and Web must agree semantically after every capture; ignore font antialiasing and subpixel differences."
+  ],
+  "steps": [
+    {"action": "settle", "capture": "baseline"},
+    {"action": "clickGeoRegion", "name": "1A", "movePointer": true},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "selected"},
+    {"action": "clickGeoRegion", "name": "1A", "movePointer": true},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wait", "milliseconds": 120},
+    {"action": "settle", "capture": "restored"}
+  ]
+}

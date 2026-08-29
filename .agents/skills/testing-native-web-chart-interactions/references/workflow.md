@@ -85,14 +85,14 @@ For toggles and navigation, perform the real inverse UI action before the restor
 The authoritative action list is the Native and Web action switches in `Sources/EChartsDemoGallery/InteractionVisual.swift`. Current actions include:
 
 ```text
-settle snapshot wait pointerMove globalOut wheelAt
+settle snapshot sampleAnimations wait timerWait pointerMove globalOut wheelAt
 clickLegend clickLegendPage clickVisibleLegendItem
 hoverData hoverSeries clickData
 clickTreemapBreadcrumbRoot clickTreemapDrillDownNode
 clickToolbox editDataView saveToolboxImage
 dragDataZoom dragGraphic dragAxisPointer dragTimeline dragBrush
 dragGeoRoam wheelGeoRoam dragSeriesRoam wheelSeriesRoam
-hoverGeoRegion dragVisualMap clickVisualMapPiece
+hoverGeoRegion clickGeoRegion dragVisualMap clickVisualMapPiece
 driveTick driveAfterTick
 ```
 

@@ -27,6 +27,7 @@ struct InteractionVisualStep: Decodable {
     let dataIndex: Double?
     let dataName: String?
     let milliseconds: Double?
+    let phase: Double?
     let deltaX: Double?
     let deltaY: Double?
     let deltaPercent: Double?
@@ -285,7 +286,7 @@ private func firstHitTestableGeoRegion(view: EChartsView) -> (name: String, poin
 }
 
 @MainActor
-private func hoverGeoRegion(name: String, view: EChartsView) -> [Double]? {
+private func geoRegionPoint(name: String, view: EChartsView) -> [Double]? {
     let geos = view.ec.getModel()?
         .findComponents(QueryConditionKindA(mainType: "geo"))
         .compactMap { ($0 as? GeoModel)?.coordinateSystem as? Geo } ?? []
@@ -296,10 +297,51 @@ private func hoverGeoRegion(name: String, view: EChartsView) -> [Double]? {
               (geoRegionEventData(at: point, view: view)?["name"] as? String) == name else {
             continue
         }
-        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
         return point
     }
+
+    // SVG region centers are not guaranteed to be inside their painted path (seat glyphs are a common
+    // example). Resolve the semantic region through its live eventData and sample the actual displayable,
+    // exactly as other deterministic Handler actions do.
+    for element in view.zr.storage.getDisplayList(true) {
+        var current: Element? = element
+        var belongsToNamedRegion = false
+        while let candidate = current {
+            if let eventData = innerStore.getECData(candidate).eventData,
+               (eventData["componentType"] as? String) == "geo",
+               (eventData["name"] as? String) == name {
+                belongsToNamedRegion = true
+                break
+            }
+            current = candidate.__hostTarget ?? (candidate.parent as? Element)
+        }
+        guard belongsToNamedRegion else { continue }
+        if let point = deterministicHoverPoint(element, accepting: {
+            (geoRegionEventData(at: $0, view: view)?["name"] as? String) == name
+        }) {
+            return point
+        }
+    }
     return nil
+}
+
+@MainActor
+private func hoverGeoRegion(name: String, view: EChartsView) -> [Double]? {
+    guard let point = geoRegionPoint(name: name, view: view) else { return nil }
+    view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+    return point
+}
+
+@MainActor
+private func clickGeoRegion(name: String, movePointer: Bool, view: EChartsView) -> [Double]? {
+    guard let point = geoRegionPoint(name: name, view: view) else { return nil }
+    if movePointer {
+        view._injectPointerForTest(type: "mousemove", zrX: point[0], zrY: point[1])
+    }
+    view._injectPointerForTest(type: "mousedown", zrX: point[0], zrY: point[1])
+    view._injectPointerForTest(type: "mouseup", zrX: point[0], zrY: point[1])
+    view._injectPointerForTest(type: "click", zrX: point[0], zrY: point[1])
+    return point
 }
 
 @MainActor
@@ -516,6 +558,32 @@ private func settleInteractionAnimations(_ root: Element) {
             clip.animation?.removeClip(clip)
         }
     }
+}
+
+@MainActor
+private func sampleInteractionAnimations(
+    _ root: Element, milliseconds: Double, phase: Double? = nil
+) -> Int {
+    let elements = interactionAnimationElements(root)
+    var seenClips = Set<ObjectIdentifier>()
+    var count = 0
+    for clip in elements.flatMap(\.animators).compactMap({ $0.getClip() }) where
+        seenClips.insert(ObjectIdentifier(clip)).inserted {
+        clip.resetForDeterministicSampling()
+        if let phase {
+            clip.onframe(max(0, min(phase, 1)))
+        }
+        else {
+            _ = clip.sampleForDeterministicRendering(at: milliseconds)
+        }
+        count += 1
+    }
+    return count
+}
+
+@MainActor
+private func waitForInteractionTimers(milliseconds: Double) {
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: milliseconds / 1_000))
 }
 
 @MainActor
@@ -1270,6 +1338,25 @@ private func writeOfficialInteractionScenarios(
                 ["action": "wait", "milliseconds": 700.0],
                 ["action": "settle", "capture": "geo-region-hover-restored"],
             ]
+            let hasSelectableGeo = ecModel.findComponents(QueryConditionKindA(mainType: "geo")).contains {
+                if let selected = $0.get("selectedMode") as? Bool { return selected }
+                if let selected = $0.get("selectedMode") as? String { return !selected.isEmpty }
+                return false
+            }
+            if hasSelectableGeo {
+                steps += [
+                    ["action": "clickGeoRegion", "name": geoRegionHit.name, "movePointer": true],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 120.0],
+                    ["action": "settle", "capture": "geo-region-selected"],
+                    ["action": "clickGeoRegion", "name": geoRegionHit.name, "movePointer": true],
+                    ["action": "pointerMove", "x": 1.0, "y": 1.0],
+                    ["action": "globalOut"],
+                    ["action": "wait", "milliseconds": 120.0],
+                    ["action": "settle", "capture": "geo-region-selection-restored"],
+                ]
+            }
         }
         let roamingGeos = demo.name == "official-scatter-map-brush"
             ? []
@@ -1905,6 +1992,18 @@ func runNativeInteractionVisual(
             }
             record["resolvedPoint"] = point
             record["name"] = name
+        case "clickGeoRegion":
+            guard let name = step.name,
+                  let point = clickGeoRegion(
+                    name: name, movePointer: step.movePointer ?? true, view: view
+                  ) else {
+                FileHandle.standardError.write(
+                    Data("step \(stepIndex): geo region was not click-testable\n".utf8)
+                )
+                return false
+            }
+            record["resolvedPoint"] = point
+            record["name"] = name
         case "dragVisualMap":
             let componentIndex = Int(step.componentIndex ?? 0)
             let handleIndex = Int(step.handleIndex ?? 1)
@@ -2017,9 +2116,20 @@ func runNativeInteractionVisual(
         case "snapshot":
             // Capture the naturally elapsed animation state without forcing animator callbacks.
             break
+        case "sampleAnimations":
+            let milliseconds = max(0, step.milliseconds ?? 0)
+            record["clips"] = sampleInteractionAnimations(
+                view.ec.getRoot(), milliseconds: milliseconds, phase: step.phase
+            )
+            record["milliseconds"] = milliseconds
+            if let phase = step.phase { record["phase"] = phase }
         case "wait":
             let milliseconds = max(0, step.milliseconds ?? 0)
             waitForInteractionAnimations(view, milliseconds: milliseconds)
+            record["milliseconds"] = milliseconds
+        case "timerWait":
+            let milliseconds = max(0, step.milliseconds ?? 0)
+            waitForInteractionTimers(milliseconds: milliseconds)
             record["milliseconds"] = milliseconds
         default:
             FileHandle.standardError.write(Data("step \(stepIndex): unknown action \(step.action)\n".utf8))
@@ -2609,7 +2719,35 @@ private let webInteractionHarnessJS = #"""
       var point = center && geo.dataToPoint && geo.dataToPoint(center);
       if (!point || !isFinite(point[0]) || !isFinite(point[1])) { continue; }
       var hovered = myChart.getZr().handler.findHover(point[0], point[1]);
-      if (hovered && hovered.target) { return { point: point, hovered: hovered }; }
+      var geoView = myChart.getViewOfComponentModel(models[i]);
+      var dispatchers = geoView && geoView.findHighDownDispatchers
+        ? (geoView.findHighDownDispatchers(name) || []) : [];
+      if (hovered && hovered.target && dispatchers.some(function (target) {
+        return belongsTo(hovered.target, target);
+      })) { return { point: point, hovered: hovered }; }
+      for (var d = 0; d < dispatchers.length; d++) {
+        var target = dispatchers[d];
+        var list = target && target.isGroup && target.traverse
+          ? (function () { var out = []; target.traverse(function (el) { if (!el.isGroup) { out.push(el); } }); return out; })()
+          : [target];
+        for (var j = 0; j < list.length; j++) {
+          var el = list[j];
+          if (!el || !el.getBoundingRect || !el.transformCoordToGlobal) { continue; }
+          var bounds = el.getBoundingRect();
+          for (var gy = 1; gy < 20; gy++) {
+            for (var gx = 1; gx < 20; gx++) {
+              var candidate = el.transformCoordToGlobal(
+                bounds.x + bounds.width * gx / 20,
+                bounds.y + bounds.height * gy / 20
+              );
+              var hit = myChart.getZr().handler.findHover(candidate[0], candidate[1]);
+              if (hit && hit.target && belongsTo(hit.target, target)) {
+                return { point: candidate, hovered: hit };
+              }
+            }
+          }
+        }
+      }
     }
     throw new Error('geo region was not hit-testable: ' + name);
   }
@@ -2818,6 +2956,60 @@ private let webInteractionHarnessJS = #"""
       if (pointerOutside) { hideTooltipHost(); }
       zr.refreshImmediately(true);
       return { animationFinished: zr.animation.isFinished() };
+    },
+    sampleAnimations: function (milliseconds, normalizedPhase) {
+      var zr = myChart.getZr();
+      zr.animation.stop();
+      var seenElements = new Set();
+      var seenClips = new Set();
+      var clips = [];
+      var clipAnimators = [];
+      function collect(el) {
+        if (!el || seenElements.has(el)) { return; }
+        seenElements.add(el);
+        var animators = el.animators || [];
+        for (var ai = 0; ai < animators.length; ai++) {
+          var clip = animators[ai].getClip && animators[ai].getClip();
+          if (clip && !seenClips.has(clip)) {
+            seenClips.add(clip);
+            clips.push(clip);
+            clipAnimators.push(animators[ai]);
+          }
+        }
+        if (el.getTextContent) { collect(el.getTextContent()); }
+        if (el.getTextGuideLine) { collect(el.getTextGuideLine()); }
+        var list = children(el);
+        for (var ci = 0; ci < list.length; ci++) { collect(list[ci]); }
+      }
+      var roots = zr.storage.getRoots();
+      for (var ri = 0; ri < roots.length; ri++) { collect(roots[ri]); }
+      for (var i = 0; i < clips.length; i++) {
+        var clip = clips[i];
+        var animator = clipAnimators[i];
+        // zrender Track caches its last keyframe index/percent. Reset that scan cursor together with
+        // the Clip clock so repeated deterministic samples can move backward to t=0 as a fresh RAF can.
+        // This touches only the offscreen Web oracle; production ECharts remains completely unmodified.
+        var tracks = animator && animator.getTracks ? animator.getTracks() : [];
+        for (var ti = 0; ti < tracks.length; ti++) {
+          tracks[ti]._lastFr = 0;
+          tracks[ti]._lastFrP = 0;
+        }
+        clip._inited = false;
+        clip._startTime = 0;
+        clip._pausedTime = 0;
+        clip._paused = false;
+        // Drive the real zrender Clip lifecycle rather than calling `onframe` directly: Animator's track
+        // application and `during` callbacks are wired through Clip.step in the built Web distribution.
+        if (normalizedPhase != null && isFinite(normalizedPhase)) {
+          clip.onframe(Math.max(0, Math.min(normalizedPhase, 1)));
+        }
+        else {
+          clip.step(0, 0);
+          clip.step(milliseconds, milliseconds);
+        }
+      }
+      zr.refreshImmediately(true);
+      return { clips: clips.length, milliseconds: milliseconds, phase: normalizedPhase };
     },
     settle: finishAnimations,
     clickLegend: function (name, movePointer) {
@@ -3154,6 +3346,19 @@ private let webInteractionHarnessJS = #"""
       myChart.getZr().animation.stop();
       return { x: hit.point[0], y: hit.point[1], name: name };
     },
+    clickGeoRegion: function (name, movePointer) {
+      pointerOutside = false;
+      var hit = geoRegionHit(name);
+      var handler = myChart.getZr().handler;
+      var event = raw(hit.point);
+      if (movePointer) { handler.mousemove(event); }
+      handler.mousedown(event);
+      handler.mouseup(event);
+      handler.click(event);
+      if (myChart._onframe) { myChart._onframe(); }
+      myChart.getZr().animation.stop();
+      return { x: hit.point[0], y: hit.point[1], name: name };
+    },
     dragVisualMap: function (componentIndex, handleIndex, deltaX, deltaY) {
       pointerOutside = false;
       var hit = visualMapHandleHit(componentIndex, handleIndex);
@@ -3270,7 +3475,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         let currentIndex = stepIndex
         let step = scenario.steps[currentIndex]
         stepIndex += 1
-        if step.action == "wait" {
+        if step.action == "wait" || step.action == "timerWait" {
             let milliseconds = max(0, step.milliseconds ?? 0)
             DispatchQueue.main.asyncAfter(deadline: .now() + milliseconds / 1_000) {
                 self.records.append([
@@ -3289,6 +3494,7 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             "dataIndex": step.dataIndex ?? 0,
             "dataName": step.dataName ?? "",
             "milliseconds": step.milliseconds ?? 0,
+            "phase": step.phase ?? NSNull(),
             "deltaX": step.deltaX ?? 48,
             "deltaY": step.deltaY ?? 0,
             "deltaPercent": step.deltaPercent ?? NSNull(),
@@ -3303,6 +3509,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
         switch step.action {
         case "settle": script = "window.__interactionVisual.settle()"
         case "snapshot": script = "window.__interactionVisual.snapshot()"
+        case "sampleAnimations":
+            script = "(function(a){return window.__interactionVisual.sampleAnimations(a.milliseconds,a.phase);})(\(json))"
         case "clickLegend":
             script = "(function(a){return window.__interactionVisual.clickLegend(a.name,a.movePointer);})(\(json))"
         case "clickLegendPage":
@@ -3349,6 +3557,8 @@ final class WebInteractionVisualRunner: NSObject, WKNavigationDelegate {
             script = "(function(a){return window.__interactionVisual.wheelAt(a.x,a.y,a.deltaY);})(\(json))"
         case "hoverGeoRegion":
             script = "(function(a){return window.__interactionVisual.hoverGeoRegion(a.name);})(\(json))"
+        case "clickGeoRegion":
+            script = "(function(a){return window.__interactionVisual.clickGeoRegion(a.name,a.movePointer);})(\(json))"
         case "dragVisualMap":
             script = "(function(a){return window.__interactionVisual.dragVisualMap(a.componentIndex,a.handleIndex,a.deltaX,a.deltaY);})(\(json))"
         case "clickVisualMapPiece":

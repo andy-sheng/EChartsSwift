@@ -983,7 +983,7 @@ public final class ECharts: EChartsType {
         //   The geo coord projects [lng, lat] to a pixel via the `View` transform (+ optional projection);
         //   GeoView draws the static GeoJSON region outlines + labels backdrop.
         //   `geoCreator` is the ported singleton `GeoCreator()` (conforms to CoordinateSystemCreator directly).
-        //   PORT-NOTE (deferred, with events/roam): geoToggleSelect/geoSelect/geoUnSelect/geoRoam actions;
+        //   geoToggleSelect/geoSelect/geoUnSelect + transform-only geoRoam are installed below;
         //   the geoPrepareCustom custom-series coord hook is unregistered (no prepareCustom registry yet —
         //   same as calendarPrepareCustom / polar prepareCustom, custom series is Phase 6b).
         CoordinateSystemManager.register("geo", geoCreator)                         // registerCoordinateSystem('geo', geoCreator)
@@ -1706,9 +1706,9 @@ public final class ECharts: EChartsType {
 
     /// upstream `updateMethods.updateTransform` (echarts.ts:1943): a coordinate-transform-only refresh
     /// (roam / inside-dataZoom pan). Each component/chart view gets its `updateTransform` hook; a view
-    /// that returns `false` handled it in place and needs nothing more, otherwise it is re-rendered.
-    /// The base hook returns nil (NO hook — no transform-only path), so a view without a real
-    /// implementation falls back to a full render, matching upstream's "no hook -> dirty". Tri-state
+    /// that returns `false` handled it in place and needs nothing more, otherwise only that dirty series
+    /// is re-rendered. The base hook returns nil (NO hook — no transform-only path), so a view without a real
+    /// implementation is marked dirty, matching upstream's "no hook -> dirty". Tri-state
     /// contract shared by `ComponentView`/`ChartView`: nil == no hook, false == implemented hook that
     /// returned upstream `void` (handled in place), true == upstream `{update: true}`.
     public func updateTransform() {
@@ -1720,16 +1720,23 @@ public final class ECharts: EChartsType {
         //   (MarkPoint ignores it, but the MarkLine/MarkArea/Brush hooks read it).
         let payload = _payload ?? Payload(type: "")
         ecModel.setUpdatePayload(payload)
-        var needRender = false
+        // Upstream records componentDirtyList but intentionally does not render components in this path
+        // (Geo is updated directly by its action). Evaluate the hooks for parity, but do not turn one
+        // component without a hook into an unrelated full-chart render.
         for cv in _componentsViews {
             guard let m = cv.__model else { continue }
-            if cv.updateTransform(m, ecModel, api, payload) != false { needRender = true }
+            _ = cv.updateTransform(m, ecModel, api, payload)
         }
+        var dirtySeries = Set<ObjectIdentifier>()
         for sv in _chartsViews {
             guard let m = sv.__model else { continue }
-            if sv.updateTransform(m, ecModel, api, payload) != false { needRender = true }
+            if sv.updateTransform(m, ecModel, api, payload) != false {
+                dirtySeries.insert(ObjectIdentifier(m))
+            }
         }
-        if needRender { render(ecModel, api) }
+        if !dirtySeries.isEmpty {
+            renderSeries(ecModel, api, UpdateLifecycleParams(), dirtySeries)
+        }
         // Upstream ALWAYS continues past the loop into `performVisualTasks` + `renderSeries`, so the
         //   in-place `markRedraw()` work a hook did (e.g. `SymbolDraw.updateLayout()`) always reaches the
         //   screen. The flush must therefore NOT be conditional on `needRender`: when EVERY view handled
@@ -2629,8 +2636,12 @@ public final class ECharts: EChartsType {
     // The four `lifecycle.trigger(...)`s and their `updateParams` ARE faithful (echarts.ts:2483-2538) —
     // they are what drives `universalTransition` (animation/universalTransition.swift), which listens on
     // 'series:beforeupdate' + 'series:transition'.
-    private func renderSeries(_ ecModel: GlobalModel, _ api: ExtensionAPI,
-                              _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
+    private func renderSeries(
+        _ ecModel: GlobalModel,
+        _ api: ExtensionAPI,
+        _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams(),
+        _ dirtySeries: Set<ObjectIdentifier>? = nil
+    ) {
         // upstream: `renderSeries(ecModel, api, payload, ...)` — the in-flight action payload reaches every
         //   series view's `render`. Views read it both to filter themselves out of a targeted dispatch
         //   (`findComponents({... query: payload})`, e.g. TreemapView) and to recover the action's target
@@ -2640,12 +2651,15 @@ public final class ECharts: EChartsType {
 
         // updateParams = extend(updateParams || {}, { updatedSeries: ecModel.getSeries() });
         var updateParams = updateParams
-        updateParams.updatedSeries = ecModel.getSeries()
+        updateParams.updatedSeries = ecModel.getSeries().filter {
+            dirtySeries?.contains(ObjectIdentifier($0)) ?? true
+        }
 
         // TODO progressive?
         lifecycle.trigger("series:beforeupdate", ecModel, api, updateParams)
 
         ecModel.eachSeries { seriesModel, _ in
+            if let dirtySeries = dirtySeries, !dirtySeries.contains(ObjectIdentifier(seriesModel)) { return }
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
             // upstream (echarts.ts renderSeries): mark the rendered view alive so the `updateDirectly`
             //   light-update path (callView's `view.__alive` guard) can dispatch highlight/downplay to it.
@@ -2673,6 +2687,7 @@ public final class ECharts: EChartsType {
         lifecycle.trigger("series:transition", ecModel, api, updateParams)
 
         ecModel.eachSeries { seriesModel, _ in
+            if let dirtySeries = dirtySeries, !dirtySeries.contains(ObjectIdentifier(seriesModel)) { return }
             guard let chartView = self._chartViewByModel[ObjectIdentifier(seriesModel)] else { return }
             // Update Z after labels updated. Before applying states.
             // upstream echarts.ts renderSeries runs `updateZ(seriesModel, view)` — lift the series' z above
@@ -3070,6 +3085,10 @@ public final class ECharts: EChartsType {
             case "updateView":   view.updateView(m, ecModel, api, payload)
             case "updateLayout": view.updateLayout(m, ecModel, api, payload)
             case "updateVisual": view.updateVisual(m, ecModel, api, payload)
+            case "updateSelectStatus":
+                if let geoView = view as? GeoView, let geoModel = m as? GeoModel {
+                    geoView.updateSelectStatus(geoModel, ecModel, api)
+                }
             case "render":       view.render(m, ecModel, api, payload)
             default: break
             }

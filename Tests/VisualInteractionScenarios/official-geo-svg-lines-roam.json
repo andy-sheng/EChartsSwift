@@ -1,0 +1,32 @@
+{
+  "id": "official-geo-svg-lines-roam",
+  "demo": "official-geo-svg-lines",
+  "checks": [
+    "Geo drag and wheel must update line geometry through updateTransform without rebuilding the effect symbol or resetting its animator phase.",
+    "The dashed base paths and moving red effect walkers must stay attached during pan and zoom, matching Web at each settled state.",
+    "Inverse pan and zoom must restore the original geometry without stale hover or transform state."
+  ],
+  "steps": [
+    {"action": "sampleAnimations", "phase": 0, "capture": "baseline-phase0"},
+    {"action": "dragGeoRoam", "deltaX": 36, "deltaY": 24},
+    {"action": "timerWait", "milliseconds": 120},
+    {"action": "sampleAnimations", "phase": 0, "capture": "panned-phase0"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "dragGeoRoam", "deltaX": -36, "deltaY": -24},
+    {"action": "timerWait", "milliseconds": 120},
+    {"action": "sampleAnimations", "phase": 0, "capture": "pan-restored-phase0"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wheelGeoRoam", "deltaY": 3},
+    {"action": "timerWait", "milliseconds": 150},
+    {"action": "sampleAnimations", "phase": 0, "capture": "zoomed-phase0"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"},
+    {"action": "wheelGeoRoam", "deltaY": -3},
+    {"action": "timerWait", "milliseconds": 150},
+    {"action": "sampleAnimations", "phase": 0, "capture": "zoom-restored-phase0"},
+    {"action": "pointerMove", "x": 1, "y": 1},
+    {"action": "globalOut"}
+  ]
+}

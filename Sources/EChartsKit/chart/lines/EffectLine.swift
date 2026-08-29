@@ -64,7 +64,19 @@ public enum EffectLine {
         var lastT: Double?
         var symbolType = "circle"
         var symbolScaleY: Double = 1
+        // The current animator progress is the port's equivalent of `symbol.__t / maxT`. Keeping it on
+        // the symbol-owned state lets updateLayout replace the geometry without restarting the animator.
+        var currentPercent: Double = 0
+        var period: Double?
+        var loop: Bool?
+        var roundTrip: Bool?
+        weak var group: Group?
     }
+
+    // Upstream stores the animation geometry directly on the effect symbol (`__p1`, `__p2`, `__cp1`,
+    // `__t`). Swift paths do not expose arbitrary JS properties, so use the existing weak-key inner-store
+    // mechanism: state lifetime is exactly the symbol lifetime and updateLayout can recover it by identity.
+    private static let stateInner: (Element) -> State = model.makeInner { State() }
 
     /// Build the moving trail symbol for one line item, add it to `group`, and start its looping
     /// animator. Mirrors `EffectLine._updateEffectSymbol` + `_updateEffectAnimation` + `_animateSymbol`.
@@ -117,11 +129,15 @@ public enum EffectLine {
         let roundTrip = effectTruthy(effectModel.get("roundTrip"), default: false)
         let constantSpeed = effectNum(effectModel.get("constantSpeed")) ?? 0
 
-        let state = State()
+        let state = stateInner(sym)
         state.isPolyline = isPolyline
         state.maxT = roundTrip ? 2 : 1
         state.symbolType = symbolType          // upstream EffectLine._symbolType
         state.symbolScaleY = sizeH             // upstream EffectLine._symbolScale[1]
+        state.group = group
+        // upstream `_updateEffectAnimation`: hide while geometry is being replaced; the animator's
+        // next `during` callback reveals the symbol at the position on the new path.
+        sym.ignore = true
         updateAnimationPoints(state, points)
 
         // if (constantSpeed > 0) period = lineLength / constantSpeed * 1000;
@@ -138,35 +154,85 @@ public enum EffectLine {
             delayNum = count > 0 ? Double(idx) / Double(count) * period / 3 : 0
         }
 
-        // Establish a visible baseline (t = 0) so the symbol shows at the line start even if the
-        //   animation loop never ticks (upstream sets ignore=true and waits for the first `during`;
-        //   the static PNG oracle advances every clip, but a plain render should still show the dot).
-        updateSymbolPosition(state, sym, percent: 0)
-
         _ = group.add(sym)
-
-        // ---- _animateSymbol --------------------------------------------------------------------------
-        // symbol.animate('', loop).when(roundTrip ? period*2 : period, {__t: roundTrip ? 2 : 1})
-        //   .delay(delayNum).during(() => _updateSymbolPosition(symbol));  if (!loop) animator.done(remove)
-        if period > 0 {
-            let life = roundTrip ? period * 2 : period
-            let animator = sym.animate("", loop)
-                .duration(life)                 // track-less forced clip (see DEVIATION 2)
-                .delay(delayNum)
-                .during { [weak sym] _, percent in
-                    guard let sym = sym else { return }
-                    updateSymbolPosition(state, sym, percent: percent)
-                }
-            if !loop {
-                animator.done { [weak group, weak sym] in
-                    guard let group = group, let sym = sym else { return }
-                    _ = group.remove(sym)
-                }
-            }
-            animator.start()
-        }
+        configureAnimation(
+            state, sym, period: period, delay: delayNum, loop: loop, roundTrip: roundTrip
+        )
 
         return sym
+    }
+
+    /// Upstream `EffectLine.updateLayout` / `EffectPolyline.updateLayout`: update the existing effect
+    /// symbol's geometry while preserving its identity and running animator phase.
+    public static func updateLayout(
+        _ symbol: Path,
+        points: [[Double]],
+        effectModel: Model,
+        idx: Int,
+        count: Int
+    ) {
+        guard points.count >= 2 else { return }
+        let state = stateInner(symbol)
+        let previousT = state.currentPercent * state.maxT
+        symbol.ignore = true
+        updateAnimationPoints(state, points)
+
+        var period = (effectNum(effectModel.get("period")) ?? 4.0) * 1000
+        let constantSpeed = effectNum(effectModel.get("constantSpeed")) ?? 0
+        if constantSpeed > 0 {
+            let lineLength = getLineLength(state)
+            if lineLength > 0 { period = lineLength / constantSpeed * 1000 }
+        }
+        let loop = effectTruthy(effectModel.get("loop"), default: true)
+        let roundTrip = effectTruthy(effectModel.get("roundTrip"), default: false)
+        let authoredDelay = effectNum(effectModel.get("delay"))
+            ?? (count > 0 ? Double(idx) / Double(count) * period / 3 : 0)
+
+        // upstream uses strict `period !== this._period` here.
+        let periodChanged = state.period != period
+        if periodChanged || state.loop != loop || state.roundTrip != roundTrip {
+            // Upstream resumes a changed-period effect from its current `symbol.__t`, using a negative
+            // delay. This matters for constantSpeed when zoom changes the pixel length.
+            let delay = previousT > 0 ? -period * previousT : authoredDelay
+            configureAnimation(
+                state, symbol, period: period, delay: delay, loop: loop, roundTrip: roundTrip
+            )
+        }
+    }
+
+    private static func configureAnimation(
+        _ state: State,
+        _ symbol: Path,
+        period: Double,
+        delay: Double,
+        loop: Bool,
+        roundTrip: Bool
+    ) {
+        _ = symbol.stopAnimation()
+        state.period = period
+        state.loop = loop
+        state.roundTrip = roundTrip
+        state.maxT = roundTrip ? 2 : 1
+        // upstream `_animateSymbol` always resets `symbol.__t = 0`; a negative delay makes the first
+        // animation frame resume the previous phase.
+        state.currentPercent = 0
+        guard period > 0 else { return }
+
+        let life = roundTrip ? period * 2 : period
+        let animator = symbol.animate("", loop)
+            .duration(life)
+            .delay(delay)
+            .during { [weak symbol] _, percent in
+                guard let symbol = symbol else { return }
+                updateSymbolPosition(state, symbol, percent: percent)
+            }
+        if !loop {
+            animator.done { [weak symbol, weak group = state.group] in
+                guard let symbol = symbol, let group = group else { return }
+                _ = group.remove(symbol)
+            }
+        }
+        animator.start()
     }
 
     // upstream EffectLine._updateAnimationPoints / EffectPolyline._updateAnimationPoints
@@ -216,6 +282,7 @@ public enum EffectLine {
     // upstream EffectLine._updateSymbolPosition / EffectPolyline._updateSymbolPosition.
     //   `percent` (0…1 per loop) is the port's `__t / maxT` (see DEVIATION 2), so `__t = percent * maxT`.
     private static func updateSymbolPosition(_ state: State, _ sym: Path, percent: Double) {
+        state.currentPercent = percent
         let tt = percent * state.maxT               // upstream symbol.__t (0…1, or 0…2 roundTrip)
         let t = tt <= 1 ? tt : 2 - tt
 
@@ -293,7 +360,8 @@ public enum EffectLine {
             sym.x = posX
             sym.y = posY
         }
-    }
+        sym.ignore = false
+        }
 
     // upstream: `symbol.setStyle(effectModel.getItemStyle(['color']))` — MERGE the effect sub-model's
     //   item-style props onto the trail symbol's existing style (the `color`/`fill` set by createSymbol

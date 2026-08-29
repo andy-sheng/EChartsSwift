@@ -30,13 +30,10 @@ import ZRenderKit
 //      to action type `geoRoam`, "Historical setting") → `registerGeoRoamAction` (the `geoRoam` action that
 //      applies the pan/zoom payload to the host's Geo `View` coord sys via `viewCoordSysApplyRoamPayloadSyncBack`).
 //
-//   The `View` sync-back-TO-MODEL / roaming-animation machinery stays DEFERRED (see View.swift). The roam
-//   state instead persists in a per-host-model inner store (below) that survives the full-`update()` rebuild
-//   `geoRoam` triggers — same architecture as the graph slice. DEVIATION (same as graph): upstream registers
-//   `update: 'updateTransform'` and re-transforms the region group via `MapDraw.__updateOnOwnRoam`; the
-//   driver has no partial updateTransform, so this registers the DEFAULT `update: 'update'` — after the handler
-//   writes the roam state, the full `update()` rebuilds the Geo coord sys (seeded from the stored roam state
-//   via `geoRoamApplyStateToView` in geoCreator.resizeGeo) and re-renders the shifted/scaled regions.
+//   The action follows component/geo/install.ts: it updates the owning MapDraw directly, then dispatches
+//   `updateTransform` so dependent series re-layout without rebuilding the geo component or restarting
+//   long-running effect animators. The per-host inner state below mirrors the model sync-back needed by this
+//   port's rebuilt coordinate-system path and remains the source used by a later full update.
 //   PORT-NOTE (deferred): MAP_SERIES_GROUP sync-to-all (`otherModelsToSync`) — a single roam host is handled.
 
 // ---------------------------------------------------------------------------------------------------
@@ -139,14 +136,13 @@ public func updateGeoRoamControllerSimply(
     controller.enable(roam, opt)
 
     // upstream `dispatchAction(extra)`: `{type: 'geoRoam', [`${mainType}Id`], ...extra}` (+ componentType
-    //   when geoBackwardCompat). The port carries the host id + mainType so the action can target the exact
-    //   host across a full-`update()` rebuild.
+    //   for geo backward compatibility).
     let hostId = hostModel.id
     let hostMainType = hostModel.mainType
     func dispatch(_ extra: [String: Any]) {
         var payload = Payload(type: "geoRoam")
-        payload.other["geoRoamHostId"] = hostId
-        payload.other["geoRoamHostMainType"] = hostMainType
+        payload.other["componentType"] = hostMainType
+        payload.other[hostMainType + "Id"] = hostId
         for (k, v) in extra { payload.other[k] = v }
         // payloadDisableAnimation — the roam update should be immediate (no tween).
         payload.other["animation"] = ["duration": 0] as [String: Any]
@@ -178,15 +174,56 @@ public func updateGeoRoamControllerSimply(
 // registerRoamActionSimply (GEO/MAP) — the `geoRoam` action.
 // ---------------------------------------------------------------------------------------------------
 
-// upstream: the `geoRoam` action (geo/install.ts + registerRoamActionSimply(registers,'series','map')).
-//   The handler applies the pan/zoom payload to the host's Geo `View` coord sys and stores the resulting
-//   (center, zoom) roam state. See the DEVIATION (update:'update') note in the file header.
+// component/geo/install.ts `makeAction` — selection model mutation followed by the targeted
+// `geo:updateSelectStatus` view method. Kept beside geoRoam because both are installed together upstream.
+private func registerGeoSelectAction(
+    _ method: String, _ type: String, _ event: String
+) {
+    var info = ActionInfo(type: type)
+    info.event = event
+    info.update = "geo:updateSelectStatus"
+    registerAction(info) { payload, ecModel, _ in
+        var selected: [String: Bool] = [:]
+        var allSelected: [[String: Any]] = []
+        let condition = model.makeQueryConditionKindA(payload, "geo", nil)
+
+        ecModel.eachComponent(condition) { component, _ in
+            guard let geoModel = component as? GeoModel else { return }
+            let name = payload.other["name"] as? String
+            switch method {
+            case "toggleSelected": geoModel.toggleSelected(name)
+            case "select": geoModel.select(name)
+            case "unSelect": geoModel.unSelect(name)
+            default: return
+            }
+
+            if let geo = geoModel.coordinateSystem as? Geo {
+                for region in geo.regions {
+                    selected[region.name] = geoModel.isSelected(region.name)
+                }
+            }
+            let names = selected.compactMap { $0.value ? $0.key : nil }
+            allSelected.append(["geoIndex": geoModel.componentIndex, "name": names])
+        }
+
+        return [
+            "selected": selected,
+            "allSelected": allSelected,
+            "name": payload.other["name"] ?? NSNull()
+        ]
+    }
+}
+
+// upstream: component/geo/install.ts install selection actions and the geoRoam action.
 public func registerGeoRoamAction() {
+    registerGeoSelectAction("toggleSelected", "geoToggleSelect", "geoselectchanged")
+    registerGeoSelectAction("select", "geoSelect", "geoselected")
+    registerGeoSelectAction("unSelect", "geoUnSelect", "geounselected")
+
     var info = ActionInfo(type: "geoRoam")
     info.event = "geoRoam"
-    // update: default 'update' — see DEVIATION note in the file header.
-    registerAction(info) { payload, ecModel, _ in
-        let hostId = payload.other["geoRoamHostId"] as? String
+    info.update = "updateTransform"
+    registerAction(info) { payload, ecModel, api in
         let dx = geoRoamNum(payload.other["dx"])
         let dy = geoRoamNum(payload.other["dy"])
         let zoom = geoRoamNum(payload.other["zoom"])
@@ -194,7 +231,6 @@ public func registerGeoRoamAction() {
         let originY = geoRoamNum(payload.other["originY"]) ?? 0
 
         func handle(_ hostModel: ComponentModel) {
-            if let hid = hostId, !hid.isEmpty, hostModel.id != hid { return }
             guard let geo = geoRoamHostCoordSys(hostModel) else { return }
 
             // Apply the payload to the View's OVERALL trans, invert back to (center, zoom).
@@ -207,15 +243,42 @@ public func registerGeoRoamAction() {
             state.roamed = true
             // Also reflect immediately onto the CURRENT view (so any read before the rebuild is fresh).
             viewCoordSysSetRoamOption(geo.view, state.center, state.zoom, state.zoomLimit)
+
+            // ownRoamViewUpdateDirectlyInAction(payload, componentOrSeries, ecModel, api)
+            let roamPayload = RoamPayload(
+                type: "geoRoam",
+                dx: dx ?? 0, dy: dy ?? 0, zoom: zoom ?? 1,
+                originX: originX, originY: originY,
+                escapeConnect: payload.escapeConnect, batch: nil,
+                excludeSeriesId: payload.excludeSeriesId,
+                animation: payload.animation,
+                other: payload.other
+            )
+            if let roamView = getViewOfComponentOrSeries(api, hostModel) as? RoamHostView {
+                roamView.__updateOnOwnRoam(roamPayload, hostModel, api)
+            }
         }
 
-        // upstream `makeQueryConditionKindA` resolves the host by mainType/subType + id. The port iterates
-        //   the two roam-host kinds directly (geo components + map series), filtering by the host id.
-        ecModel.eachComponent("geo") { comp, _ in
-            if let geoModel = comp as? GeoModel { handle(geoModel) }
+        // component/geo/install.ts mainType selection: componentType is backward-compatible; a geo
+        // finder implies geo, otherwise the historical default is series.map.
+        let explicitMainType = payload.other["componentType"] as? String
+        let mainType = explicitMainType
+            ?? ((payload.other["geoId"] != nil
+                || payload.other["geoName"] != nil
+                || payload.other["geoIndex"] != nil) ? "geo" : COMPONENT_MAIN_TYPE_SERIES)
+        if mainType == "geo" {
+            let condition = model.makeQueryConditionKindA(payload, "geo", nil)
+            ecModel.eachComponent(condition) { component, _ in
+                if let geoModel = component as? GeoModel { handle(geoModel) }
+            }
         }
-        ecModel.eachSeriesByType("map") { s, _ in
-            if let mapSeries = s as? MapSeriesModel { handle(mapSeries) }
+        else if mainType == COMPONENT_MAIN_TYPE_SERIES {
+            let condition = model.makeQueryConditionKindA(payload, COMPONENT_MAIN_TYPE_SERIES, "map")
+            ecModel.eachComponent(condition) { component, _ in
+                guard let mapSeries = component as? MapSeriesModel,
+                      mapSeriesNeedsDrawMap(mapSeries) else { return }
+                handle(mapSeries)
+            }
         }
         return nil
     }

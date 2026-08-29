@@ -119,10 +119,9 @@ open class LinesView: ChartView {
     private var _lineEls: [Int: Path] = [:]
     private var _prevCount = -1
     private var _prevIsPolyline = false
-    // The effect TRAIL symbols are ANIMATED (looping) — kept rebuilding each render (their morph is a
-    //   documented PORT-NOTE deferral). Persisted only so the previous render's symbols can be removed before the
-    //   base lines are reused (otherwise they would accumulate when the group is no longer wiped).
-    private var _effectSymbols: [Path] = []
+    // Effect symbols are keyed by data index so updateTransform can update their geometry in place while
+    // preserving the animator identity/phase, matching EffectLine.updateLayout upstream.
+    private var _effectSymbols: [Int: Path] = [:]
 
     // upstream: render(seriesModel: LinesSeriesModel, ecModel: GlobalModel, api: ExtensionAPI)
     open override func render(
@@ -182,7 +181,7 @@ open class LinesView: ChartView {
         // The effect trail symbols are ANIMATED (looping) and rebuilt each render (their morph is a
         //   PORT-NOTE deferral). With the group no longer wiped, remove the previous render's symbols first so
         //   they don't accumulate when the base lines are reused.
-        for s in _effectSymbols { _ = group.remove(s) }
+        for (_, s) in _effectSymbols { _ = group.remove(s) }
         _effectSymbols.removeAll()
 
         // NOTE: the per-zlevel motion-blur config (upstream LinesView.render's `zr.configLayer(zlevel,
@@ -344,7 +343,7 @@ open class LinesView: ChartView {
                         to: group, points: e.points, isPolyline: false,
                         effectModel: effectModel, idx: i, count: count, strokeColor: e.stroke
                     ) {
-                        _effectSymbols.append(sym)
+                        _effectSymbols[i] = sym
                     }
                 }
             }
@@ -416,7 +415,7 @@ open class LinesView: ChartView {
                     to: group, points: points.map { [$0[0], $0[1]] }, isPolyline: true,
                     effectModel: effectModel, idx: i, count: count, strokeColor: strokeColorStr
                 ) {
-                    _effectSymbols.append(sym)
+                    _effectSymbols[i] = sym
                 }
             }
         }
@@ -479,14 +478,78 @@ open class LinesView: ChartView {
         _isLargeDraw = false
         for (_, old) in _lineEls { _ = self.group.remove(old) }
         _lineEls.removeAll()
-        for s in _effectSymbols { _ = self.group.remove(s) }
+        for (_, s) in _effectSymbols { _ = self.group.remove(s) }
         _effectSymbols.removeAll()
         _prevCount = -1
         _prevIsPolyline = false
     }
 
-    // upstream: incrementalPrepareRender / incrementalRender / updateTransform / eachRendered
-    //   -> PORT-NOTE: incremental/progressive pipeline + updateLayout are not wired in this static view (the core/task pipeline itself is ported).
+    // upstream: updateTransform(seriesModel, ecModel, api). Re-run only the lines layout and update the
+    // existing draw objects in place. This is the critical geo-roam path: rebuilding the view would reset
+    // every effect symbol's looping animator, while upstream keeps its identity and phase.
+    open override func updateTransform(
+        _ seriesModelBase: SeriesModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload
+    ) -> Bool? {
+        guard let seriesModel = seriesModelBase as? LinesSeriesModel else { return true }
+        let data = seriesModel.getData()
+
+        // Upstream falls back to render when the active draw cannot updateLayout (large/progressive).
+        if _isLargeDraw || seriesModel.pipelineContext?.progressiveRender == true {
+            return true
+        }
+
+        guard let executor = linesLayout.reset?(seriesModel, ecModel, api, payload) as? StageHandlerProgressExecutor
+        else { return true }
+        if let progress = executor.progress {
+            let count = data.count()
+            var cursor = 0
+            let next: TaskDataIteratorNext = {
+                guard cursor < count else { return nil }
+                defer { cursor += 1 }
+                return Double(cursor)
+            }
+            progress(
+                StageHandlerProgressParams(
+                    start: 0, end: Double(count), count: Double(count), next: next
+                ),
+                data
+            )
+        }
+
+        let isPolyline = linesTruthy(seriesModel.get("polyline", false))
+        if isPolyline {
+            for i in 0..<data.count() {
+                guard let points = data.getItemLayout(i) as? [[Double]], points.count >= 2 else { continue }
+                if let poly = _lineEls[i] as? Polyline {
+                    var shape = PolylineShape()
+                    shape.points = points.map { VectorArray($0[0], $0[1]) }
+                    poly.setShape(shape)
+                }
+                if let effect = _effectSymbols[i] {
+                    EffectLine.updateLayout(
+                        effect, points: points,
+                        effectModel: data.getItemModel(i).getModel("effect"), idx: i, count: data.count()
+                    )
+                }
+            }
+        }
+        else {
+            _lineDraw.updateLayout()
+            for i in 0..<data.count() {
+                guard let effect = _effectSymbols[i],
+                      let points = data.getItemLayout(i) as? [[Double]], points.count >= 2 else { continue }
+                EffectLine.updateLayout(
+                    effect, points: points,
+                    effectModel: data.getItemModel(i).getModel("effect"), idx: i, count: data.count()
+                )
+            }
+        }
+
+        return false
+    }
+
+    // upstream: incrementalPrepareRender / incrementalRender / eachRendered
+    //   -> PORT-NOTE: incremental/progressive pipeline is not wired in this static driver.
 
     // upstream: remove(ecModel, api) { this._lineDraw && this._lineDraw.remove(); this._lineDraw = null; this._clearLayer(api); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
