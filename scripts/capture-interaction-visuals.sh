@@ -20,8 +20,8 @@ case "$case_id" in
 esac
 
 if [[ -z "$binary" ]]; then
-  swift build --package-path "$repo_root" --product EChartsDemoGallery
-  bin_dir="$(swift build --package-path "$repo_root" --show-bin-path | tail -1)"
+  swift build --package-path "$repo_root/Examples/PainterGallery" --product EChartsDemoGallery
+  bin_dir="$(swift build --package-path "$repo_root/Examples/PainterGallery" --show-bin-path | tail -1)"
   binary="$bin_dir/EChartsDemoGallery"
 fi
 [[ -x "$binary" ]] || { print -u2 "EChartsDemoGallery binary is not executable: $binary"; exit 2; }

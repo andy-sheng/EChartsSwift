@@ -15,10 +15,12 @@ binding translation rules for this repository and take precedence over this summ
 - `Sources/ZRenderKit`: faithful port of `upstream/zrender/src`.
 - `Sources/EChartsKit`: faithful port of `upstream/echarts/src`.
 - `Sources/NativePainter`: hand-written Core Graphics/Core Animation renderer.
-- `Sources/RasterizerPainter`: experimental Metal renderer over Rasterizer.
+- `Sources/ApplePainterSupport`: shared Apple geometry, text, images and CG drawing.
+- `Sources/NativeRenderer`: ECharts CanvasRenderer extension for NativePainter.
+- `RasterizerPainter/`: independent Git repository and Swift package for the Metal painter.
 - `Sources/EChartsDemoCore`: shared ECharts demo definitions.
-- `Sources/DemoGallery`: macOS ZRender demo gallery.
-- `Sources/EChartsDemoGallery`: macOS ECharts comparison gallery.
+- `Examples/PainterGallery/Sources/DemoGallery`: macOS ZRender demo gallery.
+- `Examples/PainterGallery/Sources/EChartsDemoGallery`: macOS ECharts comparison gallery.
 - `Sources/EChartsDemoGalleryiOS`: iOS Simulator ECharts gallery.
 - `Tests/ZRenderKitTests` and `Tests/EChartsKitTests`: unit, parity, and rendering tests.
 - `Oracle`: ECharts/ZRender golden-fixture generator and committed fixtures.
@@ -49,7 +51,7 @@ binding translation rules for this repository and take precedence over this summ
 
 - Never edit `upstream/echarts` or `upstream/zrender`. Update `upstream/upstream.lock`, run
   `scripts/sync-upstream.sh`, inspect the upstream diff, and then port the change.
-- Do not hand-edit `third_party/Rasterizer`. Update its lock or patch and reconstruct it
+- Do not hand-edit `RasterizerPainter/third_party/Rasterizer`. Update its lock or patch and reconstruct it
   with `scripts/sync-rasterizer.sh`.
 - Treat `.build`, `.swiftpm`, `build`, and `out` as local/generated artifacts.
 - Golden fixtures in `Oracle/fixtures` are generated artifacts but are intentionally
@@ -57,12 +59,12 @@ binding translation rules for this repository and take precedence over this summ
 
 ## Setup
 
-The package has a local dependency on the reconstructed Rasterizer checkout. On a fresh
-clone, prepare both pinned dependencies before building:
+The core has no Rasterizer dependency. Prepare upstream references for oracle tests;
+only the separate macOS gallery package needs the optional painter repository:
 
 ```bash
 scripts/sync-upstream.sh
-scripts/sync-rasterizer.sh
+scripts/sync-rasterizer.sh # optional; requires the independent RasterizerPainter checkout
 ```
 
 To verify existing checkouts without changing them:
@@ -91,8 +93,8 @@ swift test --filter <TestCaseOrMethod>
 Useful demo commands:
 
 ```bash
-swift run DemoGallery --list
-swift run EChartsDemoGallery --list
+swift run --package-path Examples/PainterGallery DemoGallery --list
+swift run --package-path Examples/PainterGallery EChartsDemoGallery --list
 scripts/build-demo-gallery.sh
 scripts/build-echarts-gallery.sh
 scripts/build-echarts-gallery-ios.sh

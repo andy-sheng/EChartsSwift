@@ -154,8 +154,8 @@ done
 
 if [[ -z "$binary" ]]; then
   print "Building EChartsDemoGallery ($config)..."
-  swift build --package-path "$repo_root" -c "$config" --product EChartsDemoGallery
-  bin_dir="$(swift build --package-path "$repo_root" -c "$config" --show-bin-path | tail -1)"
+  swift build --package-path "$repo_root/Examples/PainterGallery" -c "$config" --product EChartsDemoGallery
+  bin_dir="$(swift build --package-path "$repo_root/Examples/PainterGallery" -c "$config" --show-bin-path | tail -1)"
   binary="$bin_dir/EChartsDemoGallery"
 fi
 [[ -x "$binary" ]] || { print -u2 "EChartsDemoGallery binary is not executable: $binary"; exit 2; }

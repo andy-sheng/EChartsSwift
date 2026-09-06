@@ -11,7 +11,7 @@ set -u
 MANIFEST="${1:?usage: scene-sweep.sh <manifest.json> <outdir> [maxPasses]}"
 OUTDIR="${2:?usage: scene-sweep.sh <manifest.json> <outdir> [maxPasses]}"
 MAXPASS="${3:-60}"
-BIN=".build/debug/EChartsDemoGallery"
+BIN="Examples/PainterGallery/.build/debug/EChartsDemoGallery"
 
 [ -x "$BIN" ] || { echo "build first: swift build"; exit 1; }
 mkdir -p "$OUTDIR"

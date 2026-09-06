@@ -396,7 +396,7 @@ final class CanvasViewController: NSViewController {
     private static let testDir = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // DemoGallery
         .deletingLastPathComponent()   // Sources
-        .deletingLastPathComponent()   // repo root
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() // repo root
         .appendingPathComponent("upstream/zrender/test", isDirectory: true)
     /// Read access must include ../dist so the html's `<script src="../dist/zrender.js">` resolves.
     private static var zrenderDir: URL { testDir.deletingLastPathComponent() }
@@ -990,6 +990,7 @@ func runCLI() -> Bool {
         }
         let testDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("upstream/zrender/test", isDirectory: true)
         let htmlURL = testDir.appendingPathComponent(args[1] + ".html")
         guard FileManager.default.fileExists(atPath: htmlURL.path) else {

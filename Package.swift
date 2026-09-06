@@ -14,14 +14,12 @@ let package = Package(
     products: [
         .library(name: "ZRenderKit", targets: ["ZRenderKit"]),
         .library(name: "NativePainter", targets: ["NativePainter"]),
-        .library(name: "EChartsKit", targets: ["EChartsKit"])
+        .library(name: "EChartsKit", targets: ["EChartsKit"]),
+        .library(name: "ApplePainterSupport", targets: ["ApplePainterSupport"]),
+        .library(name: "NativeRenderer", targets: ["NativeRenderer"]),
+        .library(name: "EChartsDemoCore", targets: ["EChartsDemoCore"])
     ],
-    dependencies: [
-        // Vendored mindbrix/Rasterizer (GPU/Metal 2D vector rasterizer) — the experimental
-        // alternative live painter. Personal-use zlib license; see third_party/Rasterizer/
-        // README-VENDORED.md for provenance + local modifications.
-        .package(path: "third_party/Rasterizer")
-    ],
+    dependencies: [],
     targets: [
         // Faithful translation of zrender/src/** — keep in sync with upstream.
         .target(
@@ -32,7 +30,7 @@ let package = Package(
         // Plugs into the renderer-seam protocols exported by ZRenderKit.
         .target(
             name: "NativePainter",
-            dependencies: ["ZRenderKit"],
+            dependencies: ["ZRenderKit", "ApplePainterSupport"],
             path: "Sources/NativePainter"
         ),
         // Translation of echarts/src/** — placeholder for now.
@@ -41,19 +39,8 @@ let package = Package(
             dependencies: ["ZRenderKit"],
             path: "Sources/EChartsKit"
         ),
-        // EXPERIMENTAL alternative live painter over mindbrix/Rasterizer (GPU/Metal).
-        // Conforms to the same PainterBase seam as CALayerPainter; translates the flattened
-        // display list into an RASceneList per frame. NOT a default backend — DemoGallery
-        // offers a runtime toggle for side-by-side evaluation. Shadows remain unsupported;
-        // `lighter` blend uses a CG composite fallback. See RasterizerPainter.swift for details.
-        .target(
-            name: "RasterizerPainter",
-            dependencies: [
-                "ZRenderKit", "NativePainter",
-                .product(name: "RasterizerObjC", package: "Rasterizer")
-            ],
-            path: "Sources/RasterizerPainter"
-        ),
+        .target(name: "ApplePainterSupport", dependencies: ["ZRenderKit"]),
+        .target(name: "NativeRenderer", dependencies: ["NativePainter", "EChartsKit"]),
         .testTarget(
             name: "ZRenderKitTests",
             dependencies: ["ZRenderKit", "NativePainter"],
@@ -63,19 +50,8 @@ let package = Package(
         // the translated EChartsKit modules. The first oracle for the Phase-5a scale math.
         .testTarget(
             name: "EChartsKitTests",
-            dependencies: ["EChartsKit", "ZRenderKit", "NativePainter", "EChartsDemoCore"],
+            dependencies: ["EChartsKit", "ZRenderKit", "NativePainter", "NativeRenderer", "EChartsDemoCore"],
             path: "Tests/EChartsKitTests"
-        ),
-        // macOS demo gallery — the native equivalent of opening zrender's test/*.html in a
-        // browser. A *consumer* of the public API only (no @testable); it renders the migrated
-        // demo scenes via NativePainter. Does NOT modify the framework. Run on macOS:
-        //   swift run DemoGallery               # GUI: sidebar of demos + live ZRenderView
-        //   swift run DemoGallery --list        # list demo names
-        //   swift run DemoGallery --render-all <dir>   # headless render every demo to PNG
-        .executableTarget(
-            name: "DemoGallery",
-            dependencies: ["ZRenderKit", "NativePainter", "RasterizerPainter"],
-            path: "Sources/DemoGallery"
         ),
         // Shared ECharts demo definitions (EChartsDemo value type + Demos/<name>.swift registry +
         // the echarts.js web-pane page builder) — consumed by BOTH the macOS and iOS galleries,
@@ -84,18 +60,6 @@ let package = Package(
             name: "EChartsDemoCore",
             dependencies: ["ZRenderKit", "EChartsKit"],
             path: "Sources/EChartsDemoCore"
-        ),
-        // macOS ECharts demo gallery — the echarts analog of DemoGallery. Renders each demo `option`
-        // two ways side-by-side: NATIVE (EChartsKit → EChartsSlim → ZRenderKit → NativePainter) and
-        // the REAL echarts.js (upstream/echarts/dist) in a WKWebView. A public-API consumer only.
-        //   swift run EChartsDemoGallery                        # GUI: native | echarts.js panes
-        //   swift run EChartsDemoGallery --list
-        //   swift run EChartsDemoGallery --compare bar-basic <dir>   # native + web PNGs
-        .executableTarget(
-            name: "EChartsDemoGallery",
-            dependencies: ["ZRenderKit", "NativePainter", "EChartsKit", "EChartsDemoCore",
-                           "RasterizerPainter"],
-            path: "Sources/EChartsDemoGallery"
         ),
         // iOS ECharts demo gallery — the same gallery as a UIKit app (UISplitViewController: demo
         // list + native | echarts.js panes). Same demo registry via EChartsDemoCore. Built for the

@@ -84,6 +84,52 @@ public final class EChartsView {
     /// `_injectPointerForTest`.
     public let zr: ZRender
 
+    /// Registry-backed entry point used by echarts.init(dom, theme, opts).
+    public init(_ dom: ZRenderHost?, _ theme: Any? = nil,
+                _ opts: EChartsInitOpts? = nil) throws {
+        let opts = opts ?? EChartsInitOpts()
+        let width = opts.width ?? dom?.width
+        let height = opts.height ?? dom?.height
+        guard let width, let height, width.isFinite, height.isFinite,
+              width >= 0, height >= 0 else { throw EChartsInitError.invalidSize }
+        self.ec = ECharts(width: width, height: height, theme: theme, locale: opts.locale)
+        var zrOpts = ZRenderInitOpt()
+        zrOpts.renderer = opts.renderer
+        zrOpts.width = width
+        zrOpts.height = height
+        zrOpts.devicePixelRatio = opts.devicePixelRatio ?? dom?.devicePixelRatio
+        zrOpts.useDirtyRect = opts.useDirtyRect
+        zrOpts.useCoarsePointer = opts.useCoarsePointer
+        zrOpts.pointerSize = opts.pointerSize
+        zrOpts.ssr = opts.ssr
+        self.zr = try ZRenderKit.`init`(dom, zrOpts)
+        _initEvents()
+        _syncRoot()
+    }
+
+    public func getZr() -> ZRender { zr }
+    public func getWidth() -> Double { ec.getWidth() }
+    public func getHeight() -> Double { ec.getHeight() }
+    public func getOption() -> ECUnitOption? { ec.getOption() }
+    public func isDisposed() -> Bool { zr.isDisposed }
+
+    public func resize(_ opts: ZRenderResizeOpt? = nil) {
+        guard !isDisposed() else { return }
+        var opts = opts ?? ZRenderResizeOpt()
+        let host = zr.dom as? ZRenderHost
+        opts.width = opts.width ?? host?.width ?? getWidth()
+        opts.height = opts.height ?? host?.height ?? getHeight()
+        zr.resize(opts)
+        ec.resize(width: opts.width!, height: opts.height!)
+        _afterSetOption()
+    }
+
+    public func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
+        guard !isDisposed() else { return }
+        ec.dispatchAction(payload, opt)
+        syncAfterAction()
+    }
+
     /// Whether `ec.getRoot()` has been wired into the zr storage yet (add-once; see `_syncRoot`).
     private var _rootAdded = false
 
@@ -1947,6 +1993,8 @@ public final class EChartsView {
     /// Dispose the chart model/views before its live zr. The ordering matters: component disposal can
     /// still consult `api.getZr()`, while `zr.dispose()` removes that connection.
     public func dispose() {
+        guard !zr.isDisposed else { return }
+        echarts.removeInstance(zr.dom as? ZRenderHost, self)
         _clearInsideZoomCoordSysRecords()
         _disposeAxisPointers()
         ec.dispose()
@@ -1969,6 +2017,7 @@ public final class EChartsView {
     //   not retain the zr (+ its storage/animation clock) after the view is gone. Reachable only once the
     //   zr↔handler↔eventful↔self cycle is broken (all `_initEvents` listeners bind ctx `nil`, not `self`).
     deinit {
+        echarts.removeInstance(zr.dom as? ZRenderHost, self)
         _clearInsideZoomCoordSysRecords()
         _disposeAxisPointers()
         ec.dispose()

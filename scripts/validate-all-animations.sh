@@ -3,13 +3,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 output_root="${1:-$repo_root/build/animation-validation}"
-binary="$repo_root/.build/release/EChartsDemoGallery"
+binary="$repo_root/Examples/PainterGallery/.build/release/EChartsDemoGallery"
 capture_frames="${ANIMATION_CAPTURE_FRAMES:-1}"
 
 mkdir -p "$output_root"
 cd "$repo_root"
 
-swift build -c release
+swift build --package-path "$repo_root/Examples/PainterGallery" -c release
 "$binary" --scene-manifest "$output_root/manifest.json" 2
 "$binary" --list-driven > "$output_root/driven-demos.txt"
 

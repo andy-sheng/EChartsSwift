@@ -102,8 +102,8 @@ fi
 # 3. Build the DemoGallery product and stage a launchable .app into ./build.
 # ---------------------------------------------------------------------------
 say "3/3  Building DemoGallery ($BUILD_MODE) and staging .app into ${OUT#$ROOT/}"
-swift build --package-path "$ROOT" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} --product DemoGallery
-BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} \
+swift build --package-path "$ROOT/Examples/PainterGallery" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} --product DemoGallery
+BIN_DIR="$(swift build --package-path "$ROOT/Examples/PainterGallery" -c "$CONFIG" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} \
   --product DemoGallery --show-bin-path | tail -1)"
 BIN="$BIN_DIR/DemoGallery"
 [ -x "$BIN" ] || { echo "ERROR: built binary not found at $BIN" >&2; exit 1; }

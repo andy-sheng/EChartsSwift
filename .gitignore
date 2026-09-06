@@ -19,6 +19,10 @@ third_party/**/.build/
 # rasterizer-local.patch via scripts/sync-rasterizer.sh (like the upstream/ checkouts).
 /third_party/Rasterizer/
 
+# Independently versioned painter plugin (its own Git repository).
+/RasterizerPainter/
+/Examples/PainterGallery/.build/
+
 # macOS / Xcode
 .DS_Store
 *.xcodeproj

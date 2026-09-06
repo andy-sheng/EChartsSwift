@@ -1,43 +1,22 @@
-// Live native host for the gallery: an NSView that hosts an EChartsView + CALayerPainter and
-// drives its zr.animation on a frame clock — the animated analog of the static native image pane.
-// Mirrors NativePainter/ZRenderView.swift's AnimationLoop -> zr.animation.update() -> zr._flush ->
-// painter.refresh chain, but the content is an echarts option instead of a raw zr scene.
-//
-// Placement: this target already depends on EChartsKit + NativePainter. It cannot live in
-// NativePainter (which does not depend on EChartsKit); promoting it to a shared module is a
-// follow-up when the real app needs it.
-//
-// DEVIATIONS from the task brief's illustrative snippet (verified against the real sources per
-// CONVENTIONS — do not invent APIs):
-//   - `EChartsView` has NO `.resize(_:_:_:)` method (that signature only exists on `HeadlessPainter`
-//     in EChartsKit/core/EChartsView.swift). The real resize path — exactly like macOS `ZRenderView`
-//     (NativePainter/ZRenderView.swift:378-388) — is `echartsView.zr.resize(ZRenderResizeOpt)` followed
-//     by `echartsView.zr.refresh()`; that resizes the painter + Handler. Note `ECharts`'s own
-//     width/height (the chart layout box) has no public resize hook, so the echarts layout itself does
-//     not re-flow on a live resize yet — out of scope for this task.
-//   - `ZRRawEvent` has NO `init(zrX:zrY:)` convenience initializer; it is a plain `ZRRawEvent()` with
-//     mutable stored properties (`Sources/ZRenderKit/Core/event.swift:82`). Mouse events are built the
-//     same way `ZRenderView.makeMouseEvent` does: construct `ZRRawEvent()`, set `.type`, `.zrX`, `.zrY`,
-//     `.clientX`, `.clientY`, `.which`, `.button`.
-//   - `NativeHandlerProxy.mousedown/mousemove/mouseup` are real (`Sources/NativePainter/ZRenderView.swift:93-95`)
-//     and take a `ZRRawEvent`, matching the brief. Also wired `click`/`dblclick` on mouseUp and
-//     `scrollWheel` -> `proxy.wheel`, mirroring `ZRenderView`'s macOS block, so hover/tooltip/emphasis
-//     (already wired in EChartsView's `_initEvents`) work live in the gallery, not just ripple animation.
+// macOS gallery host. Default creation follows echarts.use -> registerPainter -> echarts.init.
+// Explicit painter injection remains available for existing capture/test callers. This host
+// retains the gallery input handlers, animation clock and demo-owned timers.
 #if canImport(AppKit)
 import AppKit
 import ZRenderKit
 import NativePainter
 import EChartsKit
 import EChartsDemoCore
+import NativeRenderer
+import RasterizerRenderer
+final class EChartsHostView: NSView, ZRenderHost {
 
-final class EChartsHostView: NSView {
-
-    let echartsView: EChartsView
+    private(set) var echartsView: EChartsView!
     /// `CALayerPainter` by default; an alternative backend (the Metal `RasterizerPainter`)
     /// can be injected at init — same seam as `ZRenderView`.
-    private let painter: LayerHostedPainter
-    private let proxy: NativeHandlerProxy
-    private let animationLoop: AnimationLoop
+    private var painter: LayerHostedPainter!
+    private let proxy = NativeHandlerProxy()
+    private var animationLoop: AnimationLoop!
     /// Timers a demo's `drive` hook scheduled (the native side of the example's setInterval /
     /// setTimeout). Owned here so they die with the view — the gallery builds a fresh host per demo,
     /// and a leaked timer would keep setOption-ing a disposed chart.
@@ -48,23 +27,45 @@ final class EChartsHostView: NSView {
     /// freezing race/dynamic data progression.
     var animationsEnabled = true
 
-    init(frame: CGRect, dpr: Double? = nil, painter injected: LayerHostedPainter? = nil) {
-        let size = frame.size == .zero ? CGSize(width: 1, height: 1) : frame.size
-        let painter = injected ?? CALayerPainter(size: size, dpr: dpr, backgroundColor: NSColor.white.cgColor)
-        let proxy = NativeHandlerProxy()
-        let ecView = EChartsView(width: Double(size.width), height: Double(size.height),
-                                 painter: painter, proxy: proxy, useCoarsePointer: false)
-
-        self.painter = painter
-        self.proxy = proxy
-        self.echartsView = ecView
-        self.animationLoop = AnimationLoop(animation: ecView.zr.animation)
-
+    public init(frame: CGRect, dpr: Double? = nil, painter injected: LayerHostedPainter? = nil,
+                renderer: String = "canvas") {
+        self.scale = dpr ?? 2
         super.init(frame: frame)
-
         self.wantsLayer = true
-        self.layer?.addSublayer(painter.rootLayer)
+        if let injected {
+            self.painter = injected
+            self.echartsView = EChartsView(width: Double(frame.width), height: Double(frame.height),
+                painter: injected, proxy: proxy, useCoarsePointer: false)
+            self.layer?.addSublayer(injected.rootLayer)
+        } else {
+            echarts.use([CanvasRenderer.self, RasterizerRenderer.self])
+            var opts = EChartsInitOpts()
+            opts.renderer = renderer
+            opts.devicePixelRatio = scale
+            opts.useCoarsePointer = false
+            do { self.echartsView = try echarts.`init`(self, nil, opts) }
+            catch { preconditionFailure("Unable to create gallery painter: \(error)") }
+            self.painter.setBackgroundColor("white")
+        }
+        self.animationLoop = AnimationLoop(animation: echartsView.zr.animation)
         self.animationLoop.start()
+    }
+
+    private let scale: Double
+    var width: Double { Double(bounds.width) }
+    var height: Double { Double(bounds.height) }
+    var devicePixelRatio: Double { scale }
+    var handlerProxy: HandlerProxyInterface? { proxy }
+    func attach(_ zr: ZRender) throws {
+        guard let painter = zr.painter as? LayerHostedPainter else {
+            throw NativeChartHostError.requiresLayerHostedPainter
+        }
+        self.painter = painter
+        layer?.addSublayer(painter.rootLayer)
+    }
+    func detach(_ zr: ZRender) {
+        animationLoop?.stop()
+        (zr.painter as? LayerHostedPainter)?.rootLayer.removeFromSuperlayer()
     }
 
     @available(*, unavailable)

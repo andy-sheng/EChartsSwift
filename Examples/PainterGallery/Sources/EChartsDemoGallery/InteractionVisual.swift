@@ -8,11 +8,15 @@ import WebKit
 import EChartsKit
 import EChartsDemoCore
 import NativePainter
+import NativeRenderer
+import RasterizerRenderer
 import ZRenderKit
 
 struct InteractionVisualScenario: Decodable {
     let id: String
     let demo: String
+    /// Optional native renderer registration path; absent preserves existing headless scenarios.
+    let renderer: String?
     let checks: [String]
     let steps: [InteractionVisualStep]
 }
@@ -1693,7 +1697,22 @@ func runNativeInteractionVisual(
         return false
     }
 
-    let view = EChartsView(width: demo.width, height: demo.height)
+    let view: EChartsView
+    if let renderer = scenario.renderer {
+        echarts.use([CanvasRenderer.self, RasterizerRenderer.self])
+        var opts = EChartsInitOpts()
+        opts.renderer = renderer
+        opts.width = demo.width
+        opts.height = demo.height
+        opts.devicePixelRatio = 2
+        do { view = try echarts.`init`(nil, nil, opts) }
+        catch {
+            FileHandle.standardError.write(Data("renderer initialization failed: \(error)\n".utf8))
+            return false
+        }
+    } else {
+        view = EChartsView(width: demo.width, height: demo.height)
+    }
     view.setOption(demo.liveOption ?? demo.option)
     let chart = InteractionVisualChart(view)
     demo.drive?(chart)

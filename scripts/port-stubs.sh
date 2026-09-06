@@ -39,8 +39,8 @@ BASELINE=(
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
 
-BIN=".build/debug/EChartsDemoGallery"
-[ -x "$BIN" ] || swift build --product EChartsDemoGallery >/dev/null || exit 1
+BIN="Examples/PainterGallery/.build/debug/EChartsDemoGallery"
+[ -x "$BIN" ] || swift build --package-path Examples/PainterGallery --product EChartsDemoGallery >/dev/null || exit 1
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 

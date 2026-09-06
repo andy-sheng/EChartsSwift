@@ -23,7 +23,7 @@ func upstreamAsset(_ name: String) -> URL {
     URL(fileURLWithPath: #filePath)            // .../Sources/DemoGallery/Demos.swift
         .deletingLastPathComponent()           // DemoGallery
         .deletingLastPathComponent()           // Sources
-        .deletingLastPathComponent()           // repo root
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() // repo root
         .appendingPathComponent("upstream/zrender/test/asset/\(name)")
 }
 

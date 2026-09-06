@@ -12,9 +12,9 @@ validate_case() {
   local output_dir="$output_root/$demo"
 
   mkdir -p "$output_dir"
-  swift run EChartsDemoGallery --anim-native "$demo" "$output_dir" "$offsets"
-  swift run EChartsDemoGallery --anim-web "$demo" "$output_dir" "$offsets"
-  swift run EChartsDemoGallery --anim-invariant "$demo" "$offsets" \
+  swift run --package-path Examples/PainterGallery EChartsDemoGallery --anim-native "$demo" "$output_dir" "$offsets"
+  swift run --package-path Examples/PainterGallery EChartsDemoGallery --anim-web "$demo" "$output_dir" "$offsets"
+  swift run --package-path Examples/PainterGallery EChartsDemoGallery --anim-invariant "$demo" "$offsets" \
     > "$output_dir/invariants.txt"
 }
 

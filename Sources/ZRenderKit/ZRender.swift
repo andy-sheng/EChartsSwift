@@ -33,9 +33,8 @@
 //     upstream) so on/off/trigger keep a real surface.
 //   - Animation (animation/Animation.ts) — ported (Phase 3) at Animation/Animation.swift, along
 //     with `getTime()`. The frame tick (requestAnimationFrame) is host-supplied (CADisplayLink).
-//   - The browser `painterCtors` registry + DOM-ctor painter construction. Natively there is no
-//     DOM, so the painter is INJECTED into the constructor (documented deviation). `registerPainter`
-//     / `painterCtors` are kept for provenance.
+//   - Painter construction uses the upstream registry, with ZRenderHost replacing the DOM seam.
+//     Existing explicit painter injection remains a compatibility overload.
 //   - configLayer (forwarded to painter), useCoarsePointer / pointerSize (honored) are wired;
 //     useDirtyRect is stored on opts but the dirty-rect render optimization itself is a
 //     canvas-layer feature — PORT-NOTE (deferred): requires the CanvasLayer dirty-rect painter.
@@ -62,12 +61,36 @@ import Foundation
 // import Group from './graphic/Group';                           → Group
 // import { CanvasPainterRefreshOpt } from './canvas/Painter';    → CanvasPainterRefreshOpt (below)
 
-// PORT-NOTE: upstream `type PainterBaseCtor = { new(dom, storage, ...args): PainterBase }`. The
-//   browser builds painters from a DOM ctor; natively the painter is injected (see constructor).
-//   The registry is kept for provenance but is not exercised on the native path.
+// PORT-NOTE: Swift closures replace upstream constructor types; parameters preserve dom,
+// storage, opts and id. Native ZRenderHost implementations replace HTMLElement containers.
 public typealias PainterBaseCtor = (Any?, Storage, ZRenderInitOpt?, Double) -> PainterBase
 
-fileprivate var painterCtors: [String: PainterBaseCtor] = [:]
+var painterCtors: [String: PainterBaseCtor] = [:]
+// JavaScript object keys preserve insertion order; Swift Dictionary iteration does not.
+var painterCtorOrder: [String] = []
+
+public enum ZRenderInitError: Error, CustomStringConvertible {
+    case rendererNotImported(String)
+    case invalidSurfaceSize
+    public var description: String {
+        switch self {
+        case .rendererNotImported(let name):
+            return "Renderer '\(name)' is not imported. Please import it first."
+        case .invalidSurfaceSize:
+            return "Painter dimensions must be finite and non-negative; devicePixelRatio must be finite and positive."
+        }
+    }
+}
+
+/// Native equivalent of the DOM container. Apple implementations live outside ZRenderKit.
+public protocol ZRenderHost: AnyObject {
+    var width: Double { get }
+    var height: Double { get }
+    var devicePixelRatio: Double { get }
+    var handlerProxy: HandlerProxyInterface? { get }
+    func attach(_ zr: ZRender) throws
+    func detach(_ zr: ZRender)
+}
 
 fileprivate var instances: [Double: ZRender] = [:]
 
@@ -131,6 +154,7 @@ public final class ZRender {
     // true can lead to creating a hover layer. Do not set true unless required.
     private var _needsRefreshHover = false
     private var _disposed: Bool = false
+    private var _hostAttached = false
 
     /// Whether `dispose()` has run. Native-only read accessor (no upstream analogue): a deferred
     /// closure that outlives the host view (e.g. a `DispatchQueue.asyncAfter` loop holding a strong
@@ -143,11 +167,54 @@ public final class ZRender {
     private var _backgroundColor: Any?   // upstream: string | GradientObject | PatternObject
 
     // upstream: constructor(id: number, dom?: HTMLElement, opts?: ZRenderInitOpt).
-    // PORT-NOTE (deviation): the painter is INJECTED rather than built from `painterCtors[rendererType]`
-    //   — there is no DOM ctor natively. `opts.renderer` / `painterCtors` are kept for provenance.
+    // PORT-NOTE: explicit painter injection is retained as a compatibility overload.
     //   The `proxy` (HandlerProxyInterface) is likewise INJECTED — natively it is the hand-written
     //   UIKit bridge (`NativeHandlerProxy`); nil ⇒ Handler falls back to `EmptyProxy` (headless).
-    public init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase, proxy: HandlerProxyInterface? = nil) {
+    public convenience init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil,
+                            painter: PainterBase, proxy: HandlerProxyInterface? = nil) {
+        self.init(id, dom, opts, storage: Storage(), painter: painter, proxy: proxy)
+    }
+
+    /// Registry construction mirrors upstream: Storage precedes the painter constructor.
+    public convenience init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil,
+                            proxy: HandlerProxyInterface? = nil) throws {
+        var opts = opts ?? ZRenderInitOpt()
+        let host = dom as? ZRenderHost
+        opts.width = opts.width ?? host?.width
+        opts.height = opts.height ?? host?.height
+        opts.devicePixelRatio = opts.devicePixelRatio ?? host?.devicePixelRatio
+        guard [opts.width, opts.height].allSatisfy({ $0 == nil || ($0!.isFinite && $0! >= 0) }),
+              opts.devicePixelRatio == nil || (opts.devicePixelRatio!.isFinite && opts.devicePixelRatio! > 0) else {
+            throw ZRenderInitError.invalidSurfaceSize
+        }
+        var rendererType = opts.renderer.flatMap { $0.isEmpty ? nil : $0 } ?? "canvas"
+        if painterCtors[rendererType] == nil {
+            rendererType = painterCtorOrder.first ?? rendererType
+        }
+        guard let ctor = painterCtors[rendererType] else {
+            throw ZRenderInitError.rendererNotImported(rendererType)
+        }
+        opts.useDirtyRect = opts.useDirtyRect ?? false
+        let storage = Storage()
+        let painter = ctor(dom, storage, opts, id)
+        self.init(id, dom, opts, storage: storage, painter: painter,
+                  proxy: proxy ?? host?.handlerProxy)
+        if !(opts.ssr ?? false) && !painter.ssrOnly {
+            do {
+                if let host {
+                    try host.attach(self)
+                    self._hostAttached = true
+                }
+            } catch {
+                host?.detach(self)
+                self.dispose()
+                throw error
+            }
+        }
+    }
+
+    private init(_ id: Double, _ dom: Any?, _ opts: ZRenderInitOpt?, storage: Storage,
+                 painter: PainterBase, proxy: HandlerProxyInterface?) {
         var opts = opts ?? ZRenderInitOpt()
 
         /**
@@ -156,12 +223,6 @@ public final class ZRender {
         self.dom = dom
 
         self.id = id
-
-        let storage = Storage()
-
-        // upstream resolves `rendererType` against the painterCtors registry; on the native path
-        //   the painter is supplied directly. Registry lookup kept as a no-op for provenance.
-        _ = opts.renderer
 
         opts.useDirtyRect = opts.useDirtyRect == nil
             ? false
@@ -308,8 +369,12 @@ public final class ZRender {
         //   `shouldUseHoverLayer` remains a KIND_NO stub — so this branch fixes no live bug yet; it is
         //   defensive wiring for refreshHoverImmediately() until that machinery is un-stubbed.
         if refresh || refreshHover {
-            let displayList = self.storage.getDisplayList(true)
-            self.painter.refresh(displayList)
+            if self.painter.storage != nil {
+                self.painter.refresh()
+            } else {
+                // Compatibility with existing injected display-list painters.
+                self.painter.refresh(self.storage.getDisplayList(true))
+            }
         }
         // Avoid trigger zr.refresh in Element#beforeUpdate hook.
         // Hover layer is always refreshed when refreshing normal layers.
@@ -532,6 +597,10 @@ public final class ZRender {
         self.animation.stop()
 
         self.clear()
+        if self._hostAttached {
+            (self.dom as? ZRenderHost)?.detach(self)
+            self._hostAttached = false
+        }
         self.storage.dispose()
         self.painter.dispose()
         self.handler.dispose()
@@ -540,6 +609,8 @@ public final class ZRender {
         self.storage = nil
         self.painter = nil
         self.handler = nil
+
+        self.dom = nil
 
         self._disposed = true
 
@@ -581,6 +652,14 @@ public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: Pa
     return zr
 }
 
+@discardableResult
+public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil,
+                   proxy: HandlerProxyInterface? = nil) throws -> ZRender {
+    let zr = try ZRender(util.guid(), dom, opts, proxy: proxy)
+    instances[zr.id] = zr
+    return zr
+}
+
 /// Dispose zrender instance
 public func dispose(_ zr: ZRender) {
     zr.dispose()
@@ -600,6 +679,8 @@ public func getInstance(_ id: Double) -> ZRender? {
 }
 
 public func registerPainter(_ name: String, _ ctor: @escaping PainterBaseCtor) {
+    precondition(Thread.isMainThread, "Register painters on the main thread")
+    if painterCtors[name] == nil { painterCtorOrder.append(name) }
     painterCtors[name] = ctor
 }
 
@@ -636,11 +717,10 @@ public typealias ZRenderType = ZRender
 // upstream `PainterBase.ts` is an interface implemented by CanvasPainter / SVGPainter. Natively the
 // implementation is the hand-written `CALayerPainter` (Sources/NativePainter), which conforms to
 // this protocol. ZRenderKit cannot import NativePainter (the dependency runs the other way), so the
-// protocol is declared here and the concrete painter is INJECTED into `ZRender.init`.
+// protocol is declared here; concrete implementations are registered by consumers.
 //
-// DEVIATION: upstream `refresh()` takes no list — the CanvasPainter pulls `storage.getDisplayList()`
-// itself. Natively the painter does not own the storage, so `refresh(_:)` receives the already-built
-// display list from `ZRender._refresh` ("build Storage display list -> Painter", per the task brief).
+// Registered painters pull their own Storage through refresh(), as upstream does. Legacy injected
+// painters can retain refresh(displayList); ZRender adapts only that compatibility path.
 // ============================================================================
 /// upstream: LayerConfig — per-zlevel canvas-layer options. The motion-blur subset is modeled here
 /// (the native painter is single-layer, so `zLevel` is informational). `clearColor` is omitted.
@@ -656,6 +736,10 @@ public struct LayerConfig {
 }
 
 public protocol PainterBase: AnyObject {
+
+    /// Registry-created painters read their own display list, as upstream painters do.
+    var storage: Storage? { get }
+    func refresh()
 
     /// upstream: type: string ('canvas' | 'svg'). Identifies the backend.
     var type: String { get }
@@ -692,6 +776,10 @@ public protocol PainterBase: AnyObject {
 
 // Provide faithful defaults for the optional-ish surface so minimal painters need not implement all.
 extension PainterBase {
+    public var storage: Storage? { nil }
+    public func refresh() {
+        if let storage { refresh(storage.getDisplayList(true)) }
+    }
     public var type: String { return "native" }
     public var ssrOnly: Bool { return false }
     public func getViewportRoot() -> Any? { return nil }

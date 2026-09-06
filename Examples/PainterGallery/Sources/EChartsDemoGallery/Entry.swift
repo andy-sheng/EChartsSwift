@@ -608,11 +608,8 @@ final class ContentViewController: NSViewController {
                 ? "Native · EChartsKit + Rasterizer (Metal)"
                 : "Native · EChartsKit + NativePainter"
             let logical = NSRect(x: 0, y: 0, width: demo.width, height: demo.height)
-            let painter: LayerHostedPainter? = useMetal
-                ? RasterizerPainter(size: logical.size, dpr: 2.0,
-                                    backgroundColor: NSColor.white.cgColor)
-                : nil
-            let host = EChartsHostView(frame: logical, dpr: 2.0, painter: painter)
+            let host = EChartsHostView(frame: logical, dpr: 2.0,
+                                      renderer: useMetal ? "rasterizer" : "canvas")
             host.animationsEnabled = animSwitch.state == .on
             host.setOption(opt)
             // Replay the example's own timeline (its setInterval / setOption), if it has one. Without
