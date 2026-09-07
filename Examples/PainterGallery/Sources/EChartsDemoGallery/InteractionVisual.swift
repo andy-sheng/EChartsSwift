@@ -542,6 +542,8 @@ private func interactionAnimationElements(_ root: Element) -> [Element] {
         elements.append(element)
         if let text = element.getTextContent() { collect(text) }
         if let guide = element.getTextGuideLine() { collect(guide) }
+        // Entrance animations can live on an attached clip path, outside Group.children().
+        if let clip = element.getClipPath() { collect(clip) }
         if let group = element as? Group {
             for child in group.children() { collect(child) }
         }
@@ -2934,6 +2936,7 @@ private let webInteractionHarnessJS = #"""
       }
       if (el.getTextContent) { collect(el.getTextContent()); }
       if (el.getTextGuideLine) { collect(el.getTextGuideLine()); }
+      if (el.getClipPath) { collect(el.getClipPath()); }
       var list = children(el);
       for (var ci = 0; ci < list.length; ci++) { collect(list[ci]); }
     }
@@ -3027,6 +3030,7 @@ private let webInteractionHarnessJS = #"""
         }
         if (el.getTextContent) { collect(el.getTextContent()); }
         if (el.getTextGuideLine) { collect(el.getTextGuideLine()); }
+        if (el.getClipPath) { collect(el.getClipPath()); }
         var list = children(el);
         for (var ci = 0; ci < list.length; ci++) { collect(list[ci]); }
       }

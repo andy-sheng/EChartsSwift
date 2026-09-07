@@ -24,20 +24,29 @@ public final class CGRenderer: Renderer {
     public let flipped: Bool
 
     private let _pathRebuilder = CGPathRebuilder()
+    private var _preparedPath: CGPath?
+    private var currentPath: CGPath { _preparedPath ?? _pathRebuilder.path }
+    public let geometryCache: CGGeometryCache
 
     public var pathRebuilder: PathRebuilder { _pathRebuilder }
 
     /// Concrete accessor (the protocol getter is type-erased).
     public var cgPathRebuilder: CGPathRebuilder { _pathRebuilder }
 
-    public init(_ ctx: CGContext, flipped: Bool) {
+    public init(_ ctx: CGContext, flipped: Bool, geometryCache: CGGeometryCache = CGGeometryCache()) {
         self.ctx = ctx
         self.flipped = flipped
+        self.geometryCache = geometryCache
     }
 
     /// Reset the accumulated path before replaying a shape's commands.
     public func beginPath() {
+        _preparedPath = nil
         _pathRebuilder.beginPath()
+    }
+
+    public func preparePath(_ proxy: PathProxy, percent: Double) {
+        _preparedPath = geometryCache.path(for: proxy, percent: percent)
     }
 
     // MARK: - 1 / 2. Fill & stroke
@@ -55,23 +64,44 @@ public final class CGRenderer: Renderer {
             return
         }
         guard let fill = style.fill else { return }   // no fill / fill == 'none'
-        ctx.addPath(_pathRebuilder.path)
+        ctx.addPath(currentPath)
         ctx.setFillColor(fill)
         // fillPath(using:) consumes the current path.
         ctx.fillPath(using: style.fillRule)
     }
 
     /// Large-symbol boost fill (zrender LargeSymbolDraw.afterBrush): fill the packed
-    /// `[x, y, w, h, ...]` per-datum squares in ONE `CGContext.fill([CGRect])` under the current CTM
-    /// and fill color, instead of `fillPath`-ing one giant N-sub-path CGPath (which Core Graphics
-    /// scan-converts super-linearly). Global element alpha is already on the context (drawPath's
-    /// `r.opacity`), matching how `fillPath` relies on it. No stroke — the upstream boost is fill-only.
-    public func fillBoostRects(_ packed: [Double], _ style: PaintStyle) {
+    /// `[x, y, w, h, ...]` per-datum squares under the current CTM and color. The caller marks
+    /// compound geometry only when shadows and non-source-over compositing are absent.
+    /// Scatter must preserve independent per-point alpha; opaque compound bars can use bounded
+    /// batches to reduce overdraw without building a super-linear N-sub-path CGPath.
+    public func fillBoostRects(_ packed: [Double], _ style: PaintStyle, compound: Bool = false) {
         guard let fill = style.fill, packed.count >= 4 else { return }
         ctx.setFillColor(fill)
+        if compound, style.opacity == 1, fill.alpha == 1,
+           style.fillGradient == nil, style.fillPattern == nil, packed.count >= 128 {
+            // Whole-series CGContext.fill(rects) is pathological. A bounded batch amortizes CG
+            // setup and the overlapping opaque coverage while keeping scan conversion bounded.
+            var rects: [CGRect] = []
+            rects.reserveCapacity(32)
+            var i = 0
+            while i + 3 < packed.count {
+                let x = packed[i], y = packed[i + 1], width = packed[i + 2], height = packed[i + 3]
+                i += 4
+                // One missing datum must not poison the entire compound batch.
+                if !x.isFinite || !y.isFinite || !width.isFinite || !height.isFinite { continue }
+                rects.append(CGRect(x: x, y: y, width: width, height: height))
+                if rects.count == 32 {
+                    ctx.fill(rects)
+                    rects.removeAll(keepingCapacity: true)
+                }
+            }
+            if !rects.isEmpty { ctx.fill(rects) }
+            return
+        }
         // Per-datum `ctx.fill(rect)` in a tight loop — exactly zrender's `ctx.fillRect(...)` per point
         // (LargeSymbolDraw.ts:162), each an O(1) primitive fill. NOT `CGContext.fill([CGRect])`: the
-        // array overload merges the rects into one scan-conversion and is itself super-linear (measured
+        // unbounded array overload merges the rects into one scan-conversion and is super-linear (measured
         // ~37× slower for 4× the rects), i.e. the same pathology the boost exists to avoid.
         var i = 0
         while i + 3 < packed.count {
@@ -88,7 +118,7 @@ public final class CGRenderer: Renderer {
             return
         }
         guard let stroke = style.stroke else { return }
-        ctx.addPath(_pathRebuilder.path)
+        ctx.addPath(currentPath)
         ctx.setStrokeColor(stroke)
         ctx.setLineWidth(CGFloat(style.lineWidth))
         ctx.setLineCap(style.lineCap)
@@ -117,7 +147,7 @@ public final class CGRenderer: Renderer {
         // the resulting alpha mask, matching `ctx.fillStyle = gradient; ctx.fill()`.
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.saveGState()
-        ctx.addPath(_pathRebuilder.path)
+        ctx.addPath(currentPath)
         if rule == .evenOdd { ctx.clip(using: .evenOdd) } else { ctx.clip() }
         drawGradient(g, grad, rect: rect)
         ctx.restoreGState()
@@ -127,7 +157,7 @@ public final class CGRenderer: Renderer {
 
     private func strokeWithPaint(_ style: PaintStyle) {
         ctx.saveGState()
-        ctx.addPath(_pathRebuilder.path)
+        ctx.addPath(currentPath)
         ctx.setLineWidth(CGFloat(style.lineWidth))
         ctx.setLineCap(style.lineCap)
         ctx.setLineJoin(style.lineJoin)
@@ -220,7 +250,7 @@ public final class CGRenderer: Renderer {
 
     private func fillPatternClipped(_ img: CGImage, pattern: Pattern, rule: CGPathFillRule) {
         ctx.saveGState()
-        ctx.addPath(_pathRebuilder.path)
+        ctx.addPath(currentPath)
         if rule == .evenOdd { ctx.clip(using: .evenOdd) } else { ctx.clip() }
         tilePattern(img, pattern: pattern)
         ctx.restoreGState()

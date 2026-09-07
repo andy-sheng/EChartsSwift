@@ -56,6 +56,7 @@ public final class CALayerPainter: Painter {
     /// Background fill for the immediate-mode composite (nil = transparent).
     public var backgroundColor: CGColor?
 
+    private let _geometryCache = CGGeometryCache()
     private var _frameContext: CGContext?
     private var _frameRenderer: CGRenderer?
 
@@ -211,7 +212,7 @@ public final class CALayerPainter: Painter {
         ctx.translateBy(x: 0, y: CGFloat(pxH))
         ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
 
-        let renderer = CGRenderer(ctx, flipped: true)
+        let renderer = CGRenderer(ctx, flipped: true, geometryCache: _geometryCache)
         _frameContext = ctx
         _frameRenderer = renderer
         return renderer
@@ -372,7 +373,7 @@ extension CALayerPainter: LayerHostedPainter {
             // Flip to y-down + dpr, then draw this zlevel's elements (same base CTM as beginFrame).
             ctx.translateBy(x: 0, y: CGFloat(pxH))
             ctx.scaleBy(x: CGFloat(dpr), y: -CGFloat(dpr))
-            let cg = CGRenderer(ctx, flipped: true)
+            let cg = CGRenderer(ctx, flipped: true, geometryCache: _geometryCache)
             drawDisplayListRespectingIncrementalLayers(byZ[z]!, into: cg) { el, target in
                 self._drawOne(el, into: target)
             }
@@ -456,7 +457,7 @@ extension CALayerPainter: LayerHostedPainter {
 
         // Draw ONLY the pending displayables into the retained bitmap (blend/transform preserved), then
         // advance the cursor and drop the temp LIST (its pixels remain baked into the bitmap).
-        let ir = CGRenderer(ic, flipped: true)
+        let ir = CGRenderer(ic, flipped: true, geometryCache: _geometryCache)
         inc.eachPendingDisplayable { d in drawDisplayable(d, into: ir) }
         inc.innerAfterBrush()
         inc.clearTemporalDisplayables()
@@ -481,6 +482,7 @@ extension CALayerPainter: LayerHostedPainter {
     }
 
     public func clear() {
+        _geometryCache.removeAll()
         rootLayer.contents = nil
         rootLayer.sublayers = nil
         _incrementalLayers.removeAll()
@@ -502,6 +504,7 @@ extension CALayerPainter: LayerHostedPainter {
     }
 
     public func dispose() {
+        _geometryCache.removeAll()
         storage = nil
         rootLayer.contents = nil
         rootLayer.sublayers = nil

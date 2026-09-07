@@ -81,6 +81,10 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
         let store = data.getStore()
         let dimIdx0 = dims.count > 0 && dims[0] != nil ? data.getDimensionIndex(dims[0]!) : -1
         let dimIdx1 = dims.count > 1 && dims[1] != nil ? data.getDimensionIndex(dims[1]!) : -1
+        // Swift numeric-buffer specialization. Keep the general path for ordinal strings and
+        // non-cartesian coordinate systems. Float32 quantization stays at the upstream boundary.
+        let numericCartesian = dimLen == 2 && store.isNumericDimension(dimIdx0) && store.isNumericDimension(dimIdx1)
+            ? seriesModel.coordinateSystem as? Cartesian2D : nil
 
         // return dimLen && { progress(params, data) { ... } };
         if dimLen == 0 {
@@ -100,6 +104,15 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
 
             var offset = 0
             for i in start..<end {
+                if useTypedArray, let cartesian = numericCartesian {
+                    let point = cartesian.dataToPoint(VectorArray(store.getNumeric(dimIdx0, i), store.getNumeric(dimIdx1, i)))
+                    if offset + 1 < points.count {
+                        points[offset] = Double(Float(point[0]))
+                        points[offset + 1] = Double(Float(point[1]))
+                    }
+                    offset += 2
+                    continue
+                }
                 var point: [Double]
 
                 if dimLen == 1 {

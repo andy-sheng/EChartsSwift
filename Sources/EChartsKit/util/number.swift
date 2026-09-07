@@ -81,6 +81,17 @@ public enum number {
         _ range: [Double],
         _ clamp: Bool? = nil
     ) -> Double {
+        return linearMap(val, SIMD2(domain[0], domain[1]), SIMD2(range[0], range[1]), clamp)
+    }
+
+    // Swift value-returning two-vector specialization (CONVENTIONS §3). Keep the upstream
+    // arithmetic and endpoint branches shared with the public array entry point.
+    public static func linearMap(
+        _ val: Double,
+        _ domain: SIMD2<Double>,
+        _ range: SIMD2<Double>,
+        _ clamp: Bool? = nil
+    ) -> Double {
         let d0 = domain[0]
         let d1 = domain[1]
         let r0 = range[0]

@@ -203,6 +203,24 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
         return out
     }
 
+    // Swift specialization of the same dataToPoint algorithm for numeric layout buffers.
+    // A value-returning VectorArray avoids boxing a two-element [Any] and allocating an output
+    // Array for every datum. The protocol entry point above still accepts category/date strings.
+    public func dataToPoint(_ data: VectorArray, _ clamp: Bool? = nil) -> VectorArray {
+        let xVal = data[0]
+        let yVal = data[1]
+        if let transform = self._transform, xVal.isFinite, yVal.isFinite {
+            return vector.applyTransform(data, transform)
+        }
+
+        let xAxis = self.getAxis("x")!
+        let yAxis = self.getAxis("y")!
+        return VectorArray(
+            xAxis.toGlobalCoord(xAxis.dataToCoord(xVal, clamp)),
+            yAxis.toGlobalCoord(yAxis.dataToCoord(yVal, clamp))
+        )
+    }
+
     // upstream: clampData(data: ScaleDataValue[], out?: number[]): number[]
     public func clampData(_ data: [ScaleDataValue]) -> [Double]? {
         let xScale = self.getAxis("x")!.scale

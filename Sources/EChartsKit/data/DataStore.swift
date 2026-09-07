@@ -37,13 +37,9 @@ import ZRenderKit
 
 // Caution: MUST not use `new CtorUint32Array(arr, 0, len)`, because the Ctor of array is
 // different from the Ctor of typed array.
-// PORT-NOTE: upstream `CtorUint32Array/CtorUint16Array/CtorInt32Array/CtorFloat64Array` are
-//   typed-array constructors selected via `typeof X === UNDEFINED_STR ? Array : X` runtime
-//   feature detection. Swift always has the typed storage, so the feature-detection branch
-//   is dropped; columns are modeled as `[ParsedValue]` (= `ArrayLike<ParsedValue>`, the
-//   convention `DataProvider.fillStorage` consumes) and index arrays as `ContiguousArray<Int>`.
-//   The `Int32Array` truncation semantics of `int` columns are re-applied explicitly on write
-//   via `DataStore.toInt32` (see chunk-write sites), since `[ParsedValue]` is Double-backed.
+// PORT-NOTE: Swift always has typed storage. Numeric columns use the upstream Float64Array /
+// Int32Array representation in DataValueChunk; ordinal/number columns retain heterogeneous values.
+// Index arrays currently collapse Uint32Array/Uint16Array to ContiguousArray<Int>.
 
 /**
  * Multi dimensional data store
@@ -58,11 +54,67 @@ import ZRenderKit
 // type DataTypedArray / DataTypedArrayConstructor / DataArrayLikeConstructor
 //   -> not modeled as distinct Swift types; see PORT-NOTE above.
 
-// type DataValueChunk = ArrayLike<ParsedValue>;
-//   -> `[ParsedValue]`. Columns are heterogeneous and may transiently hold ordinal raw
-//      values (string) before `collectOrdinalMeta`. PORT-NOTE: all columns are `[ParsedValue]`/
-//      Double-backed; `int` columns re-apply Int32Array truncation on write via `toInt32`.
-//      Ordinal/number columns are pre-filled with `NaN` rather than `undefined` holes.
+// upstream: type DataValueChunk = ArrayLike<ParsedValue>;
+// Swift storage specialization. Separate stored buffers preserve Array COW without extracting an
+// enum's associated array for every write (which would copy the whole column per assignment).
+struct DataValueChunk {
+    private let type: DataStoreDimensionType
+    private var floats: ContiguousArray<Double> = []
+    private var ints: ContiguousArray<Int32> = []
+    private var values: [ParsedValue] = []
+
+    init(_ type: DataStoreDimensionType = .number, count: Int = 0) {
+        self.type = type
+        switch type {
+        case .float, .time: floats = ContiguousArray(repeating: 0, count: count)
+        case .int: ints = ContiguousArray(repeating: 0, count: count)
+        case .ordinal, .number: values = Array(repeating: Double.nan, count: count)
+        }
+    }
+
+    var count: Int {
+        switch type {
+        case .float, .time: return floats.count
+        case .int: return ints.count
+        case .ordinal, .number: return values.count
+        }
+    }
+
+    var isNumeric: Bool { type == .float || type == .time || type == .int }
+
+    subscript(_ index: Int) -> ParsedValue {
+        get {
+            switch type {
+            case .float, .time: return floats[index]
+            case .int: return Double(ints[index])
+            case .ordinal, .number: return values[index]
+            }
+        }
+        set {
+            switch type {
+            case .float, .time: floats[index] = DataStore.numericValue(newValue)
+            case .int: ints[index] = Int32(DataStore.toInt32(newValue))
+            case .ordinal, .number: values[index] = newValue
+            }
+        }
+    }
+
+    func numericValue(at index: Int) -> Double {
+        switch type {
+        case .float, .time: return floats[index]
+        case .int: return Double(ints[index])
+        case .ordinal, .number: return DataStore.numericValue(values[index])
+        }
+    }
+
+    mutating func append(_ value: ParsedValue) {
+        switch type {
+        case .float, .time: floats.append(DataStore.numericValue(value))
+        case .int: ints.append(Int32(DataStore.toInt32(value)))
+        case .ordinal, .number: values.append(value)
+        }
+    }
+}
 
 // If Ctx not specified, use List as Ctx
 // type EachCb0 = (idx) => void; EachCb1 = (x, idx) => void; EachCb2 = (x, y, idx) => void;
@@ -139,24 +191,17 @@ fileprivate func getIndicesCtor(_ rawCount: Int) -> (Int) -> ContiguousArray<Int
 }
 
 // new DataCtor(end) — per-type column allocation (see dropped `dataCtors` map above).
-fileprivate func makeChunk(_ type: DataStoreDimensionType, _ count: Int) -> [ParsedValue] {
-    switch type {
-    case .ordinal, .number:
-        // `new Array(count)`: holes (undefined).
-        return [ParsedValue](repeating: Double.nan, count: count)
-    case .float, .time, .int:
-        // `new Float64Array(count)` / `new Int32Array(count)`: zero-filled.
-        return [ParsedValue](repeating: Double(0), count: count)
-    }
+fileprivate func makeChunk(_ type: DataStoreDimensionType, _ count: Int) -> DataValueChunk {
+    return DataValueChunk(type, count: count)
 }
 
-fileprivate func cloneChunk(_ originalChunk: [ParsedValue]) -> [ParsedValue] {
+fileprivate func cloneChunk(_ originalChunk: DataValueChunk) -> DataValueChunk {
     // Only shallow clone is enough when Array (and value-copy for the typed-array case).
     return originalChunk
 }
 
 fileprivate func prepareStore(
-    _ store: inout [[ParsedValue]],
+    _ store: inout [DataValueChunk],
     _ dimIdx: Int,
     _ dimType: DataStoreDimensionType?,
     _ end: Int,
@@ -165,7 +210,7 @@ fileprivate func prepareStore(
     let dataCtorType = dimType ?? .float   // dataCtors[dimType || 'float']
 
     // Grow the column list to hold `dimIdx` (JS arrays auto-extend with holes).
-    while store.count <= dimIdx { store.append([]) }
+    while store.count <= dimIdx { store.append(DataValueChunk()) }
 
     if append {
         let oldStore = store[dimIdx]
@@ -189,7 +234,7 @@ fileprivate func prepareStore(
  * Basically, DataStore API keep immutable.
  */
 public final class DataStore {
-    private var _chunks: [[ParsedValue]] = []
+    private var _chunks: [DataValueChunk] = []
 
     private var _provider: DataProvider!
 
@@ -299,7 +344,7 @@ public final class DataStore {
         self._dimensions[idx] = DataStoreDimensionDefine(type: type)
         _ = calcDimNameToIdx.set(dimName, calcDimIdx!)
 
-        while self._chunks.count <= idx { self._chunks.append([]) }
+        while self._chunks.count <= idx { self._chunks.append(DataValueChunk()) }
         self._chunks[idx] = makeChunk(type, self._rawCount)   // new dataCtors[type || 'float'](this._rawCount)
         while self._rawExtent.count <= idx { self._rawExtent.append([]) }
         self._rawExtent[idx] = model.initExtentForUnion()
@@ -380,8 +425,6 @@ public final class DataStore {
     public func appendValues(_ values: [[Any?]], _ minFillLen: Int? = nil) -> (start: Int, end: Int) {
         let dimensions = self._dimensions
         let dimLen = dimensions.count
-        // `int`-typed columns are Int32Array upstream; truncate stored values (§ toInt32).
-        let dimIsInt = util.map(dimensions) { dim, _ in dim.type == .int }
 
         let start = self.count()
         let end = start + Swift.max(values.count, minFillLen ?? 0)
@@ -401,7 +444,7 @@ public final class DataStore {
                     self, sourceIdx < values.count ? values[sourceIdx] : emptyDataItem,
                     dim.property, sourceIdx, DimensionIndex(dimIdx)
                 )
-                self._chunks[dimIdx][idx] = dimIsInt[dimIdx] ? DataStore.toInt32(val) : val
+                self._chunks[dimIdx][idx] = val
 
                 // const dimRawExtent = rawExtent[dimIdx]; (value-type; mutate stored, §3)
                 // Extent uses the original (untruncated) value, mirroring upstream.
@@ -426,8 +469,6 @@ public final class DataStore {
         let dimensions = self._dimensions
         let dimLen = dimensions.count
         let dimNames = util.map(dimensions) { dim, _ in dim.property }
-        // `int`-typed columns are Int32Array upstream; truncate stored values (§ toInt32).
-        let dimIsInt = util.map(dimensions) { dim, _ in dim.type == .int }
 
         for i in 0..<dimLen {
             let dim = dimensions[i]
@@ -444,7 +485,18 @@ public final class DataStore {
         //   format instead — the only provider that mounts `fillStorage` upstream
         //   (see dataProvider.ts).
         if provider.getSource().sourceFormat == SOURCE_FORMAT_TYPED_ARRAY {
-            provider.fillStorage(Double(start), Double(end), &self._chunks, &self._rawExtent)
+            if let defaultProvider = provider as? DefaultDataProvider {
+                defaultProvider.fillStorage(Double(start), Double(end), &self._chunks, &self._rawExtent)
+            }
+            else {
+                // Preserve the public DataProvider contract for custom providers. The built-in
+                // typed-array provider writes directly into typed columns without this bridge.
+                var chunks = self._chunks.map { chunk in (0..<chunk.count).map { chunk[$0] } }
+                provider.fillStorage(Double(start), Double(end), &chunks, &self._rawExtent)
+                for dim in 0..<chunks.count {
+                    for idx in 0..<chunks[dim].count { self._chunks[dim][idx] = chunks[dim][idx] }
+                }
+            }
         }
         else {
             var dataItem: OptionDataItem = [OptionDataValue]()
@@ -464,7 +516,7 @@ public final class DataStore {
                     let val = self._dimValueGetter(
                         self, dataItem, dimNames[dimIdx], idx, DimensionIndex(dimIdx)
                     )
-                    self._chunks[dimIdx][idx] = dimIsInt[dimIdx] ? DataStore.toInt32(val) : val
+                    self._chunks[dimIdx][idx] = val
 
                     // const dimRawExtent = rawExtent[dimIdx]; (value-type; mutate stored, §3)
                     // Extent uses the original (untruncated) value, mirroring upstream.
@@ -499,6 +551,17 @@ public final class DataStore {
         }
         let dimStore = self.chunk(Int(dim))
         return dimStore != nil ? dimStore![self.getRawIndex(idx)] : Double.nan
+    }
+
+    // Numeric specialization for layout/coordinate hot paths. Keep the public heterogeneous get
+    // entry point for ordinal raw values, formatters and custom series.
+    public func getNumeric(_ dim: DimensionIndex, _ idx: Int) -> Double {
+        guard idx >= 0, idx < self._count, dim >= 0, Int(dim) < self._chunks.count else { return .nan }
+        return self._chunks[Int(dim)].numericValue(at: self.getRawIndex(idx))
+    }
+
+    func isNumericDimension(_ dim: DimensionIndex) -> Bool {
+        return dim >= 0 && Int(dim) < self._chunks.count && self._chunks[Int(dim)].isNumeric
     }
 
     // upstream overload: `getValues(idx)` — all dimensions.
@@ -551,7 +614,7 @@ public final class DataStore {
             var i = 0
             let len = self.count()
             while i < len {
-                let value = DataStore.numericValue(self.get(dim, i))
+                let value = self.getNumeric(dim, i)
                 if !value.isNaN {
                     sum += value
                 }
@@ -750,7 +813,7 @@ public final class DataStore {
             if dimSize == 1 {
                 let dimStorage = storeArr[Int(dims[0])]
                 for i in 0..<len {
-                    let val = DataStore.numericValue(dimStorage[i])
+                    let val = dimStorage.numericValue(at: i)
                     // NaN will not be filtered. Consider the case, in line chart, empty
                     // value indicates the line should be broken. But for the case like
                     // scatter plot, a data item with empty value will not be rendered,
@@ -770,8 +833,8 @@ public final class DataStore {
                 let min2 = range[dims[1]]![0]
                 let max2 = range[dims[1]]![1]
                 for i in 0..<len {
-                    let val = DataStore.numericValue(dimStorage[i])
-                    let val2 = DataStore.numericValue(dimStorage2[i])
+                    let val = dimStorage.numericValue(at: i)
+                    let val2 = dimStorage2.numericValue(at: i)
                     // Do not filter NaN, see comment above.
                     if ((val >= min && val <= max) || val.isNaN)
                         && ((val2 >= min2 && val2 <= max2) || val2.isNaN) {
@@ -787,7 +850,7 @@ public final class DataStore {
             if dimSize == 1 {
                 for i in 0..<originalCount {
                     let rawIndex = newStore.getRawIndex(i)
-                    let val = DataStore.numericValue(storeArr[Int(dims[0])][rawIndex])
+                    let val = storeArr[Int(dims[0])].numericValue(at: rawIndex)
                     // Do not filter NaN, see comment above.
                     if (val >= min && val <= max) || val.isNaN {
                         newIndices[offset] = rawIndex
@@ -801,7 +864,7 @@ public final class DataStore {
                     let rawIndex = newStore.getRawIndex(i)
                     for k in 0..<dimSize {
                         let dimk = dims[k]
-                        let val = DataStore.numericValue(storeArr[Int(dimk)][rawIndex])
+                        let val = storeArr[Int(dimk)].numericValue(at: rawIndex)
                         // Do not filter NaN, see comment above.
                         if val < range[dimk]![0] || val > range[dimk]![1] {
                             keep = false
@@ -900,9 +963,7 @@ public final class DataStore {
                     let val = retArray[i]
 
                     if dim < target._chunks.count {
-                        // `int`-typed columns are Int32Array upstream; truncate on write.
-                        let isInt = dim < target._dimensions.count && target._dimensions[dim].type == .int
-                        target._chunks[dim][rawIndex] = isInt ? DataStore.toInt32(val) : val
+                        target._chunks[dim][rawIndex] = val
                     }
 
                     // Extent uses the original (untruncated) value, mirroring upstream.
@@ -956,7 +1017,7 @@ public final class DataStore {
 
             for idx in nextFrameStart..<nextFrameEnd {
                 let rawIndex = self.getRawIndex(idx)
-                let y = DataStore.numericValue(dimStore[rawIndex])
+                let y = dimStore.numericValue(at: rawIndex)
                 if y.isNaN {
                     continue
                 }
@@ -968,7 +1029,7 @@ public final class DataStore {
             let frameEnd = Swift.min(i + frameSize, len)
 
             let pointAX = Double(i - 1)
-            let pointAY = DataStore.numericValue(dimStore[currentRawIndex])
+            let pointAY = dimStore.numericValue(at: currentRawIndex)
 
             maxArea = -1
 
@@ -980,7 +1041,7 @@ public final class DataStore {
             // And the average of next frame.
             for idx in frameStart..<frameEnd {
                 let rawIndex = self.getRawIndex(idx)
-                let y = DataStore.numericValue(dimStore[rawIndex])
+                let y = dimStore.numericValue(at: rawIndex)
                 if y.isNaN {
                     countNaN += 1
                     if firstNaNIndex < 0 {
@@ -1048,9 +1109,9 @@ public final class DataStore {
         var i = 0
         while i < len {
             var minIndex = i
-            var minValue = DataStore.numericValue(dimStore[self.getRawIndex(minIndex)])
+            var minValue = dimStore.numericValue(at: self.getRawIndex(minIndex))
             var maxIndex = i
-            var maxValue = DataStore.numericValue(dimStore[self.getRawIndex(maxIndex)])
+            var maxValue = dimStore.numericValue(at: self.getRawIndex(maxIndex))
 
             var thisFrameSize = frameSize
             // Handle final smaller frame
@@ -1060,7 +1121,7 @@ public final class DataStore {
             // Determine min and max within the current frame
             for k in 0..<thisFrameSize {
                 let rawIndex = self.getRawIndex(i + k)
-                let value = DataStore.numericValue(dimStore[rawIndex])
+                let value = dimStore.numericValue(at: rawIndex)
 
                 if value < minValue {
                     minValue = value
@@ -1119,9 +1180,6 @@ public final class DataStore {
 
         let dimStore = target._chunks[Int(dimension)]
         let len = self.count()
-        // `int`-typed column is Int32Array upstream; truncate the written sample value.
-        let dimIsInt = Int(dimension) < target._dimensions.count
-            && target._dimensions[Int(dimension)].type == .int
         while target._rawExtent.count <= Int(dimension) { target._rawExtent.append([]) }
         target._rawExtent[Int(dimension)] = model.initExtentForUnion()
         // const rawExtentOnDim = target._rawExtent[dimension]; (value-type; mutate stored, §3)
@@ -1148,7 +1206,7 @@ public final class DataStore {
                 Swift.min(i + sampleIndex(frameValues, value), len - 1)
             )
             // Only write value on the filtered data
-            target._chunks[Int(dimension)][sampleFrameIdx] = dimIsInt ? DataStore.toInt32(value) : value
+            target._chunks[Int(dimension)][sampleFrameIdx] = value
 
             // Extent uses the original (untruncated) value, mirroring upstream.
             if value < target._rawExtent[Int(dimension)][0] {
@@ -1262,7 +1320,7 @@ public final class DataStore {
         for i in 0..<currEnd {
             // NOTICE: Manually inline some code for performance of large data.
             let rawIdx = self.getRawIndex(i)
-            let value = DataStore.numericValue(dimData[rawIdx])
+            let value = dimData.numericValue(at: rawIdx)
             // NOTE: in most cases, filter does not exist.
             if filter == nil || dataValueHelper.passesSanitizationFilter(filterParsed, value) {
                 if value < min {
@@ -1436,7 +1494,7 @@ public final class DataStore {
         return getters
     }()
 
-    private func chunk(_ dim: Int) -> [ParsedValue]? {
+    private func chunk(_ dim: Int) -> DataValueChunk? {
         return dim >= 0 && dim < self._chunks.count ? self._chunks[dim] : nil
     }
 
@@ -1452,10 +1510,9 @@ public final class DataStore {
 
     // Emulate assignment into an `Int32Array` element (ECMAScript `ToInt32`): truncate toward
     // zero, then wrap to signed 32-bit. Upstream `int`-typed columns are `Int32Array`, so every
-    // write is implicitly truncated by the JS engine. The Double-backed `[ParsedValue]` storage
-    // used here does not truncate on write, so `int` columns must apply it explicitly (closing
-    // the documented storage-model divergence). NaN/±∞ map to 0, matching `Int32Array`.
-    fileprivate static func toInt32(_ v: ParsedValue) -> ParsedValue {
+    // write is implicitly truncated by the JS engine. DataValueChunk uses this conversion before
+    // assigning to Int32 because Swift's ordinary cast traps on overflow. NaN/±∞ map to 0.
+    fileprivate static func toInt32(_ v: ParsedValue) -> Double {
         let d = numericValue(v)
         if !d.isFinite { return Double(0) }
         let twoPow32 = 4294967296.0   // 2^32

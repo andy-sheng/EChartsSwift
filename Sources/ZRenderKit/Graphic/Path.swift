@@ -702,6 +702,11 @@ open class Path: Displayable {
     /// batched `CGContext.fill([CGRect])`. Returns nil for every non-boostable path (normal draw).
     open func largeSymbolBoostRects() -> [Double]? { return nil }
 
+    /// Renderer seam: scatter's afterBrush fills each rect independently (including alpha
+    /// accumulation); large bars instead contribute rectangles to a compound filled path.
+    /// Backends may batch the latter when the paint/compositing state makes it equivalent.
+    open var largeRectsAreCompound: Bool { false }
+
     public func pathUpdated() {
         self.__dirty = Double(Int(self.__dirty) & ~Int(SHAPE_CHANGED_BIT))
     }

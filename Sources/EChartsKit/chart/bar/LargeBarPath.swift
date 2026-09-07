@@ -4,9 +4,9 @@
 // (`[x, y, sizeAlongValueAxis]` per datum) — instead of one Rect element per bar (`_renderNormal`,
 // ~71s for 500k bars). Upstream's `LargePath.buildPath` emits `ctx.rect(...)` per bar into the
 // canvas path; here that same geometry backs the renderer-agnostic boost hook
-// (`largeSymbolBoostRects`) so the native painter fills each bar with its own `ctx.fill(rect)` —
-// N cheap primitive fills, NOT one super-linear N-sub-path `fillPath` (see LargeSymbolDraw's boost
-// and the base `Path.largeSymbolBoostRects()` doc).
+// (`largeSymbolBoostRects`). The native painter uses bounded rectangle batches for opaque
+// compound bars and individual primitive fills otherwise, avoiding one super-linear N-sub-path
+// `fillPath` (see the base `Path.largeSymbolBoostRects()` doc).
 import Foundation
 import ZRenderKit
 
@@ -27,6 +27,7 @@ public struct LargeBarPathShape: PathShape {
 // upstream: class LargePath extends Path<LargePathProps> (bar/BarView.ts:1100). One Path drawing every
 //   bar of a large series. `type = 'largeBar'`.
 public final class LargeBarPath: Path {
+    public override var largeRectsAreCompound: Bool { true }
     // upstream: baseDimIdx (0 when the value axis is vertical, 1 when horizontal), largeDataIndices, barWidth.
     public var baseDimIdx: Int = 0
     // PORT-TODO: PORTING.md section 7 — upstream `Float32Array` buffer; should be
@@ -53,8 +54,8 @@ public final class LargeBarPath: Path {
         let valueDimIdx = 1 - self.baseDimIdx
         var i = 0
         while i + 2 < points.count {
-            var size = [0.0, 0.0]
-            var startPoint = [0.0, 0.0]
+            var size = VectorArray(0, 0)
+            var startPoint = VectorArray(0, 0)
             size[self.baseDimIdx] = self.barWidth
             size[valueDimIdx] = points[i + 2]
             startPoint[self.baseDimIdx] = points[i + self.baseDimIdx]
@@ -77,8 +78,8 @@ public final class LargeBarPath: Path {
         out.reserveCapacity(points.count / 3 * 4)
         var i = 0
         while i + 2 < points.count {
-            var size = [0.0, 0.0]
-            var startPoint = [0.0, 0.0]
+            var size = VectorArray(0, 0)
+            var startPoint = VectorArray(0, 0)
             size[self.baseDimIdx] = self.barWidth
             size[valueDimIdx] = points[i + 2]
             startPoint[self.baseDimIdx] = points[i + self.baseDimIdx]
@@ -104,8 +105,8 @@ public final class LargeBarPath: Path {
         var maxX = -Double.greatestFiniteMagnitude, maxY = -Double.greatestFiniteMagnitude
         var i = 0
         while i + 2 < points.count {
-            var size = [0.0, 0.0]
-            var startPoint = [0.0, 0.0]
+            var size = VectorArray(0, 0)
+            var startPoint = VectorArray(0, 0)
             size[self.baseDimIdx] = self.barWidth
             size[valueDimIdx] = points[i + 2]
             startPoint[self.baseDimIdx] = points[i + self.baseDimIdx]
@@ -268,8 +269,8 @@ func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double)
     let len = Swift.min(points.count / 3, largeDataIndices.count)
     for i in 0..<len {
         let ii = i * 3
-        var size = [0.0, 0.0]
-        var startPoint = [0.0, 0.0]
+        var size = VectorArray(0, 0)
+        var startPoint = VectorArray(0, 0)
         size[baseDimIdx] = barWidth
         size[valueDimIdx] = points[ii + 2]
         startPoint[baseDimIdx] = points[ii + baseDimIdx]

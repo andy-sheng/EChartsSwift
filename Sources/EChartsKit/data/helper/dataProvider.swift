@@ -178,6 +178,11 @@ public final class DefaultDataProvider: DataProvider {
         self._fillStorage?(start, end, &out, &extent)
     }
 
+    // Internal typed-column entry point; the public ArrayLike provider API remains compatible.
+    func fillStorage(_ start: Double, _ end: Double, _ out: inout [DataValueChunk], _ extent: inout [[Double]]) {
+        fillStorageForTypedArray(self, start, end, &out, &extent)
+    }
+
     public func appendData(_ newData: OptionSourceData) {
         self._appendData?(newData)
     }
@@ -279,8 +284,20 @@ private let getItemForTypedArray: (DefaultDataProvider, Double, ArrayLike<Option
     return out
 }
 
-private let fillStorageForTypedArray: (DefaultDataProvider, Double, Double, inout [ArrayLike<ParsedValue>], inout [[Double]]) -> Void = {
-    provider, start, end, storage, extent in
+// Swift-only buffer constraint: share the upstream loop between the public ArrayLike API and
+// internal contiguous numeric columns, avoiding a per-element closure or existential dispatch.
+private protocol ParsedValueBuffer {
+    var count: Int { get }
+    subscript(index: Int) -> ParsedValue { get set }
+    mutating func append(_ value: ParsedValue)
+}
+extension Array: ParsedValueBuffer where Element == ParsedValue {}
+extension DataValueChunk: ParsedValueBuffer {}
+
+private func fillStorageForTypedArray<Buffer: ParsedValueBuffer>(
+    _ provider: DefaultDataProvider, _ start: Double, _ end: Double,
+    _ storage: inout [Buffer], _ extent: inout [[Double]]
+) {
     let data = (provider._data as? [Double]) ?? []
     let dimSize = provider._dimSize
 
@@ -706,7 +723,7 @@ private func ensureSize(_ arr: inout ArrayLike<OptionDataValue>, _ size: Int) {
         arr.append(nil)
     }
 }
-private func ensureSizeParsed(_ arr: inout ArrayLike<ParsedValue>, _ size: Int) {
+private func ensureSizeParsed<Buffer: ParsedValueBuffer>(_ arr: inout Buffer, _ size: Int) {
     while arr.count < size {
         arr.append(Double.nan)
     }

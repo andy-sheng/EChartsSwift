@@ -63,7 +63,7 @@ import ZRenderKit
 //   (which supplies `model`/`scale`/`dim`/`onBand`/`getExtent`).
 
 // upstream: const NORMALIZED_EXTENT = [0, 1] as [number, number];
-private let NORMALIZED_EXTENT: [Double] = [0, 1]
+private let NORMALIZED_EXTENT = SIMD2<Double>(0, 1)
 
 // upstream: export interface AxisTickCoord { ... }
 // Object-literal data bag → struct (CONVENTIONS §4).
@@ -339,8 +339,10 @@ open class Axis {
 
 }
 
-func makeExtentWithBands(_ axis: Axis) -> [Double] {
-    var extent = axis.getExtent()
+func makeExtentWithBands(_ axis: Axis) -> SIMD2<Double> {
+    // Copy the two values, not an Array buffer which must COW on the band adjustment.
+    let axisExtent = axis.getExtent()
+    var extent = SIMD2(axisExtent[0], axisExtent[1])
     if axis.onBand {
         let size = extent[1] - extent[0]
         let margin = size / (axis.scale as! OrdinalScale).count() / 2

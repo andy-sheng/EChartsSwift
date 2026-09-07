@@ -554,15 +554,15 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
             let next = params.next
             while let dataIndexD = next?() {
                 let dataIndex = Int(dataIndexD)
-                let value = store.get(stacked ? stackedDimIdx! : valueDimIdx, dataIndex)
-                let baseValue = barGridToNumber(store.get(baseDimIdx, dataIndex))
+                let value = store.getNumeric(stacked ? stackedDimIdx! : valueDimIdx, dataIndex)
+                let baseValue = store.getNumeric(baseDimIdx, dataIndex)
                 var baseCoord = valueAxisStart
                 var stackStartValue: Double = 0
 
                 // Because of the barMinHeight, we can not use the value in
                 // stackResultDimension directly.
                 if stacked {
-                    stackStartValue = barGridToNumber(value) - barGridToNumber(store.get(valueDimIdx, dataIndex))
+                    stackStartValue = value - store.getNumeric(valueDimIdx, dataIndex)
                 }
 
                 var x: Double
@@ -571,9 +571,9 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
                 var height: Double
 
                 if isValueAxisH {
-                    let coord = cartesian.dataToPoint([value, baseValue])
+                    let coord = cartesian.dataToPoint(VectorArray(value, baseValue))
                     if stacked {
-                        baseCoord = cartesian.dataToPoint([stackStartValue, baseValue])[0]
+                        baseCoord = cartesian.dataToPoint(VectorArray(stackStartValue, baseValue))[0]
                     }
                     x = baseCoord
                     y = coord[1] + columnOffset
@@ -585,9 +585,9 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
                     }
                 }
                 else {
-                    let coord = cartesian.dataToPoint([baseValue, value])
+                    let coord = cartesian.dataToPoint(VectorArray(baseValue, value))
                     if stacked {
-                        baseCoord = cartesian.dataToPoint([baseValue, stackStartValue])[1]
+                        baseCoord = cartesian.dataToPoint(VectorArray(baseValue, stackStartValue))[1]
                     }
                     x = coord[0] + columnOffset
                     y = baseCoord

@@ -1,0 +1,325 @@
+{
+  "checks": [
+    "Each requested hover and legend interaction resolves on the live chart and cleanup restores the initial series state.",
+    "Five wheel events zoom in on the same anchor; Native and Web show the same data window and series geometry.",
+    "Dragging the slider start handle changes the beginning of the visible window; the inverse drag restores the zoomed window.",
+    "Five inverse wheel events and pointer cleanup restore the baseline on the same chart instance, with no stale tooltip, axisPointer, emphasis or clipping.",
+    "Ignore font antialiasing and harmless subpixel differences; fail missing geometry, labels or different data windows."
+  ],
+  "demo": "official-scatter-large",
+  "id": "official-scatter-large-performance-interactions",
+  "steps": [
+    {
+      "action": "settle",
+      "capture": "baseline"
+    },
+    {
+      "action": "hoverData",
+      "dataIndex": 17459,
+      "seriesIndex": 0
+    },
+    {
+      "action": "wait",
+      "milliseconds": 120
+    },
+    {
+      "action": "settle",
+      "capture": "hover-series-0"
+    },
+    {
+      "action": "hoverData",
+      "dataIndex": 15554,
+      "seriesIndex": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 120
+    },
+    {
+      "action": "settle",
+      "capture": "hover-series-1"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "hover-restored"
+    },
+    {
+      "action": "clickLegend",
+      "movePointer": true,
+      "name": "A"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "legend-a-off"
+    },
+    {
+      "action": "clickLegend",
+      "movePointer": true,
+      "name": "A"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "legend-a-restored"
+    },
+    {
+      "action": "clickLegend",
+      "movePointer": true,
+      "name": "B"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "legend-b-off"
+    },
+    {
+      "action": "clickLegend",
+      "movePointer": true,
+      "name": "B"
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "legend-b-restored"
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": 1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "wheel-zoomed"
+    },
+    {
+      "action": "dragDataZoom",
+      "deltaX": 48,
+      "deltaY": 0
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "slider-panned"
+    },
+    {
+      "action": "dragDataZoom",
+      "deltaX": -48,
+      "deltaY": 0
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "slider-restored"
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": -1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": -1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": -1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": -1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "wheelAt",
+      "x": 320,
+      "y": 100,
+      "deltaY": -1
+    },
+    {
+      "action": "wait",
+      "milliseconds": 180
+    },
+    {
+      "action": "pointerMove",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "action": "globalOut"
+    },
+    {
+      "action": "wait",
+      "milliseconds": 700
+    },
+    {
+      "action": "settle",
+      "capture": "final-restored"
+    }
+  ]
+}

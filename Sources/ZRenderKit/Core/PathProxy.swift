@@ -186,6 +186,12 @@ public final class PathProxy {
         return self._version
     }
 
+    /// Renderer seam: line simplification also changes rebuildPath output without changing data.
+    /// Backends retaining compiled geometry must include these thresholds in their cache key.
+    public func getRebuildPathThreshold() -> VectorArray {
+        return VectorArray(self._ux, self._uy)
+    }
+
     /**
      * @readOnly
      */

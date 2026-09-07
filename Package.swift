@@ -41,6 +41,11 @@ let package = Package(
         ),
         .target(name: "ApplePainterSupport", dependencies: ["ZRenderKit"]),
         .target(name: "NativeRenderer", dependencies: ["NativePainter", "EChartsKit"]),
+        .executableTarget(
+            name: "ChartPerformanceProbe",
+            dependencies: ["NativePainter", "EChartsKit", "EChartsDemoCore"],
+            path: "Tools/ChartPerformanceProbe"
+        ),
         .testTarget(
             name: "ZRenderKitTests",
             dependencies: ["ZRenderKit", "NativePainter"],

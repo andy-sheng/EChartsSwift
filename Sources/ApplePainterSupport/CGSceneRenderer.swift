@@ -153,7 +153,7 @@ public func drawDisplayListRespectingIncrementalLayers(
         // Match the destination's complete base transform (canvas y-down flip + DPR). Element-local
         // transforms and clips are then applied by drawDisplayable exactly as on the main context.
         layerContext.concatenate(renderer.ctx.ctm)
-        let layerRenderer = CGRenderer(layerContext, flipped: renderer.flipped)
+        let layerRenderer = CGRenderer(layerContext, flipped: renderer.flipped, geometryCache: renderer.geometryCache)
         for element in elements { drawOne(element, layerRenderer) }
 
         guard let image = layerContext.makeImage() else { return }
@@ -263,11 +263,13 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     // 5a. Large-symbol boost (zrender LargeSymbolDraw.afterBrush): a tiny-symbol large path fills
     //     each datum as its own rect instead of one giant N-sub-path CGPath — see the base Path's
     //     `largeSymbolBoostRects()` doc. Filling one 10⁶-circle path via `CGContext.fillPath` is
-    //     super-linear (a 5× point count measured ~32× slower); the batched `fill([CGRect])` is O(N).
+    //     super-linear (a 5× point count measured ~32× slower). Opaque compound rectangles use
+    //     bounded batches; scatter retains one fill per point to preserve alpha accumulation.
     //     The rects are element-local, so the world transform applied above (step 2) carries them into
     //     surface space exactly as the normal geometry. Fill only (upstream boost issues no stroke).
     if let boost = p.largeSymbolBoostRects() {
-        r.fillBoostRects(boost, paint)
+        r.fillBoostRects(boost, paint, compound: p.largeRectsAreCompound
+            && makeShadow(style) == nil && (style.blend == nil || style.blend == "source-over"))
         return
     }
 
@@ -275,10 +277,9 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     // strokePercent: zrender rebuilds the path to its leading fraction (canvas/graphic.ts:225,
     // `path.rebuildPath(ctx, strokePart ? strokePercent : 1)`); fill and stroke both follow the
     // trimmed geometry ("Not support separate fill and stroke"). Mirror that here.
-    r.beginPath()
     let pathProxy = p.getCachedPathProxy(false)
     let strokePercent = style.strokePercent ?? 1
-    pathProxy.rebuildPath(r.pathRebuilder, strokePercent < 1 ? strokePercent : 1)
+    r.preparePath(pathProxy, percent: strokePercent < 1 ? strokePercent : 1)
 
     // 6. Paint, honoring strokeFirst (SVG paint-order).
     if paint.strokeFirst {
@@ -421,13 +422,11 @@ private func applyClipChain(_ el: Displayable, into r: CGRenderer) {
 }
 
 private func applyClip(_ clip: Path, into r: CGRenderer) {
-    let rb = CGPathRebuilder()
-    let pp = clip.getUpdatedPathProxy(false)
-    pp.rebuildPath(rb, 1)
-    var cgPath: CGPath = rb.path
+    let pp = clip.getCachedPathProxy(false)
+    var cgPath = r.geometryCache.path(for: pp)
     if let world = clip.getComputedTransform() {
         var t = AffineTransform(world).cg
-        if let baked = rb.path.copy(using: &t) {
+        if let baked = cgPath.copy(using: &t) {
             cgPath = baked
         }
     }
