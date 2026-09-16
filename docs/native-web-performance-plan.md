@@ -123,7 +123,7 @@ flowchart LR
 
 ### A1. 按列类型消除热循环 Any 成本
 
-以 DataStore 为边界保存 float/int/ordinal 等类型，数值列使用 [CONVENTIONS](../CONVENTIONS.md) 和 [PORTING](../PORTING.md) 规定的 ContiguousArray 类型。动态 option、混合值、原始行和公开访问接口保留兼容。
+以 DataStore 为边界保存 float/int/ordinal 等类型，数值列使用 [PORTING](../PORTING.md) 规定的 ContiguousArray 类型。动态 option、混合值、原始行和公开访问接口保留兼容。
 
 在批量操作开始时判断列类型，内部循环直接访问数值缓冲；不要每一项做桥接、Any cast 或构造临时数组。检查 `selectRange`、extent、stack、visual、barGrid、points layout、SourceManager 和 cloneShallow 的数据所有权；过滤优先使用上游的 raw storage + index view，避免复制整张数据表。
 
@@ -312,7 +312,7 @@ P95 是跨完整测试序列汇总的指标，须报告样本量和区间。若 
 
 真实 GPU 验证使用 Metal readback；Rasterizer 的 CPU `renderToImage` 不能作为 GPU 通过证据。先测确定性语义/图像，再用无截图的实时模式做性能测量。macOS/iOS SwiftPM 缓存保持隔离。
 
-遵守仓库移植约束：上游命名、声明顺序、注释和控制流程保留，类型映射按 CONVENTIONS/PORTING；平台/GPU 逻辑放在后端 seam。本文的缓存、执行域和 packet 是 Native 平台设计；任何触及共享算法结构的扩展先提交明确设计与规则变更，不能借性能名义直接破坏可同步性。
+遵守仓库移植约束：上游命名、声明顺序、注释和控制流程保留，类型映射按 PORTING；平台/GPU 逻辑放在后端 seam。本文的缓存、执行域和 packet 是 Native 平台设计；任何触及共享算法结构的扩展先提交明确设计与规则变更，不能借性能名义直接破坏可同步性。
 
 上游 checkout 不手改。RasterizerPainter 是独立仓库，engine 变更通过其 lock/patch/reconstruction 流程保存，不手改生成的 third_party 作为最终实现。优化开关可回退并记录实际路径；fallback、未测平台和失败场景都留在报告中。
 

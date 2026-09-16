@@ -642,6 +642,6 @@ scripts/sync-rasterizer.sh
 scripts/build-echarts-gallery.sh
 ```
 
-应用只使用 NativeRenderer 时，不需要为运行图表下载 Web 对照资源或 RasterizerPainter。更多说明见 [Gallery README](Examples/PainterGallery/README.md)、[开发指南](CLAUDE.md)、[移植规则](CONVENTIONS.md)、[类型与实现约定](PORTING.md)、[Oracle](Oracle/README.md)。
+应用只使用 NativeRenderer 时，不需要为运行图表下载 Web 对照资源或 RasterizerPainter。更多说明见 [Gallery README](Examples/PainterGallery/README.md)、[开发指南](CLAUDE.md)、[移植规则与类型约定](PORTING.md)、[Oracle](Oracle/README.md)。
 
 官方文档入口：[API](https://echarts.apache.org/zh/api.html)、[配置项](https://echarts.apache.org/zh/option.html)、[使用手册](https://echarts.apache.org/handbook/zh/get-started/)、[官方示例](https://echarts.apache.org/examples/zh/index.html)。若文档页面无法加载，可查阅 Apache 维护的 [API 文档源文件](https://github.com/apache/echarts-doc/tree/master/zh/api) 与 [配置项文档源文件](https://github.com/apache/echarts-doc/tree/master/zh/option)。

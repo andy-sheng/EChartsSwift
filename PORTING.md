@@ -1,6 +1,6 @@
 # PORTING.md — Hard rulebook for TS → Swift ports (zrender/echarts)
 
-> Companion to `CONVENTIONS.md`. This page is the **mechanical checklist** you run for every symbol you translate. Overriding goal: **structural fidelity** — a ported `.swift` must diff cleanly against its `.ts` original. When fidelity fights elegance, pick fidelity. Every file starts with `// Ported from <upstream/path>.ts — keep in sync with upstream` and marks gaps with `// PORT-TODO:`.
+> This page is the **mechanical checklist** you run for every symbol you translate. Overriding goal: **structural fidelity** — a ported `.swift` must diff cleanly against its `.ts` original. When fidelity fights elegance, pick fidelity. Every file starts with `// Ported from <upstream/path>.ts — keep in sync with upstream` and marks gaps with `// PORT-TODO:`.
 
 ---
 
@@ -157,5 +157,44 @@ Store vectors/matrices as `var` value-type properties and mutate by **reassignme
 A `// PORT-TODO: deferred` sitting where upstream calls 2–5 real lines is the #1 source of user-visible bugs (killed hover, drag, brush). The infra is almost always already ported — **grep the file for `PORT-TODO` first**, then wire the dormant call, before writing new code. Force-unwraps that "mirror upstream optimistic typing" are latent `SIGTRAP`s — port them as optionals with a guard, not `!`.
 
 ---
+
+## 13. Numeric, control-flow, and ownership details
+
+- Keep division and intermediate arithmetic in `Double`; convert only genuine array indices and
+  loop counters to `Int`. Preserve mutated-index `while` loops, labels, callback order, and intentional
+  switch fallthrough. Variadics or overloads replacing `arguments` must preserve its semantics.
+- JS `Math.round` rounds ties toward positive infinity; use the existing JS-compatible helper rather
+  than Swift's default rounding. Bitwise operations use `Int`/`UInt32` at explicit boundaries; preserve
+  JS truncation, signedness, and exceptional-value handling. Floating remainder uses
+  `truncatingRemainder(dividingBy:)`.
+- JS logical operators can return operands; reproduce that behavior with branches instead of Swift
+  Boolean operators. String-to-number conversion and null/undefined distinctions need explicit
+  handling where observable, with `PORT-TODO` for unsupported behavior.
+- Use precise types where possible; mark unavoidable dynamic/stubbed behavior. Property bags can be
+  value types only when shared mutable identity is irrelevant; otherwise use reference semantics.
+- Runtime feature checks use the applicable native branch with a note about omitted browser behavior.
+  Capture `self` weakly only for actual retain cycles, and mark uncertain capture semantics.
+- Preserve upstream declaration order and meaningful comments, including Chinese comments. Backend
+  graphics remain outside translated ECharts/ZRender logic.
+
+## Legacy rule references
+
+Source comments and historical migration workflow snapshots still contain `CONVENTIONS §N`
+references. Their rules are consolidated here; use this mapping when reading those comments.
+Historical workflow snapshots describe the original migration and are not the current setup guide.
+
+| Old section | Current section |
+| --- | --- |
+| 0: provenance | Introduction and submit checklist |
+| 1: primitive types | 7–9, 13 |
+| 2: modules/classes | 1, 3–5, 9 |
+| 3: out-parameters | 10 |
+| 4: shared identity | 4, 10, 13 |
+| 5: numeric operations | 11, 13 |
+| 6: null/undefined | 8, 13 |
+| 7: control flow | 7, 11, 13 |
+| 8: miscellaneous mappings | 9, 11, 13 |
+| 9: renderer boundary | 6 |
+| 10: submit checklist | Submit checklist below |
 
 **Submit checklist:** header line 1 · names = upstream · order = upstream · Chinese comments preserved · `number`→`Double`, typed arrays→`ContiguousArray` · no math out-params (all value-return) · `Element`-types are `final class` · grepped-before-creating · every gap has `// PORT-TODO:`.

@@ -7,8 +7,8 @@ Most code under `Sources/EChartsKit` and `Sources/ZRenderKit` intentionally mirr
 upstream TypeScript structure so changes can be compared and synchronized. Structural
 fidelity takes priority over idiomatic Swift refactoring in translated code.
 
-Before changing translated code, read `CONVENTIONS.md` and `PORTING.md`. They are the
-binding translation rules for this repository and take precedence over this summary.
+Before changing translated code, read `PORTING.md`. It contains the binding translation
+rules for this repository and takes precedence over this summary.
 
 ## Repository map
 
@@ -41,7 +41,7 @@ binding translation rules for this repository and take precedence over this summ
   duplicate helper, namespace, or type.
 - Keep renderer-specific Core Graphics, Core Animation, and Metal code outside
   `ZRenderKit` and `EChartsKit`; translated code communicates through renderer seams.
-- Follow the type and mutation mappings in `CONVENTIONS.md` and `PORTING.md`, especially
+- Follow the type and mutation mappings in `PORTING.md`, especially
   `number` to `Double`, typed arrays to `ContiguousArray`, and value-returning math APIs
   instead of aliased `inout` output buffers.
 - Keep changes focused. Do not mix upstream-parity work with unrelated cleanup or

@@ -103,8 +103,30 @@ closing an item. Per-run verdict tables belong with the generated capture artifa
 | `official-line-pen`, `official-line-graphic`, `official-line-fisheye-lens` | Exercise click-to-add, graphic click/drag, and brush/fisheye behavior. |
 | `official-bar-breaks`, `official-bar-breaks-brush`, `official-bar-brush` | Exercise axis-break expansion/collapse and real brush selection/clear, including brush-created breaks. |
 | `official-bar-drilldown`, `official-bar-multi-drilldown`, `official-bar-gradient` | Verify upstream click handlers, drilldown/back behavior, and click zoom rather than only static options. |
-| `official-bar-race`, `official-bar-race-country`, `official-dynamic-data`, `official-mix-timeline-finance` | Advance timer/timeline updates; use the [race validation workflow](RACE_ANIMATION_VALIDATION.md) for animated ranking. |
+| `official-bar-race`, `official-bar-race-country`, `official-dynamic-data`, `official-mix-timeline-finance` | Advance timer/timeline updates; use the [race validation workflow](#race-animation-validation) for animated ranking. |
 | `official-polar-roundCap` | Establish a visible hover response before accepting hover coverage. |
+
+## Race animation validation
+
+Run `scripts/validate-race-animation.sh` to write paired Native/Web frames and `invariants.txt`
+under `build/race-animation-validation/<case>/`. Use deterministic input sequences and the same
+update cadence on both sides. Capture before the update, during the transition, at its end, and in
+the next cycle; compare matching phases, geometry, rank, labels, and easing rather than raw pixel
+scores. A correct final PNG alone cannot prove animation parity.
+
+Preserve datum identity and scene element counts across updates. Reject snaps, restarted entrance
+animations, duplicate bars/labels, missing tweens, or different trajectories. Use synthetic-clock
+unit tests for start/middle/end states, alongside paired live output.
+
+| Case | Required signal |
+| --- | --- |
+| `official-line-race` | Line reveal follows the same path and reaches the same endpoint. |
+| `official-bar-race` | Width, row position, rolling values, and top-three membership transition together. |
+| `official-bar-race-country` | Country/flag, bar, value, and year remain one datum during rank swaps. |
+| `official-custom-spiral-race` | Polygon and text have live animators and share intermediate `extra.endRadian` values. |
+
+For bar races, `changeAxisOrder` must preserve each category's bar object. Small wall-clock skew
+between WebKit and the native display link is acceptable; missing or incorrect transitions are not.
 
 ## Scenario format
 
