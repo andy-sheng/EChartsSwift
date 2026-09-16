@@ -87,6 +87,25 @@ The orchestrating agent owns the final gate:
 3. Accept the painter layer only when the visual child agent returns `pass` with relevant evidence
    images; treat `uncertain` as requiring human review, never as a pass.
 
+## Coverage to recheck
+
+Earlier line/bar sweeps recorded the following defects or coverage gaps. These are historical
+follow-up items, not claims about the current implementation; rerun the relevant scenario before
+closing an item. Per-run verdict tables belong with the generated capture artifacts under `build/`.
+
+| Cases | Required follow-up |
+| --- | --- |
+| `official-line-marker` | Verify that series hover also updates the related horizontal markLine state. |
+| `official-line-polar`, `official-line-polar2` | Verify polar tooltip and axisPointer output. |
+| `official-area-rainfall`, `official-grid-multiple`, `official-mix-zoom-on-value` | Resolve overlapping legend/slider targets through actual pointer routing. |
+| `official-area-simple` | Select the same semantic time-series datum on Native and Web. |
+| `official-matrix-sparkline`, `official-intraday-breaks-1`, `official-intraday-breaks-2` | Prove that generated dataZoom gestures change the visible window. |
+| `official-line-pen`, `official-line-graphic`, `official-line-fisheye-lens` | Exercise click-to-add, graphic click/drag, and brush/fisheye behavior. |
+| `official-bar-breaks`, `official-bar-breaks-brush`, `official-bar-brush` | Exercise axis-break expansion/collapse and real brush selection/clear, including brush-created breaks. |
+| `official-bar-drilldown`, `official-bar-multi-drilldown`, `official-bar-gradient` | Verify upstream click handlers, drilldown/back behavior, and click zoom rather than only static options. |
+| `official-bar-race`, `official-bar-race-country`, `official-dynamic-data`, `official-mix-timeline-finance` | Advance timer/timeline updates; use the [race validation workflow](RACE_ANIMATION_VALIDATION.md) for animated ranking. |
+| `official-polar-roundCap` | Establish a visible hover response before accepting hover coverage. |
+
 ## Scenario format
 
 ```json
