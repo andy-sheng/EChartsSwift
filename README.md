@@ -54,7 +54,7 @@ SwiftPM 根据仓库 URL 推导 package identity（`echartsswift`）；product �
 | `ZRenderKit` | 场景、图形、动画、Handler，以及 `ZRenderResizeOpt` 等底层类型 |
 | `ApplePainterSupport` | Apple 平台后端共用的路径、文字、图像和绘制支持 |
 
-这里的 `CanvasRenderer` 是与官方命名对应的**原生 Core Graphics 后端**，不是 HTML Canvas。可选的 [RasterizerPainter](third_party/README-Rasterizer.md) 单独集成，不是核心 package 的必需依赖。
+这里的 `CanvasRenderer` 是与官方命名对应的**原生 Core Graphics 后端**，不是 HTML Canvas。可选的 [RasterizerPainter](Examples/PainterGallery/README.md) 单独集成，不是核心 package 的必需依赖。
 
 ## 初始化一个图表
 

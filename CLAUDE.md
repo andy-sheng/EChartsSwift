@@ -25,7 +25,6 @@ rules for this repository and takes precedence over this summary.
 - `Tests/ZRenderKitTests` and `Tests/EChartsKitTests`: unit, parity, and rendering tests.
 - `Oracle`: ECharts/ZRender golden-fixture generator and committed fixtures.
 - `upstream`: pinned, read-only ECharts and ZRender reference checkouts.
-- `third_party`: lock, patch, and reconstruction metadata for Rasterizer.
 - `scripts`: synchronization, build, and parity-check helpers.
 
 ## Non-negotiable porting rules

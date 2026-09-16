@@ -3,7 +3,11 @@
 This application package combines the core with the independent
 `../../RasterizerPainter` repository. The core package has no dependency on it.
 
-From the iOS-Chart root:
+Rasterizer's engine lock, local patch, provenance notes, and reconstruction script belong to
+that independent repository. The core builds and tests without the plugin or engine checkout;
+this gallery opts into them. The root `scripts/sync-rasterizer.sh` forwards to the plugin's script.
+
+From the EChartsSwift root:
 
 ```sh
 scripts/sync-rasterizer.sh

@@ -12,12 +12,7 @@ upstream/upstream/
 
 # SwiftPM
 /.build/
-third_party/**/.build/
 .swiftpm/
-
-# Vendored Rasterizer checkout — reconstructed from third_party/rasterizer.lock +
-# rasterizer-local.patch via scripts/sync-rasterizer.sh (like the upstream/ checkouts).
-/third_party/Rasterizer/
 
 # Independently versioned painter plugin (its own Git repository).
 /RasterizerPainter/
